@@ -1,0 +1,4 @@
+project_id = "twinai"
+
+[functions.generate-blueprint]
+verify_jwt = true
