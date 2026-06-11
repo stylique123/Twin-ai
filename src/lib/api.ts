@@ -53,8 +53,36 @@ export interface GenerateInput {
 export interface IngestJob {
   id: string
   status: 'queued' | 'running' | 'done' | 'failed'
-  result: { transcript_id?: string } | null
+  result:
+    | { transcript_id?: string; output_url?: string; output_path?: string; duration_sec?: number; words?: number }
+    | null
   error: string | null
+}
+
+// ---- Auto-editor (Phase 6: worker burns captions + vertical + loudness) ----
+
+// Upload a recorded take to private storage, then enqueue an `autoedit` job.
+// Returns the job id to poll with getJob; on `done`, result.output_url is the
+// finished, signed MP4 URL.
+export async function autoEditTake(generationId: string, blob: Blob): Promise<string> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not signed in')
+  const uid = auth.user.id
+  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+  const take_path = `${uid}/${generationId}-${Date.now()}.${ext}`
+
+  const up = await supabase.storage
+    .from('takes')
+    .upload(take_path, blob, { contentType: blob.type || 'video/webm', upsert: true })
+  if (up.error) throw up.error
+
+  const { data, error } = await supabase
+    .from('jobs')
+    .insert({ owner_id: uid, type: 'autoedit', status: 'queued', payload: { generation_id: generationId, take_path } })
+    .select('id')
+    .single()
+  if (error) throw error
+  return (data as { id: string }).id
 }
 
 // Kick off real analysis of a reference URL. Returns the worker job id to watch.

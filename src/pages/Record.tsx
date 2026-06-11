@@ -3,9 +3,9 @@ import { Link, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Video, VideoOff, Circle, Square, RotateCcw, Download, ArrowLeft, Loader2,
-  Play, Pause, FlipHorizontal2, Minus, Plus, Gauge, Mic, AlertTriangle,
+  Play, Pause, FlipHorizontal2, Minus, Plus, Gauge, Mic, AlertTriangle, Check, Sparkles,
 } from 'lucide-react'
-import { getGeneration } from '../lib/api'
+import { getGeneration, autoEditTake, getJob } from '../lib/api'
 import type { Generation } from '../lib/types'
 import { cn } from '../lib/cn'
 
@@ -33,6 +33,13 @@ export default function Record() {
   const [count, setCount] = useState(3)
   const [elapsed, setElapsed] = useState(0)
   const [takeUrl, setTakeUrl] = useState<string | null>(null)
+  const takeBlobRef = useRef<Blob | null>(null)
+
+  // auto-edit state
+  const [editPhase, setEditPhase] = useState<'none' | 'working' | 'done' | 'error'>('none')
+  const [editStatus, setEditStatus] = useState('')
+  const [editUrl, setEditUrl] = useState<string | null>(null)
+  const [editErr, setEditErr] = useState<string | null>(null)
 
   // teleprompter controls
   const [scrolling, setScrolling] = useState(false)
@@ -142,7 +149,11 @@ export default function Record() {
     rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data)
     rec.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: mime || 'video/webm' })
+      takeBlobRef.current = blob
       setTakeUrl(URL.createObjectURL(blob))
+      setEditPhase('none')
+      setEditUrl(null)
+      setEditErr(null)
       setPhase('review')
     }
     recorderRef.current = rec
@@ -183,6 +194,37 @@ export default function Record() {
   const reshoot = () => {
     setPhase('idle')
     resetPrompt()
+    setEditPhase('none')
+    setEditUrl(null)
+    if (editUrl) URL.revokeObjectURL(editUrl)
+  }
+
+  // ---- one-click auto-edit (Phase 6) ----
+  const runAutoEdit = async () => {
+    if (!takeBlobRef.current || !id) return
+    setEditErr(null)
+    setEditPhase('working')
+    setEditStatus('Uploading your take…')
+    try {
+      const jobId = await autoEditTake(id, takeBlobRef.current)
+      setEditStatus('Editing — captions, framing & audio…')
+      for (let i = 0; i < 120; i++) {
+        await new Promise((r) => setTimeout(r, 3000))
+        const job = await getJob(jobId)
+        if (!job) continue
+        if (job.status === 'done' && job.result?.output_url) {
+          setEditUrl(job.result.output_url)
+          setEditPhase('done')
+          return
+        }
+        if (job.status === 'failed') throw new Error(job.error || 'The edit could not finish.')
+        setEditStatus(job.status === 'running' ? 'Editing — captions, framing & audio…' : 'Queued…')
+      }
+      throw new Error('The edit is taking longer than expected — check your Library shortly.')
+    } catch (e) {
+      setEditErr(e instanceof Error ? e.message : 'Auto-edit failed.')
+      setEditPhase('error')
+    }
   }
 
   const inHook = phase === 'recording' && elapsed <= 3
@@ -319,10 +361,30 @@ export default function Record() {
               )}
             </AnimatePresence>
 
-            {/* review */}
-            {phase === 'review' && takeUrl && (
+            {/* review — show the edited render once ready, else the raw take */}
+            {phase === 'review' && (takeUrl || editUrl) && (
               <div className="absolute inset-0 bg-black">
-                <video src={takeUrl} controls playsInline className="h-full w-full object-contain" />
+                <video
+                  key={editUrl ?? takeUrl ?? ''}
+                  src={editUrl ?? takeUrl ?? ''}
+                  controls
+                  playsInline
+                  className="h-full w-full object-contain"
+                />
+                {editUrl && (
+                  <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-teal/90 px-2.5 py-1 text-xs font-bold text-ink">
+                    <Check className="h-3.5 w-3.5" /> Auto-edited
+                  </span>
+                )}
+                {editPhase === 'working' && (
+                  <div className="absolute inset-0 grid place-items-center bg-ink/80 text-center">
+                    <div>
+                      <Loader2 className="mx-auto h-7 w-7 animate-spin text-coral" />
+                      <p className="mt-3 font-heading text-cream">{editStatus}</p>
+                      <p className="mt-1 text-xs text-stone">Captions are timed to your words — this takes a minute.</p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -342,15 +404,29 @@ export default function Record() {
               )}
               {phase === 'review' && (
                 <>
-                  <button onClick={reshoot} className="btn-ghost">
+                  <button onClick={reshoot} className="btn-ghost" disabled={editPhase === 'working'}>
                     <RotateCcw className="h-4 w-4" /> Reshoot
                   </button>
-                  <a href={takeUrl ?? '#'} download={`twinai-take-${id}.webm`} className="btn-gradient">
-                    <Download className="h-4 w-4" /> Download take
-                  </a>
+                  {editPhase === 'done' && editUrl ? (
+                    <a href={editUrl} download={`twinai-edited-${id}.mp4`} className="btn-gradient">
+                      <Download className="h-4 w-4" /> Download edited
+                    </a>
+                  ) : (
+                    <button onClick={runAutoEdit} className="btn-gradient" disabled={editPhase === 'working'}>
+                      {editPhase === 'working' ? (
+                        <><Loader2 className="h-4 w-4 animate-spin" /> Editing…</>
+                      ) : (
+                        <><Sparkles className="h-4 w-4" /> Auto-edit this take</>
+                      )}
+                    </button>
+                  )}
                 </>
               )}
             </div>
+          )}
+
+          {editErr && (
+            <p className="border-t border-white/10 bg-coral/10 px-4 py-2.5 text-center text-sm text-coral">{editErr}</p>
           )}
         </div>
 
