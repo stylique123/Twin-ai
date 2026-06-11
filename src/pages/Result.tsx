@@ -1,17 +1,14 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import {
+  ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
+  Captions, ListChecks, Wand2, Timer, Send, Loader2,
+} from 'lucide-react'
 import { getGeneration } from '../lib/api'
 import type { Generation } from '../lib/types'
-import { GradientBar } from '../components/GradientBar'
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="glass p-6">
-      <p className="eyebrow">{title}</p>
-      <div className="mt-3">{children}</div>
-    </section>
-  )
-}
+import { Aurora } from '../components/Aurora'
+import { Reveal, EASE } from '../components/motion'
 
 export default function Result() {
   const { id } = useParams()
@@ -26,157 +23,211 @@ export default function Result() {
     })
   }, [id])
 
-  if (loading) return <main className="mx-auto max-w-3xl px-5 py-16 text-sand">Loading…</main>
+  if (loading)
+    return (
+      <main className="grid min-h-[60vh] place-items-center text-sand">
+        <span className="inline-flex items-center gap-2">
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading your blueprint…
+        </span>
+      </main>
+    )
   if (!gen) return <main className="mx-auto max-w-3xl px-5 py-16 text-coral">Not found.</main>
 
   const b = gen.blueprint
-  // caption_packet is the new name; fall back to legacy submagic_packet for old rows.
-  const cap = b.caption_packet ?? b.submagic_packet ?? {
-    caption_style: '',
-    pacing: '',
-    emphasis: '',
-    export: '',
-  }
+  const cap = b.caption_packet ?? b.submagic_packet ?? { caption_style: '', pacing: '', emphasis: '', export: '' }
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-12">
-      <GradientBar />
-      <div className="mt-8 flex items-center justify-between">
-        <p className="eyebrow">Your blueprint</p>
-        <Link to="/app" className="btn-ghost">
-          New blueprint
-        </Link>
-      </div>
-
-      <h1 className="mt-3 font-display text-3xl">{b.reference_read.format_label}</h1>
-      <p className="mt-1 text-sand">
-        {b.reference_read.platform} format · fidelity: {gen.fidelity}
-      </p>
-
-      <div className="mt-8 space-y-4">
-        <Section title="Why this format works">
-          <ul className="list-disc space-y-1 pl-5 text-sand">
-            {b.reference_read.why_it_works.map((w, i) => (
-              <li key={i}>{w}</li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-stone">
-            The proven pattern behind this style of video. Frame-by-frame analysis of your exact
-            link is coming with reference ingestion.
-          </p>
-        </Section>
-
-        <Section title="Format retention pattern">
-          <div className="space-y-2">
-            {b.reference_read.retention_map.map((r, i) => (
-              <div key={i} className="flex gap-3 text-sm">
-                <span className="chip shrink-0">{r.beat}</span>
-                <span className="text-sand">{r.goal}</span>
-              </div>
-            ))}
+    <main className="relative overflow-clip pb-20">
+      {/* Hero header */}
+      <section className="relative border-b border-white/8">
+        <Aurora className="opacity-70" />
+        <div className="relative mx-auto max-w-3xl px-5 pb-10 pt-12">
+          <div className="flex items-center justify-between">
+            <Link to="/history" className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-cream">
+              <ArrowLeft className="h-4 w-4" /> History
+            </Link>
+            <Link to="/app" className="btn-gradient py-2 text-sm">
+              <Wand2 className="h-4 w-4" /> New blueprint
+            </Link>
           </div>
-        </Section>
 
-        <Section title="Hook options">
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: EASE }}
+          >
+            <p className="eyebrow mt-8">Your blueprint</p>
+            <h1 className="mt-3 font-display text-4xl leading-tight tracking-tight sm:text-5xl">
+              {b.reference_read.format_label}
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <span className="chip"><Sparkles className="h-3.5 w-3.5 text-amber" /> {b.reference_read.platform}</span>
+              <span className="chip">fidelity · {gen.fidelity}</span>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      <div className="mx-auto max-w-3xl space-y-4 px-5 py-8">
+        <Section icon={Activity} title="Why this format works">
           <ul className="space-y-2">
-            {b.hook_options.map((h, i) => (
-              <li key={i} className="rounded-lg bg-white/5 p-3 text-cream">
-                “{h}”
+            {b.reference_read.why_it_works.map((w, i) => (
+              <li key={i} className="flex gap-2.5 text-sand">
+                <Check className="mt-1 h-4 w-4 shrink-0 text-teal" /> {w}
               </li>
             ))}
           </ul>
         </Section>
 
-        <Section title="Script">
-          <div className="space-y-3">
+        <Section icon={Activity} title="Retention pattern">
+          <ol className="relative ml-1 space-y-3 border-l border-white/10 pl-5">
+            {b.reference_read.retention_map.map((r, i) => (
+              <li key={i} className="relative">
+                <span className="absolute -left-[27px] top-1 h-2.5 w-2.5 rounded-full bg-signature" />
+                <div className="text-sm font-heading text-cream">{r.beat}</div>
+                <div className="text-sm text-sand">{r.goal}</div>
+              </li>
+            ))}
+          </ol>
+        </Section>
+
+        <Section icon={Quote} title="Hook options">
+          <div className="space-y-2.5">
+            {b.hook_options.map((h, i) => (
+              <CopyRow key={i} text={h}>
+                <span className="text-cream">“{h}”</span>
+              </CopyRow>
+            ))}
+          </div>
+        </Section>
+
+        <Section icon={FileText} title="Script">
+          <div className="space-y-4">
             {b.script.map((s, i) => (
-              <div key={i}>
+              <div key={i} className="rounded-card border border-white/8 bg-white/[0.02] p-4">
                 <div className="text-xs uppercase tracking-wider text-coral">{s.section}</div>
-                <div className="text-cream">{s.line}</div>
-                <div className="text-xs text-stone">▶ {s.direction}</div>
+                <div className="mt-1 text-cream">{s.line}</div>
+                <div className="mt-1.5 text-xs text-stone">▶ {s.direction}</div>
               </div>
             ))}
           </div>
         </Section>
 
-        <Section title="Shot list">
-          <div className="space-y-2">
+        <Section icon={Clapperboard} title="Shot list">
+          <div className="space-y-2.5">
             {b.shot_list.map((s, i) => (
-              <div key={i} className="text-sm">
-                <span className="font-heading text-cream">{s.shot}</span> ·{' '}
+              <div key={i} className="rounded-card border border-white/8 bg-white/[0.02] p-3.5 text-sm">
+                <span className="font-heading text-cream">{s.shot}</span>
+                <span className="mx-2 text-stone">·</span>
                 <span className="text-teal">{s.framing}</span>
-                <div className="text-stone">{s.notes}</div>
+                <div className="mt-1 text-stone">{s.notes}</div>
               </div>
             ))}
           </div>
         </Section>
 
-        <Section title="Captions">
+        <Section icon={Captions} title="Captions">
           <div className="flex flex-wrap gap-2">
             {b.captions.map((c, i) => (
-              <span key={i} className="chip">
-                {c}
-              </span>
+              <span key={i} className="chip">{c}</span>
             ))}
           </div>
         </Section>
 
-        <Section title="One-click edit checklist">
-          <ul className="space-y-1 text-sand">
+        <Section icon={ListChecks} title="One-click edit checklist">
+          <ul className="space-y-2">
             {b.edit_checklist.map((c, i) => (
-              <li key={i}>✓ {c}</li>
+              <li key={i} className="flex gap-2.5 text-sand">
+                <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {c}
+              </li>
             ))}
           </ul>
         </Section>
 
-        <Section title="Caption & edit spec">
-          <div className="grid gap-2 text-sm sm:grid-cols-2">
-            <div>
-              <span className="text-stone">Captions:</span> {cap.caption_style}
-            </div>
-            <div>
-              <span className="text-stone">Pacing:</span> {cap.pacing}
-            </div>
-            <div>
-              <span className="text-stone">Emphasis:</span> {cap.emphasis}
-            </div>
-            <div>
-              <span className="text-stone">Export:</span> {cap.export}
-            </div>
+        <Section icon={Wand2} title="Caption & edit spec">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Spec label="Captions" value={cap.caption_style} />
+            <Spec label="Pacing" value={cap.pacing} />
+            <Spec label="Emphasis" value={cap.emphasis} />
+            <Spec label="Export" value={cap.export} />
           </div>
-          <p className="mt-3 text-xs text-stone">
-            This drives TwinAI's own one-click auto-captioner — on the roadmap, no third-party tool.
-          </p>
+          <p className="mt-3 text-xs text-stone">Drives TwinAI’s own one-click auto-captioner — on the roadmap, no third-party tool.</p>
         </Section>
 
-        <Section title="20-minute production sprint">
+        <Section icon={Timer} title="20-minute production sprint">
           <div className="space-y-2">
             {b.production_sprint.map((p, i) => (
-              <div key={i} className="flex gap-3 text-sm">
-                <span className="chip shrink-0">{p.minute}</span>
+              <div key={i} className="flex items-center gap-3 text-sm">
+                <span className="chip shrink-0 font-mono">{p.minute}</span>
                 <span className="text-sand">{p.task}</span>
               </div>
             ))}
           </div>
         </Section>
 
-        <Section title="Publish plan">
+        <Section icon={Send} title="Publish plan">
           <div className="space-y-3">
             {b.publish_plan.map((p, i) => (
-              <div key={i} className="rounded-lg bg-white/5 p-3">
-                <div className="text-teal">{p.platform}</div>
-                <div className="text-cream">{p.caption}</div>
-                <div className="text-xs text-stone">
-                  {p.hashtags.join(' ')} · best time: {p.best_time}
-                </div>
+              <div key={i} className="rounded-card border border-white/8 bg-white/[0.02] p-4">
+                <div className="text-sm font-heading text-teal">{p.platform}</div>
+                <div className="mt-1 text-cream">{p.caption}</div>
+                <div className="mt-1 text-xs text-stone">{p.hashtags.join(' ')} · best time: {p.best_time}</div>
               </div>
             ))}
           </div>
-          <p className="mt-3 text-xs text-stone">
-            Direct auto-publish is on the roadmap — for now this is a ready-to-paste schedule.
-          </p>
+          <p className="mt-3 text-xs text-stone">Direct auto-publish is on the roadmap — for now, a ready-to-paste schedule.</p>
         </Section>
       </div>
     </main>
+  )
+}
+
+function Section({ icon: Icon, title, children }: { icon: React.ComponentType<{ className?: string }>; title: string; children: React.ReactNode }) {
+  return (
+    <Reveal>
+      <section className="glass p-6">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5">
+            <Icon className="h-4 w-4 text-amber" />
+          </span>
+          <p className="eyebrow !text-sand">{title}</p>
+        </div>
+        <div className="mt-4">{children}</div>
+      </section>
+    </Reveal>
+  )
+}
+
+function Spec({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-card border border-white/8 bg-white/[0.02] p-3.5">
+      <div className="text-xs uppercase tracking-wider text-stone">{label}</div>
+      <div className="mt-1 text-sm text-cream">{value || '—'}</div>
+    </div>
+  )
+}
+
+function CopyRow({ text, children }: { text: string; children: React.ReactNode }) {
+  const [copied, setCopied] = useState(false)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1400)
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  }
+  return (
+    <div className="group flex items-start justify-between gap-3 rounded-card border border-white/8 bg-white/[0.02] p-3.5">
+      <div className="min-w-0">{children}</div>
+      <button
+        onClick={copy}
+        className="shrink-0 rounded-lg border border-white/10 bg-white/5 p-1.5 text-stone transition-colors hover:text-cream"
+        aria-label="Copy"
+      >
+        {copied ? <Check className="h-4 w-4 text-teal" /> : <Copy className="h-4 w-4" />}
+      </button>
+    </div>
   )
 }

@@ -348,7 +348,7 @@ function Footer() {
 function Logoish() {
   return (
     <span className="font-display text-lg">
-      Twin<span className="gradient-text">AI</span>
+      Twin<span className="text-amber">AI</span>
     </span>
   )
 }
