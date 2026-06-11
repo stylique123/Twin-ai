@@ -1,7 +1,9 @@
 // Worker configuration — all server-side. The worker holds the Supabase SERVICE
 // ROLE key (never shipped to any client) and the provider keys.
+// Trim values: a stray space/newline in an env file (e.g. a trailing space after
+// a pasted URL) would otherwise corrupt URLs and tokens.
 function need(name: string): string {
-  const v = process.env[name]
+  const v = process.env[name]?.trim()
   if (!v) throw new Error(`Missing required env: ${name}`)
   return v
 }
@@ -9,7 +11,7 @@ function need(name: string): string {
 export const env = {
   supabaseUrl: need('SUPABASE_URL'),
   serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
-  geminiKey: process.env.GEMINI_API_KEY ?? '',
+  geminiKey: (process.env.GEMINI_API_KEY ?? '').trim(),
 
   // Which job types this worker process handles.
   jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe,build_voice,autoedit').split(',').map((s) => s.trim()),
