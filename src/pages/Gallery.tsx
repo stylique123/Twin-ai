@@ -90,21 +90,30 @@ const REFS: Ref[] = [
 
 const NICHES: Niche[] = ['All', 'Business', 'Fitness', 'Food', 'Education', 'Lifestyle']
 
+// "32.2M" / "976K" → a sortable number, so "Top" surfaces the biggest hits.
+function reachNum(s: string): number {
+  const m = s.trim().match(/^([\d.]+)\s*([KMB]?)/i)
+  if (!m) return 0
+  const n = parseFloat(m[1])
+  const mult = { K: 1e3, M: 1e6, B: 1e9 }[(m[2] || '').toUpperCase() as 'K' | 'M' | 'B'] ?? 1
+  return n * mult
+}
+
 export default function Gallery() {
   const navigate = useNavigate()
   const [niche, setNiche] = useState<Niche>('All')
   const [q, setQ] = useState('')
+  const [sort, setSort] = useState<'top' | 'all'>('top')
 
-  const shown = useMemo(
-    () =>
-      REFS.filter((r) => (niche === 'All' || r.niche === niche))
-        .filter((r) =>
-          !q.trim()
-            ? true
-            : (r.format + r.hook + r.why + r.niche).toLowerCase().includes(q.trim().toLowerCase()),
-        ),
-    [niche, q],
-  )
+  const shown = useMemo(() => {
+    const out = REFS.filter((r) => niche === 'All' || r.niche === niche).filter((r) =>
+      !q.trim()
+        ? true
+        : (r.format + r.hook + r.why + r.niche + r.creator).toLowerCase().includes(q.trim().toLowerCase()),
+    )
+    // "Top" = best-in-niche first (by reach); "All" = leave curated order.
+    return sort === 'top' ? [...out].sort((a, b) => reachNum(b.reach) - reachNum(a.reach)) : out
+  }, [niche, q, sort])
 
   const remix = (r: Ref) => navigate(`/app?ref=${encodeURIComponent(r.url)}`)
 
@@ -140,14 +149,31 @@ export default function Gallery() {
                 </button>
               ))}
             </div>
-            <div className="relative sm:w-64">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone" />
-              <input
-                className="field pl-9"
-                placeholder="Search formats…"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-              />
+            <div className="flex items-center gap-2">
+              {/* Top vs All */}
+              <div className="flex rounded-card border border-white/10 bg-white/5 p-0.5">
+                {(['top', 'all'] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setSort(s)}
+                    className={cn(
+                      'rounded-[10px] px-3 py-1.5 text-xs font-medium capitalize transition-colors',
+                      sort === s ? 'bg-coral/20 text-cream' : 'text-stone hover:text-cream',
+                    )}
+                  >
+                    {s === 'top' ? 'Top' : 'All'}
+                  </button>
+                ))}
+              </div>
+              <div className="relative sm:w-56">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone" />
+                <input
+                  className="field pl-9"
+                  placeholder="Search niche or @creator…"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                />
+              </div>
             </div>
           </div>
         </Reveal>
