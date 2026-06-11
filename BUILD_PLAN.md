@@ -149,8 +149,59 @@ Micro:
 5. **Stripe keys** — Phase 8 (payments).
 
 ## 5. Dependency order (critical path)
-`Go live (P1)` → `DNA (P2)` → `Ingestion (P3)` → `Gallery (P4)` ⟶ `Record (P5)` → `Render (P6)` → `Publish (P7)` → `Payments (P8)`.
-P5 (record) can be built in parallel with P3/P4 since it only needs the P1 script. **Start platform API audits (TikTok/IG via Ayrshare) during P5 — they take weeks.**
+`Go live (P1)` → `DNA (P2)` → **`Worker + transcription (keystone)`** → `Ingestion/real analysis (P3)` + `Voice-from-audio (P2.5)` → `Gallery (P4)` ⟶ `Record (P5)` → `One-click edit (P6)` → **`Re-panel gate`** → `Publish (P7)` → `Payments (P8)` → `Agency workspace (P9)`.
+The **worker service is the keystone** (premortem §7): transcription fixes the fake-analysis *and* shallow-voice problems at once; render fixes time-saved. Build it next, transcription first. P5 (record) can run in parallel with P3/P4 since it only needs the P1 script. **Start platform API audits (TikTok/IG via Ayrshare) during P5 — they take weeks.** **Re-panel gate (§8):** after the editor ships, re-run the discovery panel before claiming PMF.
 
-## 6. Pricing/economics (final, locked)
-All-in cost ~$0.40/video; sold ~$1.00–1.50; ~64–70% margin. Tiers: Free 2 · Aspiring $15/10 · Professional $29/22 · Agency $99/80 (15 brand voices, +$9/mo each extra). Credits invisible; hidden grace buffer (Free 2→3, Aspiring 10→12, Pro 22→25, Agency 80→90); failures auto-refund; credit↔video rate server-adjustable via `RECREATION_COST`, never exposed.
+## 6. Pricing/economics (updated — quality-first)
+**Decision (quality-first, per founder):** optimize for best output quality, which raises true per-video cost (real transcription + render + optional VLM). To protect margin we nudge prices up a couple dollars AND trim included counts — but never so far that it stops feeling like value-for-money or blocks a real try.
+
+Current tiers (price / advertised recreations · ~price-per-video):
+- **Free** — $0 · **2** (buffer→3). Trial must reach the "aha"; do not shrink below 2.
+- **Aspiring** — $16 (annual $13) · **9** · ~$1.78/video.
+- **Professional** — $31 (annual $26) · **18** · ~$1.72/video. *Most popular.*
+- **Agency** — $109 (annual $89) · **70** (15 brand voices, +$9/mo each extra) · ~$1.56/video.
+
+Credits stay invisible; hidden grace buffer (Free 2→3, Aspiring 9→11, Pro 18→21, Agency 70→78); failures auto-refund; credit↔video rate server-adjustable via `RECREATION_COST`, never exposed. Source of truth: `src/lib/brand.ts`.
+
+**Economics guardrails (from premortem):** the old ~$0.40/video assumed cheap everything — real costs stack (Apify per scrape, whisper + ffmpeg CPU-minutes, optional VLM). Before scaling, re-validate unit cost against the live render path. Ingestion failures will be common (hostile platforms) and we auto-refund on failure, so **make failed jobs cheap and fail-fast**; watch free-tier render burn (a render-heavy free user can go net-negative). Keep the VLM/video-understanding pass **optional and cost-gated, off by default**.
+
+---
+
+## 7. Premortem — failure modes & where each is addressed
+
+**The one finding that matters most:** as of P1–P2 the product *fakes the two things it sells and outsources the third* — it doesn't actually read the reference video (the URL is passed to Gemini as a string; `retention_map`/`why_it_works` are confident hallucination), it doesn't actually hear how you sound (voice is built from captions+bio+hashtags, and TikTok captions are often empty), and it hands the expensive step (editing) to Submagic. Net failure mode: **churn-after-first-use** once a savvy creator realizes the intelligence is generic. Everything below converges on one keystone: **the worker service** (transcription unlocks *real analysis* + *real voice*; render unlocks *real time-saved*).
+
+| # | Finding | Sev | Disposition |
+|---|---|---|---|
+| 1 | Reference not actually read → hallucinated analysis | 🔴 | **Real fix → P3** (yt-dlp + WhisperX transcript → real structure). **Shipped now (honesty):** softened framing — "Why this format works" / "Format retention pattern" + disclaimer; system prompt forbids invented per-clip specifics. |
+| 2 | Voice is shallow (captions+bio, not spoken audio) | 🔴 | **→ P2.5 voice upgrade** (re-run DNA from their own recent videos via WhisperX; depends on worker/P3). Interim: bio+hashtags signal already added. |
+| 3 | Outsources the edit to Submagic | 🔴 | **Real fix → P6** (own one-click auto-editor). **Shipped now:** killed the leak — `submagic_packet` → `caption_packet` (our renderer's spec), UI relabeled "Caption & edit spec". |
+| 4 | DNA/ingest jobs hang (frontend-poll only) | 🟠 | **→ P3 job-queue hardening** (scheduled edge fn / pg_cron advances jobs server-side; `dna-poll` is already idempotent). |
+| 5 | Strict 9-section schema + token cap → parse-fail → silent refund | 🟠 | **→ P1 reliability hardening** (retry once, segment the generation, or relax/raise `maxOutputTokens`; alert on refund-rate). |
+| 6 | Handle-path user with failed scan → empty-DNA "unspecified niche" blueprint | 🟠 | **Shipped now:** `generate-blueprint` returns `NO_VOICE` (409) before spending credits if neither a confirmed voice nor quiz DNA exists. |
+| 7 | Ingestion/publish hostage to hostile platforms (scrapers/ToS, IG/TikTok audits) | 🟠 | **→ P3 / P7 risk plan** (actor fallbacks, official APIs where possible, graceful degradation, fail-fast + cheap; never block the whole flow on one broken actor). |
+| 8 | Unit economics can invert (real render/scrape cost vs $0.40 assumption + auto-refund) | 🟠 | **Addressed → §6** (quality-first pricing: prices +$1–10, counts trimmed, value preserved; failed jobs cheap; free-tier render watched; VLM cost-gated). |
+| 9 | Cold start kills core ICP (<5 posts → empty scan) | 🟠 | **→ P2/P4** (gallery-first for cold users; bio/niche starter voice; "your voice sharpens as you post"). |
+| 10 | English- & video-first bias (weak for B2B/long-form/non-English) | 🟡 | **→ P2/P3** (WhisperX multilingual; support long-form/educational formats; scope ICP accordingly). |
+| 11 | No iteration (one-shot; no regenerate/A-B/compare) | 🟡 | **→ P1/P5 enhancement** (cheap "regenerate hook", variant compare). |
+| 12 | Agency tier priced but workflow absent | 🟠 | **→ NEW Phase 9 (Agency workspace).** Do not push the $109 agency tier until it exists. |
+| 13 | ROI proof comes dead last (analytics = P7) | 🟡 | **Consider pulling forward** a lightweight "this beat your average" signal — businesses buy outcomes. |
+
+**Ship-now fixes (this commit):** #1 (honesty framing), #3 (Submagic→`caption_packet`), #6 (NO_VOICE guard), #8 (pricing). The rest are tagged to their phase above.
+
+### Phase 9 — Agency workspace (NEW, from the panel)
+**Macro:** make TwinAI usable as an agency's daily driver, not just a single-creator tool.
+Micro: client workspaces (group brand voices + content per client) · approval/review step before publish · team seats & roles · scheduling calendar · per-client analytics/reporting · white-label · bulk/queue generation. **Don't sell the agency tier as "agency-ready" until the workspace + approvals + per-client reporting exist.** Closest fit *today* is the solo freelancer managing a few clients (voice-per-handle already works per client).
+
+---
+
+## 8. Discovery panels (customer signal) + re-panel milestone
+
+**Panel #1 (pre-build, P1–P2):** 15 simulated personas (5 aspiring · 5 professional · 5 agency). Verdicts recorded in `/docs` of this plan's history. Synthesis:
+- **Want-to-try is high (~12/15); want-to-pay is low** until three proofs exist: (1) the analysis is *real*, (2) it *actually sounds like me*, (3) it *actually does the edit*.
+- **Saves time only conditionally** — everyone says "yes, *if it does the edit*." Today it saves ~20 min of scripting and hands the 2-hour edit back.
+- **The trap:** highest-WTP segments (pros/agencies) are exactly the ones who detect the faked analysis / missing edit/workflow; easiest-to-grab (aspiring) have lowest WTP + worst cold-start.
+- **Free = 2 is too stingy** to reach the "aha" for aspiring creators.
+- **Beachhead (win first):** *UGC creators & solo freelancers who post for multiple brands* (#9/#12/#7) — voice-per-handle is genuinely killer for them, they have WTP, and they don't need the full agency suite.
+
+**Re-panel milestone (SCHEDULED — do not skip):** after the worker + transcription + one-click editor ship (post-P3 voice upgrade and/or P6), **re-run a discovery panel with more niche-specific personas closer to the beachhead ICP.** Measure not just "would you try" but: **do they actually USE it, do they get the benefit, and compare before/after this build vs Panel #1's verdicts.** Gate: **don't claim PMF until a re-panel shows want-to-*pay* (not just want-to-try) for the beachhead segment.**

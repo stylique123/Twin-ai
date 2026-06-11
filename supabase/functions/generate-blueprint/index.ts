@@ -55,7 +55,7 @@ const blueprintSchema = obj(
     shot_list: arr(obj({ shot: str, framing: str, notes: str }, ['shot', 'framing', 'notes'])),
     captions: arr(str),
     edit_checklist: arr(str),
-    submagic_packet: obj(
+    caption_packet: obj(
       { caption_style: str, pacing: str, emphasis: str, export: str },
       ['caption_style', 'pacing', 'emphasis', 'export'],
     ),
@@ -74,7 +74,7 @@ const blueprintSchema = obj(
     'shot_list',
     'captions',
     'edit_checklist',
-    'submagic_packet',
+    'caption_packet',
     'publish_plan',
     'production_sprint',
   ],
@@ -83,12 +83,14 @@ const blueprintSchema = obj(
 const SYSTEM = `You are TwinAI's reference engine. You turn a proven viral video reference into a personalized, shootable blueprint in the creator's own voice.
 
 Hard rules:
-- We copy STRUCTURE, never content. Read the hook shape, pacing, and retention pattern of the reference — never reproduce its words, footage, or claims.
+- We copy STRUCTURE, never content. Work from the proven PATTERN of this format/genre on this platform — the hook shape, pacing, and retention pattern that makes this KIND of video work. Never reproduce the reference's words, footage, or claims.
+- HONESTY: you are reasoning from the format pattern, not from having watched this exact clip. reference_read.why_it_works and retention_map describe how this PROVEN FORMAT holds attention — frame them as the format's pattern, not as verified facts about the specific video. No invented view counts or fabricated specifics about the source clip.
 - Write in the creator's voice and niche. Everything must be shootable by one person today.
 - Be concrete and practical. No fluff, no "guaranteed viral" promises, no hype words like "synergy" or "10x overnight".
 - Use the creator's platforms for the publish plan. Captions are short (3-6 words each), burned-in style.
 - platform must be one of: tiktok, instagram, youtube, other.
-- The production sprint must compress filming + B-roll + Submagic assembly + review into ~20 focused minutes.`
+- caption_packet is the spec for TwinAI's own auto-captioner (caption_style, pacing, emphasis, export) — write it for our renderer, not any third-party tool.
+- The production sprint must compress filming + B-roll + caption/edit + review into ~20 focused minutes.`
 
 // --- Provider boundary: swap this one function to change LLMs -------------
 async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
@@ -183,6 +185,19 @@ Deno.serve(async (req: Request) => {
 
   const dna = profile?.dna ?? {}
   const vp = voice?.profile ?? null
+
+  // Guard the "Aspiring creator falls off a cliff" case: if the DNA scan failed
+  // and the user never did the manual quiz, we'd generate a generic "unspecified
+  // niche" blueprint — the worst possible first impression. Refuse cleanly
+  // (before spending any credits) and point them back to voice setup.
+  const hasVoice = vp && (vp.niche || vp.tone || vp.summary)
+  const hasQuiz = dna && (dna.niche || dna.voice || dna.audience)
+  if (!hasVoice && !hasQuiz) {
+    return json(
+      { error: "Finish setting up your brand voice first — then we'll write in your voice.", code: 'NO_VOICE' },
+      409,
+    )
+  }
 
   // Spend credits atomically BEFORE the model call. Refund on failure.
   const { error: spendErr } = await admin.rpc('spend_credits', {

@@ -54,14 +54,14 @@ export const PLANS: PlanTier[] = [
   {
     id: 'aspiring',
     name: 'Aspiring',
-    price: 15,
-    annual: 12,
-    videos: 10,
-    credits: grant(10, 2), // 120 → 12, buffer 2
+    price: 16,
+    annual: 13,
+    videos: 9,
+    credits: grant(9, 2), // 110 → 11, buffer 2
     brandVoices: 1,
     blurb: 'First repeatable posts.',
     features: [
-      '10 recreations / mo',
+      '9 recreations / mo',
       '1 brand voice',
       'Auto-captions',
       'Post to 1 platform',
@@ -71,15 +71,15 @@ export const PLANS: PlanTier[] = [
   {
     id: 'professional',
     name: 'Professional',
-    price: 29,
-    annual: 24,
-    videos: 22,
-    credits: grant(22, 3), // 250 → 25, buffer 3
+    price: 31,
+    annual: 26,
+    videos: 18,
+    credits: grant(18, 3), // 210 → 21, buffer 3
     brandVoices: 1,
     badge: 'Most popular',
     blurb: 'Weekly output, speed.',
     features: [
-      '22 recreations / mo',
+      '18 recreations / mo',
       '1 brand voice',
       'Full auto-edit (captions + cuts)',
       'Publish to all your platforms',
@@ -90,15 +90,15 @@ export const PLANS: PlanTier[] = [
   {
     id: 'agency',
     name: 'Agency',
-    price: 99,
-    annual: 79,
-    videos: 80,
-    credits: grant(80, 10), // 900 → 90, buffer 10
+    price: 109,
+    annual: 89,
+    videos: 70,
+    credits: grant(70, 8), // 780 → 78, buffer 8
     brandVoices: 15,
     badge: 'Best value',
     blurb: 'Many brands, one voice each.',
     features: [
-      '80 recreations / mo',
+      '70 recreations / mo',
       '15 brand voices (one per client)',
       'Everything in Professional',
       'Multi-brand workspaces + seats',

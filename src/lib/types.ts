@@ -65,7 +65,15 @@ export interface Blueprint {
   shot_list: { shot: string; framing: string; notes: string }[]
   captions: string[]
   edit_checklist: string[]
-  submagic_packet: {
+  // TwinAI's own auto-captioner spec (renamed from submagic_packet — we own the
+  // edit now). submagic_packet kept optional for backward-compat with old rows.
+  caption_packet: {
+    caption_style: string
+    pacing: string
+    emphasis: string
+    export: string
+  }
+  submagic_packet?: {
     caption_style: string
     pacing: string
     emphasis: string

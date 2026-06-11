@@ -30,6 +30,13 @@ export default function Result() {
   if (!gen) return <main className="mx-auto max-w-3xl px-5 py-16 text-coral">Not found.</main>
 
   const b = gen.blueprint
+  // caption_packet is the new name; fall back to legacy submagic_packet for old rows.
+  const cap = b.caption_packet ?? b.submagic_packet ?? {
+    caption_style: '',
+    pacing: '',
+    emphasis: '',
+    export: '',
+  }
 
   return (
     <main className="mx-auto max-w-3xl px-5 py-12">
@@ -43,20 +50,23 @@ export default function Result() {
 
       <h1 className="mt-3 font-display text-3xl">{b.reference_read.format_label}</h1>
       <p className="mt-1 text-sand">
-        Read as <span className="text-teal">{b.reference_read.platform}</span> · fidelity:{' '}
-        {gen.fidelity}
+        {b.reference_read.platform} format · fidelity: {gen.fidelity}
       </p>
 
       <div className="mt-8 space-y-4">
-        <Section title="Why it works">
+        <Section title="Why this format works">
           <ul className="list-disc space-y-1 pl-5 text-sand">
             {b.reference_read.why_it_works.map((w, i) => (
               <li key={i}>{w}</li>
             ))}
           </ul>
+          <p className="mt-3 text-xs text-stone">
+            The proven pattern behind this style of video. Frame-by-frame analysis of your exact
+            link is coming with reference ingestion.
+          </p>
         </Section>
 
-        <Section title="Retention map">
+        <Section title="Format retention pattern">
           <div className="space-y-2">
             {b.reference_read.retention_map.map((r, i) => (
               <div key={i} className="flex gap-3 text-sm">
@@ -119,21 +129,24 @@ export default function Result() {
           </ul>
         </Section>
 
-        <Section title="Submagic packet">
+        <Section title="Caption & edit spec">
           <div className="grid gap-2 text-sm sm:grid-cols-2">
             <div>
-              <span className="text-stone">Captions:</span> {b.submagic_packet.caption_style}
+              <span className="text-stone">Captions:</span> {cap.caption_style}
             </div>
             <div>
-              <span className="text-stone">Pacing:</span> {b.submagic_packet.pacing}
+              <span className="text-stone">Pacing:</span> {cap.pacing}
             </div>
             <div>
-              <span className="text-stone">Emphasis:</span> {b.submagic_packet.emphasis}
+              <span className="text-stone">Emphasis:</span> {cap.emphasis}
             </div>
             <div>
-              <span className="text-stone">Export:</span> {b.submagic_packet.export}
+              <span className="text-stone">Export:</span> {cap.export}
             </div>
           </div>
+          <p className="mt-3 text-xs text-stone">
+            This drives TwinAI's own one-click auto-captioner — on the roadmap, no third-party tool.
+          </p>
         </Section>
 
         <Section title="20-minute production sprint">
