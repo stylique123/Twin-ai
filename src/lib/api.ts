@@ -317,4 +317,59 @@ export async function markOnboarded(): Promise<void> {
   if (error) throw error
 }
 
+// ---- Gallery v2 (contributed feed: public/private submissions) ----------
+
+export interface GalleryItem {
+  id: string
+  owner_id: string | null
+  platform: string
+  url: string
+  niche: string
+  creator: string | null
+  title: string | null
+  why: string | null
+  reach: string | null
+  likes: string | null
+  visibility: 'public' | 'private'
+  created_at: string
+}
+
+// RLS returns public items + the caller's own (incl. their private ones).
+export async function listGalleryItems(): Promise<GalleryItem[]> {
+  const { data, error } = await supabase
+    .from('gallery_items')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200)
+  if (error) return []
+  return (data ?? []) as GalleryItem[]
+}
+
+export interface SubmitGalleryInput {
+  url: string
+  platform: string
+  niche: string
+  creator?: string
+  title?: string
+  why?: string
+  visibility: 'public' | 'private'
+}
+
+export async function submitGalleryItem(input: SubmitGalleryInput): Promise<GalleryItem> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not signed in')
+  const { data, error } = await supabase
+    .from('gallery_items')
+    .insert({ ...input, owner_id: auth.user.id })
+    .select('*')
+    .single()
+  if (error) throw error
+  return data as GalleryItem
+}
+
+export async function deleteGalleryItem(id: string): Promise<void> {
+  const { error } = await supabase.from('gallery_items').delete().eq('id', id)
+  if (error) throw error
+}
+
 export type { Blueprint }

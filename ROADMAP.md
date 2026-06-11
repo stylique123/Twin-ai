@@ -9,26 +9,30 @@ eventually be exposed so others can build on TwinAI.
 Current (live): jump-cuts (silence/dead-air removal) + single-layer word-pop
 captions + vertical 1080×1920 + loudness.
 
-Next:
-- **Transitions** — ffmpeg `xfade` (cut/zoom/slide) between jump-cut segments,
-  timed to the reference's beats (we already derive beat timestamps).
-- **B-roll** — two sources:
-  1. **AI-generated** via **Higgsfield** (already connected here as an MCP):
-     extract keywords/beats from the transcript → generate short b-roll clips →
-     insert at the right timestamps.
-  2. **Stock** fallback — Pexels/Pixabay free APIs by keyword.
-- **Smart vertical reframe** — face/subject tracking so the speaker stays centred
-  (MediaPipe AutoFlip approach) instead of a static centre-crop.
-- **Music bed** — optional royalty-free track, ducked under speech.
-- **"Already captioned" guard** — skip the caption layer when the source already
-  has burned-in captions (the `skip_captions` flag exists; wire it to the UI/Gallery).
+**Principle: everything is IN-HOUSE and free to run** (ffmpeg + open data), so an
+edit never adds a per-use external cost. The engine reads the user's **brand DNA**
++ the **reference/gallery video's structure** and *auto-decides* the best edit
+(pacing, caption style, emoji choices, transitions, b-roll, music). The user can
+**"Remake"** for a different take — which **charges another credit**.
 
-### Extensibility (the platform play)
-- Make the editor a **modular effects pipeline**: each stage (cut → reframe →
-  caption → transition → b-roll → music) is an independent step with a typed
-  contract, so new engines (Higgsfield, Runway, etc.) plug in without rewrites.
-- Expose it as a **job-based API** (the `jobs` queue already is one) so partners /
-  power users can submit edits programmatically — "people can build on us."
+In-house capabilities:
+- **Emoji + pop-up captions** — keyword→emoji map ("money 💰", "fire 🔥") and
+  animated word pops (captacity-style), all rendered with ffmpeg/ASS. No paid API.
+- **Transitions** — ffmpeg `xfade` (cut/zoom/slide), timed to the reference beats
+  we already derive.
+- **In-house B-roll** — free stock (Pexels/Pixabay free APIs, keyword-matched to
+  the transcript) + generated motion/text cards. NOT paid AI generation.
+- **Dead-space removal** — done (silencedetect jump-cuts).
+- **Smart vertical reframe** — face/subject tracking (MediaPipe AutoFlip approach).
+- **Music bed** — royalty-free track, auto-ducked under speech.
+- **"Already captioned" guard** — `skip_captions` flag (exists; wire to UI/Gallery).
+
+### Extensibility (the platform play — LATER, never a forced cost)
+- Modular effects pipeline: each stage (cut → reframe → caption → transition →
+  b-roll → music) is an independent step with a typed contract.
+- Optional **pro add-ons** plug in here (Higgsfield / Runway for AI b-roll) — opt-in
+  only, so base pricing stays low. "Like a video editor that *can* connect to them."
+- Expose the pipeline as a **job-based API** so others can build on TwinAI.
 
 ## B. Gallery — a big, multi-platform, contributed feed (like CapCut templates)
 Current (live): curated set of real viral TikToks, niche filter + text search,
