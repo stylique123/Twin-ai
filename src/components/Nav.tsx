@@ -8,10 +8,10 @@ import { cn } from '../lib/cn'
 import { EASE } from './motion'
 
 const LINKS = [
-  { href: '/#how', label: 'How it works' },
+  { href: '/#loop', label: 'The loop' },
   { href: '/#pipeline', label: 'What you get' },
+  { href: '/#agencies', label: 'Agencies' },
   { href: '/#pricing', label: 'Pricing' },
-  { href: '/#faq', label: 'FAQ' },
 ]
 
 // Marketing-site navigation ONLY. The dashboard has its own AppShell sidebar —

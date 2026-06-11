@@ -4,11 +4,12 @@ import { motion } from 'framer-motion'
 import {
   ArrowRight, Link2, ScanSearch, Wand2, Check, Plus, Minus, AtSign, Quote,
   Captions, Clapperboard, Mic, Calendar, ShieldCheck, Zap, Timer, TrendingUp,
-  FileText, ListChecks,
+  FileText, ListChecks, BarChart3, Building2, Users, Eye, Heart, Clock,
 } from 'lucide-react'
 import { BRAND, PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { HeroVisual } from '../components/HeroVisual'
+import { LoopFlow } from '../components/LoopFlow'
 import { Logo } from '../components/Logo'
 import { Reveal, Stagger, RevealItem, EASE } from '../components/motion'
 import { Tilt } from '../components/Tilt'
@@ -28,7 +29,7 @@ const STATS = [
 const STEPS = [
   { icon: Link2, n: '01', t: 'Drop a reference', d: 'Paste any Reel, TikTok, Short or YouTube link you wish you’d made. That’s the whole input.' },
   { icon: ScanSearch, n: '02', t: 'We read why it works', d: 'TwinAI transcribes the actual video and maps its hook, pacing and retention beats — never the footage.' },
-  { icon: Wand2, n: '03', t: 'Get it in your voice', d: 'A personalized hook, script, shot list, edit plan and caption pack — shootable today, in your voice.' },
+  { icon: Wand2, n: '03', t: 'Shoot, edit, post — guided', d: 'Blueprint in your voice, a teleprompter to record, one-click editing, scheduling and analytics. The full loop.' },
 ]
 
 // The deep dive: every component of the product, what it does for you, and the
@@ -77,18 +78,46 @@ const PIPELINE = [
     visual: 'blueprint',
   },
   {
-    id: 'ship',
-    icon: TrendingUp,
-    eyebrow: 'Step 4 · You ship & compound',
-    title: 'Post on a rhythm that builds momentum.',
-    body: 'Each blueprint ends with a publish plan — platform captions, hashtags and best posting times. More quality posts means more shots on goal; that’s honestly how views compound. No virality promises — just reps that count.',
+    id: 'record',
+    icon: Mic,
+    eyebrow: 'Step 4 · It helps you shoot',
+    title: 'Record it in one take, with a teleprompter.',
+    body: 'Your script loads straight into a built-in teleprompter and camera. Read it naturally, hit your hook on time, and capture clean takes — no third-party app, no fumbling with notes off-screen.',
     bullets: [
-      'Ready-to-paste captions per platform',
-      'Best-time suggestions to post into the wind',
-      'Consistency without the burnout',
+      'Script scrolls at your pace while you film',
+      'Hook timing markers so you nail the first 2 seconds',
+      'Re-take any beat without losing the plan',
     ],
-    payoff: 'The ideas you admire become the videos you publish — every week.',
-    visual: 'ship',
+    payoff: 'The blueprint isn’t homework — you shoot it right here, the moment you’re inspired.',
+    visual: 'record',
+  },
+  {
+    id: 'edit',
+    icon: Clapperboard,
+    eyebrow: 'Step 5 · It edits for you',
+    title: 'One click: captions, cuts and transitions.',
+    body: 'TwinAI auto-edits the take using the reference’s rhythm and your brand style — burned-in caption overlays, hook text, dead-air trimmed, jump cuts and transitions placed where retention is won. Tweak anything; it’s yours.',
+    bullets: [
+      'Animated, on-brand caption overlays',
+      'Dead air removed, cuts timed to the beats',
+      'Export vertical, ready for every platform',
+    ],
+    payoff: 'A two-hour edit becomes one click — then a minute of polish if you want it.',
+    visual: 'edit',
+  },
+  {
+    id: 'analytics',
+    icon: BarChart3,
+    eyebrow: 'Step 6 · It closes the loop',
+    title: 'Post, then learn what actually worked.',
+    body: 'Publish on the schedule that builds momentum, then watch the numbers in one place: views, retention curve, comments and saves — with a plain-English read on why a video hit, feeding straight into your next blueprint.',
+    bullets: [
+      'Ready-to-paste captions + best posting times',
+      'Views, retention, comments & saves in one view',
+      'Before/after-TwinAI lift, so you see the difference',
+    ],
+    payoff: 'Every post teaches the system — so your next video starts smarter than your last.',
+    visual: 'analytics',
   },
 ] as const
 
@@ -148,9 +177,10 @@ export default function Landing() {
             transition={{ duration: 0.8, ease: EASE, delay: 0.14 }}
             className="mx-auto mt-6 max-w-2xl text-lg text-sand"
           >
-            Paste a link you wish you’d made. TwinAI reads <em className="not-italic text-cream">why it works</em>,
-            then hands you the hook, script, shot list, edit plan and posting schedule — written in{' '}
-            <em className="not-italic text-cream">your</em> voice.
+            Paste a link you wish you’d made. TwinAI reads <em className="not-italic text-cream">why it works</em> and
+            writes it in <em className="not-italic text-cream">your</em> voice — then helps you{' '}
+            <em className="not-italic text-cream">record it, auto-edit it, post it, and read the analytics.</em> The whole
+            loop, one window.
           </motion.p>
 
           <motion.div
@@ -242,6 +272,22 @@ export default function Landing() {
         </Stagger>
       </section>
 
+      {/* ================= THE COMPLETE LOOP — animated, connected ================= */}
+      <section id="loop" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20">
+        <Reveal className="text-center">
+          <p className="eyebrow">The complete loop</p>
+          <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+            Not a caption generator. The entire video, end to end.
+          </h2>
+          <p className="mx-auto mt-4 max-w-xl text-sand">
+            Most tools hand you text and wish you luck. TwinAI walks every step with you — and each one feeds the next.
+          </p>
+        </Reveal>
+        <div className="mt-14">
+          <LoopFlow />
+        </div>
+      </section>
+
       {/* ================= PIPELINE — every component, explained ================= */}
       <section id="pipeline" className="mx-auto max-w-content scroll-mt-24 px-5 py-12">
         <Reveal className="text-center">
@@ -323,6 +369,69 @@ export default function Landing() {
             </RevealItem>
           ))}
         </Stagger>
+      </section>
+
+      {/* ================= AGENCIES ================= */}
+      <section id="agencies" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-12">
+        <Reveal className="overflow-hidden rounded-panel border border-white/10 bg-ink2">
+          <div className="grid lg:grid-cols-2">
+            {/* pitch */}
+            <div className="relative p-8 sm:p-12">
+              <Aurora />
+              <div className="relative">
+                <span className="grid h-11 w-11 place-items-center rounded-xl bg-signature-soft">
+                  <Building2 className="h-5 w-5 text-cream" />
+                </span>
+                <p className="eyebrow mt-5">For agencies & teams</p>
+                <h2 className="mt-3 font-display text-4xl leading-tight text-balance">
+                  Run every client’s content like <span className="gradient-text">one machine.</span>
+                </h2>
+                <p className="mt-4 text-sand">
+                  Spin up a separate brand voice per client, turn proven references into shootable blueprints in seconds,
+                  and ship more reels across more accounts — without growing the team. One workspace, every brand, the
+                  whole loop.
+                </p>
+                <ul className="mt-6 space-y-2.5">
+                  {[
+                    'A distinct voice profile for each client brand',
+                    'Batch references into a week of content in an afternoon',
+                    'Consistent quality across every account — no off-brand misses',
+                    'Show clients the lift: views, engagement, time saved',
+                  ].map((b) => (
+                    <li key={b} className="flex items-start gap-2.5 text-sm text-sand">
+                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {b}
+                    </li>
+                  ))}
+                </ul>
+                <Link to="/auth" className="btn-gradient mt-8">
+                  Start an agency workspace <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </div>
+
+            {/* the dream, in numbers */}
+            <div className="grid grid-cols-2 gap-px bg-white/8">
+              {[
+                { icon: Clock, to: 12, suffix: 'h', label: 'Saved per client, per week', sub: 'vs. scripting & editing by hand' },
+                { icon: Eye, to: 3, suffix: '×', label: 'More posts shipped', sub: 'same headcount, more shots on goal' },
+                { icon: Heart, to: 47, suffix: '%', label: 'More engagement', sub: 'proven hooks, on-brand every time' },
+                { icon: Users, to: 8, suffix: '+', label: 'Brands in one workspace', sub: 'each with its own voice' },
+              ].map((m) => (
+                <div key={m.label} className="bg-ink2 p-7">
+                  <m.icon className="h-5 w-5 text-amber" />
+                  <div className="mt-4 font-display text-4xl tracking-tight">
+                    <Counter to={m.to} suffix={m.suffix} />
+                  </div>
+                  <div className="mt-1.5 text-sm font-medium text-cream">{m.label}</div>
+                  <div className="mt-0.5 text-xs text-stone">{m.sub}</div>
+                </div>
+              ))}
+              <div className="col-span-2 bg-ink2/60 px-7 py-3 text-center text-[11px] text-stone">
+                Illustrative targets from early workflows — your mileage depends on niche, cadence and offer. No guaranteed results.
+              </div>
+            </div>
+          </div>
+        </Reveal>
       </section>
 
       {/* ================= PRICING ================= */}
@@ -475,6 +584,104 @@ function PipelineVisual({ kind }: { kind: string }) {
         </div>
       </Frame>
     )
+  if (kind === 'record')
+    return (
+      <Frame label="Teleprompter · recording">
+        <div className="relative overflow-hidden rounded-xl border border-white/8 bg-ink p-5">
+          <div className="absolute right-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-coral/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-coral">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-coral" /> Rec
+          </div>
+          <div className="space-y-2 pt-2">
+            <p className="text-sm text-stone">Everyone tells you to post more.</p>
+            <motion.p
+              className="text-lg font-heading text-cream"
+              initial={{ opacity: 0.4 }}
+              whileInView={{ opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              That’s exactly why you’re stuck. Here’s the fix →
+            </motion.p>
+            <p className="text-sm text-stone/70">Three things changed everything for me…</p>
+          </div>
+          <div className="mt-5 flex items-center gap-2">
+            <span className="rounded-full bg-amber/15 px-2 py-0.5 text-[10px] font-bold text-amber">HOOK · 0:02</span>
+            <div className="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+              <motion.div
+                className="h-full bg-signature"
+                initial={{ width: '0%' }}
+                whileInView={{ width: '64%' }}
+                viewport={{ once: true }}
+                transition={{ duration: 1.4, ease: EASE }}
+              />
+            </div>
+          </div>
+        </div>
+      </Frame>
+    )
+  if (kind === 'edit')
+    return (
+      <Frame label="Auto-edit · one click">
+        <div className="space-y-3">
+          <div className="relative grid aspect-[16/10] place-items-center overflow-hidden rounded-xl border border-white/8 bg-gradient-to-br from-coral/25 via-ink2 to-ink">
+            <motion.span
+              initial={{ scale: 0.7, opacity: 0 }}
+              whileInView={{ scale: 1, opacity: 1 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, ease: EASE }}
+              className="rounded-lg bg-ink/80 px-3 py-1.5 font-heading text-lg text-cream shadow-lift"
+            >
+              post <span className="text-amber">smarter</span>, not more
+            </motion.span>
+            <span className="absolute bottom-2 left-2 rounded bg-black/50 px-1.5 py-0.5 text-[10px] text-cream">auto-captions</span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[Captions, ListChecks, Clapperboard].map((Ic, i) => (
+              <div key={i} className="flex items-center gap-1.5 rounded-lg border border-white/8 bg-white/[0.03] px-2 py-2 text-[11px] text-sand">
+                <Ic className="h-3.5 w-3.5 text-teal" /> {['Captions', 'Trim air', 'Cuts'][i]}
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-xl bg-teal/10 p-2.5 text-sm text-teal">
+            <Check className="h-4 w-4" /> Rendered vertical · ready to post
+          </div>
+        </div>
+      </Frame>
+    )
+  if (kind === 'analytics')
+    return (
+      <Frame label="Analytics · after posting">
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { k: 'Views', v: '128K' },
+              { k: 'Retention', v: '61%' },
+              { k: 'Saves', v: '4.2K' },
+            ].map((s) => (
+              <div key={s.k} className="rounded-xl border border-white/8 bg-white/[0.03] p-3 text-center">
+                <div className="font-display text-xl text-cream">{s.v}</div>
+                <div className="text-[10px] uppercase tracking-wider text-stone">{s.k}</div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-end gap-1 rounded-xl border border-white/8 bg-ink p-3 pt-6">
+            {[30, 38, 52, 60, 72, 80, 88, 96].map((h, i) => (
+              <motion.span
+                key={i}
+                className="flex-1 rounded-sm bg-gradient-to-t from-coral to-amber"
+                initial={{ height: 4 }}
+                whileInView={{ height: h * 0.5 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.5, ease: EASE, delay: i * 0.05 }}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2 rounded-xl bg-signature-soft p-2.5 text-sm text-cream">
+            <TrendingUp className="h-4 w-4 text-amber" /> +217% vs. your last 30 days
+          </div>
+        </div>
+      </Frame>
+    )
   return (
     <Frame label="Publish plan">
       <div className="space-y-3">
@@ -575,8 +782,9 @@ function Footer() {
           <p className="eyebrow">Product</p>
           <ul className="mt-4 space-y-2.5 text-sm text-sand">
             <li><a href="/#how" className="hover:text-cream">How it works</a></li>
+            <li><a href="/#loop" className="hover:text-cream">The complete loop</a></li>
             <li><a href="/#pipeline" className="hover:text-cream">What you get</a></li>
-            <li><a href="/#features" className="hover:text-cream">Features</a></li>
+            <li><a href="/#agencies" className="hover:text-cream">For agencies</a></li>
             <li><a href="/#pricing" className="hover:text-cream">Pricing</a></li>
             <li><a href="/#faq" className="hover:text-cream">FAQ</a></li>
           </ul>
