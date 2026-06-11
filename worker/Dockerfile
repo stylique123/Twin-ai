@@ -3,6 +3,10 @@
 # exists from Node 22 onward.
 FROM node:22-bookworm-slim
 
+# yt-dlp now requires a JS runtime to extract YouTube; it auto-enables Deno when
+# it's on PATH. Pull the static Deno binary from the official image.
+COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
+
 # System deps: ffmpeg (audio extract), python3 + pip (faster-whisper), ca-certs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
@@ -10,7 +14,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # yt-dlp + faster-whisper. (PEP 668: allow pip into the system env in-container.)
 RUN pip3 install --no-cache-dir --break-system-packages \
-      "yt-dlp>=2024.8.6" "faster-whisper>=1.0.3"
+      "yt-dlp>=2025.1.15" "faster-whisper>=1.0.3"
 
 WORKDIR /app
 
