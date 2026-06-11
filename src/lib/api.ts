@@ -25,6 +25,18 @@ export async function saveDNA(dna: CreatorDNA): Promise<void> {
   if (error) throw error
 }
 
+// ---- Platform admin (super-admin / support) -----------------------------
+
+// True only for users in public.platform_admins. RLS guarantees a normal user
+// gets `false` (the function returns false for non-admins), so this is safe to
+// call from the client to gate an admin area. All admin WRITES still go through
+// audited, service-role-only RPCs — never directly from the browser.
+export async function isPlatformAdmin(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('is_platform_admin')
+  if (error) return false
+  return data === true
+}
+
 // ---- Blueprint generation (real AI via edge function) -------------------
 
 export interface GenerateInput {

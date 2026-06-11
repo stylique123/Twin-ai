@@ -155,6 +155,19 @@ Deno.serve(async (req: Request) => {
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
+  // Abuse / runaway-cost defense: cap blueprint generations per user per minute
+  // BEFORE we ever call the model. Bounded by credits anyway, but this stops
+  // scripted bursts that would hammer the model API.
+  const { data: allowed } = await admin.rpc('check_rate_limit', {
+    p_user: user.id,
+    p_action: 'blueprint',
+    p_max: 12,
+    p_window_secs: 60,
+  })
+  if (allowed === false) {
+    return json({ error: 'Easy there — too many in a row. Give it a few seconds.' }, 429)
+  }
+
   let body: { reference_url?: string; reference_note?: string; fidelity?: string }
   try {
     body = await req.json()
@@ -162,11 +175,13 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Invalid JSON body' }, 400)
   }
   const reference_url = (body.reference_url ?? '').trim()
-  const reference_note = (body.reference_note ?? '').trim()
+  // Bound user-controlled inputs that flow into the model prompt (cost + abuse).
+  const reference_note = (body.reference_note ?? '').trim().slice(0, 2000)
   const fidelity = ['close', 'balanced', 'loose'].includes(body.fidelity ?? '')
     ? body.fidelity!
     : 'balanced'
   if (!reference_url) return json({ error: 'reference_url is required' }, 400)
+  if (reference_url.length > 2048) return json({ error: 'That reference link is too long.' }, 400)
 
   // Load creator DNA. Prefer the confirmed brand voice (Phase 2 — built from
   // their real handle); fall back to the manual onboarding quiz (Phase 1).

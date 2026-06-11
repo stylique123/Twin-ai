@@ -46,6 +46,22 @@ Deno.serve(async (req: Request) => {
     : 'tiktok'
   const makeDefault = body.make_default !== false // default voices unless told otherwise
 
+  // Each scan starts a paid Apify run, and a user can scan ANY handle (by design).
+  // Cap scans per user/hour so the feature can't be scripted to burn our scraper
+  // budget (the "extra cost / API attack" the security panel flagged).
+  const { data: allowed } = await admin.rpc('check_rate_limit', {
+    p_user: user.id,
+    p_action: 'dna_build',
+    p_max: 8,
+    p_window_secs: 3600,
+  })
+  if (allowed === false) {
+    return json(
+      { error: "You've started several voice scans recently — give it a few minutes." },
+      429,
+    )
+  }
+
   // Create the brand voice row first so the frontend has something to watch.
   const { data: voice, error: voiceErr } = await admin
     .from('brand_voices')

@@ -205,3 +205,45 @@ Micro: client workspaces (group brand voices + content per client) · approval/r
 - **Beachhead (win first):** *UGC creators & solo freelancers who post for multiple brands* (#9/#12/#7) — voice-per-handle is genuinely killer for them, they have WTP, and they don't need the full agency suite.
 
 **Re-panel milestone (SCHEDULED — do not skip):** after the worker + transcription + one-click editor ship (post-P3 voice upgrade and/or P6), **re-run a discovery panel with more niche-specific personas closer to the beachhead ICP.** Measure not just "would you try" but: **do they actually USE it, do they get the benefit, and compare before/after this build vs Panel #1's verdicts.** Gate: **don't claim PMF until a re-panel shows want-to-*pay* (not just want-to-try) for the beachhead segment.**
+
+---
+
+## 9. Operating model — expert panel per phase (REQUIRED ritual)
+
+Every phase runs through a panel of **2–3 experts in that specific field** (CTOs / senior
+practitioners / consultants) before *and* after the build. This is not optional — it is how
+we make each phase successful and scalable.
+
+**For each phase:**
+1. **Convene** the right panel for the domain (see roster below).
+2. **Elicit the micro-needs** — ask the panel: *What exactly must exist? What connects to
+   what? How does it actually work in production? Where does it break at scale? What's the
+   minimum that's still correct?*
+3. **Write the spec** from their answers (macro intent + micro checklist) into this plan.
+4. **Build** to the spec.
+5. **Verify** with the same panel (re-review the diff) **and** clear the
+   **security gate** (`SECURITY.md` §"Per-phase security gate"). Attach both to the PR.
+6. A phase is **not done** until panel-verified + security-gated.
+
+**Panel roster by domain:**
+| Phase | Panel (experts to seat) |
+|---|---|
+| Worker / ingestion / transcription (keystone, P3) | Distributed-systems/infra CTO · ML/ASR engineer (Whisper) · platform-ToS/anti-bot specialist |
+| One-click editor (P6) | Video-pipeline/ffmpeg engineer · motion/caption designer · GPU/cost-optimization eng |
+| Publish (P7) | Social-API/OAuth specialist · trust-&-safety · compliance/privacy counsel |
+| Payments (P8) | Payments/Stripe architect · finance/unit-economics · fraud/chargebacks |
+| Agency workspace (P9) | B2B-SaaS RBAC architect · agency operator (design partner) · data-isolation eng |
+| Platform admin (P10) | Security/AppSec CTO · trust-&-safety ops · SRE/observability |
+| **Security (cross-cutting, done #1)** | Isolation CTO · abuse/cost/DoS CTO · secrets/authz/admin CTO — see `SECURITY.md` |
+
+**Security review #1 is complete** (see `SECURITY.md`): super-admin model, rate limiting,
+input bounds, and audit logging shipped; isolation/secrets/authz verified.
+
+### Phase 10 — Platform admin & trust/safety
+**Macro:** give the team a safe, audited cockpit to support users and protect the platform.
+**Backend foundation — shipped** (`0003_security_admin.sql`): `platform_admins` (non-self-grantable
+roles), audited cross-tenant read, `admin_grant_credits` / `admin_log`, `admin_audit_log`,
+`check_rate_limit`, `is_platform_admin()` (+ client helper). **Still to build (UI/ops):** admin
+dashboard (user lookup, credit grants, refunds), **impersonation/support-view with mandatory
+audit + consent**, moderation/abuse queue, rate-limit & cost dashboards, alerting on refund/error
+spikes. Gate: every privileged action writes to `admin_audit_log`; superadmin-only role changes.
