@@ -177,7 +177,14 @@ export function extractPosts(items: Record<string, unknown>[]): PostSample[] {
 // most actors stamp it on every item (TikTok: authorMeta.*, IG: ownerFullName/biography).
 export function extractProfileBio(items: Record<string, unknown>[]): string {
   for (const it of items ?? []) {
-    const name = pick(it, ['authorMeta.nickname', 'ownerFullName', 'channelName', 'author.name', 'fullName'])
+    const name = pick(it, [
+      'authorMeta.nickName', // TikTok actor uses capital-N "nickName"
+      'authorMeta.name',
+      'ownerFullName',
+      'channelName',
+      'author.name',
+      'fullName',
+    ])
     const bio = pick(it, ['authorMeta.signature', 'biography', 'channelDescription', 'author.signature'])
     if (bio || name) return [name, bio].filter(Boolean).join(' — ')
   }
