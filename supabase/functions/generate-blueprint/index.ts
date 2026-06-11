@@ -166,13 +166,23 @@ Deno.serve(async (req: Request) => {
     : 'balanced'
   if (!reference_url) return json({ error: 'reference_url is required' }, 400)
 
-  // Load creator DNA.
+  // Load creator DNA. Prefer the confirmed brand voice (Phase 2 — built from
+  // their real handle); fall back to the manual onboarding quiz (Phase 1).
   const { data: profile } = await admin
     .from('profiles')
     .select('dna, credits')
     .eq('id', user.id)
     .single()
+  const { data: voice } = await admin
+    .from('brand_voices')
+    .select('id, handle, platform, profile')
+    .eq('owner_id', user.id)
+    .eq('is_default', true)
+    .eq('status', 'ready')
+    .maybeSingle()
+
   const dna = profile?.dna ?? {}
+  const vp = voice?.profile ?? null
 
   // Spend credits atomically BEFORE the model call. Refund on failure.
   const { error: spendErr } = await admin.rpc('spend_credits', {
@@ -188,14 +198,28 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const userPrompt = `CREATOR DNA
+    const creatorDna = vp
+      ? `CREATOR DNA (learned from @${voice!.handle} on ${voice!.platform})
+- Summary: ${vp.summary ?? ''}
+- Niche: ${vp.niche ?? dna.niche ?? 'unspecified'}
+- Tone: ${vp.tone ?? dna.voice ?? 'direct, warm'}
+- Pacing: ${vp.pacing ?? 'fast'}
+- Hook style: ${vp.hook_style ?? ''}
+- Signature vocabulary: ${(vp.vocabulary ?? []).join(', ')}
+- Recurring CTAs: ${(vp.recurring_ctas ?? []).join(', ')}
+- Do: ${(vp.dos ?? []).join('; ')}
+- Don't: ${(vp.donts ?? []).join('; ')}
+- Platforms: ${voice!.platform}`
+      : `CREATOR DNA
 - Niche: ${dna.niche ?? 'unspecified'}
 - Audience: ${dna.audience ?? 'unspecified'}
 - Product/offer: ${dna.product ?? 'unspecified'}
 - Goal: ${dna.goal ?? 'turn attention into trust'}
 - Voice: ${dna.voice ?? 'direct, warm, a little punchy'}
 - Platforms: ${(dna.platforms ?? ['tiktok']).join(', ')}
-- Editing style: ${dna.editing_style ?? 'fast jump cuts, burned-in captions'}
+- Editing style: ${dna.editing_style ?? 'fast jump cuts, burned-in captions'}`
+
+    const userPrompt = `${creatorDna}
 
 REFERENCE
 - URL: ${reference_url}
@@ -215,6 +239,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         reference_note,
         fidelity,
         blueprint,
+        brand_voice_id: voice?.id ?? null,
         credits_spent: BLUEPRINT_COST,
       })
       .select('*')

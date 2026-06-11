@@ -75,8 +75,9 @@ Flow: edge function (or frontend) inserts a `jobs` row → worker polls `where s
 Auth, profiles, credit ledger (atomic `spend_credits` + auto-refund), Gemini 3.1 Pro script/hooks generation, Studio/Result/History, brand-aligned UI, invisible credits + hidden rate.
 **Remaining to go LIVE:** provision Supabase project → `db push` → deploy `generate-blueprint` → set `GEMINI_API_KEY` secret → deploy frontend to Vercel with `VITE_SUPABASE_*`. **Acceptance:** a real user signs up, gets a real AI blueprint, sees "recreations left."
 
-### Phase 2 — Brand-DNA from handle (the moat)
+### ✅ Phase 2 — Brand-DNA from handle (the moat) — BUILT (text DNA)
 **Macro:** replace the quiz with "@handle → we read your last N posts → a voice profile you confirm in one tap."
+**Status:** built on Supabase Edge Functions alone (no separate worker host yet): `brand_voices` + `jobs` tables (migration `0002`), `start-dna` (kicks the Apify scrape async) + `dna-poll` (advances the job: Apify status → Gemini voice synthesis → ready), handle-first onboarding with live progress + editable confirm card (manual quiz kept as fallback), and `generate-blueprint` now writes in the confirmed voice. **Remaining:** set `APIFY_TOKEN` secret + deploy the two functions; video transcription (faster-whisper) is the worker enhancement that lands with Phase 3.
 Micro tasks:
 1. DB: `brand_voices` table + RLS; `profiles.account_type`.
 2. Edge fn `start-dna`: validate handle, enqueue `build_dna` job, return job id.

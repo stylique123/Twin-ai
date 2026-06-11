@@ -2,3 +2,9 @@ project_id = "twinai"
 
 [functions.generate-blueprint]
 verify_jwt = true
+
+[functions.start-dna]
+verify_jwt = true
+
+[functions.dna-poll]
+verify_jwt = true
