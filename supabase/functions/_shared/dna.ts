@@ -75,7 +75,7 @@ function actorInput(platform: Platform, handle: string): Record<string, unknown>
 
 // Start an Apify actor run (async). Returns the runId to poll later.
 export async function startApifyRun(platform: Platform, handle: string): Promise<string> {
-  const token = Deno.env.get('APIFY_TOKEN')
+  const token = Deno.env.get('APIFY_TOKEN') ?? Deno.env.get('apify_api')
   if (!token) throw new Error('APIFY_TOKEN not configured')
   const actor = actorFor(platform)
   const res = await fetch(`https://api.apify.com/v2/acts/${actor}/runs`, {
@@ -99,7 +99,7 @@ export type ApifyStatus = 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'ABORTED' | 'TIME
 export async function pollApifyRun(
   runId: string,
 ): Promise<{ status: ApifyStatus; items: Record<string, unknown>[] | null }> {
-  const token = Deno.env.get('APIFY_TOKEN')
+  const token = Deno.env.get('APIFY_TOKEN') ?? Deno.env.get('apify_api')
   if (!token) throw new Error('APIFY_TOKEN not configured')
 
   const runRes = await fetch(`https://api.apify.com/v2/actor-runs/${runId}`, {
