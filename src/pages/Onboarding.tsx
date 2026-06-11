@@ -7,6 +7,14 @@ import { GradientBar } from '../components/GradientBar'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
 
+// Per-platform placeholder so the input matches the source they picked.
+const PLACEHOLDER: Record<Platform, string> = {
+  tiktok: '@yourhandle  or  https://tiktok.com/@yourhandle',
+  instagram: '@yourhandle  or  https://instagram.com/yourhandle',
+  youtube: '@yourchannel  or  https://youtube.com/@yourchannel',
+  other: '@yourhandle',
+}
+
 type Mode = 'handle' | 'building' | 'confirm' | 'manual'
 
 export default function Onboarding() {
@@ -92,7 +100,7 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
 
       <input
         className="field mt-4"
-        placeholder="@yourhandle  or  https://tiktok.com/@yourhandle"
+        placeholder={PLACEHOLDER[platform]}
         value={handle}
         onChange={(e) => setHandle(e.target.value)}
         onKeyDown={(e) => e.key === 'Enter' && go()}

@@ -10,7 +10,15 @@
 // Deploy:  supabase functions deploy dna-poll
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { cors, extractPosts, json, pollApifyRun, synthesizeVoice, type Platform } from '../_shared/dna.ts'
+import {
+  cors,
+  extractPosts,
+  extractProfileBio,
+  json,
+  pollApifyRun,
+  synthesizeVoice,
+  type Platform,
+} from '../_shared/dna.ts'
 
 const MAX_ATTEMPTS = Number(Deno.env.get('DNA_MAX_POLLS') ?? '40')
 
@@ -88,7 +96,8 @@ Deno.serve(async (req: Request) => {
 
     // Scrape done — synthesize the voice once and persist it.
     const posts = extractPosts(items ?? [])
-    const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts)
+    const bio = extractProfileBio(items ?? [])
+    const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts, bio)
 
     await admin
       .from('brand_voices')

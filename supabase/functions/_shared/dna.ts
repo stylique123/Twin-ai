@@ -121,36 +121,67 @@ export async function pollApifyRun(
 }
 
 // Pull the human-readable text + light metrics out of whatever shape the actor
-// returns. Field names vary by actor, so we probe a list of common ones.
+// returns. Field names vary across the TikTok / Instagram / YouTube actors, so we
+// probe a list of common ones (including nested objects) and coerce string counts.
+function get(obj: Record<string, unknown>, path: string): unknown {
+  return path.split('.').reduce<unknown>((o, k) => (o && typeof o === 'object' ? (o as Record<string, unknown>)[k] : undefined), obj)
+}
 function pick(obj: Record<string, unknown>, keys: string[]): string {
   for (const k of keys) {
-    const v = obj[k]
+    const v = get(obj, k)
     if (typeof v === 'string' && v.trim()) return v.trim()
   }
   return ''
 }
 function pickNum(obj: Record<string, unknown>, keys: string[]): number {
   for (const k of keys) {
-    const v = obj[k]
+    const v = get(obj, k)
     if (typeof v === 'number' && Number.isFinite(v)) return v
+    if (typeof v === 'string' && v.trim() && Number.isFinite(Number(v))) return Number(v)
   }
   return 0
+}
+function pickTags(obj: Record<string, unknown>, keys: string[]): string[] {
+  for (const k of keys) {
+    const v = get(obj, k)
+    if (Array.isArray(v)) {
+      const tags = v
+        .map((t) => (typeof t === 'string' ? t : ((t as Record<string, unknown>)?.name ?? (t as Record<string, unknown>)?.hashtag ?? '')))
+        .filter((t): t is string => typeof t === 'string' && t.length > 0)
+      if (tags.length) return tags.slice(0, 6)
+    }
+  }
+  return []
 }
 
 export interface PostSample {
   text: string
   likes: number
   plays: number
+  hashtags: string[]
 }
 
 export function extractPosts(items: Record<string, unknown>[]): PostSample[] {
   return (items ?? [])
     .map((it) => ({
-      text: pick(it, ['text', 'caption', 'description', 'title', 'desc']),
-      likes: pickNum(it, ['diggCount', 'likesCount', 'likes', 'likeCount']),
-      plays: pickNum(it, ['playCount', 'videoViewCount', 'views', 'viewCount']),
+      // TikTok: text · Instagram: caption · YouTube: title/description (+ subtitles when present)
+      text: pick(it, ['text', 'caption', 'description', 'title', 'desc', 'subtitles']),
+      likes: pickNum(it, ['diggCount', 'likesCount', 'likes', 'likeCount', 'stats.diggCount']),
+      plays: pickNum(it, ['playCount', 'videoViewCount', 'videoPlayCount', 'viewCount', 'views', 'stats.playCount']),
+      hashtags: pickTags(it, ['hashtags', 'tags']),
     }))
     .filter((p) => p.text.length > 0)
+}
+
+// The creator's profile bio/nickname is some of the richest voice signal we get —
+// most actors stamp it on every item (TikTok: authorMeta.*, IG: ownerFullName/biography).
+export function extractProfileBio(items: Record<string, unknown>[]): string {
+  for (const it of items ?? []) {
+    const name = pick(it, ['authorMeta.nickname', 'ownerFullName', 'channelName', 'author.name', 'fullName'])
+    const bio = pick(it, ['authorMeta.signature', 'biography', 'channelDescription', 'author.signature'])
+    if (bio || name) return [name, bio].filter(Boolean).join(' — ')
+  }
+  return ''
 }
 
 // --- Gemini synthesis ------------------------------------------------------
@@ -187,19 +218,28 @@ Hard rules:
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
 - If the sample is thin, infer sensibly from what's there rather than refusing.`
 
-export async function synthesizeVoice(handle: string, platform: Platform, posts: PostSample[]): Promise<unknown> {
+export async function synthesizeVoice(
+  handle: string,
+  platform: Platform,
+  posts: PostSample[],
+  bio = '',
+): Promise<unknown> {
   const apiKey = Deno.env.get('GEMINI_API_KEY')
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
   const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro'
 
   const corpus = posts
     .slice(0, 25)
-    .map((p, i) => `${i + 1}. (${p.plays || p.likes || 0} views/likes) ${p.text}`)
+    .map((p, i) => {
+      const reach = p.plays || p.likes ? ` (${p.plays || p.likes} views/likes)` : ''
+      const tags = p.hashtags.length ? ` [#${p.hashtags.join(' #')}]` : ''
+      return `${i + 1}.${reach} ${p.text}${tags}`
+    })
     .join('\n')
 
   const prompt = `CREATOR: @${handle} on ${platform}
-RECENT POSTS (caption/text + rough reach):
-${corpus || '(no captions available — infer a sensible starting voice from the handle and platform)'}
+${bio ? `PROFILE BIO: ${bio}\n` : ''}RECENT POSTS (caption/text + hashtags + rough reach):
+${corpus || '(no captions available — infer a sensible starting voice from the handle, bio, and platform)'}
 
 Synthesize this creator's voice profile.`
 
