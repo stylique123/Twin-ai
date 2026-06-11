@@ -15,7 +15,7 @@
 #   SUPABASE_URL=https://jmdecibuytznsonrasxw.supabase.co
 #   SUPABASE_SERVICE_ROLE_KEY=<service-role key from Supabase → Settings → API>
 #   GEMINI_API_KEY=<your Gemini key>
-#   WORKER_JOB_TYPES=ingest,transcribe,build_voice
+#   WORKER_JOB_TYPES=ingest,transcribe,build_voice,autoedit
 #   WHISPER_MODEL=small        # tiny|base|small — drop to base/tiny on a small box
 #   WORKER_MAX_MEDIA_SECS=900
 set -euo pipefail
