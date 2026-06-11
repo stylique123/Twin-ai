@@ -14,12 +14,16 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
 
   // For reference ingestion, derive the real structure now (best-effort: a
   // structure failure must not lose the transcript we already paid to produce).
+  // We also surface the failure reason into the job result so it's diagnosable
+  // from the DB — not just the worker host's local logs.
   let structure: unknown = null
+  let structureError: string | null = null
   if (job.type === 'ingest') {
     try {
       structure = await deriveStructure(t)
     } catch (err) {
-      console.error('deriveStructure failed:', err instanceof Error ? err.message : err)
+      structureError = err instanceof Error ? err.message : String(err)
+      console.error('deriveStructure failed:', structureError)
     }
   }
 
@@ -40,5 +44,11 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
     .single()
   if (error) throw error
 
-  return { transcript_id: data.id, language: t.language, words: t.words.length, structured: structure !== null }
+  return {
+    transcript_id: data.id,
+    language: t.language,
+    words: t.words.length,
+    structured: structure !== null,
+    structure_error: structureError,
+  }
 }

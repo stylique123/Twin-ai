@@ -13,7 +13,7 @@ export async function geminiJson(
   system: string,
   prompt: string,
   schema: unknown,
-  timeoutMs = 30_000,
+  timeoutMs = 60_000,
 ): Promise<unknown> {
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
   const model = process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview'
@@ -30,9 +30,10 @@ export async function geminiJson(
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
-            // Thinking model: budget covers reasoning + the JSON output.
+            // Thinking model: budget covers reasoning + the JSON output. Longer
+            // transcripts grow the reasoning spend, so keep generous headroom.
             temperature: 0.4,
-            maxOutputTokens: 8192,
+            maxOutputTokens: 16384,
             responseMimeType: 'application/json',
             responseSchema: schema,
           },
