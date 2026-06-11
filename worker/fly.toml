@@ -1,0 +1,31 @@
+# Fly.io deploy for the TwinAI worker. (Railway/Render work with the same
+# Dockerfile — this file is the only Fly-specific bit.)
+#
+#   fly launch --no-deploy        # once, to create the app
+#   fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GEMINI_API_KEY=...
+#   fly deploy
+#
+# The worker is a long-running process (not HTTP), so it has no [[services]] /
+# ports — `min_machines_running` keeps it alive to drain the queue.
+
+app = "twinai-worker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  WORKER_JOB_TYPES = "ingest,transcribe"
+  WHISPER_MODEL = "small"
+  WHISPER_DEVICE = "cpu"
+
+[[vm]]
+  size = "performance-2x"  # ASR is CPU-bound; bump or move to a GPU pool as volume grows
+  memory = "4gb"
+
+[deploy]
+  strategy = "rolling"
+
+# Keep at least one worker alive; scale replicas with `fly scale count N`.
+[processes]
+  worker = "node --enable-source-maps dist/index.js"

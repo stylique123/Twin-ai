@@ -48,14 +48,16 @@ The objective: a creator inputs a viral reference (link or gallery) → TwinAI u
 | `profiles` | id, email, plan, credits, onboarded, account_type(creator/agency) | ✅1 | credits = hidden internal unit |
 | `brand_voices` | id, owner_id, handle, platform, profile(jsonb), is_default, created_at | 2 | one per brand; agency = many |
 | `references` | id, owner_id, url, platform, transcript, structure(jsonb), status | 3 | analyze-and-discard the source file |
-| `gallery_items` | id, niche, platform, title, metrics(jsonb), structure(jsonb), source | 4 | curated viral feed (no copyrighted media stored) |
+| `gallery_items` | id, niche, platform, title, metrics(jsonb), why_it_worked, structure(jsonb), source | 4 | curated viral feed + "why it worked" (no copyrighted media stored) |
+| `transcripts` | id, owner_id, source_url, language, text, words(jsonb), segments(jsonb) | ✅3 | worker output; raw media discarded |
 | `generations` | id, user_id, brand_voice_id, reference_id, blueprint(jsonb), fidelity | ✅1 | the script/hooks/shot list output |
 | `recordings` | id, generation_id, storage_path, duration, source(record/upload) | 5 | raw take in Storage |
 | `renders` | id, generation_id, recording_id, storage_path, status, options(jsonb) | 6 | finished captioned video |
-| `posts` | id, render_id, platform, external_id, scheduled_at, status, metrics(jsonb) | 7 | publish + analytics back |
+| `posts` | id, render_id, generation_id, brand_voice_id, platform, external_id, is_twin, scheduled_at, status, metrics(jsonb) | 7 | publish + analytics; `is_twin` powers before/after-Twin lift |
 | `credit_events` | id, user_id, delta, reason, created_at | ✅1 | audit ledger |
+| `platform_admins` · `admin_audit_log` · `rate_events` | super-admin roster · audit trail · rate limiter | ✅sec | see `SECURITY.md` |
 | `subscriptions` | id, user_id, plan, stripe_customer, status, period_end | 8 | Stripe-driven; resets credits |
-| `jobs` | id, type, payload(jsonb), status, attempts, result(jsonb), created_at | 3 | the worker queue |
+| `jobs` | id, owner_id, type, payload(jsonb), status, attempts, run_after, locked_*, result(jsonb) | ✅3 | hardened worker queue (claim/retry/reclaim) |
 
 All tables: **RLS on, owner-scoped.** `gallery_items` is the only public-read table.
 
@@ -87,23 +89,29 @@ Micro tasks:
 6. Agency: allow N brand voices; switcher in the workspace.
 **Connects to:** generation (Phase 1) reads the voice profile. **Keys:** Apify. **Acceptance:** paste a handle, get an accurate voice profile in <60s, generate a script that sounds like them.
 
-### Phase 3 — Real reference ingestion
+### Phase 3 — Real reference ingestion  *(worker SCAFFOLDED — see `/worker`)*
 **Macro:** "analyze any video" becomes literal — real transcript + structure, not inference.
-Micro:
-1. DB: `references`, `jobs`.
-2. Worker `ingest` (yt-dlp → temp file) → `transcribe` (faster-whisper, word timestamps) → derive `structure` (hook window, beat timing, shot changes, CTA) via Gemini → **delete the source file** (analyze-and-discard; store only transcript+structure).
-3. Studio: paste link → enqueue ingest → progress → feed `reference.structure` into generation.
-4. Legal guardrail baked in: never persist/redistribute source media; store metadata only.
-**Connects to:** generation now takes real structure. **Acceptance:** paste a TikTok, see a real retention map drawn from its actual transcript.
+**Worker shipped (panel-gated):** the keystone `/worker` service is built — atomic job
+claiming (`claim_job` / `0004_job_claim.sql`), retries+backoff+dead-letter, stale-reclaim,
+and an `ingest`/`transcribe` handler (yt-dlp audio-only → faster-whisper word timestamps →
+`public.transcripts`, raw media discarded). SSRF allow-list + bounded inputs + service-key
+server-side (security gate cleared). Dockerfile + fly.toml + README included.
+Micro (remaining to wire):
+1. ✅ DB: `jobs` (hardened) + `transcripts`.
+2. ✅ Worker `ingest`/`transcribe` (faster-whisper, word timestamps + discard).
+3. **Next:** derive `structure` (hook window, beat timing, shot changes, CTA) via Gemini from the real transcript; feed it into `generate-blueprint` (replace the URL-string hallucination). Also a **voice-from-audio** upgrade for Brand-DNA (P2.5).
+4. Studio: paste link → enqueue ingest → Realtime progress → use real structure.
+5. ✅ Legal guardrail baked in: never persist source media; store transcript/metadata only.
+**Acceptance:** paste a TikTok, see a real retention map drawn from its actual transcript.
 
-### Phase 4 — Gallery
-**Macro:** curated, niche-filtered, daily-refreshed viral feed → recreate without a link.
+### Phase 4 — Gallery (with analytics — "why it worked")
+**Macro:** curated, niche-filtered, daily-refreshed viral feed → recreate without a link, **with the numbers and the reason it performed.**
 Micro:
-1. DB: `gallery_items` (structure + metrics only, no copyrighted media).
-2. Worker `refresh_gallery` (cron): Apify trending by niche → extract structure → upsert.
-3. Frontend: gallery grid (filter by niche/platform), "Recreate this" → reuses Phase 3 pipeline with a pre-analyzed item.
-4. Make gallery the default landing for logged-in users (fastest time-to-first-value).
-**Acceptance:** a cold user with no link hits "Recreate" in <30s.
+1. DB: `gallery_items` (structure + **metrics(jsonb)** + `why_it_worked` + no copyrighted media).
+2. Worker `refresh_gallery` (cron): Apify trending by niche → extract **metrics (views, likes, comments, shares, engagement-rate, est. retention)** + structure → Gemini explains **why it worked** (hook/pattern/timing) → upsert.
+3. Frontend: gallery grid filter by niche/platform, **sort by performance (views / engagement-rate / "rising")**; each card shows the metrics + a short "why this worked"; "Recreate this" reuses the Phase 3 pipeline with the pre-analyzed item.
+4. Gallery is the default landing for logged-in users (fastest time-to-first-value) and the cold-start answer (premortem #9).
+**Acceptance:** a cold user with no link sees *what's working in their niche and why*, and hits "Recreate" in <30s.
 
 ### Phase 5 — Record in-app (the differentiator)
 **Macro:** camera + teleprompter + voice-paced scroll + live captions, fully in browser.
@@ -122,14 +130,18 @@ Micro:
 3. Editor screen: preview, tweak caption style, re-render, save to **user's gallery**.
 **Acceptance:** a recorded take comes back as a captioned 9:16 MP4 in ~1–2 min.
 
-### Phase 7 — Publish + analytics
-**Macro:** one-tap publish to their socials (creator vs agency brand), metrics back.
+### Phase 7 — Publish + analytics dashboard (results + before/after Twin)
+**Macro:** one-tap publish to their socials (creator vs agency brand), and a real **analytics dashboard** that shows every post's results and **proves TwinAI's lift (before vs after Twin).**
 Micro:
 1. Connect-accounts flow via **Ayrshare** (absorbs TikTok audit + IG business reqs).
 2. Worker `publish`: post render via Ayrshare (user-initiated, original content — ToS-safe positioning baked in).
-3. `posts` table; scheduling calendar; per-brand account mapping (agency).
-4. Analytics: pull post metrics back → "this recreation got 3× your average."
-**Keys:** Ayrshare. **Acceptance:** publish to a connected account, see views come back in the dashboard.
+3. `posts` table (`render_id`, `generation_id`, `brand_voice_id`, `external_id`, `is_twin` flag, `metrics(jsonb)`); scheduling calendar; per-brand account mapping (agency).
+4. Worker `sync_metrics` (cron): pull per-post metrics back (views/likes/comments/shares/saves/watch-through) over time into `posts.metrics`.
+5. **Dashboard** (`/dashboard`): all their postings + results; per-post and aggregate trends; **Before-vs-After-Twin comparison** — baseline = their pre-Twin median (seeded from the DNA scan's historical posts) vs Twin-made posts (`is_twin=true`); headline stat *"Twin posts average N× your baseline views / +X% engagement."* Filters by brand voice (agencies → per client).
+6. Tie it back: each post links to the gallery reference + blueprint it came from, so "why it worked" carries through from inspiration → result.
+**Keys:** Ayrshare. **Acceptance:** publish to a connected account; within a day the dashboard shows the post's metrics and updates the before/after-Twin lift.
+
+> **Note (premortem #13 — ROI proof):** pull a *lightweight* version of the before/after stat forward as soon as posting exists — businesses/agencies buy outcomes, so the lift number is the retention and upsell hook, not an end-of-roadmap nicety.
 
 ### Phase 8 — Payments
 **Macro:** Stripe checkout for the intro tiers + monthly credit grant (with hidden buffer) + extra-brand-voice add-on.
