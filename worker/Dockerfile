@@ -12,9 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# yt-dlp + faster-whisper. (PEP 668: allow pip into the system env in-container.)
+# yt-dlp + faster-whisper + auto-editor (silence/dead-air jump cuts).
+# (PEP 668: allow pip into the system env in-container.)
 RUN pip3 install --no-cache-dir --break-system-packages \
-      "yt-dlp>=2025.1.15" "faster-whisper>=1.0.3"
+      "yt-dlp>=2025.1.15" "faster-whisper>=1.0.3" "auto-editor>=24"
 
 WORKDIR /app
 
