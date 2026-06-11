@@ -9,7 +9,24 @@ import { BRAND, PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { HeroVisual } from '../components/HeroVisual'
 import { Reveal, Stagger, RevealItem, EASE } from '../components/motion'
+import { Tilt } from '../components/Tilt'
+import { Counter } from '../components/Counter'
+import { ReelCard, type Reel } from '../components/ReelCard'
 import { cn } from '../lib/cn'
+
+const STATS = [
+  { to: 30, suffix: 's', label: 'Average time to a blueprint' },
+  { to: 1, prefix: '', suffix: ' link', label: 'In — that’s all it takes' },
+  { to: 5, suffix: ' outputs', label: 'Hook · script · shots · edit · schedule' },
+  { to: 0, suffix: '', label: 'Footage you need to start' },
+]
+
+const REELS: Reel[] = [
+  { poster: 'bg-gradient-to-br from-coral/35 via-ink2 to-ink', accent: 'text-amber', capLead: 'You’re 35 and think', capAccent: 'it’s late?', views: '2.1M', likes: '184K', platform: 'TikTok' },
+  { poster: 'bg-gradient-to-br from-teal/30 via-ink2 to-ink', accent: 'text-teal', capLead: 'The one habit that', capAccent: 'changed everything', views: '880K', likes: '76K', platform: 'Reels' },
+  { poster: 'bg-gradient-to-br from-amber/30 via-ink2 to-ink', accent: 'text-coral', capLead: 'Stop editing like', capAccent: 'it’s 2019', views: '1.4M', likes: '120K', platform: 'Shorts' },
+  { poster: 'bg-gradient-to-br from-coral/25 via-ink2 to-ink', accent: 'text-amber', capLead: 'Read this before you', capAccent: 'post again', views: '640K', likes: '51K', platform: 'TikTok' },
+]
 
 const MARQUEE = ['TikTok', 'Reels', 'Shorts', 'Hooks', 'Retention', 'Shot lists', 'Captions', 'B-roll', 'Voiceover', 'Schedules']
 
@@ -113,6 +130,41 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ---------------- STATS BAND ---------------- */}
+      <section className="mx-auto max-w-content px-5 py-16">
+        <Stagger className="grid grid-cols-2 gap-4 md:grid-cols-4" gap={0.08}>
+          {STATS.map((s) => (
+            <RevealItem key={s.label}>
+              <div className="glass glass-hover p-6 text-center">
+                <div className="font-display text-4xl tracking-tight">
+                  <Counter to={s.to} prefix={s.prefix} suffix={s.suffix} />
+                </div>
+                <div className="mt-2 text-xs text-stone">{s.label}</div>
+              </div>
+            </RevealItem>
+          ))}
+        </Stagger>
+      </section>
+
+      {/* ---------------- REEL WALL ---------------- */}
+      <section className="mx-auto max-w-content px-5 py-12">
+        <Reveal>
+          <p className="eyebrow">Reference in · finished video out</p>
+          <h2 className="mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+            The formats you scroll past — rebuilt as yours.
+          </h2>
+        </Reveal>
+        <Stagger className="mt-10 grid grid-cols-2 gap-4 md:grid-cols-4" gap={0.08}>
+          {REELS.map((r, i) => (
+            <RevealItem key={i}>
+              <Tilt className="group" max={10}>
+                <ReelCard reel={r} />
+              </Tilt>
+            </RevealItem>
+          ))}
+        </Stagger>
+      </section>
+
       {/* ---------------- HOW IT WORKS ---------------- */}
       <section id="how" className="mx-auto max-w-content px-5 py-24">
         <Reveal>
@@ -125,16 +177,18 @@ export default function Landing() {
         <Stagger className="mt-12 grid gap-5 md:grid-cols-3">
           {STEPS.map((s) => (
             <RevealItem key={s.n}>
-              <div className="glass glass-hover h-full p-7">
-                <div className="flex items-center justify-between">
-                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-signature-soft">
-                    <s.icon className="h-5 w-5 text-cream" />
-                  </span>
-                  <span className="font-mono text-sm text-stone">{s.n}</span>
+              <Tilt className="h-full" max={6}>
+                <div className="glass glass-hover h-full p-7">
+                  <div className="flex items-center justify-between">
+                    <span className="grid h-11 w-11 place-items-center rounded-xl bg-signature-soft">
+                      <s.icon className="h-5 w-5 text-cream" />
+                    </span>
+                    <span className="font-mono text-sm text-stone">{s.n}</span>
+                  </div>
+                  <h3 className="mt-5 text-xl font-heading">{s.t}</h3>
+                  <p className="mt-2 text-sand">{s.d}</p>
                 </div>
-                <h3 className="mt-5 text-xl font-heading">{s.t}</h3>
-                <p className="mt-2 text-sand">{s.d}</p>
-              </div>
+              </Tilt>
             </RevealItem>
           ))}
         </Stagger>
