@@ -1,0 +1,5 @@
+# Auto-HTTPS reverse proxy for self-hosted Postiz.
+# Caddy fetches a Let's Encrypt cert for POSTIZ_DOMAIN automatically.
+{$POSTIZ_DOMAIN} {
+	reverse_proxy postiz:5000
+}
