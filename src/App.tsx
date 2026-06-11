@@ -12,6 +12,7 @@ import Result from './pages/Result'
 import History from './pages/History'
 import Gallery from './pages/Gallery'
 import Record from './pages/Record'
+import Dashboard from './pages/Dashboard'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -46,6 +47,7 @@ export default function App() {
   const location = useLocation()
   const inApp =
     location.pathname.startsWith('/app') ||
+    location.pathname.startsWith('/dashboard') ||
     location.pathname.startsWith('/history') ||
     location.pathname.startsWith('/gallery') ||
     location.pathname.startsWith('/record') ||
@@ -59,6 +61,10 @@ export default function App() {
           <Route path="/" element={<Page><Landing /></Page>} />
           <Route path="/auth" element={<Page><Auth /></Page>} />
           <Route path="/onboarding" element={<Page><Onboarding /></Page>} />
+          <Route
+            path="/dashboard"
+            element={<Protected><AppShell><Page><Dashboard /></Page></AppShell></Protected>}
+          />
           <Route
             path="/app"
             element={<Protected><AppShell><Page><Studio /></Page></AppShell></Protected>}

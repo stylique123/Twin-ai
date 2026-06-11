@@ -159,6 +159,83 @@ export async function getGeneration(id: string): Promise<Generation | null> {
   return data as Generation
 }
 
+// ---- Dashboard (Phase 7: real stats from data we already own) ------------
+
+export interface DashboardStats {
+  blueprints: number
+  edits: number
+  posts: number
+  recreationsLeft: number
+}
+
+export async function getDashboardStats(creditsLeft: number): Promise<DashboardStats> {
+  const { data: auth } = await supabase.auth.getUser()
+  const uid = auth.user?.id
+  const head = { count: 'exact' as const, head: true }
+  const [bp, ed, po] = await Promise.all([
+    supabase.from('generations').select('id', head),
+    uid
+      ? supabase.from('jobs').select('id', head).eq('type', 'autoedit').eq('status', 'done').eq('owner_id', uid)
+      : Promise.resolve({ count: 0 } as { count: number }),
+    supabase.from('posts').select('id', head).eq('status', 'posted'),
+  ])
+  return {
+    blueprints: (bp as { count: number | null }).count ?? 0,
+    edits: (ed as { count: number | null }).count ?? 0,
+    posts: (po as { count: number | null }).count ?? 0, // 0 until posts table exists
+    recreationsLeft: Math.floor(creditsLeft / 10),
+  }
+}
+
+// ---- Posts (Phase 7: publish tracking) -----------------------------------
+
+export interface Post {
+  id: string
+  generation_id: string | null
+  platform: string
+  caption: string | null
+  status: 'scheduled' | 'posted'
+  scheduled_for: string | null
+  posted_at: string | null
+  external_url: string | null
+  created_at: string
+}
+
+export async function listPosts(): Promise<Post[]> {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
+    .order('created_at', { ascending: false })
+    .limit(100)
+  if (error) return [] // table may not be migrated yet — fail soft
+  return (data ?? []) as Post[]
+}
+
+export async function markPosted(input: {
+  generationId: string
+  platform: string
+  caption?: string
+  externalUrl?: string
+}): Promise<Post> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not signed in')
+  const { data, error } = await supabase
+    .from('posts')
+    .insert({
+      owner_id: auth.user.id,
+      generation_id: input.generationId,
+      platform: input.platform,
+      caption: input.caption ?? null,
+      status: 'posted',
+      posted_at: new Date().toISOString(),
+      external_url: input.externalUrl ?? null,
+    })
+    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
+    .single()
+  if (error) throw error
+  return data as Post
+}
+
 // ---- Brand voices (Phase 2 — DNA from handle) ---------------------------
 
 // supabase-js puts non-2xx function responses in error.context (a Response),

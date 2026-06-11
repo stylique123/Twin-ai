@@ -5,10 +5,11 @@ import {
   ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
   Captions, ListChecks, Wand2, Timer, Send, Loader2, Video,
 } from 'lucide-react'
-import { getGeneration } from '../lib/api'
+import { getGeneration, markPosted } from '../lib/api'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, EASE } from '../components/motion'
+import { cn } from '../lib/cn'
 
 export default function Result() {
   const { id } = useParams()
@@ -173,17 +174,75 @@ export default function Result() {
         <Section icon={Send} title="Publish plan">
           <div className="space-y-3">
             {b.publish_plan.map((p, i) => (
-              <div key={i} className="rounded-card border border-white/8 bg-white/[0.02] p-4">
-                <div className="text-sm font-heading text-teal">{p.platform}</div>
-                <div className="mt-1 text-cream">{p.caption}</div>
-                <div className="mt-1 text-xs text-stone">{p.hashtags.join(' ')} · best time: {p.best_time}</div>
-              </div>
+              <PublishRow key={i} generationId={gen.id} platform={p.platform} caption={p.caption} hashtags={p.hashtags} bestTime={p.best_time} />
             ))}
           </div>
-          <p className="mt-3 text-xs text-stone">Direct auto-publish is on the roadmap — for now, a ready-to-paste schedule.</p>
+          <p className="mt-3 text-xs text-stone">
+            Copy a caption, post it, then log it — your Dashboard tracks what you’ve shipped. One-click auto-publish is on the roadmap.
+          </p>
         </Section>
       </div>
     </main>
+  )
+}
+
+// Per-platform publish row: copy the full caption, then log when you post it.
+function PublishRow({
+  generationId,
+  platform,
+  caption,
+  hashtags,
+  bestTime,
+}: {
+  generationId: string
+  platform: string
+  caption: string
+  hashtags: string[]
+  bestTime: string
+}) {
+  const full = `${caption}\n\n${hashtags.join(' ')}`.trim()
+  const [copied, setCopied] = useState(false)
+  const [posted, setPosted] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(full)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  }
+  const logPosted = async () => {
+    setBusy(true)
+    try {
+      await markPosted({ generationId, platform, caption })
+      setPosted(true)
+    } catch {
+      /* posts table may not be migrated yet — fail soft */
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="rounded-card border border-white/8 bg-white/[0.02] p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-heading capitalize text-teal">{platform}</div>
+        <span className="text-xs text-stone">best time: {bestTime}</span>
+      </div>
+      <div className="mt-1 text-cream">{caption}</div>
+      <div className="mt-1 text-xs text-stone">{hashtags.join(' ')}</div>
+      <div className="mt-3 flex items-center gap-2">
+        <button onClick={copy} className="chip">
+          {copied ? <><Check className="h-3.5 w-3.5 text-teal" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy caption</>}
+        </button>
+        <button onClick={logPosted} disabled={busy || posted} className={cn('chip', posted && 'border-teal/50 text-teal')}>
+          {posted ? <><Check className="h-3.5 w-3.5" /> Posted</> : busy ? 'Saving…' : <><Send className="h-3.5 w-3.5" /> Mark as posted</>}
+        </button>
+      </div>
+    </div>
   )
 }
 
