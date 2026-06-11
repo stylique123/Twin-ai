@@ -1,5 +1,7 @@
 # TwinAI worker — Node orchestrator + Python ML, with ffmpeg & yt-dlp baked in.
-FROM node:20-bookworm-slim
+# Node 22 (not 20): @supabase/supabase-js needs a native WebSocket, which only
+# exists from Node 22 onward.
+FROM node:22-bookworm-slim
 
 # System deps: ffmpeg (audio extract), python3 + pip (faster-whisper), ca-certs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
