@@ -90,5 +90,6 @@ export interface Generation {
   reference_note: string | null
   fidelity: 'close' | 'balanced' | 'loose'
   blueprint: Blueprint
+  transcript_id?: string | null
   created_at: string
 }

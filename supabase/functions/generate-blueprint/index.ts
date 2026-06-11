@@ -168,7 +168,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Easy there — too many in a row. Give it a few seconds.' }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; transcript_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -177,6 +177,7 @@ Deno.serve(async (req: Request) => {
   const reference_url = (body.reference_url ?? '').trim()
   // Bound user-controlled inputs that flow into the model prompt (cost + abuse).
   const reference_note = (body.reference_note ?? '').trim().slice(0, 2000)
+  const transcript_id = (body.transcript_id ?? '').trim()
   const fidelity = ['close', 'balanced', 'loose'].includes(body.fidelity ?? '')
     ? body.fidelity!
     : 'balanced'
@@ -214,6 +215,21 @@ Deno.serve(async (req: Request) => {
     )
   }
 
+  // If the caller analyzed the actual video (worker ingest → transcript), load it
+  // (owner-checked). When present, the blueprint is built from the REAL transcript
+  // + derived structure instead of inferring from the format pattern.
+  let ref: { text: string | null; structure: Record<string, unknown> | null; platform: string | null } | null = null
+  if (transcript_id) {
+    const { data: t } = await admin
+      .from('transcripts')
+      .select('text, structure, platform')
+      .eq('id', transcript_id)
+      .eq('owner_id', user.id)
+      .maybeSingle()
+    if (!t) return json({ error: 'That analyzed reference was not found.' }, 404)
+    ref = t as typeof ref
+  }
+
   // Spend credits atomically BEFORE the model call. Refund on failure.
   const { error: spendErr } = await admin.rpc('spend_credits', {
     p_user: user.id,
@@ -249,12 +265,25 @@ Deno.serve(async (req: Request) => {
 - Platforms: ${(dna.platforms ?? ['tiktok']).join(', ')}
 - Editing style: ${dna.editing_style ?? 'fast jump cuts, burned-in captions'}`
 
-    const userPrompt = `${creatorDna}
-
-REFERENCE
+    // When we have the real transcript, override the format-pattern caveat: the
+    // model IS now reading the actual video, so reference_read must describe THIS clip.
+    const referenceBlock =
+      ref && (ref.structure || ref.text)
+        ? `REFERENCE (REAL — analyzed from the actual video. Base reference_read.why_it_works and retention_map on THIS specific video below, not on a generic format pattern.)
+- URL: ${reference_url}
+- Platform: ${ref.platform ?? 'unknown'}
+- Derived structure: ${ref.structure ? JSON.stringify(ref.structure).slice(0, 4000) : '(none)'}
+- Transcript excerpt: ${(ref.text ?? '').slice(0, 4000)}
+- Creator's angle/note: ${reference_note || '(none provided)'}
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)`
+        : `REFERENCE
 - URL: ${reference_url}
 - Creator's angle/note: ${reference_note || '(none provided)'}
-- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)
+- Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)`
+
+    const userPrompt = `${creatorDna}
+
+${referenceBlock}
 
 Produce the full shootable blueprint for THIS creator, adapting the reference's structure to their voice and niche.`
 
@@ -270,6 +299,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         fidelity,
         blueprint,
         brand_voice_id: voice?.id ?? null,
+        transcript_id: transcript_id || null,
         credits_spent: BLUEPRINT_COST,
       })
       .select('*')

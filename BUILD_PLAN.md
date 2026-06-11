@@ -96,13 +96,15 @@ claiming (`claim_job` / `0004_job_claim.sql`), retries+backoff+dead-letter, stal
 and an `ingest`/`transcribe` handler (yt-dlp audio-only → faster-whisper word timestamps →
 `public.transcripts`, raw media discarded). SSRF allow-list + bounded inputs + service-key
 server-side (security gate cleared). Dockerfile + fly.toml + README included.
-Micro (remaining to wire):
-1. ✅ DB: `jobs` (hardened) + `transcripts`.
+Micro:
+1. ✅ DB: `jobs` (hardened) + `transcripts` (+ `structure`) + `generations.transcript_id`.
 2. ✅ Worker `ingest`/`transcribe` (faster-whisper, word timestamps + discard).
-3. **Next:** derive `structure` (hook window, beat timing, shot changes, CTA) via Gemini from the real transcript; feed it into `generate-blueprint` (replace the URL-string hallucination). Also a **voice-from-audio** upgrade for Brand-DNA (P2.5).
-4. Studio: paste link → enqueue ingest → Realtime progress → use real structure.
-5. ✅ Legal guardrail baked in: never persist source media; store transcript/metadata only.
-**Acceptance:** paste a TikTok, see a real retention map drawn from its actual transcript.
+3. ✅ Worker derives real `structure` (format, hook window, timestamped beats, CTA, WPM, why-it-works) via Gemini from the actual transcript (`structure.ts`).
+4. ✅ `ingest-reference` edge fn (JWT, rate-limited, SSRF allow-list) → enqueues; `generate-blueprint` takes optional `transcript_id` → builds from the REAL transcript + structure (drops the format-pattern caveat when real data is present).
+5. ✅ Studio "Read the actual video" toggle → ingest → progress → generate from transcript. **Additive** (default off) so the instant path keeps working pre-worker-deploy.
+6. ✅ Legal guardrail: never persist source media; store transcript/metadata only.
+7. **Next (P2.5):** **voice-from-audio** — move the DNA build onto the worker and synthesize the brand voice from the creator's own *spoken* transcripts (not just captions). Also a server-side cron to advance jobs (removes frontend-poll stall).
+**Panel-verified** (LLM/prompt · backend/data · ASR) + security-gated. **Acceptance:** with a worker running, paste a TikTok with "Read the actual video" → real retention map from its true transcript.
 
 ### Phase 4 — Gallery (with analytics — "why it worked")
 **Macro:** curated, niche-filtered, daily-refreshed viral feed → recreate without a link, **with the numbers and the reason it performed.**

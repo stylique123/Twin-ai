@@ -43,6 +43,50 @@ export interface GenerateInput {
   reference_url: string
   reference_note: string
   fidelity: 'close' | 'balanced' | 'loose'
+  // Optional: when the reference was analyzed by the worker (real transcript),
+  // pass its transcript_id so the blueprint is built from the actual video.
+  transcript_id?: string
+}
+
+// ---- Reference ingestion (worker: transcribe + derive real structure) ----
+
+export interface IngestJob {
+  id: string
+  status: 'queued' | 'running' | 'done' | 'failed'
+  result: { transcript_id?: string } | null
+  error: string | null
+}
+
+// Kick off real analysis of a reference URL. Returns the worker job id to watch.
+export async function ingestReference(url: string, platform?: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('ingest-reference', {
+    body: { url, platform },
+  })
+  if (error) {
+    let msg = (error as { message?: string }).message ?? 'Could not start analysis'
+    const ctx = (error as { context?: Response }).context
+    if (ctx?.json) {
+      try {
+        const body = await ctx.json()
+        if (body?.error) msg = body.error
+      } catch {
+        /* keep msg */
+      }
+    }
+    throw new Error(msg)
+  }
+  return (data as { job_id: string }).job_id
+}
+
+// Poll a worker job (RLS lets a user read only their own jobs).
+export async function getJob(id: string): Promise<IngestJob | null> {
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('id, status, result, error')
+    .eq('id', id)
+    .maybeSingle()
+  if (error || !data) return null
+  return data as IngestJob
 }
 
 export async function generateBlueprint(input: GenerateInput): Promise<Generation> {

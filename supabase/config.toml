@@ -8,3 +8,6 @@ verify_jwt = true
 
 [functions.dna-poll]
 verify_jwt = true
+
+[functions.ingest-reference]
+verify_jwt = true
