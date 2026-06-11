@@ -251,7 +251,7 @@ export async function synthesizeVoice(
 ): Promise<unknown> {
   const apiKey = Deno.env.get('GEMINI_API_KEY')
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
-  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro'
+  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
 
   const corpus = posts
     .slice(0, 25)
@@ -269,7 +269,7 @@ ${corpus || '(no captions available — infer a sensible starting voice from the
 Synthesize this creator's voice profile.`
 
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 25_000)
+  const timer = setTimeout(() => ctrl.abort(), 45_000)
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
@@ -281,8 +281,9 @@ Synthesize this creator's voice profile.`
           systemInstruction: { parts: [{ text: SYSTEM }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
+            // Thinking model: leave headroom for reasoning + the JSON profile.
             temperature: 0.7,
-            maxOutputTokens: 4096,
+            maxOutputTokens: 8192,
             responseMimeType: 'application/json',
             responseSchema: voiceProfileSchema,
           },

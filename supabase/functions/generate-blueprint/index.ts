@@ -94,12 +94,13 @@ Hard rules:
 
 // --- Provider boundary: swap this one function to change LLMs -------------
 async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
-  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro'
+  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
   // Hard timeout so a hung model call can't leave credits spent-but-not-refunded.
+  // Gemini 3.x is a thinking model — give it real wall-clock headroom.
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 25_000)
+  const timer = setTimeout(() => ctrl.abort(), 55_000)
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -110,8 +111,10 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
+          // Thinking model: budget must cover reasoning tokens + the large
+          // structured blueprint, or the JSON comes back truncated/empty.
           temperature: 0.9,
-          maxOutputTokens: 8192,
+          maxOutputTokens: 32768,
           responseMimeType: 'application/json',
           responseSchema: blueprintSchema,
         },
@@ -123,8 +126,9 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
       throw new Error(`Gemini ${res.status}: ${detail.slice(0, 300)}`)
     }
     const data = await res.json()
-    const text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('')
-    if (!text) throw new Error('Empty response from model')
+    const cand = data?.candidates?.[0]
+    const text = cand?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('')
+    if (!text) throw new Error(`Empty response (finishReason=${cand?.finishReason ?? 'none'})`)
     return text
   } finally {
     clearTimeout(timer)

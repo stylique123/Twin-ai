@@ -16,7 +16,7 @@ export async function geminiJson(
   timeoutMs = 30_000,
 ): Promise<unknown> {
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
-  const model = process.env.GEMINI_MODEL ?? 'gemini-3.1-pro'
+  const model = process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview'
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
@@ -30,8 +30,9 @@ export async function geminiJson(
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
+            // Thinking model: budget covers reasoning + the JSON output.
             temperature: 0.4,
-            maxOutputTokens: 2048,
+            maxOutputTokens: 8192,
             responseMimeType: 'application/json',
             responseSchema: schema,
           },
