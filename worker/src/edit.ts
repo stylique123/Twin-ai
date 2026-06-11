@@ -119,6 +119,79 @@ async function fileSize(p: string): Promise<number> {
   }
 }
 
+async function probeDuration(file: string): Promise<number> {
+  try {
+    const { stdout } = await run(
+      'ffprobe',
+      ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nw=1:nk=1', file],
+      30_000,
+    )
+    const d = parseFloat(stdout.trim())
+    return Number.isFinite(d) ? d : 0
+  } catch {
+    return 0
+  }
+}
+
+// Jump-cuts via ffmpeg silencedetect: find silent gaps, keep the spoken segments
+// (with a small margin so words aren't clipped), and concat them back together.
+// Returns true if it actually tightened the clip.
+async function jumpCutSilence(base: string, outFile: string): Promise<boolean> {
+  const duration = await probeDuration(base)
+  if (duration < 3) return false // too short to bother
+
+  // Detect silence: quieter than -30dB for >= 0.35s.
+  const { stderr } = await run(
+    'ffmpeg',
+    ['-i', base, '-af', 'silencedetect=noise=-30dB:d=0.35', '-f', 'null', '-'],
+    Math.max(120_000, duration * 2000),
+  )
+  const starts: number[] = []
+  const ends: number[] = []
+  for (const m of stderr.matchAll(/silence_start:\s*([0-9.]+)/g)) starts.push(parseFloat(m[1]))
+  for (const m of stderr.matchAll(/silence_end:\s*([0-9.]+)/g)) ends.push(parseFloat(m[1]))
+  if (!starts.length) return false
+
+  // Build silence intervals, shrink each by a 0.15s margin so we never clip speech.
+  const MARGIN = 0.15
+  const sil: [number, number][] = []
+  for (let i = 0; i < starts.length; i++) {
+    const s = starts[i] + MARGIN
+    const e = (i < ends.length ? ends[i] : duration) - MARGIN
+    if (e - s > 0.1) sil.push([s, e])
+  }
+  if (!sil.length) return false
+
+  // Keep segments = complement of silence within [0, duration].
+  const keep: [number, number][] = []
+  let cursor = 0
+  for (const [s, e] of sil) {
+    if (s > cursor + 0.1) keep.push([cursor, s])
+    cursor = Math.max(cursor, e)
+  }
+  if (duration - cursor > 0.1) keep.push([cursor, duration])
+  // Nothing meaningful to cut, or pathological segmentation.
+  if (keep.length < 2 || keep.length > 60) return false
+  const kept = keep.reduce((a, [s, e]) => a + (e - s), 0)
+  if (kept >= duration - 0.4) return false // <0.4s removed — not worth a re-encode
+
+  // filter_complex: trim each keep window for v+a, then concat.
+  const parts: string[] = []
+  keep.forEach(([s, e], i) => {
+    parts.push(`[0:v]trim=${s.toFixed(3)}:${e.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`)
+    parts.push(`[0:a]atrim=${s.toFixed(3)}:${e.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`)
+  })
+  const concatIn = keep.map((_, i) => `[v${i}][a${i}]`).join('')
+  const filter = `${parts.join(';')};${concatIn}concat=n=${keep.length}:v=1:a=1[v][a]`
+  await run(
+    'ffmpeg',
+    ['-y', '-i', base, '-filter_complex', filter, '-map', '[v]', '-map', '[a]',
+     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', outFile],
+    Math.max(240_000, duration * 3000),
+  )
+  return (await fileSize(outFile)) > 1024
+}
+
 export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promise<EditResult> {
   const captions = opts.captions !== false
   const dir = await mkdtemp(join(tmpdir(), 'twinai-edit-'))
@@ -129,18 +202,12 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
   const transcript = join(dir, 't.json')
   const out = join(dir, 'out.mp4')
   try {
-    // 1. Jump-cuts: remove silence/dead air. Keep a small margin so words aren't
-    //    clipped. Best-effort — if auto-editor can't (e.g. tiny/odd clip), fall
-    //    back to the original take so we always produce a render.
-    let jumpCut = true
+    // 1. Jump-cuts: remove silence/dead air via ffmpeg silencedetect. Best-effort
+    //    — if there's nothing worth cutting (or it errors), fall back to the
+    //    original take so we always produce a render.
+    let jumpCut = false
     try {
-      await run(
-        'auto-editor',
-        [takeFile, '--no-open', '--margin', '0.2sec',
-         '--video-codec', 'libx264', '--audio-codec', 'aac', '-o', cut],
-        Math.max(240_000, env.maxMediaSecs * 1500),
-      )
-      if ((await fileSize(cut)) < 1024) throw new Error('empty cut')
+      jumpCut = await jumpCutSilence(takeFile, cut)
     } catch {
       jumpCut = false
     }
