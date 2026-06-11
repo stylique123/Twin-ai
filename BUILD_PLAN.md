@@ -103,8 +103,9 @@ Micro:
 4. ✅ `ingest-reference` edge fn (JWT, rate-limited, SSRF allow-list) → enqueues; `generate-blueprint` takes optional `transcript_id` → builds from the REAL transcript + structure (drops the format-pattern caveat when real data is present).
 5. ✅ Studio "Read the actual video" toggle → ingest → progress → generate from transcript. **Additive** (default off) so the instant path keeps working pre-worker-deploy.
 6. ✅ Legal guardrail: never persist source media; store transcript/metadata only.
-7. **Next (P2.5):** **voice-from-audio** — move the DNA build onto the worker and synthesize the brand voice from the creator's own *spoken* transcripts (not just captions). Also a server-side cron to advance jobs (removes frontend-poll stall).
-**Panel-verified** (LLM/prompt · backend/data · ASR) + security-gated. **Acceptance:** with a worker running, paste a TikTok with "Read the actual video" → real retention map from its true transcript.
+7. ✅ **Voice-from-audio (P2.5) — shipped (additive):** after the caption voice goes `ready`, `dna-poll` enqueues a `build_voice` job with the creator's top-5 videos; the worker transcribes their **actual spoken audio** and re-synthesizes the voice (`worker/voice.ts`), upgrading `brand_voices.profile` (`voiced_from_audio`). Caption voice stays usable with no worker; the audio upgrade lands when one runs. Closes premortem #2 (shallow voice).
+8. **Still open (small):** server-side **pg_cron** advance of `build_dna` (removes frontend-poll stall) — a deploy-time step (pg_cron + pg_net → `dna-poll`), see runbook.
+**Panel-verified** (LLM/prompt · backend/data · ASR) + security-gated. **Acceptance:** with a worker running, (a) paste a TikTok + "Read the actual video" → real retention map from its true transcript; (b) a fresh DNA scan's voice sharpens from captions → the creator's real spoken voice within a couple minutes.
 
 ### Phase 4 — Gallery (with analytics — "why it worked")
 **Macro:** curated, niche-filtered, daily-refreshed viral feed → recreate without a link, **with the numbers and the reason it performed.**

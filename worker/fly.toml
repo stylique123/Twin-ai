@@ -15,7 +15,7 @@ primary_region = "iad"
   dockerfile = "Dockerfile"
 
 [env]
-  WORKER_JOB_TYPES = "ingest,transcribe"
+  WORKER_JOB_TYPES = "ingest,transcribe,build_voice"
   WHISPER_MODEL = "small"
   WHISPER_DEVICE = "cpu"
 

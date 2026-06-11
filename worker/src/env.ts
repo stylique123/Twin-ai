@@ -12,7 +12,7 @@ export const env = {
   geminiKey: process.env.GEMINI_API_KEY ?? '',
 
   // Which job types this worker process handles.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe').split(',').map((s) => s.trim()),
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe,build_voice').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   visibilitySecs: Number(process.env.WORKER_VISIBILITY_SECS ?? '900'),

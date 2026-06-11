@@ -14,6 +14,7 @@ import {
   cors,
   extractPosts,
   extractProfileBio,
+  extractVideoUrls,
   json,
   pollApifyRun,
   synthesizeVoice,
@@ -107,6 +108,24 @@ Deno.serve(async (req: Request) => {
       .from('jobs')
       .update({ status: 'done', result: { posts_used: posts.length } })
       .eq('id', job.id)
+
+    // The caption voice is live now. Enqueue an audio upgrade: the worker
+    // transcribes the creator's top videos and re-synthesizes from their actual
+    // SPOKEN voice. Best-effort — if no worker is running, the caption voice
+    // stays usable and this job simply waits.
+    try {
+      const urls = extractVideoUrls(items ?? [], 5)
+      if (urls.length) {
+        await admin.from('jobs').insert({
+          owner_id: user.id,
+          type: 'build_voice',
+          status: 'queued',
+          payload: { brand_voice_id: voiceId, handle: voice.handle, platform: voice.platform, urls },
+        })
+      }
+    } catch (e) {
+      console.error('dna-poll: could not enqueue build_voice', e)
+    }
 
     return json({ status: 'ready', profile })
   } catch (err) {

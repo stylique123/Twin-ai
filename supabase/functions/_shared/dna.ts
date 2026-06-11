@@ -173,6 +173,24 @@ export function extractPosts(items: Record<string, unknown>[]): PostSample[] {
     .filter((p) => p.text.length > 0)
 }
 
+// Pull the top video URLs (highest reach first) so the worker can transcribe the
+// creator's ACTUAL spoken audio and upgrade the voice beyond captions.
+export function extractVideoUrls(items: Record<string, unknown>[], max = 5): string[] {
+  const refs = (items ?? [])
+    .map((it) => ({
+      url: pick(it, ['webVideoUrl', 'videoUrl', 'url', 'postUrl', 'video.url']),
+      reach: pickNum(it, ['playCount', 'videoViewCount', 'viewCount', 'views', 'diggCount', 'likesCount', 'stats.playCount']),
+    }))
+    .filter((r) => /^https:\/\//i.test(r.url))
+  // De-dup, sort by reach desc, take top N.
+  const seen = new Set<string>()
+  return refs
+    .sort((a, b) => b.reach - a.reach)
+    .filter((r) => (seen.has(r.url) ? false : (seen.add(r.url), true)))
+    .slice(0, max)
+    .map((r) => r.url)
+}
+
 // The creator's profile bio/nickname is some of the richest voice signal we get —
 // most actors stamp it on every item (TikTok: authorMeta.*, IG: ownerFullName/biography).
 export function extractProfileBio(items: Record<string, unknown>[]): string {
