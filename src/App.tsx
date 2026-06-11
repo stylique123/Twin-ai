@@ -2,6 +2,7 @@ import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from './context/AuthContext'
 import { Nav } from './components/Nav'
+import { AppShell } from './components/AppShell'
 import { EASE } from './components/motion'
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
@@ -36,28 +37,39 @@ function Page({ children }: { children: React.ReactNode }) {
   )
 }
 
-function AnimatedRoutes() {
-  const location = useLocation()
-  return (
-    <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<Page><Landing /></Page>} />
-        <Route path="/auth" element={<Page><Auth /></Page>} />
-        <Route path="/onboarding" element={<Page><Onboarding /></Page>} />
-        <Route path="/app" element={<Protected><Page><Studio /></Page></Protected>} />
-        <Route path="/result/:id" element={<Protected><Page><Result /></Page></Protected>} />
-        <Route path="/history" element={<Protected><Page><History /></Page></Protected>} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AnimatePresence>
-  )
-}
-
+// Two distinct worlds: the marketing site (Nav + footer chrome) and the app
+// (sidebar AppShell). They never mix — that's what makes the dashboard feel
+// like a product instead of a page.
 export default function App() {
+  const location = useLocation()
+  const inApp =
+    location.pathname.startsWith('/app') ||
+    location.pathname.startsWith('/history') ||
+    location.pathname.startsWith('/result')
+
   return (
     <div className="min-h-screen">
-      <Nav />
-      <AnimatedRoutes />
+      {!inApp && <Nav />}
+      <AnimatePresence mode="wait">
+        <Routes location={location} key={inApp ? 'app' : location.pathname}>
+          <Route path="/" element={<Page><Landing /></Page>} />
+          <Route path="/auth" element={<Page><Auth /></Page>} />
+          <Route path="/onboarding" element={<Page><Onboarding /></Page>} />
+          <Route
+            path="/app"
+            element={<Protected><AppShell><Page><Studio /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/result/:id"
+            element={<Protected><AppShell><Page><Result /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/history"
+            element={<Protected><AppShell><Page><History /></Page></AppShell></Protected>}
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </AnimatePresence>
     </div>
   )
 }

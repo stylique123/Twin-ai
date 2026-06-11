@@ -1,16 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, PenLine } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { markOnboarded, pollDna, saveDNA, saveVoiceProfile, startDna } from '../lib/api'
 import type { CreatorDNA, Platform, VoiceProfile } from '../lib/types'
-import { GradientBar } from '../components/GradientBar'
+import { Aurora } from '../components/Aurora'
+import { EASE } from '../components/motion'
+import { cn } from '../lib/cn'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
 
 // Per-platform placeholder so the input matches the source they picked.
 const PLACEHOLDER: Record<Platform, string> = {
   tiktok: '@yourhandle  or  https://tiktok.com/@yourhandle',
-  instagram: '@yourhandle  or  https://instagram.com/yourhandle',
+  instagram: '@yourhandle  or  https://instagram.com/@yourhandle',
   youtube: '@yourchannel  or  https://youtube.com/@yourchannel',
   other: '@yourhandle',
 }
@@ -28,16 +32,35 @@ export default function Onboarding() {
   }
 
   return (
-    <main className="mx-auto max-w-xl px-5 py-16">
-      <div className="glass p-8">
-        <GradientBar />
-        {mode === 'handle' && <HandleStep onBuilding={() => setMode('building')} onManual={() => setMode('manual')} />}
-        {mode === 'building' && (
-          <BuildingStep onReady={() => setMode('confirm')} onManual={() => setMode('manual')} />
-        )}
-        {mode === 'confirm' && <ConfirmStep onDone={() => finish(refreshProfile, navigate)} />}
-        {mode === 'manual' && <ManualQuiz onBack={() => setMode('handle')} />}
-      </div>
+    <main className="relative grid min-h-[calc(100vh-64px)] place-items-center overflow-clip px-5 py-12">
+      <Aurora />
+      <motion.div
+        initial={{ opacity: 0, y: 24, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.7, ease: EASE }}
+        className="relative w-full max-w-xl"
+      >
+        <div className="glass overflow-hidden rounded-panel p-8 sm:p-9">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={mode}
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -24 }}
+              transition={{ duration: 0.35, ease: EASE }}
+            >
+              {mode === 'handle' && (
+                <HandleStep onBuilding={() => setMode('building')} onManual={() => setMode('manual')} />
+              )}
+              {mode === 'building' && (
+                <BuildingStep onReady={() => setMode('confirm')} onManual={() => setMode('manual')} />
+              )}
+              {mode === 'confirm' && <ConfirmStep onDone={() => finish(refreshProfile, navigate)} />}
+              {mode === 'manual' && <ManualQuiz onBack={() => setMode('handle')} />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+      </motion.div>
     </main>
   )
 }
@@ -77,11 +100,14 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
 
   return (
     <>
-      <p className="eyebrow mt-6">Your brand voice · the one-tap way</p>
-      <h1 className="mt-4 font-display text-2xl">
+      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft">
+        <AtSign className="h-5 w-5 text-cream" />
+      </span>
+      <p className="eyebrow mt-5">Your brand voice · the one-tap way</p>
+      <h1 className="mt-3 font-display text-3xl leading-tight">
         Paste your handle. We read how <span className="gradient-text">you</span> sound.
       </h1>
-      <p className="mt-2 text-sand">
+      <p className="mt-2.5 text-sand">
         TwinAI reads your recent posts and learns your voice — so every script sounds like you, not a robot.
       </p>
 
@@ -91,7 +117,10 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
             key={p}
             type="button"
             onClick={() => setPlatform(p)}
-            className={`chip ${platform === p ? 'border-coral text-cream' : ''}`}
+            className={cn(
+              'chip capitalize transition-all duration-200',
+              platform === p && 'border-coral/60 bg-coral/10 text-cream',
+            )}
           >
             {p}
           </button>
@@ -106,14 +135,33 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
         onKeyDown={(e) => e.key === 'Enter' && go()}
       />
 
-      {err && <p className="mt-3 text-sm text-coral">{err}</p>}
+      <AnimatePresence>
+        {err && (
+          <motion.p
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral"
+          >
+            {err}
+          </motion.p>
+        )}
+      </AnimatePresence>
 
-      <div className="mt-8 flex items-center justify-between">
+      <div className="mt-8 flex items-center justify-between gap-3">
         <button className="btn-ghost" onClick={onManual} disabled={busy}>
-          Set it up manually
+          <PenLine className="h-4 w-4" /> Set it up manually
         </button>
-        <button className="btn-primary" onClick={go} disabled={busy}>
-          {busy ? 'Starting…' : 'Build my voice'}
+        <button className="btn-gradient" onClick={go} disabled={busy}>
+          {busy ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Starting…
+            </>
+          ) : (
+            <>
+              Build my voice <ArrowRight className="h-4 w-4" />
+            </>
+          )}
         </button>
       </div>
     </>
@@ -121,9 +169,19 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
 }
 
 // --- Step 2: live progress while the scan runs -----------------------------
+const SCAN_STAGES = ['Fetching your posts', 'Reading captions & hooks', 'Synthesizing your voice']
+
 function BuildingStep({ onReady, onManual }: { onReady: () => void; onManual: () => void }) {
   const [err, setErr] = useState<string | null>(null)
+  const [stage, setStage] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Advance the visual stage on a gentle clock so the wait feels alive even
+  // though the backend reports only building/ready/failed.
+  useEffect(() => {
+    const t = setInterval(() => setStage((s) => Math.min(s + 1, SCAN_STAGES.length - 1)), 9000)
+    return () => clearInterval(t)
+  }, [])
 
   useEffect(() => {
     if (!activeVoiceId) {
@@ -159,24 +217,52 @@ function BuildingStep({ onReady, onManual }: { onReady: () => void; onManual: ()
 
   return (
     <>
-      <p className="eyebrow mt-6">Reading your voice</p>
-      <h1 className="mt-4 font-display text-2xl">Studying your recent posts…</h1>
-      <p className="mt-2 text-sand">
+      <span className="relative grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft">
+        <span className="absolute inset-0 animate-ping rounded-2xl bg-coral/20" />
+        <Sparkles className="relative h-5 w-5 text-cream" />
+      </span>
+      <p className="eyebrow mt-5">Reading your voice</p>
+      <h1 className="mt-3 font-display text-3xl">Studying your recent posts…</h1>
+      <p className="mt-2.5 text-sand">
         Pulling your hooks, pacing and signature phrases. This usually takes under a minute.
       </p>
 
-      <div className="mt-6 space-y-3">
-        {['Fetching your posts', 'Reading captions & hooks', 'Synthesizing your voice'].map((s) => (
-          <div key={s} className="flex items-center gap-3 text-sand">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-signature" />
-            {s}
-          </div>
-        ))}
+      <div className="mt-7 space-y-3">
+        {SCAN_STAGES.map((s, i) => {
+          const state = i < stage ? 'done' : i === stage ? 'active' : 'todo'
+          return (
+            <div
+              key={s}
+              className={cn(
+                'flex items-center gap-3 rounded-card border p-3.5 transition-all duration-500',
+                state === 'active' && 'border-coral/40 bg-coral/5 text-cream',
+                state === 'done' && 'border-white/8 bg-white/[0.02] text-sand',
+                state === 'todo' && 'border-white/8 bg-white/[0.02] text-stone opacity-60',
+              )}
+            >
+              <span
+                className={cn(
+                  'grid h-6 w-6 shrink-0 place-items-center rounded-full',
+                  state === 'done' ? 'bg-teal/20' : 'bg-white/5',
+                )}
+              >
+                {state === 'done' ? (
+                  <Check className="h-3.5 w-3.5 text-teal" />
+                ) : state === 'active' ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-coral" />
+                ) : (
+                  <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+                )}
+              </span>
+              {s}
+            </div>
+          )
+        })}
       </div>
 
       {err && (
         <div className="mt-6">
-          <p className="text-sm text-coral">{err}</p>
+          <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
           <button className="btn-ghost mt-3" onClick={onManual}>
             Set up manually instead
           </button>
@@ -195,7 +281,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
   if (!vp) {
     return (
       <>
-        <p className="eyebrow mt-6">Almost there</p>
+        <p className="eyebrow">Almost there</p>
         <p className="mt-4 text-sand">We couldn’t load your voice. Please set it up manually.</p>
       </>
     )
@@ -218,8 +304,11 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
 
   return (
     <>
-      <p className="eyebrow mt-6">This is your voice · tweak anything</p>
-      <h1 className="mt-3 font-display text-2xl">{vp.summary || 'Here’s how you sound'}</h1>
+      <span className="grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft">
+        <Check className="h-5 w-5 text-teal" />
+      </span>
+      <p className="eyebrow mt-5">This is your voice · tweak anything</p>
+      <h1 className="mt-3 font-display text-2xl leading-snug">{vp.summary || 'Here’s how you sound'}</h1>
 
       <div className="mt-6 space-y-4">
         <Labeled label="Niche">
@@ -242,11 +331,19 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
         <ChipList label="Don’t" items={vp.donts} onChange={(v) => setList('donts', v)} />
       </div>
 
-      {err && <p className="mt-3 text-sm text-coral">{err}</p>}
+      {err && <p className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
       <div className="mt-8 flex justify-end">
-        <button className="btn-primary" onClick={confirm} disabled={busy}>
-          {busy ? 'Saving…' : 'This is me — enter the studio'}
+        <button className="btn-gradient" onClick={confirm} disabled={busy}>
+          {busy ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" /> Saving…
+            </>
+          ) : (
+            <>
+              This is me — enter the studio <ArrowRight className="h-4 w-4" />
+            </>
+          )}
         </button>
       </div>
     </>
@@ -278,7 +375,7 @@ function ChipList({ label, items, onChange }: { label: string; items: string[]; 
           <button
             key={it}
             type="button"
-            className="chip border-coral/60 text-cream"
+            className="chip border-coral/50 text-cream transition-colors hover:border-coral"
             onClick={() => onChange(items.filter((x) => x !== it))}
             title="Remove"
           >
@@ -380,7 +477,7 @@ function ManualQuiz({ onBack }: { onBack: () => void }) {
                     platforms: on ? dna.platforms.filter((x) => x !== p) : [...dna.platforms, p],
                   })
                 }
-                className={`chip ${on ? 'border-coral text-cream' : ''}`}
+                className={cn('chip capitalize transition-all duration-200', on && 'border-coral/60 bg-coral/10 text-cream')}
               >
                 {p}
               </button>
@@ -406,20 +503,36 @@ function ManualQuiz({ onBack }: { onBack: () => void }) {
 
   return (
     <>
-      <p className="eyebrow mt-6">Set up your voice manually · 90 seconds</p>
-      <div className="mt-4 flex gap-1">
+      <p className="eyebrow">Set up your voice manually · 90 seconds</p>
+      <div className="mt-4 flex gap-1.5">
         {steps.map((_, i) => (
-          <div key={i} className={`h-1 flex-1 rounded-full ${i <= step ? 'bg-signature' : 'bg-white/10'}`} />
+          <motion.div
+            key={i}
+            className={cn('h-1 flex-1 rounded-full', i <= step ? 'bg-signature' : 'bg-white/10')}
+            initial={false}
+            animate={{ opacity: i <= step ? 1 : 0.6 }}
+          />
         ))}
       </div>
-      <h1 className="mt-6 font-display text-2xl">{steps[step].label}</h1>
-      <div className="mt-4">{steps[step].field}</div>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={step}
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -20 }}
+          transition={{ duration: 0.3, ease: EASE }}
+        >
+          <h1 className="mt-6 font-display text-2xl">{steps[step].label}</h1>
+          <div className="mt-4">{steps[step].field}</div>
+        </motion.div>
+      </AnimatePresence>
       <div className="mt-8 flex justify-between">
         <button className="btn-ghost" onClick={() => (step === 0 ? onBack() : setStep(step - 1))}>
-          Back
+          <ArrowLeft className="h-4 w-4" /> Back
         </button>
-        <button className="btn-primary" onClick={next} disabled={busy}>
+        <button className="btn-gradient" onClick={next} disabled={busy}>
           {busy ? 'Saving…' : last ? 'Enter the studio' : 'Next'}
+          {!busy && <ArrowRight className="h-4 w-4" />}
         </button>
       </div>
     </>

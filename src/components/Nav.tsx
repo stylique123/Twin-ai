@@ -1,16 +1,23 @@
 import { useEffect, useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, Sparkles } from 'lucide-react'
+import { Menu, X, ArrowRight } from 'lucide-react'
 import { Logo } from './Logo'
 import { useAuth } from '../context/AuthContext'
-import { videosFromCredits } from '../lib/brand'
 import { cn } from '../lib/cn'
 import { EASE } from './motion'
 
+const LINKS = [
+  { href: '/#how', label: 'How it works' },
+  { href: '/#pipeline', label: 'What you get' },
+  { href: '/#pricing', label: 'Pricing' },
+  { href: '/#faq', label: 'FAQ' },
+]
+
+// Marketing-site navigation ONLY. The dashboard has its own AppShell sidebar —
+// app links and credit counts never leak onto the landing page.
 export function Nav() {
-  const { session, profile, signOut } = useAuth()
-  const navigate = useNavigate()
+  const { session } = useAuth()
   const { pathname } = useLocation()
   const [scrolled, setScrolled] = useState(false)
   const [open, setOpen] = useState(false)
@@ -35,37 +42,26 @@ export function Nav() {
       )}
     >
       <div className="mx-auto flex max-w-content items-center justify-between px-5 py-3.5">
-        <Link to={session ? '/app' : '/'} className="transition-opacity hover:opacity-90">
+        <Link to="/" className="transition-opacity hover:opacity-90">
           <Logo />
         </Link>
 
         <nav className="hidden items-center gap-1.5 text-sm md:flex">
+          {LINKS.map((l) => (
+            <a key={l.href} href={l.href} className="rounded-lg px-3 py-2 text-sand transition-colors hover:text-cream">
+              {l.label}
+            </a>
+          ))}
           {session ? (
-            <>
-              {profile && (
-                <span className="chip mr-1" title="Recreations left">
-                  <Sparkles className="h-3.5 w-3.5 text-amber" />
-                  {videosFromCredits(profile.credits)} left
-                </span>
-              )}
-              <NavLink to="/app" active={pathname === '/app'}>Studio</NavLink>
-              <NavLink to="/history" active={pathname === '/history'}>History</NavLink>
-              <button
-                className="btn-ghost ml-1 py-2"
-                onClick={async () => {
-                  await signOut()
-                  navigate('/')
-                }}
-              >
-                Sign out
-              </button>
-            </>
+            <Link to="/app" className="btn-gradient ml-2 py-2">
+              Open studio <ArrowRight className="h-4 w-4" />
+            </Link>
           ) : (
             <>
-              <NavAnchor href="/#how">How it works</NavAnchor>
-              <NavAnchor href="/#features">Features</NavAnchor>
-              <NavAnchor href="/#pricing">Pricing</NavAnchor>
-              <Link to="/auth" className="btn-gradient ml-2 py-2">Start free</Link>
+              <Link to="/auth" className="rounded-lg px-3 py-2 text-sand transition-colors hover:text-cream">
+                Sign in
+              </Link>
+              <Link to="/auth" className="btn-gradient ml-1 py-2">Start free</Link>
             </>
           )}
         </nav>
@@ -89,25 +85,16 @@ export function Nav() {
             className="overflow-hidden border-t border-white/10 bg-ink/95 backdrop-blur-xl md:hidden"
           >
             <div className="flex flex-col gap-1 px-5 py-4 text-sm">
+              {LINKS.map((l) => (
+                <a key={l.href} href={l.href} className="rounded-lg px-3 py-2.5 text-sand hover:bg-white/5">
+                  {l.label}
+                </a>
+              ))}
               {session ? (
-                <>
-                  <MobileLink to="/app">Studio</MobileLink>
-                  <MobileLink to="/history">History</MobileLink>
-                  <button
-                    className="btn-ghost mt-2"
-                    onClick={async () => {
-                      await signOut()
-                      navigate('/')
-                    }}
-                  >
-                    Sign out
-                  </button>
-                </>
+                <Link to="/app" className="btn-gradient mt-2">Open studio</Link>
               ) : (
                 <>
-                  <a href="/#how" className="rounded-lg px-3 py-2.5 text-sand hover:bg-white/5">How it works</a>
-                  <a href="/#features" className="rounded-lg px-3 py-2.5 text-sand hover:bg-white/5">Features</a>
-                  <a href="/#pricing" className="rounded-lg px-3 py-2.5 text-sand hover:bg-white/5">Pricing</a>
+                  <Link to="/auth" className="rounded-lg px-3 py-2.5 text-sand hover:bg-white/5">Sign in</Link>
                   <Link to="/auth" className="btn-gradient mt-2">Start free</Link>
                 </>
               )}
@@ -116,42 +103,5 @@ export function Nav() {
         )}
       </AnimatePresence>
     </motion.header>
-  )
-}
-
-function NavLink({ to, active, children }: { to: string; active?: boolean; children: React.ReactNode }) {
-  return (
-    <Link
-      to={to}
-      className={cn(
-        'relative rounded-lg px-3 py-2 transition-colors',
-        active ? 'text-cream' : 'text-sand hover:text-cream',
-      )}
-    >
-      {children}
-      {active && (
-        <motion.span
-          layoutId="nav-underline"
-          className="absolute inset-x-3 -bottom-px h-px bg-signature"
-          transition={{ duration: 0.3, ease: EASE }}
-        />
-      )}
-    </Link>
-  )
-}
-
-function NavAnchor({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <a href={href} className="rounded-lg px-3 py-2 text-sand transition-colors hover:text-cream">
-      {children}
-    </a>
-  )
-}
-
-function MobileLink({ to, children }: { to: string; children: React.ReactNode }) {
-  return (
-    <Link to={to} className="rounded-lg px-3 py-2.5 text-sand hover:bg-white/5">
-      {children}
-    </Link>
   )
 }
