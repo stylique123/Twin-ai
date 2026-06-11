@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Wand2, LibraryBig, LayoutGrid, Mic2, Clapperboard, CalendarClock, Sparkles, LogOut, Menu, X,
+  Wand2, LibraryBig, LayoutGrid, Clapperboard, CalendarClock, Sparkles, LogOut, Menu, X,
 } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { useAuth } from '../context/AuthContext'
@@ -19,7 +19,6 @@ const NAV = [
 // Roadmap items live in the nav so the product feels bigger than today —
 // honestly labeled "soon", never clickable into a dead end.
 const SOON = [
-  { label: 'Record', icon: Mic2 },
   { label: 'Auto-edit', icon: Clapperboard },
   { label: 'Publish', icon: CalendarClock },
 ]

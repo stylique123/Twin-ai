@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
-  Captions, ListChecks, Wand2, Timer, Send, Loader2,
+  Captions, ListChecks, Wand2, Timer, Send, Loader2, Video,
 } from 'lucide-react'
 import { getGeneration } from '../lib/api'
 import type { Generation } from '../lib/types'
@@ -46,9 +46,14 @@ export default function Result() {
             <Link to="/history" className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-cream">
               <ArrowLeft className="h-4 w-4" /> History
             </Link>
-            <Link to="/app" className="btn-gradient py-2 text-sm">
-              <Wand2 className="h-4 w-4" /> New blueprint
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link to={`/record/${gen.id}`} className="btn-ghost py-2 text-sm">
+                <Video className="h-4 w-4" /> Record this
+              </Link>
+              <Link to="/app" className="btn-gradient py-2 text-sm">
+                <Wand2 className="h-4 w-4" /> New blueprint
+              </Link>
+            </div>
           </div>
 
           <motion.div

@@ -11,6 +11,7 @@ import Studio from './pages/Studio'
 import Result from './pages/Result'
 import History from './pages/History'
 import Gallery from './pages/Gallery'
+import Record from './pages/Record'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -47,6 +48,7 @@ export default function App() {
     location.pathname.startsWith('/app') ||
     location.pathname.startsWith('/history') ||
     location.pathname.startsWith('/gallery') ||
+    location.pathname.startsWith('/record') ||
     location.pathname.startsWith('/result')
 
   return (
@@ -64,6 +66,10 @@ export default function App() {
           <Route
             path="/result/:id"
             element={<Protected><AppShell><Page><Result /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/record/:id"
+            element={<Protected><AppShell><Page><Record /></Page></AppShell></Protected>}
           />
           <Route
             path="/gallery"
