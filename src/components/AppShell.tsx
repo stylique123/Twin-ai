@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Wand2, LibraryBig, Mic2, Clapperboard, CalendarClock, Sparkles, LogOut, Menu, X,
+  Wand2, LibraryBig, LayoutGrid, Mic2, Clapperboard, CalendarClock, Sparkles, LogOut, Menu, X,
 } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { useAuth } from '../context/AuthContext'
@@ -12,6 +12,7 @@ import { EASE } from './motion'
 
 const NAV = [
   { to: '/app', label: 'Studio', icon: Wand2, note: 'Make a blueprint' },
+  { to: '/gallery', label: 'Gallery', icon: LayoutGrid, note: 'Formats to remix' },
   { to: '/history', label: 'Library', icon: LibraryBig, note: 'All your blueprints' },
 ]
 

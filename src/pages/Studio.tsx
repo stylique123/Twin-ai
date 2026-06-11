@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -18,8 +18,10 @@ const FIDELITY = [
 export default function Studio() {
   const { profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
-  const [url, setUrl] = useState('')
-  const [note, setNote] = useState('')
+  const [params] = useSearchParams()
+  // A "Remix" click from the Gallery deep-links here with ?ref= prefilled.
+  const [url, setUrl] = useState(() => params.get('ref') ?? '')
+  const [note, setNote] = useState(() => params.get('note') ?? '')
   const [fidelity, setFidelity] = useState<'close' | 'balanced' | 'loose'>('balanced')
   const [deepRead, setDeepRead] = useState(false)
   const [busy, setBusy] = useState(false)
