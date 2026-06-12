@@ -58,8 +58,33 @@ function assTime(s: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${String(c).padStart(2, '0')}`
 }
 
-// Single-layer captions: 3-word groups, the active word pops (amber + 116% scale).
-// One Dialogue per word window so exactly ONE caption shows at a time (no overlap).
+// Keyword → emoji. When a caption group mentions one of these, we append the
+// emoji so captions feel alive (the modern viral look). One emoji per group max.
+const EMOJI: [RegExp, string][] = [
+  [/\b(money|cash|dollar|dollars|rich|profit|paid|wealth|income|revenue)\b/i, '💰'],
+  [/\b(fire|lit|hot|insane|crazy|wild|best|amazing)\b/i, '🔥'],
+  [/\b(love|heart|adore)\b/i, '❤️'],
+  [/\b(time|clock|fast|quick|now|today|minute|minutes|hour|hours)\b/i, '⏰'],
+  [/\b(idea|ideas|think|smart|genius|brain|mind|learn)\b/i, '💡'],
+  [/\b(grow|growth|up|increase|rise|scale|more|bigger)\b/i, '📈'],
+  [/\b(win|winner|won|success|succeed|goal|goals)\b/i, '🏆'],
+  [/\b(stop|don't|dont|no|never|avoid|wrong|bad)\b/i, '🚫'],
+  [/\b(work|hustle|grind|effort|hard|push|strong)\b/i, '💪'],
+  [/\b(secret|secrets|hidden|nobody|truth|real)\b/i, '🤫'],
+  [/\b(warning|careful|mistake|danger|risk|fail)\b/i, '⚠️'],
+  [/\b(viral|views|blow|explode|reach|million)\b/i, '🚀'],
+  [/\b(food|eat|delicious|tasty|cook|recipe)\b/i, '😋'],
+  [/\b(boom|done|finished|finally|yes)\b/i, '💥'],
+]
+function emojiFor(line: Word[]): string {
+  const text = line.map((w) => w.w).join(' ')
+  for (const [re, e] of EMOJI) if (re.test(text)) return e
+  return ''
+}
+
+// Single-layer captions: 3-word groups, the active word pops (amber + animated
+// scale), optional emoji. One Dialogue per word window so exactly ONE caption
+// shows at a time (no overlap).
 function buildAss(words: Word[]): string {
   const WHITE = '&HFFFFFF&'
   const POP = '&H23A6F5&' // amber (BGR)
@@ -72,7 +97,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap, Arial, 70, ${WHITE}, &H00000000&, &HA0000000&, 1, 0, 1, 5, 1, 2, 90, 90, 470, 1
+Style: Cap, DejaVu Sans, 70, ${WHITE}, &H00000000&, &HA0000000&, 1, 0, 1, 5, 1, 2, 90, 90, 470, 1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -93,6 +118,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
   const events: string[] = []
   for (const line of lines) {
+    const emoji = emojiFor(line)
     for (let i = 0; i < line.length; i++) {
       const start = line[i].start
       const end = i + 1 < line.length ? line[i + 1].start : line[i].end
@@ -100,12 +126,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       const text = line
         .map((w, j) =>
           j === i
-            ? `{\\fscx116\\fscy116\\b1\\c${POP}}${esc(w.w)}{\\r}`
+            // active word: amber + a quick scale "pop" (animated 100→122%)
+            ? `{\\b1\\c${POP}\\fscx100\\fscy100\\t(0,90,\\fscx122\\fscy122)}${esc(w.w)}{\\r}`
             : esc(w.w),
         )
         .join(' ')
-      // a tiny grow-in on the whole group keeps it lively without overlap
-      events.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Cap,,0,0,0,,{\\fad(40,0)}${text}`)
+      const tail = emoji ? ` ${emoji}` : ''
+      events.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Cap,,0,0,0,,{\\fad(40,0)}${text}${tail}`)
     }
   }
   return head + events.join('\n') + '\n'

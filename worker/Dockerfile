@@ -7,9 +7,12 @@ FROM node:22-bookworm-slim
 # it's on PATH. Pull the static Deno binary from the official image.
 COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
 
-# System deps: ffmpeg (audio extract), python3 + pip (faster-whisper), ca-certs.
+# System deps: ffmpeg (audio extract + caption burn), python3 + pip
+# (faster-whisper), ca-certs, and color-emoji + a clean bold font for captions.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
+      fonts-noto-color-emoji fonts-dejavu-core fontconfig \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 # yt-dlp + faster-whisper. Jump-cuts are done with ffmpeg's own silencedetect
