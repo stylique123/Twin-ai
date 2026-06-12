@@ -46,6 +46,7 @@ export interface EditResult {
 
 export interface EditOptions {
   captions?: boolean // default true; skip when the source is already captioned
+  energy?: 'high' | 'calm' // 'high' → jump-zoom punches on cuts; 'calm' → clean cuts
 }
 
 // ASS time h:mm:ss.cs
@@ -163,7 +164,7 @@ async function probeDuration(file: string): Promise<number> {
 // Jump-cuts via ffmpeg silencedetect: find silent gaps, keep the spoken segments
 // (with a small margin so words aren't clipped), and concat them back together.
 // Returns true if it actually tightened the clip.
-async function jumpCutSilence(base: string, outFile: string): Promise<boolean> {
+async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'calm' = 'calm'): Promise<boolean> {
   const duration = await probeDuration(base)
   if (duration < 3) return false // too short to bother
 
@@ -202,10 +203,16 @@ async function jumpCutSilence(base: string, outFile: string): Promise<boolean> {
   const kept = keep.reduce((a, [s, e]) => a + (e - s), 0)
   if (kept >= duration - 0.4) return false // <0.4s removed — not worth a re-encode
 
-  // filter_complex: trim each keep window for v+a, then concat.
+  // filter_complex: trim each keep window for v+a, normalize to 1080x1920, then
+  // concat. On 'high' energy, alternate a +8% zoom per segment so every cut lands
+  // a subtle jump-zoom "punch" (the high-energy talking-head look); 'calm' keeps
+  // clean, consistent framing.
+  const norm = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
+  const punch = 'scale=1166:2074:force_original_aspect_ratio=increase,crop=1080:1920'
   const parts: string[] = []
   keep.forEach(([s, e], i) => {
-    parts.push(`[0:v]trim=${s.toFixed(3)}:${e.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`)
+    const vf = energy === 'high' && i % 2 === 1 ? punch : norm
+    parts.push(`[0:v]trim=${s.toFixed(3)}:${e.toFixed(3)},setpts=PTS-STARTPTS,${vf}[v${i}]`)
     parts.push(`[0:a]atrim=${s.toFixed(3)}:${e.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`)
   })
   const concatIn = keep.map((_, i) => `[v${i}][a${i}]`).join('')
@@ -234,7 +241,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     //    original take so we always produce a render.
     let jumpCut = false
     try {
-      jumpCut = await jumpCutSilence(takeFile, cut)
+      jumpCut = await jumpCutSilence(takeFile, cut, opts.energy ?? 'calm')
     } catch {
       jumpCut = false
     }

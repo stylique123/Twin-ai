@@ -23,8 +23,33 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
   try {
     await downloadObject('takes', takePath, localTake)
 
+    // Smart decision: read the user's brand-DNA pacing + the reference's format
+    // and auto-pick the edit energy (high → jump-zoom punches; calm → clean cuts).
+    let energy: 'high' | 'calm' = 'calm'
+    if (payload.generation_id) {
+      try {
+        const { data: gen } = await db
+          .from('generations')
+          .select('blueprint, brand_voice_id')
+          .eq('id', payload.generation_id)
+          .maybeSingle()
+        const fmt = (gen?.blueprint as { reference_read?: { format_label?: string } } | null)?.reference_read?.format_label ?? ''
+        let pacing = ''
+        if (gen?.brand_voice_id) {
+          const { data: bv } = await db.from('brand_voices').select('profile').eq('id', gen.brand_voice_id).maybeSingle()
+          pacing = (bv?.profile as { pacing?: string } | null)?.pacing ?? ''
+        }
+        if (/fast|quick|rapid|punch|energetic|aggressive|hype|high.?energy|snappy|no dead air/i.test(`${pacing} ${fmt}`)) {
+          energy = 'high'
+        }
+      } catch {
+        /* fall back to calm */
+      }
+    }
+
     const { outFile, durationSec, words, jumpCut } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
+      energy,
     })
     renderFile = outFile
 
