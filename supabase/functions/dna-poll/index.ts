@@ -95,8 +95,17 @@ Deno.serve(async (req: Request) => {
     if (status === 'RUNNING') return json({ status: 'building' })
     if (status !== 'SUCCEEDED') return await fail('The scan could not finish. Try again or set up manually.')
 
-    // Scrape done — synthesize the voice once and persist it.
+    // Scrape done. If it found NO posts, the account is almost certainly private,
+    // empty, or mistyped. Do NOT fabricate a voice from nothing — that's the
+    // "it made up things that weren't there" bug. Fail honestly instead.
     const posts = extractPosts(items ?? [])
+    if (posts.length === 0) {
+      return await fail(
+        `We couldn't read any public posts from @${voice.handle}. If that account is private or empty, ` +
+          `make it public for a moment, try a different public account, or set up your voice manually — ` +
+          `we won't guess a voice we can't actually see.`,
+      )
+    }
     const bio = extractProfileBio(items ?? [])
     const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts, bio)
 
