@@ -94,7 +94,7 @@ export function HeroVisual() {
           transition={{ delay: 1.4, duration: 0.5, ease: EASE }}
           className="absolute -right-8 bottom-24 z-20 rounded-2xl bg-signature px-3 py-2 text-xs font-bold text-ink shadow-glow"
         >
-          In your voice ✦
+          In your voice
         </motion.div>
 
         {/* ---- Blueprint chip (bottom-left) ---- */}
