@@ -15,8 +15,6 @@ import { Tilt } from '../components/Tilt'
 import { Counter } from '../components/Counter'
 import { cn } from '../lib/cn'
 
-// ─── data ────────────────────────────────────────────────────────────────────
-
 const TICKER = [
   'Paste any link', 'Decode the hook', 'Script in your voice', 'Built-in teleprompter',
   'One-click edit', 'Word-synced captions', 'Publish anywhere', 'Niche gallery', 'Track what works',
@@ -40,14 +38,13 @@ const PAIN = [
   },
 ]
 
-// The one-loop sequence — the heart of the page.
 const LOOP = [
   { icon: Play, k: 'Paste', t: 'Paste a link you wish you’d made', d: 'Any TikTok, Reel or Short. That’s the whole input — we pull and transcribe the real audio.' },
   { icon: Wand2, k: 'Decode', t: 'We decode why it worked', d: 'The exact hook window, the beats, the pacing, the retention mechanics. Real analysis, not vibes.' },
   { icon: FileText, k: 'Blueprint', t: 'Get a shootable blueprint', d: 'Hook options, full script in your voice, shot list, edit checklist, caption pack — a 20-min plan.' },
   { icon: Clapperboard, k: 'Record', t: 'Record it right here', d: 'Your script loads into a built-in teleprompter. Hit record, nail the hook, done.' },
   { icon: Scissors, k: 'Edit', t: 'Edit in one click', d: 'Word-synced captions, dead-air trimmed, jump cuts and b-roll, exported vertical — automatically.' },
-  { icon: Send, k: 'Post', t: 'Post it — and grow the gallery', d: 'Publish to your accounts. Mark it public and it joins the niche gallery others learn from and remix.' },
+  { icon: Send, k: 'Post', t: 'Post it — and grow the gallery', d: 'One tap copies your on-brand caption so you can post in seconds, then log it. Mark it public and it joins the niche gallery others remix.' },
 ]
 
 const FEATURES = [
@@ -55,7 +52,7 @@ const FEATURES = [
   { icon: FileText, t: 'Full blueprint', d: 'Not a caption — a hook, script with delivery notes, shot list, edit checklist and a 20-minute shoot plan.' },
   { icon: Clapperboard, t: 'In-app teleprompter', d: 'Record straight from the browser with your script scrolling. A hook-timing marker keeps you on pace.' },
   { icon: Scissors, t: 'One-click auto-edit', d: 'Animated captions, dead-air removal, beat-timed jump cuts, b-roll cutaways, vertical export. One tap.' },
-  { icon: Send, t: 'Publish & schedule', d: 'Push finished videos to your accounts or queue them — the loop ends with a post, not a download.' },
+  { icon: Send, t: 'Publish helper', d: 'One tap copies your on-brand caption and opens the post — then log it, so the loop ends with a post, not a downloads folder. Auto-scheduling is on the roadmap.' },
   { icon: LayoutGrid, t: 'Niche gallery', d: 'A living feed of what’s working in your niche — see why it hit, then recreate it in one click.' },
 ]
 
@@ -80,13 +77,9 @@ const FAQ = [
   { q: 'Can I use it for clients?', a: 'Yes. The Agency plan gives you 15 brand voices — one per client — plus multi-brand workspaces. Switch context in one tap, batch a week of content in an afternoon, ship consistent quality across every account.' },
 ]
 
-// ─── page ─────────────────────────────────────────────────────────────────────
-
 export default function Landing() {
   return (
     <main className="noise overflow-clip">
-
-      {/* ══════ HERO ══════ */}
       <section className="relative">
         <Aurora />
         <div className="relative mx-auto max-w-content px-5 pb-16 pt-28 sm:pt-32 lg:pt-36">
@@ -151,7 +144,6 @@ export default function Landing() {
           </div>
         </div>
 
-        {/* Ticker */}
         <div className="relative border-y border-white/8 bg-ink2/60 py-4">
           <div className="mask-fade-x flex overflow-hidden">
             <div className="flex shrink-0 animate-marquee items-center gap-8 pr-8">
@@ -165,7 +157,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ══════ PAIN ══════ */}
       <section className="mx-auto max-w-content px-5 py-20 sm:py-24">
         <Reveal className="text-center">
           <p className="eyebrow">The creator’s trap</p>
@@ -187,7 +178,6 @@ export default function Landing() {
         </Stagger>
       </section>
 
-      {/* ══════ THE LOOP ══════ */}
       <section id="loop" className="relative scroll-mt-24 py-12 sm:py-16">
         <div className="mx-auto max-w-content px-5">
           <Reveal className="text-center">
@@ -203,7 +193,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ══════ BENEFITS STRIP ══════ */}
       <section className="mx-auto max-w-content px-5 py-8">
         <Stagger className="grid gap-4 sm:grid-cols-3" gap={0.07}>
           {BENEFITS.map((b) => (
@@ -223,7 +212,6 @@ export default function Landing() {
         </Stagger>
       </section>
 
-      {/* ══════ WHAT YOU GET ══════ */}
       <section id="features" className="mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-24">
         <Reveal className="text-center">
           <p className="eyebrow">What you get</p>
@@ -248,7 +236,6 @@ export default function Landing() {
         </Stagger>
       </section>
 
-      {/* ══════ AGENCIES ══════ */}
       <section id="agencies" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-12">
         <Reveal className="overflow-hidden rounded-panel border border-white/10 bg-ink2">
           <div className="grid lg:grid-cols-2">
@@ -306,7 +293,6 @@ export default function Landing() {
         </Reveal>
       </section>
 
-      {/* ══════ PRICING ══════ */}
       <section id="pricing" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-24">
         <Reveal className="text-center">
           <p className="eyebrow">Pricing</p>
@@ -349,13 +335,13 @@ export default function Landing() {
         </Stagger>
       </section>
 
-      {/* ══════ SOCIAL PROOF ══════ */}
       <section className="mx-auto max-w-content px-5 py-12">
         <Reveal className="text-center">
-          <p className="eyebrow">What creators say</p>
+          <p className="eyebrow">From early access</p>
           <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
             The results speak louder than the features.
           </h2>
+          <p className="mx-auto mt-3 max-w-md text-xs text-stone">Representative of early-access creators while we gather public results.</p>
         </Reveal>
         <Stagger className="mt-12 grid gap-5 md:grid-cols-3" gap={0.08}>
           {SOCIAL_PROOF.map((s) => (
@@ -378,7 +364,6 @@ export default function Landing() {
         </Stagger>
       </section>
 
-      {/* ══════ FAQ ══════ */}
       <section id="faq" className="mx-auto max-w-3xl scroll-mt-24 px-5 py-20">
         <Reveal className="text-center">
           <p className="eyebrow">The honest answers</p>
@@ -389,7 +374,6 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ══════ FINAL CTA ══════ */}
       <section className="mx-auto max-w-content px-5 pb-24">
         <Reveal className="relative overflow-hidden rounded-panel border border-white/10 bg-ink2 px-6 py-20 text-center">
           <Aurora />
@@ -412,7 +396,6 @@ export default function Landing() {
   )
 }
 
-// ─── The Loop sequence (auto-cycling stepper + live phone) ─────────────────────
 function LoopSequence() {
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: false, margin: '-20%' })
@@ -590,9 +573,9 @@ function LoopScreen({ index }: { index: number }) {
   return (
     <div className="flex h-full flex-col justify-center gap-3 p-5">
       <div className="text-[10px] uppercase tracking-wider text-stone">Published</div>
-      <div className="flex items-center gap-2 rounded-xl bg-teal/10 px-3 py-2.5 text-xs text-teal"><Check className="h-4 w-4" /> Posted to TikTok + Reels</div>
-      <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-xs text-sand"><LayoutGrid className="h-4 w-4 text-amber" /> Added to your niche gallery</div>
-      <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-xs text-sand"><BarChart3 className="h-4 w-4 text-coral" /> Tracking views &amp; saves</div>
+      <div className="flex items-center gap-2 rounded-xl bg-teal/10 px-3 py-2.5 text-xs text-teal"><Check className="h-4 w-4" /> Caption copied · ready to post</div>
+      <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-xs text-sand"><LayoutGrid className="h-4 w-4 text-amber" /> Add to your niche gallery</div>
+      <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-xs text-sand"><BarChart3 className="h-4 w-4 text-coral" /> Log what you ship</div>
     </div>
   )
 }
@@ -606,7 +589,6 @@ function Bar({ label, v }: { label: string; v: string }) {
   )
 }
 
-// ─── FAQ ───────────────────────────────────────────────────────
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false)
   return (
@@ -631,7 +613,6 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   )
 }
 
-// ─── Footer ───────────────────────────────────────────────────
 function Footer() {
   return (
     <footer className="border-t border-white/8 bg-ink2/40">
