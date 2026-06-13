@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, PenLine } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -26,13 +26,10 @@ export default function Onboarding() {
   const navigate = useNavigate()
   const [mode, setMode] = useState<Mode>('handle')
 
-  if (!session) {
-    navigate('/auth')
-    return null
-  }
+  if (!session) return <Navigate to="/auth" replace />
 
   return (
-    <main className="relative grid min-h-[calc(100vh-64px)] place-items-center overflow-clip px-5 py-12">
+    <main className="relative grid min-h-screen place-items-center overflow-clip px-5 py-12 pt-20">
       <Aurora />
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -189,6 +186,10 @@ function BuildingStep({ onReady, onManual }: { onReady: () => void; onManual: ()
       return
     }
     let stopped = false
+    // Hard cap: if the scan never resolves (stuck worker, dropped job), don't
+    // trap the user on an infinite spinner — surface the manual fallback.
+    const startedAt = Date.now()
+    const MAX_WAIT_MS = 100_000
     const tick = async () => {
       try {
         const res = await pollDna(activeVoiceId!)
@@ -200,10 +201,17 @@ function BuildingStep({ onReady, onManual }: { onReady: () => void; onManual: ()
         } else if (res.status === 'failed') {
           if (timer.current) clearInterval(timer.current)
           setErr(res.error ?? 'The scan could not finish.')
+        } else if (Date.now() - startedAt > MAX_WAIT_MS) {
+          if (timer.current) clearInterval(timer.current)
+          setErr('This is taking longer than usual. Set up your voice manually and you can re-scan any time.')
         }
       } catch (e) {
-        // Transient — keep polling; surface only if it persists.
+        // Transient — keep polling; surface only if it persists past the cap.
         console.warn('dna poll', e)
+        if (Date.now() - startedAt > MAX_WAIT_MS && !stopped) {
+          if (timer.current) clearInterval(timer.current)
+          setErr('We couldn’t reach the scanner. Set up your voice manually instead.')
+        }
       }
     }
     tick()
