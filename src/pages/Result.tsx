@@ -92,6 +92,9 @@ export default function Result() {
                 <span className="absolute -left-[27px] top-1 h-2.5 w-2.5 rounded-full bg-signature" />
                 <div className="text-sm font-heading text-cream">{r.beat}</div>
                 <div className="text-sm text-sand">{r.goal}</div>
+                {r.tactic && (
+                  <div className="mt-0.5 text-xs text-coral">{r.tactic}</div>
+                )}
               </li>
             ))}
           </ol>

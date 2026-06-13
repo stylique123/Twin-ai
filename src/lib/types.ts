@@ -58,7 +58,7 @@ export interface Blueprint {
     platform: Platform
     format_label: string // e.g. "The Trust Builder"
     why_it_works: string[]
-    retention_map: { beat: string; goal: string }[]
+    retention_map: { beat: string; goal: string; tactic?: string }[]
   }
   hook_options: string[]
   script: { section: string; line: string; direction: string }[]
