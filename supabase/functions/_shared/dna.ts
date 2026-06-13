@@ -58,7 +58,18 @@ const RESULTS = Number(Deno.env.get('DNA_POST_COUNT') ?? '20')
 function actorInput(platform: Platform, handle: string): Record<string, unknown> {
   switch (platform) {
     case 'instagram':
-      return { username: [handle], resultsLimit: RESULTS, resultsType: 'posts' }
+      // Apify's official Instagram scraper keys off `directUrls` (a profile URL),
+      // NOT `username` — passing username silently scrapes nothing, which is why
+      // even huge public accounts came back "empty". Send the profile URL and ask
+      // for posts. (Extra keys are ignored by the actor, so username stays as a
+      // harmless hint for alternate actors.)
+      return {
+        directUrls: [`https://www.instagram.com/${handle}/`],
+        username: [handle],
+        resultsType: 'posts',
+        resultsLimit: RESULTS,
+        addParentData: false,
+      }
     case 'youtube':
       return { startUrls: [{ url: `https://www.youtube.com/@${handle}/videos` }], maxResults: RESULTS }
     case 'tiktok':
