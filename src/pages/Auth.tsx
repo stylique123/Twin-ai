@@ -14,6 +14,7 @@ export default function Auth() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
+  const [msgType, setMsgType] = useState<'error' | 'success'>('error')
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
 
@@ -22,14 +23,27 @@ export default function Auth() {
     setMsg(null)
     if (!isSupabaseConfigured) {
       setMsg('Backend not configured yet. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.')
+      setMsgType('error')
       return
     }
     setBusy(true)
     try {
       if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({ email, password })
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${window.location.origin}/auth` },
+        })
         if (error) throw error
-        navigate('/onboarding')
+        if (data.session) {
+          // Email confirmation is disabled — proceed directly
+          navigate('/onboarding')
+        } else {
+          // Email confirmation required — tell the user to check their inbox
+          setMsg('Account created! Check your inbox to confirm your email, then sign in below.')
+          setMsgType('success')
+          setMode('signin')
+        }
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
@@ -37,6 +51,7 @@ export default function Auth() {
       }
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Something went wrong')
+      setMsgType('error')
     } finally {
       setBusy(false)
     }
@@ -113,7 +128,11 @@ export default function Auth() {
             </button>
           </form>
 
-          {msg && <p className="mt-4 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{msg}</p>}
+          {msg && (
+            <p className={`mt-4 rounded-lg px-3 py-2 text-sm ${msgType === 'success' ? 'bg-teal/10 text-teal' : 'bg-coral/10 text-coral'}`}>
+              {msg}
+            </p>
+          )}
 
           <button
             className="mt-6 text-sm text-stone transition-colors hover:text-cream"
