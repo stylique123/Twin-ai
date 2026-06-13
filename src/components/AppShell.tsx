@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Clapperboard, CalendarClock, Sparkles, LogOut, Menu, X,
+  LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Clapperboard, CalendarClock, Sparkles, LogOut, Menu, X, Building2,
 } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
+import { BrandSwitcher } from './BrandSwitcher'
 import { useAuth } from '../context/AuthContext'
 import { videosFromCredits } from '../lib/brand'
 import { cn } from '../lib/cn'
@@ -13,6 +14,7 @@ import { EASE } from './motion'
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, note: 'Your overview' },
   { to: '/app', label: 'Studio', icon: Wand2, note: 'Make a blueprint' },
+  { to: '/brands', label: 'Brands', icon: Building2, note: 'Client voices' },
   { to: '/gallery', label: 'Gallery', icon: LayoutGrid, note: 'Formats to remix' },
   { to: '/history', label: 'Library', icon: LibraryBig, note: 'All your blueprints' },
 ]
@@ -48,6 +50,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="px-5 py-5">
           <Link to="/app"><Logo /></Link>
         </div>
+
+        <BrandSwitcher />
 
         <nav className="flex-1 space-y-1 px-3">
           <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-stone">Create</p>

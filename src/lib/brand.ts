@@ -111,6 +111,10 @@ export const PLANS: PlanTier[] = [
 // Add-on: extra brand voice beyond the plan's included count.
 export const EXTRA_BRAND_VOICE_PRICE = 9 // USD / mo each
 
+// Look up a plan tier by id (defaults to Free).
+export const planFor = (id: string | null | undefined): PlanTier =>
+  PLANS.find((p) => p.id === id) ?? PLANS[0]
+
 // Convert an internal credit balance into the friendly "recreations" count we
 // show users. This is the ONLY credit-derived number that reaches the UI.
 export const videosFromCredits = (credits: number) => Math.floor(credits / VIDEO_COST)
