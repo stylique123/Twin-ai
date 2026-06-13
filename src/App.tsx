@@ -57,7 +57,8 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      {!inApp && <Nav />}
+      {/* Marketing chrome only on the landing page — never over /auth, /onboarding, or the app. */}
+      {location.pathname === '/' && <Nav />}
       <AnimatePresence mode="wait">
         <Routes location={location} key={inApp ? 'app' : location.pathname}>
           <Route path="/" element={<Page><Landing /></Page>} />

@@ -36,10 +36,8 @@ export default function Auth() {
         })
         if (error) throw error
         if (data.session) {
-          // Email confirmation is disabled — proceed directly
           navigate('/onboarding')
         } else {
-          // Email confirmation required — tell the user to check their inbox
           setMsg('Account created! Check your inbox to confirm your email, then sign in below.')
           setMsgType('success')
           setMode('signin')
@@ -58,7 +56,7 @@ export default function Auth() {
   }
 
   return (
-    <main className="relative grid min-h-[calc(100vh-64px)] place-items-center overflow-clip px-5 py-12">
+    <main className="relative grid min-h-screen place-items-center overflow-clip px-5 py-12">
       <Aurora />
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
