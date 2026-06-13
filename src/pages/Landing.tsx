@@ -1,10 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence, useInView } from 'framer-motion'
 import {
-  ArrowRight, Check, Plus, Minus, AtSign, Wand2, Captions, Mic, Clapperboard,
-  ShieldCheck, Zap, Building2, Users, Clock, Eye, Heart, Play,
-  FileText, Sparkles, Video, Star, TrendingUp,
+  ArrowRight, Check, Plus, Minus, AtSign, Wand2, Captions, Clapperboard, Scissors,
+  ShieldCheck, Zap, Building2, Users, Clock, Eye, Heart, Play, Send, LayoutGrid,
+  FileText, Sparkles, Star, TrendingUp, Mic, BarChart3,
 } from 'lucide-react'
 import { BRAND, PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
@@ -17,82 +17,67 @@ import { cn } from '../lib/cn'
 
 // ─── data ────────────────────────────────────────────────────────────────────
 
-const TICKER = ['TikTok · Reels · Shorts', 'Hook in 2 seconds', 'Blueprint in 30s', 'Auto-edit', 'Your voice · not a template', 'B-roll cutaways', 'Word-sync captions', 'Teleprompter', 'Viral structure decoded']
-
-const PAIN = [
-  { n: '01', t: 'You see a video with 2M views', d: 'You know the format. You know your take. But you stare at a blank draft for an hour.' },
-  { n: '02', t: 'You start scripting — it sounds wrong', d: "Either it sounds like the original or it sounds like nothing. Your voice doesn't come through." },
-  { n: '03', t: 'You post anyway, and it flops', d: "The hook was weak. The edit was slow. You don't know what to fix next time." },
+const TICKER = [
+  'Paste any link', 'Decode the hook', 'Script in your voice', 'Built-in teleprompter',
+  'One-click edit', 'Word-synced captions', 'Publish anywhere', 'Niche gallery', 'Track what works',
 ]
 
-const STEPS = [
+const PAIN = [
   {
-    n: '01', icon: Play,
-    t: "Paste a link you wish you'd made",
-    d: "Drop any TikTok, Reel, or Short URL. That's the entire input. TwinAI downloads and transcribes the actual audio — not the caption, not a summary.",
+    n: '01',
+    t: 'The blank page after the scroll',
+    d: 'You watch something hit a million views and know you could do your version. Then you open a doc and stare. The idea evaporates.',
   },
   {
-    n: '02', icon: Wand2,
-    t: 'We decode why it worked',
-    d: 'We map the hook window (exact seconds it earns the watch), the narrative beats, the pacing, and the retention mechanics. Real analysis. Not vibes.',
+    n: '02',
+    t: 'It comes out sounding like everyone else',
+    d: 'You copy the format and it feels fake — or you start from scratch and it takes hours. Either way, it doesn’t sound like you.',
   },
   {
-    n: '03', icon: FileText,
-    t: 'You get everything to shoot it',
-    d: 'A hook written your way. A full script with delivery notes. A shot list with framing. Edit checklist. Caption pack. A 20-minute shoot plan. Then record, edit and post — all in one window.',
+    n: '03',
+    t: 'You post it, and it dies',
+    d: 'Weak hook, slow edit, no idea why. No system, no feedback loop, no consistency. So you post less. So you grow slower.',
   },
+]
+
+// The one-loop sequence — the heart of the page.
+const LOOP = [
+  { icon: Play, k: 'Paste', t: 'Paste a link you wish you’d made', d: 'Any TikTok, Reel or Short. That’s the whole input — we pull and transcribe the real audio.' },
+  { icon: Wand2, k: 'Decode', t: 'We decode why it worked', d: 'The exact hook window, the beats, the pacing, the retention mechanics. Real analysis, not vibes.' },
+  { icon: FileText, k: 'Blueprint', t: 'Get a shootable blueprint', d: 'Hook options, full script in your voice, shot list, edit checklist, caption pack — a 20-min plan.' },
+  { icon: Clapperboard, k: 'Record', t: 'Record it right here', d: 'Your script loads into a built-in teleprompter. Hit record, nail the hook, done.' },
+  { icon: Scissors, k: 'Edit', t: 'Edit in one click', d: 'Word-synced captions, dead-air trimmed, jump cuts and b-roll, exported vertical — automatically.' },
+  { icon: Send, k: 'Post', t: 'Post it — and grow the gallery', d: 'Publish to your accounts. Mark it public and it joins the niche gallery others learn from and remix.' },
 ]
 
 const FEATURES = [
-  {
-    icon: AtSign,
-    label: 'Voice DNA',
-    heading: 'It sounds like you. Not a template.',
-    body: 'Paste your @handle once. TwinAI reads your recent posts — captions, hooks, even your spoken audio — and builds a voice profile you confirm in one tap. Every script it writes comes out in your tone, your vocabulary, your cadence.',
-    proof: 'Your voice is your moat. We just make it reproducible.',
-    pills: ['Tone · pacing · hook style', 'Vocabulary and signature phrases', 'Editable any time'],
-    visual: <VoiceVisual />,
-  },
-  {
-    icon: FileText,
-    label: 'Blueprint',
-    heading: 'A complete shoot plan. Not just a caption.',
-    body: 'One reference → six outputs: hook options, full script with delivery directions, a shot list with framing, an edit checklist, an on-brand caption pack, and a 20-minute production sprint. You never stall.',
-    proof: 'The two-hour scripting + filming scramble becomes a focused 20-minute sprint.',
-    pills: ['Hook → script → shot list', 'Edit checklist + caption pack', '20-min production sprint'],
-    visual: <BlueprintVisual />,
-  },
-  {
-    icon: Clapperboard,
-    label: 'Record + Edit',
-    heading: 'Record it here. Edit in one click.',
-    body: "Your script loads into a built-in teleprompter. You film, hit record, nail the hook. Then one click: TwinAI burns in word-synced animated captions, trims the dead air, adds jump cuts timed to the beats, and exports vertical — ready to post.",
-    proof: "A 2-hour edit becomes one click. Polish for a minute if you want — it's already done.",
-    pills: ['In-app teleprompter + camera', 'Auto-captions, animated', 'Jump cuts + dead-air trim'],
-    visual: <EditVisual />,
-  },
+  { icon: AtSign, t: 'Voice DNA', d: 'Paste your @handle once. We read your real posts and build a voice profile every script is written in.' },
+  { icon: FileText, t: 'Full blueprint', d: 'Not a caption — a hook, script with delivery notes, shot list, edit checklist and a 20-minute shoot plan.' },
+  { icon: Clapperboard, t: 'In-app teleprompter', d: 'Record straight from the browser with your script scrolling. A hook-timing marker keeps you on pace.' },
+  { icon: Scissors, t: 'One-click auto-edit', d: 'Animated captions, dead-air removal, beat-timed jump cuts, b-roll cutaways, vertical export. One tap.' },
+  { icon: Send, t: 'Publish & schedule', d: 'Push finished videos to your accounts or queue them — the loop ends with a post, not a download.' },
+  { icon: LayoutGrid, t: 'Niche gallery', d: 'A living feed of what’s working in your niche — see why it hit, then recreate it in one click.' },
 ]
 
-const FORMATS: { cap: string; accent: string; views: string; platform: string; bg: string }[] = [
-  { cap: 'Everyone said I needed 10K followers first.', accent: 'They were wrong.', views: '2.1M', platform: 'TikTok', bg: 'from-coral/30 via-ink2 to-ink' },
-  { cap: 'The one daily habit that', accent: 'changed my numbers.', views: '880K', platform: 'Reels', bg: 'from-teal/25 via-ink2 to-ink' },
-  { cap: 'Stop editing like', accent: "it's 2019.", views: '1.4M', platform: 'Shorts', bg: 'from-amber/25 via-ink2 to-ink' },
-  { cap: 'Read this before you', accent: 'post again.', views: '640K', platform: 'TikTok', bg: 'from-coral/20 via-ink2 to-ink' },
+const BENEFITS = [
+  { icon: Clock, big: '~2 hrs', label: 'saved per video', sub: 'scripting + editing, gone' },
+  { icon: TrendingUp, big: '4×', label: 'more posts shipped', sub: 'same effort, more shots on goal' },
+  { icon: Eye, big: 'Proven', label: 'structures only', sub: 'rebuilt from what already won' },
 ]
 
 const SOCIAL_PROOF = [
-  { name: 'Marcus L.', handle: '@marcuslive', quote: 'I went from one video a week to four. Blueprint is genuinely the fastest part of my workflow now.', metric: '4× output' },
-  { name: 'Priya K.', handle: '@priyakreates', quote: 'The voice profile is scary good. Scripts read exactly like how I talk — I stopped rewriting hooks entirely.', metric: 'Zero rewrites' },
-  { name: 'Jake Finn', handle: '@jakefinnmedia', quote: 'Running 6 client brands. The workspaces feature alone saves my team 3 hours per client per week.', metric: '18h/wk saved' },
+  { name: 'Marcus L.', handle: '@marcuslive', quote: 'I went from one video a week to four. The blueprint is the fastest part of my workflow now.', metric: '4× output' },
+  { name: 'Priya K.', handle: '@priyakreates', quote: 'The voice profile is scary good. Scripts read exactly like how I talk — I stopped rewriting hooks.', metric: 'Zero rewrites' },
+  { name: 'Jake Finn', handle: '@jakefinnmedia', quote: 'Running 6 client brands. The workspaces feature alone saves my team hours every week.', metric: '18h/wk saved' },
 ]
 
 const FAQ = [
-  { q: "Do you copy other people's videos?", a: 'No. We read the structure — hook shape, pacing, retention beats — and rebuild it as an original in your voice. We never clip or repost footage. The idea stays yours; the format becomes yours too.' },
-  { q: 'Will this make me go viral?', a: "No guarantees — anyone who promises that is lying. We give you a proven structure and a fast, repeatable way to ship. More quality shots on goal. That's the honest version." },
-  { q: 'How is this different from a clipper?', a: 'Clippers chop up footage you already have. TwinAI takes a reference you admire and makes it shootable as something new — in your voice, from scratch, with a complete script and shot list.' },
-  { q: 'What do I get in one recreation?', a: 'A complete blueprint: hook options written in your voice, full script with delivery notes, shot list with framing, an edit checklist, a caption pack with hashtags, and a 20-minute production sprint. Then record it, edit in one click, and post.' },
-  { q: 'How does it learn my voice?', a: 'You paste your @handle. We read your recent public posts — captions, hooks, and your spoken audio — and synthesise a voice profile. You confirm and can edit any piece of it. It upgrades as you create more.' },
-  { q: 'Can I use this for clients?', a: 'Yes. The Agency plan gives you 15 separate brand voices — one per client — plus multi-brand workspaces. Switch contexts in one click, batch a week of content in an afternoon, and ship consistent quality across every account.' },
+  { q: 'Do you copy other people’s videos?', a: 'No. We read the structure — hook shape, pacing, retention beats — and rebuild it as an original in your voice. We never clip or repost footage. The idea stays yours; the format becomes yours too.' },
+  { q: 'Will this make me go viral?', a: 'No honest tool can promise that. We give you a proven structure and a fast, repeatable way to ship — more quality shots on goal, in less time. That’s the real edge.' },
+  { q: 'How is this different from a clipper?', a: 'Clippers chop footage you already have. TwinAI takes a reference you admire and makes it shootable as something new — in your voice, from scratch, with a full script, shot list, edit and post.' },
+  { q: 'What do I actually get from one link?', a: 'A complete blueprint (hooks, script, shot list, edit checklist, caption pack, 20-minute plan), an in-app teleprompter to record it, a one-click edit, and publishing — the whole loop in one window.' },
+  { q: 'How does it learn my voice?', a: 'You paste your @handle. We read your recent public posts — captions, hooks and your spoken audio — and synthesise a voice profile you confirm and can edit. It sharpens as you create more.' },
+  { q: 'Can I use it for clients?', a: 'Yes. The Agency plan gives you 15 brand voices — one per client — plus multi-brand workspaces. Switch context in one tap, batch a week of content in an afternoon, ship consistent quality across every account.' },
 ]
 
 // ─── page ─────────────────────────────────────────────────────────────────────
@@ -104,10 +89,8 @@ export default function Landing() {
       {/* ══════ HERO ══════ */}
       <section className="relative">
         <Aurora />
-        <div className="relative mx-auto max-w-content px-5 pb-16 pt-12 sm:pt-20 lg:pt-28">
+        <div className="relative mx-auto max-w-content px-5 pb-16 pt-28 sm:pt-32 lg:pt-36">
           <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
-
-            {/* Copy — left */}
             <div>
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
@@ -123,22 +106,21 @@ export default function Landing() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
-                className="mt-6 font-display text-[2.6rem] leading-[1.06] tracking-tight text-balance sm:text-5xl lg:text-[3.5rem]"
+                className="mt-6 font-display text-[2.6rem] leading-[1.05] tracking-tight text-balance sm:text-5xl lg:text-[3.6rem]"
               >
-                Turn any viral video into{' '}
-                <span className="gradient-text-animated">your next post.</span>
+                You know what goes viral.{' '}
+                <span className="gradient-text-animated">Now make your version</span> — in minutes.
               </motion.h1>
 
               <motion.p
                 initial={{ opacity: 0, y: 16 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.7, ease: EASE, delay: 0.14 }}
-                className="mt-5 max-w-lg text-lg leading-relaxed text-sand"
+                className="mt-5 max-w-xl text-lg leading-relaxed text-sand"
               >
-                Paste a link you admire. TwinAI reads <em className="not-italic text-cream">why it went viral</em>, rewrites it{' '}
-                <em className="not-italic text-cream">in your exact voice</em>, and walks you through recording, editing
-                and posting it — in one window, in{' '}
-                <em className="not-italic text-cream">under 30 seconds</em>.
+                You scroll past a video with millions of views and think <em className="not-italic text-cream">“I could’ve made that.”</em>{' '}
+                Paste the link. TwinAI turns it into a ready-to-shoot blueprint in your voice, films it with you,
+                edits it in one click, and helps you post it. <span className="text-cream">The whole loop — one window.</span>
               </motion.p>
 
               <motion.div
@@ -148,9 +130,9 @@ export default function Landing() {
                 className="mt-8 flex flex-wrap gap-3"
               >
                 <Link to="/auth" className="btn-gradient text-base">
-                  Get your first blueprint free <ArrowRight className="h-4 w-4" />
+                  Start free — 2 recreations <ArrowRight className="h-4 w-4" />
                 </Link>
-                <a href="#how" className="btn-ghost text-base">See how it works</a>
+                <a href="#loop" className="btn-ghost text-base">See how it works</a>
               </motion.div>
 
               <motion.div
@@ -165,7 +147,6 @@ export default function Landing() {
               </motion.div>
             </div>
 
-            {/* Visual — right */}
             <HeroVisual />
           </div>
         </div>
@@ -173,10 +154,10 @@ export default function Landing() {
         {/* Ticker */}
         <div className="relative border-y border-white/8 bg-ink2/60 py-4">
           <div className="mask-fade-x flex overflow-hidden">
-            <div className="flex shrink-0 animate-marquee items-center gap-10 pr-10">
+            <div className="flex shrink-0 animate-marquee items-center gap-8 pr-8">
               {[...TICKER, ...TICKER].map((w, i) => (
-                <span key={i} className="whitespace-nowrap text-xs font-semibold uppercase tracking-widest text-stone">
-                  {w} <span className="ml-10 text-white/15">✦</span>
+                <span key={i} className="inline-flex items-center gap-8 whitespace-nowrap text-xs font-semibold uppercase tracking-widest text-stone">
+                  {w} <span className="h-1 w-1 rounded-full bg-white/20" />
                 </span>
               ))}
             </div>
@@ -184,152 +165,84 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ══════ PAIN POINTS ══════ */}
-      <section className="mx-auto max-w-content px-5 py-20">
+      {/* ══════ PAIN ══════ */}
+      <section className="mx-auto max-w-content px-5 py-20 sm:py-24">
         <Reveal className="text-center">
-          <p className="eyebrow">Sound familiar?</p>
+          <p className="eyebrow">The creator’s trap</p>
           <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-            You know the format. You can't make it fast enough.
+            More content isn’t the problem. <span className="gradient-text">Making it fast enough is.</span>
           </h2>
-          <p className="mx-auto mt-4 max-w-xl text-sand">
-            Every creator hits the same wall. TwinAI tears it down.
-          </p>
+          <p className="mx-auto mt-4 max-w-xl text-sand">Every creator hits the same three walls. TwinAI tears all three down.</p>
         </Reveal>
         <Stagger className="mt-12 grid gap-5 md:grid-cols-3" gap={0.08}>
           {PAIN.map((p) => (
             <RevealItem key={p.n}>
               <div className="glass h-full p-7">
-                <span className="font-mono text-sm text-stone">{p.n}</span>
+                <span className="font-mono text-sm text-coral">{p.n}</span>
                 <h3 className="mt-3 text-lg font-heading text-cream">{p.t}</h3>
-                <p className="mt-2 text-sand text-sm leading-relaxed">{p.d}</p>
+                <p className="mt-2 text-sm leading-relaxed text-sand">{p.d}</p>
               </div>
             </RevealItem>
           ))}
         </Stagger>
-        <Reveal className="mt-8 text-center">
-          <Link to="/auth" className="btn-gradient">
-            Fix it — try TwinAI free <ArrowRight className="h-4 w-4" />
-          </Link>
-        </Reveal>
       </section>
 
-      {/* ══════ HOW IT WORKS ══════ */}
-      <section id="how" className="relative scroll-mt-24 py-20">
+      {/* ══════ THE LOOP ══════ */}
+      <section id="loop" className="relative scroll-mt-24 py-12 sm:py-16">
         <div className="mx-auto max-w-content px-5">
           <Reveal className="text-center">
-            <p className="eyebrow">How it works</p>
+            <p className="eyebrow">One link in · a posted video out</p>
             <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-              From a link you admire to a video you can shoot. Three steps.
+              The entire workflow, in one place.
             </h2>
+            <p className="mx-auto mt-4 max-w-xl text-sand">
+              Paste, decode, blueprint, record, edit, post. No tab-juggling, no agency, no two-hour edit.
+            </p>
           </Reveal>
-          <Stagger className="mt-14 grid gap-6 md:grid-cols-3" gap={0.1}>
-            {STEPS.map((s, i) => (
-              <RevealItem key={s.n}>
-                <Tilt className="h-full" max={5}>
-                  <div className="glass glass-hover relative h-full p-8">
-                    <div className="flex items-start justify-between">
-                      <span className="grid h-12 w-12 place-items-center rounded-xl bg-signature-soft">
-                        <s.icon className="h-5 w-5 text-cream" />
-                      </span>
-                      <span className="font-mono text-sm text-stone">{s.n}</span>
-                    </div>
-                    <h3 className="mt-5 text-xl font-heading">{s.t}</h3>
-                    <p className="mt-3 text-sand text-sm leading-relaxed">{s.d}</p>
-                    {i < STEPS.length - 1 && (
-                      <div className="absolute -right-3 top-1/2 hidden -translate-y-1/2 md:block">
-                        <ArrowRight className="h-5 w-5 text-stone/40" />
-                      </div>
-                    )}
-                  </div>
-                </Tilt>
-              </RevealItem>
-            ))}
-          </Stagger>
+          <LoopSequence />
         </div>
       </section>
 
-      {/* ══════ FEATURES (3 key, alternating) ══════ */}
-      <section id="features" className="mx-auto max-w-content scroll-mt-24 px-5 py-12">
+      {/* ══════ BENEFITS STRIP ══════ */}
+      <section className="mx-auto max-w-content px-5 py-8">
+        <Stagger className="grid gap-4 sm:grid-cols-3" gap={0.07}>
+          {BENEFITS.map((b) => (
+            <RevealItem key={b.label}>
+              <div className="glass flex items-center gap-4 p-5">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-signature-soft">
+                  <b.icon className="h-5 w-5 text-cream" />
+                </span>
+                <div>
+                  <div className="font-display text-2xl leading-none">{b.big}</div>
+                  <div className="mt-1 text-sm font-medium text-cream">{b.label}</div>
+                  <div className="text-xs text-stone">{b.sub}</div>
+                </div>
+              </div>
+            </RevealItem>
+          ))}
+        </Stagger>
+      </section>
+
+      {/* ══════ WHAT YOU GET ══════ */}
+      <section id="features" className="mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-24">
         <Reveal className="text-center">
           <p className="eyebrow">What you get</p>
           <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-            Every piece, connected. Here's exactly how it helps.
+            Six tools that used to be six apps.
           </h2>
         </Reveal>
-
-        <div className="mt-16 space-y-24">
-          {FEATURES.map((f, i) => (
-            <Reveal key={f.label}>
-              <div className={cn('grid items-center gap-10 lg:grid-cols-2', i % 2 === 1 && 'lg:[&>*:first-child]:order-2')}>
-                {/* Copy */}
-                <div>
-                  <span className="grid h-11 w-11 place-items-center rounded-xl bg-signature-soft">
+        <Stagger className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
+          {FEATURES.map((f) => (
+            <RevealItem key={f.t}>
+              <Tilt className="h-full" max={6}>
+                <div className="glass glass-hover h-full p-7">
+                  <span className="grid h-12 w-12 place-items-center rounded-xl bg-signature-soft">
                     <f.icon className="h-5 w-5 text-cream" />
                   </span>
-                  <p className="eyebrow mt-4">{f.label}</p>
-                  <h3 className="mt-3 font-display text-3xl leading-tight text-balance">{f.heading}</h3>
-                  <p className="mt-4 text-sand leading-relaxed">{f.body}</p>
-                  <ul className="mt-5 space-y-2">
-                    {f.pills.map((pill) => (
-                      <li key={pill} className="flex items-center gap-2.5 text-sm text-sand">
-                        <Check className="h-4 w-4 shrink-0 text-teal" /> {pill}
-                      </li>
-                    ))}
-                  </ul>
-                  <p className="mt-6 border-l-2 border-coral/60 pl-4 text-sm font-medium italic text-cream">{f.proof}</p>
+                  <h3 className="mt-5 text-lg font-heading text-cream">{f.t}</h3>
+                  <p className="mt-2 text-sm leading-relaxed text-sand">{f.d}</p>
                 </div>
-                {/* Visual */}
-                <Tilt max={5}>{f.visual}</Tilt>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </section>
-
-      {/* ══════ FORMAT WALL ══════ */}
-      <section className="mx-auto max-w-content px-5 py-20">
-        <Reveal className="text-center">
-          <p className="eyebrow">Reference in · your video out</p>
-          <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-            The formats that blow up — rebuilt in your voice.
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-sand">Paste any of these links. Get a complete blueprint you can shoot today.</p>
-        </Reveal>
-        <Stagger className="mt-12 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
-          {FORMATS.map((f, i) => (
-            <RevealItem key={i}>
-              <Tilt className="group" max={10}>
-                <FormatCard f={f} />
               </Tilt>
-            </RevealItem>
-          ))}
-        </Stagger>
-      </section>
-
-      {/* ══════ SOCIAL PROOF ══════ */}
-      <section className="mx-auto max-w-content px-5 py-12">
-        <Reveal className="text-center">
-          <p className="eyebrow">What creators are saying</p>
-          <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-            The results speak louder than the features.
-          </h2>
-        </Reveal>
-        <Stagger className="mt-12 grid gap-5 md:grid-cols-3" gap={0.08}>
-          {SOCIAL_PROOF.map((s) => (
-            <RevealItem key={s.name}>
-              <div className="glass glass-hover h-full p-7">
-                <div className="flex items-center gap-1 text-amber">
-                  {[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}
-                </div>
-                <p className="mt-4 text-sm leading-relaxed text-sand">"{s.quote}"</p>
-                <div className="mt-6 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-heading text-cream">{s.name}</div>
-                    <div className="text-xs text-stone">{s.handle}</div>
-                  </div>
-                  <span className="rounded-full bg-teal/10 px-2.5 py-1 text-xs font-bold text-teal">{s.metric}</span>
-                </div>
-              </div>
             </RevealItem>
           ))}
         </Stagger>
@@ -347,19 +260,19 @@ export default function Landing() {
                 </span>
                 <p className="eyebrow mt-5">For agencies &amp; teams</p>
                 <h2 className="mt-3 font-display text-4xl leading-tight text-balance">
-                  Run every client's content like <span className="gradient-text">one machine.</span>
+                  Run every client like <span className="gradient-text">one machine.</span>
                 </h2>
                 <p className="mt-4 text-sand">
-                  Spin up a separate brand voice per client, turn proven references into shootable blueprints in seconds,
-                  and ship more reels across more accounts — without growing the team.
+                  A separate brand voice per client, proven references turned into shootable blueprints in seconds,
+                  and more reels across more accounts — without growing the team. Workspaces start included; add more any time.
                 </p>
                 <ul className="mt-6 space-y-2.5">
                   {[
                     'A distinct voice profile for each client brand',
+                    'Switch the active workspace in one tap',
                     'Batch a week of content in an afternoon',
                     'Consistent quality across every account',
-                    'Show clients the lift: time saved and engagement lift',
-                    'Multi-brand workspaces + team seats',
+                    'Add extra brand voices as you grow',
                   ].map((b) => (
                     <li key={b} className="flex items-start gap-2.5 text-sm text-sand">
                       <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {b}
@@ -373,16 +286,14 @@ export default function Landing() {
             </div>
             <div className="grid grid-cols-2 gap-px bg-white/8">
               {[
-                { icon: Clock, to: 12, suffix: 'h', label: 'Saved per client / week', sub: 'vs. scripting and editing by hand' },
-                { icon: Eye, to: 3, suffix: '×', label: 'More posts shipped', sub: 'same headcount, more shots on goal' },
-                { icon: Heart, to: 47, suffix: '%', label: 'More engagement', sub: 'proven hooks, on-brand every time' },
-                { icon: Users, to: 15, suffix: '+', label: 'Brands in one workspace', sub: 'each with its own distinct voice' },
+                { icon: Clock, to: 12, suffix: 'h', label: 'Saved / client / week', sub: 'vs. scripting + editing by hand' },
+                { icon: Eye, to: 3, suffix: '×', label: 'More posts shipped', sub: 'same headcount, more output' },
+                { icon: Heart, to: 47, suffix: '%', label: 'More engagement', sub: 'proven hooks, on-brand' },
+                { icon: Users, to: 15, suffix: '+', label: 'Brands per workspace', sub: 'each with its own voice' },
               ].map((m) => (
                 <div key={m.label} className="bg-ink2 p-7">
                   <m.icon className="h-5 w-5 text-amber" />
-                  <div className="mt-4 font-display text-4xl tracking-tight">
-                    <Counter to={m.to} suffix={m.suffix} />
-                  </div>
+                  <div className="mt-4 font-display text-4xl tracking-tight"><Counter to={m.to} suffix={m.suffix} /></div>
                   <div className="mt-1.5 text-sm font-medium text-cream">{m.label}</div>
                   <div className="mt-0.5 text-xs text-stone">{m.sub}</div>
                 </div>
@@ -396,15 +307,11 @@ export default function Landing() {
       </section>
 
       {/* ══════ PRICING ══════ */}
-      <section id="pricing" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20">
+      <section id="pricing" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-24">
         <Reveal className="text-center">
           <p className="eyebrow">Pricing</p>
-          <h2 className="mt-3 font-display text-4xl text-balance sm:text-5xl">
-            Start free. Scale when it's working.
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-sand">
-            Simple monthly recreation counts. No per-action billing, no confusing credit meters. Cancel any time.
-          </p>
+          <h2 className="mt-3 font-display text-4xl text-balance sm:text-5xl">Start free. Scale when it’s working.</h2>
+          <p className="mx-auto mt-4 max-w-xl text-sand">Simple monthly recreation counts — no per-action billing, no confusing credits. Cancel any time.</p>
         </Reveal>
         <Stagger className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4" gap={0.06}>
           {PLANS.map((p) => {
@@ -426,16 +333,10 @@ export default function Landing() {
                     <span className="font-display text-4xl">${p.price}</span>
                     {p.price > 0 && <span className="pb-1 text-sm text-stone">/mo</span>}
                   </div>
-                  {p.annual ? (
-                    <div className="text-xs text-stone">${p.annual}/mo billed annually</div>
-                  ) : (
-                    <div className="h-4" />
-                  )}
+                  {p.annual ? <div className="text-xs text-stone">${p.annual}/mo billed annually</div> : <div className="h-4" />}
                   <ul className="mt-5 flex-1 space-y-2 text-sm text-sand">
                     {p.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2">
-                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {f}
-                      </li>
+                      <li key={f} className="flex items-start gap-2"><Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {f}</li>
                     ))}
                   </ul>
                   <Link to="/auth" className={cn('mt-6 w-full', featured ? 'btn-gradient' : 'btn-ghost')}>
@@ -445,6 +346,35 @@ export default function Landing() {
               </RevealItem>
             )
           })}
+        </Stagger>
+      </section>
+
+      {/* ══════ SOCIAL PROOF ══════ */}
+      <section className="mx-auto max-w-content px-5 py-12">
+        <Reveal className="text-center">
+          <p className="eyebrow">What creators say</p>
+          <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+            The results speak louder than the features.
+          </h2>
+        </Reveal>
+        <Stagger className="mt-12 grid gap-5 md:grid-cols-3" gap={0.08}>
+          {SOCIAL_PROOF.map((s) => (
+            <RevealItem key={s.name}>
+              <div className="glass glass-hover h-full p-7">
+                <div className="flex items-center gap-1 text-amber">
+                  {[...Array(5)].map((_, i) => <Star key={i} className="h-3.5 w-3.5 fill-current" />)}
+                </div>
+                <p className="mt-4 text-sm leading-relaxed text-sand">“{s.quote}”</p>
+                <div className="mt-6 flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-heading text-cream">{s.name}</div>
+                    <div className="text-xs text-stone">{s.handle}</div>
+                  </div>
+                  <span className="rounded-full bg-teal/10 px-2.5 py-1 text-xs font-bold text-teal">{s.metric}</span>
+                </div>
+              </div>
+            </RevealItem>
+          ))}
         </Stagger>
       </section>
 
@@ -468,18 +398,11 @@ export default function Landing() {
             <h2 className="mx-auto mt-4 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
               Your next viral post starts with a link you already know.
             </h2>
-            <p className="mx-auto mt-4 max-w-md text-sand">
-              2 free blueprints. No card. Blueprint in ~30 seconds. The whole loop — one window.
-            </p>
+            <p className="mx-auto mt-4 max-w-md text-sand">2 free recreations. No card. Blueprint in ~30 seconds. The whole loop — one window.</p>
             <div className="mt-8 flex flex-wrap justify-center gap-3">
-              <Link to="/auth" className="btn-gradient text-[15px]">
-                Start free — no card <ArrowRight className="h-4 w-4" />
-              </Link>
+              <Link to="/auth" className="btn-gradient text-[15px]">Start free — no card <ArrowRight className="h-4 w-4" /></Link>
               <a href="#pricing" className="btn-ghost text-[15px]">See pricing</a>
             </div>
-            <p className="mt-6 text-xs text-stone">
-              2 free recreations · Blueprint in ~30s · Cancel any time
-            </p>
           </div>
         </Reveal>
       </section>
@@ -489,138 +412,206 @@ export default function Landing() {
   )
 }
 
-// ─── Feature visuals ──────────────────────────────────────────────────────────
+// ─── The Loop sequence (auto-cycling stepper + live phone) ─────────────────────
+function LoopSequence() {
+  const ref = useRef<HTMLDivElement>(null)
+  const inView = useInView(ref, { once: false, margin: '-20%' })
+  const [active, setActive] = useState(0)
 
-function VoiceVisual() {
+  useEffect(() => {
+    if (!inView) return
+    const t = setInterval(() => setActive((a) => (a + 1) % LOOP.length), 2400)
+    return () => clearInterval(t)
+  }, [inView])
+
+  const step = LOOP[active]
+
   return (
-    <div className="gradient-border glass rounded-panel p-5 shadow-lift">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wider text-stone">Voice profile · @you</span>
-        <Dots />
+    <div ref={ref} className="mt-14 grid items-center gap-10 lg:grid-cols-2">
+      <div className="order-2 lg:order-1">
+        <div className="relative space-y-2">
+          <div className="absolute left-[22px] top-2 bottom-2 w-px bg-white/8" />
+          <motion.div
+            className="absolute left-[22px] top-2 w-px bg-signature"
+            animate={{ height: `${(active / (LOOP.length - 1)) * 100}%` }}
+            transition={{ duration: 0.5, ease: EASE }}
+          />
+          {LOOP.map((s, i) => {
+            const on = i === active
+            const done = i < active
+            return (
+              <button
+                key={s.k}
+                onClick={() => setActive(i)}
+                className={cn(
+                  'relative z-10 flex w-full items-start gap-4 rounded-2xl p-3 text-left transition-colors',
+                  on ? 'bg-white/[0.05]' : 'hover:bg-white/[0.03]',
+                )}
+              >
+                <span className={cn(
+                  'grid h-11 w-11 shrink-0 place-items-center rounded-full border transition-colors',
+                  on ? 'border-transparent bg-signature text-ink' : done ? 'border-teal/40 bg-teal/10 text-teal' : 'border-white/12 bg-ink2 text-stone',
+                )}>
+                  {done ? <Check className="h-5 w-5" /> : <s.icon className="h-5 w-5" />}
+                </span>
+                <div className="pt-0.5">
+                  <span className={cn('text-[11px] font-bold uppercase tracking-wider', on ? 'text-amber' : 'text-stone')}>{s.k}</span>
+                  <div className={cn('mt-0.5 font-heading text-base leading-tight transition-colors', on ? 'text-cream' : 'text-sand')}>{s.t}</div>
+                  <AnimatePresence initial={false}>
+                    {on && (
+                      <motion.p
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.3, ease: EASE }}
+                        className="overflow-hidden text-sm text-stone"
+                      >
+                        <span className="block pt-1">{s.d}</span>
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </button>
+            )
+          })}
+        </div>
       </div>
-      <div className="space-y-3">
-        <div className="rounded-xl border border-white/8 bg-white/[0.03] p-4">
-          <div className="text-[10px] uppercase tracking-wider text-stone">Summary</div>
-          <div className="mt-1.5 text-sm text-cream">Direct, warm, a little punchy. Hooks with a bold claim, lands with proof. Zero fluff.</div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          <Spec k="Tone" v="Confident, friendly" />
-          <Spec k="Pacing" v="Fast, no dead air" />
-        </div>
-        <div>
-          <div className="text-[10px] uppercase tracking-wider text-stone">Signature phrases</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {["honestly", "here's the thing", "zero fluff", "let's go"].map((w) => (
-              <span key={w} className="chip">{w}</span>
-            ))}
+
+      <div className="order-1 flex justify-center lg:order-2">
+        <div className="relative w-[230px]">
+          <div className="relative overflow-hidden rounded-[40px] border-[6px] border-white/15 bg-ink shadow-[0_40px_90px_-20px_rgba(0,0,0,.8)]">
+            <div className="flex justify-center bg-ink pt-3 pb-1">
+              <div className="h-[18px] w-[80px] rounded-full bg-black/60" />
+            </div>
+            <div className="relative h-[420px] overflow-hidden bg-gradient-to-b from-coral/25 via-ink2 to-ink">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={active}
+                  initial={{ opacity: 0, y: 14 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -14 }}
+                  transition={{ duration: 0.4, ease: EASE }}
+                  className="absolute inset-0"
+                >
+                  <LoopScreen index={active} />
+                </motion.div>
+              </AnimatePresence>
+            </div>
+            <div className="flex justify-center bg-ink py-2.5">
+              <div className="h-1 w-24 rounded-full bg-white/18" />
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-2 rounded-xl bg-teal/10 p-3 text-sm text-teal">
-          <Check className="h-4 w-4" /> Confirmed — this is me
+
+          <motion.div
+            key={`chip-${active}`}
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="absolute -right-4 top-10 z-20 flex items-center gap-1.5 rounded-full bg-signature px-3 py-1.5 text-xs font-bold text-ink shadow-glow"
+          >
+            <step.icon className="h-3.5 w-3.5" /> {step.k}
+          </motion.div>
         </div>
       </div>
     </div>
   )
 }
 
-function BlueprintVisual() {
-  return (
-    <div className="gradient-border glass rounded-panel p-5 shadow-lift">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wider text-stone">Your blueprint</span>
-        <Dots />
+function LoopScreen({ index }: { index: number }) {
+  if (index === 0) {
+    return (
+      <div className="flex h-full flex-col justify-center gap-3 p-5">
+        <div className="text-[10px] uppercase tracking-wider text-stone">Paste a reference</div>
+        <div className="flex items-center gap-2 rounded-xl border border-white/12 bg-ink2/80 px-3 py-2.5">
+          <Play className="h-3.5 w-3.5 text-coral" />
+          <span className="truncate text-xs text-sand">tiktok.com/@creator/video…</span>
+        </div>
+        <div className="rounded-xl bg-signature px-3 py-2 text-center text-xs font-bold text-ink">Recreate this</div>
+        <div className="mt-1 text-[10px] text-teal">2.1M views · 8.4% saved</div>
       </div>
-      <div className="space-y-2.5">
-        {[
-          { icon: Sparkles, k: 'Hook', v: '"Everyone tells you to post more. Wrong."', accent: 'text-amber' },
-          { icon: FileText, k: 'Script', v: '6 beats · with delivery directions', accent: 'text-coral' },
-          { icon: Video, k: 'Shots', v: '3 setups · close-up · b-roll insert', accent: 'text-teal' },
-          { icon: Captions, k: 'Captions', v: 'Chunked, on-brand, accent word timed', accent: 'text-teal' },
-          { icon: TrendingUp, k: 'Sprint', v: '20-minute plan, minute by minute', accent: 'text-amber' },
-        ].map(({ icon: Icon, k, v, accent }) => (
-          <div key={k} className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.03] px-3.5 py-3">
-            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/5">
-              <Icon className={cn('h-3.5 w-3.5', accent)} />
-            </span>
-            <span className="w-16 shrink-0 text-[10px] uppercase tracking-wider text-stone">{k}</span>
-            <span className="min-w-0 flex-1 truncate text-xs text-cream">{v}</span>
+    )
+  }
+  if (index === 1) {
+    return (
+      <div className="flex h-full flex-col justify-center gap-2.5 p-5">
+        <div className="text-[10px] uppercase tracking-wider text-stone">Why it worked</div>
+        <Bar label="Hook window" v="0.0–1.8s" />
+        <Bar label="Retention" v="62%" />
+        <div className="mt-1 flex items-end gap-1" style={{ height: 90 }}>
+          {[40, 70, 55, 85, 60, 95, 72, 50].map((h, i) => (
+            <motion.span key={i} initial={{ height: 0 }} animate={{ height: h }} transition={{ delay: i * 0.05 }} className="w-full rounded-sm bg-gradient-to-t from-coral to-amber" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+  if (index === 2) {
+    return (
+      <div className="flex h-full flex-col gap-2 p-5 pt-8">
+        <div className="text-[10px] uppercase tracking-wider text-stone">Your blueprint</div>
+        {([[Sparkles, 'Hook · “Everyone says post more. Wrong.”'], [FileText, 'Script · 6 beats, in your voice'], [Captions, 'Shot list · 3 setups + b-roll'], [Mic, 'Caption pack · on-brand']] as const).map(([Ic, t], i) => (
+          <div key={i} className="flex items-center gap-2 rounded-lg border border-white/8 bg-white/[0.03] px-2.5 py-2">
+            <Ic className="h-3.5 w-3.5 shrink-0 text-amber" />
+            <span className="truncate text-[11px] text-cream">{t}</span>
           </div>
         ))}
       </div>
-    </div>
-  )
-}
-
-function EditVisual() {
-  return (
-    <div className="gradient-border glass rounded-panel p-5 shadow-lift">
-      <div className="mb-4 flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wider text-stone">Auto-edit · one click</span>
-        <Dots />
-      </div>
-      <div className="space-y-3">
-        <div className="relative grid aspect-[9/14] max-h-40 place-items-center overflow-hidden rounded-xl border border-white/8 bg-gradient-to-b from-coral/25 via-ink2 to-ink">
-          <motion.span
-            initial={{ scale: 0.8, opacity: 0 }}
-            whileInView={{ scale: 1, opacity: 1 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.45, ease: EASE }}
-            className="rounded-lg bg-ink/80 px-3 py-1.5 font-heading text-lg text-cream shadow-lift"
-          >
-            post <span className="text-amber">smarter</span>
-          </motion.span>
-          <div className="absolute bottom-2 left-2 flex items-center gap-1 rounded bg-black/50 px-1.5 py-0.5 text-[9px] text-cream">
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-coral" /> 0:18 · vertical 9:16
-          </div>
+    )
+  }
+  if (index === 3) {
+    return (
+      <div className="relative h-full">
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-bold text-cream">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-coral" /> REC
         </div>
-        <div className="grid grid-cols-3 gap-2">
-          {[
-            [Captions, 'Captions'],
-            [Mic, 'Loudnorm'],
-            [Clapperboard, 'Jump cuts'],
-          ].map(([Ic, label]) => (
-            <div key={String(label)} className="flex items-center gap-1.5 rounded-lg border border-white/8 bg-white/[0.03] px-2 py-2 text-[10px] text-sand">
-              {/* @ts-expect-error icon */}
-              <Ic className="h-3.5 w-3.5 text-teal" /> {label}
-            </div>
+        <div className="flex h-full flex-col justify-end p-5">
+          <div className="rounded-xl border border-white/10 bg-black/40 p-3 text-center backdrop-blur">
+            <div className="text-[9px] uppercase tracking-wider text-amber">Teleprompter</div>
+            <p className="mt-1 font-heading text-sm leading-tight text-cream">“You’re 35 and think it’s too late? Watch this.”</p>
+          </div>
+          <div className="mt-3 flex justify-center"><div className="h-9 w-9 rounded-full border-4 border-coral bg-white/90" /></div>
+        </div>
+      </div>
+    )
+  }
+  if (index === 4) {
+    return (
+      <div className="flex h-full flex-col justify-center gap-3 p-5">
+        <div className="grid aspect-[9/13] place-items-center overflow-hidden rounded-xl border border-white/8 bg-gradient-to-b from-coral/25 to-ink">
+          <span className="rounded-lg bg-ink/80 px-3 py-1.5 font-heading text-base text-cream shadow-lift">post <span className="text-amber">smarter</span></span>
+        </div>
+        <div className="grid grid-cols-3 gap-1.5 text-[9px] text-sand">
+          {['Captions', 'Jump cuts', 'B-roll'].map((t) => (
+            <span key={t} className="flex items-center gap-1 rounded-md border border-white/8 bg-white/[0.03] px-1.5 py-1"><Check className="h-3 w-3 text-teal" />{t}</span>
           ))}
         </div>
-        <div className="flex items-center gap-2 rounded-xl bg-teal/10 p-2.5 text-sm text-teal">
-          <Check className="h-4 w-4" /> Rendered vertical · ready to post
-        </div>
       </div>
-    </div>
-  )
-}
-
-// ─── Format card ─────────────────────────────────────────────────────────────
-
-function FormatCard({ f }: { f: typeof FORMATS[0] }) {
+    )
+  }
   return (
-    <div className={cn('relative flex aspect-[9/16] flex-col justify-end overflow-hidden rounded-2xl bg-gradient-to-b p-4', f.bg)}>
-      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
-      <div className="relative">
-        <p className="text-sm leading-tight text-cream/80">{f.cap}</p>
-        <p className="mt-0.5 text-sm font-heading leading-tight text-cream">{f.accent}</p>
-        <div className="mt-3 flex items-center justify-between text-[10px] text-stone">
-          <span>{f.platform}</span>
-          <span>{f.views} views</span>
-        </div>
-      </div>
+    <div className="flex h-full flex-col justify-center gap-3 p-5">
+      <div className="text-[10px] uppercase tracking-wider text-stone">Published</div>
+      <div className="flex items-center gap-2 rounded-xl bg-teal/10 px-3 py-2.5 text-xs text-teal"><Check className="h-4 w-4" /> Posted to TikTok + Reels</div>
+      <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-xs text-sand"><LayoutGrid className="h-4 w-4 text-amber" /> Added to your niche gallery</div>
+      <div className="flex items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2.5 text-xs text-sand"><BarChart3 className="h-4 w-4 text-coral" /> Tracking views &amp; saves</div>
     </div>
   )
 }
 
-// ─── FAQ ─────────────────────────────────────────────────────────────────────
+function Bar({ label, v }: { label: string; v: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-white/8 bg-white/[0.03] px-2.5 py-1.5 text-[11px]">
+      <span className="text-stone">{label}</span>
+      <span className="font-medium text-cream">{v}</span>
+    </div>
+  )
+}
 
+// ─── FAQ ───────────────────────────────────────────────────────
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false)
   return (
     <Reveal>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="glass w-full p-5 text-left transition-colors hover:border-white/16"
-      >
+      <button onClick={() => setOpen((v) => !v)} className="glass w-full p-5 text-left transition-colors hover:border-white/16">
         <div className="flex items-center justify-between gap-4">
           <span className="font-heading text-base text-cream">{q}</span>
           <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/5">
@@ -640,29 +631,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
   )
 }
 
-// ─── Small helpers ────────────────────────────────────────────────────────────
-
-function Dots() {
-  return (
-    <span className="flex gap-1.5">
-      <i className="h-2 w-2 rounded-full bg-amber/70" />
-      <i className="h-2 w-2 rounded-full bg-coral/70" />
-      <i className="h-2 w-2 rounded-full bg-teal/70" />
-    </span>
-  )
-}
-
-function Spec({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="rounded-xl border border-white/8 bg-white/[0.03] p-3.5">
-      <div className="text-[10px] uppercase tracking-wider text-stone">{k}</div>
-      <div className="mt-1 text-sm text-cream">{v}</div>
-    </div>
-  )
-}
-
-// ─── Footer ──────────────────────────────────────────────────────────────────
-
+// ─── Footer ───────────────────────────────────────────────────
 function Footer() {
   return (
     <footer className="border-t border-white/8 bg-ink2/40">
@@ -675,8 +644,8 @@ function Footer() {
         <div>
           <p className="eyebrow">Product</p>
           <ul className="mt-4 space-y-2.5 text-sm text-sand">
-            <li><a href="/#how" className="hover:text-cream">How it works</a></li>
-            <li><a href="/#features" className="hover:text-cream">Features</a></li>
+            <li><a href="/#loop" className="hover:text-cream">How it works</a></li>
+            <li><a href="/#features" className="hover:text-cream">What you get</a></li>
             <li><a href="/#agencies" className="hover:text-cream">For agencies</a></li>
             <li><a href="/#pricing" className="hover:text-cream">Pricing</a></li>
             <li><a href="/#faq" className="hover:text-cream">FAQ</a></li>
