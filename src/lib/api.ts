@@ -64,9 +64,9 @@ export interface IngestJob {
 // Upload a recorded take to private storage, then enqueue an `autoedit` job.
 // Returns the job id to poll with getJob; on `done`, result.output_url is the
 // finished, signed MP4 URL.
-// First auto-edit is FREE (bundled with the blueprint). Uploads the take, queues
-// the job directly, and returns the job id + the stored take path (so a later
-// paid remake can reuse the same upload).
+// First auto-edit is FREE (bundled with the blueprint). Uploads the take, then
+// enqueues THROUGH the edge function — the only credit-enforced path. The server
+// decides free-vs-paid, so the client can't grant itself a free render.
 export async function autoEditTake(generationId: string, blob: Blob): Promise<{ jobId: string; takePath: string }> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
@@ -79,18 +79,11 @@ export async function autoEditTake(generationId: string, blob: Blob): Promise<{ 
     .upload(take_path, blob, { contentType: blob.type || 'video/webm', upsert: true })
   if (up.error) throw up.error
 
-  const { data, error } = await supabase
-    .from('jobs')
-    .insert({
-      owner_id: uid,
-      type: 'autoedit',
-      status: 'queued',
-      payload: { generation_id: generationId, take_path, variation: 0 },
-    })
-    .select('id')
-    .single()
-  if (error) throw error
-  return { jobId: (data as { id: string }).id, takePath: take_path }
+  const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
+    body: { generation_id: generationId, take_path },
+  })
+  if (error) throw new Error(await readInvokeError(error))
+  return { jobId: (data as { job_id: string }).job_id, takePath: take_path }
 }
 
 // A REMAKE re-edits the same take with a fresh look — costs one recreation,
