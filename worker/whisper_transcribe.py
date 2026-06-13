@@ -28,7 +28,11 @@ def main() -> int:
     segments_iter, info = model.transcribe(
         args.audio,
         word_timestamps=True,
-        vad_filter=True,  # drop silence — cheaper + cleaner timings
+        # IMPORTANT: no VAD here. We jump-cut silence in ffmpeg BEFORE transcribing,
+        # so VAD is redundant and its silence-removal shifts word timestamps off the
+        # video timeline, drifting the burned-in captions. Transcribe the cut audio
+        # straight so caption timings line up to the frame.
+        vad_filter=False,
     )
 
     if info.duration and info.duration > args.max_seconds:

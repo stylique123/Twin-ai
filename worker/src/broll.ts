@@ -61,3 +61,20 @@ export async function fetchBroll(keywords: string[], dir: string): Promise<Broll
   }
   return null
 }
+
+// Download the configured royalty-free music bed (MUSIC_BED_URL) once per render
+// into dir/bed.mp3. Best-effort: any failure returns null and the edit renders
+// without a bed. The URL must point to a track you have the rights to use.
+export async function fetchMusicBed(url: string, dir: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) })
+    if (!res.ok) return null
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.byteLength < 2048) return null // not a real audio file
+    const out = join(dir, 'bed.mp3')
+    await writeFile(out, buf)
+    return out
+  } catch {
+    return null
+  }
+}

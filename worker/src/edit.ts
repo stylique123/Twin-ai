@@ -3,7 +3,7 @@ import { mkdtemp, rm, readFile, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { env } from './env.js'
-import { fetchBroll, pickKeywords, type Broll } from './broll.js'
+import { fetchBroll, fetchMusicBed, pickKeywords, type Broll } from './broll.js'
 
 // One-click auto-edit v2: take a raw recorded clip and return a finished vertical
 // MP4 that feels professionally edited:
@@ -105,7 +105,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap, DejaVu Sans, 70, ${WHITE}, &H00000000&, &HA0000000&, 1, 0, 1, 5, 1, 2, 90, 90, 470, 1
+Style: Cap, DejaVu Sans, 76, ${WHITE}, &H00000000&, &HC0000000&, 1, 0, 1, 7, 2, 2, 90, 90, 560, 1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -129,7 +129,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     const emoji = emojiFor(line)
     for (let i = 0; i < line.length; i++) {
       const start = line[i].start
-      const end = i + 1 < line.length ? line[i + 1].start : line[i].end
+      // Clamp the caption's display end so it never hangs on screen during a
+      // pause before the next word (the lagging-caption bug). It tracks speech:
+      // show until the next word, but no longer than ~0.2s past this word's end.
+      const nextStart = i + 1 < line.length ? line[i + 1].start : line[i].end + 0.2
+      const end = Math.min(nextStart, line[i].end + 0.2)
       if (end <= start) continue
       const text = line
         .map((w, j) =>
@@ -175,10 +179,19 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
   const duration = await probeDuration(base)
   if (duration < 3) return false // too short to bother
 
-  // Detect silence: quieter than -30dB for >= 0.35s.
+  // Adaptive silence threshold: measure the take's mean loudness, then treat
+  // anything ~8dB below the average as a pause. Clamped to a safe band so we
+  // never clip speech (threshold too high) or never fire (too low). Falls back to -30dB.
+  let noiseDb = -30
+  try {
+    const { stderr: vd } = await run('ffmpeg', ['-i', base, '-af', 'volumedetect', '-f', 'null', '-'], Math.max(60_000, duration * 1500))
+    const mm = vd.match(/mean_volume:\s*(-?[0-9.]+)\s*dB/)
+    if (mm) noiseDb = Math.max(-45, Math.min(-28, parseFloat(mm[1]) - 8))
+  } catch { /* keep -30 */ }
+  // Detect silence quieter than the adaptive threshold for >= 0.35s.
   const { stderr } = await run(
     'ffmpeg',
-    ['-i', base, '-af', 'silencedetect=noise=-30dB:d=0.35', '-f', 'null', '-'],
+    ['-i', base, '-af', `silencedetect=noise=${noiseDb.toFixed(1)}dB:d=0.35`, '-f', 'null', '-'],
     Math.max(120_000, duration * 2000),
   )
   const starts: number[] = []
@@ -205,25 +218,33 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
     cursor = Math.max(cursor, e)
   }
   if (duration - cursor > 0.1) keep.push([cursor, duration])
+  // Drop sub-0.2s slivers that would create a 3-frame stutter cut.
+  const segs = keep.filter(([s, e]) => e - s >= 0.2)
   // Nothing meaningful to cut, or pathological segmentation.
-  if (keep.length < 2 || keep.length > 60) return false
-  const kept = keep.reduce((a, [s, e]) => a + (e - s), 0)
+  if (segs.length < 2 || segs.length > 200) return false
+  const kept = segs.reduce((a, [s, e]) => a + (e - s), 0)
   if (kept >= duration - 0.4) return false // <0.4s removed — not worth a re-encode
 
   // filter_complex: trim each keep window for v+a, normalize to 1080x1920, then
-  // concat. On 'high' energy, alternate a +8% zoom per segment so every cut lands
-  // a subtle jump-zoom "punch" (the high-energy talking-head look); 'calm' keeps
-  // clean, consistent framing.
+  // concat. A 25ms audio fade in/out at each seam removes the click/pop that a raw
+  // atrim+concat splice produces (the #1 tell of an amateur auto-cut). On 'high'
+  // energy, alternate a +8% zoom so every other cut lands a jump-zoom punch.
   const norm = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
   const punch = 'scale=1166:2074:force_original_aspect_ratio=increase,crop=1080:1920'
+  const FADE = 0.025
   const parts: string[] = []
-  keep.forEach(([s, e], i) => {
+  segs.forEach(([s, e], i) => {
     const vf = energy === 'high' && i % 2 === 1 ? punch : norm
     parts.push(`[0:v]trim=${s.toFixed(3)}:${e.toFixed(3)},setpts=PTS-STARTPTS,${vf}[v${i}]`)
-    parts.push(`[0:a]atrim=${s.toFixed(3)}:${e.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`)
+    const segDur = e - s
+    const fade =
+      segDur > FADE * 2 + 0.02
+        ? `,afade=t=in:st=0:d=${FADE},afade=t=out:st=${(segDur - FADE).toFixed(3)}:d=${FADE}`
+        : ''
+    parts.push(`[0:a]atrim=${s.toFixed(3)}:${e.toFixed(3)},asetpts=PTS-STARTPTS${fade}[a${i}]`)
   })
-  const concatIn = keep.map((_, i) => `[v${i}][a${i}]`).join('')
-  const filter = `${parts.join(';')};${concatIn}concat=n=${keep.length}:v=1:a=1[v][a]`
+  const concatIn = segs.map((_, i) => `[v${i}][a${i}]`).join('')
+  const filter = `${parts.join(';')};${concatIn}concat=n=${segs.length}:v=1:a=1[v][a]`
   await run(
     'ffmpeg',
     ['-y', '-i', base, '-filter_complex', filter, '-map', '[v]', '-map', '[a]',
@@ -285,34 +306,64 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     }
     const fill = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
     const subs = captions && words.length ? `,subtitles=${assRel}` : ''
+    const enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+      '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'out.mp4']
 
-    const baseArgs = (extra: string[]) =>
-      ['-y', '-i', base, ...extra,
-       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-       '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'out.mp4']
-    const plain = baseArgs(['-vf', `${fill}${subs}`, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11'])
-    // 3 + 4. Fill vertical, (b-roll cutaway,) burn captions, normalize loudness.
+    // Optional ducked MUSIC BED (env MUSIC_BED_URL): the connective tissue that
+    // makes cut clips feel like ONE coherent video. It plays under the whole
+    // timeline and ducks beneath the voice via sidechaincompress. Best-effort.
+    let bedFile: string | null = null
+    if (env.musicBedUrl) {
+      try { bedFile = await fetchMusicBed(env.musicBedUrl, dir) } catch { bedFile = null }
+    }
+
+    // B-roll cutaway SYNCED to when its keyword is actually spoken (not a fixed 2s),
+    // and faded in/out so it does not pop.
+    let brollStart = 2.0
+    if (broll && words.length) {
+      const q = broll.query.toLowerCase()
+      const hit = words.find((w) => w.w.toLowerCase().replace(/[^a-z]/g, '').includes(q))
+      if (hit) brollStart = Math.max(1.2, Math.min(hit.start, Math.max(1.2, durationSec - 3)))
+    }
+    const brollEnd = brollStart + 2.2
+
+    // Inputs: 0 = base (video+voice), then b-roll, then bed (indices depend on presence).
+    const inputs: string[] = ['-i', base]
+    let idx = 1
+    let brollIdx = -1, bedIdx = -1
+    if (broll) { inputs.push('-i', 'broll.mp4'); brollIdx = idx++ }
+    if (bedFile) { inputs.push('-i', 'bed.mp3'); bedIdx = idx++ }
+
+    // Video chain: fill -> optional faded b-roll overlay -> captions.
+    const vparts: string[] = [`[0:v]${fill}[mv]`]
+    let vlast = 'mv'
     if (broll) {
-      // Cutaway window: ~2s starting just after the hook resolves.
-      const t1 = 2.0
-      const t2 = Math.min(t1 + 2.0, durationSec - 0.5)
-      const fc =
-        `[0:v]${fill}[mv];` +
-        `[1:v]${fill},setpts=PTS-STARTPTS[bv];` +
-        `[mv][bv]overlay=enable='between(t,${t1.toFixed(2)},${t2.toFixed(2)})'[ov];` +
-        `[ov]${subs ? `subtitles=${assRel}` : 'null'}[v]`
-      const overlayArgs =
-        ['-y', '-i', base, '-i', 'broll.mp4', '-filter_complex', fc,
-         '-map', '[v]', '-map', '0:a', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
-         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-         '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'out.mp4']
-      try {
-        await run('ffmpeg', overlayArgs, Math.max(240_000, env.maxMediaSecs * 2000), dir)
-      } catch {
-        // b-roll overlay failed — never lose the edit; render the plain version.
-        await run('ffmpeg', plain, Math.max(240_000, env.maxMediaSecs * 2000), dir)
-      }
-    } else {
+      // Shift the b-roll so it starts playing at brollStart, then alpha-fade edges.
+      vparts.push(
+        `[${brollIdx}:v]${fill},setpts=PTS-STARTPTS+${brollStart.toFixed(3)}/TB,format=yuva420p,` +
+        `fade=t=in:st=${brollStart.toFixed(3)}:d=0.15:alpha=1,fade=t=out:st=${(brollEnd - 0.15).toFixed(3)}:d=0.15:alpha=1[bv]`,
+      )
+      vparts.push(`[mv][bv]overlay=enable='between(t,${brollStart.toFixed(2)},${brollEnd.toFixed(2)})'[ov]`)
+      vlast = 'ov'
+    }
+    vparts.push(`[${vlast}]${subs ? `subtitles=${assRel}` : 'null'}[v]`)
+
+    // Audio chain: ducked bed + voice, or just loudnorm. Target -14 LUFS (TikTok).
+    const aChain = bedFile
+      ? `[0:a]asplit=2[v1][vkey];` +
+        `[${bedIdx}:a]aloop=loop=-1:size=2000000000,volume=0.22[bedv];` +
+        `[bedv][vkey]sidechaincompress=threshold=0.04:ratio=8:attack=5:release=260[bedduck];` +
+        `[v1][bedduck]amix=inputs=2:duration=first:dropout_transition=0,loudnorm=I=-14:TP=-1.5:LRA=11[a]`
+      : `[0:a]loudnorm=I=-14:TP=-1.5:LRA=11[a]`
+
+    const fullArgs = ['-y', ...inputs, '-filter_complex', `${vparts.join(';')};${aChain}`,
+      '-map', '[v]', '-map', '[a]', ...enc]
+    // Fallback render that can never fail on a complex filtergraph.
+    const plain = ['-y', '-i', base, '-vf', `${fill}${subs}`, '-af', 'loudnorm=I=-14:TP=-1.5:LRA=11', ...enc]
+    try {
+      await run('ffmpeg', fullArgs, Math.max(240_000, env.maxMediaSecs * 2000), dir)
+    } catch {
+      // Never lose the edit — render the simple version if the rich graph fails.
       await run('ffmpeg', plain, Math.max(240_000, env.maxMediaSecs * 2000), dir)
     }
 
