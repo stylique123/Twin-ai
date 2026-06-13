@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Clapperboard, CalendarClock, Sparkles, LogOut, Menu, X, Building2,
+  LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Building2,
 } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { BrandSwitcher } from './BrandSwitcher'
@@ -17,13 +17,6 @@ const NAV = [
   { to: '/brands', label: 'Brands', icon: Building2, note: 'Client voices' },
   { to: '/gallery', label: 'Gallery', icon: LayoutGrid, note: 'Formats to remix' },
   { to: '/history', label: 'Library', icon: LibraryBig, note: 'All your blueprints' },
-]
-
-// Roadmap items live in the nav so the product feels bigger than today —
-// honestly labeled "soon", never clickable into a dead end.
-const SOON = [
-  { label: 'Auto-edit', icon: Clapperboard },
-  { label: 'Publish', icon: CalendarClock },
 ]
 
 // The authenticated dashboard frame: fixed sidebar on desktop, top bar + sheet
@@ -79,14 +72,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )
           })}
 
-          <p className="px-3 pb-1 pt-5 text-[10px] font-bold uppercase tracking-[0.18em] text-stone">Coming soon</p>
-          {SOON.map((n) => (
-            <div key={n.label} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone/70">
-              <n.icon className="h-[18px] w-[18px]" />
-              <span className="flex-1">{n.label}</span>
-              <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] uppercase tracking-wide">soon</span>
-            </div>
-          ))}
         </nav>
 
         {/* Credits + sign out */}
