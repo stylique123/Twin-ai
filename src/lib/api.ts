@@ -339,6 +339,12 @@ export async function setDefaultBrandVoice(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Rename a brand's friendly label (the per-client name agencies set).
+export async function renameBrandVoice(id: string, label: string): Promise<void> {
+  const { error } = await supabase.from('brand_voices').update({ label }).eq('id', id)
+  if (error) throw error
+}
+
 // Mark onboarding complete (used by the handle path, which has no quiz DNA).
 export async function markOnboarded(): Promise<void> {
   const { data: auth } = await supabase.auth.getUser()
