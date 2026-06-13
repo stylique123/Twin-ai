@@ -12,6 +12,8 @@ export const env = {
   supabaseUrl: need('SUPABASE_URL'),
   serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
   geminiKey: (process.env.GEMINI_API_KEY ?? '').trim(),
+  // Optional: free Pexels API key enables keyword-matched b-roll cutaways.
+  pexelsKey: (process.env.PEXELS_API_KEY ?? '').trim(),
 
   // Which job types this worker process handles.
   jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe,build_voice,autoedit').split(',').map((s) => s.trim()),

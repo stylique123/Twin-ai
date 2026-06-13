@@ -64,7 +64,10 @@ export interface IngestJob {
 // Upload a recorded take to private storage, then enqueue an `autoedit` job.
 // Returns the job id to poll with getJob; on `done`, result.output_url is the
 // finished, signed MP4 URL.
-export async function autoEditTake(generationId: string, blob: Blob): Promise<string> {
+// First auto-edit is FREE (bundled with the blueprint). Uploads the take, queues
+// the job directly, and returns the job id + the stored take path (so a later
+// paid remake can reuse the same upload).
+export async function autoEditTake(generationId: string, blob: Blob): Promise<{ jobId: string; takePath: string }> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
   const uid = auth.user.id
@@ -78,11 +81,38 @@ export async function autoEditTake(generationId: string, blob: Blob): Promise<st
 
   const { data, error } = await supabase
     .from('jobs')
-    .insert({ owner_id: uid, type: 'autoedit', status: 'queued', payload: { generation_id: generationId, take_path } })
+    .insert({
+      owner_id: uid,
+      type: 'autoedit',
+      status: 'queued',
+      payload: { generation_id: generationId, take_path, variation: 0 },
+    })
     .select('id')
     .single()
   if (error) throw error
-  return (data as { id: string }).id
+  return { jobId: (data as { id: string }).id, takePath: take_path }
+}
+
+// A REMAKE re-edits the same take with a fresh look — costs one recreation,
+// charged server-side by the enqueue-autoedit function.
+export async function remakeEdit(generationId: string, takePath: string, variation: number): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
+    body: { generation_id: generationId, take_path: takePath, remake: true, variation },
+  })
+  if (error) {
+    let msg = (error as { message?: string }).message ?? 'Could not start the remake'
+    const ctx = (error as { context?: Response }).context
+    if (ctx?.json) {
+      try {
+        const b = await ctx.json()
+        if (b?.error) msg = b.error
+      } catch {
+        /* keep msg */
+      }
+    }
+    throw new Error(msg)
+  }
+  return (data as { job_id: string }).job_id
 }
 
 // Kick off real analysis of a reference URL. Returns the worker job id to watch.

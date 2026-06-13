@@ -3,6 +3,7 @@ import { mkdtemp, rm, readFile, writeFile, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { env } from './env.js'
+import { fetchBroll, pickKeywords, type Broll } from './broll.js'
 
 // One-click auto-edit v2: take a raw recorded clip and return a finished vertical
 // MP4 that feels professionally edited:
@@ -42,12 +43,18 @@ export interface EditResult {
   durationSec: number
   words: number
   jumpCut: boolean
+  broll: boolean
 }
 
 export interface EditOptions {
   captions?: boolean // default true; skip when the source is already captioned
   energy?: 'high' | 'calm' // 'high' → jump-zoom punches on cuts; 'calm' → clean cuts
+  variation?: number // remake index → different caption highlight color
 }
+
+// Highlight-color palette (BGR). Remakes rotate through it so each looks fresh.
+const POP_PALETTE = ['&H23A6F5&' /*amber*/, '&H70E4D5&' /*teal*/, '&H6B6BFF&' /*coral*/, '&H00E5FF&' /*gold*/]
+
 
 // ASS time h:mm:ss.cs
 function assTime(s: number): string {
@@ -86,9 +93,9 @@ function emojiFor(line: Word[]): string {
 // Single-layer captions: 3-word groups, the active word pops (amber + animated
 // scale), optional emoji. One Dialogue per word window so exactly ONE caption
 // shows at a time (no overlap).
-function buildAss(words: Word[]): string {
+function buildAss(words: Word[], variation = 0): string {
   const WHITE = '&HFFFFFF&'
-  const POP = '&H23A6F5&' // amber (BGR)
+  const POP = POP_PALETTE[((variation % POP_PALETTE.length) + POP_PALETTE.length) % POP_PALETTE.length]
   const head = `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -264,28 +271,55 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       words = (tr.words ?? []).filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end))
       durationSec = tr.duration_sec ?? 0
     }
-    await writeFile(ass, words.length ? buildAss(words) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
+    await writeFile(ass, words.length ? buildAss(words, opts.variation ?? 0) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
 
-    // 3 + 4. Fill vertical 1080x1920, burn captions, normalize loudness.
-    const vf = captions && words.length
-      ? `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,subtitles=${assRel}`
-      : `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920`
-    await run(
-      'ffmpeg',
-      ['-y', '-i', base,
-       '-vf', vf,
-       '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+    // 2b. Optional b-roll cutaway (best-effort, only if PEXELS_API_KEY is set and
+    //     the clip is long enough to spare a 2s window after the hook).
+    let broll: Broll | null = null
+    if (words.length && durationSec > 6) {
+      try {
+        broll = await fetchBroll(pickKeywords(words.map((w) => w.w).join(' ')), dir)
+      } catch {
+        broll = null
+      }
+    }
+    const fill = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
+    const subs = captions && words.length ? `,subtitles=${assRel}` : ''
+
+    const baseArgs = (extra: string[]) =>
+      ['-y', '-i', base, ...extra,
        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-       '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart',
-       'out.mp4'],
-      Math.max(240_000, env.maxMediaSecs * 2000),
-      dir,
-    )
+       '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'out.mp4']
+    const plain = baseArgs(['-vf', `${fill}${subs}`, '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11'])
+    // 3 + 4. Fill vertical, (b-roll cutaway,) burn captions, normalize loudness.
+    if (broll) {
+      // Cutaway window: ~2s starting just after the hook resolves.
+      const t1 = 2.0
+      const t2 = Math.min(t1 + 2.0, durationSec - 0.5)
+      const fc =
+        `[0:v]${fill}[mv];` +
+        `[1:v]${fill},setpts=PTS-STARTPTS[bv];` +
+        `[mv][bv]overlay=enable='between(t,${t1.toFixed(2)},${t2.toFixed(2)})'[ov];` +
+        `[ov]${subs ? `subtitles=${assRel}` : 'null'}[v]`
+      const overlayArgs =
+        ['-y', '-i', base, '-i', 'broll.mp4', '-filter_complex', fc,
+         '-map', '[v]', '-map', '0:a', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11',
+         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
+         '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', 'out.mp4']
+      try {
+        await run('ffmpeg', overlayArgs, Math.max(240_000, env.maxMediaSecs * 2000), dir)
+      } catch {
+        // b-roll overlay failed — never lose the edit; render the plain version.
+        await run('ffmpeg', plain, Math.max(240_000, env.maxMediaSecs * 2000), dir)
+      }
+    } else {
+      await run('ffmpeg', plain, Math.max(240_000, env.maxMediaSecs * 2000), dir)
+    }
 
     const finalBuf = await readFile(out)
     const keep = join(tmpdir(), `twinai-render-${Date.now()}.mp4`)
     await writeFile(keep, finalBuf)
-    return { outFile: keep, durationSec, words: words.length, jumpCut }
+    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }

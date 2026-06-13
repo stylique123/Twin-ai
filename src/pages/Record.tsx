@@ -5,7 +5,8 @@ import {
   Video, VideoOff, Circle, Square, RotateCcw, Download, ArrowLeft, Loader2,
   Play, Pause, FlipHorizontal2, Minus, Plus, Gauge, Mic, AlertTriangle, Check, Sparkles,
 } from 'lucide-react'
-import { getGeneration, autoEditTake, getJob } from '../lib/api'
+import { getGeneration, autoEditTake, remakeEdit, getJob } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 import type { Generation } from '../lib/types'
 import { cn } from '../lib/cn'
 
@@ -16,6 +17,7 @@ type Phase = 'idle' | 'countdown' | 'recording' | 'review'
 // to download (Phase 6 will hand it to the auto-editor).
 export default function Record() {
   const { id } = useParams()
+  const { refreshProfile } = useAuth()
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -40,6 +42,8 @@ export default function Record() {
   const [editStatus, setEditStatus] = useState('')
   const [editUrl, setEditUrl] = useState<string | null>(null)
   const [editErr, setEditErr] = useState<string | null>(null)
+  const takePathRef = useRef<string | null>(null)
+  const [variation, setVariation] = useState(0)
 
   // teleprompter controls
   const [scrolling, setScrolling] = useState(false)
@@ -199,30 +203,56 @@ export default function Record() {
     if (editUrl) URL.revokeObjectURL(editUrl)
   }
 
-  // ---- one-click auto-edit (Phase 6) ----
+  // ---- poll a queued edit job to completion ----
+  const pollEdit = async (jobId: string) => {
+    setEditStatus('Editing — captions, framing & audio…')
+    for (let i = 0; i < 120; i++) {
+      await new Promise((r) => setTimeout(r, 3000))
+      const job = await getJob(jobId)
+      if (!job) continue
+      if (job.status === 'done' && job.result?.output_url) {
+        setEditUrl(job.result.output_url)
+        setEditPhase('done')
+        return
+      }
+      if (job.status === 'failed') throw new Error(job.error || 'The edit could not finish.')
+      setEditStatus(job.status === 'running' ? 'Editing — captions, framing & audio…' : 'Queued…')
+    }
+    throw new Error('The edit is taking longer than expected — check your Library shortly.')
+  }
+
+  // ---- first auto-edit: FREE (bundled with the blueprint) ----
   const runAutoEdit = async () => {
     if (!takeBlobRef.current || !id) return
     setEditErr(null)
     setEditPhase('working')
     setEditStatus('Uploading your take…')
     try {
-      const jobId = await autoEditTake(id, takeBlobRef.current)
-      setEditStatus('Editing — captions, framing & audio…')
-      for (let i = 0; i < 120; i++) {
-        await new Promise((r) => setTimeout(r, 3000))
-        const job = await getJob(jobId)
-        if (!job) continue
-        if (job.status === 'done' && job.result?.output_url) {
-          setEditUrl(job.result.output_url)
-          setEditPhase('done')
-          return
-        }
-        if (job.status === 'failed') throw new Error(job.error || 'The edit could not finish.')
-        setEditStatus(job.status === 'running' ? 'Editing — captions, framing & audio…' : 'Queued…')
-      }
-      throw new Error('The edit is taking longer than expected — check your Library shortly.')
+      const { jobId, takePath } = await autoEditTake(id, takeBlobRef.current)
+      takePathRef.current = takePath
+      await pollEdit(jobId)
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : 'Auto-edit failed.')
+      setEditPhase('error')
+    }
+  }
+
+  // ---- remake: a fresh look, costs one recreation ----
+  const runRemake = async () => {
+    if (!takePathRef.current || !id) return
+    setEditErr(null)
+    setEditPhase('working')
+    setEditStatus('Remaking — a fresh edit…')
+    const nextVar = variation + 1
+    setVariation(nextVar)
+    try {
+      const jobId = await remakeEdit(id, takePathRef.current, nextVar)
+      if (editUrl) URL.revokeObjectURL(editUrl)
+      setEditUrl(null)
+      await pollEdit(jobId)
+      await refreshProfile()
+    } catch (e) {
+      setEditErr(e instanceof Error ? e.message : 'Remake failed.')
       setEditPhase('error')
     }
   }
@@ -408,9 +438,14 @@ export default function Record() {
                     <RotateCcw className="h-4 w-4" /> Reshoot
                   </button>
                   {editPhase === 'done' && editUrl ? (
-                    <a href={editUrl} download={`twinai-edited-${id}.mp4`} className="btn-gradient">
-                      <Download className="h-4 w-4" /> Download edited
-                    </a>
+                    <>
+                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look — 1 recreation">
+                        <Sparkles className="h-4 w-4" /> Remake · 1 recreation
+                      </button>
+                      <a href={editUrl} download={`twinai-edited-${id}.mp4`} className="btn-gradient">
+                        <Download className="h-4 w-4" /> Download edited
+                      </a>
+                    </>
                   ) : (
                     <button onClick={runAutoEdit} className="btn-gradient" disabled={editPhase === 'working'}>
                       {editPhase === 'working' ? (

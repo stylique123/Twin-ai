@@ -47,9 +47,14 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       }
     }
 
-    const { outFile, durationSec, words, jumpCut } = await autoEdit(localTake, {
+    // Remakes pass a variation index; alternate energy on odd remakes for variety.
+    const variation = Number.isFinite(payload.variation as number) ? Number(payload.variation) : 0
+    if (variation % 2 === 1) energy = energy === 'high' ? 'calm' : 'high'
+
+    const { outFile, durationSec, words, jumpCut, broll } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
+      variation,
     })
     renderFile = outFile
 
@@ -64,7 +69,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       )
     }
 
-    return { output_path: outputPath, output_url: url, duration_sec: durationSec, words, jump_cut: jumpCut }
+    return { output_path: outputPath, output_url: url, duration_sec: durationSec, words, jump_cut: jumpCut, broll }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
     if (renderFile) await rm(renderFile, { force: true }).catch(() => {})
