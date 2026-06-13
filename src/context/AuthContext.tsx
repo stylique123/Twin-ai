@@ -46,8 +46,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signOut = async () => {
-    await supabase.auth.signOut()
+    // Clear local state FIRST so the UI (route guards, nav) flips to logged-out
+    // instantly — never wait on the network round-trip or the auth listener.
+    setSession(null)
     setProfile(null)
+    try {
+      await supabase.auth.signOut()
+    } catch {
+      /* session is already cleared locally; ignore network errors */
+    }
   }
 
   return (
