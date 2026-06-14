@@ -36,7 +36,9 @@ command -v docker >/dev/null || { echo "Docker not found. Install: curl -fsSL ht
 echo "==> Fetching source ($BRANCH)"
 if [ -d "$SRC/.git" ]; then
   git -C "$SRC" fetch --depth 1 origin "$BRANCH"
-  git -C "$SRC" reset --hard "origin/$BRANCH"
+  # Reset to FETCH_HEAD, not origin/$BRANCH: the checkout is a single-branch
+  # shallow clone, so it has no origin/<other-branch> ref to reset to.
+  git -C "$SRC" reset --hard FETCH_HEAD
 else
   git clone --depth 1 --branch "$BRANCH" "$REPO" "$SRC"
 fi
