@@ -74,6 +74,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     })
     renderFile = outFile
     thumbRender = thumbFile ?? null
+    console.log(`[autoedit ${job.id}] coverText_len=${coverText.length} thumb=${thumbRender ? 'yes' : 'no'} broll=${broll}`)
 
     const outputPath = `${job.owner_id}/${job.id}.mp4`
     await uploadObject('edits', outputPath, outFile, 'video/mp4')

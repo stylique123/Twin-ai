@@ -467,21 +467,44 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     let thumbFile: string | null = null
     if (opts.coverText && opts.coverText.trim()) {
       try {
-        await writeFile(join(dir, 'cover.txt'), wrapText(opts.coverText, 18, 3))
-        const FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+        const cover = wrapText(opts.coverText, 18, 3)
+        await writeFile(join(dir, 'cover.txt'), cover)
         const at = Math.min(1.6, Math.max(0.4, (durationSec || 3) / 3))
-        const vf = [
-          fill,
-          'drawbox=x=0:y=ih*0.52:w=iw:h=ih*0.48:color=black@0.5:t=fill',
-          'drawbox=x=84:y=ih*0.56:w=190:h=12:color=0x23A6F5:t=fill',
-          `drawtext=fontfile=${FONT}:textfile=cover.txt:fontcolor=white:fontsize=70:line_spacing=14:x=(w-text_w)/2:y=h*0.6:shadowcolor=black@0.85:shadowx=3:shadowy=3`,
-        ].join(',')
-        await run('ffmpeg', ['-y', '-ss', at.toFixed(2), '-i', 'out.mp4', '-vframes', '1', '-vf', vf, '-q:v', '3', 'thumb.jpg'], 60_000, dir)
-        if ((await fileSize(join(dir, 'thumb.jpg'))) > 1024) {
-          thumbFile = join(tmpdir(), `twinai-thumb-${Date.now()}.jpg`)
-          await writeFile(thumbFile, await readFile(join(dir, 'thumb.jpg')))
+        // Step 1: pull a clean, already-vertical frame from the finished render.
+        // (out.mp4 is 1080x1920, so no rescale needed — keep this step trivial so
+        // it can't fail on filter quirks.)
+        await run('ffmpeg', ['-y', '-ss', at.toFixed(2), '-i', 'out.mp4', '-vframes', '1', '-q:v', '2', 'frame.jpg'], 60_000, dir)
+        if ((await fileSize(join(dir, 'frame.jpg'))) <= 1024) throw new Error('cover frame extract produced no image')
+        // Step 2: overlay the hook in brand style. Try a few font paths so a
+        // missing DejaVu build doesn't sink the whole cover.
+        const fonts = [
+          '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+          '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+          '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+        ]
+        let FONT = ''
+        for (const f of fonts) { if ((await fileSize(f)) > 0) { FONT = f; break } }
+        if (FONT) {
+          const vf = [
+            'drawbox=x=0:y=ih*0.52:w=iw:h=ih*0.48:color=black@0.5:t=fill',
+            'drawbox=x=84:y=ih*0.56:w=190:h=12:color=0x23A6F5:t=fill',
+            `drawtext=fontfile=${FONT}:textfile=cover.txt:fontcolor=white:fontsize=70:line_spacing=14:x=(w-text_w)/2:y=h*0.6:shadowcolor=black@0.85:shadowx=3:shadowy=3`,
+          ].join(',')
+          try {
+            await run('ffmpeg', ['-y', '-i', 'frame.jpg', '-vf', vf, '-q:v', '3', 'thumb.jpg'], 60_000, dir)
+          } catch (e) {
+            console.error('[autoedit] cover overlay failed, using plain frame:', e)
+          }
+        } else {
+          console.error('[autoedit] no usable font for cover overlay, using plain frame')
         }
-      } catch {
+        // Prefer the overlaid cover; fall back to the plain frame so we always get
+        // a thumbnail when a frame extracted.
+        const finalThumb = (await fileSize(join(dir, 'thumb.jpg'))) > 1024 ? 'thumb.jpg' : 'frame.jpg'
+        thumbFile = join(tmpdir(), `twinai-thumb-${Date.now()}.jpg`)
+        await writeFile(thumbFile, await readFile(join(dir, finalThumb)))
+      } catch (e) {
+        console.error('[autoedit] cover thumbnail failed:', e)
         thumbFile = null
       }
     }
