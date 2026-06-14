@@ -108,13 +108,68 @@ async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
   return { language: 'en', duration_sec, text, words: [], segments }
 }
 
+// --- Instagram: transcript via Apify (yt-dlp gets "login required"/rate-limited) ---
+const IG_HOSTS = ['instagram.com', 'www.instagram.com']
+function isInstagram(u: URL): boolean {
+  const h = u.hostname.toLowerCase()
+  return IG_HOSTS.some((x) => h === x || h.endsWith('.' + x))
+}
+
+// Run an Apify Instagram transcript Actor and map its dataset output into our
+// Transcript shape. The Actor returns one dataset item shaped as:
+//   { text, duration, errMsg, segments: [{ start, end, text }] }
+// Throws a clear, user-facing message when the token is missing, the reel is
+// unavailable (empty result), or the clip has no readable speech.
+async function instagramTranscriptViaApify(rawUrl: string): Promise<Transcript> {
+  if (!env.apifyToken) {
+    throw new Error('Instagram analysis is not configured yet. Try a TikTok link, or contact support.')
+  }
+  const url = `https://api.apify.com/v2/acts/${env.apifyInstagramActor}/run-sync-get-dataset-items?token=${env.apifyToken}`
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoUrl: rawUrl }),
+  })
+  if (!res.ok) {
+    throw new Error(`Instagram transcript service error ${res.status}: ${(await res.text()).slice(0, 200)}`)
+  }
+  const items = (await res.json()) as {
+    text?: string
+    duration?: number
+    errMsg?: string
+    segments?: { start?: number; end?: number; text?: string }[]
+  }[]
+  const item = Array.isArray(items) ? items[0] : null
+  // The Actor returns an empty dataset for private/removed/region-locked reels.
+  if (!item) throw new Error("Couldn't read that Instagram video — it may be private or removed. Try another.")
+  if (item.errMsg) throw new Error(`This Instagram video could not be read: ${String(item.errMsg).slice(0, 150)}`)
+
+  const segments = (Array.isArray(item.segments) ? item.segments : [])
+    .map((s) => {
+      const start = Number(s.start) || 0
+      const end = Number(s.end) || start
+      return { start, end: Number(end.toFixed(3)), text: String(s.text ?? '').trim() }
+    })
+    .filter((s) => s.text)
+
+  const text =
+    typeof item.text === 'string' && item.text.trim()
+      ? item.text.trim()
+      : segments.map((s) => s.text).join(' ')
+  if (!text) throw new Error('This Instagram video has no speech we can read. Try a different reference.')
+
+  const duration_sec = Number(item.duration) || (segments.length ? Math.ceil(segments[segments.length - 1].end) : 0)
+  return { language: 'en', duration_sec, text, words: [], segments }
+}
+
 // Download audio from an allow-listed URL, transcribe with faster-whisper, and
 // ALWAYS discard the raw media afterwards (analyze-and-discard / privacy).
-// YouTube is the exception: we fetch real captions via Apify (see above) because
-// YouTube bot-blocks yt-dlp from datacenter IPs.
+// YouTube + Instagram are the exceptions: we fetch transcripts via Apify (see
+// above) because both bot-block yt-dlp from datacenter IPs.
 export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
   const u = assertAllowedUrl(rawUrl)
   if (isYouTube(u)) return youtubeTranscriptViaApify(rawUrl)
+  if (isInstagram(u)) return instagramTranscriptViaApify(rawUrl)
   const dir = await mkdtemp(join(tmpdir(), 'twinai-'))
   const audioPath = join(dir, 'audio.m4a')
   const outPath = join(dir, 'transcript.json')
