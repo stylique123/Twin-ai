@@ -1,7 +1,7 @@
 // Supabase Edge Function: start-dna
-// Begins a Brand-DNA build for a creator handle: validates the handle, kicks off
-// the Apify profile scrape asynchronously, creates a `brand_voices` row (status
-// building) plus a `build_dna` job, and returns the brand voice + job ids. The
+// Begins a Brand-DNA build for a creator handle: validates the handle, enforces
+// the plan's brand-voice limit, kicks off the Apify profile scrape, creates (or
+// reuses) a `brand_voices` row plus a `build_dna` job, and returns the ids. The
 // frontend then polls `dna-poll` (or watches the row) until it goes ready.
 //
 // Deploy:  supabase functions deploy start-dna
@@ -11,6 +11,10 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import { cors, json, normalizeHandle, startApifyRun, type Platform } from '../_shared/dna.ts'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
+
+// Brand voices included per plan. Non-agency plans are single-brand by design
+// ("one voice profile per client" is the agency moat). Tunable later via billing.
+const BRAND_LIMIT: Record<string, number> = { free: 1, aspiring: 1, professional: 1, agency: 15 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -62,22 +66,58 @@ Deno.serve(async (req: Request) => {
     )
   }
 
-  // Create the brand voice row first so the frontend has something to watch.
-  const { data: voice, error: voiceErr } = await admin
+  // Enforce the plan's brand-voice cap. Failed scans do NOT count (a failure must
+  // never lock you out of your only slot), and retrying the SAME handle reuses its
+  // row instead of piling up duplicates — the "4/1 brand voices" bug.
+  const { data: profile } = await admin.from('profiles').select('plan').eq('id', user.id).single()
+  const limit = BRAND_LIMIT[profile?.plan ?? 'free'] ?? 1
+
+  const { data: existing } = await admin
     .from('brand_voices')
-    .insert({
-      owner_id: user.id,
-      handle,
-      platform,
-      label: `@${handle}`,
-      status: 'building',
-      is_default: makeDefault,
-    })
-    .select('*')
-    .single()
-  if (voiceErr || !voice) {
-    console.error('start-dna: voice insert failed', voiceErr)
-    return json({ error: 'Could not start. Please try again.' }, 500)
+    .select('id, handle, platform, status')
+    .eq('owner_id', user.id)
+  const sameHandle = (existing ?? []).find((v) => v.handle === handle && v.platform === platform)
+  const activeCount = (existing ?? []).filter((v) => v.status !== 'failed').length
+
+  let voiceId: string
+  if (sameHandle) {
+    if (sameHandle.status === 'ready') {
+      // Already have a working voice for this exact handle — nothing to rebuild.
+      return json({ error: `You already have a voice for @${handle} on ${platform}.`, brand_voice_id: sameHandle.id }, 409)
+    }
+    // Retry of a failed/stuck scan: reuse the row so it doesn't consume a new slot.
+    await admin
+      .from('brand_voices')
+      .update({ status: 'building', error: null, is_default: makeDefault })
+      .eq('id', sameHandle.id)
+    voiceId = sameHandle.id
+  } else {
+    if (activeCount >= limit) {
+      return json(
+        {
+          error: `Your plan includes ${limit} brand voice${limit > 1 ? 's' : ''}. Remove one or upgrade to add more.`,
+          code: 'BRAND_LIMIT',
+        },
+        402,
+      )
+    }
+    const { data: voice, error: voiceErr } = await admin
+      .from('brand_voices')
+      .insert({
+        owner_id: user.id,
+        handle,
+        platform,
+        label: `@${handle}`,
+        status: 'building',
+        is_default: makeDefault,
+      })
+      .select('id')
+      .single()
+    if (voiceErr || !voice) {
+      console.error('start-dna: voice insert failed', voiceErr)
+      return json({ error: 'Could not start. Please try again.' }, 500)
+    }
+    voiceId = voice.id
   }
 
   // Kick the Apify scrape asynchronously. If Apify isn't configured/healthy,
@@ -90,19 +130,19 @@ Deno.serve(async (req: Request) => {
         owner_id: user.id,
         type: 'build_dna',
         status: 'running',
-        payload: { brand_voice_id: voice.id, apify_run_id: runId, handle, platform },
+        payload: { brand_voice_id: voiceId, apify_run_id: runId, handle, platform },
       })
       .select('id')
       .single()
-    return json({ brand_voice_id: voice.id, job_id: job?.id ?? null, status: 'building' })
+    return json({ brand_voice_id: voiceId, job_id: job?.id ?? null, status: 'building' })
   } catch (err) {
     console.error('start-dna: apify start failed', err)
     await admin
       .from('brand_voices')
       .update({ status: 'failed', error: 'Could not reach the scraper.' })
-      .eq('id', voice.id)
+      .eq('id', voiceId)
     return json(
-      { error: 'Voice scan is unavailable right now — you can set up your voice manually.', brand_voice_id: voice.id },
+      { error: 'Voice scan is unavailable right now — you can set up your voice manually.', brand_voice_id: voiceId },
       503,
     )
   }
