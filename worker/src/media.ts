@@ -73,23 +73,20 @@ async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
   if (!env.apifyToken) {
     throw new Error('YouTube analysis is not configured yet. Try a TikTok or Instagram link, or contact support.')
   }
-  const base = `https://api.apify.com/v2/acts/${env.apifyYoutubeActor}`
-  const runRes = await fetch(`${base}/run-sync?token=${env.apifyToken}`, {
+  // run-sync-get-dataset-items returns the dataset directly as [{ data: [...] }].
+  // (The older /run-sync + key-value-store path returned an empty body here and
+  // broke JSON parsing — "Unexpected end of JSON input".)
+  const url = `https://api.apify.com/v2/acts/${env.apifyYoutubeActor}/run-sync-get-dataset-items?token=${env.apifyToken}`
+  const res = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ videoUrl: rawUrl, targetLanguage: 'en' }),
   })
-  if (!runRes.ok) {
-    throw new Error(`YouTube transcript service error ${runRes.status}: ${(await runRes.text()).slice(0, 200)}`)
+  if (!res.ok) {
+    throw new Error(`YouTube transcript service error ${res.status}: ${(await res.text()).slice(0, 200)}`)
   }
-  const run = await runRes.json()
-  const storeId = run?.data?.defaultKeyValueStoreId
-  if (!storeId) throw new Error('YouTube transcript service returned no output store.')
-
-  const outRes = await fetch(`https://api.apify.com/v2/key-value-stores/${storeId}/records/output?token=${env.apifyToken}`)
-  if (!outRes.ok) throw new Error(`Could not read YouTube transcript output (${outRes.status}).`)
-  const out = await outRes.json()
-  const rows: { start?: string | number; dur?: string | number; text?: string }[] = out?.data ?? []
+  const items = (await res.json()) as { data?: { start?: string | number; dur?: string | number; text?: string }[] }[]
+  const rows = (Array.isArray(items) ? items[0]?.data : null) ?? []
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new Error('This video has no captions we can read. Try a different reference.')
   }
