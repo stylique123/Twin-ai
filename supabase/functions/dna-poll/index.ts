@@ -41,6 +41,18 @@ Deno.serve(async (req: Request) => {
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
+  // Bound client polling: each call hits the Apify status API and, on the ready
+  // flip, a Gemini synthesis. Keep a tight loop from hammering the providers.
+  const { data: allowed } = await admin.rpc('check_rate_limit', {
+    p_user: user.id,
+    p_action: 'dna_poll',
+    p_max: 60,
+    p_window_secs: 60,
+  })
+  if (allowed === false) {
+    return json({ error: 'Polling too fast. Slow down and try again shortly.' }, 429)
+  }
+
   let body: { brand_voice_id?: string }
   try {
     body = await req.json()
