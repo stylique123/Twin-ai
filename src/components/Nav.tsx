@@ -57,10 +57,10 @@ export function Nav() {
             </Link>
           ) : (
             <>
-              <Link to="/auth" className="rounded-full px-3.5 py-1.5 text-sm text-sand transition-colors hover:text-cream">
+              <Link to="/auth?mode=signin" className="rounded-full px-3.5 py-1.5 text-sm text-sand transition-colors hover:text-cream">
                 Sign in
               </Link>
-              <Link to="/auth" className="btn-gradient !rounded-full !py-2 text-sm">
+              <Link to="/auth?mode=signup" className="btn-gradient !rounded-full !py-2 text-sm">
                 Start free
               </Link>
             </>
@@ -97,8 +97,8 @@ export function Nav() {
                 <Link to="/app" className="btn-gradient mt-1 !rounded-xl">Open studio</Link>
               ) : (
                 <>
-                  <Link to="/auth" className="rounded-xl px-3 py-2.5 text-sand hover:bg-white/5">Sign in</Link>
-                  <Link to="/auth" className="btn-gradient mt-1 !rounded-xl">Start free</Link>
+                  <Link to="/auth?mode=signin" className="rounded-xl px-3 py-2.5 text-sand hover:bg-white/5">Sign in</Link>
+                  <Link to="/auth?mode=signup" className="btn-gradient mt-1 !rounded-xl">Start free</Link>
                 </>
               )}
             </div>

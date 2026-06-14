@@ -12,7 +12,7 @@ create table if not exists public.profiles (
   email       text,
   display_name text,
   plan        text not null default 'free',
-  credits     integer not null default 30, -- internal credits; Free advertises 2, granted 3 (hidden buffer)
+  credits     integer not null default 30, -- internal credits; Free = 3 recreations (advertised and granted match)
   dna         jsonb,
   onboarded   boolean not null default false,
   created_at  timestamptz not null default now()

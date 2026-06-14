@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, PenLine } from 'lucide-react'
+import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, PenLine, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { markOnboarded, pollDna, saveDNA, saveVoiceProfile, startDna } from '../lib/api'
 import type { CreatorDNA, Platform, VoiceProfile } from '../lib/types'
@@ -50,7 +50,11 @@ export default function Onboarding() {
                 <HandleStep onBuilding={() => setMode('building')} onManual={() => setMode('manual')} />
               )}
               {mode === 'building' && (
-                <BuildingStep onReady={() => setMode('confirm')} onManual={() => setMode('manual')} />
+                <BuildingStep
+                  onReady={() => setMode('confirm')}
+                  onManual={() => setMode('manual')}
+                  onBack={() => setMode('handle')}
+                />
               )}
               {mode === 'confirm' && <ConfirmStep onDone={() => finish(refreshProfile, navigate)} />}
               {mode === 'manual' && <ManualQuiz onBack={() => setMode('handle')} />}
@@ -168,7 +172,7 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
 // --- Step 2: live progress while the scan runs -----------------------------
 const SCAN_STAGES = ['Fetching your posts', 'Reading captions & hooks', 'Synthesizing your voice']
 
-function BuildingStep({ onReady, onManual }: { onReady: () => void; onManual: () => void }) {
+function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onManual: () => void; onBack: () => void }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -269,13 +273,25 @@ function BuildingStep({ onReady, onManual }: { onReady: () => void; onManual: ()
       </div>
 
       {err && (
-        <div className="mt-6">
-          <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
-          <button className="btn-ghost mt-3" onClick={onManual}>
-            Set up manually instead
+        <p className="mt-6 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
+      )}
+
+      {/* Always-visible escapes so the user is never trapped on the spinner. */}
+      <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+        <button className="btn-ghost" onClick={onBack}>
+          <ArrowLeft className="h-4 w-4" /> Back
+        </button>
+        <div className="flex flex-wrap gap-2">
+          {err && (
+            <button className="btn-ghost" onClick={onBack}>
+              <RotateCcw className="h-4 w-4" /> Try again
+            </button>
+          )}
+          <button className="btn-ghost" onClick={onManual}>
+            <PenLine className="h-4 w-4" /> Set it up manually
           </button>
         </div>
-      )}
+      </div>
     </>
   )
 }

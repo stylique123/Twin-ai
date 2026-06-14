@@ -1,16 +1,24 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Check, ArrowRight } from 'lucide-react'
+import { Check, ArrowRight, ArrowLeft } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { planFor, PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 import { EASE } from '../components/motion'
 
-const PERKS = ['2 free recreations', 'Blueprint in ~30 seconds', 'No card required']
+const PERKS = ['3 free recreations', 'Script in your voice, record + edit in one place', 'No card required']
+
+// Where we remember the plan the user picked on the pricing page, so the choice
+// survives signup + email confirmation and reaches onboarding / billing later.
+export const INTENDED_PLAN_KEY = 'twinai_intended_plan'
 
 export default function Auth() {
-  const [mode, setMode] = useState<'signin' | 'signup'>('signup')
+  const [params] = useSearchParams()
+  const intendedPlanId = params.get('plan')
+  const intendedPlan = intendedPlanId && PLANS.some((p) => p.id === intendedPlanId) ? planFor(intendedPlanId) : null
+  const [mode, setMode] = useState<'signin' | 'signup'>(params.get('mode') === 'signin' ? 'signin' : 'signup')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
@@ -28,6 +36,10 @@ export default function Auth() {
     }
     setBusy(true)
     try {
+      // Remember the plan the user chose on pricing so onboarding/billing can honor it.
+      if (intendedPlan && intendedPlan.id !== 'free') {
+        try { localStorage.setItem(INTENDED_PLAN_KEY, intendedPlan.id) } catch { /* storage unavailable */ }
+      }
       if (mode === 'signup') {
         const { data, error } = await supabase.auth.signUp({
           email,
@@ -66,7 +78,15 @@ export default function Auth() {
       >
         {/* Left — brand panel */}
         <div className="relative hidden flex-col justify-between gap-8 bg-signature-soft p-8 md:flex">
-          <Logo size={30} />
+          <div className="flex items-center justify-between">
+            <Logo size={30} />
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-sand transition-colors hover:text-cream"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> Back
+            </Link>
+          </div>
           <div>
             <h2 className="font-display text-3xl leading-tight">
               You bring the idea.<br />
@@ -83,17 +103,36 @@ export default function Auth() {
               ))}
             </ul>
           </div>
-          <p className="text-xs text-stone">Reference-based creation — not a clipper.</p>
+          <p className="text-xs text-stone">Paste a reference. Get a finished video in your voice.</p>
         </div>
 
         {/* Right — form */}
         <div className="p-8 sm:p-10">
-          <div className="md:hidden"><Logo size={28} /></div>
-          <h1 className="mt-6 font-display text-3xl md:mt-0">
+          {/* Mobile header with Back */}
+          <div className="flex items-center justify-between md:hidden">
+            <Logo size={28} />
+            <Link
+              to="/"
+              className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-sand transition-colors hover:text-cream"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> Back
+            </Link>
+          </div>
+
+          {intendedPlan && (
+            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber/25 bg-amber/10 px-3 py-1.5 text-xs font-semibold text-amber md:mt-0">
+              <Check className="h-3.5 w-3.5" />
+              {intendedPlan.id === 'free'
+                ? "You're starting on the Free plan"
+                : `You're starting on ${intendedPlan.name}`}
+            </div>
+          )}
+
+          <h1 className="mt-6 font-display text-3xl">
             {mode === 'signup' ? 'Start free' : 'Welcome back'}
           </h1>
           <p className="mt-1.5 text-sm text-sand">
-            {mode === 'signup' ? '2 free recreations. No card required.' : 'Pick up where you left off.'}
+            {mode === 'signup' ? '3 free recreations. No card required.' : 'Pick up where you left off.'}
           </p>
 
           <form onSubmit={submit} className="mt-7 space-y-3">
