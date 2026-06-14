@@ -8,7 +8,7 @@
 # USAGE (on the server):
 #   1) Install Docker once if needed:   curl -fsSL https://get.docker.com | sh
 #   2) Create the secrets file:         sudo nano /opt/twinai-worker.env   (template below)
-#   3) Run this script:                 curl -fsSL https://raw.githubusercontent.com/stylique123/Twin-ai/claude/nice-mccarthy-83efee/worker/deploy-vps.sh | sudo bash
+#   3) Run this script:                 curl -fsSL https://raw.githubusercontent.com/stylique123/Twin-ai/main/worker/deploy-vps.sh | sudo bash
 #      (or: sudo bash worker/deploy-vps.sh from a checkout)
 #
 # /opt/twinai-worker.env template (chmod 600):
@@ -23,7 +23,8 @@
 set -euo pipefail
 
 REPO="https://github.com/stylique123/Twin-ai.git"
-BRANCH="claude/nice-mccarthy-83efee"
+# main is the single source of truth (Vercel and the VPS both track it).
+BRANCH="main"
 SRC="/opt/twinai-worker-src"
 ENV_FILE="/opt/twinai-worker.env"
 NAME="twinai-worker"
