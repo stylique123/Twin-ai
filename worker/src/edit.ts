@@ -172,10 +172,28 @@ async function probeDuration(file: string): Promise<number> {
   }
 }
 
-// Jump-cuts via ffmpeg silencedetect: find silent gaps, keep the spoken segments
-// (with a small margin so words aren't clipped), and concat them back together.
-// Returns true if it actually tightened the clip.
-async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'calm' = 'calm'): Promise<boolean> {
+// Disfluency cut: when the transcript captures fillers ("um"/"uh"/...) or an
+// immediate stammered duplicate of a short word ("I I", "the the"), return the
+// time spans to drop. Whisper often cleans fillers out, so this fires
+// opportunistically and never removes content words.
+const FILLERS = new Set(['um', 'umm', 'ummm', 'uh', 'uhh', 'uhhh', 'uhm', 'uhmm', 'er', 'err', 'erm', 'ah', 'ahh', 'eh', 'ehh', 'hmm', 'hmmm', 'mm', 'mmm'])
+const normWord = (w: string) => w.toLowerCase().replace(/[^a-z']/g, '')
+export function fillerSpans(words: Word[]): [number, number][] {
+  const spans: [number, number][] = []
+  for (let i = 0; i < words.length; i++) {
+    const w = normWord(words[i].w)
+    if (!w) continue
+    let drop = FILLERS.has(w)
+    if (!drop && i + 1 < words.length && w.length <= 3 && w === normWord(words[i + 1].w)) drop = true
+    if (drop) spans.push([Math.max(0, words[i].start - 0.03), words[i].end + 0.03])
+  }
+  return spans
+}
+
+// Jump-cuts via ffmpeg silencedetect: find silent gaps (plus any extraRemove word
+// spans from fillerSpans), keep the spoken segments with a small margin, and
+// concat them back together. Returns true if it actually tightened the clip.
+async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'calm' = 'calm', extraRemove: [number, number][] = []): Promise<boolean> {
   const duration = await probeDuration(base)
   if (duration < 3) return false // too short to bother
 
@@ -198,9 +216,10 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
   const ends: number[] = []
   for (const m of stderr.matchAll(/silence_start:\s*([0-9.]+)/g)) starts.push(parseFloat(m[1]))
   for (const m of stderr.matchAll(/silence_end:\s*([0-9.]+)/g)) ends.push(parseFloat(m[1]))
-  if (!starts.length) return false
+  if (!starts.length && !extraRemove.length) return false
 
-  // Build silence intervals, shrink each by a 0.15s margin so we never clip speech.
+  // Remove set = silence intervals (shrunk by a 0.15s margin so we never clip
+  // speech) PLUS any filler/stammer word spans passed in.
   const MARGIN = 0.15
   const sil: [number, number][] = []
   for (let i = 0; i < starts.length; i++) {
@@ -208,12 +227,26 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
     const e = (i < ends.length ? ends[i] : duration) - MARGIN
     if (e - s > 0.1) sil.push([s, e])
   }
+  for (const [s, e] of extraRemove) {
+    const cs = Math.max(0, s)
+    const ce = Math.min(duration, e)
+    if (ce - cs > 0.05) sil.push([cs, ce])
+  }
   if (!sil.length) return false
 
-  // Keep segments = complement of silence within [0, duration].
+  // Sort + merge overlapping remove intervals (silence and fillers can overlap).
+  sil.sort((a, b) => a[0] - b[0])
+  const remove: [number, number][] = []
+  for (const iv of sil) {
+    const last = remove[remove.length - 1]
+    if (last && iv[0] <= last[1] + 0.05) last[1] = Math.max(last[1], iv[1])
+    else remove.push([iv[0], iv[1]])
+  }
+
+  // Keep segments = complement of the remove set within [0, duration].
   const keep: [number, number][] = []
   let cursor = 0
-  for (const [s, e] of sil) {
+  for (const [s, e] of remove) {
     if (s > cursor + 0.1) keep.push([cursor, s])
     cursor = Math.max(cursor, e)
   }
@@ -264,12 +297,34 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
   const transcript = join(dir, 't.json')
   const out = join(dir, 'out.mp4')
   try {
-    // 1. Jump-cuts: remove silence/dead air via ffmpeg silencedetect. Best-effort
-    //    — if there's nothing worth cutting (or it errors), fall back to the
+    // 0. Detect disfluencies on the ORIGINAL so fillers + stammers get cut along
+    //    with silence in the same pass. Best-effort: if it fails we fall back to
+    //    silence-only cuts (unchanged behavior).
+    let removeSpans: [number, number][] = []
+    try {
+      const a0 = join(dir, 'a0.wav')
+      const t0 = join(dir, 't0.json')
+      await run('ffmpeg', ['-y', '-i', takeFile, '-vn', '-ac', '1', '-ar', '16000', a0], 120_000)
+      await run(
+        'python3',
+        [join(import.meta.dirname, '..', 'whisper_transcribe.py'),
+         '--audio', a0, '--out', t0,
+         '--model', env.whisperModel, '--device', env.whisperDevice,
+         '--max-seconds', String(env.maxMediaSecs)],
+        Math.max(180_000, env.maxMediaSecs * 1000),
+      )
+      const w0 = (JSON.parse(await readFile(t0, 'utf8')).words ?? []) as Word[]
+      removeSpans = fillerSpans(w0.filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end)))
+    } catch {
+      removeSpans = []
+    }
+
+    // 1. Jump-cuts: remove silence + detected fillers via ffmpeg. Best-effort, and
+    //    if there's nothing worth cutting (or it errors), fall back to the
     //    original take so we always produce a render.
     let jumpCut = false
     try {
-      jumpCut = await jumpCutSilence(takeFile, cut, opts.energy ?? 'calm')
+      jumpCut = await jumpCutSilence(takeFile, cut, opts.energy ?? 'calm', removeSpans)
     } catch {
       jumpCut = false
     }
