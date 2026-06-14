@@ -29,6 +29,14 @@ function json(body: unknown, status = 200) {
   })
 }
 
+// Keep the opening AND closing of long source text. A hard head-only cut loses
+// the ending (the payoff/CTA), which the retention read depends on.
+function clip(s: string, max: number): string {
+  if (s.length <= max) return s
+  const head = Math.floor(max * 0.7)
+  return s.slice(0, head) + '\n...[middle of transcript trimmed for length]...\n' + s.slice(-(max - head))
+}
+
 // Gemini responseSchema (OpenAPI subset: uppercase types, no additionalProperties).
 // Guarantees the shape the frontend renders.
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -287,26 +295,41 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const creatorDna = vp
-      ? `CREATOR DNA (learned from @${voice!.handle} on ${voice!.platform})
-- Summary: ${vp.summary ?? ''}
-- Niche: ${vp.niche ?? dna.niche ?? 'unspecified'}
-- Tone: ${vp.tone ?? dna.voice ?? 'direct, warm'}
+    // Unified creator context: take the richest available value (confirmed brand
+    // voice first, onboarding quiz as fallback) for EVERY field. Previously the
+    // brand-voice path dropped audience, offer, goal and editing style, so
+    // handle-based creators got a thinner prompt than quiz creators.
+    const niche = vp?.niche ?? dna.niche ?? 'unspecified'
+    const audience = vp?.audience ?? dna.audience ?? 'unspecified'
+    const offer = vp?.offer ?? dna.product ?? 'unspecified'
+    const pain = vp?.audience_pain ?? dna.pain ?? ''
+    const dream = vp?.dream_outcome ?? dna.dream ?? ''
+    const goal = vp?.goal ?? dna.goal ?? 'turn attention into trust'
+    const tone = vp?.tone ?? dna.voice ?? 'direct, warm, a little punchy'
+    const editing = vp?.editing_style ?? dna.editing_style ?? 'fast jump cuts, burned-in captions'
+    const platforms = voice?.platform
+      ? [voice.platform]
+      : Array.isArray(dna.platforms) && dna.platforms.length
+        ? dna.platforms
+        : ['tiktok']
+
+    const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
+- Niche: ${niche}
+- Audience: ${audience}
+- Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
+- Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
+- Product or offer the CTA should point at: ${offer}
+- Goal: ${goal}
+- Tone and voice: ${tone}
+- Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
 - Hook style: ${vp.hook_style ?? ''}
 - Signature vocabulary: ${(vp.vocabulary ?? []).join(', ')}
 - Recurring CTAs: ${(vp.recurring_ctas ?? []).join(', ')}
 - Do: ${(vp.dos ?? []).join('; ')}
 - Don't: ${(vp.donts ?? []).join('; ')}
-- Platforms: ${voice!.platform}`
-      : `CREATOR DNA
-- Niche: ${dna.niche ?? 'unspecified'}
-- Audience: ${dna.audience ?? 'unspecified'}
-- Product/offer: ${dna.product ?? 'unspecified'}
-- Goal: ${dna.goal ?? 'turn attention into trust'}
-- Voice: ${dna.voice ?? 'direct, warm, a little punchy'}
-- Platforms: ${(dna.platforms ?? ['tiktok']).join(', ')}
-- Editing style: ${dna.editing_style ?? 'fast jump cuts, burned-in captions'}`
+- Voice summary: ${vp.summary ?? ''}` : ''}
+- Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}`
 
     // When we have the real transcript, override the format-pattern caveat: the
     // model IS now reading the actual video, so reference_read must describe THIS clip.
@@ -316,7 +339,7 @@ Deno.serve(async (req: Request) => {
 - URL: ${reference_url}
 - Platform: ${ref.platform ?? 'unknown'}
 - Derived structure: ${ref.structure ? JSON.stringify(ref.structure).slice(0, 4000) : '(none)'}
-- Transcript excerpt: ${(ref.text ?? '').slice(0, 4000)}
+- Transcript excerpt: ${clip(ref.text ?? '', 6000)}
 - Creator's angle/note: ${reference_note || '(none provided)'}
 - Inspiration fidelity: ${fidelity} (close = stay tight to the reference structure; balanced = proven shape, their spin; loose = just the inspiration, mostly them)`
         : `REFERENCE
@@ -328,7 +351,11 @@ Deno.serve(async (req: Request) => {
 
 ${referenceBlock}
 
-Produce the full shootable blueprint for THIS creator, adapting the reference's structure to their voice and niche.`
+Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
+- Open by hitting the audience pain above, then pay off the dream outcome by the end.
+- Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
+- publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
+- shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include at least one b-roll or insert shot and the cover frame shot, so the editor is never guessing.`
 
     const raw = await callModel(apiKey, SYSTEM, userPrompt)
     const blueprint = JSON.parse(raw)
