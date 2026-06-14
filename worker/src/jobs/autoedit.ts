@@ -26,6 +26,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // Smart decision: read the user's brand-DNA pacing + the reference's format
     // and auto-pick the edit energy (high → jump-zoom punches; calm → clean cuts).
     let energy: 'high' | 'calm' = 'calm'
+    let brollText = ''
     if (payload.generation_id) {
       try {
         const { data: gen } = await db
@@ -33,7 +34,17 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           .select('blueprint, brand_voice_id')
           .eq('id', payload.generation_id)
           .maybeSingle()
-        const fmt = (gen?.blueprint as { reference_read?: { format_label?: string } } | null)?.reference_read?.format_label ?? ''
+        const bp = gen?.blueprint as Record<string, unknown> | null
+        const fmt = ((bp?.reference_read as { format_label?: string } | undefined)?.format_label) ?? ''
+        // Content-aware b-roll: derive keywords from the blueprint the creator is
+        // actually shooting (hook + script + captions + shot list), not just the
+        // transcript word-frequency, so cutaways match the intended content.
+        brollText = [
+          ...((bp?.hook_options as string[] | undefined) ?? []),
+          ...(((bp?.script as { line?: string }[] | undefined) ?? []).map((s) => s?.line ?? '')),
+          ...((bp?.captions as string[] | undefined) ?? []),
+          ...(((bp?.shot_list as { shot?: string; notes?: string }[] | undefined) ?? []).map((s) => `${s?.shot ?? ''} ${s?.notes ?? ''}`)),
+        ].filter(Boolean).join(' ').slice(0, 4000)
         let pacing = ''
         if (gen?.brand_voice_id) {
           const { data: bv } = await db.from('brand_voices').select('profile').eq('id', gen.brand_voice_id).maybeSingle()
@@ -55,6 +66,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       captions: payload.skip_captions !== true,
       energy,
       variation,
+      brollText,
     })
     renderFile = outFile
 

@@ -50,6 +50,7 @@ export interface EditOptions {
   captions?: boolean // default true; skip when the source is already captioned
   energy?: 'high' | 'calm' // 'high' → jump-zoom punches on cuts; 'calm' → clean cuts
   variation?: number // remake index → different caption highlight color
+  brollText?: string // blueprint text (hook/script/captions) to source b-roll keywords from
 }
 
 // Highlight-color palette (BGR). Remakes rotate through it so each looks fresh.
@@ -354,7 +355,10 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     let broll: Broll | null = null
     if (words.length && durationSec > 6) {
       try {
-        broll = await fetchBroll(pickKeywords(words.map((w) => w.w).join(' ')), dir)
+        // Prefer keywords from the blueprint (what the creator is shooting); fall
+        // back to the spoken transcript when no blueprint text was passed.
+        const kwSource = opts.brollText && opts.brollText.trim() ? opts.brollText : words.map((w) => w.w).join(' ')
+        broll = await fetchBroll(pickKeywords(kwSource), dir)
       } catch {
         broll = null
       }
