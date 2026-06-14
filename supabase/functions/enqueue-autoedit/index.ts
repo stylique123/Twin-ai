@@ -31,6 +31,19 @@ Deno.serve(async (req: Request) => {
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
+  // Abuse cap: each enqueue runs worker compute, and the first edit per take is
+  // free, so bound enqueues per user per minute (the remake path is also credit
+  // gated below).
+  const { data: allowed } = await admin.rpc('check_rate_limit', {
+    p_user: user.id,
+    p_action: 'autoedit',
+    p_max: 20,
+    p_window_secs: 60,
+  })
+  if (allowed === false) {
+    return json({ error: 'Easy there — too many edits in a row. Give it a few seconds.' }, 429)
+  }
+
   let body: { generation_id?: string; take_path?: string; remake?: boolean; variation?: number }
   try {
     body = await req.json()

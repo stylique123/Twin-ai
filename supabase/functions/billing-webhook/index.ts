@@ -135,9 +135,12 @@ Deno.serve(async (req: Request) => {
     .from('billing_events')
     .insert({ provider, event_type: 'webhook', external_event_id: parsed.eventId, user_id: parsed.userId, payload: safeJson(raw) })
   if (dupErr) {
-    if (String(dupErr.message).includes('duplicate')) return json({ ok: true, duplicate: true })
+    // Unique violation (Postgres 23505) = a replayed event; safely no-op.
+    if ((dupErr as { code?: string }).code === '23505') return json({ ok: true, duplicate: true })
+    // Any OTHER insert failure: fail CLOSED (5xx so the processor retries) rather
+    // than granting credits with no idempotency record, which would allow replay.
     console.error('billing_events insert failed', dupErr)
-    // Fall through: better to process than to drop a real payment.
+    return json({ error: 'Could not record billing event' }, 503)
   }
 
   if (!parsed.userId) {
