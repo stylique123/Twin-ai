@@ -34,12 +34,12 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
-      - name: Set worker secrets (staged; applied on deploy)
+      # Only stage APIFY_TOKEN. SUPABASE_* and GEMINI_API_KEY are already set
+      # directly on the Fly app; re-staging them from (empty) GitHub secrets would
+      # WIPE the live values and break the worker. Leave them untouched.
+      - name: Stage APIFY_TOKEN secret
         run: |
           flyctl secrets set --app twinai-worker --stage \
-            SUPABASE_URL="https://jmdecibuytznsonrasxw.supabase.co" \
-            SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
             APIFY_TOKEN="${{ secrets.APIFY_TOKEN }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
