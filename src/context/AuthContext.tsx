@@ -50,10 +50,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // instantly — never wait on the network round-trip or the auth listener.
     setSession(null)
     setProfile(null)
+    // scope:'local' clears the persisted token from storage WITHOUT needing a
+    // network round-trip to revoke server-side. The default 'global' scope can
+    // throw on a flaky network and leave the token in localStorage, which the
+    // next page load would then resurrect — the "I logged out but still see
+    // Open studio" bug. Local scope makes sign-out reliable offline.
     try {
-      await supabase.auth.signOut()
+      await supabase.auth.signOut({ scope: 'local' })
     } catch {
-      /* session is already cleared locally; ignore network errors */
+      /* ignore */
+    }
+    // Belt-and-suspenders: if any Supabase auth token is still in storage, remove
+    // it so getSession() on the next load can never bring the session back.
+    try {
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith('sb-') && k.includes('auth')) localStorage.removeItem(k)
+      }
+    } catch {
+      /* storage unavailable; nothing to clear */
     }
   }
 

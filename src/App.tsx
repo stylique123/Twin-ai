@@ -23,6 +23,16 @@ function Protected({ children }: { children: JSX.Element }) {
   return children
 }
 
+// Like Protected but WITHOUT the onboarded check — for /onboarding itself, which
+// a signed-in-but-not-onboarded user must reach. A logged-out visitor is still
+// bounced to /auth, so the paste-a-handle screen is never reachable without an account.
+function AuthOnly({ children }: { children: JSX.Element }) {
+  const { session, loading } = useAuth()
+  if (loading) return <FullScreen>Loading…</FullScreen>
+  if (!session) return <Navigate to="/auth" replace />
+  return children
+}
+
 function FullScreen({ children }: { children: React.ReactNode }) {
   return <div className="grid min-h-screen place-items-center text-sand">{children}</div>
 }
@@ -63,7 +73,7 @@ export default function App() {
         <Routes location={location} key={inApp ? 'app' : location.pathname}>
           <Route path="/" element={<Page><Landing /></Page>} />
           <Route path="/auth" element={<Page><Auth /></Page>} />
-          <Route path="/onboarding" element={<Page><Onboarding /></Page>} />
+          <Route path="/onboarding" element={<AuthOnly><Page><Onboarding /></Page></AuthOnly>} />
           <Route
             path="/dashboard"
             element={<Protected><AppShell><Page><Dashboard /></Page></AppShell></Protected>}
