@@ -20,6 +20,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
   const dir = await mkdtemp(join(tmpdir(), 'twinai-take-'))
   const localTake = join(dir, `take.${ext}`)
   let renderFile: string | null = null
+  let thumbRender: string | null = null
   try {
     await downloadObject('takes', takePath, localTake)
 
@@ -27,6 +28,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // and auto-pick the edit energy (high → jump-zoom punches; calm → clean cuts).
     let energy: 'high' | 'calm' = 'calm'
     let brollText = ''
+    let coverText = ''
     if (payload.generation_id) {
       try {
         const { data: gen } = await db
@@ -45,6 +47,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           ...((bp?.captions as string[] | undefined) ?? []),
           ...(((bp?.shot_list as { shot?: string; notes?: string }[] | undefined) ?? []).map((s) => `${s?.shot ?? ''} ${s?.notes ?? ''}`)),
         ].filter(Boolean).join(' ').slice(0, 4000)
+        coverText = (((bp?.hook_options as string[] | undefined) ?? [])[0] ?? '').slice(0, 120)
         let pacing = ''
         if (gen?.brand_voice_id) {
           const { data: bv } = await db.from('brand_voices').select('profile').eq('id', gen.brand_voice_id).maybeSingle()
@@ -62,17 +65,34 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     const variation = Number.isFinite(payload.variation as number) ? Number(payload.variation) : 0
     if (variation % 2 === 1) energy = energy === 'high' ? 'calm' : 'high'
 
-    const { outFile, durationSec, words, jumpCut, broll } = await autoEdit(localTake, {
+    const { outFile, durationSec, words, jumpCut, broll, thumbFile } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
       variation,
       brollText,
+      coverText,
     })
     renderFile = outFile
+    thumbRender = thumbFile ?? null
 
     const outputPath = `${job.owner_id}/${job.id}.mp4`
     await uploadObject('edits', outputPath, outFile, 'video/mp4')
     const url = await signObject('edits', outputPath, 60 * 60 * 24 * 7)
+
+    // Upload the cover thumbnail (best-effort) and record its path.
+    let thumbUrl: string | null = null
+    if (thumbRender) {
+      try {
+        const thumbPath = `${job.owner_id}/${job.id}-thumb.jpg`
+        await uploadObject('edits', thumbPath, thumbRender, 'image/jpeg')
+        thumbUrl = await signObject('edits', thumbPath, 60 * 60 * 24 * 7)
+        if (payload.generation_id) {
+          await db.from('generations').update({ thumb_path: thumbPath }).eq('id', payload.generation_id).then(() => {}, () => {})
+        }
+      } catch {
+        thumbUrl = null
+      }
+    }
 
     if (payload.generation_id) {
       await db.from('generations').update({ edit_path: outputPath }).eq('id', payload.generation_id).then(
@@ -81,9 +101,10 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       )
     }
 
-    return { output_path: outputPath, output_url: url, duration_sec: durationSec, words, jump_cut: jumpCut, broll }
+    return { output_path: outputPath, output_url: url, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
     if (renderFile) await rm(renderFile, { force: true }).catch(() => {})
+    if (thumbRender) await rm(thumbRender, { force: true }).catch(() => {})
   }
 }

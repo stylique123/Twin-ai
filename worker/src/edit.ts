@@ -44,6 +44,7 @@ export interface EditResult {
   words: number
   jumpCut: boolean
   broll: boolean
+  thumbFile?: string | null // generated cover image, when coverText is provided
 }
 
 export interface EditOptions {
@@ -51,6 +52,26 @@ export interface EditOptions {
   energy?: 'high' | 'calm' // 'high' → jump-zoom punches on cuts; 'calm' → clean cuts
   variation?: number // remake index → different caption highlight color
   brollText?: string // blueprint text (hook/script/captions) to source b-roll keywords from
+  coverText?: string // hook/cover line to overlay on the generated thumbnail
+}
+
+// Wrap text to at most `maxLines` lines of ~`width` chars (word-aware) for the
+// cover overlay. Excess is dropped with an ellipsis so the cover never overflows.
+function wrapText(s: string, width: number, maxLines: number): string {
+  const words = s.replace(/\s+/g, ' ').trim().split(' ')
+  const lines: string[] = []
+  let line = ''
+  for (const w of words) {
+    if ((line + ' ' + w).trim().length > width && line) {
+      lines.push(line)
+      line = w
+      if (lines.length === maxLines) break
+    } else {
+      line = (line + ' ' + w).trim()
+    }
+  }
+  if (line && lines.length < maxLines) lines.push(line)
+  return lines.slice(0, maxLines).join('\n')
 }
 
 // Highlight-color palette (BGR). Remakes rotate through it so each looks fresh.
@@ -440,7 +461,32 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     const finalBuf = await readFile(out)
     const keep = join(tmpdir(), `twinai-render-${Date.now()}.mp4`)
     await writeFile(keep, finalBuf)
-    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll }
+
+    // Cover thumbnail: a strong frame from the finished render + the hook overlaid
+    // in brand style. Best-effort: failure (or no coverText) just means no cover.
+    let thumbFile: string | null = null
+    if (opts.coverText && opts.coverText.trim()) {
+      try {
+        await writeFile(join(dir, 'cover.txt'), wrapText(opts.coverText, 18, 3))
+        const FONT = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+        const at = Math.min(1.6, Math.max(0.4, (durationSec || 3) / 3))
+        const vf = [
+          fill,
+          'drawbox=x=0:y=ih*0.52:w=iw:h=ih*0.48:color=black@0.5:t=fill',
+          'drawbox=x=84:y=ih*0.56:w=190:h=12:color=0x23A6F5:t=fill',
+          `drawtext=fontfile=${FONT}:textfile=cover.txt:fontcolor=white:fontsize=70:line_spacing=14:x=(w-text_w)/2:y=h*0.6:shadowcolor=black@0.85:shadowx=3:shadowy=3`,
+        ].join(',')
+        await run('ffmpeg', ['-y', '-ss', at.toFixed(2), '-i', 'out.mp4', '-vframes', '1', '-vf', vf, '-q:v', '3', 'thumb.jpg'], 60_000, dir)
+        if ((await fileSize(join(dir, 'thumb.jpg'))) > 1024) {
+          thumbFile = join(tmpdir(), `twinai-thumb-${Date.now()}.jpg`)
+          await writeFile(thumbFile, await readFile(join(dir, 'thumb.jpg')))
+        }
+      } catch {
+        thumbFile = null
+      }
+    }
+
+    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }
