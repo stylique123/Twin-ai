@@ -12,6 +12,13 @@ export const env = {
   supabaseUrl: need('SUPABASE_URL'),
   serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
   geminiKey: (process.env.GEMINI_API_KEY ?? '').trim(),
+  // YouTube ingestion: datacenter IPs (Fly) get bot-blocked by yt-dlp on YouTube
+  // ("Sign in to confirm you're not a bot"). We route YouTube links through an
+  // Apify transcript Actor instead, which pulls real captions reliably. TikTok /
+  // Instagram still use yt-dlp + whisper (those work from datacenter IPs).
+  apifyToken: (process.env.APIFY_TOKEN ?? '').trim(),
+  // Actor that returns YouTube captions as [{ start, dur, text }] in its KV output.
+  apifyYoutubeActor: (process.env.APIFY_YOUTUBE_ACTOR ?? 'faVsWy9VTSNVIhWpR').trim(),
   // Optional: free Pexels API key enables keyword-matched b-roll cutaways.
   pexelsKey: (process.env.PEXELS_API_KEY ?? '').trim(),
   // Optional: URL of a royalty-free music bed (mp3) mixed + ducked under the VO.

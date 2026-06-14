@@ -59,10 +59,62 @@ export interface Transcript {
   segments: { start: number; end: number; text: string }[]
 }
 
+// --- YouTube: captions via Apify (datacenter IPs are bot-blocked by yt-dlp) ---
+const YT_HOSTS = ['youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com']
+function isYouTube(u: URL): boolean {
+  const h = u.hostname.toLowerCase()
+  return YT_HOSTS.some((x) => h === x || h.endsWith('.' + x))
+}
+
+// Run an Apify transcript Actor synchronously and read its captions, mapping
+// them into our Transcript shape. Throws a clear, user-facing message on failure
+// (no token configured, or no captions on the video) so the UI can show why.
+async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
+  if (!env.apifyToken) {
+    throw new Error('YouTube analysis is not configured yet. Try a TikTok or Instagram link, or contact support.')
+  }
+  const base = `https://api.apify.com/v2/acts/${env.apifyYoutubeActor}`
+  const runRes = await fetch(`${base}/run-sync?token=${env.apifyToken}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoUrl: rawUrl, targetLanguage: 'en' }),
+  })
+  if (!runRes.ok) {
+    throw new Error(`YouTube transcript service error ${runRes.status}: ${(await runRes.text()).slice(0, 200)}`)
+  }
+  const run = await runRes.json()
+  const storeId = run?.data?.defaultKeyValueStoreId
+  if (!storeId) throw new Error('YouTube transcript service returned no output store.')
+
+  const outRes = await fetch(`https://api.apify.com/v2/key-value-stores/${storeId}/records/output?token=${env.apifyToken}`)
+  if (!outRes.ok) throw new Error(`Could not read YouTube transcript output (${outRes.status}).`)
+  const out = await outRes.json()
+  const rows: { start?: string | number; dur?: string | number; text?: string }[] = out?.data ?? []
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error('This video has no captions we can read. Try a different reference.')
+  }
+
+  const segments = rows
+    .map((r) => {
+      const start = Number(r.start) || 0
+      const dur = Number(r.dur) || 0
+      return { start, end: Number((start + dur).toFixed(3)), text: String(r.text ?? '').trim() }
+    })
+    .filter((s) => s.text)
+  if (segments.length === 0) throw new Error('This video has no captions we can read. Try a different reference.')
+
+  const text = segments.map((s) => s.text).join(' ')
+  const duration_sec = Math.ceil(segments[segments.length - 1].end)
+  return { language: 'en', duration_sec, text, words: [], segments }
+}
+
 // Download audio from an allow-listed URL, transcribe with faster-whisper, and
 // ALWAYS discard the raw media afterwards (analyze-and-discard / privacy).
+// YouTube is the exception: we fetch real captions via Apify (see above) because
+// YouTube bot-blocks yt-dlp from datacenter IPs.
 export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
-  assertAllowedUrl(rawUrl)
+  const u = assertAllowedUrl(rawUrl)
+  if (isYouTube(u)) return youtubeTranscriptViaApify(rawUrl)
   const dir = await mkdtemp(join(tmpdir(), 'twinai-'))
   const audioPath = join(dir, 'audio.m4a')
   const outPath = join(dir, 'transcript.json')
