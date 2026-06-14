@@ -3,11 +3,14 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronsUpDown, Check, Plus, Building2, Loader2 } from 'lucide-react'
 import { listBrandVoices, setDefaultBrandVoice } from '../lib/api'
+import { planFor } from '../lib/brand'
+import { useAuth } from '../context/AuthContext'
 import { cn } from '../lib/cn'
 import { EASE } from './motion'
 import type { BrandVoice } from '../lib/types'
 
 export function BrandSwitcher({ onNavigate }: { onNavigate?: () => void }) {
+  const { profile } = useAuth()
   const [voices, setVoices] = useState<BrandVoice[]>([])
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -24,8 +27,12 @@ export function BrandSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const ready = voices.filter((v) => v.status === 'ready')
   const active = voices.find((v) => v.is_default) ?? ready[0]
 
-  // Only show when user has 2+ ready voices — switching is meaningless otherwise.
-  if (ready.length <= 1) return null
+  // Multi-brand workspaces are an Agency-plan feature. Never expose the brand
+  // switcher on single-brand plans (free / aspiring / professional), even if a
+  // user built more than one voice while testing. Also hide it when there is
+  // nothing to switch between.
+  const multiBrandPlan = planFor(profile?.plan).brandVoices > 1
+  if (!multiBrandPlan || ready.length <= 1) return null
 
   const name = (v: BrandVoice) => v.label ?? `@${v.handle}`
   const switchTo = async (id: string) => {

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
@@ -18,12 +18,14 @@ const NAV = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { profile, signOut } = useAuth()
-  const navigate = useNavigate()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const left = videosFromCredits(profile?.credits ?? 0)
   const isActive = (to: string) => to === '/app' ? pathname === '/app' || pathname.startsWith('/result') : pathname.startsWith(to)
-  const doSignOut = async () => { await signOut(); navigate('/') }
+  // Hard navigation (full reload), not SPA navigate(): a client-side route change
+  // here raced the AnimatePresence route exit while `profile` was torn down,
+  // leaving a blank screen on logout. A full reload guarantees a clean render.
+  const doSignOut = async () => { await signOut(); window.location.assign('/') }
 
   return (
     <div className="flex min-h-screen">
