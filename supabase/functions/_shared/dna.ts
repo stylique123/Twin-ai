@@ -233,22 +233,28 @@ export const voiceProfileSchema = obj(
   {
     summary: str, // one-line "this is how you sound"
     niche: str,
+    audience: str, // who they make content for
+    audience_pain: str, // the core problem that audience feels
+    dream_outcome: str, // what that audience actually wants
+    offer: str, // what the creator sells or the action they push
     tone: str,
     pacing: str,
     hook_style: str,
+    editing_style: str,
     vocabulary: arr(str), // signature words/phrases
     recurring_ctas: arr(str),
     dos: arr(str),
     donts: arr(str),
     sample_hooks: arr(str), // 3 hooks written in their voice
   },
-  ['summary', 'niche', 'tone', 'pacing', 'hook_style', 'vocabulary', 'recurring_ctas', 'dos', 'donts', 'sample_hooks'],
+  ['summary', 'niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'vocabulary', 'recurring_ctas', 'dos', 'donts', 'sample_hooks'],
 )
 
 const SYSTEM = `You are TwinAI's Brand-DNA engine. From a creator's recent posts you infer how THEY sound, so we can later write new scripts in their exact voice.
 
 Hard rules:
 - Describe their voice; never copy a specific post's content. Capture STRUCTURE and STYLE: tone, pacing, hook shape, signature vocabulary, recurring CTAs.
+- Also infer their AUDIENCE (who they make content for), that audience's core PAIN (the problem they feel), their DREAM OUTCOME (what they actually want), and the creator's OFFER (what they sell or the action they push). Infer these from the posts, bio, hashtags and niche even when not stated outright. Be specific, not generic.
 - Be concrete and specific to this creator — no generic "be authentic" filler.
 - vocabulary = 4-8 actual words/phrases they lean on. sample_hooks = 3 fresh hooks written the way THEY would write one.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
