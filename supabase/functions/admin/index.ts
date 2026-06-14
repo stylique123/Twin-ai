@@ -51,6 +51,14 @@ Deno.serve(async (req: Request) => {
   }
   const action = String(body.action ?? 'overview')
 
+  // Privilege gate: read actions (overview/users) are fine for any admin role,
+  // but credit/plan grants and roster changes are superadmin-only (matches the
+  // SQL design intent that only superadmins manage entitlements and the roster).
+  const role = (adminRow as { role?: string }).role
+  if (['grant_plan', 'adjust_credits', 'set_admin'].includes(action) && role !== 'superadmin') {
+    return json({ error: 'Forbidden: superadmin required for this action' }, 403)
+  }
+
   const count = async (table: string, build?: (q: any) => any): Promise<number> => {
     let q = admin.from(table).select('*', { count: 'exact', head: true })
     if (build) q = build(q)
