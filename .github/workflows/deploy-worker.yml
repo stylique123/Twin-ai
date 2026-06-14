@@ -4,6 +4,8 @@
 #   FLY_API_TOKEN              — from `fly tokens create deploy` or dashboard
 #   SUPABASE_SERVICE_ROLE_KEY  — Supabase project service-role key (server-side only)
 #   GEMINI_API_KEY             — Gemini key (structure derivation + voice synthesis)
+#   APIFY_TOKEN                — Apify API token; YouTube captions (yt-dlp is bot-blocked
+#                                on YouTube from datacenter IPs). Free tier covers normal use.
 #
 # Then run this workflow manually (Actions tab → Deploy worker → Run workflow),
 # or it auto-runs when worker/ changes on the main branches.
@@ -37,7 +39,8 @@ jobs:
           flyctl secrets set --app twinai-worker --stage \
             SUPABASE_URL="https://jmdecibuytznsonrasxw.supabase.co" \
             SUPABASE_SERVICE_ROLE_KEY="${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
-            GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}"
+            GEMINI_API_KEY="${{ secrets.GEMINI_API_KEY }}" \
+            APIFY_TOKEN="${{ secrets.APIFY_TOKEN }}"
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
