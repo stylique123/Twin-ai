@@ -414,19 +414,23 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     // for the bed path, where loudnorm runs on the MIX, not the measured voice.
     const lnMeasured = bedFile ? '' : ((await measureLoudnorm(base, durationSec)) ?? '')
     const LN = `loudnorm=I=-14:TP=-1.5:LRA=11${lnMeasured}`
+    // Clean the voice before normalizing: high-pass removes low rumble, afftdn does
+    // mild broadband denoise (helps soft mics / background noise). Conservative so
+    // speech is never muffled.
+    const DN = 'highpass=f=85,afftdn=nr=10,'
 
-    // Audio chain: ducked bed + voice, or just loudnorm. Target -14 LUFS (TikTok).
+    // Audio chain: ducked bed + voice, or just denoise + loudnorm. Target -14 LUFS.
     const aChain = bedFile
-      ? `[0:a]asplit=2[v1][vkey];` +
+      ? `[0:a]${DN}asplit=2[v1][vkey];` +
         `[${bedIdx}:a]aloop=loop=-1:size=2000000000,volume=0.22[bedv];` +
         `[bedv][vkey]sidechaincompress=threshold=0.04:ratio=8:attack=5:release=260[bedduck];` +
         `[v1][bedduck]amix=inputs=2:duration=first:dropout_transition=0,loudnorm=I=-14:TP=-1.5:LRA=11[a]`
-      : `[0:a]${LN}[a]`
+      : `[0:a]${DN}${LN}[a]`
 
     const fullArgs = ['-y', ...inputs, '-filter_complex', `${vparts.join(';')};${aChain}`,
       '-map', '[v]', '-map', '[a]', ...enc]
     // Fallback render that can never fail on a complex filtergraph.
-    const plain = ['-y', '-i', base, '-vf', `${fill}${subs}`, '-af', LN, ...enc]
+    const plain = ['-y', '-i', base, '-vf', `${fill}${subs}`, '-af', `${DN}${LN}`, ...enc]
     try {
       await run('ffmpeg', fullArgs, Math.max(240_000, env.maxMediaSecs * 2000), dir)
     } catch {
