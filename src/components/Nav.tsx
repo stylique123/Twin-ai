@@ -7,9 +7,9 @@ import { useAuth } from '../context/AuthContext'
 import { EASE } from './motion'
 
 const LINKS = [
-  { href: '/#loop', label: 'How it works' },
   { href: '/#features', label: 'What you get' },
-  { href: '/#agencies', label: 'Agencies' },
+  { href: '/#loop', label: 'How it works' },
+  { href: '/#agencies', label: 'Agency' },
   { href: '/#pricing', label: 'Pricing' },
 ]
 

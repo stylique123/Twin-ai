@@ -66,7 +66,7 @@ const PAIN = [
   {
     n: '02',
     t: 'It comes out sounding like everyone else',
-    d: 'You copy the format and it feels fake — or you start from scratch and it takes hours. Either way, it doesn\'t sound like you.',
+    d: 'You copy the format and it feels fake, or you start from scratch and it takes hours. Either way, it doesn\'t sound like you.',
     accent: 'amber',
   },
   {
@@ -78,21 +78,21 @@ const PAIN = [
 ]
 
 const LOOP = [
-  { icon: Play, k: 'Paste', t: 'Paste a link you wish you\'d made', d: 'Any TikTok, Reel or Short. That\'s the whole input — we pull and transcribe the real audio.' },
+  { icon: Play, k: 'Paste', t: 'Paste a link you wish you\'d made', d: 'Any TikTok, Reel or Short. That\'s the whole input. We pull and transcribe the real audio.' },
   { icon: Wand2, k: 'Decode', t: 'We decode why it worked', d: 'The exact hook window, the beats, the pacing, the retention mechanics. Real analysis, not vibes.' },
-  { icon: FileText, k: 'Blueprint', t: 'Get a shootable blueprint', d: 'Hook options, full script in your voice, shot list, edit checklist, caption pack — a 20-min plan.' },
+  { icon: FileText, k: 'Blueprint', t: 'Get a shootable blueprint', d: 'Hook options, full script in your voice, shot list, edit checklist, caption pack, a 20-min plan.' },
   { icon: Clapperboard, k: 'Record', t: 'Record it right here', d: 'Your script loads into a built-in teleprompter. Hit record, nail the hook, done.' },
-  { icon: Scissors, k: 'Edit', t: 'Edit in one click', d: 'Word-synced captions, dead-air trimmed, jump cuts and b-roll, exported vertical — automatically.' },
-  { icon: Send, k: 'Post', t: 'Post it — and grow the gallery', d: 'One tap copies your on-brand caption so you can post in seconds, then log it. Mark it public and it joins the niche gallery others remix.' },
+  { icon: Scissors, k: 'Edit', t: 'Edit in one click', d: 'Word-synced captions, dead-air trimmed, jump cuts and b-roll, exported vertical, automatically.' },
+  { icon: Send, k: 'Post', t: 'Post it, and grow the gallery', d: 'One tap copies your on-brand caption so you can post in seconds, then log it. Mark it public and it joins the niche gallery others remix.' },
 ]
 
 const FEATURES = [
   { icon: AtSign, t: 'Voice DNA', d: 'Paste your @handle once. We read your real posts and build a voice profile every script is written in.', gradient: 'from-teal/20 to-teal/5' },
-  { icon: FileText, t: 'Full blueprint', d: 'Not a caption — a hook, script with delivery notes, shot list, edit checklist and a 20-minute shoot plan.', gradient: 'from-amber/20 to-amber/5' },
+  { icon: FileText, t: 'Full blueprint', d: 'Not a caption. A hook, script with delivery notes, shot list, edit checklist and a 20-minute shoot plan.', gradient: 'from-amber/20 to-amber/5' },
   { icon: Clapperboard, t: 'In-app teleprompter', d: 'Record straight from the browser with your script scrolling. A hook-timing marker keeps you on pace.', gradient: 'from-coral/20 to-coral/5' },
   { icon: Scissors, t: 'One-click auto-edit', d: 'Animated captions, dead-air removal, beat-timed jump cuts, b-roll cutaways, vertical export. One tap.', gradient: 'from-teal/20 to-teal/5' },
-  { icon: Send, t: 'Publish helper', d: 'One tap copies your on-brand caption and opens the post — then log it, so the loop ends with a post.', gradient: 'from-amber/20 to-amber/5' },
-  { icon: LayoutGrid, t: 'Niche gallery', d: 'A living feed of what\'s working in your niche — see why it hit, then recreate it in one click.', gradient: 'from-coral/20 to-coral/5' },
+  { icon: Send, t: 'Publish helper', d: 'One tap copies your on-brand caption and opens the post, then log it, so the loop ends with a post.', gradient: 'from-amber/20 to-amber/5' },
+  { icon: LayoutGrid, t: 'Niche gallery', d: 'A living feed of what\'s working in your niche. See why it hit, then recreate it in one click.', gradient: 'from-coral/20 to-coral/5' },
 ]
 
 const BENEFITS = [
@@ -103,17 +103,17 @@ const BENEFITS = [
 
 const SOCIAL_PROOF = [
   { name: 'Marcus L.', handle: '@marcuslive', quote: 'I went from one video a week to four. The blueprint is the fastest part of my workflow now.', metric: '4× output', stars: 5 },
-  { name: 'Priya K.', handle: '@priyakreates', quote: 'The voice profile is scary good. Scripts read exactly like how I talk — I stopped rewriting hooks.', metric: 'Zero rewrites', stars: 5 },
+  { name: 'Priya K.', handle: '@priyakreates', quote: 'The voice profile is scary good. Scripts read exactly like how I talk, so I stopped rewriting hooks.', metric: 'Zero rewrites', stars: 5 },
   { name: 'Jake Finn', handle: '@jakefinnmedia', quote: 'Running 6 client brands. The workspaces feature alone saves my team hours every week.', metric: '18h/wk saved', stars: 5 },
 ]
 
 const FAQ = [
-  { q: 'Do you copy other people\'s videos?', a: 'No. We read the structure — hook shape, pacing, retention beats — and rebuild it as an original in your voice. We never clip or repost footage. The idea stays yours; the format becomes yours too.' },
-  { q: 'Will this make me go viral?', a: 'No honest tool can promise that. We give you a proven structure and a fast, repeatable way to ship — more quality shots on goal, in less time. That\'s the real edge.' },
-  { q: 'How is this different from a clipper?', a: 'Clippers chop footage you already have. TwinAI takes a reference you admire and makes it shootable as something new — in your voice, from scratch, with a full script, shot list, edit and post.' },
-  { q: 'What do I actually get from one link?', a: 'A complete blueprint (hooks, script, shot list, edit checklist, caption pack, 20-minute plan), an in-app teleprompter to record it, a one-click edit, and publishing — the whole loop in one window.' },
-  { q: 'How does it learn my voice?', a: 'You paste your @handle. We read your recent public posts — captions, hooks and your spoken audio — and synthesise a voice profile you confirm and can edit. It sharpens as you create more.' },
-  { q: 'Can I use it for clients?', a: 'Yes. The Agency plan gives you 15 brand voices — one per client — plus multi-brand workspaces. Switch context in one tap, batch a week of content in an afternoon, ship consistent quality across every account.' },
+  { q: 'Do you copy other people\'s videos?', a: 'No. We read the structure (hook shape, pacing, retention beats) and rebuild it as an original in your voice. We never clip or repost footage. The idea stays yours; the format becomes yours too.' },
+  { q: 'Will this make me go viral?', a: 'No honest tool can promise that. We give you a proven structure and a fast, repeatable way to ship, with more quality shots on goal, in less time. That\'s the real edge.' },
+  { q: 'How is this different from a clipper?', a: 'Clippers chop footage you already have. TwinAI takes a reference you admire and makes it shootable as something new, in your voice, from scratch, with a full script, shot list, edit and post.' },
+  { q: 'What do I actually get from one link?', a: 'A complete blueprint (hooks, script, shot list, edit checklist, caption pack, 20-minute plan), an in-app teleprompter to record it, a one-click edit, and publishing. The whole loop in one window.' },
+  { q: 'How does it learn my voice?', a: 'You paste your @handle. We read your recent public posts, including captions, hooks and your spoken audio, then synthesise a voice profile you confirm and can edit. It sharpens as you create more.' },
+  { q: 'Can I use it for clients?', a: 'Yes. The Agency plan gives you 15 brand voices, one per client, plus multi-brand workspaces. Switch context in one tap, batch a week of content in an afternoon, ship consistent quality across every account.' },
 ]
 
 export default function Landing() {
@@ -202,9 +202,10 @@ function HeroSection() {
               className="font-display text-[2.8rem] leading-[1.04] tracking-tight text-balance sm:text-5xl lg:text-[3.8rem]"
             >
               Paste a viral video.{' '}
-              <span className="relative inline-block">
-                <span className="gradient-text-animated">
-                  {' '}
+              <span className="gradient-text-animated whitespace-nowrap">
+                <span className="relative inline-grid place-items-center align-baseline">
+                  {/* Invisible sizer reserves space for the widest verb so the line never shifts */}
+                  <span className="invisible col-start-1 row-start-1" aria-hidden>recreate</span>
                   <AnimatePresence mode="wait">
                     <motion.span
                       key={verbIdx}
@@ -212,13 +213,12 @@ function HeroSection() {
                       animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                       exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
                       transition={{ duration: 0.35, ease: EASE }}
-                      className="inline-block"
+                      className="col-start-1 row-start-1"
                     >
                       {ROTATING_VERBS[verbIdx]}
                     </motion.span>
                   </AnimatePresence>
-                  {' '}it
-                </span>
+                </span>{' '}it
               </span>
               {' '}in your voice.
             </motion.h1>
@@ -245,36 +245,16 @@ function HeroSection() {
                 Start free
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
-              <a href="#loop" className="btn-ghost text-base px-6 py-3">
-                See how it works
-              </a>
             </motion.div>
 
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1, delay: 0.34 }}
-              className="mt-3 text-sm text-stone"
+              className="mt-7 text-[11px] leading-relaxed text-stone"
             >
-              3 free recreations. No card required.
+              ✨ 3 free recreations. No card required. 💳
             </motion.p>
-
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ duration: 1, delay: 0.4 }}
-              className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-sm text-stone"
-            >
-              <span className="inline-flex items-center gap-1.5">
-                <ShieldCheck className="h-4 w-4 text-teal" /> Never copies footage
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <FileText className="h-4 w-4 text-amber" /> Script in your voice
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Clapperboard className="h-4 w-4 text-coral" /> Record, edit, post in one place
-              </span>
-            </motion.div>
           </div>
 
           <HeroVisualNew />
@@ -401,7 +381,7 @@ function HeroVisualNew() {
           transition={{ delay: 1.5, duration: 0.5, ease: EASE }}
           className="absolute -right-3 bottom-24 z-30 rounded-2xl bg-signature px-3.5 py-2 text-xs font-bold text-ink shadow-glow sm:-right-8"
         >
-          In your voice ✦
+          In your voice
         </motion.div>
 
         {/* Blueprint chip — hidden on the narrowest screens to avoid overlap. */}
@@ -564,7 +544,7 @@ function BenefitsSection() {
               <div className="relative">
                 <b.icon className="mx-auto h-6 w-6 text-amber" />
                 <div className="mt-4 font-display text-4xl tracking-tight text-cream">
-                  {inView ? <Counter to={typeof b.big === 'string' ? parseFloat(b.big) || 2 : b.big} suffix={b.big.replace(/[0-9.]/g, '') || ''} /> : '—'}
+                  {inView ? <Counter to={typeof b.big === 'string' ? parseFloat(b.big) || 2 : b.big} suffix={b.big.replace(/[0-9.]/g, '') || ''} /> : '...'}
                 </div>
                 <div className="mt-1.5 font-heading text-base text-cream">{b.label}</div>
                 <div className="mt-1 text-sm text-stone">{b.sub}</div>
@@ -626,7 +606,7 @@ function AgencySection() {
             </h2>
             <p className="mt-4 text-sand">
               A separate brand voice per client, proven references turned into shootable blueprints in seconds,
-              and more reels across more accounts — without growing the team.
+              and more reels across more accounts, without growing the team.
             </p>
             <ul className="mt-6 space-y-2.5">
               {[
@@ -681,7 +661,7 @@ function PricingSection() {
           Start free. Scale when it's working.
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-sand">
-          Simple monthly recreation counts — no per-action billing, no confusing credits. Cancel any time.
+          Simple monthly recreation counts. No per-action billing, no confusing credits. Cancel any time.
         </p>
       </Reveal>
       <Stagger className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4" gap={0.06}>
@@ -960,7 +940,7 @@ function LoopScreen({ index }: { index: number }) {
     return (
       <div className="flex h-full flex-col justify-center gap-2.5 p-5">
         <div className="text-[10px] uppercase tracking-wider text-stone">Why it worked</div>
-        <Bar label="Hook window" v="0.0–1.8s" />
+        <Bar label="Hook window" v="0.0 to 1.8s" />
         <Bar label="Retention" v="62%" />
         <div className="mt-1 flex items-end gap-1" style={{ height: 90 }}>
           {[40, 70, 55, 85, 60, 95, 72, 50].map((h, i) => (

@@ -3,7 +3,7 @@
 export const BRAND = {
   oneLiner: 'Remix any viral video in seconds.',
   subLine: 'You bring the idea. TwinAI makes it shootable.',
-  category: 'Reference-based creation — not a clipper.',
+  category: 'Reference-based creation, not a clipper.',
   positioning:
     'For creators, founders & agencies who know a reel works but can’t make their own fast enough — TwinAI turns any proven reference into a personalized hook, script, shot list, edit and schedule. Others clip your footage; we make the references you admire shootable in your voice.',
   // Voice guardrails from the cheat sheet
