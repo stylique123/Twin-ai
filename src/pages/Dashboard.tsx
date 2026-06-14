@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Wand2, LayoutGrid, Clapperboard, Send, Sparkles, ArrowUpRight, FileText, Loader2, TrendingUp,
+  Wand2, LayoutGrid, Clapperboard, Send, Sparkles, ArrowUpRight, FileText, Loader2, TrendingUp, Zap,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getDashboardStats, listGenerations, listPosts, type DashboardStats, type Post } from '../lib/api'
@@ -33,108 +33,95 @@ export default function Dashboard() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credits])
 
-  const name = profile?.email?.split('@')[0] ?? 'creator'
+  const rawName = profile?.email?.split('@')[0] ?? 'creator'
+  const name = rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
   return (
     <main className="relative overflow-clip">
-      <Aurora className="opacity-60" />
-      <div className="relative mx-auto max-w-6xl px-5 py-12 lg:py-16">
+      <Aurora className="opacity-70" />
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+        <div className="absolute left-1/2 top-1/3 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-teal/10 blur-[180px]" />
+      </div>
+      <div className="relative mx-auto max-w-6xl px-5 py-14 lg:py-20">
         <Reveal>
-          <p className="eyebrow">Dashboard</p>
-          <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">
-            Welcome back, <span className="gradient-text">{name}</span>.
+          <p className="eyebrow tracking-widest">Dashboard</p>
+          <h1 className="mt-4 font-display text-4xl leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
+            Welcome back,{' '}<span className="gradient-text">{name}</span>.
           </h1>
-          <p className="mt-3 text-sand">Your whole loop at a glance — reference in, finished video out.</p>
+          <p className="mt-4 max-w-md text-base text-stone">
+            Your whole creator loop at a glance — reference in, finished video out.
+          </p>
         </Reveal>
-
-        {/* Stat cards (real counts) */}
-        <Stagger className="mt-9 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.06}>
-          <StatCard icon={FileText} tint="text-amber" label="Blueprints" value={stats?.blueprints} loading={loading} />
-          <StatCard icon={Clapperboard} tint="text-coral" label="Edits rendered" value={stats?.edits} loading={loading} />
-          <StatCard icon={Send} tint="text-teal" label="Posts logged" value={stats?.posts} loading={loading} />
-          <StatCard icon={Sparkles} tint="text-amber" label="Recreations left" value={stats?.recreationsLeft} loading={loading} />
+        <Stagger className="mt-10 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
+          <StatCard icon={FileText} glow="amber" label="Blueprints" value={stats?.blueprints} loading={loading} />
+          <StatCard icon={Clapperboard} glow="coral" label="Edits rendered" value={stats?.edits} loading={loading} />
+          <StatCard icon={Send} glow="teal" label="Posts logged" value={stats?.posts} loading={loading} />
+          <StatCard icon={Sparkles} glow="amber" label="Recreations left" value={stats?.recreationsLeft} loading={loading} />
         </Stagger>
-
-        {/* Quick actions */}
-        <Reveal delay={0.08}>
-          <div className="mt-5 grid gap-4 sm:grid-cols-3">
-            <ActionCard to="/app" icon={Wand2} title="New blueprint" desc="Paste a reference and get it shootable." primary />
-            <ActionCard to="/gallery" icon={LayoutGrid} title="Browse the gallery" desc="Proven formats, one-click remix." />
-            <ActionCard to="/history" icon={FileText} title="Your library" desc="Every blueprint you've made." />
+        <Reveal delay={0.1}>
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New blueprint" desc="Paste a reference and get a shootable script in seconds." primary />
+            <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Browse the gallery" desc="Proven formats, one-click remix into your voice." />
+            <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every blueprint you've ever made, searchable." />
           </div>
         </Reveal>
-
-        <div className="mt-10 grid gap-5 lg:grid-cols-[1.3fr_0.7fr]">
-          {/* Recent blueprints */}
+        <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
           <Reveal>
-            <div className="glass h-full p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="font-heading text-lg">Recent blueprints</h2>
-                <Link to="/history" className="text-sm text-stone hover:text-cream">View all</Link>
+            <div className="glass relative h-full overflow-hidden p-6">
+              <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-amber/10 blur-[80px]" />
+              <div className="relative flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber/15"><Clapperboard className="h-3.5 w-3.5 text-amber" /></span>
+                  <h2 className="font-heading text-base text-cream">Recent blueprints</h2>
+                </div>
+                <Link to="/history" className="group flex items-center gap-1 text-xs text-stone transition-colors hover:text-cream">
+                  View all <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                </Link>
               </div>
               {loading ? (
-                <div className="grid place-items-center py-10 text-sand">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                </div>
-              ) : recent.length === 0 ? (
-                <div className="py-10 text-center">
-                  <p className="text-sand">No blueprints yet.</p>
-                  <Link to="/app" className="btn-gradient mt-4 inline-flex">Make your first one</Link>
-                </div>
-              ) : (
-                <div className="mt-4 space-y-2">
-                  {recent.map((g) => (
-                    <Link
-                      key={g.id}
-                      to={`/result/${g.id}`}
-                      className="group flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.02] p-3.5 transition-colors hover:border-white/16"
-                    >
-                      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-white/5">
-                        <Clapperboard className="h-4.5 w-4.5 h-[18px] w-[18px] text-amber" />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate font-heading text-sm text-cream">
-                          {g.blueprint?.reference_read?.format_label ?? 'Blueprint'}
+                <div className="flex items-center justify-center py-14 text-stone"><Loader2 className="h-5 w-5 animate-spin" /></div>
+              ) : recent.length === 0 ? <EmptyBlueprints /> : (
+                <div className="relative mt-5 space-y-2">
+                  {recent.map((g, i) => (
+                    <motion.div key={g.id} initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.06, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}>
+                      <Link to={`/result/${g.id}`} className="group flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3.5 transition-all duration-200 hover:border-white/[0.14] hover:bg-white/[0.05]">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-amber/20 to-coral/10"><Clapperboard className="h-4 w-4 text-amber" /></span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate font-heading text-sm text-cream">{g.blueprint?.reference_read?.format_label ?? 'Blueprint'}</div>
+                          <div className="mt-0.5 truncate text-xs text-stone">{g.reference_url}</div>
                         </div>
-                        <div className="truncate text-xs text-stone">{g.reference_url}</div>
-                      </div>
-                      <span className="shrink-0 text-xs text-stone">{new Date(g.created_at).toLocaleDateString()}</span>
-                      <ArrowUpRight className="h-4 w-4 shrink-0 text-stone transition-colors group-hover:text-cream" />
-                    </Link>
+                        <span className="shrink-0 text-xs text-stone/70">{new Date(g.created_at).toLocaleDateString()}</span>
+                        <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-stone/50 transition-all group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-cream" />
+                      </Link>
+                    </motion.div>
                   ))}
                 </div>
               )}
             </div>
           </Reveal>
-
-          {/* Publishing / momentum */}
-          <Reveal delay={0.05}>
-            <div className="glass flex h-full flex-col p-6">
-              <h2 className="font-heading text-lg">Publishing</h2>
-              {posts.length === 0 ? (
-                <div className="mt-4 flex flex-1 flex-col justify-center rounded-xl border border-dashed border-white/12 p-5 text-center">
-                  <Send className="mx-auto h-5 w-5 text-stone" />
-                  <p className="mt-3 text-sm text-sand">No posts logged yet.</p>
-                  <p className="mt-1 text-xs text-stone">
-                    Open a blueprint → <span className="text-cream">Publish</span> to copy captions and log when you post.
-                  </p>
-                </div>
-              ) : (
-                <div className="mt-4 space-y-2">
+          <Reveal delay={0.06}>
+            <div className="glass relative flex h-full flex-col overflow-hidden p-6">
+              <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-teal/10 blur-[70px]" />
+              <div className="relative flex items-center gap-2.5">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal/15"><Send className="h-3.5 w-3.5 text-teal" /></span>
+                <h2 className="font-heading text-base text-cream">Publishing</h2>
+              </div>
+              {posts.length === 0 ? <EmptyPublishing /> : (
+                <div className="relative mt-5 space-y-2">
                   {posts.slice(0, 6).map((p) => (
-                    <div key={p.id} className="flex items-center gap-3 rounded-xl border border-white/8 bg-white/[0.02] p-3">
-                      <span className="w-16 shrink-0 text-xs font-heading capitalize text-teal">{p.platform}</span>
+                    <div key={p.id} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3 transition-colors hover:border-white/[0.12]">
+                      <span className="w-16 shrink-0 font-heading text-xs capitalize text-teal">{p.platform}</span>
                       <span className="min-w-0 flex-1 truncate text-sm text-cream">{p.caption || 'Posted'}</span>
-                      <span className="shrink-0 text-xs text-stone">
-                        {new Date(p.posted_at ?? p.created_at).toLocaleDateString()}
-                      </span>
+                      <span className="shrink-0 text-xs text-stone">{new Date(p.posted_at ?? p.created_at).toLocaleDateString()}</span>
                     </div>
                   ))}
                 </div>
               )}
-              <div className="mt-4 flex items-center gap-2 rounded-xl bg-signature-soft p-3 text-xs text-cream">
-                <TrendingUp className="h-4 w-4 shrink-0 text-amber" />
-                Consistent posting compounds — log each one to keep your streak honest.
+              <div className="relative mt-auto pt-5">
+                <div className="flex items-start gap-3 rounded-xl bg-gradient-to-r from-amber/10 to-amber/5 p-3.5 ring-1 ring-amber/20">
+                  <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-amber" />
+                  <p className="text-xs leading-relaxed text-sand">Consistent posting compounds. Log each publish to keep your streak honest.</p>
+                </div>
               </div>
             </div>
           </Reveal>
@@ -144,62 +131,74 @@ export default function Dashboard() {
   )
 }
 
-function StatCard({
-  icon: Icon,
-  tint,
-  label,
-  value,
-  loading,
-}: {
-  icon: React.ComponentType<{ className?: string }>
-  tint: string
-  label: string
-  value: number | undefined
-  loading: boolean
-}) {
+const glowMap = { amber: 'from-amber/[0.12] via-amber/[0.06] to-transparent shadow-glow', coral: 'from-coral/[0.12] via-coral/[0.06] to-transparent', teal: 'from-teal/[0.12] via-teal/[0.06] to-transparent shadow-glow-teal' } as const
+const iconBgMap = { amber: 'bg-amber/15', coral: 'bg-coral/15', teal: 'bg-teal/15' } as const
+const iconColorMap = { amber: 'text-amber', coral: 'text-coral', teal: 'text-teal' } as const
+
+function StatCard({ icon: Icon, glow, label, value, loading }: { icon: React.ComponentType<{ className?: string }>; glow: keyof typeof glowMap; label: string; value: number | undefined; loading: boolean }) {
   return (
     <RevealItem>
-      <div className="glass glass-hover h-full p-5">
-        <Icon className={cn('h-5 w-5', tint)} />
-        <div className="mt-3 font-display text-3xl tracking-tight">
-          {loading || value === undefined ? <span className="text-stone">—</span> : <Counter to={value} />}
+      <motion.div whileHover={{ y: -4, scale: 1.015 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} className="h-full">
+        <div className={cn('relative h-full overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br p-5 backdrop-blur-md transition-colors hover:border-white/[0.14]', glowMap[glow])}>
+          <div className="absolute inset-0 -z-10 bg-ink2/80" />
+          <span className={cn('inline-flex h-9 w-9 items-center justify-center rounded-xl', iconBgMap[glow])}>
+            <Icon className={cn('h-[18px] w-[18px]', iconColorMap[glow])} />
+          </span>
+          <div className="mt-4 font-display text-3xl tracking-tight text-cream">
+            {loading || value === undefined ? <span className="text-stone/50">—</span> : <Counter to={value} />}
+          </div>
+          <div className="mt-1.5 text-xs font-medium tracking-wide text-stone">{label}</div>
         </div>
-        <div className="mt-1 text-xs text-stone">{label}</div>
-      </div>
+      </motion.div>
     </RevealItem>
   )
 }
 
-function ActionCard({
-  to,
-  icon: Icon,
-  title,
-  desc,
-  primary,
-}: {
-  to: string
-  icon: React.ComponentType<{ className?: string }>
-  title: string
-  desc: string
-  primary?: boolean
-}) {
+function ActionCard({ to, icon: Icon, iconGlow, iconColor, title, desc, primary }: { to: string; icon: React.ComponentType<{ className?: string }>; iconGlow: string; iconColor: string; title: string; desc: string; primary?: boolean }) {
   return (
-    <motion.div whileHover={{ y: -3 }}>
-      <Link
-        to={to}
-        className={cn(
-          'flex h-full items-start gap-3 rounded-card p-5',
-          primary ? 'gradient-border bg-ink2 shadow-glow' : 'glass glass-hover',
-        )}
-      >
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-signature-soft">
-          <Icon className="h-5 w-5 text-cream" />
-        </span>
-        <div>
-          <div className="font-heading">{title}</div>
-          <div className="mt-0.5 text-sm text-stone">{desc}</div>
+    <motion.div whileHover={{ y: -5, scale: 1.01 }} transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }} className="h-full">
+      <Link to={to} className={cn('group relative flex h-full flex-col gap-4 overflow-hidden rounded-2xl p-5 transition-all duration-200', primary ? 'gradient-border bg-ink2 shadow-glow' : 'border border-white/[0.08] bg-ink2/70 backdrop-blur-md hover:border-white/[0.16] hover:bg-white/[0.04]')}>
+        {primary && <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-amber/15 blur-[50px]" />}
+        <span className={cn('relative inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br', iconGlow)}><Icon className={cn('h-5 w-5', iconColor)} /></span>
+        <div className="relative flex-1">
+          <div className="flex items-center gap-2 font-heading text-sm text-cream">
+            {title}{primary && <span className="rounded-full bg-amber/20 px-2 py-0.5 text-[10px] font-medium text-amber">Start here</span>}
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-stone">{desc}</p>
         </div>
+        <ArrowUpRight className={cn('h-4 w-4 self-end transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5', primary ? 'text-amber/70 group-hover:text-amber' : 'text-stone/50 group-hover:text-cream')} />
       </Link>
     </motion.div>
+  )
+}
+
+function EmptyBlueprints() {
+  return (
+    <div className="relative mt-6 flex flex-col items-center justify-center py-12 text-center">
+      <div className="relative mb-6 flex h-20 w-20 items-center justify-center">
+        <motion.div animate={{ scale: [1, 1.12, 1], opacity: [0.3, 0.5, 0.3] }} transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }} className="absolute inset-0 rounded-full bg-amber/20 blur-xl" />
+        <motion.div animate={{ scale: [1, 1.06, 1] }} transition={{ duration: 2.8, repeat: Infinity, ease: 'easeInOut', delay: 0.4 }} className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber/30 to-coral/20 ring-1 ring-white/10">
+          <Zap className="h-6 w-6 text-amber" />
+        </motion.div>
+      </div>
+      <p className="font-heading text-sm text-cream">No blueprints yet</p>
+      <p className="mt-2 max-w-[220px] text-xs leading-relaxed text-stone">Paste any video link and get a shootable script tailored to your style.</p>
+      <Link to="/app" className="btn-gradient mt-5 inline-flex items-center gap-2 text-sm"><Wand2 className="h-3.5 w-3.5" /> Make your first one</Link>
+    </div>
+  )
+}
+
+function EmptyPublishing() {
+  return (
+    <div className="relative mt-5 flex flex-1 flex-col items-center justify-center py-10 text-center">
+      <div className="relative mb-4 flex h-16 w-16 items-center justify-center">
+        <motion.div animate={{ scale: [1, 1.15, 1], opacity: [0.25, 0.45, 0.25] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }} className="absolute inset-0 rounded-full bg-teal/25 blur-xl" />
+        <motion.div animate={{ scale: [1, 1.07, 1] }} transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut', delay: 0.6 }} className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-teal/30 to-teal/10 ring-1 ring-white/10">
+          <Send className="h-5 w-5 text-teal" />
+        </motion.div>
+      </div>
+      <p className="font-heading text-sm text-cream">Nothing published yet</p>
+      <p className="mt-1.5 max-w-[190px] text-xs leading-relaxed text-stone">Open a blueprint, then hit <span className="text-cream">Publish</span> to log your post here.</p>
+    </div>
   )
 }
