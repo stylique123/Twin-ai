@@ -20,3 +20,10 @@ verify_jwt = true
 
 [functions.billing]
 verify_jwt = true
+
+# Payment-provider webhook: callable by the processor (which sends no Supabase
+# JWT), so JWT verification MUST be off. The function does its own HMAC signature
+# verification. Without this entry it defaults to verify_jwt=true and every real
+# webhook is rejected with 401.
+[functions.billing-webhook]
+verify_jwt = false
