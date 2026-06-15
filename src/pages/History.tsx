@@ -42,7 +42,7 @@ export default function History() {
         {/* Stat strip */}
         <Reveal delay={0.06}>
           <div className="mt-8 grid gap-3 sm:grid-cols-3">
-            <Stat icon={Clapperboard} label="Total blueprints" value={loading ? '—' : String(items.length)} />
+            <Stat icon={Clapperboard} label="Total blueprints" value={loading ? ', ' : String(items.length)} />
             <Stat icon={Sparkles} label="Recreations left" value={String(left)} />
             <Stat icon={Wand2} label="Plan" value={(profile?.account_type ?? 'free').replace(/^\w/, (c) => c.toUpperCase())} />
           </div>

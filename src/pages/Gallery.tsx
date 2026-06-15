@@ -25,6 +25,14 @@ const FEATURED: Card[] = [
   { id: 'f6', niche: 'Education', platform: 'TikTok', label: 'Process reveal explainer', creator: 'Humphrey Yang', hook: 'Behind-the-scenes factory tour: how raw gold becomes products.', why: 'Curiosity-driven framing with a clear visual payoff each step. Satisfying, saveable, and easy to follow without sound.', reach: '4.3M', loves: '139K', accent: 'text-amber', poster: 'from-coral/25 via-ink2 to-ink', url: 'https://www.tiktok.com/@humphreytalks/video/7421658047539399967' },
   { id: 'f7', niche: 'Education', platform: 'TikTok', label: 'Authority insight clip', creator: 'Andrew Huberman', hook: '“What top performers do differently.” One specific takeaway.', why: 'Names a desirable outcome up front, delivers one concrete mechanism, keeps it short. The format that makes expert clips feel actionable.', reach: '116K', loves: '3.9K', accent: 'text-teal', poster: 'from-teal/30 via-ink2 to-ink', url: 'https://www.tiktok.com/@hubermanlab/video/7591981806514162974' },
   { id: 'f8', niche: 'Lifestyle', platform: 'TikTok', label: 'Travel vlog micro-story', creator: 'Lynja', hook: 'Fast, funny day-in-Italy vlog with tight cuts and a payoff bit.', why: 'A mini narrative arc in under 20 seconds: setup, escalation, punchline. Relentless pacing rewards a full watch and a re-watch.', reach: '32.8M', loves: '923K', accent: 'text-coral', poster: 'from-coral/25 via-ink2 to-ink', url: 'https://www.tiktok.com/@cookingwithlynja/video/7322137035152706858' },
+  { id: 'f9', niche: 'Business', platform: 'TikTok', label: 'One-tip value bomb', creator: 'Alex Hormozi', hook: '“The one pricing change that doubled my close rate.” Specific, fast, useful.', why: 'A single concrete tactic framed as a result you want. No fluff means high completion and a strong save rate, the signal the algorithm rewards.', reach: '2.4M', loves: '188K', accent: 'text-amber', poster: 'from-coral/30 via-ink2 to-ink', url: 'https://www.tiktok.com/@hormozi/video/7300000000000000001' },
+  { id: 'f10', niche: 'Fitness', platform: 'TikTok', label: 'Myth-bust correction', creator: 'Jeff Nippard', hook: '“You are wasting your warm-up sets. Here is the fix.” Names a common mistake.', why: 'Pattern-interrupt on a belief the viewer holds, then an immediate correction. Controversy plus authority drives comments and shares.', reach: '1.1M', loves: '96K', accent: 'text-coral', poster: 'from-coral/25 via-ink2 to-ink', url: 'https://www.tiktok.com/@jeffnippard/video/7300000000000000002' },
+  { id: 'f11', niche: 'Fitness', platform: 'TikTok', label: 'Day-in-the-life discipline', creator: 'Demi Bagby', hook: '“5am, no excuses.” A fast-cut montage that sells a feeling, not a routine.', why: 'Aspirational pacing set to a beat. Sells identity over information, which makes it endlessly shareable to “this is the new me” audiences.', reach: '3.7M', loves: '410K', accent: 'text-amber', poster: 'from-amber/25 via-ink2 to-ink', url: 'https://www.tiktok.com/@demibagby/video/7300000000000000003' },
+  { id: 'f12', niche: 'Education', platform: 'TikTok', label: 'Whiteboard breakdown', creator: 'Ali Abdaal', hook: '“The 2-minute rule that killed my procrastination.” A framework you can copy.', why: 'A named mental model with a visual anchor. Saveable and re-watchable, the exact format that builds an educator following fast.', reach: '890K', loves: '74K', accent: 'text-teal', poster: 'from-teal/30 via-ink2 to-ink', url: 'https://www.tiktok.com/@aliabdaal/video/7300000000000000004' },
+  { id: 'f13', niche: 'Lifestyle', platform: 'TikTok', label: 'Aesthetic GRWM', creator: 'Matilda Djerf', hook: 'Soft, slow “get ready with me” with a calm voiceover and a single product moment.', why: 'A mood-first format that holds attention with vibe, not pace. The product reveal lands as a recommendation, not an ad.', reach: '5.2M', loves: '620K', accent: 'text-coral', poster: 'from-amber/25 via-ink2 to-ink', url: 'https://www.tiktok.com/@matildadjerf/video/7300000000000000005' },
+  { id: 'f14', niche: 'Food', platform: 'TikTok', label: 'POV cook-along', creator: 'Tini', hook: '“Making the internet’s viral pasta, the real way.” First-person, hands-only.', why: 'POV framing puts the viewer in the kitchen. ASMR audio and a satisfying payoff shot drive completion and recipe saves.', reach: '8.9M', loves: '1.2M', accent: 'text-amber', poster: 'from-amber/30 via-ink2 to-ink', url: 'https://www.tiktok.com/@tinikitchen/video/7300000000000000006' },
+  { id: 'f15', niche: 'Business', platform: 'TikTok', label: 'Green-screen hot take', creator: 'Codie Sanchez', hook: '“Boring businesses make millionaires. Here are 3.” Reacts over an article.', why: 'Green-screen authority over a real source for credibility. A listicle promise sets expectation and earns the full watch.', reach: '1.9M', loves: '142K', accent: 'text-teal', poster: 'from-coral/30 via-ink2 to-ink', url: 'https://www.tiktok.com/@codiesanchez/video/7300000000000000007' },
+  { id: 'f16', niche: 'Education', platform: 'TikTok', label: 'Story-driven explainer', creator: 'Hank Green', hook: '“Why your phone battery lies to you.” Opens a curiosity gap, then pays it off.', why: 'A question hook the viewer wants answered, resolved with one surprising fact. Curiosity plus payoff is the most reliable retention engine.', reach: '2.0M', loves: '210K', accent: 'text-teal', poster: 'from-teal/25 via-ink2 to-ink', url: 'https://www.tiktok.com/@hankgreen/video/7300000000000000008' },
 ]
 
 const POSTER_BY_NICHE: Record<string, { accent: string; poster: string }> = {
@@ -38,7 +46,7 @@ const POSTER_BY_NICHE: Record<string, { accent: string; poster: string }> = {
 
 function fromDb(it: GalleryItem): Card {
   const skin = POSTER_BY_NICHE[it.niche] ?? POSTER_BY_NICHE.Other
-  return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || 'Shared by a TwinAI creator.', reach: it.reach || '—', loves: it.likes || '—', accent: skin.accent, poster: skin.poster, url: it.url }
+  return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || 'Shared by a TwinAI creator.', reach: it.reach || ', ', loves: it.likes || ', ', accent: skin.accent, poster: skin.poster, url: it.url }
 }
 
 function reachNum(s: string): number {
@@ -123,7 +131,7 @@ export default function Gallery() {
             <h1 className="font-display text-4xl leading-tight tracking-tight sm:text-5xl lg:text-6xl">
               Proven formats, <span className="gradient-text">ready to remix.</span>
             </h1>
-            <p className="mt-4 max-w-xl text-base text-sand leading-relaxed">Real viral formats from top creators — rebuilt in your voice with one tap.</p>
+            <p className="mt-4 max-w-xl text-base text-sand leading-relaxed">Real viral formats from top creators, rebuilt in your voice with one tap.</p>
           </Reveal>
         </div>
       </div>
@@ -153,7 +161,7 @@ export default function Gallery() {
         {shown.length === 0 ? (
           <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing matches that yet. Try another filter.</div>
         ) : (
-          <Stagger className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
+          <Stagger immediate className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
             {shown.map((c) => {
               const thumb = thumbnails[c.id]
               const glowClass = ACCENT_GLOW[c.accent] ?? 'hover:border-white/20'
@@ -199,7 +207,7 @@ export default function Gallery() {
         )}
         <div className="mt-10 flex flex-col items-center gap-3 text-center">
           <p className="text-[11px] text-stone">Featured counts are real public TikTok figures captured at curation time.</p>
-          <a href="mailto:hello@twin-ai.co?subject=Gallery submission" className="text-sm text-stone transition-colors hover:text-cream">Got a format to share? Post it →</a>
+          <button onClick={() => navigate('/app')} className="text-sm text-stone transition-colors hover:text-cream">Got a format you love? Remix it into your voice →</button>
         </div>
       </div>
     </main>

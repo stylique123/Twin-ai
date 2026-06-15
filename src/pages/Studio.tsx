@@ -17,7 +17,7 @@ const FIDELITY = [
 
 // The studio ALWAYS reads the real video now: paste a link, we transcribe the
 // actual clip and analyze its true structure, then write the blueprint from that
-// real read in the creator's voice. No "blind" mode — that produced generic
+// real read in the creator's voice. No "blind" mode, that produced generic
 // blueprints unrelated to the reference and still charged a recreation.
 type Phase = 'idle' | 'fetching' | 'transcribing' | 'writing'
 
@@ -44,7 +44,7 @@ export default function Studio() {
   const lowCredits = (profile?.credits ?? 0) < BLUEPRINT_COST
 
   // Transcribe the real clip and return its transcript id. Throws (without ever
-  // charging a recreation) if the video can't be read — generation only runs on
+  // charging a recreation) if the video can't be read, generation only runs on
   // a real read, never a blind guess.
   const analyzeRealVideo = async (link: string): Promise<string> => {
     setPhase('fetching')
@@ -57,13 +57,13 @@ export default function Studio() {
       if (job.status === 'failed') throw new Error(job.error || 'Could not read that video. Try another reference.')
       if (job.status === 'running') setPhase('transcribing')
     }
-    throw new Error('Reading the video is taking too long — please try again in a moment.')
+    throw new Error('Reading the video is taking too long, please try again in a moment.')
   }
 
   const run = async () => {
     setErr(null)
     if (!url.trim()) return setErr('Paste a reference link first.')
-    if (lowCredits) return setErr("You're out of recreations for now — upgrade to keep going.")
+    if (lowCredits) return setErr("You're out of recreations for now, upgrade to keep going.")
     setBusy(true)
     try {
       // ALWAYS read the actual video first.
@@ -95,7 +95,7 @@ export default function Studio() {
             Drop a reference. Get it <span className="gradient-text">shootable.</span>
           </h1>
           <p className="mt-3 text-sand">
-            We read the actual video — transcript and true structure — then write your blueprint in your voice.
+            We read the actual video, transcript and true structure, then write your blueprint in your voice.
           </p>
         </Reveal>
 
@@ -114,7 +114,7 @@ export default function Studio() {
                 disabled={busy}
               />
               <p className="mt-2 flex items-center gap-1.5 text-xs text-teal">
-                <ScanSearch className="h-3.5 w-3.5" /> We transcribe and analyze the real clip — every time.
+                <ScanSearch className="h-3.5 w-3.5" /> We transcribe and analyze the real clip, every time.
               </p>
             </div>
 
@@ -190,7 +190,7 @@ export default function Studio() {
               )}
             </AnimatePresence>
 
-            {/* Processing overlay — real, animated progress so it never looks frozen. */}
+            {/* Processing overlay, real, animated progress so it never looks frozen. */}
             <AnimatePresence>
               {busy && (
                 <motion.div
@@ -248,7 +248,7 @@ export default function Studio() {
                       />
                     </div>
                     <p className="mt-3 text-center text-xs text-stone">
-                      Reading the real clip takes ~1–2 min. Hang tight — we don't charge a recreation unless this finishes.
+                      Reading the real clip takes ~1-2 min. Hang tight, we don't charge a recreation unless this finishes.
                     </p>
                   </div>
                 </motion.div>

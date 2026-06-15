@@ -109,7 +109,7 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
         Paste your handle. We read how <span className="gradient-text">you</span> sound.
       </h1>
       <p className="mt-2.5 text-sand">
-        TwinAI reads your recent posts and learns your voice — so every script sounds like you, not a robot.
+        TwinAI reads your recent posts and learns your voice, so every script sounds like you, not a robot.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-2">
@@ -186,12 +186,12 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
 
   useEffect(() => {
     if (!activeVoiceId) {
-      setErr('Lost the scan — please set up manually.')
+      setErr('Lost the scan, please set up manually.')
       return
     }
     let stopped = false
     // Hard cap: if the scan never resolves (stuck worker, dropped job), don't
-    // trap the user on an infinite spinner — surface the manual fallback.
+    // trap the user on an infinite spinner, surface the manual fallback.
     const startedAt = Date.now()
     const MAX_WAIT_MS = 100_000
     const tick = async () => {
@@ -210,7 +210,7 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
           setErr('This is taking longer than usual. Set up your voice manually and you can re-scan any time.')
         }
       } catch (e) {
-        // Transient — keep polling; surface only if it persists past the cap.
+        // Transient, keep polling; surface only if it persists past the cap.
         console.warn('dna poll', e)
         if (Date.now() - startedAt > MAX_WAIT_MS && !stopped) {
           if (timer.current) clearInterval(timer.current)
@@ -365,7 +365,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
             </>
           ) : (
             <>
-              This is me — enter the studio <ArrowRight className="h-4 w-4" />
+              This is me, enter the studio <ArrowRight className="h-4 w-4" />
             </>
           )}
         </button>
@@ -457,7 +457,7 @@ function ManualQuiz({ onBack }: { onBack: () => void }) {
       field: (
         <input
           className="field"
-          placeholder="e.g. early-stage founders, 25–40"
+          placeholder="e.g. early-stage founders, 25-40"
           value={dna.audience}
           onChange={(e) => setDna({ ...dna, audience: e.target.value })}
         />

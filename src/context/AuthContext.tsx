@@ -47,13 +47,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     // Clear local state FIRST so the UI (route guards, nav) flips to logged-out
-    // instantly — never wait on the network round-trip or the auth listener.
+    // instantly, never wait on the network round-trip or the auth listener.
     setSession(null)
     setProfile(null)
     // scope:'local' clears the persisted token from storage WITHOUT needing a
     // network round-trip to revoke server-side. The default 'global' scope can
     // throw on a flaky network and leave the token in localStorage, which the
-    // next page load would then resurrect — the "I logged out but still see
+    // next page load would then resurrect, the "I logged out but still see
     // Open studio" bug. Local scope makes sign-out reliable offline.
     try {
       await supabase.auth.signOut({ scope: 'local' })

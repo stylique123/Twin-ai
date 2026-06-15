@@ -23,7 +23,7 @@ export function LogoMark({ className = '', size = 28 }: { className?: string; si
       {/* Reference T (cream): top crossbar + upper stem */}
       <rect x="6" y="4.6" width="12" height="2.7" rx="1.35" fill="#F6F1E9" />
       <rect x="10.65" y="7.3" width="2.7" height="4.7" fill="#F6F1E9" />
-      {/* Twin T (gradient): lower stem + bottom crossbar — the mirror */}
+      {/* Twin T (gradient): lower stem + bottom crossbar, the mirror */}
       <rect x="10.65" y="12" width="2.7" height="4.7" fill={`url(#${gid})`} />
       <rect x="6" y="16.7" width="12" height="2.7" rx="1.35" fill={`url(#${gid})`} />
     </svg>

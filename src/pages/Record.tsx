@@ -13,7 +13,7 @@ import { cn } from '../lib/cn'
 type Phase = 'idle' | 'countdown' | 'recording' | 'review'
 
 // In-app Record: a teleprompter over a live camera, so the blueprint gets shot
-// the moment inspiration hits. Everything stays client-side — the take is yours
+// the moment inspiration hits. Everything stays client-side, the take is yours
 // to download (Phase 6 will hand it to the auto-editor).
 export default function Record() {
   const { id } = useParams()
@@ -205,7 +205,7 @@ export default function Record() {
 
   // ---- poll a queued edit job to completion ----
   const pollEdit = async (jobId: string) => {
-    setEditStatus('Editing — captions, framing & audio…')
+    setEditStatus('Editing, captions, framing & audio…')
     for (let i = 0; i < 120; i++) {
       await new Promise((r) => setTimeout(r, 3000))
       const job = await getJob(jobId)
@@ -216,9 +216,9 @@ export default function Record() {
         return
       }
       if (job.status === 'failed') throw new Error(job.error || 'The edit could not finish.')
-      setEditStatus(job.status === 'running' ? 'Editing — captions, framing & audio…' : 'Queued…')
+      setEditStatus(job.status === 'running' ? 'Editing, captions, framing & audio…' : 'Queued…')
     }
-    throw new Error('The edit is taking longer than expected — check your Library shortly.')
+    throw new Error('The edit is taking longer than expected, check your Library shortly.')
   }
 
   // ---- first auto-edit: FREE (bundled with the blueprint) ----
@@ -242,7 +242,7 @@ export default function Record() {
     if (!takePathRef.current || !id) return
     setEditErr(null)
     setEditPhase('working')
-    setEditStatus('Remaking — a fresh edit…')
+    setEditStatus('Remaking, a fresh edit…')
     const nextVar = variation + 1
     setVariation(nextVar)
     try {
@@ -311,7 +311,7 @@ export default function Record() {
                       <Video className="h-6 w-6 text-cream" />
                     </span>
                     <p className="mt-4 font-heading text-lg">Turn on your camera to record</p>
-                    <p className="mt-1 text-sm text-stone">Stays on your device — nothing is uploaded.</p>
+                    <p className="mt-1 text-sm text-stone">Stays on your device, nothing is uploaded.</p>
                     <button onClick={startCamera} className="btn-gradient mt-5">
                       <Video className="h-4 w-4" /> Enable camera & mic
                     </button>
@@ -363,7 +363,7 @@ export default function Record() {
                       exit={{ opacity: 0 }}
                       className="rounded-full bg-amber/90 px-2.5 py-1 text-xs font-bold text-ink"
                     >
-                      HOOK — land it now
+                      HOOK, land it now
                     </motion.span>
                   )}
                 </AnimatePresence>
@@ -391,7 +391,7 @@ export default function Record() {
               )}
             </AnimatePresence>
 
-            {/* review — show the edited render once ready, else the raw take */}
+            {/* review, show the edited render once ready, else the raw take */}
             {phase === 'review' && (takeUrl || editUrl) && (
               <div className="absolute inset-0 bg-black">
                 <video
@@ -411,7 +411,7 @@ export default function Record() {
                     <div>
                       <Loader2 className="mx-auto h-7 w-7 animate-spin text-coral" />
                       <p className="mt-3 font-heading text-cream">{editStatus}</p>
-                      <p className="mt-1 text-xs text-stone">Captions are timed to your words — this takes a minute.</p>
+                      <p className="mt-1 text-xs text-stone">Captions are timed to your words, this takes a minute.</p>
                     </div>
                   </div>
                 )}
@@ -439,7 +439,7 @@ export default function Record() {
                   </button>
                   {editPhase === 'done' && editUrl ? (
                     <>
-                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look — 1 recreation">
+                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look, 1 recreation">
                         <Sparkles className="h-4 w-4" /> Remake · 1 recreation
                       </button>
                       <a href={editUrl} download={`twinai-edited-${id}.mp4`} className="btn-gradient">
@@ -469,7 +469,7 @@ export default function Record() {
         <div className="space-y-4">
           <div className="glass p-5">
             <h2 className="font-heading text-lg">Teleprompter</h2>
-            <p className="mt-1 text-sm text-stone">Loaded from your blueprint — read it naturally.</p>
+            <p className="mt-1 text-sm text-stone">Loaded from your blueprint, read it naturally.</p>
 
             <div className="mt-4 space-y-4">
               <Control icon={Play} label="Scroll">
@@ -528,7 +528,7 @@ export default function Record() {
           {!camReady && !camError && (
             <p className="px-1 text-xs text-stone">
               <VideoOff className="mr-1 inline h-3.5 w-3.5" />
-              Recording is private — your camera feed never leaves this device.
+              Recording is private, your camera feed never leaves this device.
             </p>
           )}
         </div>

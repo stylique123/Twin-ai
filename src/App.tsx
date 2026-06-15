@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from './context/AuthContext'
 import { Nav } from './components/Nav'
 import { AppShell } from './components/AppShell'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { EASE } from './components/motion'
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
@@ -23,7 +24,7 @@ function Protected({ children }: { children: JSX.Element }) {
   return children
 }
 
-// Like Protected but WITHOUT the onboarded check — for /onboarding itself, which
+// Like Protected but WITHOUT the onboarded check, for /onboarding itself, which
 // a signed-in-but-not-onboarded user must reach. A logged-out visitor is still
 // bounced to /auth, so the paste-a-handle screen is never reachable without an account.
 function AuthOnly({ children }: { children: JSX.Element }) {
@@ -52,7 +53,7 @@ function Page({ children }: { children: React.ReactNode }) {
 }
 
 // Two distinct worlds: the marketing site (Nav + footer chrome) and the app
-// (sidebar AppShell). They never mix — that's what makes the dashboard feel
+// (sidebar AppShell). They never mix, that's what makes the dashboard feel
 // like a product instead of a page.
 export default function App() {
   const location = useLocation()
@@ -67,8 +68,9 @@ export default function App() {
 
   return (
     <div className="min-h-screen">
-      {/* Marketing chrome only on the landing page — never over /auth, /onboarding, or the app. */}
+      {/* Marketing chrome only on the landing page, never over /auth, /onboarding, or the app. */}
       {location.pathname === '/' && <Nav />}
+      <ErrorBoundary resetKey={location.pathname}>
       <AnimatePresence mode="wait">
         <Routes location={location} key={inApp ? 'app' : location.pathname}>
           <Route path="/" element={<Page><Landing /></Page>} />
@@ -105,6 +107,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AnimatePresence>
+      </ErrorBoundary>
     </div>
   )
 }

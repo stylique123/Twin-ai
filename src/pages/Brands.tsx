@@ -19,7 +19,7 @@ const PLATFORMS: { id: Platform; label: string }[] = [
 ]
 
 // Agency workspace: every client brand is its own voice profile. The active
-// (default) voice is the one Studio writes blueprints in — switching here
+// (default) voice is the one Studio writes blueprints in, switching here
 // switches the whole workspace in one tap.
 export default function Brands() {
   const { profile } = useAuth()
@@ -72,7 +72,7 @@ export default function Brands() {
           <h1 className="mt-4 font-display text-3xl sm:text-4xl">Brand workspaces</h1>
           <p className="mt-2 max-w-xl text-sand">
             One voice profile per client. The <span className="text-cream">active</span> brand is what Studio
-            writes in — switch it any time, and every blueprint comes out in that voice.
+            writes in, switch it any time, and every blueprint comes out in that voice.
           </p>
         </div>
         <div className="text-right">
@@ -231,7 +231,7 @@ function BrandCard({
         </div>
       )}
       {voice.status === 'failed' && (
-        <p className="mt-3 text-xs text-coral">{voice.error ?? 'Voice scan failed — try re-adding this handle.'}</p>
+        <p className="mt-3 text-xs text-coral">{voice.error ?? 'Voice scan failed, try re-adding this handle.'}</p>
       )}
       {voice.status === 'building' && (
         <p className="mt-3 flex items-center gap-1.5 text-xs text-teal">
@@ -294,7 +294,7 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
             onAdded()
           } else if (res.status === 'failed') {
             if (timer.current) clearInterval(timer.current)
-            setErr(res.error ?? 'Voice scan failed — check the handle is public and try again.')
+            setErr(res.error ?? 'Voice scan failed, check the handle is public and try again.')
             setPhase('input')
           }
         } catch {
@@ -371,7 +371,7 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
             <Loader2 className="mx-auto h-8 w-8 animate-spin text-amber" />
             <h2 className="mt-5 font-display text-2xl">Reading how they sound…</h2>
             <p className="mt-2 text-sm text-sand">
-              Scanning <span className="text-cream">@{handle.replace(/^@/, '')}</span> — tone, pacing, hooks and
+              Scanning <span className="text-cream">@{handle.replace(/^@/, '')}</span>, tone, pacing, hooks and
               signature phrases. This usually takes under a minute.
             </p>
           </div>

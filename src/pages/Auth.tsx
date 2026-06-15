@@ -76,7 +76,7 @@ export default function Auth() {
         transition={{ duration: 0.7, ease: EASE }}
         className="relative grid w-full max-w-4xl overflow-hidden rounded-panel border border-white/10 bg-ink2/80 backdrop-blur-xl md:grid-cols-2"
       >
-        {/* Left — brand panel */}
+        {/* Left, brand panel */}
         <div className="relative hidden flex-col justify-between gap-8 bg-signature-soft p-8 md:flex">
           <div className="flex items-center justify-between">
             <Logo size={30} />
@@ -106,7 +106,7 @@ export default function Auth() {
           <p className="text-xs text-stone">Paste a reference. Get a finished video in your voice.</p>
         </div>
 
-        {/* Right — form */}
+        {/* Right, form */}
         <div className="p-8 sm:p-10">
           {/* Mobile header with Back */}
           <div className="flex items-center justify-between md:hidden">

@@ -13,7 +13,7 @@ const LINKS = [
   { href: '/#pricing', label: 'Pricing' },
 ]
 
-// Floating "bubble" navigation — a centered glass pill that lifts off the page,
+// Floating "bubble" navigation, a centered glass pill that lifts off the page,
 // kreate.ai-style. The dashboard has its own AppShell; app links never leak here.
 export function Nav() {
   const { session } = useAuth()

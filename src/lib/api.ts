@@ -30,7 +30,7 @@ export async function saveDNA(dna: CreatorDNA): Promise<void> {
 // True only for users in public.platform_admins. RLS guarantees a normal user
 // gets `false` (the function returns false for non-admins), so this is safe to
 // call from the client to gate an admin area. All admin WRITES still go through
-// audited, service-role-only RPCs — never directly from the browser.
+// audited, service-role-only RPCs, never directly from the browser.
 export async function isPlatformAdmin(): Promise<boolean> {
   const { data, error } = await supabase.rpc('is_platform_admin')
   if (error) return false
@@ -65,7 +65,7 @@ export interface IngestJob {
 // Returns the job id to poll with getJob; on `done`, result.output_url is the
 // finished, signed MP4 URL.
 // First auto-edit is FREE (bundled with the blueprint). Uploads the take, then
-// enqueues THROUGH the edge function — the only credit-enforced path. The server
+// enqueues THROUGH the edge function, the only credit-enforced path. The server
 // decides free-vs-paid, so the client can't grant itself a free render.
 export async function autoEditTake(generationId: string, blob: Blob): Promise<{ jobId: string; takePath: string }> {
   const { data: auth } = await supabase.auth.getUser()
@@ -86,7 +86,7 @@ export async function autoEditTake(generationId: string, blob: Blob): Promise<{ 
   return { jobId: (data as { job_id: string }).job_id, takePath: take_path }
 }
 
-// A REMAKE re-edits the same take with a fresh look — costs one recreation,
+// A REMAKE re-edits the same take with a fresh look, costs one recreation,
 // charged server-side by the enqueue-autoedit function.
 export async function remakeEdit(generationId: string, takePath: string, variation: number): Promise<string> {
   const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
@@ -149,7 +149,7 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
   })
   if (error) {
     // supabase-js puts non-2xx responses in error.context (a Response), not in
-    // error.message — read the function's JSON body so the real reason
+    // error.message, read the function's JSON body so the real reason
     // (e.g. "Not enough credits") reaches the UI.
     let msg = (error as { message?: string }).message ?? 'Generation failed'
     const ctx = (error as { context?: Response }).context
@@ -230,7 +230,7 @@ export async function listPosts(): Promise<Post[]> {
     .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
     .order('created_at', { ascending: false })
     .limit(100)
-  if (error) return [] // table may not be migrated yet — fail soft
+  if (error) return [] // table may not be migrated yet, fail soft
   return (data ?? []) as Post[]
 }
 
@@ -259,7 +259,7 @@ export async function markPosted(input: {
   return data as Post
 }
 
-// ---- Brand voices (Phase 2 — DNA from handle) ---------------------------
+// ---- Brand voices (Phase 2, DNA from handle) ---------------------------
 
 // supabase-js puts non-2xx function responses in error.context (a Response),
 // not error.message. Read the function's JSON body so the real reason reaches

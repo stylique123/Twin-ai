@@ -49,7 +49,7 @@ export default function Dashboard() {
             Welcome back,{' '}<span className="gradient-text">{name}</span>.
           </h1>
           <p className="mt-4 max-w-md text-base text-stone">
-            Your whole creator loop at a glance — reference in, finished video out.
+            Your whole creator loop at a glance, reference in, finished video out.
           </p>
         </Reveal>
         <Stagger className="mt-10 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
@@ -145,7 +145,7 @@ function StatCard({ icon: Icon, glow, label, value, loading }: { icon: React.Com
             <Icon className={cn('h-[18px] w-[18px]', iconColorMap[glow])} />
           </span>
           <div className="mt-4 font-display text-3xl tracking-tight text-cream">
-            {loading || value === undefined ? <span className="text-stone/50">—</span> : <Counter to={value} />}
+            {loading || value === undefined ? <span className="text-stone/50">, </span> : <Counter to={value} />}
           </div>
           <div className="mt-1.5 text-xs font-medium tracking-wide text-stone">{label}</div>
         </div>

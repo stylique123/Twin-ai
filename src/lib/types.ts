@@ -24,7 +24,7 @@ export interface Profile {
   created_at: string
 }
 
-// Phase 2 — Brand-DNA learned from a creator's handle. The voice we write in.
+// Phase 2, Brand-DNA learned from a creator's handle. The voice we write in.
 export interface VoiceProfile {
   summary: string
   niche: string
@@ -52,7 +52,7 @@ export interface BrandVoice {
   updated_at: string
 }
 
-// What the AI returns — a real, structured, shootable blueprint
+// What the AI returns, a real, structured, shootable blueprint
 export interface Blueprint {
   reference_read: {
     platform: Platform
@@ -65,7 +65,7 @@ export interface Blueprint {
   shot_list: { shot: string; framing: string; notes: string }[]
   captions: string[]
   edit_checklist: string[]
-  // TwinAI's own auto-captioner spec (renamed from submagic_packet — we own the
+  // TwinAI's own auto-captioner spec (renamed from submagic_packet, we own the
   // edit now). submagic_packet kept optional for backward-compat with old rows.
   caption_packet: {
     caption_style: string

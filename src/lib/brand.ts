@@ -1,11 +1,11 @@
-// Brand & GTM constants — single source of truth, mirrors the cheat sheet.
+// Brand & GTM constants, single source of truth, mirrors the cheat sheet.
 
 export const BRAND = {
   oneLiner: 'Remix any viral video in seconds.',
   subLine: 'You bring the idea. TwinAI makes it shootable.',
   category: 'Reference-based creation, not a clipper.',
   positioning:
-    'For creators, founders & agencies who know a reel works but can’t make their own fast enough — TwinAI turns any proven reference into a personalized hook, script, shot list, edit and schedule. Others clip your footage; we make the references you admire shootable in your voice.',
+    'For creators, founders & agencies who know a reel works but can’t make their own fast enough, TwinAI turns any proven reference into a personalized hook, script, shot list, edit and schedule. Others clip your footage; we make the references you admire shootable in your voice.',
   // Voice guardrails from the cheat sheet
   use: ['remix', 'reference', 'blueprint', 'shootable', 'your voice', 'momentum'],
   avoid: ['copy / steal', 'guaranteed viral', 'synergy', '10x overnight'],
@@ -17,14 +17,14 @@ export interface PlanTier {
   price: number // monthly USD (intro pricing)
   annual: number | null // per-month when billed annually
   videos: number // ADVERTISED recreations / mo (what marketing shows)
-  credits: number // INTERNAL granted credits — includes a hidden buffer above `videos`
+  credits: number // INTERNAL granted credits, includes a hidden buffer above `videos`
   brandVoices: number
   badge?: string
   blurb: string
   features: string[]
 }
 
-// Hidden grace buffer: we grant ~10–25% more recreations than we advertise so a
+// Hidden grace buffer: we grant ~10-25% more recreations than we advertise so a
 // glitch, a regen, or normal variance never makes a user feel shorted. They only
 // ever see "X left" (a remaining count), never a total that contradicts marketing.
 export const grant = (videos: number, buffer: number) => (videos + buffer) * 10
@@ -119,7 +119,7 @@ export const planFor = (id: string | null | undefined): PlanTier =>
 // show users. This is the ONLY credit-derived number that reaches the UI.
 export const videosFromCredits = (credits: number) => Math.floor(credits / VIDEO_COST)
 
-// Internal per-action metering — used server-side for cost accounting only.
+// Internal per-action metering, used server-side for cost accounting only.
 // Never surfaced in the UI.
 export const CREDIT_COST = {
   referenceAnalysis: 2,

@@ -41,7 +41,7 @@ export function HeroVisual() {
             <div className="h-[18px] w-[72px] rounded-full bg-black/60" />
           </div>
 
-          {/* screen — vertical video mock */}
+          {/* screen, vertical video mock */}
           <div className="relative h-[360px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
             {/* "rec" indicator */}
             <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-bold text-cream backdrop-blur">

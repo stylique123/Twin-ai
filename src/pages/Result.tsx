@@ -18,10 +18,10 @@ export default function Result() {
 
   useEffect(() => {
     if (!id) return
-    getGeneration(id).then((g) => {
-      setGen(g)
-      setLoading(false)
-    })
+    getGeneration(id)
+      .then((g) => setGen(g))
+      .catch(() => setGen(null))
+      .finally(() => setLoading(false))
   }, [id])
 
   if (loading)
@@ -34,7 +34,27 @@ export default function Result() {
     )
   if (!gen) return <main className="mx-auto max-w-3xl px-5 py-16 text-coral">Not found.</main>
 
-  const b = gen.blueprint
+  // Defensive normalization: an older or partial blueprint can be missing fields,
+  // and calling .map on an undefined field would unmount the page (black screen).
+  // Default every field so the result always renders something sensible.
+  const raw = (gen.blueprint ?? {}) as Partial<Generation['blueprint']>
+  const rr = raw.reference_read ?? ({} as NonNullable<Generation['blueprint']>['reference_read'])
+  const b = {
+    ...raw,
+    reference_read: {
+      format_label: rr.format_label ?? 'Your blueprint',
+      platform: rr.platform ?? '',
+      why_it_works: Array.isArray(rr.why_it_works) ? rr.why_it_works : [],
+      retention_map: Array.isArray(rr.retention_map) ? rr.retention_map : [],
+    },
+    hook_options: Array.isArray(raw.hook_options) ? raw.hook_options : [],
+    script: Array.isArray(raw.script) ? raw.script : [],
+    shot_list: Array.isArray(raw.shot_list) ? raw.shot_list : [],
+    captions: Array.isArray(raw.captions) ? raw.captions : [],
+    edit_checklist: Array.isArray(raw.edit_checklist) ? raw.edit_checklist : [],
+    production_sprint: Array.isArray(raw.production_sprint) ? raw.production_sprint : [],
+    publish_plan: Array.isArray(raw.publish_plan) ? raw.publish_plan : [],
+  } as Generation['blueprint']
   const cap = b.caption_packet ?? b.submagic_packet ?? { caption_style: '', pacing: '', emphasis: '', export: '' }
 
   return (
@@ -160,7 +180,7 @@ export default function Result() {
             <Spec label="Emphasis" value={cap.emphasis} />
             <Spec label="Export" value={cap.export} />
           </div>
-          <p className="mt-3 text-xs text-stone">Drives TwinAI’s own one-click auto-captioner — on the roadmap, no third-party tool.</p>
+          <p className="mt-3 text-xs text-stone">Drives TwinAI’s own one-click auto-captioner, on the roadmap, no third-party tool.</p>
         </Section>
 
         <Section icon={Timer} title="20-minute production sprint">
@@ -181,7 +201,7 @@ export default function Result() {
             ))}
           </div>
           <p className="mt-3 text-xs text-stone">
-            Copy a caption, post it, then log it — your Dashboard tracks what you’ve shipped. One-click auto-publish is on the roadmap.
+            Copy a caption, post it, then log it, your Dashboard tracks what you’ve shipped. One-click auto-publish is on the roadmap.
           </p>
         </Section>
       </div>
@@ -214,7 +234,7 @@ function PublishRow({
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     } catch {
-      /* clipboard blocked — ignore */
+      /* clipboard blocked, ignore */
     }
   }
   const logPosted = async () => {
@@ -223,7 +243,7 @@ function PublishRow({
       await markPosted({ generationId, platform, caption })
       setPosted(true)
     } catch {
-      /* posts table may not be migrated yet — fail soft */
+      /* posts table may not be migrated yet, fail soft */
     } finally {
       setBusy(false)
     }
@@ -269,7 +289,7 @@ function Spec({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-card border border-white/8 bg-white/[0.02] p-3.5">
       <div className="text-xs uppercase tracking-wider text-stone">{label}</div>
-      <div className="mt-1 text-sm text-cream">{value || '—'}</div>
+      <div className="mt-1 text-sm text-cream">{value || ', '}</div>
     </div>
   )
 }
@@ -282,7 +302,7 @@ function CopyRow({ text, children }: { text: string; children: React.ReactNode }
       setCopied(true)
       setTimeout(() => setCopied(false), 1400)
     } catch {
-      /* clipboard blocked — ignore */
+      /* clipboard blocked, ignore */
     }
   }
   return (
