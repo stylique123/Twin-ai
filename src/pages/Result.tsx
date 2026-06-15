@@ -289,7 +289,7 @@ function Spec({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-card border border-white/8 bg-white/[0.02] p-3.5">
       <div className="text-xs uppercase tracking-wider text-stone">{label}</div>
-      <div className="mt-1 text-sm text-cream">{value || ', '}</div>
+      <div className="mt-1 text-sm text-cream">{value || '·'}</div>
     </div>
   )
 }

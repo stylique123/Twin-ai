@@ -182,6 +182,21 @@ export async function getGeneration(id: string): Promise<Generation | null> {
   return data as Generation
 }
 
+// Sign storage paths in the private `edits` bucket (rendered MP4s + cover JPEGs)
+// so the Library can show finished work. Returns a path->signedUrl map; any path
+// that fails to sign is simply omitted (caller falls back to a placeholder).
+export async function signEditUrls(paths: string[]): Promise<Record<string, string>> {
+  const clean = [...new Set(paths.filter(Boolean))]
+  if (!clean.length) return {}
+  const { data, error } = await supabase.storage.from('edits').createSignedUrls(clean, 60 * 60 * 24)
+  if (error || !data) return {}
+  const out: Record<string, string> = {}
+  for (const row of data) {
+    if (row.path && row.signedUrl) out[row.path] = row.signedUrl
+  }
+  return out
+}
+
 // ---- Dashboard (Phase 7: real stats from data we already own) ------------
 
 export interface DashboardStats {

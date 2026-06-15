@@ -46,7 +46,7 @@ const POSTER_BY_NICHE: Record<string, { accent: string; poster: string }> = {
 
 function fromDb(it: GalleryItem): Card {
   const skin = POSTER_BY_NICHE[it.niche] ?? POSTER_BY_NICHE.Other
-  return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || 'Shared by a TwinAI creator.', reach: it.reach || ', ', loves: it.likes || ', ', accent: skin.accent, poster: skin.poster, url: it.url }
+  return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || 'Shared by a TwinAI creator.', reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url }
 }
 
 function reachNum(s: string): number {

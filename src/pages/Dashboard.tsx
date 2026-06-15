@@ -145,7 +145,7 @@ function StatCard({ icon: Icon, glow, label, value, loading }: { icon: React.Com
             <Icon className={cn('h-[18px] w-[18px]', iconColorMap[glow])} />
           </span>
           <div className="mt-4 font-display text-3xl tracking-tight text-cream">
-            {loading || value === undefined ? <span className="text-stone/50">, </span> : <Counter to={value} />}
+            {loading || value === undefined ? <span className="text-stone/50">…</span> : <Counter to={value} />}
           </div>
           <div className="mt-1.5 text-xs font-medium tracking-wide text-stone">{label}</div>
         </div>

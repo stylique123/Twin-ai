@@ -91,5 +91,9 @@ export interface Generation {
   fidelity: 'close' | 'balanced' | 'loose'
   blueprint: Blueprint
   transcript_id?: string | null
+  // Set once the auto-edit worker finishes: the rendered MP4 and cover JPEG
+  // (storage paths in the private `edits` bucket; sign to display/play).
+  edit_path?: string | null
+  thumb_path?: string | null
   created_at: string
 }
