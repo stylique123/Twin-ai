@@ -20,6 +20,25 @@ const Ctx = createContext<AuthState>({
   signOut: async () => {},
 })
 
+// Idle auto-logout window: one hour of inactivity ends the session.
+const IDLE_KEY = 'twinai_last_active'
+const IDLE_MS = 60 * 60 * 1000
+const bumpActivity = () => {
+  try { localStorage.setItem(IDLE_KEY, String(Date.now())) } catch { /* storage off */ }
+}
+
+// Fully clear the session: local-scope sign-out + strip any persisted auth token
+// and the activity marker so the next load can't resurrect the session.
+async function doSignOut() {
+  try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* ignore */ }
+  try {
+    localStorage.removeItem(IDLE_KEY)
+    for (const k of Object.keys(localStorage)) {
+      if (k.startsWith('sb-') && k.includes('auth')) localStorage.removeItem(k)
+    }
+  } catch { /* storage unavailable */ }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -31,9 +50,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    const idleExceeded = () => {
+      const last = Number(localStorage.getItem(IDLE_KEY) || 0)
+      return last > 0 && Date.now() - last > IDLE_MS
+    }
+
     supabase.auth.getSession().then(async ({ data }) => {
+      // Security: if the last activity was over an hour ago, treat the session as
+      // expired and sign out on load — reopening a tab after an idle hour requires
+      // a fresh login instead of silently restoring the session.
+      if (data.session && idleExceeded()) {
+        await doSignOut()
+        setLoading(false)
+        return
+      }
       setSession(data.session)
-      if (data.session) await refreshProfile()
+      if (data.session) { bumpActivity(); await refreshProfile() }
       setLoading(false)
     })
 
@@ -43,32 +75,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       else setProfile(null)
     })
     return () => sub.subscription.unsubscribe()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Idle auto-logout: record activity, and every 30s check whether the user has
+  // been inactive for over an hour — if so, sign them out.
+  useEffect(() => {
+    if (!session) return
+    const onActivity = () => bumpActivity()
+    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'visibilitychange']
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }))
+    const timer = window.setInterval(() => {
+      const last = Number(localStorage.getItem(IDLE_KEY) || 0)
+      if (last > 0 && Date.now() - last > IDLE_MS) {
+        void doSignOut().then(() => window.location.assign('/'))
+      }
+    }, 30_000)
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, onActivity))
+      window.clearInterval(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session])
 
   const signOut = async () => {
     // Clear local state FIRST so the UI (route guards, nav) flips to logged-out
-    // instantly, never wait on the network round-trip or the auth listener.
+    // instantly, never waiting on the network round-trip or the auth listener.
     setSession(null)
     setProfile(null)
-    // scope:'local' clears the persisted token from storage WITHOUT needing a
-    // network round-trip to revoke server-side. The default 'global' scope can
-    // throw on a flaky network and leave the token in localStorage, which the
-    // next page load would then resurrect, the "I logged out but still see
-    // Open studio" bug. Local scope makes sign-out reliable offline.
-    try {
-      await supabase.auth.signOut({ scope: 'local' })
-    } catch {
-      /* ignore */
-    }
-    // Belt-and-suspenders: if any Supabase auth token is still in storage, remove
-    // it so getSession() on the next load can never bring the session back.
-    try {
-      for (const k of Object.keys(localStorage)) {
-        if (k.startsWith('sb-') && k.includes('auth')) localStorage.removeItem(k)
-      }
-    } catch {
-      /* storage unavailable; nothing to clear */
-    }
+    await doSignOut()
   }
 
   return (

@@ -69,23 +69,29 @@ Deno.serve(async (req: Request) => {
   }
 
   // Decide free-vs-paid SERVER-SIDE — never trust a client 'remake' flag for
-  // billing. The FIRST auto-edit of a blueprint is free (it's bundled with the
-  // recreation the user already paid for when generating it); EVERY edit after
-  // that (another take, a remake, a different look) costs one recreation. We
-  // determine "first" by counting the blueprint's existing auto-edit jobs, so a
-  // user can't get unlimited free videos from one recreation.
+  // billing. Free edits are plan-scoped:
+  //   FREE plan  → exactly ONE free finished video, ever (the "1 free loop").
+  //                Their other blueprints are scripts-only; any edit charges.
+  //   PAID plans → the FIRST edit of EACH blueprint is free (bundled with the
+  //                recreation paid at generation); further edits/remakes charge.
+  // Either way a user can never mint unlimited free videos from one recreation.
+  const { data: prof } = await admin.from('profiles').select('plan').eq('id', user.id).maybeSingle()
+  const isFree = (prof?.plan ?? 'free') === 'free'
   let charge = true
-  if (generationId) {
-    const { count } = await admin
+  if (generationId || isFree) {
+    let q = admin
       .from('jobs')
       .select('id', { count: 'exact', head: true })
       .eq('owner_id', user.id)
       .eq('type', 'autoedit')
-      .eq('payload->>generation_id', generationId)
       .in('status', ['queued', 'running', 'done'])
+    // Free plan counts ALL their edits (one freebie total); paid counts only this
+    // blueprint's edits (one freebie per blueprint).
+    if (!isFree && generationId) q = q.eq('payload->>generation_id', generationId)
+    const { count } = await q
     charge = (count ?? 0) > 0
   }
-  // No blueprint to anchor a freebie to (e.g. a bare upload) → always charge.
+  // No blueprint to anchor a freebie to on a paid plan (bare upload) → always charge.
 
   if (charge) {
     const { error: spendErr } = await admin.rpc('spend_credits', {
