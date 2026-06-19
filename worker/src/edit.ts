@@ -331,8 +331,8 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
         'python3',
         [join(import.meta.dirname, '..', 'whisper_transcribe.py'),
          '--audio', a0, '--out', t0,
-         '--model', env.whisperModel, '--device', env.whisperDevice,
-         '--language', env.whisperLanguage,
+         '--model', env.whisperFillerModel, '--device', env.whisperDevice,
+         '--language', env.whisperLanguage, '--beam-size', '1',
          '--max-seconds', String(env.maxMediaSecs)],
         Math.max(180_000, env.maxMediaSecs * 1000),
       )
@@ -363,7 +363,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
         [join(import.meta.dirname, '..', 'whisper_transcribe.py'),
          '--audio', audio, '--out', transcript,
          '--model', env.whisperModel, '--device', env.whisperDevice,
-         '--language', env.whisperLanguage,
+         '--language', env.whisperLanguage, '--beam-size', '1',
          '--max-seconds', String(env.maxMediaSecs)],
         Math.max(180_000, env.maxMediaSecs * 1000),
       )

@@ -142,6 +142,7 @@ PRODUCTION SPRINT: compress filming, B-roll, caption/edit, and review into about
 // --- Provider boundary: swap this one function to change LLMs -------------
 async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
   const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
+  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0')
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
   // Hard timeout so a hung model call can't leave credits spent-but-not-refunded.
@@ -164,6 +165,10 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
           maxOutputTokens: 32768,
           responseMimeType: 'application/json',
           responseSchema: blueprintSchema,
+          // Speed lever: cap reasoning tokens so the thinking model doesn't
+          // over-deliberate. Off (dynamic thinking) unless GEMINI_THINKING_BUDGET
+          // is set, so this is a zero-risk default we can tune via a secret.
+          ...(thinkBudget > 0 ? { thinkingConfig: { thinkingBudget: thinkBudget } } : {}),
         },
       }),
     })

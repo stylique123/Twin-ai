@@ -17,6 +17,7 @@ def main() -> int:
     ap.add_argument("--model", default="small")
     ap.add_argument("--device", default="cpu")  # cpu | cuda
     ap.add_argument("--language", default="en")  # ISO code, or "auto" to detect
+    ap.add_argument("--beam-size", type=int, default=1)  # 1 = greedy (much faster)
     ap.add_argument("--max-seconds", type=int, default=900)
     args = ap.parse_args()
 
@@ -30,6 +31,9 @@ def main() -> int:
     segments_iter, info = model.transcribe(
         args.audio,
         word_timestamps=True,
+        # Greedy decoding (beam_size=1) is ~2x faster than the default beam search
+        # with negligible quality loss on clean short-form speech.
+        beam_size=args.beam_size,
         # Pin the language unless explicitly auto: faster-whisper otherwise
         # mis-detects accented/noisy English takes as Arabic/Urdu/Welsh and burns
         # in unreadable captions. This is the #1 caption-quality bug.

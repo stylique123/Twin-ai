@@ -32,9 +32,10 @@ COPY src ./src
 COPY whisper_transcribe.py ./whisper_transcribe.py
 RUN npm run build
 
-# Pre-download the ASR model at build time so the first job isn't slow.
-ARG WHISPER_MODEL=small
-RUN python3 -c "from faster_whisper import WhisperModel; WhisperModel('${WHISPER_MODEL}', device='cpu', compute_type='int8')"
+# Pre-download the ASR models at build time so no job ever pays a download.
+# tiny = filler pre-pass, base = captions/reference (the speed/quality sweet spot),
+# small kept for opt-in higher accuracy.
+RUN python3 -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('tiny','base','small')]"
 
 ENV NODE_ENV=production
 CMD ["node", "--enable-source-maps", "dist/index.js"]

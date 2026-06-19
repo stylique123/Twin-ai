@@ -36,8 +36,11 @@ export const env = {
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   visibilitySecs: Number(process.env.WORKER_VISIBILITY_SECS ?? '900'),
 
-  // ASR
-  whisperModel: process.env.WHISPER_MODEL ?? 'small', // tiny|base|small|medium
+  // ASR. 'base' is the speed/quality sweet spot for short-form English (≈1.5-2x
+  // faster than 'small'); the filler pre-pass only needs rough word boundaries so
+  // it runs on the much faster 'tiny' model.
+  whisperModel: process.env.WHISPER_MODEL ?? 'base', // tiny|base|small|medium
+  whisperFillerModel: process.env.WHISPER_FILLER_MODEL ?? 'tiny',
   whisperDevice: process.env.WHISPER_DEVICE ?? 'cpu', // cpu|cuda
   // Pin the spoken language so faster-whisper never mis-detects an English take
   // as Arabic/Urdu/etc and burns in garbage captions. 'auto' restores detection.
