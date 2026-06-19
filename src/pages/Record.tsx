@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Video, VideoOff, Circle, Square, RotateCcw, Download, ArrowLeft, Loader2,
-  Play, Pause, FlipHorizontal2, Minus, Plus, Gauge, Mic, AlertTriangle, Check, Sparkles,
+  Play, Pause, FlipHorizontal2, Minus, Plus, Gauge, Mic, AlertTriangle, Check, Sparkles, Upload,
 } from 'lucide-react'
-import { getGeneration, autoEditTake, remakeEdit, getJob } from '../lib/api'
+import { getGeneration, autoEditTake, remakeEdit, getJob, updateGenerationChoice } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import type { Generation } from '../lib/types'
 import { cn } from '../lib/cn'
@@ -15,11 +15,21 @@ type Phase = 'idle' | 'countdown' | 'recording' | 'review'
 // In-app Record: a teleprompter over a live camera, so the blueprint gets shot
 // the moment inspiration hits. Everything stays client-side, the take is yours
 // to download (Phase 6 will hand it to the auto-editor).
+const EDIT_STYLES = [
+  { id: 'punchy', label: 'Punchy', note: 'Fast jump-cuts, energetic captions' },
+  { id: 'clean', label: 'Clean', note: 'Tidy cuts, calm captions' },
+  { id: 'cinematic', label: 'Cinematic', note: 'Smoother pacing, softer captions' },
+] as const
+
 export default function Record() {
   const { id } = useParams()
+  const [params] = useSearchParams()
+  const uploadMode = params.get('upload') === '1'
   const { refreshProfile } = useAuth()
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
+  const [editStyle, setEditStyle] = useState('punchy')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -55,21 +65,44 @@ export default function Record() {
 
   useEffect(() => {
     if (!id) return
-    getGeneration(id).then(setGen).catch(() => setGen(null)).finally(() => setLoading(false))
+    getGeneration(id)
+      .then((g) => { setGen(g); if (g?.edit_style) setEditStyle(g.edit_style) })
+      .catch(() => setGen(null))
+      .finally(() => setLoading(false))
   }, [id])
 
-  // Teleprompter shows ONLY what the creator speaks (hook + script lines). Stage
-  // directions are guidance, not lines to read, so they stay in the side panel.
+  // Teleprompter shows ONLY what the creator speaks (chosen hook + script lines).
+  // The hook is the one the creator picked on the blueprint (selected_hook), so
+  // the prompter opens with exactly what they decided to shoot.
   const lines = useMemo(() => {
     const b = gen?.blueprint
     if (!b) return [] as { kind: 'hook' | 'line'; text: string }[]
     const out: { kind: 'hook' | 'line'; text: string }[] = []
-    if (b.hook_options?.[0]) out.push({ kind: 'hook', text: b.hook_options[0] })
+    const hook = gen?.selected_hook ?? b.hook_options?.[0]
+    if (hook) out.push({ kind: 'hook', text: hook })
     for (const s of b.script ?? []) {
       if (s.line?.trim()) out.push({ kind: 'line', text: s.line })
     }
     return out
   }, [gen])
+
+  const chooseStyle = (s: string) => {
+    setEditStyle(s)
+    if (id) void updateGenerationChoice(id, { edit_style: s })
+  }
+
+  // Upload-your-own-clip path: load a picked video as the "take" and jump to
+  // review, where the existing auto-edit flow takes over (no recording needed).
+  const onUploadFile = (file: File | undefined) => {
+    if (!file) return
+    if (!file.type.startsWith('video/')) { setCamError('Please choose a video file.'); return }
+    if (takeUrl) URL.revokeObjectURL(takeUrl)
+    takeBlobRef.current = file
+    setTakeUrl(URL.createObjectURL(file))
+    setEditPhase('none'); setEditUrl(null); setEditErr(null)
+    setCamReady(true)
+    setPhase('review')
+  }
 
   // Which line sits at the read guide (~38% down the prompter). Keeps the active
   // line bright + scaled and dims the rest, so the eye always knows where to read.
@@ -302,8 +335,15 @@ export default function Record() {
         <Link to={`/result/${id}`} className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-cream">
           <ArrowLeft className="h-4 w-4" /> Back to blueprint
         </Link>
-        <span className="chip"><Mic className="h-3.5 w-3.5 text-coral" /> Record studio</span>
+        <span className="chip"><Mic className="h-3.5 w-3.5 text-coral" /> {uploadMode ? 'Edit your clip' : 'Record studio'}</span>
       </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={(e) => onUploadFile(e.target.files?.[0])}
+      />
 
       <div className="mt-4 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
         {/* ---------- camera + teleprompter ---------- */}
@@ -325,7 +365,19 @@ export default function Record() {
                       <AlertTriangle className="h-6 w-6 text-coral" />
                     </span>
                     <p className="mt-4 text-sm text-coral">{camError}</p>
-                    <button onClick={startCamera} className="btn-ghost mt-5">Try again</button>
+                    <button onClick={() => { setCamError(null); uploadMode ? fileInputRef.current?.click() : startCamera() }} className="btn-ghost mt-5">Try again</button>
+                  </div>
+                ) : uploadMode ? (
+                  <div>
+                    <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-signature-soft">
+                      <Upload className="h-6 w-6 text-cream" />
+                    </span>
+                    <p className="mt-4 font-heading text-lg">Upload your clip to auto-edit</p>
+                    <p className="mt-1 text-sm text-stone">We’ll add captions, jump-cuts, framing & a cover. MP4 or MOV.</p>
+                    <button onClick={() => fileInputRef.current?.click()} className="btn-gradient mt-5">
+                      <Upload className="h-4 w-4" /> Choose a video
+                    </button>
+                    <button onClick={startCamera} className="mt-3 block w-full text-xs text-stone hover:text-cream">…or record with the teleprompter instead</button>
                   </div>
                 ) : (
                   <div>
@@ -337,6 +389,7 @@ export default function Record() {
                     <button onClick={startCamera} className="btn-gradient mt-5">
                       <Video className="h-4 w-4" /> Enable camera & mic
                     </button>
+                    <button onClick={() => fileInputRef.current?.click()} className="mt-3 block w-full text-xs text-stone hover:text-cream">…or upload a clip you already have</button>
                   </div>
                 )}
               </div>
@@ -539,6 +592,27 @@ export default function Record() {
                 </button>
               </Control>
             </div>
+          </div>
+
+          <div className="glass p-5">
+            <h3 className="font-heading">Edit style</h3>
+            <p className="mt-1 text-sm text-stone">How your auto-edit should feel.</p>
+            <div className="mt-3 grid grid-cols-3 gap-2">
+              {EDIT_STYLES.map((s) => (
+                <button
+                  key={s.id}
+                  onClick={() => chooseStyle(s.id)}
+                  title={s.note}
+                  className={cn(
+                    'rounded-card border px-2 py-2.5 text-center text-xs font-medium transition-colors',
+                    editStyle === s.id ? 'border-coral/55 bg-coral/10 text-cream' : 'border-white/8 bg-white/[0.02] text-stone hover:border-white/16',
+                  )}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-stone">{EDIT_STYLES.find((s) => s.id === editStyle)?.note}</p>
           </div>
 
           <div className="glass p-5">

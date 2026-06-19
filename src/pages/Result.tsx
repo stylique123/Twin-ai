@@ -5,7 +5,7 @@ import {
   ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
   Captions, ListChecks, Wand2, Timer, Send, Loader2, Video,
 } from 'lucide-react'
-import { getGeneration, markPosted } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice } from '../lib/api'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, EASE } from '../components/motion'
@@ -15,14 +15,27 @@ export default function Result() {
   const { id } = useParams()
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
+  const [chosenHook, setChosenHook] = useState('')
 
   useEffect(() => {
     if (!id) return
     getGeneration(id)
-      .then((g) => setGen(g))
+      .then((g) => {
+        setGen(g)
+        // Default the shooting hook to the saved choice, else the recommended (1st).
+        const hooks = (g?.blueprint?.hook_options ?? []) as string[]
+        setChosenHook(g?.selected_hook ?? hooks[0] ?? '')
+      })
       .catch(() => setGen(null))
       .finally(() => setLoading(false))
   }, [id])
+
+  // Pick which hook to shoot: persist it so the teleprompter, cover and b-roll all
+  // use THIS hook. Optimistic — the UI updates immediately.
+  const pickHook = (h: string) => {
+    setChosenHook(h)
+    if (id) void updateGenerationChoice(id, { selected_hook: h })
+  }
 
   if (loading)
     return (
@@ -69,10 +82,10 @@ export default function Result() {
             </Link>
             <div className="flex items-center gap-2">
               <Link to={`/record/${gen.id}`} className="btn-ghost py-2 text-sm">
-                <Video className="h-4 w-4" /> Record this
+                <Video className="h-4 w-4" /> Record with teleprompter
               </Link>
-              <Link to="/app" className="btn-gradient py-2 text-sm">
-                <Wand2 className="h-4 w-4" /> New blueprint
+              <Link to={`/record/${gen.id}?upload=1`} className="btn-gradient py-2 text-sm">
+                <Wand2 className="h-4 w-4" /> Edit my own clip
               </Link>
             </div>
           </div>
@@ -121,12 +134,31 @@ export default function Result() {
         </Section>
 
         <Section icon={Quote} title="Hook options">
+          <p className="mb-3 text-sm text-stone">Pick the one you’ll shoot, your teleprompter, cover and b-roll all follow it.</p>
           <div className="space-y-2.5">
-            {b.hook_options.map((h, i) => (
-              <CopyRow key={i} text={h}>
-                <span className="text-cream">“{h}”</span>
-              </CopyRow>
-            ))}
+            {b.hook_options.map((h, i) => {
+              const isChosen = h === chosenHook
+              return (
+                <div
+                  key={i}
+                  className={cn(
+                    'group flex items-start justify-between gap-3 rounded-card border p-3.5 transition-colors',
+                    isChosen ? 'border-coral/55 bg-coral/10' : 'border-white/8 bg-white/[0.02] hover:border-white/16',
+                  )}
+                >
+                  <button onClick={() => pickHook(h)} className="flex min-w-0 items-start gap-2.5 text-left">
+                    <span className={cn('mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border', isChosen ? 'border-coral bg-coral' : 'border-white/30')}>
+                      {isChosen && <Check className="h-3 w-3 text-ink" />}
+                    </span>
+                    <span className="min-w-0">
+                      {i === 0 && <span className="mr-1.5 rounded-full bg-amber/15 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber">Recommended</span>}
+                      <span className="text-cream">“{h}”</span>
+                    </span>
+                  </button>
+                  <CopyButton text={h} />
+                </div>
+              )
+            })}
           </div>
         </Section>
 
@@ -294,27 +326,23 @@ function Spec({ label, value }: { label: string; value: string }) {
   )
 }
 
-function CopyRow({ text, children }: { text: string; children: React.ReactNode }) {
+function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false)
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text)
       setCopied(true)
       setTimeout(() => setCopied(false), 1400)
-    } catch {
-      /* clipboard blocked, ignore */
-    }
+    } catch { /* clipboard blocked */ }
   }
   return (
-    <div className="group flex items-start justify-between gap-3 rounded-card border border-white/8 bg-white/[0.02] p-3.5">
-      <div className="min-w-0">{children}</div>
-      <button
-        onClick={copy}
-        className="shrink-0 rounded-lg border border-white/10 bg-white/5 p-1.5 text-stone transition-colors hover:text-cream"
-        aria-label="Copy"
-      >
-        {copied ? <Check className="h-4 w-4 text-teal" /> : <Copy className="h-4 w-4" />}
-      </button>
-    </div>
+    <button
+      onClick={copy}
+      className="shrink-0 rounded-lg border border-white/10 bg-white/5 p-1.5 text-stone transition-colors hover:text-cream"
+      aria-label="Copy hook"
+    >
+      {copied ? <Check className="h-4 w-4 text-teal" /> : <Copy className="h-4 w-4" />}
+    </button>
   )
 }
+

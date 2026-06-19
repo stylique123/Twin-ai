@@ -33,28 +33,37 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       try {
         const { data: gen } = await db
           .from('generations')
-          .select('blueprint, brand_voice_id')
+          .select('blueprint, brand_voice_id, selected_hook, edit_style')
           .eq('id', payload.generation_id)
           .maybeSingle()
         const bp = gen?.blueprint as Record<string, unknown> | null
         const fmt = ((bp?.reference_read as { format_label?: string } | undefined)?.format_label) ?? ''
+        // The creator picks which hook to shoot; that hook drives the cover and
+        // leads the b-roll keyword source so cutaways match what they actually said.
+        const chosenHook = (gen?.selected_hook as string | undefined) ?? ((bp?.hook_options as string[] | undefined) ?? [])[0] ?? ''
         // Content-aware b-roll: derive keywords from the blueprint the creator is
-        // actually shooting (hook + script + captions + shot list), not just the
-        // transcript word-frequency, so cutaways match the intended content.
+        // actually shooting (chosen hook first, then script + captions + shot list),
+        // not just the transcript word-frequency, so cutaways match the content.
         brollText = [
-          ...((bp?.hook_options as string[] | undefined) ?? []),
+          chosenHook,
           ...(((bp?.script as { line?: string }[] | undefined) ?? []).map((s) => s?.line ?? '')),
           ...((bp?.captions as string[] | undefined) ?? []),
           ...(((bp?.shot_list as { shot?: string; notes?: string }[] | undefined) ?? []).map((s) => `${s?.shot ?? ''} ${s?.notes ?? ''}`)),
         ].filter(Boolean).join(' ').slice(0, 4000)
-        coverText = (((bp?.hook_options as string[] | undefined) ?? [])[0] ?? '').slice(0, 120)
-        let pacing = ''
-        if (gen?.brand_voice_id) {
-          const { data: bv } = await db.from('brand_voices').select('profile').eq('id', gen.brand_voice_id).maybeSingle()
-          pacing = (bv?.profile as { pacing?: string } | null)?.pacing ?? ''
-        }
-        if (/fast|quick|rapid|punch|energetic|aggressive|hype|high.?energy|snappy|no dead air/i.test(`${pacing} ${fmt}`)) {
-          energy = 'high'
+        coverText = chosenHook.slice(0, 120)
+        // Edit style the creator picked takes priority over the DNA-derived energy.
+        const style = (gen?.edit_style as string | undefined) ?? ''
+        if (style === 'punchy') energy = 'high'
+        else if (style === 'clean' || style === 'cinematic') energy = 'calm'
+        else {
+          let pacing = ''
+          if (gen?.brand_voice_id) {
+            const { data: bv } = await db.from('brand_voices').select('profile').eq('id', gen.brand_voice_id).maybeSingle()
+            pacing = (bv?.profile as { pacing?: string } | null)?.pacing ?? ''
+          }
+          if (/fast|quick|rapid|punch|energetic|aggressive|hype|high.?energy|snappy|no dead air/i.test(`${pacing} ${fmt}`)) {
+            energy = 'high'
+          }
         }
       } catch {
         /* fall back to calm */

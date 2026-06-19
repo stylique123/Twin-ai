@@ -91,6 +91,9 @@ export interface Generation {
   fidelity: 'close' | 'balanced' | 'loose'
   blueprint: Blueprint
   transcript_id?: string | null
+  // Creator's choices that drive the back half of the loop.
+  selected_hook?: string | null // which of the 5 hooks to shoot (teleprompter + cover + b-roll)
+  edit_style?: string | null // desired auto-edit look: punchy | clean | cinematic
   // Set once the auto-edit worker finishes: the rendered MP4 and cover JPEG
   // (storage paths in the private `edits` bucket; sign to display/play).
   edit_path?: string | null

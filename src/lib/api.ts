@@ -182,6 +182,17 @@ export async function getGeneration(id: string): Promise<Generation | null> {
   return data as Generation
 }
 
+// Persist the creator's hook/edit-style choice on their generation. Column grants
+// (migration 0014) restrict the update to these two presentation fields, so this
+// is safe to call from the client. Returns false on failure (caller is optimistic).
+export async function updateGenerationChoice(
+  id: string,
+  patch: { selected_hook?: string; edit_style?: string },
+): Promise<boolean> {
+  const { error } = await supabase.from('generations').update(patch).eq('id', id)
+  return !error
+}
+
 // Sign storage paths in the private `edits` bucket (rendered MP4s + cover JPEGs)
 // so the Library can show finished work. Returns a path->signedUrl map; any path
 // that fails to sign is simply omitted (caller falls back to a placeholder).

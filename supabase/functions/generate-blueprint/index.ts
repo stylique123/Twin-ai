@@ -232,6 +232,17 @@ Deno.serve(async (req: Request) => {
   const fidelity = ['close', 'balanced', 'loose'].includes(body.fidelity ?? '')
     ? body.fidelity!
     : 'balanced'
+  // Make fidelity actually change the output, not just be a label. Each level is a
+  // hard directive the model must obey when shaping the script + structure.
+  const FIDELITY_RULE: Record<string, string> = {
+    close:
+      'FIDELITY = CLOSE. Mirror the reference almost beat-for-beat: same hook TYPE, the same number and order of retention beats, the same pacing and shot rhythm. Keep the structure tight to the reference; only swap in THIS creator\'s voice, topic and examples. Do not invent new sections the reference does not have.',
+    balanced:
+      'FIDELITY = BALANCED. Keep the reference\'s proven skeleton (its hook type and the core retention beats) but rewrite it fully in the creator\'s angle, offer and vocabulary. You may merge or reorder minor beats, but the winning structure must remain recognizable.',
+    loose:
+      'FIDELITY = LOOSE. Use the reference only as light inspiration for the energy and topic. Prioritize the creator\'s OWN angle, offer, hooks and DNA. The structure should follow what is best for the creator, and may diverge substantially from the reference\'s beats.',
+  }
+  const fidelityRule = FIDELITY_RULE[fidelity]
   if (!reference_url) return json({ error: 'reference_url is required' }, 400)
   if (reference_url.length > 2048) return json({ error: 'That reference link is too long.' }, 400)
 
@@ -352,6 +363,7 @@ Deno.serve(async (req: Request) => {
 ${referenceBlock}
 
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
+- ${fidelityRule}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end.
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
