@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Wand2, Eye, Heart, Play, Search } from 'lucide-react'
 import { Aurora } from '../components/Aurora'
@@ -76,6 +76,18 @@ export default function Gallery() {
   const [sort, setSort] = useState<'top' | 'all'>('top')
   const [community, setCommunity] = useState<Card[]>([])
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
+  const [showAll, setShowAll] = useState(false)
+  const touched = useRef(false)
+
+  // Personalize: default the filter to the creator's own niche so the gallery
+  // opens on content relatable to them (sorted by views ↓). They can still switch
+  // to any niche or "All"; we only auto-pick until they touch the filter.
+  useEffect(() => {
+    if (touched.current || !userNiche) return
+    const match = NICHES.find((n) => n !== 'All' && (n.toLowerCase() === userNiche.toLowerCase()
+      || userNiche.toLowerCase().includes(n.toLowerCase()) || n.toLowerCase().includes(userNiche.toLowerCase())))
+    if (match) setNiche(match)
+  }, [userNiche])
 
   useEffect(() => {
     listGalleryItems()
@@ -149,7 +161,7 @@ export default function Gallery() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               {NICHES.map((n) => (
-                <button key={n} onClick={() => setNiche(n)} className={cn('chip transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream')}>{n}</button>
+                <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream')}>{n}</button>
               ))}
             </div>
             <div className="flex items-center gap-2">
@@ -171,7 +183,7 @@ export default function Gallery() {
           <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing matches that yet. Try another filter.</div>
         ) : (
           <Stagger immediate className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
-            {shown.map((c) => {
+            {(showAll ? shown : shown.slice(0, 9)).map((c) => {
               const thumb = thumbnails[c.id]
               const glowClass = ACCENT_GLOW[c.accent] ?? 'hover:border-white/20'
               return (
@@ -218,6 +230,13 @@ export default function Gallery() {
               )
             })}
           </Stagger>
+        )}
+        {!showAll && shown.length > 9 && (
+          <div className="mt-8 flex justify-center">
+            <button onClick={() => setShowAll(true)} className="chip hover:border-coral/40 hover:text-cream">
+              View all {shown.length} →
+            </button>
+          </div>
         )}
         <div className="mt-10 flex flex-col items-center gap-3 text-center">
           <p className="text-[11px] text-stone">Featured counts are real public TikTok figures captured at curation time.</p>
