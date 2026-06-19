@@ -45,14 +45,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
         <div className="space-y-2 p-3">
-          <div className="relative overflow-hidden rounded-xl border border-white/[0.08] bg-ink2 p-4">
-            <div className="pointer-events-none absolute -right-4 -top-4 h-20 w-20 rounded-full bg-amber/10 blur-[40px]" />
-            <div className="relative">
-              <div className="flex items-center gap-2 text-xs text-stone"><Sparkles className="h-3.5 w-3.5 text-amber" /> Recreations left</div>
-              <div className="mt-1 font-display text-2xl text-cream">{left}</div>
-              <div className="mt-1 text-[11px] text-stone">Resets monthly with your plan.</div>
-            </div>
-          </div>
+          {/* Quiet usage hint only — the full picture lives on the Dashboard.
+              Recreations are a back-of-house meter, not a number we put front and
+              center, so it's a single subtle line here. */}
+          <Link to="/dashboard" className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px] text-stone transition-colors hover:text-sand">
+            <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3 w-3 text-amber/70" /> Recreations</span>
+            <span className="text-sand">{left}</span>
+          </Link>
           <button onClick={doSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone transition-colors hover:bg-white/[0.04] hover:text-cream">
             <LogOut className="h-[18px] w-[18px]" /> Sign out
           </button>
@@ -65,7 +64,6 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="font-bold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
           </Link>
           <div className="flex items-center gap-2">
-            <span className="chip"><Sparkles className="h-3.5 w-3.5 text-amber" /> {left}</span>
             <button className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/5" onClick={() => setOpen((v) => !v)} aria-label="Menu">
               {open ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
             </button>

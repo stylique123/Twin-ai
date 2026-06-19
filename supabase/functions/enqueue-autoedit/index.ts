@@ -52,7 +52,6 @@ Deno.serve(async (req: Request) => {
   }
   const generationId = (body.generation_id ?? '').trim()
   const takePath = (body.take_path ?? '').trim()
-  const remake = body.remake === true
   const variation = Number.isFinite(body.variation) ? Number(body.variation) : 0
   if (!takePath) return json({ error: 'take_path is required' }, 400)
   // The take must live in the caller's own storage folder.
@@ -69,17 +68,34 @@ Deno.serve(async (req: Request) => {
     if (!gen) return json({ error: 'Blueprint not found' }, 404)
   }
 
-  // Charge a recreation for remakes only. Atomic; refund not needed (the job is
-  // cheap to run and retries internally).
-  if (remake) {
+  // Decide free-vs-paid SERVER-SIDE — never trust a client 'remake' flag for
+  // billing. The FIRST auto-edit of a blueprint is free (it's bundled with the
+  // recreation the user already paid for when generating it); EVERY edit after
+  // that (another take, a remake, a different look) costs one recreation. We
+  // determine "first" by counting the blueprint's existing auto-edit jobs, so a
+  // user can't get unlimited free videos from one recreation.
+  let charge = true
+  if (generationId) {
+    const { count } = await admin
+      .from('jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('owner_id', user.id)
+      .eq('type', 'autoedit')
+      .eq('payload->>generation_id', generationId)
+      .in('status', ['queued', 'running', 'done'])
+    charge = (count ?? 0) > 0
+  }
+  // No blueprint to anchor a freebie to (e.g. a bare upload) → always charge.
+
+  if (charge) {
     const { error: spendErr } = await admin.rpc('spend_credits', {
       p_user: user.id,
       p_amount: REMAKE_COST,
-      p_reason: 'edit_remake',
+      p_reason: 'edit_extra',
     })
     if (spendErr) {
       if (String(spendErr.message).includes('INSUFFICIENT_CREDITS')) {
-        return json({ error: 'You are out of recreations — top up to remake.' }, 402)
+        return json({ error: 'You are out of recreations — top up for another edit.' }, 402)
       }
       return json({ error: 'Could not reserve a recreation' }, 500)
     }
@@ -97,8 +113,8 @@ Deno.serve(async (req: Request) => {
     .single()
   if (error) {
     // Best-effort refund if the enqueue failed after charging.
-    if (remake) {
-      await admin.rpc('refund_credits', { p_user: user.id, p_amount: REMAKE_COST, p_reason: 'edit_remake_refund' }).then(
+    if (charge) {
+      await admin.rpc('refund_credits', { p_user: user.id, p_amount: REMAKE_COST, p_reason: 'edit_extra_refund' }).then(
         () => {},
         () => {},
       )
@@ -106,5 +122,5 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Could not queue the edit' }, 500)
   }
 
-  return json({ job_id: job.id })
+  return json({ job_id: job.id, charged: charge })
 })
