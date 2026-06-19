@@ -8,8 +8,8 @@ import { useAuth } from '../context/AuthContext'
 import { listGalleryItems, type GalleryItem } from '../lib/api'
 import { cn } from '../lib/cn'
 
-type Niche = 'All' | 'Business' | 'Fitness' | 'Food' | 'Education' | 'Lifestyle'
-const NICHES: Niche[] = ['All', 'Business', 'Fitness', 'Food', 'Education', 'Lifestyle']
+type Niche = 'All' | 'Business' | 'Fitness' | 'Food' | 'Education' | 'Lifestyle' | 'Beauty'
+const NICHES: Niche[] = ['All', 'Business', 'Fitness', 'Food', 'Education', 'Lifestyle', 'Beauty']
 
 interface Card {
   id: string; niche: string; platform: string; label: string; creator: string
@@ -39,6 +39,11 @@ const POSTER_BY_NICHE: Record<string, { accent: string; poster: string }> = {
 function fromDb(it: GalleryItem): Card {
   const skin = POSTER_BY_NICHE[it.niche] ?? POSTER_BY_NICHE.Other
   return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || 'Shared by a TwinAI creator.', reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url }
+}
+
+function ytId(url: string): string | null {
+  const m = url.match(/[?&]v=([\w-]+)/) || url.match(/youtu\.be\/([\w-]+)/) || url.match(/shorts\/([\w-]+)/)
+  return m ? m[1] : null
 }
 
 function reachNum(s: string): number {
@@ -78,10 +83,21 @@ export default function Gallery() {
       .catch(() => setCommunity([]))
   }, [])
 
+  const all: Card[] = useMemo(() => [...FEATURED, ...community], [community])
+
+  // Posters for every card (featured + freshly discovered). YouTube thumbnails are
+  // derivable straight from the video id; TikTok needs an oembed round-trip. Instagram
+  // keeps the gradient fallback (its oembed needs an app token).
   useEffect(() => {
     const controller = new AbortController()
     const { signal } = controller
     async function fetchThumb(card: Card) {
+      if (thumbnails[card.id]) return
+      const yt = ytId(card.url)
+      if (yt) {
+        setThumbnails((prev) => ({ ...prev, [card.id]: `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` }))
+        return
+      }
       if (!card.url.includes('tiktok.com')) return
       try {
         const res = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(card.url)}`, { signal })
@@ -90,11 +106,9 @@ export default function Gallery() {
         if (data?.thumbnail_url) setThumbnails((prev) => ({ ...prev, [card.id]: data.thumbnail_url }))
       } catch { /* keep gradient fallback */ }
     }
-    FEATURED.forEach(fetchThumb)
+    all.forEach(fetchThumb)
     return () => controller.abort()
-  }, [])
-
-  const all: Card[] = useMemo(() => [...FEATURED, ...community], [community])
+  }, [all]) // eslint-disable-line react-hooks/exhaustive-deps
   const shown = useMemo(() => {
     let out = all
     out = out.filter((c) => niche === 'All' || c.niche === niche)
@@ -164,7 +178,12 @@ export default function Gallery() {
                 <RevealItem key={c.id}>
                   <Tilt max={6} className="h-full">
                     <div className={cn('glass flex h-full flex-col overflow-hidden border border-white/8 transition-all duration-300 hover:-translate-y-0.5', glowClass)}>
-                      <div className="relative aspect-video overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => window.open(c.url, '_blank', 'noopener,noreferrer')}
+                        aria-label={`Watch ${c.creator} on ${c.platform}`}
+                        className="group/poster relative aspect-video w-full overflow-hidden text-left"
+                      >
                         <div className={cn('absolute inset-0 bg-gradient-to-br', c.poster)} />
                         {thumb && <img src={thumb} alt={c.label} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
                         <div className="absolute inset-0 bg-gradient-to-t from-ink/90 via-ink/20 to-transparent" />
@@ -178,7 +197,7 @@ export default function Gallery() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-2 py-0.5 text-[11px] font-medium text-cream/90 backdrop-blur-sm"><Eye className="h-3 w-3 opacity-70" /> {c.reach}</span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-2 py-0.5 text-[11px] font-medium text-cream/90 backdrop-blur-sm"><Heart className="h-3 w-3 opacity-70" /> {c.loves}</span>
                         </div>
-                      </div>
+                      </button>
                       <div className="flex flex-1 flex-col p-5">
                         <div className="flex items-center justify-between gap-2">
                           <span className={cn('text-[11px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
