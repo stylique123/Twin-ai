@@ -54,6 +54,28 @@ def _fmt(n):
     return str(n)
 
 
+def why_for(it):
+    """A free, engagement-derived 'why it works' line (no LLM cost). Deep analysis
+    happens lazily when a creator hits Remix and the worker reads the transcript."""
+    v = int(it.get('views') or 0); l = int(it.get('likes') or 0)
+    cap = (it.get('title') or '').strip(); low = cap.lower()
+    parts = []
+    if v:
+        parts.append('%s views' % _fmt(v) + (' with a %d%% like rate' % round(l * 100 / v)
+                     if v and l and l / v >= 0.03 else ''))
+    if '?' in cap:
+        parts.append('opens a curiosity loop with a question hook')
+    elif any(w in low for w in ('how', 'why', 'secret', 'mistake', 'stop', 'never')):
+        parts.append('leads with a value/curiosity hook')
+    elif any(ord(ch) > 0x2600 for ch in cap):
+        parts.append('a punchy, emoji-led hook stops the scroll')
+    if len([w for w in cap.split() if w.startswith('#')]) >= 3:
+        parts.append('rides trending hashtags for distribution')
+    if not parts:
+        return None
+    return '. '.join(p[0].upper() + p[1:] for p in parts) + '.'
+
+
 def insert(items, niche):
     rows = [{
         'owner_id': None, 'platform': it['platform'], 'url': it['url'], 'niche': niche,
@@ -105,6 +127,7 @@ def main():
         for it in items:
             if it.get('url') and it['url'] not in have:
                 have.add(it['url'])
+                it['why'] = why_for(it)
                 fresh.append(it)
         insert(fresh, niche)
         total += len(fresh)

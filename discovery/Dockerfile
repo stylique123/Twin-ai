@@ -13,6 +13,9 @@ RUN python -m playwright install-deps chromium \
 
 WORKDIR /app
 COPY discover.py ./discover.py
+COPY run.py ./run.py
 
-# Default entrypoint runs the scraper; args: <platform> <query> <limit>
-ENTRYPOINT ["python", "/app/discover.py"]
+# Default: run one full discovery pass (all niches) and insert into gallery_items.
+# Override entrypoint to `python /app/discover.py <platform> <query> <limit>` to
+# just print scraped items without touching the DB.
+ENTRYPOINT ["python", "/app/run.py"]
