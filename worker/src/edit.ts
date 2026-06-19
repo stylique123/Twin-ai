@@ -112,6 +112,64 @@ function emojiFor(line: Word[]): string {
   return ''
 }
 
+// Color emoji can't be rendered by libass (it only draws monochrome glyph
+// outlines), so we burn them as Twemoji PNG overlays instead. Compute up to `max`
+// emoji moments from the same 3-word caption grouping, evenly spaced so they
+// punctuate the video rather than clutter every line.
+function emojiMoments(words: Word[], max = 6): { emoji: string; start: number; end: number }[] {
+  const lines: Word[][] = []
+  let cur: Word[] = []
+  for (const w of words) {
+    cur.push(w)
+    if (cur.length >= 3 || /[.!?]$/.test(w.w)) { lines.push(cur); cur = [] }
+  }
+  if (cur.length) lines.push(cur)
+  const all: { emoji: string; start: number; end: number }[] = []
+  for (const line of lines) {
+    const e = emojiFor(line)
+    if (!e) continue
+    const start = line[0].start
+    const end = line[line.length - 1].end + 0.2
+    if (end > start) all.push({ emoji: e, start, end })
+  }
+  if (all.length <= max) return all
+  const step = all.length / max
+  return Array.from({ length: max }, (_, i) => all[Math.floor(i * step)])
+}
+
+// Emoji char → Twemoji asset codepoint (lowercase hex, FE0F variation selector
+// stripped, joined by '-'), matching Twemoji's 72x72 PNG filenames.
+function twemojiCode(emoji: string): string {
+  const cps: string[] = []
+  for (const ch of emoji) {
+    const cp = ch.codePointAt(0)
+    if (cp == null || cp === 0xfe0f) continue
+    cps.push(cp.toString(16))
+  }
+  return cps.join('-')
+}
+
+// Download a Twemoji PNG for an emoji into dir (best-effort). Returns the local
+// filename (relative to dir) or null; any failure means that emoji is skipped.
+async function fetchEmojiPng(emoji: string, dir: string): Promise<string | null> {
+  try {
+    const code = twemojiCode(emoji)
+    if (!code) return null
+    const name = `em_${code}.png`
+    const dest = join(dir, name)
+    if ((await fileSize(dest)) > 0) return name // already fetched (dedup)
+    const url = `https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/${code}.png`
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) })
+    if (!res.ok) return null
+    const buf = Buffer.from(await res.arrayBuffer())
+    if (buf.byteLength < 256) return null
+    await writeFile(dest, buf)
+    return name
+  } catch {
+    return null
+  }
+}
+
 // Single-layer captions: 3-word groups, the active word pops (amber + animated
 // scale), optional emoji. One Dialogue per word window so exactly ONE caption
 // shows at a time (no overlap).
@@ -148,7 +206,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
   const events: string[] = []
   for (const line of lines) {
-    const emoji = emojiFor(line)
     for (let i = 0; i < line.length; i++) {
       const start = line[i].start
       // Clamp the caption's display end so it never hangs on screen during a
@@ -165,8 +222,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             : esc(w.w),
         )
         .join(' ')
-      const tail = emoji ? ` ${emoji}` : ''
-      events.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Cap,,0,0,0,,{\\fad(40,0)}${text}${tail}`)
+      // Emojis are burned as color PNG overlays (see emojiMoments), not in the
+      // caption text, because libass can't render color emoji.
+      events.push(`Dialogue: 0,${assTime(start)},${assTime(end)},Cap,,0,0,0,,{\\fad(40,0)}${text}`)
     }
   }
   return head + events.join('\n') + '\n'
@@ -409,12 +467,24 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     }
     const brollEnd = brollStart + 2.2
 
-    // Inputs: 0 = base (video+voice), then b-roll, then bed (indices depend on presence).
+    // Color emoji overlays (best-effort): fetch a Twemoji PNG per emoji moment so
+    // captions get the modern emoji punctuation. Any miss is just skipped.
+    const emojiSpans: { file: string; start: number; end: number }[] = []
+    if (captions && words.length) {
+      for (const m of emojiMoments(words, 6)) {
+        const file = await fetchEmojiPng(m.emoji, dir)
+        if (file) emojiSpans.push({ file, start: m.start, end: m.end })
+      }
+    }
+
+    // Inputs: 0 = base (video+voice), then b-roll, then bed, then emoji PNGs.
     const inputs: string[] = ['-i', base]
     let idx = 1
     let brollIdx = -1, bedIdx = -1
     if (broll) { inputs.push('-i', 'broll.mp4'); brollIdx = idx++ }
     if (bedFile) { inputs.push('-i', 'bed.mp3'); bedIdx = idx++ }
+    const emojiBaseIdx = idx
+    for (const e of emojiSpans) { inputs.push('-i', e.file); idx++ }
 
     // Video chain: fill -> optional faded b-roll overlay -> captions.
     const vparts: string[] = [`[0:v]${fill}[mv]`]
@@ -428,7 +498,19 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       vparts.push(`[mv][bv]overlay=enable='between(t,${brollStart.toFixed(2)},${brollEnd.toFixed(2)})'[ov]`)
       vlast = 'ov'
     }
-    vparts.push(`[${vlast}]${subs ? `subtitles=${assRel}` : 'null'}[v]`)
+    // Captions (libass) first, then color-emoji PNG overlays on top, synced to
+    // each caption moment and sitting just above the caption safe-zone.
+    const capOut = emojiSpans.length ? 'vtx' : 'v'
+    vparts.push(`[${vlast}]${subs ? `subtitles=${assRel}` : 'null'}[${capOut}]`)
+    if (emojiSpans.length) {
+      emojiSpans.forEach((_, i) => vparts.push(`[${emojiBaseIdx + i}:v]scale=104:-1[em${i}]`))
+      let elast = 'vtx'
+      emojiSpans.forEach((e, i) => {
+        const out = i === emojiSpans.length - 1 ? 'v' : `eo${i}`
+        vparts.push(`[${elast}][em${i}]overlay=x=(W-w)/2:y=H*0.60:enable='between(t,${e.start.toFixed(2)},${e.end.toFixed(2)})'[${out}]`)
+        elast = out
+      })
+    }
 
     // Two-pass loudnorm on the voice: measure first so the final pass lands on
     // -14 LUFS exactly (consistent perceived volume across all of a creator's
