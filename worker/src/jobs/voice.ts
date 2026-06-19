@@ -32,10 +32,22 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
 
   const profile = await synthesizeVoiceFromAudio(handle, platform, transcripts)
 
+  // MERGE, don't replace: the audio re-synthesis refines tone/pacing/vocabulary/
+  // hooks, but it does NOT produce the audience/audience_pain/dream_outcome/offer/
+  // editing_style fields the edge-function voice scan stored. A blind overwrite
+  // dropped those — and the blueprint generator depends on them. Spreading the new
+  // profile over the existing one keeps the richer fields and updates the rest.
+  const { data: existing } = await db
+    .from('brand_voices')
+    .select('profile')
+    .eq('id', voiceId)
+    .maybeSingle()
+  const merged = { ...((existing?.profile as Record<string, unknown> | null) ?? {}), ...profile }
+
   // Only upgrade a voice that's still ready (don't resurrect a deleted/failed one).
   const { error } = await db
     .from('brand_voices')
-    .update({ profile })
+    .update({ profile: merged })
     .eq('id', voiceId)
     .eq('status', 'ready')
   if (error) throw error

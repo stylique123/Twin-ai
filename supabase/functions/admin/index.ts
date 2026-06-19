@@ -124,7 +124,7 @@ Deno.serve(async (req: Request) => {
       const userId = String(body.user_id ?? '')
       const plan = String(body.plan ?? '')
       if (!userId || !PLANS.includes(plan)) return json({ error: 'user_id and a valid plan are required' }, 400)
-      const credits = Number.isFinite(body.credits) ? Number(body.credits) : null
+      const credits = Number.isFinite(Number(body.credits)) ? Number(body.credits) : null
       const patch: Record<string, unknown> = { plan, ...(plan === 'agency' ? { account_type: 'agency' } : {}) }
       if (credits !== null) patch.credits = credits
       const { error } = await admin.from('profiles').update(patch).eq('id', userId)
