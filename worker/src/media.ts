@@ -184,6 +184,9 @@ export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
       [join(import.meta.dirname, '..', 'whisper_transcribe.py'),
        '--audio', audioPath, '--out', outPath,
        '--model', env.whisperModel, '--device', env.whisperDevice,
+       // Reference clips can be in any language, so detect here (unlike the
+       // creator's own take, which we pin to avoid English->Arabic misdetection).
+       '--language', 'auto',
        '--max-seconds', String(env.maxMediaSecs)],
       Math.max(180_000, env.maxMediaSecs * 1000),
     )

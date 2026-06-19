@@ -39,6 +39,9 @@ export const env = {
   // ASR
   whisperModel: process.env.WHISPER_MODEL ?? 'small', // tiny|base|small|medium
   whisperDevice: process.env.WHISPER_DEVICE ?? 'cpu', // cpu|cuda
+  // Pin the spoken language so faster-whisper never mis-detects an English take
+  // as Arabic/Urdu/etc and burns in garbage captions. 'auto' restores detection.
+  whisperLanguage: (process.env.WHISPER_LANGUAGE ?? 'en').trim(),
   maxMediaSecs: Number(process.env.WORKER_MAX_MEDIA_SECS ?? '900'), // skip > 15 min by default
 
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,

@@ -8,21 +8,48 @@ import { env } from './env.js'
 // the edit proceeds without b-roll.
 
 const STOPWORDS = new Set(
-  ('a an the and or but if then this that these those i you he she it we they me him her us them my your his its our their is am are was were be been being do does did have has had will would can could should of to in on at for with from by as so just like really very about into out up down not no yes get got go going know think want need make made say said one two three what when where why how who all some any more most' )
+  ('a an the and or but if then this that these those i you he she it we they me him her us them my your his its our their is am are was were be been being do does did have has had will would can could should of to in on at for with from by as so just like really very about into out up down not no yes get got go going know think want need make made say said one two three what when where why how who all some any more most ' +
+   // abstract words that produce generic, cheesy stock and never a clear visual
+   'thing things stuff people person someone everyone something anything nothing really actually basically literally honestly maybe always never ever every always today tomorrow yesterday everything moment moments idea ideas point points reason reasons number numbers level levels best better great good better amazing awesome thanks please right wrong true truth fact facts kind sort type lots tons bunch okay yeah gonna wanna gotta because however therefore meaning matter')
     .split(/\s+/),
 )
 
-// Pick up to N content keywords (longest, non-stopword, alphabetic) by frequency.
-export function pickKeywords(text: string, n = 4): string[] {
+// Concrete, filmable concepts: when a transcript/blueprint keyword is one of (or
+// contains) these, b-roll is likely to look intentional rather than random. We
+// ONLY pull b-roll for confident, visual matches — that kills the "silly" generic
+// cutaways. Categories cover the common creator niches.
+const VISUAL = new Set(
+  ('money cash dollar dollars coins wallet bank invest stocks chart charts graph trading ' +
+   'gym workout fitness weights dumbbell barbell running run treadmill yoga stretch muscle ' +
+   'food cooking kitchen recipe chef coffee restaurant meal pasta pizza burger fruit vegetables ' +
+   'phone laptop computer screen keyboard desk office meeting team startup whiteboard code coding ' +
+   'city street traffic car cars driving travel airport plane beach ocean mountain forest sunset sunrise nature ' +
+   'camera lights studio microphone podcast filming editing timeline ' +
+   'book books reading study student school classroom library notebook pen ' +
+   'shop shopping store product products package delivery box ' +
+   'dog cat pet baby family home house apartment plant plants ' +
+   'clock time calendar schedule deadline')
+    .split(/\s+/),
+)
+
+function isVisual(word: string): boolean {
+  if (VISUAL.has(word)) return true
+  for (const v of VISUAL) if (word.length > 4 && (word.includes(v) || v.includes(word))) return true
+  return false
+}
+
+// Pick up to N CONCRETE, visualizable keywords. We require a visual match so
+// b-roll only fires when it will look intentional; if nothing concrete is found
+// we return [] and the edit renders cleanly with no cutaway.
+export function pickKeywords(text: string, n = 2): string[] {
   const freq = new Map<string, number>()
   for (const raw of (text ?? '').toLowerCase().split(/[^a-z]+/)) {
     if (raw.length < 4 || STOPWORDS.has(raw)) continue
     freq.set(raw, (freq.get(raw) ?? 0) + 1)
   }
-  return [...freq.entries()]
-    .sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
-    .slice(0, n)
-    .map(([w]) => w)
+  const ranked = [...freq.entries()].sort((a, b) => b[1] - a[1] || b[0].length - a[0].length)
+  // Only keep concrete/visual words — this is the gate that stops silly b-roll.
+  return ranked.filter(([w]) => isVisual(w)).slice(0, n).map(([w]) => w)
 }
 
 export interface Broll {

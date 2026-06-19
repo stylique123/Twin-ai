@@ -47,27 +47,46 @@ export default function Record() {
 
   // teleprompter controls
   const [scrolling, setScrolling] = useState(false)
-  const [speed, setSpeed] = useState(38) // px/sec
-  const [fontPx, setFontPx] = useState(30)
+  const [speed, setSpeed] = useState(42) // px/sec
+  const [fontPx, setFontPx] = useState(38)
   const [mirror, setMirror] = useState(false)
+  const [active, setActive] = useState(0) // line currently at the read line
+  const lineEls = useRef<(HTMLParagraphElement | null)[]>([])
 
   useEffect(() => {
     if (!id) return
     getGeneration(id).then(setGen).catch(() => setGen(null)).finally(() => setLoading(false))
   }, [id])
 
-  // Build the teleprompter script from the real blueprint.
+  // Teleprompter shows ONLY what the creator speaks (hook + script lines). Stage
+  // directions are guidance, not lines to read, so they stay in the side panel.
   const lines = useMemo(() => {
     const b = gen?.blueprint
-    if (!b) return [] as { kind: 'hook' | 'line' | 'dir'; text: string }[]
-    const out: { kind: 'hook' | 'line' | 'dir'; text: string }[] = []
+    if (!b) return [] as { kind: 'hook' | 'line'; text: string }[]
+    const out: { kind: 'hook' | 'line'; text: string }[] = []
     if (b.hook_options?.[0]) out.push({ kind: 'hook', text: b.hook_options[0] })
     for (const s of b.script ?? []) {
-      out.push({ kind: 'line', text: s.line })
-      if (s.direction) out.push({ kind: 'dir', text: s.direction })
+      if (s.line?.trim()) out.push({ kind: 'line', text: s.line })
     }
     return out
   }, [gen])
+
+  // Which line sits at the read guide (~38% down the prompter). Keeps the active
+  // line bright + scaled and dims the rest, so the eye always knows where to read.
+  const updateActive = () => {
+    const el = promptRef.current
+    if (!el) return
+    const readY = el.getBoundingClientRect().top + el.clientHeight * 0.38
+    let best = 0
+    let bestDist = Infinity
+    lineEls.current.forEach((p, i) => {
+      if (!p) return
+      const r = p.getBoundingClientRect()
+      const d = Math.abs(r.top + r.height / 2 - readY)
+      if (d < bestDist) { bestDist = d; best = i }
+    })
+    setActive((prev) => (prev === best ? prev : best))
+  }
 
   // ---- camera lifecycle ----
   const startCamera = async () => {
@@ -120,6 +139,7 @@ export default function Record() {
           setScrolling(false)
         }
         el.scrollTop = offsetRef.current
+        updateActive()
       }
       rafRef.current = requestAnimationFrame(step)
     }
@@ -127,11 +147,13 @@ export default function Record() {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [scrolling, speed])
 
   const resetPrompt = () => {
     offsetRef.current = 0
     if (promptRef.current) promptRef.current.scrollTop = 0
+    setActive(0)
     setScrolling(false)
   }
 
@@ -322,28 +344,38 @@ export default function Record() {
 
             {/* teleprompter overlay */}
             {camReady && phase !== 'review' && (
-              <div className="pointer-events-none absolute inset-x-0 bottom-0 top-1/3">
-                <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/55 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[22%]">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent" />
+                {/* read-line guide: the eye reads at this band */}
+                <div className="absolute inset-x-0 top-[38%] z-10 flex items-center gap-2 px-4 opacity-60">
+                  <span className="h-px flex-1 bg-gradient-to-r from-transparent to-coral/70" />
+                  <Play className="h-3 w-3 fill-coral text-coral" />
+                  <span className="h-px flex-1 bg-gradient-to-l from-transparent to-coral/70" />
+                </div>
                 <div
                   ref={promptRef}
                   className="relative h-full overflow-hidden px-6 pb-8 pt-4"
-                  style={{ maskImage: 'linear-gradient(to bottom, transparent, #000 18%, #000 82%, transparent)' }}
+                  style={{ maskImage: 'linear-gradient(to bottom, transparent, #000 14%, #000 86%, transparent)' }}
                 >
-                  <div className="space-y-4" style={{ fontSize: fontPx }}>
+                  {/* spacer pushes the first line down to the read guide */}
+                  <div style={{ height: '34%' }} />
+                  <div className="space-y-5 text-center" style={{ fontSize: fontPx }}>
                     {lines.map((l, i) => (
                       <p
                         key={i}
+                        ref={(el) => { lineEls.current[i] = el }}
                         className={cn(
-                          'font-heading leading-snug',
-                          l.kind === 'hook' && 'text-amber',
-                          l.kind === 'line' && 'text-cream',
-                          l.kind === 'dir' && 'text-sm italic text-stone',
+                          'font-heading font-bold leading-tight transition-all duration-200',
+                          i === active
+                            ? 'scale-[1.04] text-cream opacity-100 [text-shadow:0_2px_12px_rgba(0,0,0,0.7)]'
+                            : 'opacity-35',
+                          l.kind === 'hook' && i === active && 'text-amber',
                         )}
                       >
-                        {l.kind === 'dir' ? `( ${l.text} )` : l.text}
+                        {l.text}
                       </p>
                     ))}
-                    <div className="h-40" />
+                    <div className="h-[60%]" />
                   </div>
                 </div>
               </div>
@@ -437,6 +469,11 @@ export default function Record() {
                   <button onClick={reshoot} className="btn-ghost" disabled={editPhase === 'working'}>
                     <RotateCcw className="h-4 w-4" /> Reshoot
                   </button>
+                  {takeUrl && editPhase !== 'done' && (
+                    <a href={takeUrl} download={`twinai-take-${id}.webm`} className="btn-ghost" title="Download the raw take">
+                      <Download className="h-4 w-4" /> Download take
+                    </a>
+                  )}
                   {editPhase === 'done' && editUrl ? (
                     <>
                       <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look, 1 recreation">
@@ -486,11 +523,11 @@ export default function Record() {
               </Control>
 
               <Control icon={Gauge} label={`Speed · ${speed}px/s`}>
-                <Stepper onMinus={() => setSpeed((s) => Math.max(12, s - 6))} onPlus={() => setSpeed((s) => Math.min(90, s + 6))} />
+                <Stepper onMinus={() => setSpeed((s) => Math.max(12, s - 6))} onPlus={() => setSpeed((s) => Math.min(120, s + 6))} />
               </Control>
 
               <Control icon={Plus} label={`Text size · ${fontPx}px`}>
-                <Stepper onMinus={() => setFontPx((s) => Math.max(18, s - 2))} onPlus={() => setFontPx((s) => Math.min(54, s + 2))} />
+                <Stepper onMinus={() => setFontPx((s) => Math.max(24, s - 3))} onPlus={() => setFontPx((s) => Math.min(72, s + 3))} />
               </Control>
 
               <Control icon={FlipHorizontal2} label="Mirror preview">

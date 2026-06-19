@@ -16,6 +16,7 @@ def main() -> int:
     ap.add_argument("--out", required=True)
     ap.add_argument("--model", default="small")
     ap.add_argument("--device", default="cpu")  # cpu | cuda
+    ap.add_argument("--language", default="en")  # ISO code, or "auto" to detect
     ap.add_argument("--max-seconds", type=int, default=900)
     args = ap.parse_args()
 
@@ -25,9 +26,18 @@ def main() -> int:
     compute_type = "float16" if args.device == "cuda" else "int8"
     model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
 
+    lang = None if args.language.lower() in ("auto", "", "detect") else args.language
     segments_iter, info = model.transcribe(
         args.audio,
         word_timestamps=True,
+        # Pin the language unless explicitly auto: faster-whisper otherwise
+        # mis-detects accented/noisy English takes as Arabic/Urdu/Welsh and burns
+        # in unreadable captions. This is the #1 caption-quality bug.
+        language=lang,
+        # Don't carry context across segments: on pauses/music it otherwise loops
+        # and hallucinates repeated phrases. Drop near-silent segments too.
+        condition_on_previous_text=False,
+        no_speech_threshold=0.6,
         # IMPORTANT: no VAD here. We jump-cut silence in ffmpeg BEFORE transcribing,
         # so VAD is redundant and its silence-removal shifts word timestamps off the
         # video timeline, drifting the burned-in captions. Transcribe the cut audio
