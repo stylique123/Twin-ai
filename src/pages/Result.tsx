@@ -3,8 +3,16 @@ import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
-  Captions, ListChecks, Wand2, Timer, Send, Loader2, Video,
+  Captions, ListChecks, Wand2, Timer, Send, Loader2, Video, ExternalLink,
 } from 'lucide-react'
+
+// Phase-0 guided publishing: deep-link straight into each platform's uploader.
+// (Real one-click auto-post needs per-platform OAuth + app review — staged later.)
+const UPLOAD_URLS: Record<string, string> = {
+  tiktok: 'https://www.tiktok.com/upload',
+  youtube: 'https://studio.youtube.com/',
+  instagram: 'https://www.instagram.com/',
+}
 import { getGeneration, markPosted, updateGenerationChoice } from '../lib/api'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -290,6 +298,14 @@ function PublishRow({
     }
   }
 
+  const uploadUrl = UPLOAD_URLS[platform.toLowerCase()]
+  // One tap: open the platform's uploader AND copy the caption. Open first, inside
+  // the click gesture, so the popup isn't blocked after the async clipboard write.
+  const copyAndOpen = () => {
+    if (uploadUrl) window.open(uploadUrl, '_blank', 'noopener,noreferrer')
+    void copy()
+  }
+
   return (
     <div className="rounded-card border border-white/8 bg-white/[0.02] p-4">
       <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
@@ -298,7 +314,12 @@ function PublishRow({
       </div>
       <div className="mt-1 text-cream">{caption}</div>
       <div className="mt-1 text-xs text-stone">{hashtags.join(' ')}</div>
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {uploadUrl && (
+          <button onClick={copyAndOpen} className="btn-gradient py-2 text-sm capitalize">
+            <ExternalLink className="h-4 w-4" /> Open {platform} &amp; copy
+          </button>
+        )}
         <button onClick={copy} className="chip">
           {copied ? <><Check className="h-3.5 w-3.5 text-teal" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy caption</>}
         </button>
@@ -306,6 +327,11 @@ function PublishRow({
           {posted ? <><Check className="h-3.5 w-3.5" /> Posted</> : busy ? 'Saving…' : <><Send className="h-3.5 w-3.5" /> Mark as posted</>}
         </button>
       </div>
+      {uploadUrl && (
+        <p className="mt-2 text-[11px] text-stone">
+          We copy your caption to the clipboard and open the {platform} uploader — paste it there, post, then mark it here.
+        </p>
+      )}
     </div>
   )
 }
