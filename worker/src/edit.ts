@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { env } from './env.js'
 import { fetchBroll, fetchMusicBed, pickKeywords, type Broll } from './broll.js'
+import { buildEdl, type EditDecisionList, type EdlSegment } from './edl.js'
 
 // One-click auto-edit v2: take a raw recorded clip and return a finished vertical
 // MP4 that feels professionally edited:
@@ -45,6 +46,7 @@ export interface EditResult {
   jumpCut: boolean
   broll: boolean
   thumbFile?: string | null // generated cover image, when coverText is provided
+  edl: EditDecisionList // structured record of every edit decision (for the manual editor)
 }
 
 export interface EditOptions {
@@ -273,9 +275,10 @@ export function fillerSpans(words: Word[]): [number, number][] {
 // Jump-cuts via ffmpeg silencedetect: find silent gaps (plus any extraRemove word
 // spans from fillerSpans), keep the spoken segments with a small margin, and
 // concat them back together. Returns true if it actually tightened the clip.
-async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'calm' = 'calm', extraRemove: [number, number][] = []): Promise<boolean> {
+async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'calm' = 'calm', extraRemove: [number, number][] = []): Promise<{ applied: boolean; segments: EdlSegment[] }> {
+  const NOCUT = { applied: false, segments: [] as EdlSegment[] }
   const duration = await probeDuration(base)
-  if (duration < 3) return false // too short to bother
+  if (duration < 3) return NOCUT // too short to bother
 
   // Adaptive silence threshold: measure the take's mean loudness, then treat
   // anything ~8dB below the average as a pause. Clamped to a safe band so we
@@ -296,7 +299,7 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
   const ends: number[] = []
   for (const m of stderr.matchAll(/silence_start:\s*([0-9.]+)/g)) starts.push(parseFloat(m[1]))
   for (const m of stderr.matchAll(/silence_end:\s*([0-9.]+)/g)) ends.push(parseFloat(m[1]))
-  if (!starts.length && !extraRemove.length) return false
+  if (!starts.length && !extraRemove.length) return NOCUT
 
   // Remove set = silence intervals (shrunk by a 0.15s margin so we never clip
   // speech) PLUS any filler/stammer word spans passed in.
@@ -312,7 +315,7 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
     const ce = Math.min(duration, e)
     if (ce - cs > 0.05) sil.push([cs, ce])
   }
-  if (!sil.length) return false
+  if (!sil.length) return NOCUT
 
   // Sort + merge overlapping remove intervals (silence and fillers can overlap).
   sil.sort((a, b) => a[0] - b[0])
@@ -334,9 +337,9 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
   // Drop sub-0.2s slivers that would create a 3-frame stutter cut.
   const segs = keep.filter(([s, e]) => e - s >= 0.2)
   // Nothing meaningful to cut, or pathological segmentation.
-  if (segs.length < 2 || segs.length > 200) return false
+  if (segs.length < 2 || segs.length > 200) return NOCUT
   const kept = segs.reduce((a, [s, e]) => a + (e - s), 0)
-  if (kept >= duration - 0.4) return false // <0.4s removed — not worth a re-encode
+  if (kept >= duration - 0.4) return NOCUT // <0.4s removed — not worth a re-encode
 
   // filter_complex: trim each keep window for v+a, normalize to 1080x1920, then
   // concat. A 25ms audio fade in/out at each seam removes the click/pop that a raw
@@ -364,7 +367,12 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', outFile],
     Math.max(240_000, duration * 3000),
   )
-  return (await fileSize(outFile)) > 1024
+  if ((await fileSize(outFile)) <= 1024) return NOCUT
+  // The kept windows ARE the cut decisions; carry the per-segment zoom punch.
+  const segments: EdlSegment[] = segs.map(([s, e], i) => ({
+    start: s, end: e, zoom: energy === 'high' && i % 2 === 1,
+  }))
+  return { applied: true, segments }
 }
 
 export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promise<EditResult> {
@@ -404,8 +412,11 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     //    if there's nothing worth cutting (or it errors), fall back to the
     //    original take so we always produce a render.
     let jumpCut = false
+    let cutSegments: EdlSegment[] = []
     try {
-      jumpCut = await jumpCutSilence(takeFile, cut, opts.energy ?? 'calm', removeSpans)
+      const jc = await jumpCutSilence(takeFile, cut, opts.energy ?? 'calm', removeSpans)
+      jumpCut = jc.applied
+      cutSegments = jc.segments
     } catch {
       jumpCut = false
     }
@@ -469,12 +480,11 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
 
     // Color emoji overlays (best-effort): fetch a Twemoji PNG per emoji moment so
     // captions get the modern emoji punctuation. Any miss is just skipped.
+    const emojiPlan = captions && words.length ? emojiMoments(words, 6) : []
     const emojiSpans: { file: string; start: number; end: number }[] = []
-    if (captions && words.length) {
-      for (const m of emojiMoments(words, 6)) {
-        const file = await fetchEmojiPng(m.emoji, dir)
-        if (file) emojiSpans.push({ file, start: m.start, end: m.end })
-      }
+    for (const m of emojiPlan) {
+      const file = await fetchEmojiPng(m.emoji, dir)
+      if (file) emojiSpans.push({ file, start: m.start, end: m.end })
     }
 
     // Inputs: 0 = base (video+voice), then b-roll, then bed, then emoji PNGs.
@@ -593,7 +603,22 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       }
     }
 
-    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile }
+    // Emit the Edit Decision List: the structured record of every choice above,
+    // so the manual editor (the 20% human layer) can load, tweak, and re-render
+    // deterministically through this same path. When no jump-cut fired, the whole
+    // take is one segment.
+    const edl = buildEdl({
+      energy: opts.energy ?? 'calm',
+      variation: opts.variation ?? 0,
+      segments: cutSegments.length ? cutSegments : [{ start: 0, end: durationSec || 0 }],
+      words,
+      emoji: emojiPlan,
+      broll: broll ? { query: broll.query, start: brollStart, end: brollEnd } : null,
+      music: !!bedFile,
+      durationSec,
+    })
+
+    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile, edl }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }

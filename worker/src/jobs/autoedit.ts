@@ -1,4 +1,4 @@
-import { rm, mkdtemp } from 'node:fs/promises'
+import { rm, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { db, type Job } from '../db.js'
@@ -74,7 +74,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     const variation = Number.isFinite(payload.variation as number) ? Number(payload.variation) : 0
     if (variation % 2 === 1) energy = energy === 'high' ? 'calm' : 'high'
 
-    const { outFile, durationSec, words, jumpCut, broll, thumbFile } = await autoEdit(localTake, {
+    const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
       variation,
@@ -111,7 +111,19 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       )
     }
 
-    return { output_path: outputPath, output_url: url, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl }
+    // Persist the Edit Decision List next to the render so the manual editor can
+    // load it. Best-effort: a failed EDL upload never fails the render itself.
+    let edlPath: string | null = null
+    try {
+      const edlLocal = join(dir, 'edit.edl.json')
+      await writeFile(edlLocal, JSON.stringify(edl))
+      edlPath = `${job.owner_id}/${job.id}.edl.json`
+      await uploadObject('edits', edlPath, edlLocal, 'application/json')
+    } catch {
+      edlPath = null
+    }
+
+    return { output_path: outputPath, output_url: url, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl, edl_path: edlPath }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
     if (renderFile) await rm(renderFile, { force: true }).catch(() => {})
