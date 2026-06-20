@@ -41,8 +41,18 @@ export async function deriveStructure(t: Transcript): Promise<ReferenceStructure
     .join('\n')
     .slice(0, 6000)
 
+  // Anchor pacing to a MEASURED words/min from real word timing (Whisper, or
+  // interpolated from caption segments for YouTube/Instagram) instead of letting
+  // the model guess — pacing is one of the most-copied levers in the blueprint.
+  const words = t.words ?? []
+  let wpmHint = ''
+  if (words.length > 5) {
+    const span = words[words.length - 1].end - words[0].start
+    if (span > 1) wpmHint = `\nMEASURED words/min: ${Math.round((words.length / span) * 60)}`
+  }
+
   const prompt = `LANGUAGE: ${t.language}
-DURATION: ${t.duration_sec}s
+DURATION: ${t.duration_sec}s${wpmHint}
 TRANSCRIPT (timestamped):
 ${timed || '(no speech detected)'}
 

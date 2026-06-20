@@ -8,8 +8,21 @@ import { useAuth } from '../context/AuthContext'
 import { listGalleryItems, type GalleryItem } from '../lib/api'
 import { cn } from '../lib/cn'
 
-type Niche = 'All' | 'Business' | 'Fitness' | 'Food' | 'Education' | 'Lifestyle' | 'Beauty'
-const NICHES: Niche[] = ['All', 'Business', 'Fitness', 'Food', 'Education', 'Lifestyle', 'Beauty']
+// Base niches we always seed the filter with. The live list GROWS beyond these
+// as discovery brings in items tagged with new niches (see `nicheChips`).
+const BASE_NICHES = ['Business', 'Fitness', 'Food', 'Education', 'Lifestyle', 'Beauty']
+
+// Resolve a creator's free-text niche (e.g. "fitness & wellness") to the closest
+// canonical niche present in `known`, so we can pre-select and front-load it.
+function resolveNiche(userNiche: string, known: string[]): string {
+  const u = userNiche.trim().toLowerCase()
+  if (!u) return ''
+  return (
+    known.find((n) => n.toLowerCase() === u) ??
+    known.find((n) => u.includes(n.toLowerCase()) || n.toLowerCase().includes(u)) ??
+    ''
+  )
+}
 
 interface Card {
   id: string; niche: string; platform: string; label: string; creator: string
@@ -71,23 +84,13 @@ export default function Gallery() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const userNiche = profile?.dna?.niche?.trim() ?? ''
-  const [niche, setNiche] = useState<Niche>('All')
+  const [niche, setNiche] = useState<string>('All')
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<'top' | 'all'>('top')
   const [community, setCommunity] = useState<Card[]>([])
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const [showAll, setShowAll] = useState(false)
   const touched = useRef(false)
-
-  // Personalize: default the filter to the creator's own niche so the gallery
-  // opens on content relatable to them (sorted by views ↓). They can still switch
-  // to any niche or "All"; we only auto-pick until they touch the filter.
-  useEffect(() => {
-    if (touched.current || !userNiche) return
-    const match = NICHES.find((n) => n !== 'All' && (n.toLowerCase() === userNiche.toLowerCase()
-      || userNiche.toLowerCase().includes(n.toLowerCase()) || n.toLowerCase().includes(userNiche.toLowerCase())))
-    if (match) setNiche(match)
-  }, [userNiche])
 
   useEffect(() => {
     listGalleryItems()
@@ -96,6 +99,25 @@ export default function Gallery() {
   }, [])
 
   const all: Card[] = useMemo(() => [...FEATURED, ...community], [community])
+
+  // The live niche universe = base set ∪ whatever niches discovery has added.
+  const knownNiches = useMemo(
+    () => Array.from(new Set([...BASE_NICHES, ...community.map((c) => c.niche).filter(Boolean)])),
+    [community],
+  )
+  // The creator's own niche, resolved to a canonical chip (front-loaded + default).
+  const myNiche = useMemo(() => resolveNiche(userNiche, knownNiches), [userNiche, knownNiches])
+  // Ordered chips: the creator's OWN niche first, then All, then everything else.
+  const nicheChips = useMemo(() => {
+    const rest = knownNiches.filter((n) => n !== myNiche).sort()
+    return [...(myNiche ? [myNiche] : []), 'All', ...rest]
+  }, [knownNiches, myNiche])
+
+  // Open on the creator's own niche (not "All") until they touch the filter.
+  useEffect(() => {
+    if (touched.current || !myNiche) return
+    setNiche(myNiche)
+  }, [myNiche])
 
   // Posters for every card (featured + freshly discovered). YouTube thumbnails are
   // derivable straight from the video id; TikTok needs an oembed round-trip. Instagram
@@ -160,8 +182,10 @@ export default function Gallery() {
         <Reveal delay={0.04}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
-              {NICHES.map((n) => (
-                <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream')}>{n}</button>
+              {nicheChips.map((n) => (
+                <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream', n === myNiche && niche !== n && 'border-teal/40 text-cream')}>
+                  {n}{n === myNiche ? ' ✦' : ''}
+                </button>
               ))}
             </div>
             <div className="flex items-center gap-2">

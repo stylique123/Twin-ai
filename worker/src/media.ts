@@ -66,6 +66,29 @@ function isYouTube(u: URL): boolean {
   return YT_HOSTS.some((x) => h === x || h.endsWith('.' + x))
 }
 
+// Apify caption Actors return segment-level timing only (no per-word boundaries).
+// Synthesize word-level timing by spreading each segment's duration evenly across
+// its words, so a YouTube/Instagram transcript carries the same `words[]` shape as
+// a Whisper one. This gives the structure analysis word-level pacing to reason
+// about (words/min, where a beat lands) instead of coarse 5-10 word chunks, and
+// keeps any caption rendering downstream working on reference-sourced clips.
+function wordsFromSegments(segments: { start: number; end: number; text: string }[]): Transcript['words'] {
+  const words: Transcript['words'] = []
+  for (const seg of segments) {
+    const toks = seg.text.split(/\s+/).filter(Boolean)
+    const span = Math.max(0, seg.end - seg.start)
+    const per = toks.length ? span / toks.length : 0
+    toks.forEach((w, i) => {
+      words.push({
+        w,
+        start: Number((seg.start + i * per).toFixed(3)),
+        end: Number((seg.start + (i + 1) * per).toFixed(3)),
+      })
+    })
+  }
+  return words
+}
+
 // Run an Apify transcript Actor synchronously and read its captions, mapping
 // them into our Transcript shape. Throws a clear, user-facing message on failure
 // (no token configured, or no captions on the video) so the UI can show why.
@@ -102,7 +125,7 @@ async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
 
   const text = segments.map((s) => s.text).join(' ')
   const duration_sec = Math.ceil(segments[segments.length - 1].end)
-  return { language: 'en', duration_sec, text, words: [], segments }
+  return { language: 'en', duration_sec, text, words: wordsFromSegments(segments), segments }
 }
 
 // --- Instagram: transcript via Apify (yt-dlp gets "login required"/rate-limited) ---
@@ -156,7 +179,7 @@ async function instagramTranscriptViaApify(rawUrl: string): Promise<Transcript> 
   if (!text) throw new Error('This Instagram video has no speech we can read. Try a different reference.')
 
   const duration_sec = Number(item.duration) || (segments.length ? Math.ceil(segments[segments.length - 1].end) : 0)
-  return { language: 'en', duration_sec, text, words: [], segments }
+  return { language: 'en', duration_sec, text, words: wordsFromSegments(segments), segments }
 }
 
 // Download audio from an allow-listed URL, transcribe with faster-whisper, and
