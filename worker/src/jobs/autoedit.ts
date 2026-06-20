@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { db, type Job } from '../db.js'
 import { autoEdit } from '../edit.js'
+import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
 
 // Handles `autoedit` jobs.
@@ -74,12 +75,16 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     const variation = Number.isFinite(payload.variation as number) ? Number(payload.variation) : 0
     if (variation % 2 === 1) energy = energy === 'high' ? 'calm' : 'high'
 
+    // Manual re-render: when the Refine panel sends an edited EDL, render straight
+    // from it (no re-detect / re-transcribe) so the creator's tweaks are applied.
+    const editedEdl = (payload.edl ?? undefined) as EditDecisionList | undefined
     const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
       variation,
       brollText,
       coverText,
+      edl: editedEdl,
     })
     renderFile = outFile
     thumbRender = thumbFile ?? null
