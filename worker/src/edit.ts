@@ -183,9 +183,30 @@ async function fetchEmojiPng(emoji: string, dir: string): Promise<string | null>
 // Single-layer captions: 3-word groups, the active word pops (amber + animated
 // scale), optional emoji. One Dialogue per word window so exactly ONE caption
 // shows at a time (no overlap).
-function buildAss(words: Word[], variation = 0): string {
-  const WHITE = '&HFFFFFF&'
+// Caption style presets → the ASS Style line (size, box vs outline, position).
+// These are the creator-facing "caption style" options in the Refine panel; the
+// highlight COLOR is the separate `variation` (POP_PALETTE). Names are stable so
+// they map 1:1 to the EDL's captions.style.
+const CAP_STYLES: Record<string, string> = {
+  // bold center-low outline pop (default)
+  'bold-pop': 'Style: Cap, DejaVu Sans, 76, &HFFFFFF&, &H00000000&, &HC0000000&, 1, 0, 1, 7, 2, 2, 90, 90, 560, 1',
+  // smaller, calmer lower-third with a soft shadow
+  'clean-lower': 'Style: Cap, DejaVu Sans, 60, &HFFFFFF&, &H00000000&, &H80000000&, 1, 0, 1, 4, 1, 2, 120, 120, 360, 1',
+  // opaque rounded box behind the words (BorderStyle 3)
+  'boxed': 'Style: Cap, DejaVu Sans, 66, &HFFFFFF&, &H00000000&, &HB0000000&, 1, 0, 3, 6, 0, 2, 100, 100, 520, 1',
+  // big captions pinned near the top
+  'top': 'Style: Cap, DejaVu Sans, 72, &HFFFFFF&, &H00000000&, &HC0000000&, 1, 0, 1, 7, 2, 8, 90, 90, 300, 1',
+  // extra-bold thick-outline (reads as word-by-word karaoke pop)
+  'karaoke-word': 'Style: Cap, DejaVu Sans, 82, &HFFFFFF&, &H00000000&, &HC0000000&, 1, 0, 1, 8, 2, 2, 90, 90, 540, 1',
+}
+export const CAPTION_STYLES = Object.keys(CAP_STYLES)
+
+// Single-layer captions: 3-word groups, the active word pops (color + animated
+// scale), optional emoji. One Dialogue per word window so exactly ONE caption
+// shows at a time (no overlap). `style` picks the preset; `variation` the color.
+function buildAss(words: Word[], variation = 0, style = 'bold-pop'): string {
   const POP = POP_PALETTE[((variation % POP_PALETTE.length) + POP_PALETTE.length) % POP_PALETTE.length]
+  const styleLine = CAP_STYLES[style] ?? CAP_STYLES['bold-pop']
   const head = `[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -195,7 +216,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Cap, DejaVu Sans, 76, ${WHITE}, &H00000000&, &HC0000000&, 1, 0, 1, 7, 2, 2, 90, 90, 560, 1
+${styleLine}
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -484,7 +505,6 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       trLanguage = tr.language ?? 'en'
     }
     const capVariation = edl?.captions.variation ?? opts.variation ?? 0
-    await writeFile(ass, words.length ? buildAss(words, capVariation) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
 
     // AI Edit Director: read the SCRIPT + transcript to place b-roll / emphasis /
     // transitions intelligently (grounded queries), instead of word-frequency
@@ -498,6 +518,10 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
         opts.brollText ?? '',
       )
     }
+
+    // Caption style: the creator's choice (EDL) wins; else the Director's pick; else default.
+    const captionStyle = edl?.captions.style ?? plan?.caption_style ?? 'bold-pop'
+    await writeFile(ass, words.length ? buildAss(words, capVariation, captionStyle) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
 
     // 2b. Optional b-roll cutaway (best-effort, only if PEXELS_API_KEY is set and
     //     the clip is long enough to spare a 2s window after the hook).
@@ -688,6 +712,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       music: !!bedFile,
       durationSec,
       plan: plan ?? undefined,
+      captionStyle,
     })
 
     return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile, edl: outEdl }

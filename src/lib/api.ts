@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Blueprint, BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
+import type { Blueprint, BrandVoice, CreatorDNA, EditDecisionList, Generation, Platform, Profile, VoiceProfile } from './types'
 
 // ---- Profile / Creator DNA ----------------------------------------------
 
@@ -70,6 +70,7 @@ export interface IngestJob {
         output_path?: string
         duration_sec?: number
         words?: number
+        edl_path?: string // path to the EDL JSON in the edits bucket (for Refine)
         // Live progress while the job is still running (worker updates this).
         progress?: { phase: string; pct: number; label: string }
       }
@@ -123,6 +124,31 @@ export async function remakeEdit(generationId: string, takePath: string, variati
     }
     throw new Error(msg)
   }
+  return (data as { job_id: string }).job_id
+}
+
+// Download the EDL JSON for a finished edit (from its signed edits-bucket path),
+// so the Refine panel can load the exact decisions the auto-edit made.
+export async function fetchEdl(edlPath: string): Promise<EditDecisionList | null> {
+  try {
+    const urls = await signEditUrls([edlPath])
+    const url = urls[edlPath]
+    if (!url) return null
+    const res = await fetch(url)
+    if (!res.ok) return null
+    return (await res.json()) as EditDecisionList
+  } catch {
+    return null
+  }
+}
+
+// REFINE: re-render the same take from the creator's edited EDL. Free (it's a
+// correction of an edit they already paid for), enforced server-side.
+export async function reEditWithEdl(generationId: string, takePath: string, edl: EditDecisionList): Promise<string> {
+  const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
+    body: { generation_id: generationId, take_path: takePath, edl },
+  })
+  if (error) throw new Error(await readInvokeError(error))
   return (data as { job_id: string }).job_id
 }
 

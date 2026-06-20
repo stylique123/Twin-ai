@@ -44,7 +44,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Easy there — too many edits in a row. Give it a few seconds.' }, 429)
   }
 
-  let body: { generation_id?: string; take_path?: string; remake?: boolean; variation?: number }
+  let body: { generation_id?: string; take_path?: string; remake?: boolean; variation?: number; edl?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -53,6 +53,10 @@ Deno.serve(async (req: Request) => {
   const generationId = (body.generation_id ?? '').trim()
   const takePath = (body.take_path ?? '').trim()
   const variation = Number.isFinite(body.variation) ? Number(body.variation) : 0
+  // A REFINE carries the creator's edited EDL — they're correcting a video they
+  // already paid to make, so it re-renders FREE (rate-limited above, not billed).
+  const refineEdl = body.edl && typeof body.edl === 'object' ? body.edl : null
+  const isRefine = refineEdl !== null
   if (!takePath) return json({ error: 'take_path is required' }, 400)
   // The take must live in the caller's own storage folder.
   if (!takePath.startsWith(`${user.id}/`)) return json({ error: 'take_path outside your folder' }, 403)
@@ -78,7 +82,9 @@ Deno.serve(async (req: Request) => {
   const { data: prof } = await admin.from('profiles').select('plan').eq('id', user.id).maybeSingle()
   const isFree = (prof?.plan ?? 'free') === 'free'
   let charge = true
-  if (generationId || isFree) {
+  if (isRefine) {
+    charge = false // refines are free corrections of an existing edit
+  } else if (generationId || isFree) {
     let q = admin
       .from('jobs')
       .select('id', { count: 'exact', head: true })
@@ -113,7 +119,7 @@ Deno.serve(async (req: Request) => {
       owner_id: user.id,
       type: 'autoedit',
       status: 'queued',
-      payload: { generation_id: generationId || null, take_path: takePath, variation },
+      payload: { generation_id: generationId || null, take_path: takePath, variation, ...(refineEdl ? { edl: refineEdl } : {}) },
     })
     .select('id')
     .single()

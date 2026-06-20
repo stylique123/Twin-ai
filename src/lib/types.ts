@@ -100,3 +100,38 @@ export interface Generation {
   thumb_path?: string | null
   created_at: string
 }
+
+// Edit Decision List (mirror of the worker's edl.ts) — the structured record the
+// auto-edit emits and the Refine panel edits. Only the fields the UI touches are
+// strongly typed; the rest pass through untouched on re-render.
+export interface EditDecisionList {
+  version: number
+  energy: 'high' | 'calm'
+  variation: number // caption highlight COLOR index
+  segments: { start: number; end: number; zoom?: boolean }[]
+  captions: { style: string; variation: number; words: { w: string; start: number; end: number }[] }
+  emoji: { emoji: string; start: number; end: number }[]
+  broll: { query: string; start: number; end: number } | null
+  music: boolean
+  framing: { width: number; height: number }
+  audio: { targetLufs: number }
+  durationSec: number
+  createdAt: string
+  plan?: unknown
+}
+
+// The creator-facing caption styles + highlight colors offered in Refine.
+export const CAPTION_STYLE_OPTIONS = [
+  { id: 'bold-pop', label: 'Bold Pop' },
+  { id: 'karaoke-word', label: 'Karaoke' },
+  { id: 'boxed', label: 'Boxed' },
+  { id: 'clean-lower', label: 'Clean' },
+  { id: 'top', label: 'Top' },
+] as const
+
+export const CAPTION_COLOR_OPTIONS = [
+  { id: 0, label: 'Amber', hex: '#F5A623' },
+  { id: 1, label: 'Teal', hex: '#65E5D8' },
+  { id: 2, label: 'Coral', hex: '#FF5B7B' },
+  { id: 3, label: 'Gold', hex: '#FFD400' },
+] as const

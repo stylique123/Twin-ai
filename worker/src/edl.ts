@@ -43,8 +43,8 @@ export interface EditDecisionList {
   segments: EdlSegment[]
   // Caption words (already timed against the CUT timeline) + the styling knobs.
   captions: {
-    style: 'pop'
-    variation: number
+    style: string // caption preset id: bold-pop | clean-lower | boxed | top | karaoke-word
+    variation: number // highlight COLOR index (POP_PALETTE)
     words: EdlWord[]
   }
   emoji: EdlEmoji[]
@@ -70,13 +70,14 @@ export function buildEdl(parts: {
   music: boolean
   durationSec: number
   plan?: EditPlan
+  captionStyle?: string
 }): EditDecisionList {
   return {
     version: 1,
     energy: parts.energy,
     variation: parts.variation,
     segments: parts.segments,
-    captions: { style: 'pop', variation: parts.variation, words: parts.words },
+    captions: { style: parts.captionStyle ?? 'bold-pop', variation: parts.variation, words: parts.words },
     emoji: parts.emoji,
     broll: parts.broll,
     music: parts.music,
