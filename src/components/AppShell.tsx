@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X } from 'lucide-react'
+import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { BrandSwitcher } from './BrandSwitcher'
 import { useAuth } from '../context/AuthContext'
@@ -14,6 +14,7 @@ const NAV = [
   { to: '/app',       label: 'Studio',    icon: Wand2,            note: 'Make a blueprint' },
   { to: '/gallery',   label: 'Gallery',   icon: LayoutGrid,       note: 'Formats to remix' },
   { to: '/history',   label: 'Library',   icon: LibraryBig,       note: 'All your blueprints' },
+  { to: '/settings',  label: 'Settings',  icon: Settings,         note: 'Account & DNA' },
 ]
 
 export function AppShell({ children }: { children: React.ReactNode }) {

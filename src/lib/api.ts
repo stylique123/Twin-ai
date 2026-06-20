@@ -25,6 +25,16 @@ export async function saveDNA(dna: CreatorDNA): Promise<void> {
   if (error) throw error
 }
 
+export async function updateDisplayName(name: string): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not signed in')
+  const { error } = await supabase
+    .from('profiles')
+    .update({ display_name: name.trim() || null })
+    .eq('id', auth.user.id)
+  if (error) throw error
+}
+
 // ---- Platform admin (super-admin / support) -----------------------------
 
 // True only for users in public.platform_admins. RLS guarantees a normal user

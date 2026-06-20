@@ -15,6 +15,7 @@ import Gallery from './pages/Gallery'
 import Record from './pages/Record'
 import Dashboard from './pages/Dashboard'
 import Brands from './pages/Brands'
+import Settings from './pages/Settings'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -64,7 +65,8 @@ export default function App() {
     location.pathname.startsWith('/brands') ||
     location.pathname.startsWith('/gallery') ||
     location.pathname.startsWith('/record') ||
-    location.pathname.startsWith('/result')
+    location.pathname.startsWith('/result') ||
+    location.pathname.startsWith('/settings')
 
   return (
     <div className="min-h-screen">
@@ -103,6 +105,10 @@ export default function App() {
           <Route
             path="/history"
             element={<Protected><AppShell><Page><History /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/settings"
+            element={<Protected><AppShell><Page><Settings /></Page></AppShell></Protected>}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
