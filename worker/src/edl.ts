@@ -7,6 +7,8 @@
 // overlapping: auto-edit produces an EDL; manual-edit produces a modified EDL;
 // both render from the same code. Versioned so the editor can migrate old edits.
 
+import type { EditPlan } from './director.js'
+
 export interface EdlSegment {
   // A kept window from the ORIGINAL take (the complement of the cut silence/fillers).
   start: number
@@ -52,6 +54,10 @@ export interface EditDecisionList {
   audio: { targetLufs: number }
   durationSec: number
   createdAt: string
+  // The AI Edit Director's full plan (grounded multi-broll, emphasis, trims,
+  // transitions, caption style). Carried so the timeline + Revideo renderer can
+  // use the rich plan even though today's ffmpeg path applies a subset.
+  plan?: EditPlan
 }
 
 export function buildEdl(parts: {
@@ -63,6 +69,7 @@ export function buildEdl(parts: {
   broll: EdlBroll | null
   music: boolean
   durationSec: number
+  plan?: EditPlan
 }): EditDecisionList {
   return {
     version: 1,
@@ -77,5 +84,6 @@ export function buildEdl(parts: {
     audio: { targetLufs: -14 },
     durationSec: parts.durationSec,
     createdAt: new Date().toISOString(),
+    plan: parts.plan,
   }
 }

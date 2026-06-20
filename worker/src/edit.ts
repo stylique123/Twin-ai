@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { env } from './env.js'
 import { fetchBroll, fetchMusicBed, pickKeywords, type Broll } from './broll.js'
 import { buildEdl, type EditDecisionList, type EdlSegment } from './edl.js'
+import { planEdit, type EditPlan } from './director.js'
 
 // One-click auto-edit v2: take a raw recorded clip and return a finished vertical
 // MP4 that feels professionally edited:
@@ -453,6 +454,8 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     //    EDL; otherwise we transcribe the (tightened) audio so timing stays in sync.
     let words: Word[] = []
     let durationSec = 0
+    let trSegments: { start: number; end: number; text: string }[] = []
+    let trLanguage = 'en'
     if (edl) {
       words = (edl.captions.words ?? []).filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end))
       durationSec = edl.durationSec ?? 0
@@ -467,12 +470,26 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
          '--max-seconds', String(env.maxMediaSecs)],
         Math.max(180_000, env.maxMediaSecs * 1000),
       )
-      const tr = JSON.parse(await readFile(transcript, 'utf8')) as { words: Word[]; duration_sec: number }
+      const tr = JSON.parse(await readFile(transcript, 'utf8')) as { words: Word[]; duration_sec: number; segments?: { start: number; end: number; text: string }[]; language?: string }
       words = (tr.words ?? []).filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end))
       durationSec = tr.duration_sec ?? 0
+      trSegments = tr.segments ?? []
+      trLanguage = tr.language ?? 'en'
     }
     const capVariation = edl?.captions.variation ?? opts.variation ?? 0
     await writeFile(ass, words.length ? buildAss(words, capVariation) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
+
+    // AI Edit Director: read the SCRIPT + transcript to place b-roll / emphasis /
+    // transitions intelligently (grounded queries), instead of word-frequency
+    // guessing. Best-effort — falls back to heuristics on any failure / no key.
+    // On re-render we reuse the plan the creator already has in their EDL.
+    let plan: EditPlan | null = edl?.plan ?? null
+    if (!plan && !edl && words.length && env.geminiKey) {
+      plan = await planEdit(
+        { language: trLanguage, duration_sec: durationSec, text: words.map((w) => w.w).join(' '), words, segments: trSegments },
+        opts.brollText ?? '',
+      )
+    }
 
     // 2b. Optional b-roll cutaway (best-effort, only if PEXELS_API_KEY is set and
     //     the clip is long enough to spare a 2s window after the hook).
@@ -482,10 +499,12 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       if (edl.broll) {
         try { broll = await fetchBroll([edl.broll.query], dir) } catch { broll = null }
       }
+    } else if (plan && plan.broll.length) {
+      // Director-grounded b-roll: a literal query tied to what's actually said.
+      try { broll = await fetchBroll([plan.broll[0].query], dir) } catch { broll = null }
     } else if (words.length && durationSec > 6) {
       try {
-        // Prefer keywords from the blueprint (what the creator is shooting); fall
-        // back to the spoken transcript when no blueprint text was passed.
+        // Fallback (no Director plan): keywords from the blueprint, else transcript.
         const kwSource = opts.brollText && opts.brollText.trim() ? opts.brollText : words.map((w) => w.w).join(' ')
         broll = await fetchBroll(pickKeywords(kwSource), dir)
       } catch {
@@ -511,6 +530,8 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     let brollStart = 2.0
     if (edl?.broll) {
       brollStart = edl.broll.start
+    } else if (plan && plan.broll.length) {
+      brollStart = Math.max(1.2, Math.min(plan.broll[0].at_sec, Math.max(1.2, durationSec - 3)))
     } else if (broll && words.length) {
       const q = broll.query.toLowerCase()
       const hit = words.find((w) => w.w.toLowerCase().replace(/[^a-z]/g, '').includes(q))
@@ -656,6 +677,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       broll: broll ? { query: broll.query, start: brollStart, end: brollEnd } : null,
       music: !!bedFile,
       durationSec,
+      plan: plan ?? undefined,
     })
 
     return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile, edl: outEdl }
