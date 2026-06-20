@@ -44,9 +44,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
 
+  // Best-effort: never let a slow/stuck profile fetch block the whole app. The
+  // route guards only need `session`; the profile fills in when it arrives.
   const refreshProfile = async () => {
-    const p = await getProfile()
-    setProfile(p)
+    try {
+      const p = await getProfile()
+      setProfile(p)
+    } catch {
+      /* leave profile as-is — auth must never hang on the profile query */
+    }
   }
 
   useEffect(() => {
@@ -55,26 +61,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return last > 0 && Date.now() - last > IDLE_MS
     }
 
+    // Guarantee the "Loading…" gate always clears. Previously `setLoading(false)`
+    // ran only AFTER `await refreshProfile()`, so a hung/failed profile query (e.g.
+    // the access token refreshing after an idle period) left the app stuck on the
+    // loading screen forever — the bug that forced a manual refresh. We now unblock
+    // the UI the moment the session is known and load the profile in the background,
+    // with a hard safety timeout as a final backstop.
+    let settled = false
+    const finishLoading = () => { if (!settled) { settled = true; setLoading(false) } }
+    const safety = window.setTimeout(finishLoading, 8000)
+
     supabase.auth.getSession().then(async ({ data }) => {
       // Security: if the last activity was over an hour ago, treat the session as
       // expired and sign out on load — reopening a tab after an idle hour requires
       // a fresh login instead of silently restoring the session.
       if (data.session && idleExceeded()) {
         await doSignOut()
-        setLoading(false)
+        finishLoading()
         return
       }
       setSession(data.session)
-      if (data.session) { bumpActivity(); await refreshProfile() }
-      setLoading(false)
-    })
+      finishLoading() // unblock route guards immediately
+      if (data.session) { bumpActivity(); void refreshProfile() } // profile in background
+    }).catch(finishLoading).finally(() => window.clearTimeout(safety))
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
-      if (s) await refreshProfile()
+      finishLoading()
+      if (s) void refreshProfile()
       else setProfile(null)
     })
-    return () => sub.subscription.unsubscribe()
+    return () => { window.clearTimeout(safety); sub.subscription.unsubscribe() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
