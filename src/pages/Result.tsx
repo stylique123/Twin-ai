@@ -76,15 +76,17 @@ export default function Result() {
       <section className="relative border-b border-white/8">
         <Aurora className="opacity-70" />
         <div className="relative mx-auto max-w-3xl px-5 pb-10 pt-12">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <Link to="/history" className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-cream">
               <ArrowLeft className="h-4 w-4" /> History
             </Link>
-            <div className="flex items-center gap-2">
-              <Link to={`/record/${gen.id}`} className="btn-ghost py-2 text-sm">
+            {/* Record is the real next step → primary; bring-your-own-clip is the
+                alternate path → secondary. Stacks full-width on mobile. */}
+            <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-sm">
                 <Video className="h-4 w-4" /> Record with teleprompter
               </Link>
-              <Link to={`/record/${gen.id}?upload=1`} className="btn-gradient py-2 text-sm">
+              <Link to={`/record/${gen.id}?upload=1`} className="btn-ghost py-2 text-sm">
                 <Wand2 className="h-4 w-4" /> Edit my own clip
               </Link>
             </div>
@@ -99,6 +101,13 @@ export default function Result() {
             <h1 className="mt-3 font-display text-4xl leading-tight tracking-tight sm:text-5xl">
               {b.reference_read.format_label}
             </h1>
+            {/* Surface the hook the creator is shooting right in the hero, so they
+                don't have to scroll past 3 sections to see their own choice. */}
+            {chosenHook && (
+              <p className="mt-3 max-w-2xl font-heading text-lg leading-snug text-cream/90">
+                “{chosenHook}”
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="chip"><Sparkles className="h-3.5 w-3.5 text-amber" /> {b.reference_read.platform}</span>
               <span className="chip">fidelity · {gen.fidelity}</span>

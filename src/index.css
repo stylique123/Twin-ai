@@ -163,6 +163,12 @@ body {
     background-position: right center;
     box-shadow: 0 18px 50px -16px rgba(255, 91, 123, 0.6);
   }
+  .btn-gradient:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
   .btn-ghost {
     display: inline-flex;
     align-items: center;
@@ -182,6 +188,11 @@ body {
     background: rgba(255, 255, 255, 0.07);
     border-color: rgba(255, 255, 255, 0.2);
   }
+  .btn-ghost:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+  }
 
   /* --- Inputs ------------------------------------------------------------- */
   .field {
@@ -200,6 +211,11 @@ body {
   }
   .field::placeholder {
     color: #8d8475;
+  }
+  .field:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    background: rgba(255, 255, 255, 0.02);
   }
 
   .chip {
@@ -235,4 +251,26 @@ body {
     -webkit-mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
     mask-image: linear-gradient(90deg, transparent, #000 12%, #000 88%, transparent);
   }
+  /* Respect users who prefer less motion: neutralize transforms/animations. */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+/* App-wide keyboard focus ring — only shows for keyboard nav (not mouse clicks),
+   so it adds accessibility without changing the visual feel for mouse users. */
+a:focus-visible,
+button:focus-visible,
+[role='button']:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible,
+[tabindex]:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #07070a, 0 0 0 4px rgba(255, 179, 71, 0.75);
+  border-radius: 10px;
 }
