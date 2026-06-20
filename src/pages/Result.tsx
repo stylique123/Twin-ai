@@ -292,7 +292,7 @@ function PublishRow({
 
   return (
     <div className="rounded-card border border-white/8 bg-white/[0.02] p-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
         <div className="text-sm font-heading capitalize text-teal">{platform}</div>
         <span className="text-xs text-stone">best time: {bestTime}</span>
       </div>
@@ -313,7 +313,7 @@ function PublishRow({
 function Section({ icon: Icon, title, children }: { icon: React.ComponentType<{ className?: string }>; title: string; children: React.ReactNode }) {
   return (
     <Reveal>
-      <section className="glass p-6">
+      <section className="glass p-5 sm:p-6">
         <div className="flex items-center gap-2.5">
           <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5">
             <Icon className="h-4 w-4 text-amber" />
