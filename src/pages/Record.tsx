@@ -348,7 +348,9 @@ export default function Record() {
       <div className="mt-4 grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
         {/* ---------- camera + teleprompter ---------- */}
         <div className="relative overflow-hidden rounded-panel border border-white/10 bg-black shadow-lift">
-          <div className="relative aspect-[9/16] max-h-[72vh] w-full sm:aspect-video">
+          {/* Always 9:16 — this is a vertical-video tool, and the old sm:aspect-video
+              flipped the phone preview to letterboxed landscape. */}
+          <div className="relative aspect-[9/16] max-h-[78vh] w-full">
             <video
               ref={videoRef}
               playsInline
@@ -412,7 +414,9 @@ export default function Record() {
                 >
                   {/* spacer pushes the first line down to the read guide */}
                   <div style={{ height: '34%' }} />
-                  <div className="space-y-5 text-center" style={{ fontSize: fontPx }}>
+                  {/* Cap the prompter text to the viewport width on phones so the
+                      default 38px doesn't overflow / collide on a 375px screen. */}
+                  <div className="space-y-5 text-center" style={{ fontSize: `min(${fontPx}px, 7.2vw)` }}>
                     {lines.map((l, i) => (
                       <p
                         key={i}
@@ -468,7 +472,7 @@ export default function Record() {
                     key={count}
                     initial={{ scale: 0.4, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
-                    className="font-display text-8xl text-cream"
+                    className="font-display text-7xl text-cream sm:text-8xl"
                   >
                     {count === 0 ? 'GO' : count}
                   </motion.span>
@@ -506,7 +510,7 @@ export default function Record() {
 
           {/* transport bar */}
           {camReady && (
-            <div className="flex items-center justify-center gap-3 border-t border-white/10 bg-ink2/80 p-3">
+            <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-ink2/80 p-3">
               {phase === 'idle' && (
                 <button onClick={startCountdown} className="btn-gradient">
                   <Circle className="h-4 w-4 fill-current" /> Start recording
@@ -662,10 +666,10 @@ function Control({ icon: Icon, label, children }: { icon: React.ComponentType<{ 
 function Stepper({ onMinus, onPlus }: { onMinus: () => void; onPlus: () => void }) {
   return (
     <>
-      <button onClick={onMinus} className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-white/5 hover:border-white/20">
+      <button onClick={onMinus} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/5 hover:border-white/20">
         <Minus className="h-3.5 w-3.5" />
       </button>
-      <button onClick={onPlus} className="grid h-7 w-7 place-items-center rounded-lg border border-white/10 bg-white/5 hover:border-white/20">
+      <button onClick={onPlus} className="grid h-9 w-9 place-items-center rounded-lg border border-white/10 bg-white/5 hover:border-white/20">
         <Plus className="h-3.5 w-3.5" />
       </button>
     </>

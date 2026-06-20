@@ -58,7 +58,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/8 bg-ink/80 px-4 py-3 backdrop-blur-xl lg:hidden">
+        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/8 bg-ink/80 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl lg:hidden">
           <Link to="/app" className="inline-flex items-center gap-2">
             <LogoMark size={26} />
             <span className="font-bold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
