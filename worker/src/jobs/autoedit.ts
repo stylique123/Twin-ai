@@ -1,7 +1,7 @@
 import { rm, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { db, type Job } from '../db.js'
+import { db, updateJobProgress, type Job } from '../db.js'
 import { autoEdit } from '../edit.js'
 import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
@@ -85,6 +85,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       brollText,
       coverText,
       edl: editedEdl,
+      onProgress: (phase, pct, label) => { void updateJobProgress(job.id, { phase, pct, label }) },
     })
     renderFile = outFile
     thumbRender = thumbFile ?? null

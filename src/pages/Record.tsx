@@ -50,6 +50,7 @@ export default function Record() {
   // auto-edit state
   const [editPhase, setEditPhase] = useState<'none' | 'working' | 'done' | 'error'>('none')
   const [editStatus, setEditStatus] = useState('')
+  const [editPct, setEditPct] = useState(0)
   const [editUrl, setEditUrl] = useState<string | null>(null)
   const [editErr, setEditErr] = useState<string | null>(null)
   const takePathRef = useRef<string | null>(null)
@@ -260,18 +261,23 @@ export default function Record() {
 
   // ---- poll a queued edit job to completion ----
   const pollEdit = async (jobId: string) => {
-    setEditStatus('Editing, captions, framing & audio…')
-    for (let i = 0; i < 120; i++) {
-      await new Promise((r) => setTimeout(r, 3000))
+    setEditStatus('Queued…'); setEditPct(8)
+    for (let i = 0; i < 200; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
       const job = await getJob(jobId)
       if (!job) continue
       if (job.status === 'done' && job.result?.output_url) {
+        setEditPct(100)
         setEditUrl(job.result.output_url)
         setEditPhase('done')
         return
       }
       if (job.status === 'failed') throw new Error(job.error || 'The edit could not finish.')
-      setEditStatus(job.status === 'running' ? 'Editing, captions, framing & audio…' : 'Queued…')
+      // Show the REAL stage the worker reports (Reading words → Directing → Cutting
+      // → Rendering → Finishing) so it never looks frozen.
+      const p = job.result?.progress
+      if (p && p.label) { setEditStatus(p.label); setEditPct(Math.max(8, Math.min(99, p.pct))) }
+      else setEditStatus(job.status === 'running' ? 'Editing your video…' : 'Queued…')
     }
     throw new Error('The edit is taking longer than expected, check your Library shortly.')
   }
@@ -281,7 +287,7 @@ export default function Record() {
     if (!takeBlobRef.current || !id) return
     setEditErr(null)
     setEditPhase('working')
-    setEditStatus('Uploading your take…')
+    setEditStatus('Uploading your take…'); setEditPct(3)
     try {
       const { jobId, takePath } = await autoEditTake(id, takeBlobRef.current)
       takePathRef.current = takePath
@@ -297,7 +303,7 @@ export default function Record() {
     if (!takePathRef.current || !id) return
     setEditErr(null)
     setEditPhase('working')
-    setEditStatus('Remaking, a fresh edit…')
+    setEditStatus('Remaking, a fresh edit…'); setEditPct(3)
     const nextVar = variation + 1
     setVariation(nextVar)
     try {
@@ -496,11 +502,19 @@ export default function Record() {
                   </span>
                 )}
                 {editPhase === 'working' && (
-                  <div className="absolute inset-0 grid place-items-center bg-ink/80 text-center">
-                    <div>
+                  <div className="absolute inset-0 grid place-items-center bg-ink/85 px-8 text-center backdrop-blur-sm">
+                    <div className="w-full max-w-xs">
                       <Loader2 className="mx-auto h-7 w-7 animate-spin text-coral" />
-                      <p className="mt-3 font-heading text-cream">{editStatus}</p>
-                      <p className="mt-1 text-xs text-stone">Captions are timed to your words, this takes a minute.</p>
+                      <p className="mt-3 font-heading text-cream">{editStatus || 'Editing your video…'}</p>
+                      {/* Real, moving progress bar so it never looks frozen/broken. */}
+                      <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal transition-all duration-700 ease-out"
+                          style={{ width: `${editPct}%` }}
+                        />
+                      </div>
+                      <p className="mt-2 text-xs font-medium text-stone">{editPct}%</p>
+                      <p className="mt-3 text-[11px] leading-relaxed text-stone/80">Reading your words → directing the edit → cutting → rendering. Usually under a minute.</p>
                     </div>
                   </div>
                 )}

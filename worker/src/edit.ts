@@ -60,6 +60,9 @@ export interface EditOptions {
   // Edit Decision List instead of re-detecting cuts / re-transcribing. This is the
   // bridge that makes the manual Refine panel flow back through this same renderer.
   edl?: EditDecisionList
+  // Live progress callback so the UI can show the REAL stage (never a stale
+  // "Editing…" screen). pct is 0-100; label is human copy.
+  onProgress?: (phase: string, pct: number, label: string) => void
 }
 
 // Wrap text to at most `maxLines` lines of ~`width` chars (word-aware) for the
@@ -392,6 +395,8 @@ async function renderCutSegments(base: string, outFile: string, segments: EdlSeg
 
 export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promise<EditResult> {
   const captions = opts.captions !== false
+  const prog = (phase: string, pct: number, label: string) => { try { opts.onProgress?.(phase, pct, label) } catch { /* progress is best-effort */ } }
+  prog('starting', 5, 'Warming up the editor…')
   const dir = await mkdtemp(join(tmpdir(), 'twinai-edit-'))
   const cut = join(dir, 'cut.mp4')
   const audio = join(dir, 'a.wav')
@@ -429,6 +434,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     // 1. Jump-cuts: remove silence + detected fillers via ffmpeg. Best-effort, and
     //    if there's nothing worth cutting (or it errors), fall back to the
     //    original take so we always produce a render.
+    prog('cutting', 22, edl ? 'Applying your edits…' : 'Tightening the cuts…')
     let jumpCut = false
     let cutSegments: EdlSegment[] = []
     if (edl) {
@@ -460,6 +466,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       words = (edl.captions.words ?? []).filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end))
       durationSec = edl.durationSec ?? 0
     } else if (captions) {
+      prog('transcribing', 42, 'Reading your words…')
       await run('ffmpeg', ['-y', '-i', base, '-vn', '-ac', '1', '-ar', '16000', audio], 120_000)
       await run(
         'python3',
@@ -485,6 +492,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     // On re-render we reuse the plan the creator already has in their EDL.
     let plan: EditPlan | null = edl?.plan ?? null
     if (!plan && !edl && words.length && env.geminiKey) {
+      prog('directing', 58, 'Directing the edit…')
       plan = await planEdit(
         { language: trLanguage, duration_sec: durationSec, text: words.map((w) => w.w).join(' '), words, segments: trSegments },
         opts.brollText ?? '',
@@ -607,6 +615,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       '-map', '[v]', '-map', '[a]', ...enc]
     // Fallback render that can never fail on a complex filtergraph.
     const plain = ['-y', '-i', base, '-vf', `${fill}${subs}`, '-af', `${DN}${LN}`, ...enc]
+    prog('rendering', 80, 'Rendering your video…')
     try {
       await run('ffmpeg', fullArgs, Math.max(240_000, env.maxMediaSecs * 2000), dir)
     } catch {
@@ -620,6 +629,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     // Cover thumbnail: a strong frame from the finished render + the hook overlaid
     // in brand style. Best-effort: failure (or no coverText) just means no cover.
     let thumbFile: string | null = null
+    prog('finishing', 94, 'Adding the cover…')
     if (opts.coverText && opts.coverText.trim()) {
       try {
         const cover = wrapText(opts.coverText, 18, 3)

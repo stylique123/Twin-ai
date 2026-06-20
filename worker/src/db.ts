@@ -33,6 +33,13 @@ export async function completeJob(id: string, result: unknown): Promise<void> {
   if (error) throw error
 }
 
+// Best-effort live progress: write the current stage into the job's result while
+// it's still running, so the UI can show a real, moving status instead of a stale
+// "Editing…" screen. complete_job overwrites this with the final result.
+export async function updateJobProgress(id: string, progress: { phase: string; pct: number; label: string }): Promise<void> {
+  try { await db.from('jobs').update({ result: { progress } }).eq('id', id) } catch { /* never block the render on a progress write */ }
+}
+
 export async function failJob(id: string, message: string, backoffSecs = 30): Promise<void> {
   const { error } = await db.rpc('fail_job', { p_id: id, p_error: message.slice(0, 500), p_backoff_secs: backoffSecs })
   if (error) throw error

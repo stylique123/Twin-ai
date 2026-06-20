@@ -64,7 +64,15 @@ export interface IngestJob {
   id: string
   status: 'queued' | 'running' | 'done' | 'failed'
   result:
-    | { transcript_id?: string; output_url?: string; output_path?: string; duration_sec?: number; words?: number }
+    | {
+        transcript_id?: string
+        output_url?: string
+        output_path?: string
+        duration_sec?: number
+        words?: number
+        // Live progress while the job is still running (worker updates this).
+        progress?: { phase: string; pct: number; label: string }
+      }
     | null
   error: string | null
 }
