@@ -109,20 +109,19 @@ Deno.serve(async (req: Request) => {
     if (status === 'RUNNING') return json({ status: 'building' })
     if (status !== 'SUCCEEDED') return await fail('The scan could not finish. Try again or set up manually.')
 
-    // Scrape done. A PRIVATE Instagram account can't be read, and Apify returns
-    // OTHER profiles' posts (related/tagged) instead — refuse rather than build a
-    // voice from content that isn't theirs. (The actor stamps the queried profile's
-    // `private` flag on every item.)
+    // Scrape done. A PRIVATE account can't be read; the actor returns OTHER
+    // profiles' posts (Instagram) or none — refuse rather than build a voice from
+    // content that isn't theirs. IG stamps `private`, TikTok `authorMeta.privateAccount`.
     const allItems = items ?? []
-    if (voice.platform === 'instagram' && isPrivateProfile(allItems)) {
+    if (isPrivateProfile(allItems)) {
       return await fail(
         `@${voice.handle} is private, so we can't read its posts — and we won't build a voice from ` +
           `anyone else's. Make it public for a moment, pick a public account, or set up your voice manually.`,
       )
     }
-    // Backstop: only ever synthesize from posts the requested handle actually OWNS,
-    // so related/tagged profiles can never leak into the voice.
-    const ownItems = voice.platform === 'instagram' ? postsOwnedBy(allItems, voice.handle) : allItems
+    // Backstop on every platform: only ever synthesize from posts the requested
+    // handle actually OWNS, so related/tagged profiles can never leak into the voice.
+    const ownItems = postsOwnedBy(allItems, voice.handle)
 
     // If nothing readable remains, the account is private, empty, or mistyped. Do
     // NOT fabricate a voice from nothing — fail honestly instead.

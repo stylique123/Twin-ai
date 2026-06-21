@@ -226,20 +226,26 @@ export function extractProfileBio(items: Record<string, unknown>[]): string {
 }
 
 // --- Privacy / ownership guards --------------------------------------------
-// Owner handle of a scraped item, normalized for comparison (Instagram stamps
-// `ownerUsername`; other actors use author/username fields).
+// Owner handle of a scraped item, normalized for comparison. IG: ownerUsername ·
+// TikTok: authorMeta.name · YouTube: channelUsername.
 function ownerOf(it: Record<string, unknown>): string {
-  return pick(it, ['ownerUsername', 'authorMeta.uniqueId', 'authorUsername', 'username'])
+  return pick(it, ['ownerUsername', 'authorMeta.name', 'channelUsername', 'authorMeta.uniqueId', 'authorUsername', 'username'])
     .toLowerCase()
     .replace(/^@/, '')
 }
 
-// A PRIVATE Instagram account can't be read, and Apify returns RELATED/tagged
-// profiles' posts instead of the creator's — so we must never synthesize a voice
-// from them (the "private account → made-up brand identity" bug). The actor stamps
-// the QUERIED profile's `private` flag onto every item it returns.
+// A PRIVATE account can't be read, and the actor returns RELATED/tagged profiles'
+// posts (Instagram) or none — so we must never synthesize a voice from someone
+// else's content (the "private account → made-up brand identity" bug). IG stamps
+// `private`; TikTok stamps `authorMeta.privateAccount`. (YouTube has no private-
+// account concept — a private/missing channel simply returns no items.)
 export function isPrivateProfile(items: Record<string, unknown>[]): boolean {
-  return (items ?? []).some((it) => get(it, 'private') === true || get(it, 'isPrivate') === true)
+  return (items ?? []).some(
+    (it) =>
+      get(it, 'private') === true ||
+      get(it, 'isPrivate') === true ||
+      get(it, 'authorMeta.privateAccount') === true,
+  )
 }
 
 // Keep only posts actually OWNED by the requested handle. Items the actor didn't
