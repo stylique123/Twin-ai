@@ -189,7 +189,12 @@ export function extractPosts(items: Record<string, unknown>[]): PostSample[] {
 export function extractVideoUrls(items: Record<string, unknown>[], max = 5): string[] {
   const refs = (items ?? [])
     .map((it) => ({
-      url: pick(it, ['webVideoUrl', 'videoUrl', 'url', 'postUrl', 'video.url']),
+      // Prefer the POST PERMALINK over the raw CDN media URL. Instagram's
+      // scontent CDN links are IP-bound to the scraper and 403 from the worker,
+      // so the audio upgrade must transcribe via the permalink (TikTok→yt-dlp,
+      // YouTube→captions, Instagram→Apify reel transcript). videoUrl stays last
+      // as a fallback for any item that only exposes a direct media URL.
+      url: pick(it, ['webVideoUrl', 'url', 'postUrl', 'video.url', 'videoUrl']),
       reach: pickNum(it, ['playCount', 'videoViewCount', 'viewCount', 'views', 'diggCount', 'likesCount', 'stats.playCount']),
     }))
     .filter((r) => /^https:\/\//i.test(r.url))
