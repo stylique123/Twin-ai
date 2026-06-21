@@ -108,11 +108,13 @@ export default function Gallery() {
   const navigate = useNavigate()
   const { profile } = useAuth()
   const [voiceNiche, setVoiceNiche] = useState('')
+  const [voiceSubNiche, setVoiceSubNiche] = useState('')
   // The creator's real niche lives in their default BRAND VOICE (the handle scan),
   // not the onboarding quiz. Handle-based users have an empty profile.dna, which is
   // why the gallery was stuck on "All" and showed unrelated niches. Prefer the voice
   // niche; fall back to the quiz dna for older quiz-only users.
   const userNiche = (voiceNiche || profile?.dna?.niche || '').trim()
+  const userSubNiche = voiceSubNiche.trim()
   const [niche, setNiche] = useState<string>('All')
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<'top' | 'all'>('top')
@@ -130,6 +132,7 @@ export default function Gallery() {
       .then((vs) => {
         const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready')
         if (def?.profile?.niche) setVoiceNiche(def.profile.niche)
+        if (def?.profile?.sub_niche) setVoiceSubNiche(def.profile.sub_niche)
       })
       .catch(() => {})
   }, [])
@@ -143,17 +146,28 @@ export default function Gallery() {
   )
   // The creator's own niche, resolved to a canonical chip (front-loaded + default).
   const myNiche = useMemo(() => resolveNiche(userNiche, knownNiches), [userNiche, knownNiches])
-  // Ordered chips: the creator's OWN niche first, then All, then everything else.
+  // The creator's SPECIFIC sub-niche, surfaced ABOVE the broad niche when it exists
+  // and resolves to its own distinct chip.
+  const mySubNiche = useMemo(() => {
+    const s = resolveNiche(userSubNiche, knownNiches)
+    return s && s !== myNiche ? s : ''
+  }, [userSubNiche, knownNiches, myNiche])
+  const isMine = (n: string) => n === mySubNiche || n === myNiche
+  // Ordered chips: the creator's sub-niche first (most specific), then their broad
+  // niche, then All, then everything else discovery has surfaced.
   const nicheChips = useMemo(() => {
-    const rest = knownNiches.filter((n) => n !== myNiche).sort()
-    return [...(myNiche ? [myNiche] : []), 'All', ...rest]
-  }, [knownNiches, myNiche])
+    const mine = [mySubNiche, myNiche].filter(Boolean)
+    const rest = knownNiches.filter((n) => !mine.includes(n)).sort()
+    return [...mine, 'All', ...rest]
+  }, [knownNiches, myNiche, mySubNiche])
 
-  // Open on the creator's own niche (not "All") until they touch the filter.
+  // Open on the creator's sub-niche (most specific), else their niche, until they
+  // touch the filter.
   useEffect(() => {
-    if (touched.current || !myNiche) return
-    setNiche(myNiche)
-  }, [myNiche])
+    const open = mySubNiche || myNiche
+    if (touched.current || !open) return
+    setNiche(open)
+  }, [mySubNiche, myNiche])
 
   // Posters for every card (featured + freshly discovered). YouTube thumbnails are
   // derivable straight from the video id; TikTok needs an oembed round-trip. Instagram
@@ -189,15 +203,17 @@ export default function Gallery() {
     // The creator's own chip is a personalized "for you" feed, not a hard filter:
     // their niche's videos first, then RELATED niches, then everything else. A
     // specific bucket chip hard-filters; "All" is a neutral browse.
-    const isForYou = !!myNiche && niche === myNiche
+    const isForYou = (!!mySubNiche && niche === mySubNiche) || (!!myNiche && niche === myNiche)
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
     if (isForYou) {
+      // Sub-niche first (most specific), then the broad niche, then related, then rest.
       const related = RELATED_NICHE[myNiche] ?? []
-      const rank = (c: Card) => (c.niche === myNiche ? 0 : related.includes(c.niche) ? 1 : 2)
+      const rank = (c: Card) =>
+        c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
       return [...out].sort((a, b) => rank(a) - rank(b) || byReach(a, b))
     }
     return sort === 'top' ? [...out].sort(byReach) : out
-  }, [all, myNiche, niche, q, sort])
+  }, [all, myNiche, mySubNiche, niche, q, sort])
 
   // Deep-link into the Studio with the reference prefilled. Studio reads `ref`
   // from the query string, so pass it there (a `state` payload was silently
@@ -224,8 +240,8 @@ export default function Gallery() {
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap gap-2">
               {nicheChips.map((n) => (
-                <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream', n === myNiche && niche !== n && 'border-teal/40 text-cream')}>
-                  {n}{n === myNiche ? ' ✦' : ''}
+                <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream', isMine(n) && niche !== n && 'border-teal/40 text-cream')}>
+                  {n}{isMine(n) ? ' ✦' : ''}
                 </button>
               ))}
             </div>

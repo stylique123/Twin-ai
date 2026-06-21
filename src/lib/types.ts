@@ -28,6 +28,7 @@ export interface Profile {
 export interface VoiceProfile {
   summary: string
   niche: string
+  sub_niche?: string
   tone: string
   pacing: string
   hook_style: string
