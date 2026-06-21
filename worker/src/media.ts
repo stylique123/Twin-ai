@@ -95,6 +95,21 @@ function wordsFromSegments(segments: { start: number; end: number; text: string 
   return words
 }
 
+// FREE YouTube transcript via youtube-transcript-api (a Python helper). YouTube
+// does not block our datacenter IP (verified), so we try this first and only pay
+// for the Apify Actor if it fails. ~1s and $0 vs ~25s and paid. The helper exits
+// non-zero on any problem (no captions, transient block) so the caller falls back.
+async function youtubeTranscriptFree(rawUrl: string): Promise<Transcript> {
+  const { stdout } = await run(
+    'python3',
+    [join(import.meta.dirname, '..', 'youtube_transcript.py'), rawUrl],
+    30_000,
+  )
+  const t = JSON.parse(stdout) as Transcript
+  if (!t.text || !t.text.trim()) throw new Error('empty transcript')
+  return t
+}
+
 // Run an Apify transcript Actor synchronously and read its captions, mapping
 // them into our Transcript shape. Throws a clear, user-facing message on failure
 // (no token configured, or no captions on the video) so the UI can show why.
@@ -232,7 +247,15 @@ async function instagramTranscriptViaApify(rawUrl: string): Promise<Transcript> 
 // above) because both bot-block yt-dlp from datacenter IPs.
 export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
   const u = assertAllowedUrl(rawUrl)
-  if (isYouTube(u)) return youtubeTranscriptViaApify(rawUrl)
+  if (isYouTube(u)) {
+    // Free first (YouTube doesn't block us), Apify only as a paid fallback.
+    try {
+      return await youtubeTranscriptFree(rawUrl)
+    } catch (e) {
+      console.error('free YT transcript failed, falling back to Apify:', e instanceof Error ? e.message : e)
+      return youtubeTranscriptViaApify(rawUrl)
+    }
+  }
   if (isInstagram(u)) return instagramTranscriptViaApify(rawUrl)
   if (isDirectMedia(u)) return transcribeDirectMedia(rawUrl) // scraped IG/FB CDN mp4 → free local whisper
   const dir = await mkdtemp(join(tmpdir(), 'twinai-'))

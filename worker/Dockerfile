@@ -24,7 +24,7 @@ RUN fc-cache -f
 # yt-dlp + faster-whisper. Jump-cuts are done with ffmpeg's own silencedetect
 # (no heavy auto-editor dep / glibc requirements). (PEP 668: allow system pip.)
 RUN pip3 install --no-cache-dir --break-system-packages \
-      "yt-dlp>=2025.1.15" "faster-whisper>=1.0.3"
+      "yt-dlp>=2025.1.15" "faster-whisper>=1.0.3" "youtube-transcript-api>=0.6.2"
 
 WORKDIR /app
 
@@ -36,6 +36,7 @@ RUN npm install --omit=dev=false
 COPY tsconfig.json ./
 COPY src ./src
 COPY whisper_transcribe.py ./whisper_transcribe.py
+COPY youtube_transcript.py ./youtube_transcript.py
 RUN npm run build
 
 # Pre-download the ASR models at build time so no job ever pays a download.
