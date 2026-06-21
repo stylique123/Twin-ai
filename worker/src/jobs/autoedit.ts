@@ -110,13 +110,6 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       }
     }
 
-    if (payload.generation_id) {
-      await db.from('generations').update({ edit_path: outputPath }).eq('id', payload.generation_id).then(
-        () => {},
-        () => {},
-      )
-    }
-
     // Persist the Edit Decision List next to the render so the manual editor can
     // load it. Best-effort: a failed EDL upload never fails the render itself.
     let edlPath: string | null = null
@@ -127,6 +120,15 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       await uploadObject('edits', edlPath, edlLocal, 'application/json')
     } catch {
       edlPath = null
+    }
+
+    // Record the render + the take + the EDL on the generation so Refine can be
+    // opened later from the Result/Library for THIS video (not just post-record).
+    if (payload.generation_id) {
+      await db.from('generations')
+        .update({ edit_path: outputPath, take_path: takePath, edl_path: edlPath })
+        .eq('id', payload.generation_id)
+        .then(() => {}, () => {})
     }
 
     return { output_path: outputPath, output_url: url, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl, edl_path: edlPath }

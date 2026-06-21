@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
   Captions, ListChecks, Wand2, Timer, Send, Loader2, Video, ExternalLink,
+  SlidersHorizontal, Play,
 } from 'lucide-react'
 
 // Phase-0 guided publishing: deep-link straight into each platform's uploader.
@@ -13,9 +14,10 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice } from '../lib/api'
-import type { Generation } from '../lib/types'
+import { getGeneration, markPosted, updateGenerationChoice, fetchEdl, getJob } from '../lib/api'
+import type { Generation, EditDecisionList } from '../lib/types'
 import { Aurora } from '../components/Aurora'
+import { RefinePanel } from '../components/RefinePanel'
 import { Reveal, EASE } from '../components/motion'
 import { cn } from '../lib/cn'
 
@@ -24,6 +26,36 @@ export default function Result() {
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
   const [chosenHook, setChosenHook] = useState('')
+  // Refine-from-Result: re-edit a finished video right from its blueprint page.
+  const [refineOpen, setRefineOpen] = useState(false)
+  const [refineEdl, setRefineEdl] = useState<EditDecisionList | null>(null)
+  const [refineLoading, setRefineLoading] = useState(false)
+  const [refineStatus, setRefineStatus] = useState('')
+  const [refineUrl, setRefineUrl] = useState<string | null>(null)
+
+  const openRefine = async () => {
+    setRefineOpen(true); setRefineUrl(null)
+    if (!gen?.edl_path) { setRefineEdl(null); return }
+    setRefineLoading(true)
+    try { setRefineEdl(await fetchEdl(gen.edl_path)) } catch { setRefineEdl(null) } finally { setRefineLoading(false) }
+  }
+  const onRefineApplied = async (jobId: string) => {
+    setRefineStatus('Re-rendering your edit…')
+    for (let i = 0; i < 200; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      const job = await getJob(jobId)
+      if (!job) continue
+      if (job.status === 'done' && job.result?.output_url) {
+        setRefineStatus(''); setRefineUrl(job.result.output_url)
+        getGeneration(id!).then((g) => g && setGen(g)).catch(() => {})
+        return
+      }
+      if (job.status === 'failed') { setRefineStatus('Refine failed — try again.'); return }
+      const p = job.result?.progress
+      if (p?.label) setRefineStatus(p.label)
+    }
+    setRefineStatus('Still rendering — check your Library shortly.')
+  }
 
   useEffect(() => {
     if (!id) return
@@ -91,6 +123,13 @@ export default function Result() {
             {/* Record is the real next step → primary; bring-your-own-clip is the
                 alternate path → secondary. Stacks full-width on mobile. */}
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+              {/* If this blueprint already has a finished edit, let them re-edit it
+                  here (caption style/color, cuts, b-roll) without re-recording. */}
+              {gen.edit_path && gen.take_path && (
+                <button onClick={openRefine} className="btn-ghost py-2 text-sm">
+                  <SlidersHorizontal className="h-4 w-4" /> Refine edit
+                </button>
+              )}
               <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-sm">
                 <Video className="h-4 w-4" /> Record with teleprompter
               </Link>
@@ -254,6 +293,34 @@ export default function Result() {
           </p>
         </Section>
       </div>
+
+      {/* Refine re-render status / watch-the-update banner */}
+      {(refineStatus || refineUrl) && (
+        <div className="fixed inset-x-0 bottom-4 z-40 mx-auto flex max-w-md items-center gap-3 rounded-card border border-white/10 bg-ink2/95 px-4 py-3 shadow-lift backdrop-blur-xl">
+          {refineUrl ? (
+            <>
+              <Check className="h-5 w-5 shrink-0 text-teal" />
+              <span className="flex-1 text-sm text-cream">Your refined video is ready.</span>
+              <a href={refineUrl} target="_blank" rel="noopener noreferrer" className="btn-gradient py-1.5 text-xs"><Play className="h-3.5 w-3.5 fill-current" /> Watch</a>
+            </>
+          ) : (
+            <>
+              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-coral" />
+              <span className="flex-1 text-sm text-sand">{refineStatus}</span>
+            </>
+          )}
+        </div>
+      )}
+
+      <RefinePanel
+        open={refineOpen}
+        edl={refineEdl}
+        loading={refineLoading}
+        generationId={gen.id}
+        takePath={gen.take_path ?? null}
+        onClose={() => setRefineOpen(false)}
+        onApplied={onRefineApplied}
+      />
     </main>
   )
 }
