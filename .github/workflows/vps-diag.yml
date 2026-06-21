@@ -7,7 +7,7 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: SSH worker log grab
+      - name: SSH revideo health
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
@@ -15,9 +15,10 @@ jobs:
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" 'bash -s' <<'REMOTE'
             set +e
-            echo "== worker logs for job 1dd5b997 / premium =="
-            docker logs twinai-worker 2>&1 | grep -E "1dd5b997|premium pass|revideo" | tail -30
-            echo "== can revideo container reach the internet (supabase)? =="
-            docker exec twinai-revideo node -e "fetch('https://jmdecibuytznsonrasxw.supabase.co/functions/v1/').then(r=>console.log('supabase reachable status',r.status)).catch(e=>console.log('NO INTERNET:',e.message))"
+            echo "== host RAM / CPU =="; free -m | head -2; echo "cores: $(nproc)"
+            echo "== revideo state (restarts / OOM) =="
+            docker inspect twinai-revideo --format 'restarts={{.RestartCount}} status={{.State.Status}} oom={{.State.OOMKilled}} mem_limit={{.HostConfig.Memory}} workers_env={{range .Config.Env}}{{println .}}{{end}}' | grep -E "restarts|REVIDEO_WORKERS|PORT" 
+            echo "== revideo logs since edit (03:57-03:59) =="
+            docker logs twinai-revideo --since 12m 2>&1 | tail -40
             echo "== done =="
           REMOTE
