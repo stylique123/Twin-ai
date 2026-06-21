@@ -259,9 +259,11 @@ const SYSTEM = `You are TwinAI's Brand-DNA engine. From a creator's recent posts
 
 Hard rules:
 - Describe their voice; never copy a specific post's content. Capture STRUCTURE and STYLE: tone, pacing, hook shape, signature vocabulary, recurring CTAs.
+- LEARN FROM THEIR WINNERS. The posts are ranked by reach, best first; the ones marked [TOP PERFORMER] are their biggest hits. Weight those hardest. What a creator's TOP posts do (the angle, the hook move, the emotional register) is what actually works for THEIR audience. Average posts dilute the signal, so let the winners lead.
+- hook_style must be their repeatable HOOK FORMULA written as a reusable fill-in template derived from their best openers, e.g. "[surprising number] + [who it is for] + comment [KEYWORD]" or "I did [X] so you do not have to. Here is what happened." Not adjectives, an actual template someone could fill in.
 - Also infer their AUDIENCE (who they make content for), that audience's core PAIN (the problem they feel), their DREAM OUTCOME (what they actually want), and the creator's OFFER (what they sell or the action they push). Infer these from the posts, bio, hashtags and niche even when not stated outright. Be specific, not generic.
-- Be concrete and specific to this creator — no generic "be authentic" filler.
-- vocabulary = 4-8 actual words/phrases they lean on. sample_hooks = 3 fresh hooks written the way THEY would write one.
+- Be concrete and specific to this creator — no generic "be authentic" filler. Every field should be unmistakably about THIS creator and useless for anyone else.
+- vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each one clearly using their hook formula and vocabulary.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
 - If the sample is thin, infer sensibly from what's there rather than refusing.`
 
@@ -275,12 +277,17 @@ export async function synthesizeVoice(
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
   const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
 
-  const corpus = posts
-    .slice(0, 25)
+  // Rank by reach so the model studies their WINNERS first. The patterns in a
+  // creator's top posts are what actually works for THEIR audience; average posts
+  // dilute the signal. Mark the top tier explicitly so the synthesis weights them.
+  const ranked = [...posts].sort((a, b) => (b.plays || b.likes) - (a.plays || a.likes)).slice(0, 25)
+  const corpus = ranked
     .map((p, i) => {
-      const reach = p.plays || p.likes ? ` (${p.plays || p.likes} views/likes)` : ''
+      const r = p.plays || p.likes
+      const reach = r ? ` (${r.toLocaleString()} views/likes)` : ''
       const tags = p.hashtags.length ? ` [#${p.hashtags.join(' #')}]` : ''
-      return `${i + 1}.${reach} ${p.text}${tags}`
+      const tier = i < 5 && r ? ' [TOP PERFORMER]' : ''
+      return `${i + 1}.${tier}${reach} ${p.text}${tags}`
     })
     .join('\n')
 
