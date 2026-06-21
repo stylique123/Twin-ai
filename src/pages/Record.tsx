@@ -53,6 +53,9 @@ export default function Record() {
   const [editPhase, setEditPhase] = useState<'none' | 'working' | 'done' | 'error'>('none')
   const [editStatus, setEditStatus] = useState('')
   const [editPct, setEditPct] = useState(0)
+  // The ffmpeg edit is the INSTANT result; while Revideo upgrades it to premium
+  // captions, we show the instant render playing with a subtle "Polishing" badge.
+  const [polishing, setPolishing] = useState(false)
   const [edlPath, setEdlPath] = useState<string | null>(null)
   const [refineOpen, setRefineOpen] = useState(false)
   const [refineEdl, setRefineEdl] = useState<EditDecisionList | null>(null)
@@ -267,7 +270,7 @@ export default function Record() {
 
   // ---- poll a queued edit job to completion ----
   const pollEdit = async (jobId: string) => {
-    setEditStatus('Queued…'); setEditPct(8)
+    setEditStatus('Queued…'); setEditPct(8); setPolishing(false)
     for (let i = 0; i < 200; i++) {
       await new Promise((r) => setTimeout(r, 2000))
       const job = await getJob(jobId)
@@ -276,6 +279,7 @@ export default function Record() {
         setEditPct(100)
         setEditUrl(job.result.output_url)
         setEdlPath(job.result.edl_path ?? null)
+        setPolishing(false)
         setEditPhase('done')
         return
       }
@@ -285,6 +289,9 @@ export default function Record() {
       const p = job.result?.progress
       if (p && p.label) { setEditStatus(p.label); setEditPct(Math.max(8, Math.min(99, p.pct))) }
       else setEditStatus(job.status === 'running' ? 'Editing your video…' : 'Queued…')
+      // One flow: the moment the instant ffmpeg edit is ready, play it while the
+      // premium captions render in the background — never make the creator wait.
+      if (p?.instant_url) { setEditUrl(p.instant_url); setPolishing(true) }
     }
     throw new Error('The edit is taking longer than expected, check your Library shortly.')
   }
@@ -526,12 +533,18 @@ export default function Record() {
                   playsInline
                   className="h-full w-full object-contain"
                 />
-                {editUrl && (
+                {editUrl && !polishing && (
                   <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-teal/90 px-2.5 py-1 text-xs font-bold text-ink">
                     <Check className="h-3.5 w-3.5" /> Auto-edited
                   </span>
                 )}
-                {editPhase === 'working' && (
+                {/* Premium pass: instant edit is playable, premium captions polishing. */}
+                {polishing && (
+                  <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-coral/90 px-2.5 py-1 text-xs font-bold text-cream">
+                    <Sparkles className="h-3.5 w-3.5 animate-pulse" /> Polishing premium captions…
+                  </span>
+                )}
+                {editPhase === 'working' && !polishing && (
                   <div className="absolute inset-0 grid place-items-center bg-ink/85 px-8 text-center backdrop-blur-sm">
                     <div className="w-full max-w-xs">
                       <Loader2 className="mx-auto h-7 w-7 animate-spin text-coral" />

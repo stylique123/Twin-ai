@@ -48,6 +48,9 @@ export interface EditResult {
   broll: boolean
   thumbFile?: string | null // generated cover image, when coverText is provided
   edl: EditDecisionList // structured record of every edit decision (for the manual editor)
+  // Caption-free, graded base clip (cut + grade + audio) for the Revideo premium
+  // pass to draw its animated captions over. Only when opts.produceRevideoBase.
+  baseRevideoFile?: string | null
 }
 
 export interface EditOptions {
@@ -60,6 +63,9 @@ export interface EditOptions {
   // Edit Decision List instead of re-detecting cuts / re-transcribing. This is the
   // bridge that makes the manual Refine panel flow back through this same renderer.
   edl?: EditDecisionList
+  // Also emit a caption-free graded base clip (the Revideo premium pass draws its
+  // captions over it). Set by the job handler when a Revideo service is configured.
+  produceRevideoBase?: boolean
   // Live progress callback so the UI can show the REAL stage (never a stale
   // "Editing…" screen). pct is 0-100; label is human copy.
   onProgress?: (phase: string, pct: number, label: string) => void
@@ -661,6 +667,22 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     const keep = join(tmpdir(), `twinai-render-${Date.now()}.mp4`)
     await writeFile(keep, finalBuf)
 
+    // Caption-free graded base for the Revideo premium pass: same cut + grade +
+    // audio as the instant render, MINUS captions/emoji (Revideo draws its own
+    // premium animated captions). Best-effort — if it fails, the premium pass just
+    // doesn't run and the ffmpeg result stands.
+    let baseRevideoFile: string | null = null
+    if (opts.produceRevideoBase && words.length) {
+      try {
+        const br = join(tmpdir(), `twinai-base-${Date.now()}.mp4`)
+        // GRADE is part of `fill`; -c:a aac re-muxes the (possibly bed-mixed) audio.
+        await run('ffmpeg', ['-y', '-i', base, '-vf', fill, '-c:v', 'libx264', '-preset', 'veryfast',
+          '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', br],
+          Math.max(180_000, env.maxMediaSecs * 1500), dir)
+        if ((await fileSize(br)) > 1024) baseRevideoFile = br
+      } catch { baseRevideoFile = null }
+    }
+
     // Cover thumbnail: a strong frame from the finished render + the hook overlaid
     // in brand style. Best-effort: failure (or no coverText) just means no cover.
     let thumbFile: string | null = null
@@ -726,7 +748,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       captionStyle,
     })
 
-    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile, edl: outEdl }
+    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile, edl: outEdl, baseRevideoFile }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }

@@ -72,7 +72,7 @@ export interface IngestJob {
         words?: number
         edl_path?: string // path to the EDL JSON in the edits bucket (for Refine)
         // Live progress while the job is still running (worker updates this).
-        progress?: { phase: string; pct: number; label: string }
+        progress?: { phase: string; pct: number; label: string; instant_url?: string }
       }
     | null
   error: string | null

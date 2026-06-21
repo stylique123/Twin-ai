@@ -2,6 +2,7 @@ import { rm, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { db, updateJobProgress, type Job } from '../db.js'
+import { env } from '../env.js'
 import { autoEdit } from '../edit.js'
 import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
@@ -78,13 +79,14 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // Manual re-render: when the Refine panel sends an edited EDL, render straight
     // from it (no re-detect / re-transcribe) so the creator's tweaks are applied.
     const editedEdl = (payload.edl ?? undefined) as EditDecisionList | undefined
-    const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl } = await autoEdit(localTake, {
+    const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl, baseRevideoFile } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
       variation,
       brollText,
       coverText,
       edl: editedEdl,
+      produceRevideoBase: !!env.revideoUrl,
       onProgress: (phase, pct, label) => { void updateJobProgress(job.id, { phase, pct, label }) },
     })
     renderFile = outFile
@@ -131,7 +133,38 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
         .then(() => {}, () => {})
     }
 
-    return { output_path: outputPath, output_url: url, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl, edl_path: edlPath }
+    // ---- Premium pass (one flow): the ffmpeg result above is the INSTANT result,
+    // already saved. Now draw premium animated captions over the graded base via the
+    // Revideo service and upgrade the edit IN PLACE. Best-effort — on any failure the
+    // ffmpeg result stands (instant always wins, premium is the finisher).
+    let finalUrl = url
+    if (env.revideoUrl && baseRevideoFile) {
+      // Surface the instant result so the UI can play it while premium renders.
+      void updateJobProgress(job.id, { phase: 'premium', pct: 88, label: 'Polishing premium captions…', instant_url: url })
+      try {
+        const basePath = `${job.owner_id}/${job.id}-base.mp4`
+        await uploadObject('edits', basePath, baseRevideoFile, 'video/mp4')
+        const baseUrl = await signObject('edits', basePath, 60 * 30)
+        const r = await fetch(`${env.revideoUrl}/render`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ baseClipUrl: baseUrl, edl }),
+        })
+        if (!r.ok) throw new Error(`revideo ${r.status}: ${(await r.text()).slice(0, 200)}`)
+        const premiumBuf = Buffer.from(await r.arrayBuffer())
+        if (premiumBuf.byteLength < 2048) throw new Error('premium render too small')
+        const premiumLocal = join(dir, 'premium.mp4')
+        await writeFile(premiumLocal, premiumBuf)
+        // Overwrite the same edit path → the result is upgraded in place to premium.
+        await uploadObject('edits', outputPath, premiumLocal, 'video/mp4')
+        finalUrl = await signObject('edits', outputPath, 60 * 60 * 24 * 7)
+        console.log(`[autoedit ${job.id}] premium pass OK (${premiumBuf.byteLength} bytes)`)
+      } catch (e) {
+        console.error(`[autoedit ${job.id}] premium pass failed, keeping ffmpeg result:`, e)
+      }
+    }
+
+    return { output_path: outputPath, output_url: finalUrl, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl, edl_path: edlPath }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
     if (renderFile) await rm(renderFile, { force: true }).catch(() => {})
