@@ -41,8 +41,11 @@ jobs:
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" 'bash -se' <<'REMOTE'
             set -euo pipefail
             cd /opt/twinai-worker-src
+            # Reset to the JUST-FETCHED main (FETCH_HEAD), not the remote-tracking
+            # ref origin/main — the repo's fetch refspec doesn't update origin/main,
+            # so `reset --hard origin/main` could land on a stale commit.
             git fetch origin main
-            git reset --hard origin/main
+            git reset --hard FETCH_HEAD
             docker build -t twinai-worker worker/
             docker rm -f twinai-worker 2>/dev/null || true
             docker run -d --name twinai-worker --restart unless-stopped \
