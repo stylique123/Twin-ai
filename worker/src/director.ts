@@ -56,7 +56,9 @@ ${timed}
 Direct the edit.`
 
   try {
-    const plan = (await geminiJson(SYSTEM, prompt, schema, 50_000)) as EditPlan
+    // Low thinking budget: this is the hot edit path and a low-stakes planning
+    // call — speed matters far more than deep reasoning here.
+    const plan = (await geminiJson(SYSTEM, prompt, schema, 40_000, 512)) as EditPlan
     // Sanitize: keep only well-formed, in-range entries.
     const dur = t.duration_sec || 1e9
     const inRange = (s: number) => Number.isFinite(s) && s >= 0 && s <= dur + 1

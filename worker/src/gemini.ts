@@ -14,9 +14,14 @@ export async function geminiJson(
   prompt: string,
   schema: unknown,
   timeoutMs = 60_000,
+  thinkingBudget?: number,
 ): Promise<unknown> {
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
   const model = process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview'
+  // SPEED: cap the thinking model's reasoning. Unbounded thinking is the biggest
+  // latency sink — these are schema-constrained JSON tasks that don't need deep
+  // reasoning. Per-call budget wins; else env GEMINI_THINKING_BUDGET; else 2048.
+  const budget = thinkingBudget ?? Number(process.env.GEMINI_THINKING_BUDGET ?? '2048')
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
@@ -30,12 +35,11 @@ export async function geminiJson(
           systemInstruction: { parts: [{ text: system }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
-            // Thinking model: budget covers reasoning + the JSON output. Longer
-            // transcripts grow the reasoning spend, so keep generous headroom.
             temperature: 0.4,
             maxOutputTokens: 16384,
             responseMimeType: 'application/json',
             responseSchema: schema,
+            ...(budget >= 0 ? { thinkingConfig: { thinkingBudget: budget } } : {}),
           },
         }),
       },

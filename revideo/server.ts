@@ -13,7 +13,7 @@ const PORT = Number(process.env.PORT ?? 4500)
 // Parallel render workers — each is a Chromium+Vite instance rendering a slice of
 // the frames, then they're concatenated. ~near-linear speedup. Default 3 (the VPS
 // has 4 cores; leave one for the OS + other containers). ~1-1.5GB RAM per worker.
-const WORKERS = Number(process.env.REVIDEO_WORKERS ?? 3)
+const WORKERS = Number(process.env.REVIDEO_WORKERS ?? 4)
 const WORK = '/app/work'
 fs.mkdirSync(WORK, { recursive: true })
 

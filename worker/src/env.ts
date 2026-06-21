@@ -29,6 +29,9 @@ export const env = {
   // Optional: URL of a royalty-free music bed (mp3) mixed + ducked under the VO.
   // The single biggest lever for making cut clips feel like one coherent video.
   musicBedUrl: (process.env.MUSIC_BED_URL ?? '').trim(),
+  // Revideo render service (premium captions pass). When set, every edit's ffmpeg
+  // result is auto-upgraded to the Revideo render. Empty = ffmpeg-only.
+  revideoUrl: (process.env.REVIDEO_URL ?? '').trim(),
 
   // Which job types this worker process handles.
   jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe,build_voice,autoedit').split(',').map((s) => s.trim()),

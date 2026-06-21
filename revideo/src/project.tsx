@@ -63,6 +63,7 @@ export default makeProject({
   scenes: [scene],
   settings: {
     shared: { size: { x: 1080, y: 1920 } },
-    rendering: { exporter: { name: '@revideo/core/ffmpeg', options: { format: 'mp4' } }, fps: 30 },
+    // 24fps (not 30) — 20% fewer frames to render, imperceptible on short-form.
+    rendering: { exporter: { name: '@revideo/core/ffmpeg', options: { format: 'mp4' } }, fps: 24 },
   },
 })
