@@ -12,8 +12,14 @@ COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
       fonts-noto-color-emoji fonts-dejavu-core fontconfig \
-    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
+
+# Bundle bold caption fonts so captions look DESIGNED, not default:
+#   Anton           — heavy impact face for the punchy/viral styles
+#   Poppins ExtraBold — clean modern face for the calm/boxed styles
+# Installed system-wide + cached so libass (ffmpeg subtitles filter) finds them by name.
+COPY fonts/*.ttf /usr/share/fonts/truetype/twinai/
+RUN fc-cache -f
 
 # yt-dlp + faster-whisper. Jump-cuts are done with ffmpeg's own silencedetect
 # (no heavy auto-editor dep / glibc requirements). (PEP 668: allow system pip.)

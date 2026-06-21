@@ -187,17 +187,21 @@ async function fetchEmojiPng(emoji: string, dir: string): Promise<string | null>
 // These are the creator-facing "caption style" options in the Refine panel; the
 // highlight COLOR is the separate `variation` (POP_PALETTE). Names are stable so
 // they map 1:1 to the EDL's captions.style.
+// Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour,
+//   Bold, Italic, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+// Fonts are bundled in the image (Anton = impact, Poppins = clean). Heavy outline
+// (5-6) + a soft drop shadow gives the modern "designed" caption depth.
 const CAP_STYLES: Record<string, string> = {
-  // bold center-low outline pop (default)
-  'bold-pop': 'Style: Cap, DejaVu Sans, 76, &HFFFFFF&, &H00000000&, &HC0000000&, 1, 0, 1, 7, 2, 2, 90, 90, 560, 1',
-  // smaller, calmer lower-third with a soft shadow
-  'clean-lower': 'Style: Cap, DejaVu Sans, 60, &HFFFFFF&, &H00000000&, &H80000000&, 1, 0, 1, 4, 1, 2, 120, 120, 360, 1',
+  // big impact face, center-low, thick outline + shadow (default)
+  'bold-pop': 'Style: Cap, Anton, 100, &HFFFFFF&, &H00000000&, &H64000000&, 0, 0, 1, 5, 3, 2, 80, 80, 600, 1',
+  // clean modern lower-third, lighter weight feel
+  'clean-lower': 'Style: Cap, Poppins, 64, &HFFFFFF&, &H00000000&, &H78000000&, 1, 0, 1, 4, 2, 2, 110, 110, 380, 1',
   // opaque rounded box behind the words (BorderStyle 3)
-  'boxed': 'Style: Cap, DejaVu Sans, 66, &HFFFFFF&, &H00000000&, &HB0000000&, 1, 0, 3, 6, 0, 2, 100, 100, 520, 1',
-  // big captions pinned near the top
-  'top': 'Style: Cap, DejaVu Sans, 72, &HFFFFFF&, &H00000000&, &HC0000000&, 1, 0, 1, 7, 2, 8, 90, 90, 300, 1',
-  // extra-bold thick-outline (reads as word-by-word karaoke pop)
-  'karaoke-word': 'Style: Cap, DejaVu Sans, 82, &HFFFFFF&, &H00000000&, &HC0000000&, 1, 0, 1, 8, 2, 2, 90, 90, 540, 1',
+  'boxed': 'Style: Cap, Poppins, 70, &HFFFFFF&, &H00000000&, &HB4000000&, 1, 0, 3, 8, 0, 2, 100, 100, 560, 1',
+  // big impact captions pinned near the top
+  'top': 'Style: Cap, Anton, 90, &HFFFFFF&, &H00000000&, &H64000000&, 0, 0, 1, 5, 3, 8, 80, 80, 320, 1',
+  // extra-large thick-outline word-by-word pop
+  'karaoke-word': 'Style: Cap, Anton, 112, &HFFFFFF&, &H00000000&, &H64000000&, 0, 0, 1, 6, 2, 2, 80, 80, 580, 1',
 }
 export const CAPTION_STYLES = Object.keys(CAP_STYLES)
 
@@ -248,8 +252,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
       const text = line
         .map((w, j) =>
           j === i
-            // active word: amber + a quick scale "pop" (animated 100→122%)
-            ? `{\\b1\\c${POP}\\fscx100\\fscy100\\t(0,90,\\fscx122\\fscy122)}${esc(w.w)}{\\r}`
+            // active word: highlight color + a punchy scale "pop" — overshoot to
+            // 130% then settle to 118% so it feels springy, not linear.
+            ? `{\\c${POP}\\fscx100\\fscy100\\t(0,80,\\fscx130\\fscy130)\\t(80,150,\\fscx118\\fscy118)}${esc(w.w)}{\\r}`
             : esc(w.w),
         )
         .join(' ')
@@ -408,7 +413,10 @@ async function renderCutSegments(base: string, outFile: string, segments: EdlSeg
   await run(
     'ffmpeg',
     ['-y', '-i', base, '-filter_complex', filter, '-map', '[v]', '-map', '[a]',
-     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-c:a', 'aac', outFile],
+     // crf 16 (near-visually-lossless) on the intermediate cut so the FINAL crf-20
+     // encode is the only meaningful compression — kills the double-compression
+     // mush that made cut clips look soft.
+     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-c:a', 'aac', outFile],
     Math.max(240_000, (duration || 30) * 3000),
   )
   return (await fileSize(outFile)) > 1024
@@ -543,7 +551,10 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
         broll = null
       }
     }
-    const fill = 'scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920'
+    // Frame fill + a subtle cinematic grade: a touch more contrast & saturation
+    // and a light sharpen so the footage reads "graded/pro", not flat phone video.
+    const GRADE = 'eq=contrast=1.06:saturation=1.12:brightness=0.012,unsharp=5:5:0.45:3:3:0.0'
+    const fill = `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,${GRADE}`
     const subs = captions && words.length ? `,subtitles=${assRel}` : ''
     const enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
       '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', 'out.mp4']
