@@ -69,13 +69,12 @@ Deno.serve(async (req: Request) => {
   // Enforce the plan's brand-voice cap. Failed scans do NOT count (a failure must
   // never lock you out of your only slot), and retrying the SAME handle reuses its
   // row instead of piling up duplicates — the "4/1 brand voices" bug.
-  const { data: profile } = await admin.from('profiles').select('plan').eq('id', user.id).single()
+  // Independent reads — run them concurrently instead of one-after-another.
+  const [{ data: profile }, { data: existing }] = await Promise.all([
+    admin.from('profiles').select('plan').eq('id', user.id).single(),
+    admin.from('brand_voices').select('id, handle, platform, status').eq('owner_id', user.id),
+  ])
   const limit = BRAND_LIMIT[profile?.plan ?? 'free'] ?? 1
-
-  const { data: existing } = await admin
-    .from('brand_voices')
-    .select('id, handle, platform, status')
-    .eq('owner_id', user.id)
   const sameHandle = (existing ?? []).find((v) => v.handle === handle && v.platform === platform)
   const activeCount = (existing ?? []).filter((v) => v.status !== 'failed').length
 

@@ -12,6 +12,10 @@ import { cn } from '../lib/cn'
 // as discovery brings in items tagged with new niches (see `nicheChips`).
 const BASE_NICHES = ['Business', 'Fitness', 'Food', 'Education', 'Lifestyle', 'Beauty']
 
+// Module-level thumbnail cache so navigating away and back to the gallery doesn't
+// re-hit TikTok's oEmbed for every card again (survives component remounts).
+const THUMB_CACHE = new Map<string, string>()
+
 // A creator's real niche is almost never one of the bucket names ("Gen Z lifestyle
 // and relatable comedy", "luxury resale", "virtual try-on for fashion brands"). We
 // score their free-text niche against these keyword signals and pick the closest
@@ -210,35 +214,23 @@ export default function Gallery() {
     setNiche(open)
   }, [mySubNiche, myNiche])
 
-  // Posters for every card (featured + freshly discovered). YouTube thumbnails are
-  // derivable straight from the video id; TikTok needs an oembed round-trip. Instagram
-  // keeps the gradient fallback (its oembed needs an app token).
-  useEffect(() => {
-    const controller = new AbortController()
-    const { signal } = controller
-    async function fetchThumb(card: Card) {
-      if (thumbnails[card.id]) return
-      const yt = ytId(card.url)
-      if (yt) {
-        setThumbnails((prev) => ({ ...prev, [card.id]: `https://i.ytimg.com/vi/${yt}/hqdefault.jpg` }))
-        return
-      }
-      if (!card.url.includes('tiktok.com')) return
-      try {
-        const res = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(card.url)}`, { signal })
-        if (!res.ok) return
-        const data = await res.json()
-        if (data?.thumbnail_url) setThumbnails((prev) => ({ ...prev, [card.id]: data.thumbnail_url }))
-      } catch { /* keep gradient fallback */ }
-    }
-    all.forEach(fetchThumb)
-    return () => controller.abort()
-  }, [all]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Build each card's lowercased searchable text ONCE per gallery change, not on
+  // every keystroke.
+  const searchBlobs = useMemo(() => {
+    const m = new Map<string, string>()
+    for (const c of all) m.set(c.id, `${c.niche} ${c.label} ${c.hook} ${c.why} ${c.creator}`.toLowerCase())
+    return m
+  }, [all])
+
+  // Related niches depend only on the creator's niche + the known set, so memoize
+  // them out of `shown` (which otherwise re-derives them on every keystroke/sort).
+  const related = useMemo(() => relatedNiches(myNiche, knownNiches), [myNiche, knownNiches])
+
   const shown = useMemo(() => {
     let out = all
     if (q.trim()) {
       const needle = q.trim().toLowerCase()
-      out = out.filter((c) => (c.niche + ' ' + c.label + ' ' + c.hook + ' ' + c.why + ' ' + c.creator).toLowerCase().includes(needle))
+      out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(needle))
     }
     const byReach = (a: Card, b: Card) => reachNum(b.reach) - reachNum(a.reach)
     // The creator's own chip is a personalized "for you" feed, not a hard filter:
@@ -248,13 +240,49 @@ export default function Gallery() {
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
     if (isForYou) {
       // Sub-niche first (most specific), then the broad niche, then related, then rest.
-      const related = relatedNiches(myNiche, knownNiches)
       const rank = (c: Card) =>
         c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
       return [...out].sort((a, b) => rank(a) - rank(b) || byReach(a, b))
     }
     return sort === 'top' ? [...out].sort(byReach) : out
-  }, [all, myNiche, mySubNiche, niche, q, sort])
+  }, [all, myNiche, mySubNiche, niche, q, sort, searchBlobs, related])
+
+  // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
+  // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
+  // the gradient fallback. Fetching only the visible slice (+ a cross-mount cache)
+  // avoids a network request per card for the whole gallery on every visit.
+  const visible = useMemo(() => (showAll ? shown : shown.slice(0, 9)), [shown, showAll])
+  useEffect(() => {
+    const controller = new AbortController()
+    const { signal } = controller
+    async function fetchThumb(card: Card) {
+      if (thumbnails[card.id]) return
+      const cached = THUMB_CACHE.get(card.id)
+      if (cached) {
+        setThumbnails((prev) => ({ ...prev, [card.id]: cached }))
+        return
+      }
+      const yt = ytId(card.url)
+      if (yt) {
+        const u = `https://i.ytimg.com/vi/${yt}/hqdefault.jpg`
+        THUMB_CACHE.set(card.id, u)
+        setThumbnails((prev) => ({ ...prev, [card.id]: u }))
+        return
+      }
+      if (!card.url.includes('tiktok.com')) return
+      try {
+        const res = await fetch(`https://www.tiktok.com/oembed?url=${encodeURIComponent(card.url)}`, { signal })
+        if (!res.ok) return
+        const data = await res.json()
+        if (data?.thumbnail_url) {
+          THUMB_CACHE.set(card.id, data.thumbnail_url)
+          setThumbnails((prev) => ({ ...prev, [card.id]: data.thumbnail_url }))
+        }
+      } catch { /* keep gradient fallback */ }
+    }
+    visible.forEach(fetchThumb)
+    return () => controller.abort()
+  }, [visible]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Deep-link into the Studio with the reference prefilled. Studio reads `ref`
   // from the query string, so pass it there (a `state` payload was silently
@@ -305,7 +333,7 @@ export default function Gallery() {
           <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing matches that yet. Try another filter.</div>
         ) : (
           <Stagger immediate className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
-            {(showAll ? shown : shown.slice(0, 9)).map((c) => {
+            {visible.map((c) => {
               const thumb = thumbnails[c.id]
               const glowClass = ACCENT_GLOW[c.accent] ?? 'hover:border-white/20'
               return (

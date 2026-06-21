@@ -55,7 +55,10 @@ def creator_niches(base):
     starts getting discovered automatically the next run. De-duped against the base
     set (case-insensitive) and capped so the run stays bounded."""
     try:
-        rows = _sb('brand_voices', params={'select': 'profile', 'status': 'eq.ready', 'limit': '500'})
+        # Select ONLY the two niche fields, not the whole (large) voice profile.
+        rows = _sb('brand_voices', params={
+            'select': 'niche:profile->>niche,sub_niche:profile->>sub_niche',
+            'status': 'eq.ready', 'limit': '500'})
     except Exception as e:
         print('creator_niches lookup failed: %s' % e, file=sys.stderr)
         return []
@@ -63,11 +66,10 @@ def creator_niches(base):
     seen = set(base_lower)
     out = []
     for r in (rows or []):
-        prof = r.get('profile') or {}
         # Cover BOTH the specific sub_niche (prioritized: it's what the audience
         # actually searches) and the broad niche. Store each verbatim as the label
         # so it exact-matches the creator's voice in the gallery UI.
-        for n in ((prof.get('sub_niche') or '').strip(), (prof.get('niche') or '').strip()):
+        for n in ((r.get('sub_niche') or '').strip(), (r.get('niche') or '').strip()):
             if not n or len(n) < 3:
                 continue
             k = n.lower()
@@ -158,10 +160,17 @@ def search_query(niche):
 def main():
     have = existing_urls()
     base_set = set(n.strip().lower() for n in BASE_NICHES)
-    # Base niches + the niches real creators actually have (auto-derived each run).
-    niches = list(dict.fromkeys(BASE_NICHES + creator_niches(BASE_NICHES)))
-    print('discovering %d niches (%d base + creator-derived): %s'
-          % (len(niches), len(BASE_NICHES), ', '.join(niches)))
+    only = os.environ.get('DISCOVERY_ONLY_NICHE', '').strip()
+    if only:
+        # Trigger-driven run: a new creator niche just appeared, so scrape ONLY that
+        # niche (free YT/TikTok) instead of re-sweeping every niche (~1 vs ~14).
+        niches = list(dict.fromkeys(n.strip() for n in only.split(',') if n.strip()))
+        print('discovering %d targeted niche(s): %s' % (len(niches), ', '.join(niches)))
+    else:
+        # Base niches + the niches real creators actually have (auto-derived each run).
+        niches = list(dict.fromkeys(BASE_NICHES + creator_niches(BASE_NICHES)))
+        print('discovering %d niches (%d base + creator-derived): %s'
+              % (len(niches), len(BASE_NICHES), ', '.join(niches)))
     total = 0
     for niche in niches:
         q = search_query(niche)  # clean query for search; full `niche` stays the label

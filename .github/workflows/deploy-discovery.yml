@@ -3,7 +3,12 @@ name: Deploy discovery
 # scrapes the CREATOR-DERIVED niches (free YouTube/TikTok only) so new niches show
 # up in the gallery immediately. The daily cron then keeps them fresh.
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      only_niche:
+        description: 'Comma-separated niche(s) to scrape ONLY (targeted run). Empty = full creator-derived sweep.'
+        required: false
+        default: ''
   push:
     branches: [main]
     paths: ['discovery/**', '.github/workflows/deploy-discovery.yml']
@@ -34,5 +39,6 @@ jobs:
             docker run --rm \
               -e SUPABASE_URL="$SUP_URL" -e SUPABASE_SERVICE_ROLE_KEY="$SUP_KEY" \
               -e DISCOVERY_NICHES='[]' -e DISCOVERY_YT_LIMIT=4 -e DISCOVERY_TT_LIMIT=4 \
+              -e DISCOVERY_ONLY_NICHE="${{ github.event.inputs.only_niche }}" \
               twinai-discovery:latest
           REMOTE
