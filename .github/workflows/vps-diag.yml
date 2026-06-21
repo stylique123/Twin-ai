@@ -23,7 +23,7 @@ jobs:
             GW=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}' "$RNAME" | awk '{print $1}')
             echo "revideo=$RNAME gateway=$GW"
             echo "== make base.mp4 inside worker container (has ffmpeg) =="
-            docker exec twinai-worker bash -lc 'ffmpeg -y -f lavfi -i color=c=navy:s=1080x1920:d=2 -f lavfi -i sine=frequency=440:duration=2 -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac /tmp/base.mp4 >/dev/null 2>&1; echo worker-ffmpeg-exit=$?; ls -l /tmp/base.mp4'
+            docker exec twinai-worker bash -lc 'ffmpeg -y -f lavfi -i color=c=navy:s=1080x1920:d=2 -f lavfi -i sine=frequency=440:duration=2 -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac /tmp/base.mp4 >/dev/null 2>&1; echo worker-ffmpeg-exit=$?'
             docker cp twinai-worker:/tmp/base.mp4 /tmp/base.mp4
             echo "host base.mp4 = $(stat -c%s /tmp/base.mp4 2>/dev/null || echo MISSING) bytes"
             cd /tmp
@@ -37,12 +37,8 @@ jobs:
             kill $HP 2>/dev/null || true
             SZ=$(stat -c%s /tmp/premium.mp4 2>/dev/null || echo 0)
             echo "render http=$code curl_exit=$cx elapsed=$(( $(date +%s)-T0 ))s size=$SZ"
-            python3 - <<PY
-b=open('/tmp/premium.mp4','rb').read(16) if __import__('os').path.exists('/tmp/premium.mp4') else b''
-print('magic:', b[:12])
-print('VALID_MP4 =', len(b)>=8 and b[4:8]==b'ftyp')
-PY
-            echo "== revideo logs tail =="; docker logs --tail 8 "$RNAME" 2>&1 | tail -8
+            python3 -c "import os;b=open('/tmp/premium.mp4','rb').read(16) if os.path.exists('/tmp/premium.mp4') else b'';print('magic',b[:12]);print('VALID_MP4',len(b)>=8 and b[4:8]==b'ftyp')"
+            echo "== revideo logs tail =="; docker logs --tail 6 "$RNAME" 2>&1 | tail -6
             rm -f /tmp/base.mp4 /tmp/premium.mp4; docker exec twinai-worker rm -f /tmp/base.mp4 2>/dev/null
             echo "== done =="
           REMOTE
