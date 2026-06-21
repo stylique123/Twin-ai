@@ -1,0 +1,38 @@
+name: Deploy discovery
+# Rebuilds the niche-discovery image on the VPS and runs a quick verify pass that
+# scrapes the CREATOR-DERIVED niches (free YouTube/TikTok only) so new niches show
+# up in the gallery immediately. The daily cron then keeps them fresh.
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths: ['discovery/**', '.github/workflows/deploy-discovery.yml']
+concurrency: { group: deploy-discovery, cancel-in-progress: false }
+env:
+  VPS_HOST: 138.201.119.239
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build + verify discovery over SSH
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          if [ -z "$VPS_SSH_KEY" ]; then echo "::error::VPS_SSH_KEY not set"; exit 1; fi
+          mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" 'bash -se' <<'REMOTE'
+            set -euo pipefail
+            cd /opt/twinai-worker-src
+            git fetch origin main
+            git reset --hard FETCH_HEAD
+            docker build -t twinai-discovery:latest discovery/
+            echo "discovery image rebuilt: $(git rev-parse --short HEAD)"
+            SUP_URL=$(docker exec twinai-worker printenv SUPABASE_URL)
+            SUP_KEY=$(docker exec twinai-worker printenv SUPABASE_SERVICE_ROLE_KEY)
+            echo "== verify: creator-derived niches only, free scrapers =="
+            docker run --rm \
+              -e SUPABASE_URL="$SUP_URL" -e SUPABASE_SERVICE_ROLE_KEY="$SUP_KEY" \
+              -e DISCOVERY_NICHES='[]' -e DISCOVERY_YT_LIMIT=4 -e DISCOVERY_TT_LIMIT=4 \
+              twinai-discovery:latest
+          REMOTE

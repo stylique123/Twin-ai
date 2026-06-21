@@ -21,11 +21,14 @@ SERVICE_KEY = os.environ['SUPABASE_SERVICE_ROLE_KEY']
 APIFY_TOKEN = os.environ.get('APIFY_TOKEN', '').strip()
 IG_ACTOR = os.environ.get('APIFY_INSTAGRAM_DISCOVER_ACTOR', 'shu8hvrXbJbY3Eb9W').strip()
 
-NICHES = json.loads(os.environ.get('DISCOVERY_NICHES',
+BASE_NICHES = json.loads(os.environ.get('DISCOVERY_NICHES',
     '["Business","Fitness","Food","Education","Lifestyle","Beauty"]'))
 YT_LIMIT = int(os.environ.get('DISCOVERY_YT_LIMIT', '12'))
 TT_LIMIT = int(os.environ.get('DISCOVERY_TT_LIMIT', '12'))
 IG_LIMIT = int(os.environ.get('DISCOVERY_IG_LIMIT', '3'))  # reduced to keep IG ~$5/mo
+# Cap how many creator-derived niches we add per run, so a growing user base can't
+# blow up run time. Free scrapers (YT/TikTok) only for these — IG stays base-only.
+CREATOR_NICHE_CAP = int(os.environ.get('DISCOVERY_CREATOR_NICHE_CAP', '14'))
 
 
 def _sb(path, method='GET', body=None, params=None):
@@ -44,6 +47,34 @@ def _sb(path, method='GET', body=None, params=None):
 def existing_urls():
     rows = _sb('gallery_items', params={'select': 'url', 'owner_id': 'is.null', 'limit': '20000'})
     return set(r['url'] for r in rows) if rows else set()
+
+
+def creator_niches(base):
+    """The niches REAL creators on the platform actually have (from their brand
+    voices), so discovery covers THEM, not just a fixed list. A new signup's niche
+    starts getting discovered automatically the next run. De-duped against the base
+    set (case-insensitive) and capped so the run stays bounded."""
+    try:
+        rows = _sb('brand_voices', params={'select': 'profile', 'status': 'eq.ready', 'limit': '500'})
+    except Exception as e:
+        print('creator_niches lookup failed: %s' % e, file=sys.stderr)
+        return []
+    base_lower = set(n.strip().lower() for n in base)
+    seen = set(base_lower)
+    out = []
+    for r in (rows or []):
+        n = ((r.get('profile') or {}).get('niche') or '').strip()
+        if not n or len(n) < 3:
+            continue
+        n = n[:48]  # keep chip labels sane
+        k = n.lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(n)
+        if len(out) >= CREATOR_NICHE_CAP:
+            break
+    return out
 
 
 def _fmt(n):
@@ -112,13 +143,21 @@ def instagram(query, limit):
 
 def main():
     have = existing_urls()
+    base_set = set(n.strip().lower() for n in BASE_NICHES)
+    # Base niches + the niches real creators actually have (auto-derived each run).
+    niches = list(dict.fromkeys(BASE_NICHES + creator_niches(BASE_NICHES)))
+    print('discovering %d niches (%d base + creator-derived): %s'
+          % (len(niches), len(BASE_NICHES), ', '.join(niches)))
     total = 0
-    for niche in NICHES:
+    for niche in niches:
         q = niche.lower()
+        srcs = [('youtube', lambda: discover.youtube(q + ' tips', YT_LIMIT)),
+                ('tiktok', lambda: discover.tiktok(q, TT_LIMIT))]
+        # Instagram uses paid Apify, so keep it to the base niches only (cost cap).
+        if q in base_set:
+            srcs.append(('instagram', lambda: instagram(q, IG_LIMIT)))
         items = []
-        for label, fn in (('youtube', lambda: discover.youtube(q + ' tips', YT_LIMIT)),
-                          ('tiktok', lambda: discover.tiktok(q, TT_LIMIT)),
-                          ('instagram', lambda: instagram(q, IG_LIMIT))):
+        for label, fn in srcs:
             try:
                 items += fn()
             except Exception as e:
