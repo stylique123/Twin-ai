@@ -7,37 +7,17 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: SSH one-flow diagnostic
+      - name: SSH worker log grab
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
-          if [ -z "$VPS_SSH_KEY" ]; then echo "::error::VPS_SSH_KEY not set"; exit 1; fi
-          mkdir -p ~/.ssh
-          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
+          mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" 'bash -s' <<'REMOTE'
             set +e
-            echo "== worker REVIDEO_URL =="; docker exec twinai-worker node -e "console.log(process.env.REVIDEO_URL||'NOT-SET')"
-            RNAME=$(docker ps --filter name=revideo --format '{{.Names}}' | head -1)
-            GW=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}' "$RNAME" | awk '{print $1}')
-            echo "revideo=$RNAME gateway=$GW"
-            docker exec twinai-worker bash -lc 'ffmpeg -y -f lavfi -i color=c=navy:s=1080x1920:d=2 -f lavfi -i sine=frequency=440:duration=2 -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac /tmp/base.mp4 >/dev/null 2>&1; echo worker-ffmpeg-exit=$?'
-            docker cp twinai-worker:/tmp/base.mp4 /tmp/base.mp4
-            echo "host base.mp4 = $(stat -c%s /tmp/base.mp4 2>/dev/null || echo MISSING) bytes"
-            echo "aW1wb3J0IGh0dHAuc2VydmVyLCBzb2NrZXRzZXJ2ZXIsIG9zLCByZQpjbGFzcyBIKGh0dHAuc2VydmVyLlNpbXBsZUhUVFBSZXF1ZXN0SGFuZGxlcik6CiAgICBkZWYgX2hkcihzZWxmKToKICAgICAgICBzZWxmLnNlbmRfaGVhZGVyKCdBY2Nlc3MtQ29udHJvbC1BbGxvdy1PcmlnaW4nLCcqJykKICAgICAgICBzZWxmLnNlbmRfaGVhZGVyKCdBY2NlcHQtUmFuZ2VzJywnYnl0ZXMnKQogICAgZGVmIGRvX0dFVChzZWxmKToKICAgICAgICBwPScvdG1wL2Jhc2UubXA0JwogICAgICAgIGlmIG5vdCBvcy5wYXRoLmV4aXN0cyhwKTogc2VsZi5zZW5kX2Vycm9yKDQwNCk7IHJldHVybgogICAgICAgIHNpemU9b3MucGF0aC5nZXRzaXplKHApOyBybmc9c2VsZi5oZWFkZXJzLmdldCgnUmFuZ2UnKTsgZj1vcGVuKHAsJ3JiJykKICAgICAgICBpZiBybmc6CiAgICAgICAgICAgIG09cmUubWF0Y2gocidieXRlcz0oXGQrKS0oXGQqKScscm5nKTsgc3RhcnQ9aW50KG0uZ3JvdXAoMSkpOyBlbmQ9aW50KG0uZ3JvdXAoMikpIGlmIG0uZ3JvdXAoMikgZWxzZSBzaXplLTEKICAgICAgICAgICAgZW5kPW1pbihlbmQsc2l6ZS0xKTsgbGVuZ3RoPWVuZC1zdGFydCsxCiAgICAgICAgICAgIHNlbGYuc2VuZF9yZXNwb25zZSgyMDYpOyBzZWxmLnNlbmRfaGVhZGVyKCdDb250ZW50LVR5cGUnLCd2aWRlby9tcDQnKQogICAgICAgICAgICBzZWxmLnNlbmRfaGVhZGVyKCdDb250ZW50LVJhbmdlJywnYnl0ZXMgJWQtJWQvJWQnJShzdGFydCxlbmQsc2l6ZSkpOyBzZWxmLnNlbmRfaGVhZGVyKCdDb250ZW50LUxlbmd0aCcsc3RyKGxlbmd0aCkpOyBzZWxmLl9oZHIoKTsgc2VsZi5lbmRfaGVhZGVycygpCiAgICAgICAgICAgIGYuc2VlayhzdGFydCk7IHNlbGYud2ZpbGUud3JpdGUoZi5yZWFkKGxlbmd0aCkpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgc2VsZi5zZW5kX3Jlc3BvbnNlKDIwMCk7IHNlbGYuc2VuZF9oZWFkZXIoJ0NvbnRlbnQtVHlwZScsJ3ZpZGVvL21wNCcpOyBzZWxmLnNlbmRfaGVhZGVyKCdDb250ZW50LUxlbmd0aCcsc3RyKHNpemUpKTsgc2VsZi5faGRyKCk7IHNlbGYuZW5kX2hlYWRlcnMoKTsgc2VsZi53ZmlsZS53cml0ZShmLnJlYWQoKSkKICAgICAgICBmLmNsb3NlKCkKICAgIGRlZiBsb2dfbWVzc2FnZShzZWxmLCphKTogcGFzcwpzb2NrZXRzZXJ2ZXIuVENQU2VydmVyLmFsbG93X3JldXNlX2FkZHJlc3M9VHJ1ZQpzb2NrZXRzZXJ2ZXIuVENQU2VydmVyKCgnMC4wLjAuMCcsODA5OSksSCkuc2VydmVfZm9yZXZlcigpCg==" | base64 -d > /tmp/srv.py
-            pkill -f srv.py 2>/dev/null; pkill -f http.server 2>/dev/null; fuser -k 8099/tcp 2>/dev/null; sleep 3
-            python3 /tmp/srv.py >/tmp/srv.log 2>&1 & HP=$!; sleep 2; echo "srv start:"; head -3 /tmp/srv.log 2>/dev/null
-            docker exec "$RNAME" node -e "fetch('http://'+process.argv[1]+':8099/base.mp4').then(r=>console.log('revideo fetch',r.status,'accept-ranges='+r.headers.get('accept-ranges'),'cors='+r.headers.get('access-control-allow-origin'))).catch(e=>console.log('ERR',e.message))" "$GW"
-            echo "== live premium render =="
-            BODY="{\"baseClipUrl\":\"http://$GW:8099/base.mp4\",\"edl\":{\"captions\":{\"words\":[{\"text\":\"LIVE\",\"start\":0.1,\"end\":1.0},{\"text\":\"PASS\",\"start\":1.0,\"end\":1.9}],\"style\":\"bold-pop\"},\"highlightColor\":\"#23A6F5\"}}"
-            T0=$(date +%s)
-            code=$(curl -s -o /tmp/premium.mp4 -w '%{http_code}' --max-time 180 -X POST http://127.0.0.1:4500/render -H 'Content-Type: application/json' -d "$BODY"); cx=$?
-            kill $HP 2>/dev/null; pkill -f /tmp/srv.py 2>/dev/null
-            SZ=$(stat -c%s /tmp/premium.mp4 2>/dev/null || echo 0)
-            echo "render http=$code curl_exit=$cx elapsed=$(( $(date +%s)-T0 ))s size=$SZ"
-            python3 -c "import os;b=open('/tmp/premium.mp4','rb').read(16) if os.path.exists('/tmp/premium.mp4') else b'';print('magic',b[:12]);print('VALID_MP4',len(b)>=8 and b[4:8]==b'ftyp')"
-            echo "== revideo logs tail =="; docker logs --tail 5 "$RNAME" 2>&1 | tail -5
-            rm -f /tmp/base.mp4 /tmp/premium.mp4 /tmp/srv.py; docker exec twinai-worker rm -f /tmp/base.mp4 2>/dev/null
+            echo "== worker logs for job 1dd5b997 / premium =="
+            docker logs twinai-worker 2>&1 | grep -E "1dd5b997|premium pass|revideo" | tail -30
+            echo "== can revideo container reach the internet (supabase)? =="
+            docker exec twinai-revideo node -e "fetch('https://jmdecibuytznsonrasxw.supabase.co/functions/v1/').then(r=>console.log('supabase reachable status',r.status)).catch(e=>console.log('NO INTERNET:',e.message))"
             echo "== done =="
           REMOTE
