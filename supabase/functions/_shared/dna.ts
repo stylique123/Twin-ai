@@ -347,9 +347,11 @@ Synthesize this creator's voice profile.`
             maxOutputTokens: 8192,
             responseMimeType: 'application/json',
             responseSchema: voiceProfileSchema,
-            // Speed: cap reasoning so the DNA build doesn't over-deliberate.
-            ...((Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0') > 0)
-              ? { thinkingConfig: { thinkingBudget: Number(Deno.env.get('GEMINI_THINKING_BUDGET')) } }
+            // Speed: cap reasoning so the DNA build doesn't over-deliberate. Uses a
+            // DNA-SPECIFIC budget (falls back to the shared one) so the blueprint can
+            // stay full while DNA is capped — A/B-proven to keep identical quality.
+            ...((Number(Deno.env.get('DNA_THINKING_BUDGET') ?? Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0') > 0)
+              ? { thinkingConfig: { thinkingBudget: Number(Deno.env.get('DNA_THINKING_BUDGET') ?? Deno.env.get('GEMINI_THINKING_BUDGET')) } }
               : {}),
           },
         }),
