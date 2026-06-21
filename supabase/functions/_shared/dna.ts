@@ -298,11 +298,14 @@ Synthesize this creator's voice profile.`
           systemInstruction: { parts: [{ text: SYSTEM }] },
           contents: [{ role: 'user', parts: [{ text: prompt }] }],
           generationConfig: {
-            // Thinking model: leave headroom for reasoning + the JSON profile.
             temperature: 0.7,
             maxOutputTokens: 8192,
             responseMimeType: 'application/json',
             responseSchema: voiceProfileSchema,
+            // Speed: cap reasoning so the DNA build doesn't over-deliberate.
+            ...((Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0') > 0)
+              ? { thinkingConfig: { thinkingBudget: Number(Deno.env.get('GEMINI_THINKING_BUDGET')) } }
+              : {}),
           },
         }),
       },
