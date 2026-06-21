@@ -63,16 +63,20 @@ def creator_niches(base):
     seen = set(base_lower)
     out = []
     for r in (rows or []):
-        # Store the FULL niche verbatim as the label so it exact-matches the
-        # creator's voice niche in the gallery UI (a truncated label would not).
-        n = ((r.get('profile') or {}).get('niche') or '').strip()
-        if not n or len(n) < 3:
-            continue
-        k = n.lower()
-        if k in seen:
-            continue
-        seen.add(k)
-        out.append(n)
+        prof = r.get('profile') or {}
+        # Cover BOTH the specific sub_niche (prioritized: it's what the audience
+        # actually searches) and the broad niche. Store each verbatim as the label
+        # so it exact-matches the creator's voice in the gallery UI.
+        for n in ((prof.get('sub_niche') or '').strip(), (prof.get('niche') or '').strip()):
+            if not n or len(n) < 3:
+                continue
+            k = n.lower()
+            if k in seen:
+                continue
+            seen.add(k)
+            out.append(n)
+            if len(out) >= CREATOR_NICHE_CAP:
+                break
         if len(out) >= CREATOR_NICHE_CAP:
             break
     return out

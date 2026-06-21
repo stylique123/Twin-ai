@@ -237,7 +237,8 @@ const str = { type: 'STRING' }
 export const voiceProfileSchema = obj(
   {
     summary: str, // one-line "this is how you sound"
-    niche: str,
+    niche: str, // broad category (Fitness, Personal Finance, Fashion Tech)
+    sub_niche: str, // the SPECIFIC angle within it that makes them distinct
     audience: str, // who they make content for
     audience_pain: str, // the core problem that audience feels
     dream_outcome: str, // what that audience actually wants
@@ -252,13 +253,14 @@ export const voiceProfileSchema = obj(
     donts: arr(str),
     sample_hooks: arr(str), // 3 hooks written in their voice
   },
-  ['summary', 'niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'vocabulary', 'recurring_ctas', 'dos', 'donts', 'sample_hooks'],
+  ['summary', 'niche', 'sub_niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'vocabulary', 'recurring_ctas', 'dos', 'donts', 'sample_hooks'],
 )
 
 const SYSTEM = `You are TwinAI's Brand-DNA engine. From a creator's recent posts you infer how THEY sound, so we can later write new scripts in their exact voice.
 
 Hard rules:
 - Describe their voice; never copy a specific post's content. Capture STRUCTURE and STYLE: tone, pacing, hook shape, signature vocabulary, recurring CTAs.
+- niche = the BROAD category (e.g. Fitness, Personal Finance, Fashion Tech, Food). sub_niche = the SPECIFIC angle within it that makes them distinct and is what their audience actually searches for (e.g. calisthenics for beginners, debt payoff for couples, AI virtual try-on, high-protein meal prep). Keep sub_niche to 2-4 words, concrete and searchable, never a sentence.
 - LEARN FROM THEIR WINNERS. The posts are ranked by reach, best first; the ones marked [TOP PERFORMER] are their biggest hits. Weight those hardest. What a creator's TOP posts do (the angle, the hook move, the emotional register) is what actually works for THEIR audience. Average posts dilute the signal, so let the winners lead.
 - hook_style must be their repeatable HOOK FORMULA written as a reusable fill-in template derived from their best openers, e.g. "[surprising number] + [who it is for] + comment [KEYWORD]" or "I did [X] so you do not have to. Here is what happened." Not adjectives, an actual template someone could fill in.
 - Also infer their AUDIENCE (who they make content for), that audience's core PAIN (the problem they feel), their DREAM OUTCOME (what they actually want), and the creator's OFFER (what they sell or the action they push). Infer these from the posts, bio, hashtags and niche even when not stated outright. Be specific, not generic.
