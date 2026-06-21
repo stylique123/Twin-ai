@@ -1,46 +1,40 @@
 import { renderVideo } from '@revideo/renderer'
-import * as path from 'node:path'
 import * as fs from 'node:fs'
+import * as path from 'node:path'
 
-// CLI: tsx render.ts <edl.json> <base.mp4> <out.mp4>
-// The worker calls this with the cut+graded base clip and the EDL; out is the
-// premium-captioned MP4. Headless Chromium (no-sandbox) so it runs on the server.
-const [, , edlPath, baseClip, outFile] = process.argv
-if (!edlPath || !baseClip || !outFile) {
-  console.error('usage: tsx render.ts <edl.json> <base.mp4> <out.mp4>')
+// CLI: tsx render.ts <edl.json> <baseClipUrl> <out.mp4>
+// baseClipUrl must be a FETCHABLE URL (signed storage URL) — Revideo can't resolve
+// raw local file paths. The worker uploads the cut+graded base clip, signs it, and
+// passes the URL. Output is the premium-captioned MP4. Verified on the VPS.
+const [, , edlPath, baseClipUrl, outFile] = process.argv
+if (!edlPath || !baseClipUrl || !outFile) {
+  console.error('usage: tsx render.ts <edl.json> <baseClipUrl> <out.mp4>')
   process.exit(2)
 }
 
 const edl = JSON.parse(fs.readFileSync(edlPath, 'utf8'))
-// The scene reads a flat shape: { baseClip, words, highlightColor, style }.
 const flat = {
-  baseClip: path.resolve(baseClip),
+  baseClip: baseClipUrl,
   words: edl.captions?.words ?? edl.words ?? [],
   highlightColor: edl.highlightColor ?? '#23A6F5',
   style: edl.captions?.style ?? edl.style ?? 'bold-pop',
 }
 
-// IMPORTANT: projectFile must be RELATIVE — the renderer does
-// path.join(process.cwd(), projectFile); an absolute path becomes /app//app/...
-// and the project silently fails to load (project undefined → crash). Run this
-// from the revideo/ dir so cwd + 'src/project.ts' resolves correctly.
-const out = await renderVideo({
-  // Must be RELATIVE-with-'./' and run from the revideo/ dir: the renderer does
-  // path.join(cwd, projectFile) for the vite plugin AND emits a client
-  // `import project from '<projectFile>'` that Vite resolves relative to root.
-  // (One project-loading convention from the official scaffold still to align.)
-  projectFile: './src/project.ts',
-  variables: { edl: flat },
-  settings: {
-    outFile: path.basename(outFile) as `${string}.mp4`,
-    outDir: path.dirname(path.resolve(outFile)),
-    workers: 1,
-    logProgress: true,
-    puppeteer: {
-      headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
+async function main() {
+  const t0 = Date.now()
+  const out = await renderVideo({
+    // Relative path; run from the revideo/ dir (the renderer joins cwd + this and
+    // emits a vite client import of the same).
+    projectFile: './src/project.tsx',
+    variables: { edl: flat },
+    settings: {
+      outFile: path.basename(outFile) as `${string}.mp4`,
+      outDir: path.dirname(path.resolve(outFile)),
+      logProgress: true,
+      ffmpeg: { ffmpegPath: '/usr/bin/ffmpeg', ffprobePath: '/usr/bin/ffprobe' },
+      puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'] },
     },
-    projectSettings: { size: { x: 1080, y: 1920 } },
-  },
-})
-console.log('RENDERED', out)
+  })
+  console.log('RENDERED', out, 'in', ((Date.now() - t0) / 1000).toFixed(1) + 's')
+}
+main().catch((e) => { console.error(e); process.exit(1) })
