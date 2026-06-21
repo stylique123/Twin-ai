@@ -12,10 +12,14 @@ const scene = makeScene2D('captions', function* (view) {
     words: [] as { text: string; start: number; end: number }[],
     highlightColor: '#23A6F5',
     style: 'bold-pop',
+    decoder: 'web' as 'web' | 'ffmpeg',
   })()
 
+  // 'web' (WebCodecs) decodes in-browser per worker → parallelizes cleanly across
+  // render workers (the 'ffmpeg' decoder races on shared temp chunks with >1 worker)
+  // AND is faster. Our base clips are H.264, which WebCodecs supports.
   const clip = createRef<Video>()
-  view.add(<Video ref={clip} src={edl.baseClip} play decoder={'ffmpeg'} size={['100%', '100%']} />)
+  view.add(<Video ref={clip} src={edl.baseClip} play decoder={edl.decoder ?? 'web'} size={['100%', '100%']} />)
 
   const word = createRef<Txt>()
   view.add(

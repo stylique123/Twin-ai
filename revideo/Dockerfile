@@ -23,5 +23,6 @@ RUN fc-cache -f || true
 
 COPY . ./
 
-# CLI: docker run twinai-revideo <edl.json> <base.mp4> <out.mp4>  (paths under /work)
-ENTRYPOINT ["npx", "tsx", "render.ts"]
+# Runs the persistent HTTP render service (POST /render { baseClipUrl, edl }).
+EXPOSE 4500
+ENTRYPOINT ["npx", "tsx", "server.ts"]

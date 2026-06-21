@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Premium visual render engine for TwinAI — renders a base clip + the EDL into designed captions/transitions/b-roll. The Revideo half of the hybrid (ffmpeg does the cut/audio backbone).",
   "scripts": {
-    "render": "tsx render.ts"
+    "render": "tsx render.ts",
+    "serve": "tsx server.ts"
   },
   "dependencies": {
     "@revideo/2d": "0.10.4",
@@ -12,6 +13,7 @@
     "@revideo/renderer": "0.10.4",
     "@revideo/ui": "0.10.4",
     "@revideo/vite-plugin": "0.10.4",
+    "express": "^4.21.2",
     "vite": "4.5.2"
   },
   "devDependencies": {
