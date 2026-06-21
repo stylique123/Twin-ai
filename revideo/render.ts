@@ -25,7 +25,11 @@ const flat = {
 // and the project silently fails to load (project undefined → crash). Run this
 // from the revideo/ dir so cwd + 'src/project.ts' resolves correctly.
 const out = await renderVideo({
-  projectFile: 'src/project.ts',
+  // Must be RELATIVE-with-'./' and run from the revideo/ dir: the renderer does
+  // path.join(cwd, projectFile) for the vite plugin AND emits a client
+  // `import project from '<projectFile>'` that Vite resolves relative to root.
+  // (One project-loading convention from the official scaffold still to align.)
+  projectFile: './src/project.ts',
   variables: { edl: flat },
   settings: {
     outFile: path.basename(outFile) as `${string}.mp4`,
