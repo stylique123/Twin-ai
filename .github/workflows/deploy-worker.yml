@@ -1,14 +1,12 @@
-# Deploys the TwinAI worker (yt-dlp + faster-whisper + job-queue poller) to Fly.io.
+# Deploys the TwinAI worker to the VPS (where it actually runs as the
+# `twinai-worker` Docker container). GitHub `main` is the single source of truth:
+# on every push that touches worker/, this SSHes to the VPS, pulls the repo,
+# rebuilds the image, and recreates the container with the existing env file.
 #
-# One-time setup (repo Settings → Secrets and variables → Actions):
-#   FLY_API_TOKEN              — from `fly tokens create deploy` or dashboard
-#   SUPABASE_SERVICE_ROLE_KEY  — Supabase project service-role key (server-side only)
-#   GEMINI_API_KEY             — Gemini key (structure derivation + voice synthesis)
-#   APIFY_TOKEN                — Apify API token; YouTube captions (yt-dlp is bot-blocked
-#                                on YouTube from datacenter IPs). Free tier covers normal use.
-#
-# Then run this workflow manually (Actions tab → Deploy worker → Run workflow),
-# or it auto-runs when worker/ changes on the main branches.
+# One-time setup — repo Settings → Secrets and variables → Actions:
+#   VPS_SSH_KEY  — a private SSH key whose PUBLIC key is in the VPS's
+#                  /root/.ssh/authorized_keys (a dedicated deploy key).
+# (Host + container env live on the box; nothing else secret is needed here.)
 
 name: Deploy worker
 on:
@@ -21,30 +19,37 @@ concurrency:
   group: deploy-worker
   cancel-in-progress: false
 
+env:
+  VPS_HOST: 138.201.119.239
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: superfly/flyctl-actions/setup-flyctl@master
-
-      - name: Create app if missing
-        run: flyctl apps create twinai-worker || true
+      - name: Deploy to VPS over SSH
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      # Only stage APIFY_TOKEN. SUPABASE_* and GEMINI_API_KEY are already set
-      # directly on the Fly app; re-staging them from (empty) GitHub secrets would
-      # WIPE the live values and break the worker. Leave them untouched.
-      - name: Stage APIFY_TOKEN secret
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
         run: |
-          flyctl secrets set --app twinai-worker --stage \
-            APIFY_TOKEN="${{ secrets.APIFY_TOKEN }}"
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-
-      - name: Deploy
-        run: flyctl deploy worker/ --remote-only --app twinai-worker
-        env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          if [ -z "$VPS_SSH_KEY" ]; then
+            echo "::error::VPS_SSH_KEY secret is not set — add it in repo Settings → Secrets → Actions."
+            exit 1
+          fi
+          mkdir -p ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" 'bash -se' <<'REMOTE'
+            set -euo pipefail
+            cd /opt/twinai-worker-src
+            git fetch origin main
+            git reset --hard origin/main
+            docker build -t twinai-worker worker/
+            docker rm -f twinai-worker 2>/dev/null || true
+            docker run -d --name twinai-worker --restart unless-stopped \
+              --env-file /opt/twinai-worker.env twinai-worker
+            docker image prune -f >/dev/null 2>&1 || true
+            sleep 3
+            echo "deployed: $(git rev-parse --short HEAD)"
+            docker logs --tail 3 twinai-worker
+            docker ps --filter name=twinai-worker --format 'STATUS: {{.Status}}'
+          REMOTE
