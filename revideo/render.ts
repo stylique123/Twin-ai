@@ -20,8 +20,12 @@ const flat = {
   style: edl.captions?.style ?? edl.style ?? 'bold-pop',
 }
 
+// IMPORTANT: projectFile must be RELATIVE — the renderer does
+// path.join(process.cwd(), projectFile); an absolute path becomes /app//app/...
+// and the project silently fails to load (project undefined → crash). Run this
+// from the revideo/ dir so cwd + 'src/project.ts' resolves correctly.
 const out = await renderVideo({
-  projectFile: path.resolve(import.meta.dirname, 'src/project.ts'),
+  projectFile: 'src/project.ts',
   variables: { edl: flat },
   settings: {
     outFile: path.basename(outFile) as `${string}.mp4`,

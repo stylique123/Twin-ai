@@ -9,7 +9,10 @@
   "dependencies": {
     "@revideo/2d": "0.10.4",
     "@revideo/core": "0.10.4",
-    "@revideo/renderer": "0.10.4"
+    "@revideo/renderer": "0.10.4",
+    "@revideo/ui": "0.10.4",
+    "@revideo/vite-plugin": "0.10.4",
+    "vite": "4.5.2"
   },
   "devDependencies": {
     "tsx": "^4.19.2",
