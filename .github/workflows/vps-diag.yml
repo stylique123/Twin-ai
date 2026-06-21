@@ -1,23 +1,12 @@
 name: VPS one-flow diagnostic
-on:
-  workflow_dispatch: {}
-env:
-  VPS_HOST: 138.201.119.239
+on: { workflow_dispatch: {} }
+env: { VPS_HOST: 138.201.119.239 }
 jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      - name: SSH log grab
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      - env: { VPS_SSH_KEY: "${{ secrets.VPS_SSH_KEY }}" }
         run: |
           mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" 'bash -s' <<'REMOTE'
-            set +e
-            echo "== build_voice / transcript logs (last 12m) =="
-            docker logs twinai-worker --since 12m 2>&1 | grep -iE "build_voice|transcript|Host not allowed|ffmpeg|whisper|c3aac84f" | tail -25
-            echo "== worker has the fix? grep image src =="
-            docker exec twinai-worker sh -lc "grep -c cdninstagram /app/dist/media.js || echo 'NOT-IN-IMAGE'"
-            echo "== done =="
-          REMOTE
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" "echo c2V0ICtlClU9J2h0dHBzOi8vc2NvbnRlbnQtaWFkNi0xLmNkbmluc3RhZ3JhbS5jb20vbzEvdi90MTYvZjIvbTg2L0FRTUNzc291T0IyOWVrc05ocXNuajlobXFvMTZod3JlVEdZV1dsUHFOVXp2cXNDQmUyMmlyZlBxMHQ4Tl9NRy1PdVNNenZCaHpYdlpQNWhfM0FUOTRlRktCaU9ERXgyTk5FcExsY2subXA0P3N0cD1kc3QtbXA0JmVmZz1leUp4WlY5bmNtOTFjSE1pT2lKYlhDSnBaMTkzWldKZlpHVnNhWFpsY25sZmRuUnpYMjkwWmx3aVhTSXNJblpsYm1OdlpHVmZkR0ZuSWpvaWRuUnpYM1p2WkY5MWNteG5aVzR1WTJ4cGNITXVZekl1TnpJd0xtSmhjMlZzYVc1bEluMCZfbmNfY2F0PTEwNyZ2cz0xNjc3NjY5NDQzMjQ1MjM1XzE0MTI4OTk2MjEmY2NiPTktNCZvaD0wMF9BZjhDV1ZncjNkaEJETEpDT1MyeVliSnY1dHdnUC1YT0RCb3RvTTAxSGhqN3R3Jm9lPTZBMzk0MTI0Jl9uY19zaWQ9MTBkMTNiJwplY2hvICI9PSBwbGFpbiBjdXJsIHN0YXR1cyA9PSI7IGN1cmwgLXMgLW8gL2Rldi9udWxsIC13ICIle2h0dHBfY29kZX1cbiIgLXIgMC0xMDAwICIkVSIKZWNobyAiPT0gY3VybCArIGJyb3dzZXIgVUEgPT0iOyBjdXJsIC1zIC1vIC9kZXYvbnVsbCAtdyAiJXtodHRwX2NvZGV9XG4iIC1yIDAtMTAwMCAtQSAiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzEyNC4wIFNhZmFyaS81MzcuMzYiICIkVSIKZWNobyAiPT0gZmZtcGVnICsgVUEgKHByb2JlIDNzKSA9PSI7IGZmbXBlZyAteSAtdXNlcl9hZ2VudCAiTW96aWxsYS81LjAgKFdpbmRvd3MgTlQgMTAuMDsgV2luNjQ7IHg2NCkgQXBwbGVXZWJLaXQvNTM3LjM2IChLSFRNTCwgbGlrZSBHZWNrbykgQ2hyb21lLzEyNC4wIFNhZmFyaS81MzcuMzYiIC1pICIkVSIgLXQgMyAtdm4gLWFjIDEgLWFyIDE2MDAwIC90bXAvdC53YXYgPi90bXAvZmYubG9nIDI+JjE7IGVjaG8gImZmbXBlZyBleGl0PSQ/IjsgdGFpbCAtMiAvdG1wL2ZmLmxvZzsgbHMgLWwgL3RtcC90LndhdiAyPi9kZXYvbnVsbDsgcm0gLWYgL3RtcC90LndhdgplY2hvICI9PSBkb25lID09Ig== | base64 -d | bash -s"
