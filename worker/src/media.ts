@@ -11,6 +11,12 @@ const ALLOWED_HOSTS = [
   'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com',
   'instagram.com', 'www.instagram.com',
   'youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com',
+  // Instagram / Facebook media CDNs. The DNA scrape returns ready-to-fetch mp4
+  // URLs on these public Meta edges (scontent-*.cdninstagram.com, *.fbcdn.net).
+  // We only ever feed them URLs WE scraped, so allowing them lets the brand-voice
+  // build pull audio straight off the clip with ffmpeg+whisper — no paid Apify
+  // transcript call. (Public CDN hosts, not internal, so no SSRF exposure.)
+  'cdninstagram.com', 'fbcdn.net',
 ]
 
 export function assertAllowedUrl(raw: string): URL {
@@ -135,6 +141,44 @@ function isInstagram(u: URL): boolean {
   return IG_HOSTS.some((x) => h === x || h.endsWith('.' + x))
 }
 
+// Direct media edges (Instagram/FB CDN): the scrape already handed us a ready mp4
+// URL, so we pull the audio straight off it locally instead of a paid transcript
+// Actor. This is what makes the brand-voice audio upgrade actually run (the URLs
+// the DNA scrape passes live on these hosts, which the old allowlist rejected).
+const DIRECT_MEDIA_HOSTS = ['cdninstagram.com', 'fbcdn.net']
+function isDirectMedia(u: URL): boolean {
+  const h = u.hostname.toLowerCase()
+  return DIRECT_MEDIA_HOSTS.some((x) => h === x || h.endsWith('.' + x))
+}
+
+// Pull audio straight from a direct media URL (a scraped Instagram/FB CDN mp4) with
+// ffmpeg and transcribe locally with faster-whisper — free, no transcript Actor.
+// ffmpeg streams just the audio (`-vn`) into whisper's native 16 kHz mono, capped
+// at maxMediaSecs, and the temp audio is always discarded (analyze-and-discard).
+async function transcribeDirectMedia(rawUrl: string): Promise<Transcript> {
+  const dir = await mkdtemp(join(tmpdir(), 'twinai-'))
+  const audioPath = join(dir, 'audio.wav')
+  const outPath = join(dir, 'transcript.json')
+  try {
+    await run(
+      'ffmpeg',
+      ['-y', '-i', rawUrl, '-vn', '-ac', '1', '-ar', '16000', '-t', String(env.maxMediaSecs), audioPath],
+      120_000,
+    )
+    await run(
+      'python3',
+      [join(import.meta.dirname, '..', 'whisper_transcribe.py'),
+       '--audio', audioPath, '--out', outPath,
+       '--model', env.whisperModel, '--device', env.whisperDevice,
+       '--language', 'auto', '--beam-size', '1', '--max-seconds', String(env.maxMediaSecs)],
+      Math.max(180_000, env.maxMediaSecs * 1000),
+    )
+    return JSON.parse(await readFile(outPath, 'utf8')) as Transcript
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
+}
+
 // Run an Apify Instagram transcript Actor and map its dataset output into our
 // Transcript shape. The Actor returns one dataset item shaped as:
 //   { text, duration, errMsg, segments: [{ start, end, text }] }
@@ -190,6 +234,7 @@ export async function transcribeFromUrl(rawUrl: string): Promise<Transcript> {
   const u = assertAllowedUrl(rawUrl)
   if (isYouTube(u)) return youtubeTranscriptViaApify(rawUrl)
   if (isInstagram(u)) return instagramTranscriptViaApify(rawUrl)
+  if (isDirectMedia(u)) return transcribeDirectMedia(rawUrl) // scraped IG/FB CDN mp4 → free local whisper
   const dir = await mkdtemp(join(tmpdir(), 'twinai-'))
   const audioPath = join(dir, 'audio.m4a')
   const outPath = join(dir, 'transcript.json')
