@@ -36,6 +36,26 @@ const RELATED_NICHE: Record<string, string[]> = {
   Beauty: ['Lifestyle', 'Fitness'],
 }
 
+// Niches "related" to mine for the for-you feed's middle tier. Curated neighbors for
+// the base niches; for any FRESHLY DISCOVERED niche we derive neighbors by shared
+// significant words, so a new niche still gets an on-topic related tier instead of
+// none. e.g. "AI Virtual Try-On" relates to "Fashion Tech" / "Virtual Styling".
+const RELATED_STOPWORDS = new Set(['and', 'the', 'for', 'of', 'a', 'to', 'in', 'on', 'with', 'your', 'my', 'ai'])
+function relatedNiches(myNiche: string, known: string[]): string[] {
+  if (RELATED_NICHE[myNiche]) return RELATED_NICHE[myNiche]
+  const words = (s: string) =>
+    new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 2 && !RELATED_STOPWORDS.has(w)))
+  const mine = words(myNiche)
+  if (!mine.size) return []
+  return known
+    .filter((n) => n !== myNiche)
+    .map((n) => ({ n, overlap: [...words(n)].filter((w) => mine.has(w)).length }))
+    .filter((x) => x.overlap > 0)
+    .sort((a, b) => b.overlap - a.overlap)
+    .slice(0, 3)
+    .map((x) => x.n)
+}
+
 // Resolve a creator's free-text niche to the closest KNOWN gallery niche: exact
 // bucket name, else best keyword-signal score, else loose substring.
 function resolveNiche(userNiche: string, known: string[]): string {
@@ -80,8 +100,29 @@ const POSTER_BY_NICHE: Record<string, { accent: string; poster: string }> = {
   Other:    { accent: 'text-teal',  poster: 'from-teal/25 via-ink2 to-ink' },
 }
 
+// Palette pool so EVERY niche gets a designed skin, not one shared default. Curated
+// niches above keep their exact look; any freshly discovered niche is assigned a
+// stable palette by hashing its name (same niche -> same skin every render).
+const NICHE_PALETTES: { accent: string; poster: string }[] = [
+  { accent: 'text-amber', poster: 'from-coral/30 via-ink2 to-ink' },
+  { accent: 'text-coral', poster: 'from-coral/25 via-ink2 to-ink' },
+  { accent: 'text-amber', poster: 'from-amber/30 via-ink2 to-ink' },
+  { accent: 'text-teal',  poster: 'from-teal/30 via-ink2 to-ink' },
+  { accent: 'text-coral', poster: 'from-amber/25 via-ink2 to-ink' },
+  { accent: 'text-teal',  poster: 'from-teal/25 via-ink2 to-ink' },
+  { accent: 'text-amber', poster: 'from-teal/20 via-ink2 to-ink' },
+  { accent: 'text-coral', poster: 'from-coral/35 via-ink2 to-ink' },
+]
+function skinForNiche(niche: string): { accent: string; poster: string } {
+  const curated = POSTER_BY_NICHE[niche]
+  if (curated) return curated
+  let h = 0
+  for (let i = 0; i < niche.length; i++) h = (h * 31 + niche.charCodeAt(i)) >>> 0
+  return NICHE_PALETTES[h % NICHE_PALETTES.length]
+}
+
 function fromDb(it: GalleryItem): Card {
-  const skin = POSTER_BY_NICHE[it.niche] ?? POSTER_BY_NICHE.Other
+  const skin = skinForNiche(it.niche)
   return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || 'Shared by a TwinAI creator.', reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url }
 }
 
@@ -207,7 +248,7 @@ export default function Gallery() {
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
     if (isForYou) {
       // Sub-niche first (most specific), then the broad niche, then related, then rest.
-      const related = RELATED_NICHE[myNiche] ?? []
+      const related = relatedNiches(myNiche, knownNiches)
       const rank = (c: Card) =>
         c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
       return [...out].sort((a, b) => rank(a) - rank(b) || byReach(a, b))
