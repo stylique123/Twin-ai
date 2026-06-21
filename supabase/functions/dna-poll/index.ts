@@ -15,8 +15,10 @@ import {
   extractPosts,
   extractProfileBio,
   extractVideoUrls,
+  isPrivateProfile,
   json,
   pollApifyRun,
+  postsOwnedBy,
   synthesizeVoice,
   type Platform,
 } from '../_shared/dna.ts'
@@ -107,10 +109,24 @@ Deno.serve(async (req: Request) => {
     if (status === 'RUNNING') return json({ status: 'building' })
     if (status !== 'SUCCEEDED') return await fail('The scan could not finish. Try again or set up manually.')
 
-    // Scrape done. If it found NO posts, the account is almost certainly private,
-    // empty, or mistyped. Do NOT fabricate a voice from nothing — that's the
-    // "it made up things that weren't there" bug. Fail honestly instead.
-    const posts = extractPosts(items ?? [])
+    // Scrape done. A PRIVATE Instagram account can't be read, and Apify returns
+    // OTHER profiles' posts (related/tagged) instead — refuse rather than build a
+    // voice from content that isn't theirs. (The actor stamps the queried profile's
+    // `private` flag on every item.)
+    const allItems = items ?? []
+    if (voice.platform === 'instagram' && isPrivateProfile(allItems)) {
+      return await fail(
+        `@${voice.handle} is private, so we can't read its posts — and we won't build a voice from ` +
+          `anyone else's. Make it public for a moment, pick a public account, or set up your voice manually.`,
+      )
+    }
+    // Backstop: only ever synthesize from posts the requested handle actually OWNS,
+    // so related/tagged profiles can never leak into the voice.
+    const ownItems = voice.platform === 'instagram' ? postsOwnedBy(allItems, voice.handle) : allItems
+
+    // If nothing readable remains, the account is private, empty, or mistyped. Do
+    // NOT fabricate a voice from nothing — fail honestly instead.
+    const posts = extractPosts(ownItems)
     if (posts.length === 0) {
       return await fail(
         `We couldn't read any public posts from @${voice.handle}. If that account is private or empty, ` +
@@ -118,7 +134,7 @@ Deno.serve(async (req: Request) => {
           `we won't guess a voice we can't actually see.`,
       )
     }
-    const bio = extractProfileBio(items ?? [])
+    const bio = extractProfileBio(ownItems)
     const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts, bio)
 
     await admin
@@ -135,7 +151,7 @@ Deno.serve(async (req: Request) => {
     // SPOKEN voice. Best-effort — if no worker is running, the caption voice
     // stays usable and this job simply waits.
     try {
-      const urls = extractVideoUrls(items ?? [], 5)
+      const urls = extractVideoUrls(ownItems, 5)
       if (urls.length) {
         await admin.from('jobs').insert({
           owner_id: user.id,

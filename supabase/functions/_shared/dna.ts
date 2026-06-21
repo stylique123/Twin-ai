@@ -225,6 +225,37 @@ export function extractProfileBio(items: Record<string, unknown>[]): string {
   return ''
 }
 
+// --- Privacy / ownership guards --------------------------------------------
+// Owner handle of a scraped item, normalized for comparison (Instagram stamps
+// `ownerUsername`; other actors use author/username fields).
+function ownerOf(it: Record<string, unknown>): string {
+  return pick(it, ['ownerUsername', 'authorMeta.uniqueId', 'authorUsername', 'username'])
+    .toLowerCase()
+    .replace(/^@/, '')
+}
+
+// A PRIVATE Instagram account can't be read, and Apify returns RELATED/tagged
+// profiles' posts instead of the creator's — so we must never synthesize a voice
+// from them (the "private account → made-up brand identity" bug). The actor stamps
+// the QUERIED profile's `private` flag onto every item it returns.
+export function isPrivateProfile(items: Record<string, unknown>[]): boolean {
+  return (items ?? []).some((it) => get(it, 'private') === true || get(it, 'isPrivate') === true)
+}
+
+// Keep only posts actually OWNED by the requested handle. Items the actor didn't
+// stamp with an owner are kept (we can't disprove ownership); posts owned by a
+// DIFFERENT account (what a private profile yields) are dropped.
+export function postsOwnedBy(
+  items: Record<string, unknown>[],
+  handle: string,
+): Record<string, unknown>[] {
+  const want = handle.toLowerCase().replace(/^@/, '')
+  return (items ?? []).filter((it) => {
+    const o = ownerOf(it)
+    return !o || o === want
+  })
+}
+
 // --- Gemini synthesis ------------------------------------------------------
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
   type: 'OBJECT',
