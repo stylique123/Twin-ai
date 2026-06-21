@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Check, Loader2, Pencil, AtSign, Sparkles, AlertCircle, Building2, X, Star,
+  ScanSearch, FileText,
 } from 'lucide-react'
 import {
   listBrandVoices, setDefaultBrandVoice, renameBrandVoice, startDna, pollDna,
@@ -9,7 +10,16 @@ import {
 import { planFor, EXTRA_BRAND_VOICE_PRICE } from '../lib/brand'
 import { useAuth } from '../context/AuthContext'
 import { EASE } from '../components/motion'
+import { BuildProgress, type BuildStage } from '../components/BuildProgress'
 import type { BrandVoice, Platform } from '../lib/types'
+
+// Live stages for the DNA scan overlay (auto-paced — the backend reports only
+// building→ready, so we keep the bar moving on these estimates).
+const DNA_STAGES: BuildStage[] = [
+  { label: 'Pulling their recent posts', icon: AtSign, est: 26, flavor: ['Scanning their profile', 'Ranking posts by reach', 'Finding their top performers'] },
+  { label: 'Hearing how they sound', icon: ScanSearch, est: 10, flavor: ['Catching tone & pacing', 'Spotting signature phrases', 'Reading their hook formula'] },
+  { label: 'Writing the voice profile', icon: FileText, est: 14, flavor: ['Locking niche & sub-niche', 'Mapping their audience', 'Finishing up'] },
+]
 
 const PLATFORMS: { id: Platform; label: string }[] = [
   { id: 'tiktok', label: 'TikTok' },
@@ -367,13 +377,16 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
             </button>
           </>
         ) : (
-          <div className="py-6 text-center">
-            <Loader2 className="mx-auto h-8 w-8 animate-spin text-amber" />
-            <h2 className="mt-5 font-display text-2xl">Reading how they sound…</h2>
-            <p className="mt-2 text-sm text-sand">
-              Scanning <span className="text-cream">@{handle.replace(/^@/, '')}</span>, tone, pacing, hooks and
-              signature phrases. This usually takes under a minute.
-            </p>
+          <div className="py-6">
+            <h2 className="text-center font-display text-2xl">
+              Reading <span className="text-cream">@{handle.replace(/^@/, '')}</span>…
+            </h2>
+            <div className="mt-6">
+              <BuildProgress
+                stages={DNA_STAGES}
+                footer="Learning their tone, pacing, hooks and signature phrases — usually under a minute."
+              />
+            </div>
           </div>
         )}
       </motion.div>

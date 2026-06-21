@@ -120,6 +120,34 @@ Deno.serve(async (req: Request) => {
     voiceId = voice.id
   }
 
+  // HANDLE CACHE: a creator's public voice is identical no matter who scans it, so
+  // if anyone built this exact handle+platform recently we reuse that profile and
+  // skip the paid scrape + synth entirely — repeat/popular handles go near-instant,
+  // with zero quality change (same posts, same profile). Tunable via DNA_CACHE_DAYS.
+  const cacheDays = Number(Deno.env.get('DNA_CACHE_DAYS') ?? '7')
+  if (cacheDays > 0) {
+    const cutoff = new Date(Date.now() - cacheDays * 86_400_000).toISOString()
+    const { data: cached } = await admin
+      .from('brand_voices')
+      .select('profile')
+      .eq('handle', handle)
+      .eq('platform', platform)
+      .eq('status', 'ready')
+      .not('profile', 'is', null)
+      .gte('updated_at', cutoff)
+      .neq('id', voiceId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (cached?.profile) {
+      await admin
+        .from('brand_voices')
+        .update({ status: 'ready', profile: cached.profile, error: null })
+        .eq('id', voiceId)
+      return json({ brand_voice_id: voiceId, job_id: null, status: 'ready', cached: true })
+    }
+  }
+
   // Kick the Apify scrape asynchronously. If Apify isn't configured/healthy,
   // fail the voice cleanly so the UI can fall back to the manual quiz.
   try {

@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText, Check } from 'lucide-react'
+import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { generateBlueprint, ingestReference, getJob } from '../lib/api'
 import { BLUEPRINT_COST, videosFromCredits } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { Reveal, EASE } from '../components/motion'
 import { cn } from '../lib/cn'
+import { BuildProgress, type BuildStage } from '../components/BuildProgress'
 
 const FIDELITY = [
   { id: 'close', label: 'Close', note: 'Stay tight to the reference structure.', icon: Target },
@@ -21,12 +22,15 @@ const FIDELITY = [
 // blueprints unrelated to the reference and still charged a recreation.
 type Phase = 'idle' | 'fetching' | 'transcribing' | 'writing'
 
-const PHASE_STEPS: { id: Phase; label: string; icon: typeof ScanSearch }[] = [
-  { id: 'fetching', label: 'Fetching the real video', icon: Link2 },
-  { id: 'transcribing', label: 'Transcribing & reading its structure', icon: ScanSearch },
-  { id: 'writing', label: 'Writing your blueprint, in your voice', icon: FileText },
-]
 const PHASE_ORDER: Phase[] = ['idle', 'fetching', 'transcribing', 'writing']
+
+// Stages for the live BuildProgress overlay. `est` paces the creeping bar and the
+// rotating `flavor` lines so the long "writing" model call never looks frozen.
+const STUDIO_STAGES: BuildStage[] = [
+  { label: 'Fetching the real video', icon: Link2, est: 8, flavor: ['Locating the source clip', 'Pulling the media'] },
+  { label: 'Transcribing & reading its structure', icon: ScanSearch, est: 22, flavor: ['Transcribing the audio', 'Mapping the hook', 'Reading the retention beats', 'Spotting the winning pattern'] },
+  { label: 'Writing your blueprint, in your voice', icon: FileText, est: 42, flavor: ['Studying your voice DNA', 'Drafting hook options', 'Writing your script', 'Building the shot list', 'Polishing captions & publish plan'] },
+]
 
 export default function Studio() {
   const { profile, refreshProfile } = useAuth()
@@ -201,55 +205,11 @@ export default function Studio() {
                   className="absolute inset-0 z-10 grid place-items-center rounded-card bg-ink/80 backdrop-blur-md"
                 >
                   <div className="w-full max-w-sm px-6">
-                    <div className="space-y-3">
-                      {PHASE_STEPS.map((s) => {
-                        const cur = PHASE_ORDER.indexOf(phase)
-                        const mine = PHASE_ORDER.indexOf(s.id)
-                        const done = cur > mine
-                        const active = cur === mine
-                        return (
-                          <div key={s.id} className="flex items-center gap-3">
-                            <span
-                              className={cn(
-                                'grid h-8 w-8 shrink-0 place-items-center rounded-full border transition-colors',
-                                done
-                                  ? 'border-teal bg-teal/15 text-teal'
-                                  : active
-                                    ? 'border-coral bg-coral/15 text-coral'
-                                    : 'border-white/12 text-stone',
-                              )}
-                            >
-                              {done ? (
-                                <Check className="h-4 w-4" />
-                              ) : active ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <s.icon className="h-4 w-4" />
-                              )}
-                            </span>
-                            <span
-                              className={cn(
-                                'text-sm transition-colors',
-                                done ? 'text-sand' : active ? 'font-heading text-cream' : 'text-stone',
-                              )}
-                            >
-                              {s.label}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div className="mt-6 h-1 w-full overflow-hidden rounded-full bg-white/8">
-                      <motion.div
-                        className="h-full rounded-full bg-gradient-to-r from-coral to-amber"
-                        initial={{ width: '8%' }}
-                        animate={{ width: `${(PHASE_ORDER.indexOf(phase) / 3) * 100}%` }}
-                        transition={{ duration: 0.6, ease: EASE }}
-                      />
-                    </div>
-                    <p className="mt-3 text-center text-xs text-stone">
-                      Reading the real clip takes ~1-2 min. Hang tight, we don't charge a recreation unless this finishes.
-                    </p>
+                    <BuildProgress
+                      stages={STUDIO_STAGES}
+                      active={Math.max(0, PHASE_ORDER.indexOf(phase) - 1)}
+                      footer="Reading the real clip takes ~1-2 min. Hang tight, we don't charge a recreation unless this finishes."
+                    />
                   </div>
                 </motion.div>
               )}
