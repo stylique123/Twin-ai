@@ -5,23 +5,54 @@ import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
 import { useAuth } from '../context/AuthContext'
-import { listGalleryItems, type GalleryItem } from '../lib/api'
+import { listGalleryItems, listBrandVoices, type GalleryItem } from '../lib/api'
 import { cn } from '../lib/cn'
 
 // Base niches we always seed the filter with. The live list GROWS beyond these
 // as discovery brings in items tagged with new niches (see `nicheChips`).
 const BASE_NICHES = ['Business', 'Fitness', 'Food', 'Education', 'Lifestyle', 'Beauty']
 
-// Resolve a creator's free-text niche (e.g. "fitness & wellness") to the closest
-// canonical niche present in `known`, so we can pre-select and front-load it.
+// A creator's real niche is almost never one of the bucket names ("Gen Z lifestyle
+// and relatable comedy", "luxury resale", "virtual try-on for fashion brands"). We
+// score their free-text niche against these keyword signals and pick the closest
+// bucket, so the gallery opens on something RELEVANT instead of falling back to All.
+const NICHE_SIGNALS: Record<string, string[]> = {
+  Business: ['business', 'entrepreneur', 'founder', 'startup', 'marketing', 'sales', 'money', 'finance', 'ecommerce', 'e-commerce', 'commerce', 'agency', 'saas', 'b2b', 'resale', 'luxury', 'retail', 'shopify', 'returns', 'conversion', 'sell'],
+  Fitness: ['fitness', 'gym', 'workout', 'health', 'wellness', 'nutrition', 'training', 'athlete', 'yoga', 'run', 'lifting', 'weight'],
+  Food: ['food', 'recipe', 'cook', 'chef', 'baking', 'restaurant', 'meal', 'kitchen', 'snack'],
+  Education: ['education', 'learn', 'tutorial', 'explain', 'teach', 'science', 'history', 'study', 'how to', 'coding', 'developer', 'tech', 'software'],
+  Lifestyle: ['lifestyle', 'vlog', 'travel', 'comedy', 'relatable', 'gen z', 'genz', 'funny', 'day in the life', 'routine', 'aesthetic', 'mom', 'dating', 'creator'],
+  Beauty: ['beauty', 'makeup', 'skincare', 'skin', 'cosmetic', 'hair', 'nails', 'glow', 'try-on', 'try on', 'virtual try', 'fashion', 'style', 'outfit', 'wardrobe', 'grwm'],
+}
+
+// Natural neighbors: when the creator's own niche is sparse, surface these next so
+// the feed stays on-topic instead of going random. (The "related to my niche" ask.)
+const RELATED_NICHE: Record<string, string[]> = {
+  Business: ['Education', 'Lifestyle'],
+  Fitness: ['Lifestyle', 'Beauty'],
+  Food: ['Lifestyle', 'Education'],
+  Education: ['Business', 'Lifestyle'],
+  Lifestyle: ['Beauty', 'Business'],
+  Beauty: ['Lifestyle', 'Fitness'],
+}
+
+// Resolve a creator's free-text niche to the closest KNOWN gallery niche: exact
+// bucket name, else best keyword-signal score, else loose substring.
 function resolveNiche(userNiche: string, known: string[]): string {
   const u = userNiche.trim().toLowerCase()
   if (!u) return ''
-  return (
-    known.find((n) => n.toLowerCase() === u) ??
-    known.find((n) => u.includes(n.toLowerCase()) || n.toLowerCase().includes(u)) ??
-    ''
-  )
+  const exact = known.find((n) => n.toLowerCase() === u)
+  if (exact) return exact
+  let best = ''
+  let bestScore = 0
+  for (const n of known) {
+    const sig = NICHE_SIGNALS[n] ?? [n.toLowerCase()]
+    // Longer keyword hits win, so a specific signal beats a generic one.
+    const score = sig.reduce((s, k) => s + (u.includes(k) ? k.length : 0), 0)
+    if (score > bestScore) { bestScore = score; best = n }
+  }
+  if (best) return best
+  return known.find((n) => u.includes(n.toLowerCase()) || n.toLowerCase().includes(u)) ?? ''
 }
 
 interface Card {
@@ -67,13 +98,6 @@ function reachNum(s: string): number {
   return n * mult
 }
 
-function matchesUserNiche(card: Card, userNiche: string): boolean {
-  const u = userNiche.toLowerCase()
-  if (!u) return false
-  if (card.niche.toLowerCase() === u) return true
-  return u.includes(card.niche.toLowerCase()) || card.niche.toLowerCase().includes(u)
-}
-
 const ACCENT_GLOW: Record<string, string> = {
   'text-amber': 'hover:border-amber/40 hover:shadow-[0_0_24px_rgba(255,179,71,0.15)]',
   'text-teal':  'hover:border-teal/40 hover:shadow-[0_0_24px_rgba(101,229,216,0.15)]',
@@ -83,7 +107,12 @@ const ACCENT_GLOW: Record<string, string> = {
 export default function Gallery() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const userNiche = profile?.dna?.niche?.trim() ?? ''
+  const [voiceNiche, setVoiceNiche] = useState('')
+  // The creator's real niche lives in their default BRAND VOICE (the handle scan),
+  // not the onboarding quiz. Handle-based users have an empty profile.dna, which is
+  // why the gallery was stuck on "All" and showed unrelated niches. Prefer the voice
+  // niche; fall back to the quiz dna for older quiz-only users.
+  const userNiche = (voiceNiche || profile?.dna?.niche || '').trim()
   const [niche, setNiche] = useState<string>('All')
   const [q, setQ] = useState('')
   const [sort, setSort] = useState<'top' | 'all'>('top')
@@ -96,6 +125,13 @@ export default function Gallery() {
     listGalleryItems()
       .then((items) => setCommunity(items.filter((i) => i.visibility === 'public').map(fromDb)))
       .catch(() => setCommunity([]))
+    // Pull the creator's real niche from their default brand voice.
+    listBrandVoices()
+      .then((vs) => {
+        const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready')
+        if (def?.profile?.niche) setVoiceNiche(def.profile.niche)
+      })
+      .catch(() => {})
   }, [])
 
   const all: Card[] = useMemo(() => [...FEATURED, ...community], [community])
@@ -145,18 +181,23 @@ export default function Gallery() {
   }, [all]) // eslint-disable-line react-hooks/exhaustive-deps
   const shown = useMemo(() => {
     let out = all
-    out = out.filter((c) => niche === 'All' || c.niche === niche)
     if (q.trim()) {
       const needle = q.trim().toLowerCase()
       out = out.filter((c) => (c.niche + ' ' + c.label + ' ' + c.hook + ' ' + c.why + ' ' + c.creator).toLowerCase().includes(needle))
     }
-    if (niche === 'All' && userNiche && sort !== 'top') {
-      const matched = out.filter((c) => matchesUserNiche(c, userNiche))
-      const rest = out.filter((c) => !matchesUserNiche(c, userNiche))
-      out = [...matched, ...rest]
+    const byReach = (a: Card, b: Card) => reachNum(b.reach) - reachNum(a.reach)
+    // The creator's own chip is a personalized "for you" feed, not a hard filter:
+    // their niche's videos first, then RELATED niches, then everything else. A
+    // specific bucket chip hard-filters; "All" is a neutral browse.
+    const isForYou = !!myNiche && niche === myNiche
+    if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
+    if (isForYou) {
+      const related = RELATED_NICHE[myNiche] ?? []
+      const rank = (c: Card) => (c.niche === myNiche ? 0 : related.includes(c.niche) ? 1 : 2)
+      return [...out].sort((a, b) => rank(a) - rank(b) || byReach(a, b))
     }
-    return sort === 'top' ? [...out].sort((a, b) => reachNum(b.reach) - reachNum(a.reach)) : out
-  }, [all, userNiche, niche, q, sort])
+    return sort === 'top' ? [...out].sort(byReach) : out
+  }, [all, myNiche, niche, q, sort])
 
   // Deep-link into the Studio with the reference prefilled. Studio reads `ref`
   // from the query string, so pass it there (a `state` payload was silently
