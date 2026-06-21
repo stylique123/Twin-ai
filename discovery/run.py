@@ -13,7 +13,7 @@ Env:
   DISCOVERY_NICHES                          (JSON array; default below)
   DISCOVERY_YT_LIMIT / _TT_LIMIT / _IG_LIMIT(per-niche caps; IG small = ~$5/mo)
 """
-import os, sys, json, urllib.request, urllib.parse
+import os, sys, json, re, urllib.request, urllib.parse
 import discover
 
 SUPABASE_URL = os.environ['SUPABASE_URL'].rstrip('/')
@@ -63,10 +63,11 @@ def creator_niches(base):
     seen = set(base_lower)
     out = []
     for r in (rows or []):
+        # Store the FULL niche verbatim as the label so it exact-matches the
+        # creator's voice niche in the gallery UI (a truncated label would not).
         n = ((r.get('profile') or {}).get('niche') or '').strip()
         if not n or len(n) < 3:
             continue
-        n = n[:48]  # keep chip labels sane
         k = n.lower()
         if k in seen:
             continue
@@ -141,6 +142,15 @@ def instagram(query, limit):
     return out
 
 
+def search_query(niche):
+    """A clean, short search query from a possibly long multi-topic niche label.
+    The first topic (before a comma or slash) and a few words search far better
+    than the whole string, e.g. "Tech careers, Pakistani diaspora, prof tips" ->
+    "Tech careers". The full niche stays the gallery LABEL; only the query shrinks."""
+    seg = re.split(r'[,/]', niche)[0].strip()
+    return ' '.join(seg.split()[:6]) or niche.strip()
+
+
 def main():
     have = existing_urls()
     base_set = set(n.strip().lower() for n in BASE_NICHES)
@@ -150,11 +160,11 @@ def main():
           % (len(niches), len(BASE_NICHES), ', '.join(niches)))
     total = 0
     for niche in niches:
-        q = niche.lower()
+        q = search_query(niche)  # clean query for search; full `niche` stays the label
         srcs = [('youtube', lambda: discover.youtube(q + ' tips', YT_LIMIT)),
                 ('tiktok', lambda: discover.tiktok(q, TT_LIMIT))]
         # Instagram uses paid Apify, so keep it to the base niches only (cost cap).
-        if q in base_set:
+        if niche.strip().lower() in base_set:
             srcs.append(('instagram', lambda: instagram(q, IG_LIMIT)))
         items = []
         for label, fn in srcs:
