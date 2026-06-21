@@ -2,6 +2,7 @@ import type { Job } from '../db.js'
 import { handleTranscribe } from './transcribe.js'
 import { handleBuildVoice } from './voice.js'
 import { handleAutoEdit } from './autoedit.js'
+import { handleScrapeDna } from './scrapeDna.js'
 
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
@@ -11,4 +12,5 @@ export const handlers: Record<string, JobHandler> = {
   transcribe: handleTranscribe,
   build_voice: handleBuildVoice,
   autoedit: handleAutoEdit,
+  scrape_dna: handleScrapeDna,
 }

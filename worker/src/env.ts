@@ -34,7 +34,7 @@ export const env = {
   revideoUrl: (process.env.REVIDEO_URL ?? '').trim(),
 
   // Which job types this worker process handles.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe,build_voice,autoedit').split(',').map((s) => s.trim()),
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe,build_voice,autoedit,scrape_dna').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   visibilitySecs: Number(process.env.WORKER_VISIBILITY_SECS ?? '900'),

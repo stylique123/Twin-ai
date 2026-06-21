@@ -148,6 +148,24 @@ Deno.serve(async (req: Request) => {
     }
   }
 
+  // TikTok DNA is built FREE by the worker (yt-dlp), not Apify. Enqueue the worker
+  // job; the worker scrapes + synthesizes and flips the row to ready, and dna-poll
+  // reports that row's status. (Instagram + YouTube keep the Apify path below —
+  // yt-dlp is bot-blocked on those from datacenter IPs.)
+  if (platform === 'tiktok') {
+    const { data: job } = await admin
+      .from('jobs')
+      .insert({
+        owner_id: user.id,
+        type: 'scrape_dna',
+        status: 'queued',
+        payload: { brand_voice_id: voiceId, handle, platform, owner_id: user.id },
+      })
+      .select('id')
+      .single()
+    return json({ brand_voice_id: voiceId, job_id: job?.id ?? null, status: 'building' })
+  }
+
   // Kick the Apify scrape asynchronously. If Apify isn't configured/healthy,
   // fail the voice cleanly so the UI can fall back to the manual quiz.
   try {

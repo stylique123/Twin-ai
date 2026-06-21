@@ -85,9 +85,21 @@ Deno.serve(async (req: Request) => {
     .contains('payload', { brand_voice_id: voiceId })
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
+    .maybeSingle()
 
   if (!job) {
+    // Worker-built DNA (e.g. TikTok via yt-dlp) has no Apify `build_dna` job — the
+    // worker updates the brand_voice row directly (ready/failed), which the early
+    // returns above report. While it's still working, just say building.
+    const { data: workerJob } = await admin
+      .from('jobs')
+      .select('id')
+      .eq('type', 'scrape_dna')
+      .eq('owner_id', user.id)
+      .contains('payload', { brand_voice_id: voiceId })
+      .limit(1)
+      .maybeSingle()
+    if (workerJob) return json({ status: 'building' })
     await admin.from('brand_voices').update({ status: 'failed', error: 'Lost the scan job.' }).eq('id', voiceId)
     return json({ status: 'failed', error: 'Lost the scan job.' }, 200)
   }

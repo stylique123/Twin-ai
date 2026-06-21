@@ -65,6 +65,37 @@ export interface Transcript {
   segments: { start: number; end: number; text: string }[]
 }
 
+export interface ScrapedPost {
+  text: string
+  likes: number
+  plays: number
+  hashtags: string[]
+  url: string
+}
+
+// FREE TikTok profile scrape via yt-dlp. Datacenter IPs are NOT bot-blocked for
+// TikTok (unlike YouTube/Instagram), so `--flat-playlist -J` returns full per-video
+// metadata in one fast call: the caption (`title`/`description`), `view_count` and
+// `like_count`. That's everything the DNA synth needs, with no paid Apify run. The
+// profile URL scopes results to THIS creator, so no other-account leak is possible;
+// an empty result means private/empty/invalid, which the caller refuses.
+export async function scrapeTikTokPosts(handle: string, limit = 12): Promise<ScrapedPost[]> {
+  const h = handle.replace(/^@/, '')
+  const url = `https://www.tiktok.com/@${h}`
+  assertAllowedUrl(url)
+  const { stdout } = await run('yt-dlp', ['--flat-playlist', '-J', '--playlist-end', String(limit), url], 60_000)
+  const data = JSON.parse(stdout) as { entries?: Record<string, unknown>[] }
+  const entries = Array.isArray(data.entries) ? data.entries : []
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  return entries
+    .map((e) => {
+      const text = String(e.title || e.description || '').replace(/\s+/g, ' ').trim()
+      const hashtags = Array.from(new Set((text.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 6)
+      return { text, likes: num(e.like_count), plays: num(e.view_count), hashtags, url: String(e.url ?? '') }
+    })
+    .filter((p) => p.text.length > 0)
+}
+
 // --- YouTube: captions via Apify (datacenter IPs are bot-blocked by yt-dlp) ---
 const YT_HOSTS = ['youtube.com', 'www.youtube.com', 'youtu.be', 'm.youtube.com']
 function isYouTube(u: URL): boolean {
