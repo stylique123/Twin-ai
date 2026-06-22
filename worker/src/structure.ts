@@ -1,4 +1,5 @@
 import { geminiJson, obj, arr, str, num } from './gemini.js'
+import { env } from './env.js'
 import type { Transcript } from './media.js'
 
 // The real structural read of a reference video, derived from its ACTUAL
@@ -58,5 +59,5 @@ ${timed || '(no speech detected)'}
 
 Derive the structure.`
 
-  return (await geminiJson(SYSTEM, prompt, schema)) as ReferenceStructure
+  return (await geminiJson(SYSTEM, prompt, schema, 60_000, undefined, env.fastModel)) as ReferenceStructure
 }

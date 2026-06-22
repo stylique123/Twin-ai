@@ -17,6 +17,11 @@ export const env = {
   // login required" on Instagram). We route both through Apify transcript Actors
   // instead, which pull real captions/transcripts reliably. TikTok still uses
   // yt-dlp + whisper (that works from datacenter IPs).
+  // Optional cheaper/faster model for the MECHANICAL Gemini calls (reference-
+  // structure extraction + the edit Director). Pointing this at your flash model
+  // cuts COGS ~$0.06 per remix with no quality loss on these schema-constrained
+  // tasks. Defaults to the main model (no behaviour change) until set.
+  fastModel: (process.env.GEMINI_FAST_MODEL ?? process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview').trim(),
   apifyToken: (process.env.APIFY_TOKEN ?? '').trim(),
   // Actor that returns YouTube captions as [{ start, dur, text }] in its KV output.
   apifyYoutubeActor: (process.env.APIFY_YOUTUBE_ACTOR ?? 'faVsWy9VTSNVIhWpR').trim(),

@@ -165,7 +165,10 @@ FINAL CHECK (do this before returning): reread every hook and every script line 
 // --- Provider boundary: swap this one function to change LLMs -------------
 async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
   const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
-  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0')
+  // Bounded thinking by default: unbounded dynamic thinking was the single biggest
+  // cost driver of this call (~70%). 8192 is ample for a structured blueprint and
+  // keeps COGS predictable. Override via GEMINI_THINKING_BUDGET (0 = unbounded).
+  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '8192')
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
   // Hard timeout so a hung model call can't leave credits spent-but-not-refunded.

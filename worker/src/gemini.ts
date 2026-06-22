@@ -15,9 +15,13 @@ export async function geminiJson(
   schema: unknown,
   timeoutMs = 60_000,
   thinkingBudget?: number,
+  model?: string,
 ): Promise<unknown> {
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
-  const model = process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview'
+  // Per-call model wins (so cheap mechanical tasks can run on a fast/flash model),
+  // else the configured default. Routing structure + edit-director to a flash model
+  // is a large COGS cut with no quality loss on these schema-constrained tasks.
+  const m = model ?? process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview'
   // SPEED: cap the thinking model's reasoning. Unbounded thinking is the biggest
   // latency sink — these are schema-constrained JSON tasks that don't need deep
   // reasoning. Per-call budget wins; else env GEMINI_THINKING_BUDGET; else 2048.
@@ -26,7 +30,7 @@ export async function geminiJson(
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`,
       {
         method: 'POST',
         signal: ctrl.signal,
