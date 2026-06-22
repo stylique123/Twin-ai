@@ -100,7 +100,7 @@ const FEATURES = [
 const BENEFITS = [
   { icon: Clock, big: '~2 hrs', label: 'saved per video', sub: 'scripting + editing, gone' },
   { icon: TrendingUp, big: '4×', label: 'more posts shipped', sub: 'same effort, more shots on goal' },
-  { icon: Eye, big: 'Proven', label: 'structures only', sub: 'rebuilt from what already won' },
+  { icon: Eye, big: '100%', label: 'from what worked', sub: 'rebuilt, never copied' },
 ]
 
 // Honest, non-attributed use-cases — NOT fabricated testimonials. We don't fake
@@ -130,6 +130,7 @@ export default function Landing() {
       <BenefitsSection />
       <FeaturesSection />
       <AgencySection />
+      <ValueStack />
       <PricingSection />
       <TestimonialsSection />
       <FAQSection />
@@ -233,9 +234,8 @@ function HeroSection() {
               transition={{ duration: 0.7, ease: EASE, delay: 0.14 }}
               className="mt-5 max-w-xl text-lg leading-relaxed text-sand"
             >
-              TwinAI reads the actual video, then writes you a blueprint and full script in your voice.
-              Record it with the built-in teleprompter, auto-edit with burned-in captions and jump cuts,
-              and post with the caption ready to go.{' '}
+              Paste a video you wish you'd made. TwinAI reads it, writes the script in your voice,
+              and walks you from blank page to posted — teleprompter, edit, caption and all.{' '}
               <span className="text-cream">The whole loop, in one window.</span>
             </motion.p>
 
@@ -246,7 +246,7 @@ function HeroSection() {
               className="mt-8 flex flex-wrap items-center gap-3"
             >
               <Link to="/auth?mode=signup" className="btn-gradient group text-base px-6 py-3">
-                Start free
+                Paste your first link — free
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
             </motion.div>
@@ -257,7 +257,7 @@ function HeroSection() {
               transition={{ duration: 1, delay: 0.34 }}
               className="mt-7 text-sm leading-relaxed text-sand"
             >
-              3 free remixes. No card, no catch.
+              3 free remixes, no card. A remix only counts when it finishes — if the read fails, it's on us.
             </motion.p>
           </div>
 
@@ -656,6 +656,45 @@ function AgencySection() {
 
 /* ─── Pricing ────────────────────────────────────────────────────────── */
 
+// The grand-slam value stack: the deliverables (all true, usually buried in the
+// FAQ) itemized and anchored so the price reads as a no-brainer.
+function ValueStack() {
+  const items = [
+    { t: 'A full read of why the original won', s: 'hook window, retention beats — a strategist charges $200+' },
+    { t: '5 hook options + a complete script in your voice', s: 'a ghostwriter: $150+' },
+    { t: 'Shot list + a 20-minute shoot plan', s: 'so you just press record' },
+    { t: 'One-click edit: captions, cuts, b-roll, vertical export', s: 'an editor: $50–100 a video' },
+    { t: 'A ready-to-paste caption pack, per platform', s: 'posted in seconds' },
+  ]
+  return (
+    <section className="mx-auto max-w-content px-5 py-20 sm:py-28">
+      <Reveal className="text-center">
+        <p className="eyebrow">What one link gets you</p>
+        <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+          One link in. A finished, on-brand video out, <span className="gradient-text">end to end.</span>
+        </h2>
+      </Reveal>
+      <div className="glass mx-auto mt-12 max-w-2xl p-6 sm:p-8">
+        <ul className="space-y-3.5">
+          {items.map((it) => (
+            <li key={it.t} className="flex items-start gap-3">
+              <Check className="mt-1 h-4 w-4 shrink-0 text-teal" />
+              <div>
+                <div className="text-cream">{it.t}</div>
+                <div className="text-xs text-stone">{it.s}</div>
+              </div>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-6 border-t border-white/8 pt-5 text-center">
+          <p className="text-sand">Easily <span className="font-semibold text-cream">$400+ of work</span> per video — from one link, in minutes.</p>
+          <p className="mt-2 text-xs text-stone">And a remix only counts when it finishes. If the read fails, it's on us.</p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function PricingSection() {
   return (
     <section id="pricing" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
@@ -786,13 +825,16 @@ function CTASection() {
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
             <Link to="/auth?mode=signup" className="btn-gradient group text-base px-8 py-4">
-              Start free
+              Remix your first video free
               <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
             </Link>
             <a href="#pricing" className="btn-ghost text-base px-8 py-4">See pricing</a>
           </div>
           <p className="mt-4 text-sm text-stone">3 free remixes. No card required.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-stone">
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="h-4 w-4 text-teal" /> Finish-or-it's-free
+            </span>
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-teal" /> No footage copied
             </span>
