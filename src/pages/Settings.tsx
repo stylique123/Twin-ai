@@ -174,6 +174,15 @@ export default function Settings() {
                 </div>
               ))}
               <div>
+                <label className="eyebrow mb-1.5 block">How you write <span className="font-normal normal-case text-stone">— paste a few posts (optional)</span></label>
+                <textarea
+                  className="field min-h-[96px] resize-y"
+                  value={dna.voice_samples ?? ''}
+                  placeholder="Paste 2–3 of your real posts (LinkedIn, captions, a blog excerpt). We match your exact cadence and phrasing — the single strongest signal for sounding like you, especially if you're camera-shy or B2B."
+                  onChange={(e) => setDna((d) => ({ ...d, voice_samples: e.target.value }))}
+                />
+              </div>
+              <div>
                 <label className="eyebrow mb-2 block">Platforms</label>
                 <div className="flex flex-wrap gap-2">
                   {PLATFORMS.map((p) => (

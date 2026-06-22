@@ -10,6 +10,7 @@ export interface CreatorDNA {
   voice: string // how they sound: e.g. "direct, warm, a little punchy"
   platforms: Platform[]
   editing_style: string // e.g. "fast jump cuts, burned-in captions"
+  voice_samples?: string // verbatim writing samples (e.g. pasted LinkedIn posts) — the strongest voice signal
 }
 
 export interface Profile {
