@@ -231,6 +231,14 @@ body {
   }
 }
 
+/* Touch devices: raise tap targets to a comfortable minimum (desktop untouched). */
+@media (pointer: coarse) {
+  .chip { min-height: 2.4rem; }
+  .btn-primary,
+  .btn-gradient,
+  .btn-ghost { min-height: 2.75rem; }
+}
+
 @layer utilities {
   /* Fine film grain to kill banding on the dark canvas. */
   .noise {
