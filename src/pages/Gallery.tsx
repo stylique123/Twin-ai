@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Wand2, Eye, Heart, Play, Search, Mic, Repeat, Layers, Film, Sparkles, TrendingUp, ChevronRight } from 'lucide-react'
+import { Wand2, Eye, Heart, Play, Search, Mic, Repeat, Layers, Film, Sparkles, TrendingUp, ChevronRight, Flame, Zap } from 'lucide-react'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
@@ -490,7 +490,7 @@ export default function Gallery() {
                         <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-ink/75 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-cream backdrop-blur-sm">{c.platform}</span>
                         {opp && (
                           <span className={cn('absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold backdrop-blur-sm', SCORE_SKIN[opp.tier])} title="Opportunity score — how likely this format is to win for your niche">
-                            {opp.tier === 'hot' ? '🔥' : '⚡'} {opp.score}
+                            {opp.tier === 'hot' ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {opp.score}
                           </span>
                         )}
                         <div className="absolute bottom-3 left-3 flex gap-2">

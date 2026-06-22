@@ -4,7 +4,7 @@ import { motion, AnimatePresence, useInView, useMotionValue, useSpring, useTrans
 import {
   ArrowRight, Check, Plus, Minus, AtSign, Wand2, Captions, Clapperboard, Scissors,
   ShieldCheck, Building2, Users, Clock, Eye, Heart, Play, Send, LayoutGrid,
-  FileText, Sparkles, TrendingUp, Mic, BarChart3,
+  FileText, Sparkles, TrendingUp, Mic, BarChart3, Flame, Zap, Repeat,
 } from 'lucide-react'
 import { BRAND, PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
@@ -125,6 +125,7 @@ export default function Landing() {
       <HowItWorksSection />
       <BenefitsSection />
       <FeaturesSection />
+      <GalleryShowcase />
       <AgencySection />
       <ValueStack />
       <PricingSection />
@@ -579,6 +580,86 @@ function FeaturesSection() {
           </RevealItem>
         ))}
       </Stagger>
+    </section>
+  )
+}
+
+/* ─── Discovery / Gallery showcase ───────────────────────────────────── */
+
+const SHOWCASE_FORMATS = [
+  { name: 'Talking-head', icon: Mic },
+  { name: 'Transition', icon: Repeat },
+  { name: 'GRWM', icon: Sparkles },
+  { name: 'Podcast clip', icon: Clapperboard },
+]
+const SHOWCASE_CARDS = [
+  { title: 'Stitch a comment, flip it positive', reach: '976K', loves: '157K', score: 92, hot: true, tint: 'from-coral/30' },
+  { title: 'One counter-intuitive hot take', reach: '1.5M', loves: '111K', score: 84, hot: false, tint: 'from-teal/25' },
+]
+function GalleryShowcase() {
+  return (
+    <section className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
+      <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+        <Reveal>
+          <p className="eyebrow">The discovery engine</p>
+          <h2 className="mt-3 font-display text-4xl leading-tight text-balance sm:text-5xl">
+            Never stare at a <span className="gradient-text">blank page</span> again.
+          </h2>
+          <p className="mt-5 max-w-xl text-lg leading-relaxed text-sand">
+            TwinAI scores every viral format for <span className="text-cream">your</span> niche and hands you a playbook of the content types most likely to grow you — talking-head, transitions, GRWM, podcast clips and more. Tap one, and it's a script in your voice.
+          </p>
+          <ul className="mt-6 space-y-3.5">
+            {[
+              ['Opportunity score', 'Ranked by what will actually win for you — not raw view counts.'],
+              ['Your playbook', 'The exact formats proven to grow creators in your niche, business and creative.'],
+              ['One-tap remix', 'Every reference becomes your next shoot — rebuilt in your voice.'],
+            ].map(([t, d]) => (
+              <li key={t} className="flex gap-3">
+                <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-teal/15"><Check className="h-3 w-3 text-teal" /></span>
+                <p className="text-sm leading-relaxed text-sand"><span className="font-semibold text-cream">{t}.</span> {d}</p>
+              </li>
+            ))}
+          </ul>
+          <Link to="/auth?mode=signup" className="btn-gradient group mt-8 inline-flex px-6 py-3 text-base">
+            See what's working in your niche
+            <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+          </Link>
+        </Reveal>
+
+        <Reveal delay={0.1}>
+          <div className="glass p-5 sm:p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber" />
+              <span className="text-sm font-semibold text-cream">Your playbook — what wins in your niche</span>
+            </div>
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+              {SHOWCASE_FORMATS.map((f) => (
+                <span key={f.name} className="chip shrink-0"><f.icon className="h-3.5 w-3.5 text-amber" /> {f.name}</span>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {SHOWCASE_CARDS.map((c) => (
+                <div key={c.title} className="overflow-hidden rounded-card border border-white/8 bg-ink2/60">
+                  <div className={cn('relative grid aspect-video place-items-center bg-gradient-to-br to-ink', c.tint)}>
+                    <span className="grid h-10 w-10 place-items-center rounded-full bg-ink/60 ring-1 ring-white/20"><Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" /></span>
+                    <span className={cn('absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', c.hot ? 'border-coral/50 bg-coral/20 text-coral' : 'border-amber/50 bg-amber/20 text-amber')}>
+                      {c.hot ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {c.score}
+                    </span>
+                    <div className="absolute bottom-2 left-2 flex gap-1.5 text-[10px] text-cream/90">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-1.5 py-0.5"><Eye className="h-2.5 w-2.5" /> {c.reach}</span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-1.5 py-0.5"><Heart className="h-2.5 w-2.5" /> {c.loves}</span>
+                    </div>
+                  </div>
+                  <div className="p-3">
+                    <p className="text-xs font-medium leading-snug text-cream line-clamp-2">{c.title}</p>
+                    <p className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold text-amber"><Wand2 className="h-3 w-3" /> Remix in my voice</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Reveal>
+      </div>
     </section>
   )
 }
