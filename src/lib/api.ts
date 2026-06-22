@@ -494,6 +494,21 @@ export async function setDefaultBrandVoice(id: string): Promise<void> {
   if (error) throw error
 }
 
+// Agency white-label: a login-free CLIENT REPORT link per brand.
+export interface BrandReport { label: string; handle: string; blueprints: number; edits: number; posts: number; views: number; hours_saved: number }
+// Generate (lazily) + return the shareable token for a brand the caller owns.
+export async function ensureBrandShareToken(brandId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('ensure_brand_share_token', { p_brand: brandId })
+  if (error) throw error
+  return data as string
+}
+// Public (no login): a token → that brand's aggregate results, for the client page.
+export async function getBrandReport(token: string): Promise<BrandReport | null> {
+  const { data, error } = await supabase.rpc('brand_report', { p_token: token })
+  if (error || !data) return null
+  return data as BrandReport
+}
+
 // Rename a brand's friendly label (the per-client name agencies set).
 export async function renameBrandVoice(id: string, label: string): Promise<void> {
   const { error } = await supabase.from('brand_voices').update({ label }).eq('id', id)

@@ -2,10 +2,10 @@ import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Plus, Check, Loader2, Pencil, AtSign, Sparkles, AlertCircle, Building2, X, Star,
-  ScanSearch, FileText,
+  ScanSearch, FileText, Share2,
 } from 'lucide-react'
 import {
-  listBrandVoices, setDefaultBrandVoice, renameBrandVoice, startDna, pollDna,
+  listBrandVoices, setDefaultBrandVoice, renameBrandVoice, ensureBrandShareToken, startDna, pollDna,
 } from '../lib/api'
 import { planFor, EXTRA_BRAND_VOICE_PRICE } from '../lib/brand'
 import { useAuth } from '../context/AuthContext'
@@ -193,6 +193,16 @@ function BrandCard({
   const [editing, setEditing] = useState(false)
   const [label, setLabel] = useState(voice.label ?? `@${voice.handle}`)
   const [saving, setSaving] = useState(false)
+  const [shared, setShared] = useState(false)
+
+  // White-label: generate (lazily) + copy a login-free client report link for this brand.
+  const shareReport = async () => {
+    try {
+      const tok = await ensureBrandShareToken(voice.id)
+      await navigator.clipboard.writeText(`${window.location.origin}/r/${tok}`)
+      setShared(true); setTimeout(() => setShared(false), 1900)
+    } catch { /* clipboard/permission blocked */ }
+  }
 
   const save = async () => {
     setSaving(true)
@@ -289,6 +299,11 @@ function BrandCard({
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {voice.status === 'ready' ? 'Make active' : 'Not ready yet'}
+          </button>
+        )}
+        {voice.status === 'ready' && (
+          <button onClick={shareReport} className="mt-2 inline-flex w-full items-center justify-center gap-1.5 text-xs text-stone transition-colors hover:text-cream" title="Copy a login-free results report to send this client">
+            {shared ? <><Check className="h-3.5 w-3.5 text-teal" /> Link copied</> : <><Share2 className="h-3.5 w-3.5" /> Share report with client</>}
           </button>
         )}
       </div>

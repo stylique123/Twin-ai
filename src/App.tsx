@@ -23,6 +23,7 @@ const Brands = lazy(() => import('./pages/Brands'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Billing = lazy(() => import('./pages/Billing'))
 const Metrics = lazy(() => import('./pages/Metrics'))
+const ClientReport = lazy(() => import('./pages/ClientReport'))
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -86,6 +87,8 @@ export default function App() {
         <Routes location={location} key={inApp ? 'app' : location.pathname}>
           <Route path="/" element={<Page><Landing /></Page>} />
           <Route path="/auth" element={<Page><Auth /></Page>} />
+          {/* Public, login-free white-label client report (agency → client). */}
+          <Route path="/r/:token" element={<Page><ClientReport /></Page>} />
           <Route path="/onboarding" element={<AuthOnly><Page><Onboarding /></Page></AuthOnly>} />
           <Route
             path="/dashboard"
