@@ -79,6 +79,11 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // Manual re-render: when the Refine panel sends an edited EDL, render straight
     // from it (no re-detect / re-transcribe) so the creator's tweaks are applied.
     const editedEdl = (payload.edl ?? undefined) as EditDecisionList | undefined
+    // Premium (Revideo) pass runs on the FIRST edit only. Remakes (variation > 0)
+    // and Refines (an edited EDL) are cheap iterations — the instant ffmpeg result
+    // is what the creator wants, so we skip the expensive render. This caps render
+    // COGS at ~one premium pass per blueprint and makes remakes nearly free.
+    const isFirstEdit = variation === 0 && !editedEdl
     const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl, baseRevideoFile } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
@@ -86,7 +91,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       brollText,
       coverText,
       edl: editedEdl,
-      produceRevideoBase: !!env.revideoUrl,
+      produceRevideoBase: !!env.revideoUrl && isFirstEdit,
       onProgress: (phase, pct, label) => { void updateJobProgress(job.id, { phase, pct, label }) },
     })
     renderFile = outFile

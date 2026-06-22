@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { generateBlueprint, ingestReference, getJob } from '../lib/api'
+import { generateBlueprint, ingestReference, getJob, listBrandVoices } from '../lib/api'
+import type { BrandVoice } from '../lib/types'
 import { BLUEPRINT_COST, videosFromCredits } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { Reveal, EASE } from '../components/motion'
@@ -44,6 +45,15 @@ export default function Studio() {
   const [phase, setPhase] = useState<Phase>('idle')
   const [slowRead, setSlowRead] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // Which brand voice this blueprint will be written in — agencies must know
+  // they're writing for the right client before they spend a remix.
+  const [activeBrand, setActiveBrand] = useState<BrandVoice | null>(null)
+  useEffect(() => {
+    listBrandVoices().then((vs) => {
+      const ready = vs.filter((v) => v.status === 'ready')
+      setActiveBrand(ready.find((v) => v.is_default) ?? ready[0] ?? null)
+    }).catch(() => {})
+  }, [])
 
   const left = videosFromCredits(profile?.credits ?? 0)
   const lowCredits = (profile?.credits ?? 0) < BLUEPRINT_COST
@@ -107,6 +117,12 @@ export default function Studio() {
           <p className="mt-3 text-sand">
             We read the actual video, transcript and true structure, then write your blueprint in your voice.
           </p>
+          {activeBrand && (
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
+              <Sparkles className="h-3.5 w-3.5 text-amber" /> Writing in <span className="font-semibold text-cream">@{activeBrand.handle}</span>’s voice
+              <Link to="/brands" className="text-amber transition-colors hover:text-cream">switch</Link>
+            </p>
+          )}
         </Reveal>
 
         <Reveal delay={0.08}>
