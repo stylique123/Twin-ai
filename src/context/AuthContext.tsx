@@ -112,7 +112,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
       finishLoading()
-      if (s) { void refreshProfile(); void redeemStoredReferral() }
+      // Start the idle clock here too: an OAuth / magic-link login arrives via this
+      // listener (not getSession), so without this the activity marker stays unset
+      // until the first mouse move.
+      if (s) { bumpActivity(); void refreshProfile(); void redeemStoredReferral() }
       else setProfile(null)
     })
     return () => { window.clearTimeout(safety); sub.subscription.unsubscribe() }

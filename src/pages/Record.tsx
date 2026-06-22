@@ -14,6 +14,11 @@ import { cn } from '../lib/cn'
 
 type Phase = 'idle' | 'countdown' | 'recording' | 'review'
 
+// Hard cap on a single take. Short-form lives well under this; the cap protects
+// both COGS (transcription + ffmpeg time, and the worker's download, all scale
+// with take length) and the user from an accidental never-ending recording.
+const MAX_RECORD_SECS = 180
+
 // In-app Record: a teleprompter over a live camera, so the blueprint gets shot
 // the moment inspiration hits. Everything stays client-side, the take is yours
 // to download (Phase 6 will hand it to the auto-editor).
@@ -263,10 +268,15 @@ export default function Record() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, count])
 
-  // elapsed timer while recording
+  // elapsed timer while recording — auto-stops at the max length so a take can
+  // never run away (and land the user with a huge upload + slow, costly edit).
   useEffect(() => {
     if (phase !== 'recording') return
-    const t = setInterval(() => setElapsed((e) => e + 0.1), 100)
+    const t = setInterval(() => setElapsed((e) => {
+      const next = e + 0.1
+      if (next >= MAX_RECORD_SECS) { recorderRef.current?.stop(); setScrolling(false) }
+      return next
+    }), 100)
     return () => clearInterval(t)
   }, [phase])
 
@@ -513,6 +523,11 @@ export default function Record() {
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-coral/90 px-2.5 py-1 text-xs font-bold text-cream">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-cream" /> REC {elapsed.toFixed(1)}s
                 </span>
+                {MAX_RECORD_SECS - elapsed <= 15 && (
+                  <span className="rounded-full bg-black/60 px-2 py-1 text-xs font-semibold text-amber">
+                    Wrapping at {MAX_RECORD_SECS}s · {Math.max(0, Math.ceil(MAX_RECORD_SECS - elapsed))}s left
+                  </span>
+                )}
                 <AnimatePresence>
                   {inHook && (
                     <motion.span

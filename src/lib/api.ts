@@ -81,16 +81,6 @@ export async function updateDisplayName(name: string): Promise<void> {
 
 // ---- Platform admin (super-admin / support) -----------------------------
 
-// True only for users in public.platform_admins. RLS guarantees a normal user
-// gets `false` (the function returns false for non-admins), so this is safe to
-// call from the client to gate an admin area. All admin WRITES still go through
-// audited, service-role-only RPCs, never directly from the browser.
-export async function isPlatformAdmin(): Promise<boolean> {
-  const { data, error } = await supabase.rpc('is_platform_admin')
-  if (error) return false
-  return data === true
-}
-
 // ---- Blueprint generation (real AI via edge function) -------------------
 
 export interface GenerateInput {
@@ -490,12 +480,6 @@ export async function listBrandVoices(): Promise<BrandVoice[]> {
   return (data ?? []) as BrandVoice[]
 }
 
-export async function getBrandVoice(id: string): Promise<BrandVoice | null> {
-  const { data, error } = await supabase.from('brand_voices').select('*').eq('id', id).single()
-  if (error) return null
-  return data as BrandVoice
-}
-
 // Persist user edits from the confirm card (the editable chips).
 export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promise<void> {
   const { error } = await supabase.from('brand_voices').update({ profile }).eq('id', id)
@@ -549,31 +533,10 @@ export async function listGalleryItems(): Promise<GalleryItem[]> {
   return (data ?? []) as GalleryItem[]
 }
 
-export interface SubmitGalleryInput {
-  url: string
-  platform: string
-  niche: string
-  creator?: string
-  title?: string
-  why?: string
-  visibility: 'public' | 'private'
-}
-
-export async function submitGalleryItem(input: SubmitGalleryInput): Promise<GalleryItem> {
-  const { data: auth } = await supabase.auth.getUser()
-  if (!auth.user) throw new Error('Not signed in')
-  const { data, error } = await supabase
-    .from('gallery_items')
-    .insert({ ...input, owner_id: auth.user.id })
-    .select('*')
-    .single()
-  if (error) throw error
-  return data as GalleryItem
-}
-
-export async function deleteGalleryItem(id: string): Promise<void> {
-  const { error } = await supabase.from('gallery_items').delete().eq('id', id)
-  if (error) throw error
-}
+// NOTE: user-contributed gallery items (submit/delete) are intentionally not
+// exposed from the client yet — the public feed is curated by the discovery
+// scraper (service role), and migration 0032 locks authenticated inserts to
+// private-only until there's a moderation flow. Re-add a submit helper alongside
+// that flow when public contributions ship.
 
 export type { Blueprint }
