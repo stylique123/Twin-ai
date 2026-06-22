@@ -29,6 +29,11 @@ export const env = {
   // { text, duration, segments: [{ start, end, text }] }. ID for
   // apple_yang/instagram-transcripts-scraper.
   apifyInstagramActor: (process.env.APIFY_INSTAGRAM_ACTOR ?? 'S9A11NvceWaGorwwh').trim(),
+  // Keyword->emoji caption auto-stamp (money->💰). Off by default: it cheapens an
+  // otherwise pro edit (the "TikTok 2022" look). Director/refine-chosen emoji are
+  // unaffected; this only gates the keyword-regex fallback. Set EDIT_EMOJI=true to
+  // restore it.
+  editEmoji: (process.env.EDIT_EMOJI ?? 'false').trim() === 'true',
   // Optional: free Pexels API key enables keyword-matched b-roll cutaways.
   pexelsKey: (process.env.PEXELS_API_KEY ?? '').trim(),
   // Optional: URL of a royalty-free music bed (mp3) mixed + ducked under the VO.

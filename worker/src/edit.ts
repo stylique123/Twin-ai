@@ -590,7 +590,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
 
     // Color emoji overlays (best-effort): fetch a Twemoji PNG per emoji moment so
     // captions get the modern emoji punctuation. Any miss is just skipped.
-    const emojiPlan = edl ? edl.emoji : (captions && words.length ? emojiMoments(words, 6) : [])
+    const emojiPlan = edl ? edl.emoji : (captions && words.length && env.editEmoji ? emojiMoments(words, 6) : [])
     const emojiSpans: { file: string; start: number; end: number }[] = []
     for (const m of emojiPlan) {
       const file = await fetchEmojiPng(m.emoji, dir)
