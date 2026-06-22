@@ -27,7 +27,10 @@ export default function Record() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const uploadMode = params.get('upload') === '1'
-  const { refreshProfile } = useAuth()
+  const { profile, refreshProfile } = useAuth()
+  // Free exports carry a watermark — surface the removal upsell ON the finished
+  // video, where the user feels it, not buried on the pricing page.
+  const isFree = (profile?.plan ?? 'free') === 'free'
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
   const [editStyle, setEditStyle] = useState('punchy')
@@ -599,6 +602,11 @@ export default function Record() {
                       <a href={editUrl} download={`twinai-edited-${id}.mp4`} className="btn-gradient">
                         <Download className="h-4 w-4" /> Download edited
                       </a>
+                      {isFree && (
+                        <Link to="/#pricing" className="chip border-amber/40 text-amber" title="Free exports include a watermark">
+                          <Sparkles className="h-3.5 w-3.5" /> Remove watermark
+                        </Link>
+                      )}
                     </>
                   ) : (
                     <button onClick={runAutoEdit} className="btn-gradient" disabled={editPhase === 'working'}>

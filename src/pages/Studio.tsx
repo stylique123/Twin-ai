@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -170,9 +170,18 @@ export default function Studio() {
 
             {/* Action row */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-5">
-              <span className="chip">
-                <Sparkles className="h-3.5 w-3.5 text-amber" /> {left} remixes left
-              </span>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="chip">
+                  <Sparkles className="h-3.5 w-3.5 text-amber" /> {left} {left === 1 ? 'remix' : 'remixes'} left
+                </span>
+                {/* Value-moment nudge: catch them on their LAST remix with an
+                    aspirational upgrade, not a hard wall at zero. */}
+                {left <= 1 && !lowCredits && (
+                  <Link to="/#pricing" className="text-xs font-medium text-amber transition-colors hover:text-cream">
+                    Last one — upgrade for more →
+                  </Link>
+                )}
+              </div>
               <button className="btn-gradient min-w-[220px]" onClick={run} disabled={busy}>
                 {busy ? (
                   <>
