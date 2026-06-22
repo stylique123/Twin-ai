@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { logEvent } from '../lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
@@ -22,6 +23,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { profile, signOut } = useAuth()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
+  // Engagement depth: log a page_view per route (best-effort, never blocks).
+  useEffect(() => { void logEvent('page_view', { path: pathname }) }, [pathname])
   const left = videosFromCredits(profile?.credits ?? 0)
   const isActive = (to: string) => to === '/app' ? pathname === '/app' || pathname.startsWith('/result') : pathname.startsWith(to)
   // Hard navigation (full reload), not SPA navigate(): a client-side route change

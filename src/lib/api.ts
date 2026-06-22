@@ -14,6 +14,19 @@ export async function logEvent(event: string, props: Record<string, unknown> = {
   } catch { /* best-effort */ }
 }
 
+export interface MetricsOverview {
+  total_users: number; onboarded_users: number; voices_built: number
+  blueprints_generated: number; edits_rendered: number; posts_logged: number
+  referrals_redeemed: number; total_hours_saved: number; wau: number; mau: number
+}
+// Admin-only KPI rollup for the live data-room dashboard. Returns null if the
+// caller isn't a platform admin (the edge function enforces it).
+export async function getMetrics(): Promise<MetricsOverview | null> {
+  const { data, error } = await supabase.functions.invoke('admin-metrics', { body: {} })
+  if (error) return null
+  return data as MetricsOverview
+}
+
 export async function getProfile(): Promise<Profile | null> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) return null

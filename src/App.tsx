@@ -16,6 +16,7 @@ import Record from './pages/Record'
 import Dashboard from './pages/Dashboard'
 import Brands from './pages/Brands'
 import Settings from './pages/Settings'
+import Metrics from './pages/Metrics'
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -109,6 +110,10 @@ export default function App() {
           <Route
             path="/settings"
             element={<Protected><AppShell><Page><Settings /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/metrics"
+            element={<Protected><AppShell><Page><Metrics /></Page></AppShell></Protected>}
           />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
