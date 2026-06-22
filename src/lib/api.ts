@@ -354,6 +354,26 @@ export interface StartDnaResult {
   status: 'building'
 }
 
+// ---- Referrals -----------------------------------------------------------
+// Where we stash a referral code from a ?ref= link until the new user has a
+// session to redeem it against (survives signup + email confirmation).
+export const REFERRAL_CODE_KEY = 'twinai_ref_code'
+
+// The caller's own shareable code (lazily allocated server-side).
+export async function getReferralCode(): Promise<string | null> {
+  const { data, error } = await supabase.functions.invoke('referral', { body: { action: 'code' } })
+  if (error) return null
+  return (data as { code?: string })?.code ?? null
+}
+
+// Redeem a code the user arrived with. Returns the outcome so the caller can
+// decide whether to celebrate, ignore, or clear the stored code.
+export async function redeemReferral(code: string): Promise<{ ok: boolean; reason?: string; reward?: number }> {
+  const { data, error } = await supabase.functions.invoke('referral', { body: { action: 'redeem', code } })
+  if (error) return { ok: false, reason: 'error' }
+  return data as { ok: boolean; reason?: string; reward?: number }
+}
+
 export async function startDna(handle: string, platform: Platform): Promise<StartDnaResult> {
   const { data, error } = await supabase.functions.invoke('start-dna', {
     body: { handle, platform, make_default: true },

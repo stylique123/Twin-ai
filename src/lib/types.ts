@@ -22,6 +22,7 @@ export interface Profile {
   dna: CreatorDNA | null
   onboarded: boolean
   created_at: string
+  referral_code?: string | null
 }
 
 // Phase 2, Brand-DNA learned from a creator's handle. The voice we write in.

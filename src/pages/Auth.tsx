@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { REFERRAL_CODE_KEY } from '../lib/api'
 import { motion } from 'framer-motion'
 import { Check, ArrowRight, ArrowLeft } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -25,6 +26,13 @@ export default function Auth() {
   const [msgType, setMsgType] = useState<'error' | 'success'>('error')
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
+
+  // Remember a referral code from the invite link so it survives signup + email
+  // confirmation; AuthContext redeems it once the user has a session.
+  useEffect(() => {
+    const ref = params.get('ref')
+    if (ref) { try { localStorage.setItem(REFERRAL_CODE_KEY, ref) } catch { /* storage unavailable */ } }
+  }, [params])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()

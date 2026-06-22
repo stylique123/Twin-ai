@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { getProfile } from '../lib/api'
+import { getProfile, redeemReferral, REFERRAL_CODE_KEY } from '../lib/api'
 import type { Profile } from '../lib/types'
 
 interface AuthState {
@@ -55,6 +55,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // If the user arrived via a referral link, redeem it now that they have a
+  // session. Clears the stored code on any definitive outcome so it never loops;
+  // keeps it only on a transient error so a later session can retry.
+  const redeemStoredReferral = async () => {
+    try {
+      const code = localStorage.getItem(REFERRAL_CODE_KEY)
+      if (!code) return
+      const res = await redeemReferral(code)
+      if (res.ok || (res.reason && res.reason !== 'error' && res.reason !== 'rate_limited')) {
+        localStorage.removeItem(REFERRAL_CODE_KEY)
+      }
+      if (res.ok) await refreshProfile()
+    } catch {
+      /* never block auth on a referral redeem */
+    }
+  }
+
   useEffect(() => {
     const idleExceeded = () => {
       const last = Number(localStorage.getItem(IDLE_KEY) || 0)
@@ -82,13 +99,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setSession(data.session)
       finishLoading() // unblock route guards immediately
-      if (data.session) { bumpActivity(); void refreshProfile() } // profile in background
+      if (data.session) { bumpActivity(); void refreshProfile(); void redeemStoredReferral() } // profile + referral in background
     }).catch(finishLoading).finally(() => window.clearTimeout(safety))
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
       finishLoading()
-      if (s) void refreshProfile()
+      if (s) { void refreshProfile(); void redeemStoredReferral() }
       else setProfile(null)
     })
     return () => { window.clearTimeout(safety); sub.subscription.unsubscribe() }

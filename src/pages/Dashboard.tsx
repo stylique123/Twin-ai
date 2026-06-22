@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Wand2, LayoutGrid, Clapperboard, Send, Sparkles, ArrowUpRight, FileText, Loader2, TrendingUp, Zap,
+  Gift, Copy, Check,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getDashboardStats, listGenerations, listPosts, type DashboardStats, type Post } from '../lib/api'
+import { getDashboardStats, getReferralCode, listGenerations, listPosts, type DashboardStats, type Post } from '../lib/api'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
@@ -65,6 +66,7 @@ export default function Dashboard() {
             <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every blueprint you've ever made, searchable." />
           </div>
         </Reveal>
+        <InviteCard />
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
           <Reveal>
             <div className="glass relative h-full overflow-hidden p-6">
@@ -185,6 +187,41 @@ function EmptyBlueprints() {
       <p className="mt-2 max-w-[220px] text-xs leading-relaxed text-stone">Paste any video link and get a shootable script tailored to your style.</p>
       <Link to="/app" className="btn-gradient mt-5 inline-flex items-center gap-2 text-sm"><Wand2 className="h-3.5 w-3.5" /> Make your first one</Link>
     </div>
+  )
+}
+
+// Viral loop: a two-sided referral. The "2 free remixes" copy mirrors the
+// REFERRAL_REWARD_CREDITS default (20 credits) on the referral edge function.
+function InviteCard() {
+  const [code, setCode] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { getReferralCode().then(setCode).catch(() => {}) }, [])
+  const link = code ? `${window.location.origin}/auth?mode=signup&ref=${code}` : ''
+  const copy = async () => {
+    if (!link) return
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ }
+  }
+  return (
+    <Reveal delay={0.08}>
+      <div className="glass relative mt-6 overflow-hidden p-6">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-teal/10 blur-[70px]" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal/15"><Gift className="h-5 w-5 text-teal" /></span>
+            <div>
+              <h2 className="font-heading text-base text-cream">Invite a creator, you both get 2 free remixes</h2>
+              <p className="mt-1 text-sm text-stone">Share your link. When they sign up and build their voice, you each get 2 remixes on us.</p>
+            </div>
+          </div>
+          <button onClick={copy} disabled={!code} className="btn-gradient shrink-0 text-sm disabled:opacity-50">
+            {copied ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy invite link</>}
+          </button>
+        </div>
+        {code && (
+          <div className="relative mt-3 truncate rounded-lg border border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-stone">{link}</div>
+        )}
+      </div>
+    </Reveal>
   )
 }
 
