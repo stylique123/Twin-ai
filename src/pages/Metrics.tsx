@@ -5,6 +5,7 @@ import { getMetrics, getCaseStudy, type MetricsOverview, type CaseStudy } from '
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
+import { cn } from '../lib/cn'
 
 // Live data-room dashboard. Admin-gated server-side (admin-metrics edge fn); a
 // non-admin just sees the access notice.
@@ -144,6 +145,35 @@ export default function Metrics() {
             </Reveal>
           )
         })()}
+        {m.health && (
+          <Reveal delay={0.11}>
+            <div className="glass mt-6 p-6">
+              <h2 className="font-heading text-base text-cream">System health</h2>
+              <div className="mt-4 grid grid-cols-3 gap-4">
+                {[
+                  { label: 'Failed jobs', v: m.health.failed_jobs },
+                  { label: 'Stuck building', v: m.health.stuck_building },
+                  { label: 'Ops events (24h)', v: m.health.ops_24h },
+                ].map(({ label, v }) => (
+                  <div key={label} className={cn('rounded-xl border p-4 text-center', v > 0 ? 'border-coral/40 bg-coral/10' : 'border-white/8 bg-white/[0.02]')}>
+                    <div className={cn('font-display text-3xl', v > 0 ? 'text-coral' : 'text-cream')}>{v}</div>
+                    <div className="mt-1 text-xs text-stone">{label}</div>
+                  </div>
+                ))}
+              </div>
+              {m.health.recent_ops.length > 0 && (
+                <div className="mt-3 space-y-1">
+                  {m.health.recent_ops.map((o, i) => (
+                    <div key={i} className="flex items-center justify-between rounded-lg bg-white/[0.02] px-3 py-1.5 text-[11px]">
+                      <span className="font-medium text-coral">{o.severity} · {o.kind}</span>
+                      <span className="text-stone">{new Date(o.created_at).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Reveal>
+        )}
         <Reveal delay={0.12}>
           <div className="glass mt-6 p-6">
             <h2 className="font-heading text-base text-cream">Case-study lookup</h2>

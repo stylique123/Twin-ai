@@ -17,11 +17,15 @@ export async function logEvent(event: string, props: Record<string, unknown> = {
 export interface Funnel { signup: number; onboarded: number; voice: number; blueprint: number; edit: number; post: number }
 export interface RetentionWindow { eligible: number; retained: number }
 export interface Retention { d1: RetentionWindow; d7: RetentionWindow; d30: RetentionWindow }
+export interface SystemHealth {
+  failed_jobs: number; stuck_building: number; ops_24h: number
+  recent_ops: { kind: string; severity: string; created_at: string }[]
+}
 export interface MetricsOverview {
   total_users: number; onboarded_users: number; voices_built: number
   blueprints_generated: number; edits_rendered: number; posts_logged: number
   referrals_redeemed: number; total_hours_saved: number; wau: number; mau: number
-  funnel?: Funnel | null; retention?: Retention | null
+  funnel?: Funnel | null; retention?: Retention | null; health?: SystemHealth | null
 }
 // Admin-only KPI rollup for the live data-room dashboard. Returns null if the
 // caller isn't a platform admin (the edge function enforces it).

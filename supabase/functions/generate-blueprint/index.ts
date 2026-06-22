@@ -446,6 +446,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     })
     if (refundErr) {
       console.error('REFUND FAILED — manual reconciliation needed for', user.id, refundErr)
+      // Surface it where an operator can SEE it (ops_events → /metrics health).
+      await admin
+        .from('ops_events')
+        .insert({ kind: 'refund_failed', severity: 'critical', user_id: user.id, detail: { fn: 'generate-blueprint', amount: BLUEPRINT_COST, error: String((refundErr as { message?: string }).message ?? refundErr) } })
+        .then(() => {}, () => {})
     }
     console.error('generate-blueprint error:', err)
     return json({ error: 'Generation failed. Your credits were not charged.' }, 500)
