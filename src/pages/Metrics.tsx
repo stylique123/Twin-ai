@@ -82,7 +82,7 @@ export default function Metrics() {
                 <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl ${glowMap[c.glow]}`}>
                   <c.icon className="h-[18px] w-[18px]" />
                 </span>
-                <div className="mt-4 font-display text-3xl tracking-tight text-cream"><Counter to={c.value} /></div>
+                <div className="mt-4 font-display text-4xl tracking-tight text-cream"><Counter to={c.value} /></div>
                 <div className="mt-1.5 text-xs font-medium tracking-wide text-stone">{c.label}</div>
               </div>
             </RevealItem>

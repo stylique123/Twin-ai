@@ -206,7 +206,7 @@ function HeroSection() {
               className="font-display text-[2.8rem] leading-[1.04] tracking-tight text-balance sm:text-5xl lg:text-[3.8rem]"
             >
               Paste a viral video.{' '}
-              <span className="gradient-text-animated whitespace-nowrap">
+              <span className="gradient-text whitespace-nowrap">
                 <span className="relative inline-grid place-items-center align-baseline">
                   {/* Invisible sizer reserves space for the widest verb so the line never shifts */}
                   <span className="invisible col-start-1 row-start-1" aria-hidden>recreate</span>
@@ -412,7 +412,7 @@ function HeroVisualNew() {
 /* ─── Floating particles ─────────────────────────────────────────────── */
 
 function Particles() {
-  const dots = Array.from({ length: 20 }, (_, i) => ({
+  const dots = Array.from({ length: 7 }, (_, i) => ({
     id: i,
     x: Math.random() * 100,
     y: Math.random() * 100,
@@ -428,10 +428,10 @@ function Particles() {
           key={d.id}
           className={cn(
             'absolute rounded-full',
-            d.color === 'teal' ? 'bg-teal/40' : d.color === 'coral' ? 'bg-coral/40' : 'bg-amber/40',
+            d.color === 'teal' ? 'bg-teal/30' : d.color === 'coral' ? 'bg-coral/30' : 'bg-amber/30',
           )}
           style={{ left: `${d.x}%`, top: `${d.y}%`, width: d.size, height: d.size }}
-          animate={{ y: [0, -30, 0], opacity: [0, 0.8, 0] }}
+          animate={{ y: [0, -30, 0], opacity: [0, 0.5, 0] }}
           transition={{ duration: d.dur, delay: d.delay, repeat: Infinity, ease: 'easeInOut' }}
         />
       ))}

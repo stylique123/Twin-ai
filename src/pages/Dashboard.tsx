@@ -122,7 +122,6 @@ export default function Dashboard() {
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
           <Reveal>
             <div className="glass relative h-full overflow-hidden p-6">
-              <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-amber/10 blur-[80px]" />
               <div className="relative flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber/15"><Clapperboard className="h-3.5 w-3.5 text-amber" /></span>
@@ -155,7 +154,6 @@ export default function Dashboard() {
           </Reveal>
           <Reveal delay={0.06}>
             <div className="glass relative flex h-full flex-col overflow-hidden p-6">
-              <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-teal/10 blur-[70px]" />
               <div className="relative flex items-center gap-2.5">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal/15"><Send className="h-3.5 w-3.5 text-teal" /></span>
                 <h2 className="font-heading text-base text-cream">Publishing</h2>
@@ -198,7 +196,7 @@ function StatCard({ icon: Icon, glow, label, value, loading }: { icon: React.Com
           <span className={cn('inline-flex h-9 w-9 items-center justify-center rounded-xl', iconBgMap[glow])}>
             <Icon className={cn('h-[18px] w-[18px]', iconColorMap[glow])} />
           </span>
-          <div className="mt-4 font-display text-3xl tracking-tight text-cream">
+          <div className="mt-4 font-display text-4xl tracking-tight text-cream">
             {loading || value === undefined ? <span className="text-stone/50">…</span> : <Counter to={value} />}
           </div>
           <div className="mt-1.5 text-xs font-medium tracking-wide text-stone">{label}</div>
@@ -300,7 +298,6 @@ function InviteCard() {
   return (
     <Reveal delay={0.08}>
       <div className="glass relative mt-6 overflow-hidden p-6">
-        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-teal/10 blur-[70px]" />
         <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal/15"><Gift className="h-5 w-5 text-teal" /></span>
