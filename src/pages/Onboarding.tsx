@@ -334,6 +334,18 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
       <p className="eyebrow mt-5">This is your voice · tweak anything</p>
       <h1 className="mt-3 font-display text-2xl leading-snug">{vp.summary || 'Here’s how you sound'}</h1>
 
+      {/* Lead with PROOF the AI nailed their voice — a hook written as them. One
+          generated line converts skeptics far better than a wall of input fields. */}
+      {vp.sample_hooks?.[0] && (
+        <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.07] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">A hook I’d write as you</p>
+          <p className="mt-1.5 font-heading text-lg leading-snug text-cream">“{vp.sample_hooks[0]}”</p>
+          {vp.sample_hooks[1] && (
+            <p className="mt-2 text-sm leading-snug text-sand">“{vp.sample_hooks[1]}”</p>
+          )}
+        </div>
+      )}
+
       <div className="mt-6 space-y-4">
         <Labeled label="Niche">
           <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
