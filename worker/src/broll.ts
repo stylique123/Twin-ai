@@ -28,7 +28,20 @@ const VISUAL = new Set(
    'book books reading study student school classroom library notebook pen ' +
    'shop shopping store product products package delivery box ' +
    'dog cat pet baby family home house apartment plant plants ' +
-   'clock time calendar schedule deadline')
+   'clock time calendar schedule deadline ' +
+   // beauty / fashion
+   'skincare skin makeup lipstick mascara mirror salon hair haircut nails ' +
+   'fashion outfit clothes shoes sneakers dress shirt jacket closet jewelry ' +
+   // music / art / hobbies
+   'guitar piano drums vinyl headphones paint brush canvas drawing pottery ' +
+   'garden flowers soil watering candle journal meditation breathing ' +
+   // sport
+   'soccer basketball football tennis golf swimming bike cycling boxing skate ' +
+   // health / home
+   'doctor medicine pills vitamins supplement water hydration sleep bed couch ' +
+   'keys door window bedroom bathroom shower mirror ' +
+   // business visuals
+   'presentation growth arrow handshake contract sign signature email notification')
     .split(/\s+/),
 )
 

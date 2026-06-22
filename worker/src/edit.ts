@@ -711,7 +711,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
           const vf = [
             'drawbox=x=0:y=ih*0.52:w=iw:h=ih*0.48:color=black@0.5:t=fill',
             'drawbox=x=84:y=ih*0.56:w=190:h=12:color=0x23A6F5:t=fill',
-            `drawtext=fontfile=${FONT}:textfile=cover.txt:fontcolor=white:fontsize=70:line_spacing=14:x=(w-text_w)/2:y=h*0.6:shadowcolor=black@0.85:shadowx=3:shadowy=3`,
+            `drawtext=fontfile=${FONT}:textfile=cover.txt:fontcolor=white:fontsize=78:line_spacing=16:x=(w-text_w)/2:y=h*0.58:borderw=5:bordercolor=black@0.9:shadowcolor=black@0.7:shadowx=2:shadowy=2`,
           ].join(',')
           try {
             await run('ffmpeg', ['-y', '-i', 'frame.jpg', '-vf', vf, '-q:v', '3', 'thumb.jpg'], 60_000, dir)
