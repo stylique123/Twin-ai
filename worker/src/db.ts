@@ -30,9 +30,11 @@ export async function claimJob(types: string[]): Promise<Job | null> {
 
 export async function completeJob(id: string, result: unknown): Promise<void> {
   // Pass our worker id so the RPC only completes a job we still own (a job
-  // reclaimed after the visibility timeout must not be clobbered by us).
-  const { error } = await db.rpc('complete_job', { p_id: id, p_result: result, p_worker: env.workerId })
+  // reclaimed after the visibility timeout must not be clobbered by us). A 0 return
+  // means we lost the lease — the new owner now drives it, so don't clobber/log loud.
+  const { data, error } = await db.rpc('complete_job', { p_id: id, p_result: result, p_worker: env.workerId })
   if (error) throw error
+  if (data === 0) console.log(JSON.stringify({ t: new Date().toISOString(), level: 'warn', msg: 'complete_job no-op: job was reclaimed', job: id, worker: env.workerId }))
 }
 
 // Best-effort live progress: write the current stage into the job's result while
@@ -47,6 +49,7 @@ export async function updateJobProgress(id: string, progress: { phase: string; p
 }
 
 export async function failJob(id: string, message: string, backoffSecs = 30): Promise<void> {
-  const { error } = await db.rpc('fail_job', { p_id: id, p_error: message.slice(0, 500), p_backoff_secs: backoffSecs, p_worker: env.workerId })
+  const { data, error } = await db.rpc('fail_job', { p_id: id, p_error: message.slice(0, 500), p_backoff_secs: backoffSecs, p_worker: env.workerId })
   if (error) throw error
+  if (data === 0) console.log(JSON.stringify({ t: new Date().toISOString(), level: 'warn', msg: 'fail_job no-op: job was reclaimed', job: id, worker: env.workerId }))
 }

@@ -47,7 +47,9 @@ export const env = {
   jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe,build_voice,autoedit,scrape_dna').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
-  visibilitySecs: Number(process.env.WORKER_VISIBILITY_SECS ?? '900'),
+  // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight
+  // and double-run. ffmpeg can run up to maxMediaSecs*2 (~1800s), so lease 2400s.
+  visibilitySecs: Number(process.env.WORKER_VISIBILITY_SECS ?? '2400'),
 
   // ASR. 'base' is the speed/quality sweet spot for short-form English (≈1.5-2x
   // faster than 'small'); the filler pre-pass only needs rough word boundaries so

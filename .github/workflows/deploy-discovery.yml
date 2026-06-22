@@ -22,11 +22,17 @@ jobs:
       - name: Build + verify discovery over SSH
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          # Pass the untrusted input as an ENV VALUE (never interpolate ${{ }} into a
+          # shell command — that was a root-RCE injection). Sanitized below before use.
+          ONLY_NICHE_RAW: ${{ github.event.inputs.only_niche }}
         run: |
           if [ -z "$VPS_SSH_KEY" ]; then echo "::error::VPS_SSH_KEY not set"; exit 1; fi
           mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" 'bash -se' <<'REMOTE'
+          # Allowlist: letters/digits/space/comma/underscore/hyphen only, capped length.
+          ONLY_NICHE=$(printf '%s' "${ONLY_NICHE_RAW:-}" | tr -cd 'a-zA-Z0-9 ,_-' | cut -c1-200)
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" \
+            "ONLY_NICHE=$(printf %q "$ONLY_NICHE") bash -se" <<'REMOTE'
             set -euo pipefail
             cd /opt/twinai-worker-src
             git fetch origin main
@@ -39,6 +45,6 @@ jobs:
             docker run --rm \
               -e SUPABASE_URL="$SUP_URL" -e SUPABASE_SERVICE_ROLE_KEY="$SUP_KEY" \
               -e DISCOVERY_NICHES='[]' -e DISCOVERY_YT_LIMIT=4 -e DISCOVERY_TT_LIMIT=4 \
-              -e DISCOVERY_ONLY_NICHE="${{ github.event.inputs.only_niche }}" \
+              -e DISCOVERY_ONLY_NICHE="${ONLY_NICHE:-}" \
               twinai-discovery:latest
           REMOTE

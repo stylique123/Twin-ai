@@ -54,6 +54,7 @@ interface ParsedEvent {
   active: boolean // true => grant, false => revoke/cancel
   externalId?: string
   periodEnd?: string | null
+  variantId?: string // the variant/price the user ACTUALLY paid for (anti-spoof)
 }
 
 // Per-provider verify + parse. Returns ok=false if the signature is invalid.
@@ -79,6 +80,7 @@ async function verifyAndParse(
       active: /created|payment_success|updated/.test(name) && /active|paid|on_trial/.test(status || 'active'),
       externalId: body?.data?.id ? String(body.data.id) : undefined,
       periodEnd: body?.data?.attributes?.renews_at ?? null,
+      variantId: body?.data?.attributes?.variant_id != null ? String(body.data.attributes.variant_id) : undefined,
     }
   }
   if (provider === 'stripe') {
@@ -98,6 +100,7 @@ async function verifyAndParse(
       active: /checkout\.session\.completed|invoice\.paid|customer\.subscription\.(created|updated)/.test(type),
       externalId: obj?.subscription ? String(obj.subscription) : obj?.id ? String(obj.id) : undefined,
       periodEnd: obj?.current_period_end ? new Date(obj.current_period_end * 1000).toISOString() : null,
+      variantId: obj?.items?.data?.[0]?.price?.id ?? obj?.plan?.id ?? undefined,
     }
   }
   // Crypto / Fasset / manual: no provider signature. A trusted operator (admin
@@ -150,9 +153,24 @@ Deno.serve(async (req: Request) => {
     return json({ ok: true, note: 'no user_id' })
   }
 
-  // Read the pending intent to learn which plan was being purchased.
+  // ANTI-SPOOF: derive the plan from the variant the user ACTUALLY paid for (in the
+  // verified payload), NOT the client-seeded subscriptions row — otherwise a user
+  // could seed plan='agency' then pay for the cheaper variant and still get agency.
+  // Fall back to the seeded plan only when no variant ids are configured (and warn).
+  const env2 = (k: string) => Deno.env.get(k)
+  const planFromVariant = (v: string | undefined): string | null => {
+    if (!v) return null
+    for (const p of ['aspiring', 'professional', 'agency']) {
+      if (env2(`LS_VARIANT_${p.toUpperCase()}`) === v || env2(`STRIPE_PRICE_${p.toUpperCase()}`) === v) return p
+    }
+    return null
+  }
   const { data: sub } = await admin.from('subscriptions').select('plan').eq('user_id', parsed.userId).maybeSingle()
-  const plan = sub?.plan ?? 'aspiring'
+  const verifiedPlan = planFromVariant(parsed.variantId)
+  const plan = verifiedPlan ?? sub?.plan ?? 'aspiring'
+  if (!verifiedPlan) {
+    await admin.from('ops_events').insert({ kind: 'billing_plan_unverified', severity: 'warn', user_id: parsed.userId, detail: { granted: plan, variant: parsed.variantId ?? null, reason: 'no variant→plan match; granted from seeded intent' } }).then(() => {}, () => {})
+  }
 
   if (parsed.active) {
     await admin.from('subscriptions').upsert(

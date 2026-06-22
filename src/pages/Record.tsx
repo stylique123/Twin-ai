@@ -67,6 +67,7 @@ export default function Record() {
   const [editUrl, setEditUrl] = useState<string | null>(null)
   const [editErr, setEditErr] = useState<string | null>(null)
   const takePathRef = useRef<string | null>(null)
+  const submitting = useRef(false) // blocks double-submit of a charged edit
   const [variation, setVariation] = useState(0)
 
   // teleprompter controls
@@ -305,7 +306,10 @@ export default function Record() {
 
   // ---- first auto-edit: FREE (bundled with the blueprint) ----
   const runAutoEdit = async () => {
-    if (!takeBlobRef.current || !id) return
+    // Synchronous guard: `disabled` lags a fast double-click and would fire two
+    // uploads + two charged enqueues. The ref blocks the second instantly.
+    if (!takeBlobRef.current || !id || submitting.current) return
+    submitting.current = true
     setEditErr(null)
     setEditPhase('working')
     setEditStatus('Uploading your take…'); setEditPct(3)
@@ -316,12 +320,15 @@ export default function Record() {
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : 'Auto-edit failed.')
       setEditPhase('error')
+    } finally {
+      submitting.current = false
     }
   }
 
   // ---- remake: a fresh look, costs one recreation ----
   const runRemake = async () => {
-    if (!takePathRef.current || !id) return
+    if (!takePathRef.current || !id || submitting.current) return
+    submitting.current = true
     setEditErr(null)
     setEditPhase('working')
     setEditStatus('Remaking, a fresh edit…'); setEditPct(3)
@@ -336,6 +343,8 @@ export default function Record() {
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : 'Remake failed.')
       setEditPhase('error')
+    } finally {
+      submitting.current = false
     }
   }
 
