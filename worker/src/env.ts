@@ -42,6 +42,10 @@ export const env = {
   // Revideo render service (premium captions pass). When set, every edit's ffmpeg
   // result is auto-upgraded to the Revideo render. Empty = ffmpeg-only.
   revideoUrl: (process.env.REVIDEO_URL ?? '').trim(),
+  // Hard timeout on the Revideo render call. Must stay well under the job lease
+  // (visibilitySecs) so a hung render can't run past it and get the job reclaimed
+  // + double-run. 8 min covers a short-form premium render with headroom.
+  revideoTimeoutMs: Number(process.env.REVIDEO_TIMEOUT_MS ?? '480000'),
 
   // Which job types this worker process handles.
   // 'transcribe' removed — it was registered + claimed but nothing ever enqueues it
@@ -64,6 +68,11 @@ export const env = {
   // as Arabic/Urdu/etc and burns in garbage captions. 'auto' restores detection.
   whisperLanguage: (process.env.WHISPER_LANGUAGE ?? 'en').trim(),
   maxMediaSecs: Number(process.env.WORKER_MAX_MEDIA_SECS ?? '900'), // skip > 15 min by default
+  // Hard cap on any single Storage download (raw take, b-roll, music bed). The
+  // single worker buffers/streams these to disk; an oversized or corrupt object
+  // would otherwise OOM the process and wedge the whole queue. 600 MB comfortably
+  // covers a 15-min phone take while bounding worst-case memory/disk per job.
+  maxDownloadBytes: Number(process.env.WORKER_MAX_DOWNLOAD_BYTES ?? String(600 * 1024 * 1024)),
 
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }

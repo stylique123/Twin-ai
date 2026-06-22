@@ -154,6 +154,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ baseClipUrl: baseUrl, edl }),
+          signal: AbortSignal.timeout(env.revideoTimeoutMs),
         })
         if (!r.ok) throw new Error(`revideo ${r.status}: ${(await r.text()).slice(0, 200)}`)
         const premiumBuf = Buffer.from(await r.arrayBuffer())
