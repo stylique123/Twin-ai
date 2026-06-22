@@ -16,14 +16,10 @@ import { cn } from '../lib/cn'
 // Hero background. Left empty so the hero uses the clean Aurora gradient instead
 // of an AI-generated clip — the honest-FAQ brand shouldn't lead with synthetic
 // "footage". Set a real product-demo URL here when one exists.
-const HERO_VIDEO_SRC = ''
+const HERO_VIDEO_SRC = 'https://d8j0ntlcm91z4.cloudfront.net/user_3A4BLQYlkqlIIcq5F4BohQmaHaz/hf_20260614_061422_7b59d7ac-3dc6-4376-9baa-bc3cad8bccb0.mp4'
 
 const ROTATING_VERBS = ['recreate', 'remix', 'own', 'post']
 
-const TICKER = [
-  'Paste any link', 'Decode the hook', 'Script in your voice', 'Built-in teleprompter',
-  'One-click edit', 'Word-synced captions', 'Caption ready to post', 'Niche gallery', 'Log what you ship',
-]
 
 // Exactly the three platforms we support. TikTok + YouTube are live; Instagram
 // is supported. We never list platforms we can't publish to.
@@ -207,18 +203,20 @@ function HeroSection() {
               className="font-display text-[2.8rem] leading-[1.04] tracking-tight text-balance sm:text-5xl lg:text-[3.8rem]"
             >
               Paste a viral video.{' '}
-              <span className="gradient-text whitespace-nowrap">
+              <span className="whitespace-nowrap text-cream">
                 <span className="relative inline-grid place-items-center align-baseline">
                   {/* Invisible sizer reserves space for the widest verb so the line never shifts */}
                   <span className="invisible col-start-1 row-start-1" aria-hidden>recreate</span>
                   <AnimatePresence mode="wait">
                     <motion.span
                       key={verbIdx}
-                      initial={{ opacity: 0, y: 10, filter: 'blur(4px)' }}
-                      animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-                      exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
-                      transition={{ duration: 0.35, ease: EASE }}
-                      className="col-start-1 row-start-1"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.3, ease: EASE }}
+                      // gradient applied DIRECTLY to the word (not via a grid ancestor) so
+                      // background-clip:text always paints — fixes the "missing word".
+                      className="col-start-1 row-start-1 gradient-text"
                     >
                       {ROTATING_VERBS[verbIdx]}
                     </motion.span>
@@ -262,19 +260,6 @@ function HeroSection() {
           </div>
 
           <HeroVisualNew />
-        </div>
-      </div>
-
-      {/* Scrolling ticker */}
-      <div className="relative border-y border-white/8 bg-ink2/60 py-4">
-        <div className="mask-fade-x flex overflow-hidden">
-          <div className="flex shrink-0 animate-marquee items-center gap-8 pr-8">
-            {[...TICKER, ...TICKER].map((w, i) => (
-              <span key={i} className="inline-flex items-center gap-8 whitespace-nowrap text-xs font-semibold uppercase tracking-widest text-stone">
-                {w} <span className="h-1 w-1 rounded-full bg-white/20" />
-              </span>
-            ))}
-          </div>
         </div>
       </div>
     </section>
@@ -466,6 +451,10 @@ function PlatformStrip() {
               </span>
             </div>
           ))}
+          <div className="inline-flex items-center gap-2 rounded-full border border-dashed border-white/12 px-4 py-2 text-sm text-stone">
+            LinkedIn · X
+            <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-stone">Soon</span>
+          </div>
         </div>
       </div>
     </section>
