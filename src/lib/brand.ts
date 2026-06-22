@@ -54,8 +54,8 @@ export const PLANS: PlanTier[] = [
   {
     id: 'aspiring',
     name: 'Aspiring',
-    price: 16,
-    annual: 13,
+    price: 15,
+    annual: 12,
     videos: 9,
     credits: grant(9, 2), // 110 → 11, buffer 2
     brandVoices: 1,
@@ -71,8 +71,8 @@ export const PLANS: PlanTier[] = [
   {
     id: 'professional',
     name: 'Professional',
-    price: 31,
-    annual: 26,
+    price: 29,
+    annual: 24,
     videos: 18,
     credits: grant(18, 3), // 210 → 21, buffer 3
     brandVoices: 1,
@@ -90,8 +90,8 @@ export const PLANS: PlanTier[] = [
   {
     id: 'agency',
     name: 'Agency',
-    price: 109,
-    annual: 89,
+    price: 99,
+    annual: 82,
     videos: 70,
     credits: grant(70, 8), // 780 → 78, buffer 8
     brandVoices: 15,
@@ -101,7 +101,7 @@ export const PLANS: PlanTier[] = [
       '70 remixes / mo',
       '15 brand voices (one per client)',
       'Everything in Professional',
-      'Multi-brand workspaces + seats',
+      'Switch client brands on web & mobile',
       'Priority render',
       'Add extra brand voices anytime',
     ],

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings } from 'lucide-react'
+import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { BrandSwitcher } from './BrandSwitcher'
 import { useAuth } from '../context/AuthContext'
@@ -13,6 +13,7 @@ const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, note: 'Your overview' },
   { to: '/app',       label: 'Studio',    icon: Wand2,            note: 'Make a blueprint' },
   { to: '/gallery',   label: 'Gallery',   icon: LayoutGrid,       note: 'Formats to remix' },
+  { to: '/brands',    label: 'Brands',    icon: Users,            note: 'Your voices' },
   { to: '/history',   label: 'Library',   icon: LibraryBig,       note: 'All your blueprints' },
   { to: '/settings',  label: 'Settings',  icon: Settings,         note: 'Account & DNA' },
 ]
@@ -74,6 +75,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {open && (
             <motion.nav initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }} className="sticky top-[57px] z-40 overflow-hidden border-b border-white/8 bg-ink/95 backdrop-blur-xl lg:hidden">
               <div className="space-y-1 p-3">
+                {/* Brand switcher now lives in the mobile menu too — agencies shoot
+                    and post from a phone and need to switch the active client here. */}
+                <BrandSwitcher />
                 {NAV.map((n) => (
                   <Link key={n.to} to={n.to} onClick={() => setOpen(false)} className={cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm', isActive(n.to) ? 'bg-white/[0.06] text-cream' : 'text-sand')}>
                     <n.icon className="h-[18px] w-[18px]" /> {n.label}

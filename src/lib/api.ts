@@ -374,6 +374,26 @@ export async function redeemReferral(code: string): Promise<{ ok: boolean; reaso
   return data as { ok: boolean; reason?: string; reward?: number }
 }
 
+// ---- Billing / checkout --------------------------------------------------
+export interface CheckoutResult {
+  kind?: 'redirect' | 'crypto' | 'manual' | 'unconfigured'
+  url?: string
+  asset?: string
+  address?: string
+  amount_usd?: number
+  message?: string
+  provider?: string
+  error?: string
+}
+
+// Start a real checkout for a paid plan. Returns a redirect URL (card), crypto
+// details, or a manual/unconfigured message — the caller routes the user.
+export async function startCheckout(plan: string): Promise<CheckoutResult> {
+  const { data, error } = await supabase.functions.invoke('billing', { body: { action: 'checkout', plan } })
+  if (error) throw new Error(await readInvokeError(error))
+  return data as CheckoutResult
+}
+
 export async function startDna(handle: string, platform: Platform): Promise<StartDnaResult> {
   const { data, error } = await supabase.functions.invoke('start-dna', {
     body: { handle, platform, make_default: true },
