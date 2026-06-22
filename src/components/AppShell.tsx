@@ -50,7 +50,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               Recreations are a back-of-house meter, not a number we put front and
               center, so it's a single subtle line here. */}
           <Link to="/dashboard" className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px] text-stone transition-colors hover:text-sand">
-            <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3 w-3 text-amber/70" /> Recreations</span>
+            <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3 w-3 text-amber/70" /> Remixes</span>
             <span className="text-sand">{left}</span>
           </Link>
           <button onClick={doSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone transition-colors hover:bg-white/[0.04] hover:text-cream">

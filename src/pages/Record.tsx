@@ -593,8 +593,8 @@ export default function Record() {
                       <button onClick={openRefine} disabled={refineLoading} className="btn-ghost" title="Tweak captions, colors, b-roll & cuts — free">
                         {refineLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} Refine
                       </button>
-                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look, 1 recreation">
-                        <Sparkles className="h-4 w-4" /> Remake · 1 recreation
+                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look, 1 remix">
+                        <Sparkles className="h-4 w-4" /> Remake · 1 remix
                       </button>
                       <a href={editUrl} download={`twinai-edited-${id}.mp4`} className="btn-gradient">
                         <Download className="h-4 w-4" /> Download edited

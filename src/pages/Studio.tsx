@@ -67,7 +67,7 @@ export default function Studio() {
   const run = async () => {
     setErr(null)
     if (!url.trim()) return setErr('Paste a reference link first.')
-    if (lowCredits) return setErr("You're out of recreations for now, upgrade to keep going.")
+    if (lowCredits) return setErr("You're out of remixes for now, upgrade to keep going.")
     setBusy(true)
     try {
       // ALWAYS read the actual video first.
@@ -165,7 +165,7 @@ export default function Studio() {
             {/* Action row */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-5">
               <span className="chip">
-                <Sparkles className="h-3.5 w-3.5 text-amber" /> {left} recreations left
+                <Sparkles className="h-3.5 w-3.5 text-amber" /> {left} remixes left
               </span>
               <button className="btn-gradient min-w-[220px]" onClick={run} disabled={busy}>
                 {busy ? (
@@ -208,7 +208,7 @@ export default function Studio() {
                     <BuildProgress
                       stages={STUDIO_STAGES}
                       active={Math.max(0, PHASE_ORDER.indexOf(phase) - 1)}
-                      footer="Reading the real clip takes ~1-2 min. Hang tight, we don't charge a recreation unless this finishes."
+                      footer="Reading the real clip takes ~1-2 min. Hang tight, we don't charge a remix unless this finishes."
                     />
                   </div>
                 </motion.div>

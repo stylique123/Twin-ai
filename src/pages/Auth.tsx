@@ -8,7 +8,7 @@ import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 import { EASE } from '../components/motion'
 
-const PERKS = ['3 free recreations', 'Script in your voice, record + edit in one place', 'No card required']
+const PERKS = ['3 free remixes', 'Script in your voice, record + edit in one place', 'No card required']
 
 // Where we remember the plan the user picked on the pricing page, so the choice
 // survives signup + email confirmation and reaches onboarding / billing later.
@@ -132,7 +132,7 @@ export default function Auth() {
             {mode === 'signup' ? 'Start free' : 'Welcome back'}
           </h1>
           <p className="mt-1.5 text-sm text-sand">
-            {mode === 'signup' ? '3 free recreations. No card required.' : 'Pick up where you left off.'}
+            {mode === 'signup' ? '3 free remixes. No card required.' : 'Pick up where you left off.'}
           </p>
 
           <form onSubmit={submit} className="mt-7 space-y-3">

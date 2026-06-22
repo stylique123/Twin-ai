@@ -49,7 +49,7 @@ export const PLANS: PlanTier[] = [
     credits: grant(3, 0), // 30 credits → 3 recreations; advertised count matches what's granted
     brandVoices: 1,
     blurb: 'Try it free.',
-    features: ['3 free recreations', 'Script + in-app teleprompter record', 'Watermark on exports'],
+    features: ['3 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
     id: 'aspiring',
@@ -61,7 +61,7 @@ export const PLANS: PlanTier[] = [
     brandVoices: 1,
     blurb: 'First repeatable posts.',
     features: [
-      '9 recreations / mo',
+      '9 remixes / mo',
       '1 brand voice',
       'Auto-captions',
       'Post to 1 platform',
@@ -79,7 +79,7 @@ export const PLANS: PlanTier[] = [
     badge: 'Most popular',
     blurb: 'Weekly output, speed.',
     features: [
-      '18 recreations / mo',
+      '18 remixes / mo',
       '1 brand voice',
       'Full auto-edit (captions + cuts)',
       'Publish to all your platforms',
@@ -98,7 +98,7 @@ export const PLANS: PlanTier[] = [
     badge: 'Best value',
     blurb: 'Many brands, one voice each.',
     features: [
-      '70 recreations / mo',
+      '70 remixes / mo',
       '15 brand voices (one per client)',
       'Everything in Professional',
       'Multi-brand workspaces + seats',

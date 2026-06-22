@@ -253,7 +253,7 @@ function HeroSection() {
               transition={{ duration: 1, delay: 0.34 }}
               className="mt-7 text-[11px] leading-relaxed text-stone"
             >
-              ✨ 3 free recreations. No card required. 💳
+              ✨ 3 free remixes. No card required. 💳
             </motion.p>
           </div>
 
@@ -661,7 +661,7 @@ function PricingSection() {
           Start free. Scale when it's working.
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-sand">
-          Simple monthly recreation counts. No per-action billing, no confusing credits. Cancel any time.
+          Simple monthly remix counts. No per-action billing, no confusing credits. Cancel any time.
         </p>
       </Reveal>
       <Stagger className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4" gap={0.06}>
@@ -799,7 +799,7 @@ function CTASection() {
             </Link>
             <a href="#pricing" className="btn-ghost text-base px-8 py-4">See pricing</a>
           </div>
-          <p className="mt-4 text-sm text-stone">3 free recreations. No card required.</p>
+          <p className="mt-4 text-sm text-stone">3 free remixes. No card required.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-stone">
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-teal" /> No footage copied

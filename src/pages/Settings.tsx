@@ -107,7 +107,7 @@ export default function Settings() {
             <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
               <div>
                 <div className="font-display text-2xl text-cream">{plan.name}</div>
-                <div className="mt-1 text-sm text-stone">{plan.price ? `$${plan.price}/mo` : 'Free'} · {left} recreation{left === 1 ? '' : 's'} left</div>
+                <div className="mt-1 text-sm text-stone">{plan.price ? `$${plan.price}/mo` : 'Free'} · {left} remix{left === 1 ? '' : 'es'} left</div>
               </div>
               <Link to="/#pricing" className="btn-gradient text-sm">
                 {plan.id === 'agency' ? 'Manage plan' : 'Upgrade'} <ArrowUpRight className="h-4 w-4" />

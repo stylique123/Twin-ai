@@ -56,7 +56,7 @@ export default function Dashboard() {
           <StatCard icon={FileText} glow="amber" label="Blueprints" value={stats?.blueprints} loading={loading} />
           <StatCard icon={Clapperboard} glow="coral" label="Edits rendered" value={stats?.edits} loading={loading} />
           <StatCard icon={Send} glow="teal" label="Posts logged" value={stats?.posts} loading={loading} />
-          <StatCard icon={Sparkles} glow="amber" label="Recreations left" value={stats?.recreationsLeft} loading={loading} />
+          <StatCard icon={Sparkles} glow="amber" label="Remixes left" value={stats?.recreationsLeft} loading={loading} />
         </Stagger>
         <Reveal delay={0.1}>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
