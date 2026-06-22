@@ -19,10 +19,12 @@ const json = (body: unknown, status = 200) =>
 
 // Monthly recreations granted per plan, x10 = internal credits (1 recreation = 10).
 // Tunable via env without a redeploy.
+// MUST match src/lib/brand.ts grant() so the credits granted == the advertised
+// allowance (Starter 8→100, Pro 20→240, Agency 75→830, incl. the hidden buffer).
 const PLAN_CREDITS: Record<string, number> = {
-  aspiring: Number(Deno.env.get('PLAN_CREDITS_ASPIRING') ?? '150'),
-  professional: Number(Deno.env.get('PLAN_CREDITS_PROFESSIONAL') ?? '290'),
-  agency: Number(Deno.env.get('PLAN_CREDITS_AGENCY') ?? '990'),
+  aspiring: Number(Deno.env.get('PLAN_CREDITS_ASPIRING') ?? '100'),
+  professional: Number(Deno.env.get('PLAN_CREDITS_PROFESSIONAL') ?? '240'),
+  agency: Number(Deno.env.get('PLAN_CREDITS_AGENCY') ?? '830'),
 }
 
 async function hmacHex(secret: string, msg: string): Promise<string> {
@@ -168,11 +170,14 @@ Deno.serve(async (req: Request) => {
     // agency plan so multi-brand workspaces unlock.
     const grant = PLAN_CREDITS[plan] ?? 0
     const { data: prof } = await admin.from('profiles').select('credits').eq('id', parsed.userId).maybeSingle()
+    // Set the balance to the monthly allowance (with modest carryover), NOT add it
+    // every event — otherwise renewals + subscription.updated stack credits unbounded.
+    // max() guarantees they always have at least the full month, never less.
     await admin
       .from('profiles')
       .update({
         plan,
-        credits: (prof?.credits ?? 0) + grant,
+        credits: Math.max(prof?.credits ?? 0, grant),
         ...(plan === 'agency' ? { account_type: 'agency' } : {}),
       })
       .eq('id', parsed.userId)

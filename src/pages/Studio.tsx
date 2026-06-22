@@ -75,7 +75,7 @@ export default function Studio() {
       if (job.status === 'failed') throw new Error(job.error || 'Could not read that video. Try another reference.')
       if (job.status === 'running') setPhase('transcribing')
     }
-    throw new Error('Reading the video is taking too long, please try again in a moment.')
+    throw new Error('Reading the video is taking longer than usual. Try again in a moment — you weren’t charged a remix.')
   }
 
   const run = async () => {
