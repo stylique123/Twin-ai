@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText } from 'lucide-react'
+import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText, Wind, Activity, Flame } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { generateBlueprint, ingestReference, getJob, listBrandVoices } from '../lib/api'
 import type { BrandVoice } from '../lib/types'
@@ -15,6 +15,14 @@ const FIDELITY = [
   { id: 'close', label: 'Close', note: 'Stay tight to the reference structure.', icon: Target },
   { id: 'balanced', label: 'Balanced', note: 'Proven shape, your spin.', icon: Shuffle },
   { id: 'loose', label: 'Loose', note: 'Just the inspiration, mostly you.', icon: Feather },
+] as const
+
+// How the script should SOUND. Panel finding: the founder/B2B persona (and the pro)
+// feared a "try-hard TikTok" tone in front of buyers and wanted a no-hype dial.
+const TONE = [
+  { id: 'understated', label: 'Understated', note: 'Calm, credible, no hype — great for B2B / founders.', icon: Wind },
+  { id: 'balanced', label: 'Balanced', note: 'Natural energy, your default.', icon: Activity },
+  { id: 'punchy', label: 'Punchy', note: 'High-energy, bold hooks.', icon: Flame },
 ] as const
 
 // The studio ALWAYS reads the real video now: paste a link, we transcribe the
@@ -41,6 +49,7 @@ export default function Studio() {
   const [url, setUrl] = useState(() => params.get('ref') ?? '')
   const [note, setNote] = useState(() => params.get('note') ?? '')
   const [fidelity, setFidelity] = useState<'close' | 'balanced' | 'loose'>('balanced')
+  const [tone, setTone] = useState<'understated' | 'balanced' | 'punchy'>('balanced')
   const [busy, setBusy] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [slowRead, setSlowRead] = useState(false)
@@ -94,6 +103,7 @@ export default function Studio() {
         reference_url: url.trim(),
         reference_note: note.trim(),
         fidelity,
+        tone,
         transcript_id,
       })
       await refreshProfile()
@@ -181,6 +191,33 @@ export default function Studio() {
                       <f.icon className={cn('h-4 w-4', active ? 'text-coral' : 'text-stone')} />
                       <div className="mt-2 font-heading">{f.label}</div>
                       <div className="text-xs text-stone">{f.note}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Tone */}
+            <div>
+              <label className="eyebrow">How should it sound?</label>
+              <div className="mt-2 grid gap-2.5 sm:grid-cols-3">
+                {TONE.map((t) => {
+                  const active = tone === t.id
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTone(t.id)}
+                      disabled={busy}
+                      className={cn(
+                        'rounded-card border p-3.5 text-left transition-all duration-300 disabled:opacity-50',
+                        active
+                          ? 'border-coral/50 bg-coral/10 shadow-glow'
+                          : 'border-white/8 bg-white/[0.03] hover:border-white/16',
+                      )}
+                    >
+                      <t.icon className={cn('h-4 w-4', active ? 'text-coral' : 'text-stone')} />
+                      <div className="mt-2 font-heading">{t.label}</div>
+                      <div className="text-xs text-stone">{t.note}</div>
                     </button>
                   )
                 })}

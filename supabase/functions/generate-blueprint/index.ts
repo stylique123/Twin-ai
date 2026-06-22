@@ -264,7 +264,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; transcript_id?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -288,6 +288,21 @@ Deno.serve(async (req: Request) => {
       'FIDELITY = LOOSE. Use the reference only as light inspiration for the energy and topic. Prioritize the creator\'s OWN angle, offer, hooks and DNA. The structure should follow what is best for the creator, and may diverge substantially from the reference\'s beats.',
   }
   const fidelityRule = FIDELITY_RULE[fidelity]
+  // TONE controls delivery energy (independent of fidelity). The panel's founder/B2B
+  // persona scored lowest specifically over fear of a "try-hard TikTok" voice in front
+  // of buyers — 'understated' is the no-hype mode that converts that segment.
+  const tone = ['understated', 'balanced', 'punchy'].includes(body.tone ?? '')
+    ? body.tone!
+    : 'balanced'
+  const TONE_RULE: Record<string, string> = {
+    understated:
+      'TONE = UNDERSTATED. Write like a credible operator/expert, not a hype creator. No clickbait, no "🤯", no "you won\'t believe", no manufactured urgency, no hashtags in the script. Hooks state a sharp, specific point of view plainly. Confident and calm — the kind of thing a founder could say to a buyer without cringing.',
+    balanced:
+      'TONE = BALANCED. Natural short-form energy: engaging and lively but not over-the-top. Strong hooks without resorting to bait. This is the default creator voice.',
+    punchy:
+      'TONE = PUNCHY. High-energy, bold, pattern-interrupting hooks and fast, emphatic delivery. Lean into momentum and big stakes — while staying within the creator\'s DNA and avoiding outright false claims.',
+  }
+  const toneRule = TONE_RULE[tone]
   if (!reference_url) return json({ error: 'reference_url is required' }, 400)
   if (reference_url.length > 2048) return json({ error: 'That reference link is too long.' }, 400)
 
@@ -415,6 +430,7 @@ ${referenceBlock}
 
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
 - ${fidelityRule}
+- ${toneRule}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
