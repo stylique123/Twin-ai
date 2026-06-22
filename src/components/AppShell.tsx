@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { logEvent } from '../lib/api'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings } from 'lucide-react'
+import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { BrandSwitcher } from './BrandSwitcher'
 import { useAuth } from '../context/AuthContext'
@@ -13,6 +14,7 @@ const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, note: 'Your overview' },
   { to: '/app',       label: 'Studio',    icon: Wand2,            note: 'Make a blueprint' },
   { to: '/gallery',   label: 'Gallery',   icon: LayoutGrid,       note: 'Formats to remix' },
+  { to: '/brands',    label: 'Brands',    icon: Users,            note: 'Your voices' },
   { to: '/history',   label: 'Library',   icon: LibraryBig,       note: 'All your blueprints' },
   { to: '/settings',  label: 'Settings',  icon: Settings,         note: 'Account & DNA' },
 ]
@@ -21,6 +23,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const { profile, signOut } = useAuth()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
+  // Engagement depth: log a page_view per route (best-effort, never blocks).
+  useEffect(() => { void logEvent('page_view', { path: pathname }) }, [pathname])
   const left = videosFromCredits(profile?.credits ?? 0)
   const isActive = (to: string) => to === '/app' ? pathname === '/app' || pathname.startsWith('/result') : pathname.startsWith(to)
   // Hard navigation (full reload), not SPA navigate(): a client-side route change
@@ -50,7 +54,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               Recreations are a back-of-house meter, not a number we put front and
               center, so it's a single subtle line here. */}
           <Link to="/dashboard" className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px] text-stone transition-colors hover:text-sand">
-            <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3 w-3 text-amber/70" /> Recreations</span>
+            <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3 w-3 text-amber/70" /> Remixes</span>
             <span className="text-sand">{left}</span>
           </Link>
           <button onClick={doSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone transition-colors hover:bg-white/[0.04] hover:text-cream">
@@ -59,34 +63,39 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-white/8 bg-ink/80 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl lg:hidden">
-          <Link to="/app" className="inline-flex items-center gap-2">
-            <LogoMark size={26} />
-            <span className="font-bold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
-          </Link>
-          <div className="flex items-center gap-2">
-            <button className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/5" onClick={() => setOpen((v) => !v)} aria-label="Menu">
-              {open ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
+        {/* Sticky mobile chrome: header + dropdown in ONE sticky container so the
+            menu always opens directly under the header — no safe-area magic number,
+            no sliding-under-the-notch overlap. */}
+        <div className="sticky top-0 z-40 lg:hidden">
+          <header className="flex items-center justify-between border-b border-white/8 bg-ink/80 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
+            <Link to="/app" className="inline-flex items-center gap-2">
+              <LogoMark size={26} />
+              <span className="font-bold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
+            </Link>
+            <button className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 active:bg-white/10" onClick={() => setOpen((v) => !v)} aria-label="Menu">
+              {open ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
             </button>
-          </div>
-        </header>
-        <AnimatePresence>
-          {open && (
-            <motion.nav initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }} className="sticky top-[57px] z-40 overflow-hidden border-b border-white/8 bg-ink/95 backdrop-blur-xl lg:hidden">
-              <div className="space-y-1 p-3">
-                {NAV.map((n) => (
-                  <Link key={n.to} to={n.to} onClick={() => setOpen(false)} className={cn('flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm', isActive(n.to) ? 'bg-white/[0.06] text-cream' : 'text-sand')}>
-                    <n.icon className="h-[18px] w-[18px]" /> {n.label}
-                    <span className="ml-auto text-xs text-stone">{n.note}</span>
-                  </Link>
-                ))}
-                <button onClick={doSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone">
-                  <LogOut className="h-[18px] w-[18px]" /> Sign out
-                </button>
-              </div>
-            </motion.nav>
-          )}
-        </AnimatePresence>
+          </header>
+          <AnimatePresence>
+            {open && (
+              <motion.nav initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }} className="overflow-hidden border-b border-white/8 bg-ink/95 backdrop-blur-xl">
+                <div className="space-y-1 p-3">
+                  {/* Agencies switch the active client from here on a phone. */}
+                  <BrandSwitcher />
+                  {NAV.map((n) => (
+                    <Link key={n.to} to={n.to} onClick={() => setOpen(false)} className={cn('flex items-center gap-3 rounded-xl px-3 py-3 text-sm', isActive(n.to) ? 'bg-white/[0.06] text-cream' : 'text-sand')}>
+                      <n.icon className="h-[18px] w-[18px]" /> {n.label}
+                      <span className="ml-auto text-xs text-stone">{n.note}</span>
+                    </Link>
+                  ))}
+                  <button onClick={doSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-stone">
+                    <LogOut className="h-[18px] w-[18px]" /> Sign out
+                  </button>
+                </div>
+              </motion.nav>
+            )}
+          </AnimatePresence>
+        </div>
         <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>

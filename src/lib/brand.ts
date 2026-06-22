@@ -1,8 +1,8 @@
 // Brand & GTM constants, single source of truth, mirrors the cheat sheet.
 
 export const BRAND = {
-  oneLiner: 'Remix any viral video in seconds.',
-  subLine: 'You bring the idea. TwinAI makes it shootable.',
+  oneLiner: 'One link in. A finished, on-brand video out.',
+  subLine: 'Script, teleprompter, auto-edit and caption — the whole loop in one window.',
   category: 'Reference-based creation, not a clipper.',
   positioning:
     'For creators, founders & agencies who know a reel works but can’t make their own fast enough, TwinAI turns any proven reference into a personalized hook, script, shot list, edit and schedule. Others clip your footage; we make the references you admire shootable in your voice.',
@@ -48,38 +48,38 @@ export const PLANS: PlanTier[] = [
     videos: 3,
     credits: grant(3, 0), // 30 credits → 3 recreations; advertised count matches what's granted
     brandVoices: 1,
-    blurb: 'Try it free.',
-    features: ['3 free recreations', 'Script + in-app teleprompter record', 'Watermark on exports'],
+    blurb: 'See it work, free.',
+    features: ['3 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
     id: 'aspiring',
-    name: 'Aspiring',
-    price: 16,
-    annual: 13,
-    videos: 9,
-    credits: grant(9, 2), // 110 → 11, buffer 2
+    name: 'Starter',
+    price: 9,
+    annual: 7,
+    videos: 8,
+    credits: grant(8, 2), // 100 credits → 10, advertised 8, buffer 2
     brandVoices: 1,
-    blurb: 'First repeatable posts.',
+    blurb: 'Post weekly, no watermark.',
     features: [
-      '9 recreations / mo',
+      '8 remixes / mo',
+      'No watermark',
       '1 brand voice',
       'Auto-captions',
       'Post to 1 platform',
-      'No watermark',
     ],
   },
   {
     id: 'professional',
-    name: 'Professional',
-    price: 31,
-    annual: 26,
-    videos: 18,
-    credits: grant(18, 3), // 210 → 21, buffer 3
+    name: 'Pro',
+    price: 24,
+    annual: 19,
+    videos: 20,
+    credits: grant(20, 4), // 240 credits → 24, advertised 20, buffer 4
     brandVoices: 1,
     badge: 'Most popular',
-    blurb: 'Weekly output, speed.',
+    blurb: 'Ship every week, on autopilot.',
     features: [
-      '18 recreations / mo',
+      '20 remixes / mo',
       '1 brand voice',
       'Full auto-edit (captions + cuts)',
       'Publish to all your platforms',
@@ -90,18 +90,18 @@ export const PLANS: PlanTier[] = [
   {
     id: 'agency',
     name: 'Agency',
-    price: 109,
-    annual: 89,
-    videos: 70,
-    credits: grant(70, 8), // 780 → 78, buffer 8
+    price: 79,
+    annual: 65,
+    videos: 75,
+    credits: grant(75, 8), // 830 credits → 83, advertised 75, buffer 8
     brandVoices: 15,
     badge: 'Best value',
-    blurb: 'Many brands, one voice each.',
+    blurb: 'Every client, sounding like themselves.',
     features: [
-      '70 recreations / mo',
+      '75 remixes / mo',
       '15 brand voices (one per client)',
-      'Everything in Professional',
-      'Multi-brand workspaces + seats',
+      'Everything in Pro',
+      'Switch client brands on web & mobile',
       'Priority render',
       'Add extra brand voices anytime',
     ],

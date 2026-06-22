@@ -27,9 +27,9 @@ const json = (body: unknown, status = 200) =>
 // Internal plan catalog. amount is monthly USD cents; the processor charges it in
 // whatever card/currency the user has. Free needs no checkout.
 const PLANS: Record<string, { amount: number; label: string }> = {
-  aspiring: { amount: 1500, label: 'Aspiring' },
-  professional: { amount: 2900, label: 'Professional' },
-  agency: { amount: 9900, label: 'Agency' },
+  aspiring: { amount: 900, label: 'Starter' },
+  professional: { amount: 2400, label: 'Pro' },
+  agency: { amount: 7900, label: 'Agency' },
 }
 
 interface CheckoutArgs {

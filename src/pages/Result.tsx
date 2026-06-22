@@ -14,7 +14,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, fetchEdl, getJob } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, fetchEdl, getJob, logEvent } from '../lib/api'
 import type { Generation, EditDecisionList } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { RefinePanel } from '../components/RefinePanel'
@@ -85,7 +85,18 @@ export default function Result() {
         </span>
       </main>
     )
-  if (!gen) return <main className="mx-auto max-w-3xl px-5 py-16 text-coral">Not found.</main>
+  if (!gen)
+    return (
+      <main className="mx-auto grid min-h-[60vh] max-w-md place-items-center px-5 text-center">
+        <div>
+          <p className="font-heading text-lg text-cream">We couldn’t find that blueprint.</p>
+          <p className="mt-2 text-sm text-stone">It may have been removed, or the link is out of date.</p>
+          <Link to="/history" className="btn-gradient mt-6 inline-flex">
+            <ArrowLeft className="h-4 w-4" /> Back to Library
+          </Link>
+        </div>
+      </main>
+    )
 
   // Defensive normalization: an older or partial blueprint can be missing fields,
   // and calling .map on an undefined field would unmount the page (black screen).
@@ -144,10 +155,24 @@ export default function Result() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.7, ease: EASE }}
           >
-            <p className="eyebrow mt-8">Your blueprint</p>
-            <h1 className="mt-3 font-display text-4xl leading-tight tracking-tight sm:text-5xl">
+            {/* Celebrate the arrival — this is the payoff moment (the AI read a
+                real viral video and wrote THIS creator a script). Make it feel like one. */}
+            <motion.span
+              initial={{ opacity: 0, scale: 0.85 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.18, duration: 0.5, ease: EASE }}
+              className="mt-8 inline-flex items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-3 py-1 text-xs font-bold text-teal"
+            >
+              <Sparkles className="h-3.5 w-3.5" /> Reading complete — your blueprint is ready
+            </motion.span>
+            <motion.h1
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.6, ease: EASE }}
+              className="mt-3 font-display text-4xl leading-tight tracking-tight sm:text-5xl"
+            >
               {b.reference_read.format_label}
-            </h1>
+            </motion.h1>
             {/* Surface the hook the creator is shooting right in the hero, so they
                 don't have to scroll past 3 sections to see their own choice. */}
             {chosenHook && (
@@ -296,7 +321,7 @@ export default function Result() {
 
       {/* Refine re-render status / watch-the-update banner */}
       {(refineStatus || refineUrl) && (
-        <div className="fixed inset-x-0 bottom-4 z-40 mx-auto flex max-w-md items-center gap-3 rounded-card border border-white/10 bg-ink2/95 px-4 py-3 shadow-lift backdrop-blur-xl">
+        <div className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md items-center gap-3 rounded-card border border-white/10 bg-ink2/95 px-4 py-3 shadow-lift backdrop-blur-xl">
           {refineUrl ? (
             <>
               <Check className="h-5 w-5 shrink-0 text-teal" />
@@ -341,25 +366,32 @@ function PublishRow({
 }) {
   const full = `${caption}\n\n${hashtags.join(' ')}`.trim()
   const [copied, setCopied] = useState(false)
+  const [copyFailed, setCopyFailed] = useState(false)
   const [posted, setPosted] = useState(false)
+  const [postErr, setPostErr] = useState(false)
+  const [opened, setOpened] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(full)
-      setCopied(true)
+      setCopied(true); setCopyFailed(false)
       setTimeout(() => setCopied(false), 1500)
     } catch {
-      /* clipboard blocked, ignore */
+      // Clipboard is commonly blocked (incognito / Safari / permissions off).
+      // Never fail silently — tell the user to copy manually.
+      setCopyFailed(true)
+      setTimeout(() => setCopyFailed(false), 4000)
     }
   }
   const logPosted = async () => {
-    setBusy(true)
+    setBusy(true); setPostErr(false)
     try {
       await markPosted({ generationId, platform, caption })
       setPosted(true)
+      void logEvent('post_logged', { platform, generation_id: generationId })
     } catch {
-      /* posts table may not be migrated yet, fail soft */
+      setPostErr(true)
     } finally {
       setBusy(false)
     }
@@ -370,6 +402,7 @@ function PublishRow({
   // the click gesture, so the popup isn't blocked after the async clipboard write.
   const copyAndOpen = () => {
     if (uploadUrl) window.open(uploadUrl, '_blank', 'noopener,noreferrer')
+    setOpened(true)
     void copy()
   }
 
@@ -394,6 +427,22 @@ function PublishRow({
           {posted ? <><Check className="h-3.5 w-3.5" /> Posted</> : busy ? 'Saving…' : <><Send className="h-3.5 w-3.5" /> Mark as posted</>}
         </button>
       </div>
+      {copyFailed && (
+        <p className="mt-2 text-[11px] text-coral">Couldn’t copy automatically — select the caption above and copy it manually.</p>
+      )}
+      {postErr && (
+        <p className="mt-2 text-[11px] text-coral">Couldn’t log that post — tap “Mark as posted” to try again.</p>
+      )}
+      {/* Guide them back: opening the uploader is a dead-end without this. */}
+      {opened && !posted && (
+        <p className="mt-2 text-[11px] text-amber">Posted it on {platform}? Hit “Mark as posted” so your streak and library stay in sync.</p>
+      )}
+      {/* Close the loop — the highest-intent moment to start the next video. */}
+      {posted && (
+        <p className="mt-2 text-[11px] text-teal">
+          Logged. <Link to="/gallery" className="font-semibold underline-offset-2 hover:underline">Remix your next one →</Link>
+        </p>
+      )}
       {uploadUrl && (
         <p className="mt-2 text-[11px] text-stone">
           We copy your caption to the clipboard and open the {platform} uploader — paste it there, post, then mark it here.

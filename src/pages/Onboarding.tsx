@@ -334,6 +334,18 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
       <p className="eyebrow mt-5">This is your voice · tweak anything</p>
       <h1 className="mt-3 font-display text-2xl leading-snug">{vp.summary || 'Here’s how you sound'}</h1>
 
+      {/* Lead with PROOF the AI nailed their voice — a hook written as them. One
+          generated line converts skeptics far better than a wall of input fields. */}
+      {vp.sample_hooks?.[0] && (
+        <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.07] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">A hook I’d write as you</p>
+          <p className="mt-1.5 font-heading text-lg leading-snug text-cream">“{vp.sample_hooks[0]}”</p>
+          {vp.sample_hooks[1] && (
+            <p className="mt-2 text-sm leading-snug text-sand">“{vp.sample_hooks[1]}”</p>
+          )}
+        </div>
+      )}
+
       <div className="mt-6 space-y-4">
         <Labeled label="Niche">
           <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
@@ -353,6 +365,14 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
         <ChipList label="Recurring CTAs" items={vp.recurring_ctas} onChange={(v) => setList('recurring_ctas', v)} />
         <ChipList label="Do" items={vp.dos} onChange={(v) => setList('dos', v)} />
         <ChipList label="Don’t" items={vp.donts} onChange={(v) => setList('donts', v)} />
+        {/* The distinctive fields — what makes a hook unmistakably YOURS. Editable
+            so a wrong stance can't silently poison every future blueprint. */}
+        <Labeled label="What you push against (your “enemy”)">
+          <input className="field" value={vp.enemy ?? ''} onChange={(e) => setField('enemy', e.target.value)} placeholder="the bad advice or take you argue against" />
+        </Labeled>
+        <ChipList label="Your point of view" items={vp.pov ?? []} onChange={(v) => setList('pov', v)} />
+        <ChipList label="Hook patterns" items={vp.hook_patterns ?? []} onChange={(v) => setList('hook_patterns', v)} />
+        <p className="text-xs text-stone">We’ll sharpen this from how you actually talk on camera within a few minutes — your spoken voice is the strongest signal.</p>
       </div>
 
       {err && <p className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}

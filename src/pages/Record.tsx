@@ -14,6 +14,11 @@ import { cn } from '../lib/cn'
 
 type Phase = 'idle' | 'countdown' | 'recording' | 'review'
 
+// Hard cap on a single take. Short-form lives well under this; the cap protects
+// both COGS (transcription + ffmpeg time, and the worker's download, all scale
+// with take length) and the user from an accidental never-ending recording.
+const MAX_RECORD_SECS = 180
+
 // In-app Record: a teleprompter over a live camera, so the blueprint gets shot
 // the moment inspiration hits. Everything stays client-side, the take is yours
 // to download (Phase 6 will hand it to the auto-editor).
@@ -27,7 +32,10 @@ export default function Record() {
   const { id } = useParams()
   const [params] = useSearchParams()
   const uploadMode = params.get('upload') === '1'
-  const { refreshProfile } = useAuth()
+  const { profile, refreshProfile } = useAuth()
+  // Free exports carry a watermark — surface the removal upsell ON the finished
+  // video, where the user feels it, not buried on the pricing page.
+  const isFree = (profile?.plan ?? 'free') === 'free'
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
   const [editStyle, setEditStyle] = useState('punchy')
@@ -47,6 +55,7 @@ export default function Record() {
   const [count, setCount] = useState(3)
   const [elapsed, setElapsed] = useState(0)
   const [takeUrl, setTakeUrl] = useState<string | null>(null)
+  const takeUrlRef = useRef<string | null>(null) // mirror of takeUrl for unmount revoke
   const takeBlobRef = useRef<Blob | null>(null)
 
   // auto-edit state
@@ -63,6 +72,7 @@ export default function Record() {
   const [editUrl, setEditUrl] = useState<string | null>(null)
   const [editErr, setEditErr] = useState<string | null>(null)
   const takePathRef = useRef<string | null>(null)
+  const submitting = useRef(false) // blocks double-submit of a charged edit
   const [variation, setVariation] = useState(0)
 
   // teleprompter controls
@@ -154,11 +164,14 @@ export default function Record() {
     }
   }
 
+  useEffect(() => { takeUrlRef.current = takeUrl }, [takeUrl])
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      if (takeUrl) URL.revokeObjectURL(takeUrl)
+      // Use the ref, not the stale closured takeUrl, so a recorded/uploaded take's
+      // object URL is actually revoked on navigate-away (was leaking before).
+      if (takeUrlRef.current) URL.revokeObjectURL(takeUrlRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -218,12 +231,22 @@ export default function Record() {
     rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data)
     rec.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: mime || 'video/webm' })
+      // Guard against an empty/failed recording producing an unplayable take.
+      if (blob.size < 1024) {
+        setCamError('That recording came out empty — check your camera/mic and try again.')
+        setPhase('idle'); setScrolling(false)
+        return
+      }
       takeBlobRef.current = blob
       setTakeUrl(URL.createObjectURL(blob))
       setEditPhase('none')
       setEditUrl(null)
       setEditErr(null)
       setPhase('review')
+    }
+    rec.onerror = () => {
+      setCamError('Recording failed. Reload and try again, or upload a clip instead.')
+      setPhase('idle'); setScrolling(false)
     }
     recorderRef.current = rec
     rec.start()
@@ -245,10 +268,15 @@ export default function Record() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, count])
 
-  // elapsed timer while recording
+  // elapsed timer while recording — auto-stops at the max length so a take can
+  // never run away (and land the user with a huge upload + slow, costly edit).
   useEffect(() => {
     if (phase !== 'recording') return
-    const t = setInterval(() => setElapsed((e) => e + 0.1), 100)
+    const t = setInterval(() => setElapsed((e) => {
+      const next = e + 0.1
+      if (next >= MAX_RECORD_SECS) { recorderRef.current?.stop(); setScrolling(false) }
+      return next
+    }), 100)
     return () => clearInterval(t)
   }, [phase])
 
@@ -298,7 +326,10 @@ export default function Record() {
 
   // ---- first auto-edit: FREE (bundled with the blueprint) ----
   const runAutoEdit = async () => {
-    if (!takeBlobRef.current || !id) return
+    // Synchronous guard: `disabled` lags a fast double-click and would fire two
+    // uploads + two charged enqueues. The ref blocks the second instantly.
+    if (!takeBlobRef.current || !id || submitting.current) return
+    submitting.current = true
     setEditErr(null)
     setEditPhase('working')
     setEditStatus('Uploading your take…'); setEditPct(3)
@@ -309,12 +340,15 @@ export default function Record() {
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : 'Auto-edit failed.')
       setEditPhase('error')
+    } finally {
+      submitting.current = false
     }
   }
 
   // ---- remake: a fresh look, costs one recreation ----
   const runRemake = async () => {
-    if (!takePathRef.current || !id) return
+    if (!takePathRef.current || !id || submitting.current) return
+    submitting.current = true
     setEditErr(null)
     setEditPhase('working')
     setEditStatus('Remaking, a fresh edit…'); setEditPct(3)
@@ -329,6 +363,8 @@ export default function Record() {
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : 'Remake failed.')
       setEditPhase('error')
+    } finally {
+      submitting.current = false
     }
   }
 
@@ -487,6 +523,11 @@ export default function Record() {
                 <span className="inline-flex items-center gap-1.5 rounded-full bg-coral/90 px-2.5 py-1 text-xs font-bold text-cream">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-cream" /> REC {elapsed.toFixed(1)}s
                 </span>
+                {MAX_RECORD_SECS - elapsed <= 15 && (
+                  <span className="rounded-full bg-black/60 px-2 py-1 text-xs font-semibold text-amber">
+                    Wrapping at {MAX_RECORD_SECS}s · {Math.max(0, Math.ceil(MAX_RECORD_SECS - elapsed))}s left
+                  </span>
+                )}
                 <AnimatePresence>
                   {inHook && (
                     <motion.span
@@ -593,12 +634,17 @@ export default function Record() {
                       <button onClick={openRefine} disabled={refineLoading} className="btn-ghost" title="Tweak captions, colors, b-roll & cuts — free">
                         {refineLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} Refine
                       </button>
-                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look, 1 recreation">
-                        <Sparkles className="h-4 w-4" /> Remake · 1 recreation
+                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look, 1 remix">
+                        <Sparkles className="h-4 w-4" /> Remake · 1 remix
                       </button>
                       <a href={editUrl} download={`twinai-edited-${id}.mp4`} className="btn-gradient">
                         <Download className="h-4 w-4" /> Download edited
                       </a>
+                      {isFree && (
+                        <Link to="/settings" className="chip border-amber/40 text-amber" title="Free exports include a watermark">
+                          <Sparkles className="h-3.5 w-3.5" /> Remove watermark
+                        </Link>
+                      )}
                     </>
                   ) : (
                     <button onClick={runAutoEdit} className="btn-gradient" disabled={editPhase === 'working'}>

@@ -1,4 +1,5 @@
 import { geminiJson, obj, arr, str, num } from './gemini.js'
+import { env } from './env.js'
 import type { Transcript } from './media.js'
 
 // The AI Edit Director: instead of word-frequency guessing, it READS the creator's
@@ -58,7 +59,7 @@ Direct the edit.`
   try {
     // Low thinking budget: this is the hot edit path and a low-stakes planning
     // call — speed matters far more than deep reasoning here.
-    const plan = (await geminiJson(SYSTEM, prompt, schema, 40_000, 512)) as EditPlan
+    const plan = (await geminiJson(SYSTEM, prompt, schema, 40_000, 512, env.fastModel)) as EditPlan
     // Sanitize: keep only well-formed, in-range entries.
     const dur = t.duration_sec || 1e9
     const inRange = (s: number) => Number.isFinite(s) && s >= 0 && s <= dur + 1

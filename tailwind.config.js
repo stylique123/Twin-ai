@@ -26,9 +26,9 @@ export default {
       backgroundImage: {
         // Signature gradient — never re-order: amber -> coral -> teal at 135deg
         // (exact stops from the brand book p.11).
-        signature: 'linear-gradient(135deg, #FFB347 0%, #FF5B7B 50%, #70E4D5 100%)',
+        signature: 'linear-gradient(135deg, #FFB347 0%, #FF5B7B 50%, #65E5D8 100%)',
         'signature-soft':
-          'linear-gradient(135deg, #ffb34738 0%, #ff5b7b2e 50%, #70e4d538 100%)',
+          'linear-gradient(135deg, #ffb34738 0%, #ff5b7b2e 50%, #65E5D838 100%)',
         grid: 'linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px)',
       },
       letterSpacing: { eyebrow: '0.18em' },

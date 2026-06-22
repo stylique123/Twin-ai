@@ -3,6 +3,50 @@ import type { Blueprint, BrandVoice, CreatorDNA, EditDecisionList, Generation, P
 
 // ---- Profile / Creator DNA ----------------------------------------------
 
+// ---- Analytics (data layer) ----------------------------------------------
+// Fire-and-forget client event logging for the metrics/data room. NEVER throws —
+// analytics must never break a user action. Server events are logged service-side.
+export async function logEvent(event: string, props: Record<string, unknown> = {}, timeSavedMinutes = 0): Promise<void> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    if (!auth.user) return
+    await supabase.from('analytics_events').insert({ user_id: auth.user.id, event, props, time_saved_minutes: timeSavedMinutes })
+  } catch { /* best-effort */ }
+}
+
+export interface Funnel { signup: number; onboarded: number; voice: number; blueprint: number; edit: number; post: number }
+export interface RetentionWindow { eligible: number; retained: number }
+export interface Retention { d1: RetentionWindow; d7: RetentionWindow; d30: RetentionWindow }
+export interface SystemHealth {
+  failed_jobs: number; stuck_building: number; ops_24h: number
+  recent_ops: { kind: string; severity: string; created_at: string }[]
+}
+export interface MetricsOverview {
+  total_users: number; onboarded_users: number; voices_built: number
+  blueprints_generated: number; edits_rendered: number; posts_logged: number
+  referrals_redeemed: number; total_hours_saved: number; wau: number; mau: number
+  funnel?: Funnel | null; retention?: Retention | null; health?: SystemHealth | null
+}
+// Admin-only KPI rollup for the live data-room dashboard. Returns null if the
+// caller isn't a platform admin (the edge function enforces it).
+export async function getMetrics(): Promise<MetricsOverview | null> {
+  const { data, error } = await supabase.functions.invoke('admin-metrics', { body: {} })
+  if (error) return null
+  return data as MetricsOverview
+}
+
+export interface CaseStudy {
+  name: string | null; email: string; plan: string; joined: string
+  blueprints: number; edits: number; posts: number; voices: number; remixes: number
+  hours_saved: number; first_seen: string | null; last_seen: string | null; active_days: number
+}
+// Admin-only: one creator's case-study rollup, looked up by email.
+export async function getCaseStudy(email: string): Promise<CaseStudy | null> {
+  const { data, error } = await supabase.functions.invoke('admin-metrics', { body: { email } })
+  if (error) return null
+  return (data as { case_study?: CaseStudy }).case_study ?? null
+}
+
 export async function getProfile(): Promise<Profile | null> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) return null
@@ -36,16 +80,6 @@ export async function updateDisplayName(name: string): Promise<void> {
 }
 
 // ---- Platform admin (super-admin / support) -----------------------------
-
-// True only for users in public.platform_admins. RLS guarantees a normal user
-// gets `false` (the function returns false for non-admins), so this is safe to
-// call from the client to gate an admin area. All admin WRITES still go through
-// audited, service-role-only RPCs, never directly from the browser.
-export async function isPlatformAdmin(): Promise<boolean> {
-  const { data, error } = await supabase.rpc('is_platform_admin')
-  if (error) return false
-  return data === true
-}
 
 // ---- Blueprint generation (real AI via edge function) -------------------
 
@@ -153,7 +187,7 @@ export async function reEditWithEdl(generationId: string, takePath: string, edl:
 }
 
 // Kick off real analysis of a reference URL. Returns the worker job id to watch.
-export async function ingestReference(url: string, platform?: string): Promise<string> {
+export async function ingestReference(url: string, platform?: string): Promise<{ jobId: string; transcriptId?: string }> {
   const { data, error } = await supabase.functions.invoke('ingest-reference', {
     body: { url, platform },
   })
@@ -170,7 +204,10 @@ export async function ingestReference(url: string, platform?: string): Promise<s
     }
     throw new Error(msg)
   }
-  return (data as { job_id: string }).job_id
+  // On a cache hit the function returns the transcript_id directly — the caller
+  // can skip polling entirely (instant instead of a multi-second transcribe wait).
+  const d = data as { job_id: string; transcript_id?: string }
+  return { jobId: d.job_id, transcriptId: d.transcript_id }
 }
 
 // Poll a worker job (RLS lets a user read only their own jobs).
@@ -291,17 +328,27 @@ export interface Post {
   scheduled_for: string | null
   posted_at: string | null
   external_url: string | null
+  views: number | null
+  likes: number | null
   created_at: string
 }
 
 export async function listPosts(): Promise<Post[]> {
   const { data, error } = await supabase
     .from('posts')
-    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
+    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, views, likes, created_at')
     .order('created_at', { ascending: false })
     .limit(100)
   if (error) return [] // table may not be migrated yet, fail soft
   return (data ?? []) as Post[]
+}
+
+// Self-reported performance: the creator logs how their posted video did. Real
+// auto-pulled numbers land later via platform OAuth; this fills the same columns.
+export async function updatePostStats(postId: string, views: number, likes?: number): Promise<void> {
+  const patch: Record<string, unknown> = { views }
+  if (likes !== undefined) patch.likes = likes
+  try { await supabase.from('posts').update(patch).eq('id', postId) } catch { /* best-effort */ }
 }
 
 export async function markPosted(input: {
@@ -354,6 +401,54 @@ export interface StartDnaResult {
   status: 'building'
 }
 
+// ---- Referrals -----------------------------------------------------------
+// Where we stash a referral code from a ?ref= link until the new user has a
+// session to redeem it against (survives signup + email confirmation).
+export const REFERRAL_CODE_KEY = 'twinai_ref_code'
+
+// The caller's own shareable code (lazily allocated server-side).
+export async function getReferralCode(): Promise<string | null> {
+  const { data, error } = await supabase.functions.invoke('referral', { body: { action: 'code' } })
+  if (error) return null
+  return (data as { code?: string })?.code ?? null
+}
+
+// Redeem a code the user arrived with. Returns the outcome so the caller can
+// decide whether to celebrate, ignore, or clear the stored code.
+export async function redeemReferral(code: string): Promise<{ ok: boolean; reason?: string; reward?: number }> {
+  const { data, error } = await supabase.functions.invoke('referral', { body: { action: 'redeem', code } })
+  if (error) return { ok: false, reason: 'error' }
+  return data as { ok: boolean; reason?: string; reward?: number }
+}
+
+// ---- Billing / checkout --------------------------------------------------
+export interface CheckoutResult {
+  kind?: 'redirect' | 'crypto' | 'manual' | 'unconfigured'
+  url?: string
+  asset?: string
+  address?: string
+  amount_usd?: number
+  message?: string
+  provider?: string
+  error?: string
+}
+
+// Start a real checkout for a paid plan. Returns a redirect URL (card), crypto
+// details, or a manual/unconfigured message — the caller routes the user.
+export async function startCheckout(plan: string): Promise<CheckoutResult> {
+  const { data, error } = await supabase.functions.invoke('billing', { body: { action: 'checkout', plan } })
+  if (error) throw new Error(await readInvokeError(error))
+  return data as CheckoutResult
+}
+
+export interface BrandStats { blueprints: number; edits: number; posts: number }
+// Per-client stats scoped to one brand voice (agency view). Owner-checked server-side.
+export async function getBrandStats(brandVoiceId: string): Promise<BrandStats | null> {
+  const { data, error } = await supabase.rpc('brand_stats', { p_brand: brandVoiceId })
+  if (error) return null
+  return data as BrandStats | null
+}
+
 export async function startDna(handle: string, platform: Platform): Promise<StartDnaResult> {
   const { data, error } = await supabase.functions.invoke('start-dna', {
     body: { handle, platform, make_default: true },
@@ -383,12 +478,6 @@ export async function listBrandVoices(): Promise<BrandVoice[]> {
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data ?? []) as BrandVoice[]
-}
-
-export async function getBrandVoice(id: string): Promise<BrandVoice | null> {
-  const { data, error } = await supabase.from('brand_voices').select('*').eq('id', id).single()
-  if (error) return null
-  return data as BrandVoice
 }
 
 // Persist user edits from the confirm card (the editable chips).
@@ -444,31 +533,10 @@ export async function listGalleryItems(): Promise<GalleryItem[]> {
   return (data ?? []) as GalleryItem[]
 }
 
-export interface SubmitGalleryInput {
-  url: string
-  platform: string
-  niche: string
-  creator?: string
-  title?: string
-  why?: string
-  visibility: 'public' | 'private'
-}
-
-export async function submitGalleryItem(input: SubmitGalleryInput): Promise<GalleryItem> {
-  const { data: auth } = await supabase.auth.getUser()
-  if (!auth.user) throw new Error('Not signed in')
-  const { data, error } = await supabase
-    .from('gallery_items')
-    .insert({ ...input, owner_id: auth.user.id })
-    .select('*')
-    .single()
-  if (error) throw error
-  return data as GalleryItem
-}
-
-export async function deleteGalleryItem(id: string): Promise<void> {
-  const { error } = await supabase.from('gallery_items').delete().eq('id', id)
-  if (error) throw error
-}
+// NOTE: user-contributed gallery items (submit/delete) are intentionally not
+// exposed from the client yet — the public feed is curated by the discovery
+// scraper (service role), and migration 0032 locks authenticated inserts to
+// private-only until there's a moderation flow. Re-add a submit helper alongside
+// that flow when public contributions ship.
 
 export type { Blueprint }

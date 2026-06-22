@@ -37,6 +37,22 @@ function clip(s: string, max: number): string {
   return s.slice(0, head) + '\n...[middle of transcript trimmed for length]...\n' + s.slice(-(max - head))
 }
 
+// Deterministic backstop for the no-dash writing rule: thinking models emit em/en
+// dashes anyway, so strip them from every string in the parsed blueprint rather
+// than trusting model compliance. A dash used as a separator becomes a comma.
+function stripDashes<T>(value: T): T {
+  if (typeof value === 'string') {
+    return value.replace(/\s*[—–]\s*/g, ', ') as unknown as T
+  }
+  if (Array.isArray(value)) return value.map(stripDashes) as unknown as T
+  if (value && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) out[k] = stripDashes(v)
+    return out as T
+  }
+  return value
+}
+
 // Gemini responseSchema (OpenAPI subset: uppercase types, no additionalProperties).
 // Guarantees the shape the frontend renders.
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -113,12 +129,14 @@ HOOKS (the single most important field):
 - Derive hooks from the CREATOR'S OWN DNA and best-performing patterns supplied below (their hook_style, signature vocabulary, recurring angles), fused with the reference's proven hook SHAPE. Hooks must sound like this creator on their best day, not generic copywriting.
 - hook_options: give 5, ordered best first. The FIRST one is your recommended pick. Each hook is one spoken line under ~12 words, scroll-stopping, and must visibly stack at least two of the four triggers above.
 - AT LEAST TWO of the five hooks must reuse the creator's signature vocabulary or their exact hook FORMULA from CREATOR DNA. A hook that could belong to any creator in this niche is a failure. Rewrite until it is unmistakably THEIRS.
-- The five hooks must be genuinely DIFFERENT angles (e.g. a contrarian claim, a specific number, a callout to the exact viewer, a mistake/confession), not five rewordings of one idea. Variety is how the creator can reshoot without repeating themselves.
+- The five hooks must be genuinely DIFFERENT angles (e.g. a contrarian claim, a specific number, a callout to the exact viewer, a mistake/confession), not five rewordings of one idea. Where CREATOR DNA lists hook_patterns, draw each hook from a DIFFERENT one of THEIR patterns so the variety is in their own voice, not generic. Variety is how the creator can reshoot without repeating themselves.
+- If CREATOR DNA gives a point of view or an enemy, let at least one hook take their actual STANCE (assert the belief or name the bad advice they push against). Their opinion is what makes the hook theirs, not a generic fact.
 - Ban weak openers and tell-words that signal a skippable video: "Hey guys", "In this video", "Today I want to talk about", "So basically", "Let me tell you". Open mid-action or mid-claim.
 - THE FIRST FRAME decides the scroll-stop as much as the first words. In the script's Hook beat direction, name the literal first half-second on screen: the exact shot size, the facial expression, and any on-screen text, so the very first frame already stops the thumb.
 
 SCRIPT:
 - Write filmable beats, not an essay. Each beat is one short spoken line plus a direction (what to do or show on camera while saying it). Keep lines breath-sized so they read naturally on a teleprompter.
+- KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never goes flat. Mark that beat's section as "Re-hook".
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
 CAPTIONS (burned-in, for our own renderer):
@@ -138,14 +156,19 @@ PUBLISH PLAN:
 - hashtags: tier them, a few broad reach tags, a few niche tags, and 1 or 2 micro/community tags. No spammy walls of tags.
 - best_time: a concrete posting window for that platform and audience.
 
-RETENTION MAP: for each beat give the goal AND the concrete tactic that holds attention there (open loop, visual change, tension, payoff), so the creator knows WHY each beat earns the next second.
+RETENTION MAP: for each beat give the goal AND the concrete tactic that holds attention there (open loop, visual change, tension, payoff), so the creator knows WHY each beat earns the next second. One beat in the middle MUST be the re-hook that resets attention at the predictable drop-off point.
 
-PRODUCTION SPRINT: compress filming, B-roll, caption/edit, and review into about 20 focused minutes of concrete tasks.`
+PRODUCTION SPRINT: compress filming, B-roll, caption/edit, and review into about 20 focused minutes of concrete tasks.
+
+FINAL CHECK (do this before returning): reread every hook and every script line against the CREATOR DNA — their vocabulary, hook patterns, point of view and enemy. If any line could belong to a generic creator in this niche, rewrite it until it is unmistakably this creator's. Confirm there are zero em or en dashes anywhere.`
 
 // --- Provider boundary: swap this one function to change LLMs -------------
 async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
   const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
-  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0')
+  // Bounded thinking by default: unbounded dynamic thinking was the single biggest
+  // cost driver of this call (~70%). 8192 is ample for a structured blueprint and
+  // keeps COGS predictable. Override via GEMINI_THINKING_BUDGET (0 = unbounded).
+  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '8192')
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
 
   // Hard timeout so a hung model call can't leave credits spent-but-not-refunded.
@@ -164,7 +187,10 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
         generationConfig: {
           // Thinking model: budget must cover reasoning tokens + the large
           // structured blueprint, or the JSON comes back truncated/empty.
-          temperature: 0.9,
+          // 0.8 (not 0.9): the #1 requirement is voice fidelity across every
+          // field; hook VARIETY now comes from the explicit "different angle per
+          // hook_pattern" instruction, not raw randomness that drifts off-voice.
+          temperature: 0.8,
           maxOutputTokens: 32768,
           responseMimeType: 'application/json',
           responseSchema: blueprintSchema,
@@ -225,6 +251,17 @@ Deno.serve(async (req: Request) => {
   })
   if (allowed === false) {
     return json({ error: 'Easy there — too many in a row. Give it a few seconds.' }, 429)
+  }
+  // Daily cap: a hard backstop on per-user LLM token spend (a bug-loop or abuse
+  // can't run thousands of thinking-model calls). Generous vs any real workflow.
+  const { data: dailyOk } = await admin.rpc('check_rate_limit', {
+    p_user: user.id,
+    p_action: 'blueprint_daily',
+    p_max: Number(Deno.env.get('BLUEPRINT_DAILY_CAP') ?? '40'),
+    p_window_secs: 86400,
+  })
+  if (dailyOk === false) {
+    return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
   let body: { reference_url?: string; reference_note?: string; fidelity?: string; transcript_id?: string }
@@ -332,8 +369,10 @@ Deno.serve(async (req: Request) => {
         ? dna.platforms
         : ['tiktok']
 
+    const subNiche = vp?.sub_niche ?? dna.sub_niche ?? ''
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
-- Niche: ${niche}
+- Niche: ${niche}${subNiche ? `
+- Specific angle (what their audience searches for): ${subNiche}` : ''}
 - Audience: ${audience}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
@@ -342,9 +381,13 @@ Deno.serve(async (req: Request) => {
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
-- Hook style: ${vp.hook_style ?? ''}
+- Hook formula: ${vp.hook_style ?? ''}
+- Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${(vp.hook_patterns ?? []).join(' | ') || '(none captured)'}
+- Hooks they ACTUALLY wrote (real winners — study the phrasing, do not copy verbatim): ${(vp.sample_hooks ?? []).join(' / ') || '(none captured)'}
 - Signature vocabulary: ${(vp.vocabulary ?? []).join(', ')}
 - Recurring CTAs: ${(vp.recurring_ctas ?? []).join(', ')}
+- Point of view (beliefs they repeat — the script should carry their stance): ${(vp.pov ?? []).join(' | ') || '(none captured)'}
+- Enemy (the bad advice / villain they push against): ${vp.enemy ?? '(none captured)'}
 - Do: ${(vp.dos ?? []).join('; ')}
 - Don't: ${(vp.donts ?? []).join('; ')}
 - Voice summary: ${vp.summary ?? ''}` : ''}
@@ -372,13 +415,13 @@ ${referenceBlock}
 
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
 - ${fidelityRule}
-- Open by hitting the audience pain above, then pay off the dream outcome by the end.
+- Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include at least one b-roll or insert shot and the cover frame shot, so the editor is never guessing.`
 
     const raw = await callModel(apiKey, SYSTEM, userPrompt)
-    const blueprint = JSON.parse(raw)
+    const blueprint = stripDashes(JSON.parse(raw))
 
     const { data: gen, error: insErr } = await admin
       .from('generations')
@@ -396,6 +439,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       .single()
     if (insErr) throw insErr
 
+    // Data layer: record the blueprint + the time it saved (≈30 min scripting) for
+    // product metrics / the data room. Best-effort — never fail the response on it.
+    await admin
+      .from('analytics_events')
+      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, real_video: !!transcript_id } })
+      .then(() => {}, () => {})
+
     return json(gen)
   } catch (err) {
     // Refund credits if anything after the spend failed. Log loudly if the
@@ -407,6 +457,11 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     })
     if (refundErr) {
       console.error('REFUND FAILED — manual reconciliation needed for', user.id, refundErr)
+      // Surface it where an operator can SEE it (ops_events → /metrics health).
+      await admin
+        .from('ops_events')
+        .insert({ kind: 'refund_failed', severity: 'critical', user_id: user.id, detail: { fn: 'generate-blueprint', amount: BLUEPRINT_COST, error: String((refundErr as { message?: string }).message ?? refundErr) } })
+        .then(() => {}, () => {})
     }
     console.error('generate-blueprint error:', err)
     return json({ error: 'Generation failed. Your credits were not charged.' }, 500)

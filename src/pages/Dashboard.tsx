@@ -3,10 +3,11 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Wand2, LayoutGrid, Clapperboard, Send, Sparkles, ArrowUpRight, FileText, Loader2, TrendingUp, Zap,
+  Gift, Copy, Check, Clock, Eye, Trophy,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getDashboardStats, listGenerations, listPosts, type DashboardStats, type Post } from '../lib/api'
-import type { Generation } from '../lib/types'
+import { getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, updatePostStats, type BrandStats, type DashboardStats, type Post } from '../lib/api'
+import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
@@ -17,21 +18,50 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recent, setRecent] = useState<Generation[]>([])
   const [posts, setPosts] = useState<Post[]>([])
+  const [voices, setVoices] = useState<BrandVoice[]>([])
+  const [selectedBrand, setSelectedBrand] = useState('') // '' = all brands
+  const [brandStats, setBrandStats] = useState<BrandStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   const credits = profile?.credits ?? 0
 
-  useEffect(() => {
-    Promise.all([getDashboardStats(credits), listGenerations(), listPosts()])
-      .then(([s, g, p]) => {
+  // Extracted so a failed load surfaces a real retry instead of leaving every
+  // stat stuck on "…" with no way to recover.
+  const load = () => {
+    setLoading(true); setError(false)
+    Promise.all([getDashboardStats(credits), listGenerations(), listPosts(), listBrandVoices().catch(() => [])])
+      .then(([s, g, p, vs]) => {
         setStats(s)
         setRecent(g.slice(0, 5))
         setPosts(p)
+        setVoices((vs as BrandVoice[]).filter((v) => v.status === 'ready'))
       })
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credits])
+
+  // Agency view: scope the headline counts to one client brand.
+  useEffect(() => {
+    if (!selectedBrand) { setBrandStats(null); return }
+    getBrandStats(selectedBrand).then(setBrandStats).catch(() => setBrandStats(null))
+  }, [selectedBrand])
+
+  const brand = voices.find((v) => v.is_default) ?? voices[0] ?? null
+  const scoped = !!(selectedBrand && brandStats)
+  const bpVal = scoped ? brandStats!.blueprints : stats?.blueprints
+  const edVal = scoped ? brandStats!.edits : stats?.edits
+  const poVal = scoped ? brandStats!.posts : stats?.posts
+  const streak = postingStreak(posts)
+  // Creator-facing value: hours saved (30 min/blueprint + 90 min/edit) and the
+  // top-performing post by their self-reported views.
+  const hoursSaved = stats ? Math.round(((stats.blueprints ?? 0) * 0.5 + (stats.edits ?? 0) * 1.5)) : 0
+  const topId = posts.reduce((best, p) => ((p.views ?? 0) > 0 && (p.views ?? 0) > (posts.find((x) => x.id === best)?.views ?? 0) ? p.id : best), '')
 
   const rawName = profile?.email?.split('@')[0] ?? 'creator'
   const name = rawName.charAt(0).toUpperCase() + rawName.slice(1)
@@ -49,26 +79,63 @@ export default function Dashboard() {
             Welcome back,{' '}<span className="gradient-text">{name}</span>.
           </h1>
           <p className="mt-4 max-w-md text-base text-stone">
-            Your whole creator loop at a glance, reference in, finished video out.
+            Everything you've shipped, and what to make next.
           </p>
+          {(brand || streak > 0 || hoursSaved > 0) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {hoursSaved > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-3 py-1.5 text-xs font-semibold text-teal">
+                  <Clock className="h-3.5 w-3.5" /> ~{hoursSaved}h saved
+                </span>
+              )}
+              {brand && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
+                  <Sparkles className="h-3.5 w-3.5 text-amber" /> Working as <span className="font-semibold text-cream">@{brand.handle}</span>
+                  <Link to="/brands" className="text-amber transition-colors hover:text-cream">Switch →</Link>
+                </span>
+              )}
+              {streak > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber/30 bg-amber/10 px-3 py-1.5 text-xs font-semibold text-amber">
+                  <TrendingUp className="h-3.5 w-3.5" /> {streak}-day streak
+                </span>
+              )}
+            </div>
+          )}
         </Reveal>
-        <Stagger className="mt-10 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
-          <StatCard icon={FileText} glow="amber" label="Blueprints" value={stats?.blueprints} loading={loading} />
-          <StatCard icon={Clapperboard} glow="coral" label="Edits rendered" value={stats?.edits} loading={loading} />
-          <StatCard icon={Send} glow="teal" label="Posts logged" value={stats?.posts} loading={loading} />
-          <StatCard icon={Sparkles} glow="amber" label="Recreations left" value={stats?.recreationsLeft} loading={loading} />
+        {error && !loading && (
+          <div className="mt-6 flex flex-col gap-3 rounded-card border border-coral/30 bg-coral/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-cream">We couldn't load your dashboard just now — usually a brief connection hiccup.</p>
+            <button onClick={load} className="btn-gradient shrink-0 self-start text-sm sm:self-auto">Try again</button>
+          </div>
+        )}
+        {voices.length > 1 && (
+          <Reveal>
+            <div className="mt-8 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-stone">View:</span>
+              <button onClick={() => setSelectedBrand('')} className={cn('chip', !selectedBrand ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:text-cream')}>All brands</button>
+              {voices.map((v) => (
+                <button key={v.id} onClick={() => setSelectedBrand(v.id)} className={cn('chip', selectedBrand === v.id ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:text-cream')}>@{v.handle}</button>
+              ))}
+            </div>
+          </Reveal>
+        )}
+        <Stagger className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
+          <StatCard icon={FileText} glow="amber" label="Blueprints" value={bpVal} loading={loading} />
+          <StatCard icon={Clapperboard} glow="coral" label="Edits rendered" value={edVal} loading={loading} />
+          <StatCard icon={Send} glow="teal" label="Posts logged" value={poVal} loading={loading} />
+          <StatCard icon={Sparkles} glow="amber" label="Remixes left" value={stats?.recreationsLeft} loading={loading} />
         </Stagger>
         <Reveal delay={0.1}>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New blueprint" desc="Paste a reference and get a shootable script in seconds." primary />
-            <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Browse the gallery" desc="Proven formats, one-click remix into your voice." />
+            <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Find your next hit" desc="See what's winning in your niche, remix any of it in one tap." />
             <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every blueprint you've ever made, searchable." />
           </div>
         </Reveal>
+        <InviteCard />
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
           <Reveal>
             <div className="glass relative h-full overflow-hidden p-6">
-              <div className="pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full bg-amber/10 blur-[80px]" />
               <div className="relative flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber/15"><Clapperboard className="h-3.5 w-3.5 text-amber" /></span>
@@ -101,7 +168,6 @@ export default function Dashboard() {
           </Reveal>
           <Reveal delay={0.06}>
             <div className="glass relative flex h-full flex-col overflow-hidden p-6">
-              <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-teal/10 blur-[70px]" />
               <div className="relative flex items-center gap-2.5">
                 <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-teal/15"><Send className="h-3.5 w-3.5 text-teal" /></span>
                 <h2 className="font-heading text-base text-cream">Publishing</h2>
@@ -109,18 +175,18 @@ export default function Dashboard() {
               {posts.length === 0 ? <EmptyPublishing /> : (
                 <div className="relative mt-5 space-y-2">
                   {posts.slice(0, 6).map((p) => (
-                    <div key={p.id} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3 transition-colors hover:border-white/[0.12]">
-                      <span className="w-16 shrink-0 font-heading text-xs capitalize text-teal">{p.platform}</span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-cream">{p.caption || 'Posted'}</span>
-                      <span className="shrink-0 text-xs text-stone">{new Date(p.posted_at ?? p.created_at).toLocaleDateString()}</span>
-                    </div>
+                    <PostRow key={p.id} p={p} isTop={p.id === topId} />
                   ))}
                 </div>
               )}
               <div className="relative mt-auto pt-5">
                 <div className="flex items-start gap-3 rounded-xl bg-gradient-to-r from-amber/10 to-amber/5 p-3.5 ring-1 ring-amber/20">
                   <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-amber" />
-                  <p className="text-xs leading-relaxed text-sand">Consistent posting compounds. Log each publish to keep your streak honest.</p>
+                  <p className="text-xs leading-relaxed text-sand">
+                    {streak > 0
+                      ? `You're on a ${streak}-day posting streak. Ship one more today to keep it alive.`
+                      : 'Consistent posting compounds. Log a publish today to start your streak.'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -144,7 +210,7 @@ function StatCard({ icon: Icon, glow, label, value, loading }: { icon: React.Com
           <span className={cn('inline-flex h-9 w-9 items-center justify-center rounded-xl', iconBgMap[glow])}>
             <Icon className={cn('h-[18px] w-[18px]', iconColorMap[glow])} />
           </span>
-          <div className="mt-4 font-display text-3xl tracking-tight text-cream">
+          <div className="mt-4 font-display text-4xl tracking-tight text-cream">
             {loading || value === undefined ? <span className="text-stone/50">…</span> : <Counter to={value} />}
           </div>
           <div className="mt-1.5 text-xs font-medium tracking-wide text-stone">{label}</div>
@@ -185,6 +251,84 @@ function EmptyBlueprints() {
       <p className="mt-2 max-w-[220px] text-xs leading-relaxed text-stone">Paste any video link and get a shootable script tailored to your style.</p>
       <Link to="/app" className="btn-gradient mt-5 inline-flex items-center gap-2 text-sm"><Wand2 className="h-3.5 w-3.5" /> Make your first one</Link>
     </div>
+  )
+}
+
+// A logged post with self-reported performance. The creator enters how it did
+// (views) until real platform numbers are pulled in via OAuth later; the top
+// performer is badged so they can see which format actually won.
+function PostRow({ p, isTop }: { p: Post; isTop: boolean }) {
+  const [views, setViews] = useState(p.views != null ? String(p.views) : '')
+  const [saved, setSaved] = useState(false)
+  const save = async () => {
+    const n = parseInt(views.replace(/[^0-9]/g, ''), 10)
+    if (!Number.isFinite(n)) return
+    await updatePostStats(p.id, n)
+    setSaved(true); setTimeout(() => setSaved(false), 1200)
+  }
+  return (
+    <div className={cn('flex items-center gap-3 rounded-xl border bg-white/[0.025] p-3 transition-colors', isTop ? 'border-amber/40' : 'border-white/[0.06] hover:border-white/[0.12]')}>
+      <span className="w-14 shrink-0 font-heading text-xs capitalize text-teal">{p.platform}</span>
+      <span className="min-w-0 flex-1 truncate text-sm text-cream">{isTop && <Trophy className="mr-1 inline h-3.5 w-3.5 text-amber" />}{p.caption || 'Posted'}</span>
+      <div className="flex shrink-0 items-center gap-1">
+        <Eye className="h-3 w-3 text-stone" />
+        <input
+          value={views}
+          onChange={(e) => setViews(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+          inputMode="numeric"
+          placeholder="views"
+          className="w-16 border-b border-white/10 bg-transparent text-right text-xs text-cream outline-none transition-colors placeholder:text-stone/50 focus:border-teal"
+        />
+        {saved && <Check className="h-3 w-3 text-teal" />}
+      </div>
+    </div>
+  )
+}
+
+// Consecutive-day posting streak from logged posts (anchored to today or
+// yesterday so a not-yet-posted-today streak still counts).
+function postingStreak(posts: Post[]): number {
+  const days = new Set(posts.map((p) => new Date(p.posted_at ?? p.created_at).toDateString()))
+  const d = new Date()
+  if (!days.has(d.toDateString())) d.setDate(d.getDate() - 1)
+  let streak = 0
+  while (days.has(d.toDateString())) { streak++; d.setDate(d.getDate() - 1) }
+  return streak
+}
+
+// Viral loop: a two-sided referral. The "2 free remixes" copy mirrors the
+// REFERRAL_REWARD_CREDITS default (20 credits) on the referral edge function.
+function InviteCard() {
+  const [code, setCode] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
+  useEffect(() => { getReferralCode().then(setCode).catch(() => {}) }, [])
+  const link = code ? `${window.location.origin}/auth?mode=signup&ref=${code}` : ''
+  const copy = async () => {
+    if (!link) return
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ }
+  }
+  return (
+    <Reveal delay={0.08}>
+      <div className="glass relative mt-6 overflow-hidden p-6">
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal/15"><Gift className="h-5 w-5 text-teal" /></span>
+            <div>
+              <h2 className="font-heading text-base text-cream">Invite a creator, you both get 2 free remixes</h2>
+              <p className="mt-1 text-sm text-stone">Share your link. When they sign up, you each get 2 remixes on us.</p>
+            </div>
+          </div>
+          <button onClick={copy} disabled={!code} className="btn-gradient shrink-0 text-sm disabled:opacity-50">
+            {copied ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy invite link</>}
+          </button>
+        </div>
+        {code && (
+          <div className="relative mt-3 truncate rounded-lg border border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-stone">{link}</div>
+        )}
+      </div>
+    </Reveal>
   )
 }
 

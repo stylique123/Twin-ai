@@ -156,6 +156,9 @@ async function youtubeTranscriptViaApify(rawUrl: string): Promise<Transcript> {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ videoUrl: rawUrl, targetLanguage: 'en' }),
+    // Bound the synchronous Apify run so a stuck connection can't hold the worker
+    // indefinitely (Apify's own sync cap is ~5 min; 330s lets its error surface first).
+    signal: AbortSignal.timeout(330_000),
   })
   if (!res.ok) {
     throw new Error(`YouTube transcript service error ${res.status}: ${(await res.text()).slice(0, 200)}`)
@@ -239,6 +242,8 @@ async function instagramTranscriptViaApify(rawUrl: string): Promise<Transcript> 
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ videoUrl: rawUrl }),
+    // Bound the synchronous Apify run (see YouTube path above).
+    signal: AbortSignal.timeout(330_000),
   })
   if (!res.ok) {
     throw new Error(`Instagram transcript service error ${res.status}: ${(await res.text()).slice(0, 200)}`)

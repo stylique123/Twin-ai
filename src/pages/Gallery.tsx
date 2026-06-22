@@ -5,7 +5,7 @@ import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
 import { useAuth } from '../context/AuthContext'
-import { listGalleryItems, listBrandVoices, type GalleryItem } from '../lib/api'
+import { listGalleryItems, listBrandVoices, logEvent, type GalleryItem } from '../lib/api'
 import { cn } from '../lib/cn'
 
 // Base niches we always seed the filter with. The live list GROWS beyond these
@@ -143,6 +143,32 @@ function reachNum(s: string): number {
   return n * mult
 }
 
+// --- Opportunity Engine ----------------------------------------------------
+// A personalized 0-100 score per reference: how likely THIS format is to win for
+// THIS creator. Content-based (engagement rate + proven reach + niche fit) so it
+// works on day one with zero interaction data. Once we log remix clicks it
+// graduates to collaborative filtering. `fit` is 0..1 (sub-niche=1 → unrelated≈0.3).
+interface Opp { score: number; tier: 'hot' | 'strong' | 'solid'; why: string; er: number }
+function opportunity(reach: number, loves: number, fit: number): Opp {
+  const er = reach > 0 ? loves / reach : 0
+  const erScore = Math.min(1, er / 0.1) // a 10% like-rate maxes this factor
+  const reachScore = reach > 0 ? Math.min(1, Math.log10(reach) / 7.5) : 0 // ~31M views ≈ max
+  const raw = 0.4 * fit + 0.35 * erScore + 0.25 * reachScore
+  const score = Math.round(42 + raw * 57) // 42..99 — even the floor reads as usable
+  const tier: Opp['tier'] = score >= 85 ? 'hot' : score >= 70 ? 'strong' : 'solid'
+  const reasons = [
+    { k: fit, t: fit >= 0.95 ? 'dead-on for your niche' : fit >= 0.8 ? 'right in your niche' : fit >= 0.5 ? 'adjacent to your niche' : 'cross-niche idea' },
+    { k: erScore, t: `${(er * 100).toFixed(1)}% like-rate` },
+    { k: reachScore, t: 'proven at scale' },
+  ].sort((a, b) => b.k - a.k)
+  return { score, tier, why: `${reasons[0].t} · ${reasons[1].t}`, er }
+}
+const SCORE_SKIN: Record<Opp['tier'], string> = {
+  hot: 'border-coral/50 bg-coral/20 text-coral',
+  strong: 'border-amber/50 bg-amber/20 text-amber',
+  solid: 'border-white/20 bg-white/10 text-sand',
+}
+
 const ACCENT_GLOW: Record<string, string> = {
   'text-amber': 'hover:border-amber/40 hover:shadow-[0_0_24px_rgba(255,179,71,0.15)]',
   'text-teal':  'hover:border-teal/40 hover:shadow-[0_0_24px_rgba(101,229,216,0.15)]',
@@ -226,26 +252,32 @@ export default function Gallery() {
   // them out of `shown` (which otherwise re-derives them on every keystroke/sort).
   const related = useMemo(() => relatedNiches(myNiche, knownNiches), [myNiche, knownNiches])
 
+  // Opportunity score per card — what's most likely to win for THIS creator.
+  const scores = useMemo(() => {
+    const fitOf = (c: Card) => (c.niche === mySubNiche ? 1 : c.niche === myNiche ? 0.82 : related.includes(c.niche) ? 0.55 : 0.3)
+    const m = new Map<string, Opp>()
+    for (const c of all) m.set(c.id, opportunity(reachNum(c.reach), reachNum(c.loves), fitOf(c)))
+    return m
+  }, [all, myNiche, mySubNiche, related])
+
   const shown = useMemo(() => {
     let out = all
     if (q.trim()) {
       const needle = q.trim().toLowerCase()
       out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(needle))
     }
-    const byReach = (a: Card, b: Card) => reachNum(b.reach) - reachNum(a.reach)
-    // The creator's own chip is a personalized "for you" feed, not a hard filter:
-    // their niche's videos first, then RELATED niches, then everything else. A
-    // specific bucket chip hard-filters; "All" is a neutral browse.
+    // Rank by the Opportunity score (engagement × reach × your-niche fit), not raw
+    // reach — so the feed surfaces what's most likely to actually work for them.
+    const byScore = (a: Card, b: Card) => (scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0)
     const isForYou = (!!mySubNiche && niche === mySubNiche) || (!!myNiche && niche === myNiche)
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
     if (isForYou) {
-      // Sub-niche first (most specific), then the broad niche, then related, then rest.
       const rank = (c: Card) =>
         c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
-      return [...out].sort((a, b) => rank(a) - rank(b) || byReach(a, b))
+      return [...out].sort((a, b) => rank(a) - rank(b) || byScore(a, b))
     }
-    return sort === 'top' ? [...out].sort(byReach) : out
-  }, [all, myNiche, mySubNiche, niche, q, sort, searchBlobs, related])
+    return sort === 'top' ? [...out].sort(byScore) : out
+  }, [all, myNiche, mySubNiche, niche, q, sort, searchBlobs, related, scores])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
   // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
@@ -287,7 +319,12 @@ export default function Gallery() {
   // Deep-link into the Studio with the reference prefilled. Studio reads `ref`
   // from the query string, so pass it there (a `state` payload was silently
   // dropped, which left Studio empty when you clicked Remix).
-  const remix = (c: Card) => navigate(`/app?ref=${encodeURIComponent(c.url)}`)
+  const remix = (c: Card) => {
+    // The remix-click is the core interaction signal — logging it builds the data
+    // set that lets discovery graduate from content-based to collaborative filtering.
+    void logEvent('gallery_remix', { url: c.url, niche: c.niche, creator: c.creator, score: scores.get(c.id)?.score })
+    navigate(`/app?ref=${encodeURIComponent(c.url)}`)
+  }
 
   return (
     <main className="relative overflow-clip">
@@ -298,18 +335,18 @@ export default function Gallery() {
           <Reveal>
             <p className="eyebrow mb-3">Inspiration Gallery</p>
             <h1 className="font-display text-4xl leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-              Proven formats, <span className="gradient-text">ready to remix.</span>
+              Find what's working. <span className="gradient-text">Make it yours.</span>
             </h1>
-            <p className="mt-4 max-w-xl text-base text-sand leading-relaxed">Real viral formats from top creators, rebuilt in your voice with one tap.</p>
+            <p className="mt-4 max-w-xl text-base text-sand leading-relaxed">Proven viral formats, <span className="text-cream">scored for your niche</span> and ranked by what's most likely to win — rebuilt in your voice with one tap.</p>
           </Reveal>
         </div>
       </div>
       <div className="relative mx-auto max-w-6xl px-5 pb-16">
         <Reveal delay={0.04}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex flex-wrap gap-2">
+            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
               {nicheChips.map((n) => (
-                <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream', isMine(n) && niche !== n && 'border-teal/40 text-cream')}>
+                <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip shrink-0 transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream', isMine(n) && niche !== n && 'border-teal/40 text-cream')}>
                   {n}{isMine(n) ? ' ✦' : ''}
                 </button>
               ))}
@@ -330,12 +367,13 @@ export default function Gallery() {
           </div>
         </Reveal>
         {shown.length === 0 ? (
-          <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing matches that yet. Try another filter.</div>
+          <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing here for that yet. Try another niche, or paste a video you love in the Studio.</div>
         ) : (
           <Stagger immediate className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
             {visible.map((c) => {
               const thumb = thumbnails[c.id]
               const glowClass = ACCENT_GLOW[c.accent] ?? 'hover:border-white/20'
+              const opp = scores.get(c.id)
               return (
                 <RevealItem key={c.id}>
                   <Tilt max={6} className="h-full">
@@ -355,6 +393,11 @@ export default function Gallery() {
                           </span>
                         </div>
                         <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-ink/75 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-cream backdrop-blur-sm">{c.platform}</span>
+                        {opp && (
+                          <span className={cn('absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold backdrop-blur-sm', SCORE_SKIN[opp.tier])} title="Opportunity score — how likely this format is to win for your niche">
+                            {opp.tier === 'hot' ? '🔥' : '⚡'} {opp.score}
+                          </span>
+                        )}
                         <div className="absolute bottom-3 left-3 flex gap-2">
                           <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-2 py-0.5 text-[11px] font-medium text-cream/90 backdrop-blur-sm"><Eye className="h-3 w-3 opacity-70" /> {c.reach}</span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-2 py-0.5 text-[11px] font-medium text-cream/90 backdrop-blur-sm"><Heart className="h-3 w-3 opacity-70" /> {c.loves}</span>
@@ -365,6 +408,7 @@ export default function Gallery() {
                           <span className={cn('text-[11px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
                           <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-stone">{c.niche}</span>
                         </div>
+                        {opp && <p className={cn('mt-1.5 text-[11px] font-medium', c.accent)}>Why for you · {opp.why}</p>}
                         <p className="mt-2 font-heading leading-snug text-cream line-clamp-2">{c.hook}</p>
                         <p className="mt-2 flex-1 text-sm text-sand line-clamp-3"><span className="font-medium text-stone">Why it works. </span>{c.why}</p>
                         <p className="mt-3 text-xs"><span className={cn('font-semibold', c.accent)}>@{c.creator}</span></p>

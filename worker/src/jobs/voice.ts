@@ -32,11 +32,13 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
 
   const profile = await synthesizeVoiceFromAudio(handle, platform, transcripts)
 
-  // MERGE, don't replace: the audio re-synthesis refines tone/pacing/vocabulary/
-  // hooks, but it does NOT produce the audience/audience_pain/dream_outcome/offer/
-  // editing_style fields the edge-function voice scan stored. A blind overwrite
-  // dropped those — and the blueprint generator depends on them. Spreading the new
-  // profile over the existing one keeps the richer fields and updates the rest.
+  // MERGE, don't replace: the audio re-synthesis refines the fields where SPOKEN
+  // signal is strongest — tone/pacing/vocabulary/hooks and now the distinctive
+  // pov/enemy/hook_patterns (a creator's real stance comes through on camera). It
+  // does NOT produce the business-context fields (audience/audience_pain/
+  // dream_outcome/offer/sub_niche/editing_style) — those come from captions + bio,
+  // which audio lacks. Spreading audio over the existing profile keeps that
+  // context and upgrades the voice itself.
   const { data: existing } = await db
     .from('brand_voices')
     .select('profile')

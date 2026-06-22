@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { getProfile } from '../lib/api'
+import { getProfile, redeemReferral, REFERRAL_CODE_KEY } from '../lib/api'
 import type { Profile } from '../lib/types'
 
 interface AuthState {
@@ -46,12 +46,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Best-effort: never let a slow/stuck profile fetch block the whole app. The
   // route guards only need `session`; the profile fills in when it arrives.
+  // Retry a couple of times with short backoff — on first load the access token
+  // may still be refreshing, and a single transient miss would otherwise leave
+  // the user staring at a profile with no credits/plan until they navigate.
   const refreshProfile = async () => {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const p = await getProfile()
+        setProfile(p)
+        return
+      } catch {
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)))
+        /* else leave profile as-is — auth must never hang on the profile query */
+      }
+    }
+  }
+
+  // If the user arrived via a referral link, redeem it now that they have a
+  // session. Clears the stored code on any definitive outcome so it never loops;
+  // keeps it only on a transient error so a later session can retry.
+  const redeemStoredReferral = async () => {
     try {
-      const p = await getProfile()
-      setProfile(p)
+      const code = localStorage.getItem(REFERRAL_CODE_KEY)
+      if (!code) return
+      const res = await redeemReferral(code)
+      if (res.ok || (res.reason && res.reason !== 'error' && res.reason !== 'rate_limited')) {
+        localStorage.removeItem(REFERRAL_CODE_KEY)
+      }
+      if (res.ok) await refreshProfile()
     } catch {
-      /* leave profile as-is — auth must never hang on the profile query */
+      /* never block auth on a referral redeem */
     }
   }
 
@@ -82,13 +106,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       setSession(data.session)
       finishLoading() // unblock route guards immediately
-      if (data.session) { bumpActivity(); void refreshProfile() } // profile in background
+      if (data.session) { bumpActivity(); void refreshProfile(); void redeemStoredReferral() } // profile + referral in background
     }).catch(finishLoading).finally(() => window.clearTimeout(safety))
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
       finishLoading()
-      if (s) void refreshProfile()
+      // Start the idle clock here too: an OAuth / magic-link login arrives via this
+      // listener (not getSession), so without this the activity marker stays unset
+      // until the first mouse move.
+      if (s) { bumpActivity(); void refreshProfile(); void redeemStoredReferral() }
       else setProfile(null)
     })
     return () => { window.clearTimeout(safety); sub.subscription.unsubscribe() }

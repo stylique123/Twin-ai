@@ -87,7 +87,7 @@ body {
     inset: 0;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(135deg, #ffb347, #ff5b7b 50%, #70e4d5);
+    background: linear-gradient(135deg, #ffb347, #ff5b7b 50%, #65E5D8);
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask-composite: exclude;
@@ -104,13 +104,13 @@ body {
     color: #8d8475;
   }
   .gradient-text {
-    background: linear-gradient(135deg, #ffb347 0%, #ff5b7b 50%, #70e4d5 100%);
+    background: linear-gradient(135deg, #ffb347 0%, #ff5b7b 50%, #65E5D8 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
   }
   .gradient-text-animated {
-    background: linear-gradient(110deg, #ffb347, #ff5b7b, #70e4d5, #ffb347);
+    background: linear-gradient(110deg, #ffb347, #ff5b7b, #65E5D8, #ffb347);
     background-size: 200% auto;
     -webkit-background-clip: text;
     background-clip: text;
@@ -153,7 +153,7 @@ body {
     font-weight: 700;
     border-radius: 12px;
     padding: 0.72rem 1.4rem;
-    background: linear-gradient(110deg, #ffb347, #ff5b7b 55%, #70e4d5);
+    background: linear-gradient(110deg, #ffb347, #ff5b7b 55%, #65E5D8);
     background-size: 180% auto;
     transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1),
       background-position 0.5s ease, box-shadow 0.3s ease;
@@ -229,6 +229,14 @@ body {
     font-size: 0.8rem;
     color: #c9bdac;
   }
+}
+
+/* Touch devices: raise tap targets to a comfortable minimum (desktop untouched). */
+@media (pointer: coarse) {
+  .chip { min-height: 2.4rem; }
+  .btn-primary,
+  .btn-gradient,
+  .btn-ghost { min-height: 2.75rem; }
 }
 
 @layer utilities {

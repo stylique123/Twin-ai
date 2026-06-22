@@ -46,6 +46,23 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   }
   await db.from('brand_voices').update({ status: 'ready', profile, error: null }).eq('id', voiceId)
 
+  // Data layer: a voice was built (activation funnel).
+  if (ownerId) {
+    await db.from('analytics_events')
+      .insert({ user_id: ownerId, event: 'voice_built', time_saved_minutes: 15, props: { brand_voice_id: voiceId, platform } })
+      .then(() => {}, () => {})
+  }
+
+  // Cache the synthesis (service-role `dna_cache`) so other users scanning this
+  // handle skip the scrape + synth. Best-effort.
+  try {
+    await db
+      .from('dna_cache')
+      .upsert({ handle, platform, profile, created_at: new Date().toISOString() }, { onConflict: 'handle,platform' })
+  } catch (err) {
+    console.error('scrape_dna: dna_cache upsert failed', err instanceof Error ? err.message : err)
+  }
+
   // Best-effort audio upgrade: transcribe the creator's top TikToks and refine the
   // voice from their actual spoken audio (TikTok yt-dlp+whisper works from our IP).
   try {
@@ -59,6 +76,9 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
         owner_id: ownerId,
         type: 'build_voice',
         status: 'queued',
+        // best-effort upgrade — NEVER retry (a retry re-runs the paid transcript
+        // calls; default 5 attempts could mean up to 25 paid calls) (#10).
+        max_attempts: 1,
         payload: { brand_voice_id: voiceId, handle, platform, urls },
       })
     }

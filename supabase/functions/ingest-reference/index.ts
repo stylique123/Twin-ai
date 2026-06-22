@@ -63,6 +63,31 @@ Deno.serve(async (req: Request) => {
     ? body.platform!
     : null
 
+  // CACHE: if this exact reference was already transcribed + structured recently,
+  // clone it into the caller's own row (server-side) and return a job that's
+  // already done — skipping yt-dlp/Apify + whisper + the structure Gemini call.
+  // Must match the worker's urlKey() normalization.
+  const urlKey = (() => {
+    try {
+      const u = new URL(url)
+      const host = u.hostname.toLowerCase().replace(/^www\./, '')
+      const v = u.searchParams.get('v')
+      const path = u.pathname.replace(/\/+$/, '').toLowerCase()
+      return host + path + (v ? `?v=${v.toLowerCase()}` : '')
+    } catch {
+      return url.toLowerCase().trim()
+    }
+  })()
+  const { data: cachedId } = await admin.rpc('clone_cached_transcript', { p_url_key: urlKey, p_owner: user.id })
+  if (cachedId) {
+    const { data: doneJob } = await admin
+      .from('jobs')
+      .insert({ owner_id: user.id, type: 'ingest', status: 'done', payload: { url, platform }, result: { transcript_id: cachedId, cached: true } })
+      .select('id')
+      .single()
+    return json({ job_id: doneJob?.id ?? null, status: 'done', transcript_id: cachedId, cached: true })
+  }
+
   // Transcription is real compute — rate-limit ingest per user.
   const { data: allowed } = await admin.rpc('check_rate_limit', {
     p_user: user.id,

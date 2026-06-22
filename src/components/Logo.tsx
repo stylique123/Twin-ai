@@ -17,7 +17,7 @@ export function LogoMark({ className = '', size = 28 }: { className?: string; si
         <linearGradient id={gid} x1="4" y1="12" x2="20" y2="20" gradientUnits="userSpaceOnUse">
           <stop stopColor="#FFB347" />
           <stop offset="0.5" stopColor="#FF5B7B" />
-          <stop offset="1" stopColor="#70E4D5" />
+          <stop offset="1" stopColor="#65E5D8" />
         </linearGradient>
       </defs>
       {/* Reference T (cream): top crossbar + upper stem */}

@@ -71,6 +71,26 @@ export default function Brands() {
     }
   }
 
+  // Re-run a failed voice scan in place, polling until it settles.
+  const retry = async (v: BrandVoice) => {
+    setErr(null)
+    try {
+      const { brand_voice_id } = await startDna(v.handle, v.platform)
+      await load()
+      let n = 0
+      const t = setInterval(async () => {
+        n++
+        try {
+          const res = await pollDna(brand_voice_id)
+          if (res.status === 'ready' || res.status === 'failed' || n >= 30) { clearInterval(t); await load() }
+        } catch { /* keep polling */ }
+      }, 4000)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not restart the scan')
+      await load()
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-5 py-10 sm:py-12">
       {/* Header */}
@@ -113,6 +133,7 @@ export default function Brands() {
                 voice={v}
                 busy={busyId === v.id}
                 onActivate={() => makeActive(v.id)}
+                onRetry={() => retry(v)}
                 onRenamed={load}
               />
             ))}
@@ -161,11 +182,12 @@ export default function Brands() {
 // ─── Brand card ──────────────────────────────────────────────────────────────────
 
 function BrandCard({
-  voice, busy, onActivate, onRenamed,
+  voice, busy, onActivate, onRetry, onRenamed,
 }: {
   voice: BrandVoice
   busy: boolean
   onActivate: () => void
+  onRetry: () => void
   onRenamed: () => void
 }) {
   const [editing, setEditing] = useState(false)
@@ -241,7 +263,12 @@ function BrandCard({
         </div>
       )}
       {voice.status === 'failed' && (
-        <p className="mt-3 text-xs text-coral">{voice.error ?? 'Voice scan failed, try re-adding this handle.'}</p>
+        <div className="mt-3">
+          <p className="text-xs text-coral">{voice.error ?? 'Voice scan failed. Make sure the account is public.'}</p>
+          <button onClick={onRetry} className="btn-ghost mt-2 w-full justify-center text-sm">
+            <Loader2 className="h-4 w-4" /> Try again
+          </button>
+        </div>
       )}
       {voice.status === 'building' && (
         <p className="mt-3 flex items-center gap-1.5 text-xs text-teal">
@@ -296,7 +323,13 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
     try {
       const { brand_voice_id } = await startDna(handle.trim(), platform)
       // Poll until the voice is ready (or fails), then close back to the list.
+      // Cap the wait (~2 min) so a dropped worker job never spins the overlay
+      // forever — the server-side reaper will still settle the row, and the user
+      // gets an honest "taking longer" message instead of an infinite spinner.
+      let polls = 0
+      const MAX_POLLS = 30
       timer.current = setInterval(async () => {
+        polls++
         try {
           const res = await pollDna(brand_voice_id)
           if (res.status === 'ready') {
@@ -305,6 +338,10 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
           } else if (res.status === 'failed') {
             if (timer.current) clearInterval(timer.current)
             setErr(res.error ?? 'Voice scan failed, check the handle is public and try again.')
+            setPhase('input')
+          } else if (polls >= MAX_POLLS) {
+            if (timer.current) clearInterval(timer.current)
+            setErr('This scan is taking longer than usual. It may still finish — check your brands in a moment, or try again.')
             setPhase('input')
           }
         } catch {

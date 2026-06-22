@@ -79,6 +79,11 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // Manual re-render: when the Refine panel sends an edited EDL, render straight
     // from it (no re-detect / re-transcribe) so the creator's tweaks are applied.
     const editedEdl = (payload.edl ?? undefined) as EditDecisionList | undefined
+    // Premium (Revideo) pass runs on the FIRST edit only. Remakes (variation > 0)
+    // and Refines (an edited EDL) are cheap iterations — the instant ffmpeg result
+    // is what the creator wants, so we skip the expensive render. This caps render
+    // COGS at ~one premium pass per blueprint and makes remakes nearly free.
+    const isFirstEdit = variation === 0 && !editedEdl
     const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl, baseRevideoFile } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
@@ -86,7 +91,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       brollText,
       coverText,
       edl: editedEdl,
-      produceRevideoBase: !!env.revideoUrl,
+      produceRevideoBase: !!env.revideoUrl && isFirstEdit,
       onProgress: (phase, pct, label) => { void updateJobProgress(job.id, { phase, pct, label }) },
     })
     renderFile = outFile
@@ -149,6 +154,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ baseClipUrl: baseUrl, edl }),
+          signal: AbortSignal.timeout(env.revideoTimeoutMs),
         })
         if (!r.ok) throw new Error(`revideo ${r.status}: ${(await r.text()).slice(0, 200)}`)
         const premiumBuf = Buffer.from(await r.arrayBuffer())
@@ -163,6 +169,12 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
         console.error(`[autoedit ${job.id}] premium pass failed, keeping ffmpeg result:`, e)
       }
     }
+
+    // Data layer: record the render + the editing time it saved (≈90 min on the
+    // first edit; remakes/refines don't re-bank the saving). Best-effort.
+    await db.from('analytics_events')
+      .insert({ user_id: job.owner_id, event: 'edit_rendered', time_saved_minutes: isFirstEdit ? 90 : 0, props: { generation_id: payload.generation_id ?? null, premium: finalUrl !== url, variation } })
+      .then(() => {}, () => {})
 
     return { output_path: outputPath, output_url: finalUrl, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl, edl_path: edlPath }
   } finally {

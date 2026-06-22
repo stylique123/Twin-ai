@@ -28,7 +28,20 @@ const VISUAL = new Set(
    'book books reading study student school classroom library notebook pen ' +
    'shop shopping store product products package delivery box ' +
    'dog cat pet baby family home house apartment plant plants ' +
-   'clock time calendar schedule deadline')
+   'clock time calendar schedule deadline ' +
+   // beauty / fashion
+   'skincare skin makeup lipstick mascara mirror salon hair haircut nails ' +
+   'fashion outfit clothes shoes sneakers dress shirt jacket closet jewelry ' +
+   // music / art / hobbies
+   'guitar piano drums vinyl headphones paint brush canvas drawing pottery ' +
+   'garden flowers soil watering candle journal meditation breathing ' +
+   // sport
+   'soccer basketball football tennis golf swimming bike cycling boxing skate ' +
+   // health / home
+   'doctor medicine pills vitamins supplement water hydration sleep bed couch ' +
+   'keys door window bedroom bathroom shower mirror ' +
+   // business visuals
+   'presentation growth arrow handshake contract sign signature email notification')
     .split(/\s+/),
 )
 
@@ -61,11 +74,14 @@ export interface Broll {
 export async function fetchBroll(keywords: string[], dir: string): Promise<Broll | null> {
   const key = env.pexelsKey
   if (!key) return null
+  // Cap a b-roll clip at 60 MB: a cutaway is a few seconds, so anything larger is
+  // a mis-pick we don't want to pull into the single worker's memory.
+  const BROLL_CAP = 60 * 1024 * 1024
   for (const q of keywords) {
     try {
       const res = await fetch(
         `https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&orientation=portrait&size=small&per_page=3`,
-        { headers: { Authorization: key } },
+        { headers: { Authorization: key }, signal: AbortSignal.timeout(10_000) },
       )
       if (!res.ok) continue
       const data = (await res.json()) as {
@@ -76,10 +92,13 @@ export async function fetchBroll(keywords: string[], dir: string): Promise<Broll
         // smallest portrait mp4 keeps the download + decode cheap
         const pick = mp4s.sort((a, b) => (a.width ?? 9999) - (b.width ?? 9999))[0]
         if (!pick?.link) continue
-        const vr = await fetch(pick.link)
+        const vr = await fetch(pick.link, { signal: AbortSignal.timeout(20_000) })
         if (!vr.ok) continue
+        if (Number(vr.headers.get('content-length') ?? '0') > BROLL_CAP) continue
+        const buf = Buffer.from(await vr.arrayBuffer())
+        if (buf.byteLength > BROLL_CAP) continue
         const out = join(dir, 'broll.mp4')
-        await writeFile(out, Buffer.from(await vr.arrayBuffer()))
+        await writeFile(out, buf)
         return { file: out, query: q }
       }
     } catch {

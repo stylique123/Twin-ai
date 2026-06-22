@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { REFERRAL_CODE_KEY } from '../lib/api'
 import { motion } from 'framer-motion'
 import { Check, ArrowRight, ArrowLeft } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -8,7 +9,7 @@ import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 import { EASE } from '../components/motion'
 
-const PERKS = ['3 free recreations', 'Script in your voice, record + edit in one place', 'No card required']
+const PERKS = ['3 free remixes', 'Script in your voice, record + edit in one place', 'No card required']
 
 // Where we remember the plan the user picked on the pricing page, so the choice
 // survives signup + email confirmation and reaches onboarding / billing later.
@@ -25,6 +26,13 @@ export default function Auth() {
   const [msgType, setMsgType] = useState<'error' | 'success'>('error')
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
+
+  // Remember a referral code from the invite link so it survives signup + email
+  // confirmation; AuthContext redeems it once the user has a session.
+  useEffect(() => {
+    const ref = params.get('ref')
+    if (ref) { try { localStorage.setItem(REFERRAL_CODE_KEY, ref) } catch { /* storage unavailable */ } }
+  }, [params])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -63,6 +71,27 @@ export default function Auth() {
       setMsg(err instanceof Error ? err.message : 'Something went wrong')
       setMsgType('error')
     } finally {
+      setBusy(false)
+    }
+  }
+
+  // Social login. Plan/referral are already in localStorage and survive the OAuth
+  // round-trip; we land on /app and the route guard sends new users to onboarding.
+  const oauth = async (provider: 'google') => {
+    setMsg(null)
+    if (!isSupabaseConfigured) { setMsg('Backend not configured yet.'); setMsgType('error'); return }
+    if (intendedPlan && intendedPlan.id !== 'free') { try { localStorage.setItem(INTENDED_PLAN_KEY, intendedPlan.id) } catch { /* storage unavailable */ } }
+    setBusy(true)
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: `${window.location.origin}/app` },
+      })
+      if (error) throw error
+      // The browser redirects to the provider; nothing else runs here.
+    } catch (err) {
+      setMsg(err instanceof Error ? err.message : 'Could not start Google sign-in')
+      setMsgType('error')
       setBusy(false)
     }
   }
@@ -132,10 +161,22 @@ export default function Auth() {
             {mode === 'signup' ? 'Start free' : 'Welcome back'}
           </h1>
           <p className="mt-1.5 text-sm text-sand">
-            {mode === 'signup' ? '3 free recreations. No card required.' : 'Pick up where you left off.'}
+            {mode === 'signup' ? '3 free remixes. No card required.' : 'Pick up where you left off.'}
           </p>
 
-          <form onSubmit={submit} className="mt-7 space-y-3">
+          <button
+            type="button"
+            onClick={() => oauth('google')}
+            disabled={busy}
+            className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm font-medium text-cream transition-colors hover:bg-white/[0.07] disabled:opacity-50"
+          >
+            <GoogleIcon className="h-4 w-4" /> Continue with Google
+          </button>
+          <div className="my-5 flex items-center gap-3 text-xs text-stone">
+            <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
+          </div>
+
+          <form onSubmit={submit} className="space-y-3">
             <div>
               <label className="eyebrow">Email</label>
               <input
@@ -180,5 +221,16 @@ export default function Auth() {
         </div>
       </motion.div>
     </main>
+  )
+}
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z" />
+      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.65l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23Z" />
+      <path fill="#FBBC05" d="M5.84 14.11a6.6 6.6 0 0 1 0-4.22V7.05H2.18a11 11 0 0 0 0 9.9l3.66-2.84Z" />
+      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.05l3.66 2.84C6.71 7.3 9.14 5.38 12 5.38Z" />
+    </svg>
   )
 }

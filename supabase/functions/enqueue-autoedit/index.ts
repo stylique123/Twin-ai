@@ -119,7 +119,9 @@ Deno.serve(async (req: Request) => {
       owner_id: user.id,
       type: 'autoedit',
       status: 'queued',
-      payload: { generation_id: generationId || null, take_path: takePath, variation, ...(refineEdl ? { edl: refineEdl } : {}) },
+      // Stamp the billing outcome so a dead-lettered job refunds the exact charged
+      // amount, exactly once, via the trg_refund_failed_autoedit trigger (#4).
+      payload: { generation_id: generationId || null, take_path: takePath, variation, charged: charge, cost: REMAKE_COST, ...(refineEdl ? { edl: refineEdl } : {}) },
     })
     .select('id')
     .single()

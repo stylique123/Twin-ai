@@ -123,20 +123,17 @@ Deno.serve(async (req: Request) => {
   // if anyone built this exact handle+platform recently we reuse that profile and
   // skip the paid scrape + synth entirely — repeat/popular handles go near-instant,
   // with zero quality change (same posts, same profile). Tunable via DNA_CACHE_DAYS.
+  // Read from `dna_cache` (service-role only), NOT brand_voices.profile, which is
+  // user-writable and could be tampered to poison every later scanner (see 0017).
   const cacheDays = Number(Deno.env.get('DNA_CACHE_DAYS') ?? '7')
   if (cacheDays > 0) {
     const cutoff = new Date(Date.now() - cacheDays * 86_400_000).toISOString()
     const { data: cached } = await admin
-      .from('brand_voices')
+      .from('dna_cache')
       .select('profile')
       .eq('handle', handle)
       .eq('platform', platform)
-      .eq('status', 'ready')
-      .not('profile', 'is', null)
-      .gte('updated_at', cutoff)
-      .neq('id', voiceId)
-      .order('updated_at', { ascending: false })
-      .limit(1)
+      .gte('created_at', cutoff)
       .maybeSingle()
     if (cached?.profile) {
       await admin

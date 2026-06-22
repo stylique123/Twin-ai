@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { generateBlueprint, ingestReference, getJob } from '../lib/api'
+import { generateBlueprint, ingestReference, getJob, listBrandVoices } from '../lib/api'
+import type { BrandVoice } from '../lib/types'
 import { BLUEPRINT_COST, videosFromCredits } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { Reveal, EASE } from '../components/motion'
@@ -42,7 +43,17 @@ export default function Studio() {
   const [fidelity, setFidelity] = useState<'close' | 'balanced' | 'loose'>('balanced')
   const [busy, setBusy] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
+  const [slowRead, setSlowRead] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  // Which brand voice this blueprint will be written in — agencies must know
+  // they're writing for the right client before they spend a remix.
+  const [activeBrand, setActiveBrand] = useState<BrandVoice | null>(null)
+  useEffect(() => {
+    listBrandVoices().then((vs) => {
+      const ready = vs.filter((v) => v.status === 'ready')
+      setActiveBrand(ready.find((v) => v.is_default) ?? ready[0] ?? null)
+    }).catch(() => {})
+  }, [])
 
   const left = videosFromCredits(profile?.credits ?? 0)
   const lowCredits = (profile?.credits ?? 0) < BLUEPRINT_COST
@@ -52,23 +63,29 @@ export default function Studio() {
   // a real read, never a blind guess.
   const analyzeRealVideo = async (link: string): Promise<string> => {
     setPhase('fetching')
-    const jobId = await ingestReference(link)
+    const { jobId, transcriptId } = await ingestReference(link)
+    // Cache hit: this reference was already transcribed + structured — use it now,
+    // no polling, no transcribe wait.
+    if (transcriptId) return transcriptId
     for (let i = 0; i < 80; i++) {
-      await new Promise((r) => setTimeout(r, 3000))
+      await new Promise((r) => setTimeout(r, 2500))
       const job = await getJob(jobId)
       if (!job) continue
       if (job.status === 'done' && job.result?.transcript_id) return job.result.transcript_id
       if (job.status === 'failed') throw new Error(job.error || 'Could not read that video. Try another reference.')
       if (job.status === 'running') setPhase('transcribing')
     }
-    throw new Error('Reading the video is taking too long, please try again in a moment.')
+    throw new Error('Reading the video is taking longer than usual. Try again in a moment — you weren’t charged a remix.')
   }
 
   const run = async () => {
     setErr(null)
     if (!url.trim()) return setErr('Paste a reference link first.')
-    if (lowCredits) return setErr("You're out of recreations for now, upgrade to keep going.")
+    if (lowCredits) return setErr('That was your last remix. Upgrade to keep going.')
     setBusy(true)
+    // Long clips can push the read past the advertised ~1-2 min. After 90s, swap
+    // the footer copy so the progress overlay stays HONEST instead of looking stuck.
+    const slowTimer = setTimeout(() => setSlowRead(true), 90_000)
     try {
       // ALWAYS read the actual video first.
       const transcript_id = await analyzeRealVideo(url.trim())
@@ -84,6 +101,8 @@ export default function Studio() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Generation failed')
     } finally {
+      clearTimeout(slowTimer)
+      setSlowRead(false)
       setBusy(false)
       setPhase('idle')
     }
@@ -101,6 +120,12 @@ export default function Studio() {
           <p className="mt-3 text-sand">
             We read the actual video, transcript and true structure, then write your blueprint in your voice.
           </p>
+          {activeBrand && (
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
+              <Sparkles className="h-3.5 w-3.5 text-amber" /> Writing in <span className="font-semibold text-cream">@{activeBrand.handle}</span>’s voice
+              <Link to="/brands" className="text-amber transition-colors hover:text-cream">switch</Link>
+            </p>
+          )}
         </Reveal>
 
         <Reveal delay={0.08}>
@@ -164,17 +189,26 @@ export default function Studio() {
 
             {/* Action row */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-5">
-              <span className="chip">
-                <Sparkles className="h-3.5 w-3.5 text-amber" /> {left} recreations left
-              </span>
-              <button className="btn-gradient min-w-[220px]" onClick={run} disabled={busy}>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <span className="chip">
+                  <Sparkles className="h-3.5 w-3.5 text-amber" /> {left} {left === 1 ? 'remix' : 'remixes'} left
+                </span>
+                {/* Value-moment nudge: catch them on their LAST remix with an
+                    aspirational upgrade, not a hard wall at zero. */}
+                {left <= 1 && !lowCredits && (
+                  <Link to="/settings" className="text-xs font-medium text-amber transition-colors hover:text-cream">
+                    Last one — upgrade for more →
+                  </Link>
+                )}
+              </div>
+              <button className="btn-gradient w-full sm:w-auto sm:min-w-[220px]" onClick={run} disabled={busy}>
                 {busy ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Working…
+                    <Loader2 className="h-4 w-4 animate-spin" /> Reading the real clip…
                   </>
                 ) : (
                   <>
-                    <Wand2 className="h-4 w-4" /> Read video & generate
+                    <Wand2 className="h-4 w-4" /> Make it shootable
                   </>
                 )}
               </button>
@@ -208,7 +242,9 @@ export default function Studio() {
                     <BuildProgress
                       stages={STUDIO_STAGES}
                       active={Math.max(0, PHASE_ORDER.indexOf(phase) - 1)}
-                      footer="Reading the real clip takes ~1-2 min. Hang tight, we don't charge a recreation unless this finishes."
+                      footer={slowRead
+                        ? "Still reading — longer clips take a little more. We don't charge a remix unless this finishes."
+                        : "Reading the real clip takes ~1-2 min. Hang tight, we don't charge a remix unless this finishes."}
                     />
                   </div>
                 </motion.div>

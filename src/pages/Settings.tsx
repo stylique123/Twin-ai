@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { updateDisplayName, saveDNA } from '../lib/api'
+import { updateDisplayName, saveDNA, startCheckout } from '../lib/api'
 import { PLANS, videosFromCredits } from '../lib/brand'
 import type { CreatorDNA, Platform } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -36,6 +36,27 @@ export default function Settings() {
   const [savingDna, setSavingDna] = useState(false)
   const [dnaSaved, setDnaSaved] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+  const [coBusy, setCoBusy] = useState<string | null>(null)
+  const [coMsg, setCoMsg] = useState<string | null>(null)
+
+  // Real checkout: routes a card user to the processor, or shows crypto/manual
+  // details. This is the upgrade path that was missing entirely before.
+  const upgrade = async (planId: string) => {
+    setCoBusy(planId); setCoMsg(null)
+    try {
+      const r = await startCheckout(planId)
+      if (r.url) { window.location.href = r.url; return }
+      if (r.kind === 'crypto') { setCoMsg(`Send $${r.amount_usd} in ${r.asset} to ${r.address}, then contact us to activate.`); return }
+      if (r.kind === 'manual') { setCoMsg(r.message ?? 'Contact us to activate this plan.'); return }
+      if (r.kind === 'unconfigured') { setCoMsg('Checkout is not enabled yet — please contact support.'); return }
+      setCoMsg('Could not start checkout. Please try again.')
+    } catch (e) {
+      setCoMsg(e instanceof Error ? e.message : 'Checkout failed.')
+    } finally {
+      setCoBusy(null)
+    }
+  }
+  const higherPlans = PLANS.filter((p) => p.price > plan.price)
 
   const saveName = async () => {
     setSavingName(true); setErr(null)
@@ -104,20 +125,30 @@ export default function Settings() {
               <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><Sparkles className="h-4 w-4 text-teal" /></span>
               <p className="eyebrow !text-sand">Plan</p>
             </div>
-            <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <div className="font-display text-2xl text-cream">{plan.name}</div>
-                <div className="mt-1 text-sm text-stone">{plan.price ? `$${plan.price}/mo` : 'Free'} · {left} recreation{left === 1 ? '' : 's'} left</div>
-              </div>
-              <Link to="/#pricing" className="btn-gradient text-sm">
-                {plan.id === 'agency' ? 'Manage plan' : 'Upgrade'} <ArrowUpRight className="h-4 w-4" />
-              </Link>
+            <div className="mt-5">
+              <div className="font-display text-2xl text-cream">{plan.name}</div>
+              <div className="mt-1 text-sm text-stone">{plan.price ? `$${plan.price}/mo` : 'Free'} · {left} remix{left === 1 ? '' : 'es'} left</div>
             </div>
             <ul className="mt-4 grid gap-2 sm:grid-cols-2">
               {plan.features.map((f) => (
                 <li key={f} className="flex items-start gap-2 text-sm text-sand"><Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {f}</li>
               ))}
             </ul>
+            {higherPlans.length > 0 && (
+              <div className="mt-5 border-t border-white/8 pt-4">
+                <div className="eyebrow !text-sand">Upgrade</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {higherPlans.map((p) => (
+                    <button key={p.id} onClick={() => upgrade(p.id)} disabled={coBusy !== null} className="btn-gradient text-sm disabled:opacity-60">
+                      {coBusy === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
+                      {p.name} · ${p.price}/mo
+                    </button>
+                  ))}
+                </div>
+                {coMsg && <p className="mt-2 text-xs text-sand">{coMsg}</p>}
+                <Link to="/#pricing" className="mt-2 inline-block text-xs text-stone hover:text-cream">Compare plans →</Link>
+              </div>
+            )}
             <p className="mt-4 text-xs text-stone">Manage or cancel your subscription from your payment provider's portal. Cancelling keeps any credits you've already been granted.</p>
           </section>
         </Reveal>
