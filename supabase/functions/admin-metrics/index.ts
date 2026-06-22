@@ -33,10 +33,14 @@ Deno.serve(async (req: Request) => {
   const { data: isAdmin } = await admin.rpc('is_platform_admin', { p_user: user.id })
   if (!isAdmin) return json({ error: 'Forbidden' }, 403)
 
-  const { data, error } = await admin.from('metrics_overview').select('*').single()
+  const [{ data, error }, { data: funnel }, { data: retention }] = await Promise.all([
+    admin.from('metrics_overview').select('*').single(),
+    admin.rpc('activation_funnel'),
+    admin.rpc('retention_curve'),
+  ])
   if (error) {
     console.error('admin-metrics: query failed', error)
     return json({ error: 'Could not load metrics' }, 500)
   }
-  return json(data ?? {})
+  return json({ ...(data ?? {}), funnel: funnel ?? null, retention: retention ?? null })
 })

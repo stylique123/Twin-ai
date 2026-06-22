@@ -75,7 +75,64 @@ export default function Metrics() {
             </RevealItem>
           ))}
         </Stagger>
-        <p className="mt-8 text-xs text-stone">Activation funnel: signup → onboarded → voice → blueprint → edit → post. Query analytics_events for cohorts, retention, and per-user case studies.</p>
+        {m.funnel && (() => {
+          const f = m.funnel!
+          const steps = [
+            { label: 'Signed up', v: f.signup }, { label: 'Onboarded', v: f.onboarded },
+            { label: 'Built a voice', v: f.voice }, { label: 'Made a blueprint', v: f.blueprint },
+            { label: 'Rendered an edit', v: f.edit }, { label: 'Logged a post', v: f.post },
+          ]
+          const base = Math.max(1, f.signup)
+          return (
+            <Reveal delay={0.08}>
+              <div className="glass mt-8 p-6">
+                <h2 className="font-heading text-base text-cream">Activation funnel</h2>
+                <div className="mt-4 space-y-2.5">
+                  {steps.map((s, i) => {
+                    const pct = Math.round((s.v / base) * 100)
+                    const prev = i > 0 ? steps[i - 1].v : s.v
+                    const drop = prev > 0 ? Math.round((s.v / prev) * 100) : 100
+                    return (
+                      <div key={s.label}>
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-sand">{s.label}</span>
+                          <span className="text-stone">{s.v.toLocaleString()} · {pct}%{i > 0 && <span className="text-stone/60"> ({drop}% of prev)</span>}</span>
+                        </div>
+                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-white/8">
+                          <div className="h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal" style={{ width: `${Math.max(2, pct)}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </Reveal>
+          )
+        })()}
+        {m.retention && (() => {
+          const r = m.retention!
+          const wins = [{ label: 'D1', w: r.d1 }, { label: 'D7', w: r.d7 }, { label: 'D30', w: r.d30 }]
+          return (
+            <Reveal delay={0.1}>
+              <div className="glass mt-6 p-6">
+                <h2 className="font-heading text-base text-cream">Retention</h2>
+                <div className="mt-4 grid grid-cols-3 gap-4">
+                  {wins.map(({ label, w }) => {
+                    const pct = w.eligible > 0 ? Math.round((w.retained / w.eligible) * 100) : 0
+                    return (
+                      <div key={label} className="rounded-xl border border-white/8 bg-white/[0.02] p-4 text-center">
+                        <div className="font-display text-3xl text-cream">{pct}%</div>
+                        <div className="mt-1 text-xs font-medium text-stone">{label} retention</div>
+                        <div className="mt-0.5 text-[10px] text-stone/60">{w.retained}/{w.eligible} eligible</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </Reveal>
+          )
+        })()}
+        <p className="mt-8 text-xs text-stone">Funnel = distinct users per step. Retention = active ≥ N days after first touch. Query analytics_events for cohorts + per-user case studies.</p>
       </div>
     </main>
   )
