@@ -44,7 +44,10 @@ export const env = {
   revideoUrl: (process.env.REVIDEO_URL ?? '').trim(),
 
   // Which job types this worker process handles.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,transcribe,build_voice,autoedit,scrape_dna').split(',').map((s) => s.trim()),
+  // 'transcribe' removed — it was registered + claimed but nothing ever enqueues it
+  // (ingest-reference enqueues type 'ingest'). build_dna stays edge-driven (dna-poll),
+  // never add it here or the worker would dead-letter it.
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,autoedit,scrape_dna').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight

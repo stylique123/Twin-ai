@@ -252,6 +252,17 @@ Deno.serve(async (req: Request) => {
   if (allowed === false) {
     return json({ error: 'Easy there — too many in a row. Give it a few seconds.' }, 429)
   }
+  // Daily cap: a hard backstop on per-user LLM token spend (a bug-loop or abuse
+  // can't run thousands of thinking-model calls). Generous vs any real workflow.
+  const { data: dailyOk } = await admin.rpc('check_rate_limit', {
+    p_user: user.id,
+    p_action: 'blueprint_daily',
+    p_max: Number(Deno.env.get('BLUEPRINT_DAILY_CAP') ?? '40'),
+    p_window_secs: 86400,
+  })
+  if (dailyOk === false) {
+    return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
+  }
 
   let body: { reference_url?: string; reference_note?: string; fidelity?: string; transcript_id?: string }
   try {

@@ -226,12 +226,22 @@ export default function Record() {
     rec.ondataavailable = (e) => e.data.size > 0 && chunksRef.current.push(e.data)
     rec.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: mime || 'video/webm' })
+      // Guard against an empty/failed recording producing an unplayable take.
+      if (blob.size < 1024) {
+        setCamError('That recording came out empty — check your camera/mic and try again.')
+        setPhase('idle'); setScrolling(false)
+        return
+      }
       takeBlobRef.current = blob
       setTakeUrl(URL.createObjectURL(blob))
       setEditPhase('none')
       setEditUrl(null)
       setEditErr(null)
       setPhase('review')
+    }
+    rec.onerror = () => {
+      setCamError('Recording failed. Reload and try again, or upload a clip instead.')
+      setPhase('idle'); setScrolling(false)
     }
     recorderRef.current = rec
     rec.start()
