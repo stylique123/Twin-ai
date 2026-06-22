@@ -40,6 +40,32 @@ function run(cmd: string, args: string[], timeoutMs: number, cwd?: string): Prom
   })
 }
 
+// Burn a subtle TwinAI wordmark, bottom-centre, as an ISOLATED single pass over an
+// already-finished render. Deliberately separate from the main edit filtergraph so it
+// can never break a paid render. Fail-safe: on any error (no font, ffmpeg quirk) we
+// return the original CLEAN file — a free user occasionally getting a clean export is
+// far better than a failed/empty render.
+const WM_FONTS = [
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+  '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
+  '/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf',
+]
+export async function applyWatermark(inFile: string): Promise<string> {
+  try {
+    let FONT = ''
+    for (const f of WM_FONTS) { if ((await fileSize(f)) > 0) { FONT = f; break } }
+    if (!FONT) return inFile
+    const out = join(tmpdir(), `twinai-wm-${Date.now()}.mp4`)
+    const vf = `drawtext=fontfile=${FONT}:text='TwinAI':fontcolor=white@0.5:fontsize=h/24:x=(w-text_w)/2:y=h-(h/9):shadowcolor=black@0.6:shadowx=2:shadowy=2`
+    await run('ffmpeg', ['-y', '-i', inFile, '-vf', vf, '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-movflags', '+faststart', out], 300_000)
+    if ((await fileSize(out)) > 2048) return out
+    return inFile
+  } catch (e) {
+    console.error('[watermark] failed, shipping clean render:', e)
+    return inFile
+  }
+}
+
 export interface EditResult {
   outFile: string
   durationSec: number
