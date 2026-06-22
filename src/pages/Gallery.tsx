@@ -335,7 +335,7 @@ export default function Gallery() {
           <Reveal>
             <p className="eyebrow mb-3">Inspiration Gallery</p>
             <h1 className="font-display text-4xl leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-              Proven formats, <span className="gradient-text">ready to remix.</span>
+              Find what's working. <span className="gradient-text">Make it yours.</span>
             </h1>
             <p className="mt-4 max-w-xl text-base text-sand leading-relaxed">Proven viral formats, <span className="text-cream">scored for your niche</span> and ranked by what's most likely to win — rebuilt in your voice with one tap.</p>
           </Reveal>
@@ -367,7 +367,7 @@ export default function Gallery() {
           </div>
         </Reveal>
         {shown.length === 0 ? (
-          <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing matches that yet. Try another filter.</div>
+          <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing here for that yet. Try another niche, or paste a video you love in the Studio.</div>
         ) : (
           <Stagger immediate className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
             {visible.map((c) => {

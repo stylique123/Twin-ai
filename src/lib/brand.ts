@@ -1,8 +1,8 @@
 // Brand & GTM constants, single source of truth, mirrors the cheat sheet.
 
 export const BRAND = {
-  oneLiner: 'Remix any viral video in seconds.',
-  subLine: 'You bring the idea. TwinAI makes it shootable.',
+  oneLiner: 'One link in. A finished, on-brand video out.',
+  subLine: 'Script, teleprompter, auto-edit and caption — the whole loop in one window.',
   category: 'Reference-based creation, not a clipper.',
   positioning:
     'For creators, founders & agencies who know a reel works but can’t make their own fast enough, TwinAI turns any proven reference into a personalized hook, script, shot list, edit and schedule. Others clip your footage; we make the references you admire shootable in your voice.',
@@ -48,7 +48,7 @@ export const PLANS: PlanTier[] = [
     videos: 3,
     credits: grant(3, 0), // 30 credits → 3 recreations; advertised count matches what's granted
     brandVoices: 1,
-    blurb: 'Try it free.',
+    blurb: 'See it work, free.',
     features: ['3 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
@@ -59,7 +59,7 @@ export const PLANS: PlanTier[] = [
     videos: 8,
     credits: grant(8, 2), // 100 credits → 10, advertised 8, buffer 2
     brandVoices: 1,
-    blurb: 'Go pro on a budget.',
+    blurb: 'Post weekly, no watermark.',
     features: [
       '8 remixes / mo',
       'No watermark',
@@ -77,7 +77,7 @@ export const PLANS: PlanTier[] = [
     credits: grant(20, 4), // 240 credits → 24, advertised 20, buffer 4
     brandVoices: 1,
     badge: 'Most popular',
-    blurb: 'Weekly output, speed.',
+    blurb: 'Ship every week, on autopilot.',
     features: [
       '20 remixes / mo',
       '1 brand voice',
@@ -96,7 +96,7 @@ export const PLANS: PlanTier[] = [
     credits: grant(75, 8), // 830 credits → 83, advertised 75, buffer 8
     brandVoices: 15,
     badge: 'Best value',
-    blurb: 'Many brands, one voice each.',
+    blurb: 'Every client, sounding like themselves.',
     features: [
       '75 remixes / mo',
       '15 brand voices (one per client)',

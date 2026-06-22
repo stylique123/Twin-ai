@@ -321,7 +321,7 @@ export default function Result() {
 
       {/* Refine re-render status / watch-the-update banner */}
       {(refineStatus || refineUrl) && (
-        <div className="fixed inset-x-0 bottom-4 z-40 mx-auto flex max-w-md items-center gap-3 rounded-card border border-white/10 bg-ink2/95 px-4 py-3 shadow-lift backdrop-blur-xl">
+        <div className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md items-center gap-3 rounded-card border border-white/10 bg-ink2/95 px-4 py-3 shadow-lift backdrop-blur-xl">
           {refineUrl ? (
             <>
               <Check className="h-5 w-5 shrink-0 text-teal" />

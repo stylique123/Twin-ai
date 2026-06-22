@@ -81,7 +81,7 @@ export default function Studio() {
   const run = async () => {
     setErr(null)
     if (!url.trim()) return setErr('Paste a reference link first.')
-    if (lowCredits) return setErr("You're out of remixes for now, upgrade to keep going.")
+    if (lowCredits) return setErr('That was your last remix. Upgrade to keep going.')
     setBusy(true)
     // Long clips can push the read past the advertised ~1-2 min. After 90s, swap
     // the footer copy so the progress overlay stays HONEST instead of looking stuck.
@@ -201,14 +201,14 @@ export default function Studio() {
                   </Link>
                 )}
               </div>
-              <button className="btn-gradient min-w-[220px]" onClick={run} disabled={busy}>
+              <button className="btn-gradient w-full sm:w-auto sm:min-w-[220px]" onClick={run} disabled={busy}>
                 {busy ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Working…
+                    <Loader2 className="h-4 w-4 animate-spin" /> Reading the real clip…
                   </>
                 ) : (
                   <>
-                    <Wand2 className="h-4 w-4" /> Read video & generate
+                    <Wand2 className="h-4 w-4" /> Make it shootable
                   </>
                 )}
               </button>

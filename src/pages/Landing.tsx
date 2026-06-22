@@ -184,7 +184,7 @@ function HeroSection() {
       <motion.div
         className="pointer-events-none absolute h-[600px] w-[600px] rounded-full opacity-20 blur-[140px]"
         style={{
-          background: 'radial-gradient(circle, #70E4D5 0%, #FF5B7B 50%, transparent 70%)',
+          background: 'radial-gradient(circle, #65E5D8 0%, #FF5B7B 50%, transparent 70%)',
           left: glowX,
           top: glowY,
           x: '-50%',
@@ -255,9 +255,9 @@ function HeroSection() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1, delay: 0.34 }}
-              className="mt-7 text-[11px] leading-relaxed text-stone"
+              className="mt-7 text-sm leading-relaxed text-sand"
             >
-              ✨ 3 free remixes. No card required. 💳
+              3 free remixes. No card, no catch.
             </motion.p>
           </div>
 
@@ -383,7 +383,7 @@ function HeroVisualNew() {
           initial={{ opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1, rotate: -3 }}
           transition={{ delay: 1.5, duration: 0.5, ease: EASE }}
-          className="absolute -right-3 bottom-24 z-30 rounded-2xl bg-signature px-3.5 py-2 text-xs font-bold text-ink shadow-glow sm:-right-8"
+          className="absolute bottom-24 right-1 z-30 hidden rounded-2xl bg-signature px-3.5 py-2 text-xs font-bold text-ink shadow-glow sm:block sm:-right-8"
         >
           In your voice
         </motion.div>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Wand2, LayoutGrid, Clapperboard, Send, Sparkles, ArrowUpRight, FileText, Loader2, TrendingUp, Zap,
-  Gift, Copy, Check, Clock, Eye,
+  Gift, Copy, Check, Clock, Eye, Trophy,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, updatePostStats, type BrandStats, type DashboardStats, type Post } from '../lib/api'
@@ -71,7 +71,7 @@ export default function Dashboard() {
             Welcome back,{' '}<span className="gradient-text">{name}</span>.
           </h1>
           <p className="mt-4 max-w-md text-base text-stone">
-            Your whole creator loop at a glance, reference in, finished video out.
+            Everything you've shipped, and what to make next.
           </p>
           {(brand || streak > 0 || hoursSaved > 0) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -114,7 +114,7 @@ export default function Dashboard() {
         <Reveal delay={0.1}>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New blueprint" desc="Paste a reference and get a shootable script in seconds." primary />
-            <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Browse the gallery" desc="Proven formats, one-click remix into your voice." />
+            <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Find your next hit" desc="See what's winning in your niche, remix any of it in one tap." />
             <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every blueprint you've ever made, searchable." />
           </div>
         </Reveal>
@@ -257,7 +257,7 @@ function PostRow({ p, isTop }: { p: Post; isTop: boolean }) {
   return (
     <div className={cn('flex items-center gap-3 rounded-xl border bg-white/[0.025] p-3 transition-colors', isTop ? 'border-amber/40' : 'border-white/[0.06] hover:border-white/[0.12]')}>
       <span className="w-14 shrink-0 font-heading text-xs capitalize text-teal">{p.platform}</span>
-      <span className="min-w-0 flex-1 truncate text-sm text-cream">{isTop && <span title="Top performer">🏆 </span>}{p.caption || 'Posted'}</span>
+      <span className="min-w-0 flex-1 truncate text-sm text-cream">{isTop && <Trophy className="mr-1 inline h-3.5 w-3.5 text-amber" />}{p.caption || 'Posted'}</span>
       <div className="flex shrink-0 items-center gap-1">
         <Eye className="h-3 w-3 text-stone" />
         <input
