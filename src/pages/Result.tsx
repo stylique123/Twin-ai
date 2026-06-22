@@ -369,6 +369,7 @@ function PublishRow({
   const [copyFailed, setCopyFailed] = useState(false)
   const [posted, setPosted] = useState(false)
   const [postErr, setPostErr] = useState(false)
+  const [opened, setOpened] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const copy = async () => {
@@ -400,6 +401,7 @@ function PublishRow({
   // the click gesture, so the popup isn't blocked after the async clipboard write.
   const copyAndOpen = () => {
     if (uploadUrl) window.open(uploadUrl, '_blank', 'noopener,noreferrer')
+    setOpened(true)
     void copy()
   }
 
@@ -429,6 +431,16 @@ function PublishRow({
       )}
       {postErr && (
         <p className="mt-2 text-[11px] text-coral">Couldn’t log that post — tap “Mark as posted” to try again.</p>
+      )}
+      {/* Guide them back: opening the uploader is a dead-end without this. */}
+      {opened && !posted && (
+        <p className="mt-2 text-[11px] text-amber">Posted it on {platform}? Hit “Mark as posted” so your streak and library stay in sync.</p>
+      )}
+      {/* Close the loop — the highest-intent moment to start the next video. */}
+      {posted && (
+        <p className="mt-2 text-[11px] text-teal">
+          Logged. <Link to="/gallery" className="font-semibold underline-offset-2 hover:underline">Remix your next one →</Link>
+        </p>
       )}
       {uploadUrl && (
         <p className="mt-2 text-[11px] text-stone">

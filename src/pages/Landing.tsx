@@ -4,7 +4,7 @@ import { motion, AnimatePresence, useInView, useMotionValue, useSpring, useTrans
 import {
   ArrowRight, Check, Plus, Minus, AtSign, Wand2, Captions, Clapperboard, Scissors,
   ShieldCheck, Building2, Users, Clock, Eye, Heart, Play, Send, LayoutGrid,
-  FileText, Sparkles, Star, TrendingUp, Mic, BarChart3,
+  FileText, Sparkles, TrendingUp, Mic, BarChart3,
 } from 'lucide-react'
 import { BRAND, PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
@@ -101,10 +101,12 @@ const BENEFITS = [
   { icon: Eye, big: 'Proven', label: 'structures only', sub: 'rebuilt from what already won' },
 ]
 
-const SOCIAL_PROOF = [
-  { name: 'Marcus L.', handle: '@marcuslive', quote: 'I went from one video a week to four. The blueprint is the fastest part of my workflow now.', metric: '4× output', stars: 5 },
-  { name: 'Priya K.', handle: '@priyakreates', quote: 'The voice profile is scary good. Scripts read exactly like how I talk, so I stopped rewriting hooks.', metric: 'Zero rewrites', stars: 5 },
-  { name: 'Jake Finn', handle: '@jakefinnmedia', quote: 'Running 6 client brands. The workspaces feature alone saves my team hours every week.', metric: '18h/wk saved', stars: 5 },
+// Honest, non-attributed use-cases — NOT fabricated testimonials. We don't fake
+// reviews; these describe who the tool is built for and the job it does.
+const USE_CASES = [
+  { tag: 'Solo creators', title: 'Never stare at a blank page', body: 'Start from a reference that already works and get a shootable script in your voice in minutes, not hours.' },
+  { tag: 'Educators & founders', title: 'Stay consistent under pressure', body: 'Batch a week of on-brand videos in one sitting, so your cadence stops depending on a spark of inspiration.' },
+  { tag: 'Agencies', title: 'A distinct voice per client', body: 'Keep every client sounding like themselves, switch brands in a tap, and ship across accounts without growing the team.' },
 ]
 
 const FAQ = [
@@ -719,35 +721,23 @@ function TestimonialsSection() {
   return (
     <section className="mx-auto max-w-content px-5 py-12 sm:py-16">
       <Reveal className="text-center">
-        <p className="eyebrow">Creators using TwinAI</p>
+        <p className="eyebrow">Who it's for</p>
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-          The results speak louder than the features.
+          Built for how creators actually work.
         </h2>
         <p className="mx-auto mt-3 max-w-md text-xs text-stone">
-          Representative of creators using TwinAI while we gather public results.
+          We don't fake reviews. Here's the job it does — try it free and judge the output yourself.
         </p>
       </Reveal>
       <Stagger className="mt-14 grid gap-5 md:grid-cols-3" gap={0.08}>
-        {SOCIAL_PROOF.map((s) => (
-          <RevealItem key={s.name}>
+        {USE_CASES.map((u) => (
+          <RevealItem key={u.tag}>
             <div className="group relative h-full overflow-hidden rounded-panel border border-white/8 bg-ink2/60 p-7 transition-all duration-300 hover:border-white/16 hover:-translate-y-1">
               <div className="absolute inset-0 bg-gradient-to-br from-amber/[0.04] to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               <div className="relative">
-                <div className="flex items-center gap-1 text-amber">
-                  {[...Array(s.stars)].map((_, i) => (
-                    <Star key={i} className="h-3.5 w-3.5 fill-current" />
-                  ))}
-                </div>
-                <p className="mt-4 text-sm leading-relaxed text-sand">"{s.quote}"</p>
-                <div className="mt-6 flex items-center justify-between">
-                  <div>
-                    <div className="text-sm font-heading text-cream">{s.name}</div>
-                    <div className="text-xs text-stone">{s.handle}</div>
-                  </div>
-                  <span className="rounded-full bg-teal/10 px-3 py-1 text-xs font-bold text-teal">
-                    {s.metric}
-                  </span>
-                </div>
+                <span className="rounded-full bg-teal/10 px-3 py-1 text-xs font-bold text-teal">{u.tag}</span>
+                <h3 className="mt-4 font-heading text-lg text-cream">{u.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-sand">{u.body}</p>
               </div>
             </div>
           </RevealItem>
@@ -787,7 +777,7 @@ function CTASection() {
         <div className="relative z-10">
           <p className="eyebrow">Ready?</p>
           <h2 className="mx-auto mt-4 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-            Your next viral post starts with a link you already know.
+            Your next post starts with a reference you already love.
           </h2>
           <p className="mx-auto mt-4 max-w-md text-sand">
             Paste it, record it, post it. The whole loop, in one window.

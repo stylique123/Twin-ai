@@ -6,8 +6,8 @@ import {
   Gift, Copy, Check,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getDashboardStats, getReferralCode, listGenerations, listPosts, type DashboardStats, type Post } from '../lib/api'
-import type { Generation } from '../lib/types'
+import { getDashboardStats, getReferralCode, listBrandVoices, listGenerations, listPosts, type DashboardStats, type Post } from '../lib/api'
+import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
@@ -18,21 +18,26 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recent, setRecent] = useState<Generation[]>([])
   const [posts, setPosts] = useState<Post[]>([])
+  const [brand, setBrand] = useState<BrandVoice | null>(null)
   const [loading, setLoading] = useState(true)
 
   const credits = profile?.credits ?? 0
 
   useEffect(() => {
-    Promise.all([getDashboardStats(credits), listGenerations(), listPosts()])
-      .then(([s, g, p]) => {
+    Promise.all([getDashboardStats(credits), listGenerations(), listPosts(), listBrandVoices().catch(() => [])])
+      .then(([s, g, p, voices]) => {
         setStats(s)
         setRecent(g.slice(0, 5))
         setPosts(p)
+        const ready = (voices as BrandVoice[]).filter((v) => v.status === 'ready')
+        setBrand(ready.find((v) => v.is_default) ?? ready[0] ?? null)
       })
       .catch(() => {})
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credits])
+
+  const streak = postingStreak(posts)
 
   const rawName = profile?.email?.split('@')[0] ?? 'creator'
   const name = rawName.charAt(0).toUpperCase() + rawName.slice(1)
@@ -52,6 +57,12 @@ export default function Dashboard() {
           <p className="mt-4 max-w-md text-base text-stone">
             Your whole creator loop at a glance, reference in, finished video out.
           </p>
+          {brand && (
+            <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
+              <Sparkles className="h-3.5 w-3.5 text-amber" /> Working as <span className="font-semibold text-cream">@{brand.handle}</span>
+              <Link to="/brands" className="text-amber transition-colors hover:text-cream">Switch →</Link>
+            </p>
+          )}
         </Reveal>
         <Stagger className="mt-10 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
           <StatCard icon={FileText} glow="amber" label="Blueprints" value={stats?.blueprints} loading={loading} />
@@ -122,7 +133,11 @@ export default function Dashboard() {
               <div className="relative mt-auto pt-5">
                 <div className="flex items-start gap-3 rounded-xl bg-gradient-to-r from-amber/10 to-amber/5 p-3.5 ring-1 ring-amber/20">
                   <TrendingUp className="mt-0.5 h-4 w-4 shrink-0 text-amber" />
-                  <p className="text-xs leading-relaxed text-sand">Consistent posting compounds. Log each publish to keep your streak honest.</p>
+                  <p className="text-xs leading-relaxed text-sand">
+                    {streak > 0
+                      ? `You're on a ${streak}-day posting streak. Ship one more today to keep it alive.`
+                      : 'Consistent posting compounds. Log a publish today to start your streak.'}
+                  </p>
                 </div>
               </div>
             </div>
@@ -188,6 +203,17 @@ function EmptyBlueprints() {
       <Link to="/app" className="btn-gradient mt-5 inline-flex items-center gap-2 text-sm"><Wand2 className="h-3.5 w-3.5" /> Make your first one</Link>
     </div>
   )
+}
+
+// Consecutive-day posting streak from logged posts (anchored to today or
+// yesterday so a not-yet-posted-today streak still counts).
+function postingStreak(posts: Post[]): number {
+  const days = new Set(posts.map((p) => new Date(p.posted_at ?? p.created_at).toDateString()))
+  const d = new Date()
+  if (!days.has(d.toDateString())) d.setDate(d.getDate() - 1)
+  let streak = 0
+  while (days.has(d.toDateString())) { streak++; d.setDate(d.getDate() - 1) }
+  return streak
 }
 
 // Viral loop: a two-sided referral. The "2 free remixes" copy mirrors the
