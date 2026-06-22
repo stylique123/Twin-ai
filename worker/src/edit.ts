@@ -233,12 +233,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `
   const esc = (w: string) => w.replace(/[{}\\]/g, '').trim()
 
-  // Group into lines of up to 3 words; break early on sentence punctuation.
+  // Group into lines of up to 3 words; break early on sentence punctuation OR a
+  // natural pause (comma/semicolon/colon) so captions phrase the way people speak.
   const lines: Word[][] = []
   let cur: Word[] = []
   for (const w of words) {
     cur.push(w)
-    if (cur.length >= 3 || /[.!?]$/.test(w.w)) {
+    if (cur.length >= 3 || /[.!?,;:]$/.test(w.w)) {
       lines.push(cur)
       cur = []
     }
