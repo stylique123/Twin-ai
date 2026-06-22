@@ -53,33 +53,33 @@ export const PLANS: PlanTier[] = [
   },
   {
     id: 'aspiring',
-    name: 'Aspiring',
-    price: 15,
-    annual: 12,
-    videos: 9,
-    credits: grant(9, 2), // 110 → 11, buffer 2
+    name: 'Starter',
+    price: 9,
+    annual: 7,
+    videos: 10,
+    credits: grant(10, 2), // 120 credits → 12, advertised 10, buffer 2
     brandVoices: 1,
-    blurb: 'First repeatable posts.',
+    blurb: 'Go pro on a budget.',
     features: [
-      '9 remixes / mo',
+      '10 remixes / mo',
+      'No watermark',
       '1 brand voice',
       'Auto-captions',
       'Post to 1 platform',
-      'No watermark',
     ],
   },
   {
     id: 'professional',
-    name: 'Professional',
-    price: 29,
-    annual: 24,
-    videos: 18,
-    credits: grant(18, 3), // 210 → 21, buffer 3
+    name: 'Pro',
+    price: 24,
+    annual: 19,
+    videos: 30,
+    credits: grant(30, 5), // 350 credits → 35, advertised 30, buffer 5
     brandVoices: 1,
     badge: 'Most popular',
     blurb: 'Weekly output, speed.',
     features: [
-      '18 remixes / mo',
+      '30 remixes / mo',
       '1 brand voice',
       'Full auto-edit (captions + cuts)',
       'Publish to all your platforms',
@@ -90,17 +90,17 @@ export const PLANS: PlanTier[] = [
   {
     id: 'agency',
     name: 'Agency',
-    price: 99,
-    annual: 82,
-    videos: 70,
-    credits: grant(70, 8), // 780 → 78, buffer 8
+    price: 79,
+    annual: 65,
+    videos: 120,
+    credits: grant(120, 12), // 1320 credits → 132, advertised 120, buffer 12
     brandVoices: 15,
     badge: 'Best value',
     blurb: 'Many brands, one voice each.',
     features: [
-      '70 remixes / mo',
+      '120 remixes / mo',
       '15 brand voices (one per client)',
-      'Everything in Professional',
+      'Everything in Pro',
       'Switch client brands on web & mobile',
       'Priority render',
       'Add extra brand voices anytime',

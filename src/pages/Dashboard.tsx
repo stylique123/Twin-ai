@@ -57,11 +57,20 @@ export default function Dashboard() {
           <p className="mt-4 max-w-md text-base text-stone">
             Your whole creator loop at a glance, reference in, finished video out.
           </p>
-          {brand && (
-            <p className="mt-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
-              <Sparkles className="h-3.5 w-3.5 text-amber" /> Working as <span className="font-semibold text-cream">@{brand.handle}</span>
-              <Link to="/brands" className="text-amber transition-colors hover:text-cream">Switch →</Link>
-            </p>
+          {(brand || streak > 0) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {brand && (
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
+                  <Sparkles className="h-3.5 w-3.5 text-amber" /> Working as <span className="font-semibold text-cream">@{brand.handle}</span>
+                  <Link to="/brands" className="text-amber transition-colors hover:text-cream">Switch →</Link>
+                </span>
+              )}
+              {streak > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-amber/30 bg-amber/10 px-3 py-1.5 text-xs font-semibold text-amber">
+                  <TrendingUp className="h-3.5 w-3.5" /> {streak}-day streak
+                </span>
+              )}
+            </div>
           )}
         </Reveal>
         <Stagger className="mt-10 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
