@@ -256,9 +256,16 @@ export function postsOwnedBy(
   handle: string,
 ): Record<string, unknown>[] {
   const want = handle.toLowerCase().replace(/^@/, '')
-  return (items ?? []).filter((it) => {
+  const list = items ?? []
+  // If the actor stamps owners on ANY item (IG/TikTok do), an UNSTAMPED item is
+  // almost certainly a related/tagged post — drop it. We only keep unstamped items
+  // when the actor never stamps owners at all (so we can't disprove ownership).
+  // This closes the fail-open hole where a foreign post slipped through unstamped.
+  const anyStamped = list.some((it) => ownerOf(it) !== '')
+  return list.filter((it) => {
     const o = ownerOf(it)
-    return !o || o === want
+    if (o) return o === want
+    return !anyStamped
   })
 }
 
