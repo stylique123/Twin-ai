@@ -166,6 +166,16 @@ Deno.serve(async (req: Request) => {
       .update({ status: 'done', result: { posts_used: posts.length } })
       .eq('id', job.id)
 
+    // Cache this synthesis so other users scanning the same handle skip the paid
+    // scrape + synth. Written to the service-role `dna_cache` (never the
+    // user-writable brand_voices.profile). Best-effort — never block the response.
+    await admin
+      .from('dna_cache')
+      .upsert(
+        { handle: voice.handle, platform: voice.platform, profile, created_at: new Date().toISOString() },
+        { onConflict: 'handle,platform' },
+      )
+
     // The caption voice is live now. Enqueue an audio upgrade: the worker
     // transcribes the creator's top videos and re-synthesizes from their actual
     // SPOKEN voice. Best-effort — if no worker is running, the caption voice
@@ -177,6 +187,9 @@ Deno.serve(async (req: Request) => {
           owner_id: user.id,
           type: 'build_voice',
           status: 'queued',
+          // best-effort upgrade — NEVER retry: each retry re-runs up to 5 paid Apify
+          // transcript calls, so a default 5 attempts could mean 25 paid calls (#10).
+          max_attempts: 1,
           payload: { brand_voice_id: voiceId, handle: voice.handle, platform: voice.platform, urls },
         })
       }
