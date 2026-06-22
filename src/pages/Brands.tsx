@@ -296,7 +296,13 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
     try {
       const { brand_voice_id } = await startDna(handle.trim(), platform)
       // Poll until the voice is ready (or fails), then close back to the list.
+      // Cap the wait (~2 min) so a dropped worker job never spins the overlay
+      // forever — the server-side reaper will still settle the row, and the user
+      // gets an honest "taking longer" message instead of an infinite spinner.
+      let polls = 0
+      const MAX_POLLS = 30
       timer.current = setInterval(async () => {
+        polls++
         try {
           const res = await pollDna(brand_voice_id)
           if (res.status === 'ready') {
@@ -305,6 +311,10 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
           } else if (res.status === 'failed') {
             if (timer.current) clearInterval(timer.current)
             setErr(res.error ?? 'Voice scan failed, check the handle is public and try again.')
+            setPhase('input')
+          } else if (polls >= MAX_POLLS) {
+            if (timer.current) clearInterval(timer.current)
+            setErr('This scan is taking longer than usual. It may still finish — check your brands in a moment, or try again.')
             setPhase('input')
           }
         } catch {

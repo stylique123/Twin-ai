@@ -42,6 +42,7 @@ export default function Studio() {
   const [fidelity, setFidelity] = useState<'close' | 'balanced' | 'loose'>('balanced')
   const [busy, setBusy] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
+  const [slowRead, setSlowRead] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const left = videosFromCredits(profile?.credits ?? 0)
@@ -69,6 +70,9 @@ export default function Studio() {
     if (!url.trim()) return setErr('Paste a reference link first.')
     if (lowCredits) return setErr("You're out of remixes for now, upgrade to keep going.")
     setBusy(true)
+    // Long clips can push the read past the advertised ~1-2 min. After 90s, swap
+    // the footer copy so the progress overlay stays HONEST instead of looking stuck.
+    const slowTimer = setTimeout(() => setSlowRead(true), 90_000)
     try {
       // ALWAYS read the actual video first.
       const transcript_id = await analyzeRealVideo(url.trim())
@@ -84,6 +88,8 @@ export default function Studio() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Generation failed')
     } finally {
+      clearTimeout(slowTimer)
+      setSlowRead(false)
       setBusy(false)
       setPhase('idle')
     }
@@ -208,7 +214,9 @@ export default function Studio() {
                     <BuildProgress
                       stages={STUDIO_STAGES}
                       active={Math.max(0, PHASE_ORDER.indexOf(phase) - 1)}
-                      footer="Reading the real clip takes ~1-2 min. Hang tight, we don't charge a remix unless this finishes."
+                      footer={slowRead
+                        ? "Still reading — longer clips take a little more. We don't charge a remix unless this finishes."
+                        : "Reading the real clip takes ~1-2 min. Hang tight, we don't charge a remix unless this finishes."}
                     />
                   </div>
                 </motion.div>
