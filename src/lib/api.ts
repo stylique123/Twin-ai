@@ -31,6 +31,18 @@ export async function getMetrics(): Promise<MetricsOverview | null> {
   return data as MetricsOverview
 }
 
+export interface CaseStudy {
+  name: string | null; email: string; plan: string; joined: string
+  blueprints: number; edits: number; posts: number; voices: number; remixes: number
+  hours_saved: number; first_seen: string | null; last_seen: string | null; active_days: number
+}
+// Admin-only: one creator's case-study rollup, looked up by email.
+export async function getCaseStudy(email: string): Promise<CaseStudy | null> {
+  const { data, error } = await supabase.functions.invoke('admin-metrics', { body: { email } })
+  if (error) return null
+  return (data as { case_study?: CaseStudy }).case_study ?? null
+}
+
 export async function getProfile(): Promise<Profile | null> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) return null
@@ -322,17 +334,27 @@ export interface Post {
   scheduled_for: string | null
   posted_at: string | null
   external_url: string | null
+  views: number | null
+  likes: number | null
   created_at: string
 }
 
 export async function listPosts(): Promise<Post[]> {
   const { data, error } = await supabase
     .from('posts')
-    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
+    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, views, likes, created_at')
     .order('created_at', { ascending: false })
     .limit(100)
   if (error) return [] // table may not be migrated yet, fail soft
   return (data ?? []) as Post[]
+}
+
+// Self-reported performance: the creator logs how their posted video did. Real
+// auto-pulled numbers land later via platform OAuth; this fills the same columns.
+export async function updatePostStats(postId: string, views: number, likes?: number): Promise<void> {
+  const patch: Record<string, unknown> = { views }
+  if (likes !== undefined) patch.likes = likes
+  try { await supabase.from('posts').update(patch).eq('id', postId) } catch { /* best-effort */ }
 }
 
 export async function markPosted(input: {

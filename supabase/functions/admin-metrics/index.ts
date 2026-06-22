@@ -33,6 +33,21 @@ Deno.serve(async (req: Request) => {
   const { data: isAdmin } = await admin.rpc('is_platform_admin', { p_user: user.id })
   if (!isAdmin) return json({ error: 'Forbidden' }, 403)
 
+  // Case-study lookup: { email } -> one creator's rollup for an investor one-pager.
+  let body: { email?: string } = {}
+  try { body = await req.json() } catch { /* no body = overview */ }
+  const email = (body.email ?? '').trim().toLowerCase()
+  if (email) {
+    const { data: prof } = await admin
+      .from('profiles')
+      .select('id, email, display_name, plan, created_at')
+      .ilike('email', email)
+      .maybeSingle()
+    if (!prof) return json({ error: 'No user with that email' }, 404)
+    const { data: cs } = await admin.rpc('user_case_study', { p_user: prof.id })
+    return json({ case_study: { ...(cs ?? {}), email: prof.email, name: prof.display_name, plan: prof.plan, joined: prof.created_at } })
+  }
+
   const [{ data, error }, { data: funnel }, { data: retention }] = await Promise.all([
     admin.from('metrics_overview').select('*').single(),
     admin.rpc('activation_funnel'),

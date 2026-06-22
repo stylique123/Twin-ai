@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Users, Sparkles, FileText, Clapperboard, Send, Gift, Clock, Activity, Loader2, ShieldAlert } from 'lucide-react'
-import { getMetrics, type MetricsOverview } from '../lib/api'
+import { getMetrics, getCaseStudy, type MetricsOverview, type CaseStudy } from '../lib/api'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
@@ -12,6 +12,18 @@ export default function Metrics() {
   const [m, setM] = useState<MetricsOverview | null>(null)
   const [loading, setLoading] = useState(true)
   const [denied, setDenied] = useState(false)
+  const [csEmail, setCsEmail] = useState('')
+  const [cs, setCs] = useState<CaseStudy | null>(null)
+  const [csBusy, setCsBusy] = useState(false)
+  const [csErr, setCsErr] = useState('')
+
+  const lookup = async () => {
+    if (!csEmail.trim()) return
+    setCsBusy(true); setCsErr(''); setCs(null)
+    const r = await getCaseStudy(csEmail.trim())
+    if (r) setCs(r); else setCsErr('No user with that email, or no activity yet.')
+    setCsBusy(false)
+  }
 
   useEffect(() => {
     getMetrics()
@@ -132,7 +144,39 @@ export default function Metrics() {
             </Reveal>
           )
         })()}
-        <p className="mt-8 text-xs text-stone">Funnel = distinct users per step. Retention = active ≥ N days after first touch. Query analytics_events for cohorts + per-user case studies.</p>
+        <Reveal delay={0.12}>
+          <div className="glass mt-6 p-6">
+            <h2 className="font-heading text-base text-cream">Case-study lookup</h2>
+            <p className="mt-1 text-xs text-stone">Pull one creator's numbers for an investor one-pager.</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input value={csEmail} onChange={(e) => setCsEmail(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') void lookup() }} placeholder="creator@email.com" className="field sm:max-w-xs" />
+              <button onClick={lookup} disabled={csBusy} className="btn-gradient text-sm disabled:opacity-60">
+                {csBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Look up
+              </button>
+            </div>
+            {csErr && <p className="mt-2 text-xs text-coral">{csErr}</p>}
+            {cs && (
+              <div className="mt-4 rounded-xl border border-white/8 bg-white/[0.02] p-5">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-heading text-cream">{cs.name || cs.email}</span>
+                  <span className="text-xs text-stone">{cs.plan} · joined {new Date(cs.joined).toLocaleDateString()}</span>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
+                  {[
+                    { l: 'Hours saved', v: cs.hours_saved }, { l: 'Blueprints', v: cs.blueprints }, { l: 'Edits', v: cs.edits },
+                    { l: 'Posts', v: cs.posts }, { l: 'Voices', v: cs.voices }, { l: 'Remixes', v: cs.remixes }, { l: 'Active days', v: cs.active_days },
+                  ].map((s) => (
+                    <div key={s.l} className="rounded-lg border border-white/8 bg-white/[0.02] p-3 text-center">
+                      <div className="font-display text-2xl text-cream">{s.v}</div>
+                      <div className="mt-0.5 text-[10px] text-stone">{s.l}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </Reveal>
+        <p className="mt-8 text-xs text-stone">Funnel = distinct users per step. Retention = active ≥ N days after first touch. Query analytics_events for deeper cohorts.</p>
       </div>
     </main>
   )

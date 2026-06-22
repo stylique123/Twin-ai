@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Wand2, LayoutGrid, Clapperboard, Send, Sparkles, ArrowUpRight, FileText, Loader2, TrendingUp, Zap,
-  Gift, Copy, Check,
+  Gift, Copy, Check, Clock, Eye,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getDashboardStats, getReferralCode, listBrandVoices, listGenerations, listPosts, type DashboardStats, type Post } from '../lib/api'
+import { getDashboardStats, getReferralCode, listBrandVoices, listGenerations, listPosts, updatePostStats, type DashboardStats, type Post } from '../lib/api'
 import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
@@ -38,6 +38,10 @@ export default function Dashboard() {
   }, [credits])
 
   const streak = postingStreak(posts)
+  // Creator-facing value: hours saved (30 min/blueprint + 90 min/edit) and the
+  // top-performing post by their self-reported views.
+  const hoursSaved = stats ? Math.round(((stats.blueprints ?? 0) * 0.5 + (stats.edits ?? 0) * 1.5)) : 0
+  const topId = posts.reduce((best, p) => ((p.views ?? 0) > 0 && (p.views ?? 0) > (posts.find((x) => x.id === best)?.views ?? 0) ? p.id : best), '')
 
   const rawName = profile?.email?.split('@')[0] ?? 'creator'
   const name = rawName.charAt(0).toUpperCase() + rawName.slice(1)
@@ -57,8 +61,13 @@ export default function Dashboard() {
           <p className="mt-4 max-w-md text-base text-stone">
             Your whole creator loop at a glance, reference in, finished video out.
           </p>
-          {(brand || streak > 0) && (
+          {(brand || streak > 0 || hoursSaved > 0) && (
             <div className="mt-3 flex flex-wrap items-center gap-2">
+              {hoursSaved > 0 && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-3 py-1.5 text-xs font-semibold text-teal">
+                  <Clock className="h-3.5 w-3.5" /> ~{hoursSaved}h saved
+                </span>
+              )}
               {brand && (
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
                   <Sparkles className="h-3.5 w-3.5 text-amber" /> Working as <span className="font-semibold text-cream">@{brand.handle}</span>
@@ -131,11 +140,7 @@ export default function Dashboard() {
               {posts.length === 0 ? <EmptyPublishing /> : (
                 <div className="relative mt-5 space-y-2">
                   {posts.slice(0, 6).map((p) => (
-                    <div key={p.id} className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.025] p-3 transition-colors hover:border-white/[0.12]">
-                      <span className="w-16 shrink-0 font-heading text-xs capitalize text-teal">{p.platform}</span>
-                      <span className="min-w-0 flex-1 truncate text-sm text-cream">{p.caption || 'Posted'}</span>
-                      <span className="shrink-0 text-xs text-stone">{new Date(p.posted_at ?? p.created_at).toLocaleDateString()}</span>
-                    </div>
+                    <PostRow key={p.id} p={p} isTop={p.id === topId} />
                   ))}
                 </div>
               )}
@@ -210,6 +215,39 @@ function EmptyBlueprints() {
       <p className="font-heading text-sm text-cream">No blueprints yet</p>
       <p className="mt-2 max-w-[220px] text-xs leading-relaxed text-stone">Paste any video link and get a shootable script tailored to your style.</p>
       <Link to="/app" className="btn-gradient mt-5 inline-flex items-center gap-2 text-sm"><Wand2 className="h-3.5 w-3.5" /> Make your first one</Link>
+    </div>
+  )
+}
+
+// A logged post with self-reported performance. The creator enters how it did
+// (views) until real platform numbers are pulled in via OAuth later; the top
+// performer is badged so they can see which format actually won.
+function PostRow({ p, isTop }: { p: Post; isTop: boolean }) {
+  const [views, setViews] = useState(p.views != null ? String(p.views) : '')
+  const [saved, setSaved] = useState(false)
+  const save = async () => {
+    const n = parseInt(views.replace(/[^0-9]/g, ''), 10)
+    if (!Number.isFinite(n)) return
+    await updatePostStats(p.id, n)
+    setSaved(true); setTimeout(() => setSaved(false), 1200)
+  }
+  return (
+    <div className={cn('flex items-center gap-3 rounded-xl border bg-white/[0.025] p-3 transition-colors', isTop ? 'border-amber/40' : 'border-white/[0.06] hover:border-white/[0.12]')}>
+      <span className="w-14 shrink-0 font-heading text-xs capitalize text-teal">{p.platform}</span>
+      <span className="min-w-0 flex-1 truncate text-sm text-cream">{isTop && <span title="Top performer">🏆 </span>}{p.caption || 'Posted'}</span>
+      <div className="flex shrink-0 items-center gap-1">
+        <Eye className="h-3 w-3 text-stone" />
+        <input
+          value={views}
+          onChange={(e) => setViews(e.target.value)}
+          onBlur={save}
+          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+          inputMode="numeric"
+          placeholder="views"
+          className="w-16 border-b border-white/10 bg-transparent text-right text-xs text-cream outline-none transition-colors placeholder:text-stone/50 focus:border-teal"
+        />
+        {saved && <Check className="h-3 w-3 text-teal" />}
+      </div>
     </div>
   )
 }
