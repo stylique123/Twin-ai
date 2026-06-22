@@ -607,7 +607,7 @@ export default function Record() {
                         <Download className="h-4 w-4" /> Download edited
                       </a>
                       {isFree && (
-                        <Link to="/#pricing" className="chip border-amber/40 text-amber" title="Free exports include a watermark">
+                        <Link to="/settings" className="chip border-amber/40 text-amber" title="Free exports include a watermark">
                           <Sparkles className="h-3.5 w-3.5" /> Remove watermark
                         </Link>
                       )}

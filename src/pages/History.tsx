@@ -100,6 +100,12 @@ export default function History() {
               <Link to="/app" className="btn-gradient mt-6">Make your first one</Link>
             </div>
           </Reveal>
+        ) : displayed.length === 0 ? (
+          <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">
+            {filter === 'videos'
+              ? 'No finished videos yet. Record and auto-edit a blueprint and it shows up here.'
+              : 'Nothing un-recorded here — every blueprint is already edited. Switch to “All”.'}
+          </div>
         ) : (
           <Stagger immediate className="mt-10 grid gap-4 sm:grid-cols-2" gap={0.06}>
             {displayed.map((g) => {

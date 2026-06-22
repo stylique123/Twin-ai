@@ -196,7 +196,7 @@ export default function Studio() {
                 {/* Value-moment nudge: catch them on their LAST remix with an
                     aspirational upgrade, not a hard wall at zero. */}
                 {left <= 1 && !lowCredits && (
-                  <Link to="/#pricing" className="text-xs font-medium text-amber transition-colors hover:text-cream">
+                  <Link to="/settings" className="text-xs font-medium text-amber transition-colors hover:text-cream">
                     Last one — upgrade for more →
                   </Link>
                 )}
