@@ -3,6 +3,17 @@ import type { Blueprint, BrandVoice, CreatorDNA, EditDecisionList, Generation, P
 
 // ---- Profile / Creator DNA ----------------------------------------------
 
+// ---- Analytics (data layer) ----------------------------------------------
+// Fire-and-forget client event logging for the metrics/data room. NEVER throws —
+// analytics must never break a user action. Server events are logged service-side.
+export async function logEvent(event: string, props: Record<string, unknown> = {}, timeSavedMinutes = 0): Promise<void> {
+  try {
+    const { data: auth } = await supabase.auth.getUser()
+    if (!auth.user) return
+    await supabase.from('analytics_events').insert({ user_id: auth.user.id, event, props, time_saved_minutes: timeSavedMinutes })
+  } catch { /* best-effort */ }
+}
+
 export async function getProfile(): Promise<Profile | null> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) return null

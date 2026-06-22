@@ -176,6 +176,12 @@ Deno.serve(async (req: Request) => {
         { onConflict: 'handle,platform' },
       )
 
+    // Data layer: a voice was built (activation funnel).
+    await admin
+      .from('analytics_events')
+      .insert({ user_id: user.id, event: 'voice_built', time_saved_minutes: 15, props: { brand_voice_id: voiceId, platform: voice.platform } })
+      .then(() => {}, () => {})
+
     // The caption voice is live now. Enqueue an audio upgrade: the worker
     // transcribes the creator's top videos and re-synthesizes from their actual
     // SPOKEN voice. Best-effort — if no worker is running, the caption voice

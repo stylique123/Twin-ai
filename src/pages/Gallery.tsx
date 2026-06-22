@@ -5,7 +5,7 @@ import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
 import { useAuth } from '../context/AuthContext'
-import { listGalleryItems, listBrandVoices, type GalleryItem } from '../lib/api'
+import { listGalleryItems, listBrandVoices, logEvent, type GalleryItem } from '../lib/api'
 import { cn } from '../lib/cn'
 
 // Base niches we always seed the filter with. The live list GROWS beyond these
@@ -319,7 +319,12 @@ export default function Gallery() {
   // Deep-link into the Studio with the reference prefilled. Studio reads `ref`
   // from the query string, so pass it there (a `state` payload was silently
   // dropped, which left Studio empty when you clicked Remix).
-  const remix = (c: Card) => navigate(`/app?ref=${encodeURIComponent(c.url)}`)
+  const remix = (c: Card) => {
+    // The remix-click is the core interaction signal — logging it builds the data
+    // set that lets discovery graduate from content-based to collaborative filtering.
+    void logEvent('gallery_remix', { url: c.url, niche: c.niche, creator: c.creator, score: scores.get(c.id)?.score })
+    navigate(`/app?ref=${encodeURIComponent(c.url)}`)
+  }
 
   return (
     <main className="relative overflow-clip">

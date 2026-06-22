@@ -46,6 +46,13 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   }
   await db.from('brand_voices').update({ status: 'ready', profile, error: null }).eq('id', voiceId)
 
+  // Data layer: a voice was built (activation funnel).
+  if (ownerId) {
+    await db.from('analytics_events')
+      .insert({ user_id: ownerId, event: 'voice_built', time_saved_minutes: 15, props: { brand_voice_id: voiceId, platform } })
+      .then(() => {}, () => {})
+  }
+
   // Cache the synthesis (service-role `dna_cache`) so other users scanning this
   // handle skip the scrape + synth. Best-effort.
   try {

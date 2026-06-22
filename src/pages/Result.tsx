@@ -14,7 +14,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, fetchEdl, getJob } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, fetchEdl, getJob, logEvent } from '../lib/api'
 import type { Generation, EditDecisionList } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { RefinePanel } from '../components/RefinePanel'
@@ -389,6 +389,7 @@ function PublishRow({
     try {
       await markPosted({ generationId, platform, caption })
       setPosted(true)
+      void logEvent('post_logged', { platform, generation_id: generationId })
     } catch {
       setPostErr(true)
     } finally {

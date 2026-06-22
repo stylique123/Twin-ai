@@ -428,6 +428,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       .single()
     if (insErr) throw insErr
 
+    // Data layer: record the blueprint + the time it saved (≈30 min scripting) for
+    // product metrics / the data room. Best-effort — never fail the response on it.
+    await admin
+      .from('analytics_events')
+      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, real_video: !!transcript_id } })
+      .then(() => {}, () => {})
+
     return json(gen)
   } catch (err) {
     // Refund credits if anything after the spend failed. Log loudly if the

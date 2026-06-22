@@ -169,6 +169,12 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       }
     }
 
+    // Data layer: record the render + the editing time it saved (≈90 min on the
+    // first edit; remakes/refines don't re-bank the saving). Best-effort.
+    await db.from('analytics_events')
+      .insert({ user_id: job.owner_id, event: 'edit_rendered', time_saved_minutes: isFirstEdit ? 90 : 0, props: { generation_id: payload.generation_id ?? null, premium: finalUrl !== url, variation } })
+      .then(() => {}, () => {})
+
     return { output_path: outputPath, output_url: finalUrl, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl, edl_path: edlPath }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
