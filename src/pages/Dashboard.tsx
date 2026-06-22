@@ -6,7 +6,7 @@ import {
   Gift, Copy, Check, Clock, Eye,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getDashboardStats, getReferralCode, listBrandVoices, listGenerations, listPosts, updatePostStats, type DashboardStats, type Post } from '../lib/api'
+import { getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, updatePostStats, type BrandStats, type DashboardStats, type Post } from '../lib/api'
 import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
@@ -18,25 +18,37 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recent, setRecent] = useState<Generation[]>([])
   const [posts, setPosts] = useState<Post[]>([])
-  const [brand, setBrand] = useState<BrandVoice | null>(null)
+  const [voices, setVoices] = useState<BrandVoice[]>([])
+  const [selectedBrand, setSelectedBrand] = useState('') // '' = all brands
+  const [brandStats, setBrandStats] = useState<BrandStats | null>(null)
   const [loading, setLoading] = useState(true)
 
   const credits = profile?.credits ?? 0
 
   useEffect(() => {
     Promise.all([getDashboardStats(credits), listGenerations(), listPosts(), listBrandVoices().catch(() => [])])
-      .then(([s, g, p, voices]) => {
+      .then(([s, g, p, vs]) => {
         setStats(s)
         setRecent(g.slice(0, 5))
         setPosts(p)
-        const ready = (voices as BrandVoice[]).filter((v) => v.status === 'ready')
-        setBrand(ready.find((v) => v.is_default) ?? ready[0] ?? null)
+        setVoices((vs as BrandVoice[]).filter((v) => v.status === 'ready'))
       })
       .catch(() => {})
       .finally(() => setLoading(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credits])
 
+  // Agency view: scope the headline counts to one client brand.
+  useEffect(() => {
+    if (!selectedBrand) { setBrandStats(null); return }
+    getBrandStats(selectedBrand).then(setBrandStats).catch(() => setBrandStats(null))
+  }, [selectedBrand])
+
+  const brand = voices.find((v) => v.is_default) ?? voices[0] ?? null
+  const scoped = !!(selectedBrand && brandStats)
+  const bpVal = scoped ? brandStats!.blueprints : stats?.blueprints
+  const edVal = scoped ? brandStats!.edits : stats?.edits
+  const poVal = scoped ? brandStats!.posts : stats?.posts
   const streak = postingStreak(posts)
   // Creator-facing value: hours saved (30 min/blueprint + 90 min/edit) and the
   // top-performing post by their self-reported views.
@@ -82,10 +94,21 @@ export default function Dashboard() {
             </div>
           )}
         </Reveal>
-        <Stagger className="mt-10 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
-          <StatCard icon={FileText} glow="amber" label="Blueprints" value={stats?.blueprints} loading={loading} />
-          <StatCard icon={Clapperboard} glow="coral" label="Edits rendered" value={stats?.edits} loading={loading} />
-          <StatCard icon={Send} glow="teal" label="Posts logged" value={stats?.posts} loading={loading} />
+        {voices.length > 1 && (
+          <Reveal>
+            <div className="mt-8 flex flex-wrap items-center gap-2">
+              <span className="text-xs text-stone">View:</span>
+              <button onClick={() => setSelectedBrand('')} className={cn('chip', !selectedBrand ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:text-cream')}>All brands</button>
+              {voices.map((v) => (
+                <button key={v.id} onClick={() => setSelectedBrand(v.id)} className={cn('chip', selectedBrand === v.id ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:text-cream')}>@{v.handle}</button>
+              ))}
+            </div>
+          </Reveal>
+        )}
+        <Stagger className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
+          <StatCard icon={FileText} glow="amber" label="Blueprints" value={bpVal} loading={loading} />
+          <StatCard icon={Clapperboard} glow="coral" label="Edits rendered" value={edVal} loading={loading} />
+          <StatCard icon={Send} glow="teal" label="Posts logged" value={poVal} loading={loading} />
           <StatCard icon={Sparkles} glow="amber" label="Remixes left" value={stats?.recreationsLeft} loading={loading} />
         </Stagger>
         <Reveal delay={0.1}>

@@ -451,6 +451,14 @@ export async function startCheckout(plan: string): Promise<CheckoutResult> {
   return data as CheckoutResult
 }
 
+export interface BrandStats { blueprints: number; edits: number; posts: number }
+// Per-client stats scoped to one brand voice (agency view). Owner-checked server-side.
+export async function getBrandStats(brandVoiceId: string): Promise<BrandStats | null> {
+  const { data, error } = await supabase.rpc('brand_stats', { p_brand: brandVoiceId })
+  if (error) return null
+  return data as BrandStats | null
+}
+
 export async function startDna(handle: string, platform: Platform): Promise<StartDnaResult> {
   const { data, error } = await supabase.functions.invoke('start-dna', {
     body: { handle, platform, make_default: true },
