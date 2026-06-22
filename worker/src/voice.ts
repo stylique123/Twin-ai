@@ -77,14 +77,17 @@ const postsSchema = obj(
     tone: str,
     pacing: str,
     hook_style: str,
+    hook_patterns: arr(str),
     editing_style: str,
     vocabulary: arr(str),
     recurring_ctas: arr(str),
+    pov: arr(str),
+    enemy: str,
     dos: arr(str),
     donts: arr(str),
     sample_hooks: arr(str),
   },
-  ['summary', 'niche', 'sub_niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'vocabulary', 'recurring_ctas', 'dos', 'donts', 'sample_hooks'],
+  ['summary', 'niche', 'sub_niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'hook_patterns', 'vocabulary', 'recurring_ctas', 'pov', 'enemy', 'dos', 'donts', 'sample_hooks'],
 )
 
 const POSTS_SYSTEM = `You are TwinAI's Brand-DNA engine. From a creator's recent posts you infer how THEY sound, so we can later write new scripts in their exact voice.
@@ -94,11 +97,13 @@ Hard rules:
 - niche = the BROAD category (e.g. Fitness, Personal Finance, Fashion Tech, Food). sub_niche = the SPECIFIC angle within it that makes them distinct and is what their audience actually searches for (e.g. calisthenics for beginners, debt payoff for couples, AI virtual try-on, high-protein meal prep). Keep sub_niche to 2-4 words, concrete and searchable, never a sentence.
 - LEARN FROM THEIR WINNERS. The posts are ranked by reach, best first; the ones marked [TOP PERFORMER] are their biggest hits. Weight those hardest. What a creator's TOP posts do (the angle, the hook move, the emotional register) is what actually works for THEIR audience. Average posts dilute the signal, so let the winners lead.
 - hook_style must be their repeatable HOOK FORMULA written as a reusable fill-in template derived from their best openers, e.g. "[surprising number] + [who it is for] + comment [KEYWORD]" or "I did [X] so you do not have to. Here is what happened." Not adjectives, an actual template someone could fill in.
+- hook_patterns = the 2-3 DISTINCT opener MOVES this creator actually uses (a real creator has several, not one). Name each move and include a real example lifted from their captions, e.g. "Contrarian claim — 'Everyone is wrong about protein timing'", "Number drop — '3 lifts that fixed my back'", "Confession — 'I wasted 2 years doing this'", "Direct callout — 'If you train fasted, stop'". These let us write 5 hooks that feel different instead of one template five times.
+- POV = the 2-3 recurring BELIEFS or contrarian takes they repeat (the "thing they always say"), and enemy = the conventional wisdom, bad advice, or villain they push against. This is what makes their content unmistakably THEIRS: two creators with identical tone differ by what they believe and what they attack. Extract both from the posts, never invent a stance the captions do not support.
 - Also infer their AUDIENCE (who they make content for), that audience's core PAIN (the problem they feel), their DREAM OUTCOME (what they actually want), and the creator's OFFER (what they sell or the action they push). Infer these from the posts, bio, hashtags and niche even when not stated outright. Be specific, not generic.
 - Be concrete and specific to this creator — no generic "be authentic" filler. Every field should be unmistakably about THIS creator and useless for anyone else.
-- vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each one clearly using their hook formula and vocabulary.
+- vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each drawing on a DIFFERENT hook_pattern and using their vocabulary.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
-- If the sample is thin, infer sensibly from what's there rather than refusing.`
+- If the sample is thin, infer sensibly from what's there rather than refusing. For pov/enemy specifically, prefer a shorter honest list over inventing beliefs the posts do not show.`
 
 export async function synthesizeVoiceFromPosts(
   handle: string,
