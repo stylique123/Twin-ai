@@ -45,11 +45,11 @@ export const PLANS: PlanTier[] = [
     name: 'Free',
     price: 0,
     annual: null,
-    videos: 3,
-    credits: grant(3, 0), // 30 credits → 3 recreations; advertised count matches what's granted
+    videos: 5,
+    credits: grant(5, 0), // 50 credits → 5 remixes; advertised count matches what's granted
     brandVoices: 1,
     blurb: 'See it work, free.',
-    features: ['3 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
+    features: ['5 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
     id: 'aspiring',

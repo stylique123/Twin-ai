@@ -257,7 +257,7 @@ function HeroSection() {
               transition={{ duration: 1, delay: 0.34 }}
               className="mt-7 text-sm leading-relaxed text-sand"
             >
-              3 free remixes, no card. A remix only counts when it finishes — if the read fails, it's on us.
+              5 free remixes, no card. A remix only counts when it finishes — if the read fails, it's on us.
             </motion.p>
           </div>
 
@@ -830,7 +830,7 @@ function CTASection() {
             </Link>
             <a href="#pricing" className="btn-ghost text-base px-8 py-4">See pricing</a>
           </div>
-          <p className="mt-4 text-sm text-stone">3 free remixes. No card required.</p>
+          <p className="mt-4 text-sm text-stone">5 free remixes. No card required.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-stone">
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-teal" /> Finish-or-it's-free
