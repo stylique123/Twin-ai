@@ -11,8 +11,11 @@ export interface VoiceProfile {
   tone: string
   pacing: string
   hook_style: string
+  hook_patterns: string[]
   vocabulary: string[]
   recurring_ctas: string[]
+  pov: string[]
+  enemy: string
   dos: string[]
   donts: string[]
   sample_hooks: string[]
@@ -26,19 +29,24 @@ const schema = obj(
     tone: str,
     pacing: str,
     hook_style: str,
+    hook_patterns: arr(str),
     vocabulary: arr(str),
     recurring_ctas: arr(str),
+    pov: arr(str),
+    enemy: str,
     dos: arr(str),
     donts: arr(str),
     sample_hooks: arr(str),
   },
-  ['summary', 'niche', 'tone', 'pacing', 'hook_style', 'vocabulary', 'recurring_ctas', 'dos', 'donts', 'sample_hooks'],
+  ['summary', 'niche', 'tone', 'pacing', 'hook_style', 'hook_patterns', 'vocabulary', 'recurring_ctas', 'pov', 'enemy', 'dos', 'donts', 'sample_hooks'],
 )
 
 const SYSTEM = `You are TwinAI's Brand-DNA engine. You are given VERBATIM TRANSCRIPTS of how a creator
 actually speaks on camera — the strongest possible signal for their voice.
 - Capture how THEY talk: tone, pacing, real sentence rhythm, signature words/phrases, how they open and close.
 - vocabulary = 4-8 actual words/phrases they really say. sample_hooks = 3 fresh hooks in their exact spoken style.
+- hook_patterns = 2-3 DISTINCT opener moves they actually use on camera, each with a real example from the transcripts (contrarian claim / number drop / confession / direct callout). This is what makes their hooks theirs, not a template.
+- pov = the 2-3 BELIEFS or contrarian takes they repeat out loud, and enemy = the conventional wisdom or bad advice they argue against. Spoken delivery is where a creator's real stance comes through, so weight it heavily. Never invent a stance the transcripts do not support.
 - dos/donts = practical guardrails to stay on-voice. Keep every string short, concrete, creator-specific. No generic filler.`
 
 export async function synthesizeVoiceFromAudio(

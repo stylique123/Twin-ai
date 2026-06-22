@@ -365,6 +365,14 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
         <ChipList label="Recurring CTAs" items={vp.recurring_ctas} onChange={(v) => setList('recurring_ctas', v)} />
         <ChipList label="Do" items={vp.dos} onChange={(v) => setList('dos', v)} />
         <ChipList label="Don’t" items={vp.donts} onChange={(v) => setList('donts', v)} />
+        {/* The distinctive fields — what makes a hook unmistakably YOURS. Editable
+            so a wrong stance can't silently poison every future blueprint. */}
+        <Labeled label="What you push against (your “enemy”)">
+          <input className="field" value={vp.enemy ?? ''} onChange={(e) => setField('enemy', e.target.value)} placeholder="the bad advice or take you argue against" />
+        </Labeled>
+        <ChipList label="Your point of view" items={vp.pov ?? []} onChange={(v) => setList('pov', v)} />
+        <ChipList label="Hook patterns" items={vp.hook_patterns ?? []} onChange={(v) => setList('hook_patterns', v)} />
+        <p className="text-xs text-stone">We’ll sharpen this from how you actually talk on camera within a few minutes — your spoken voice is the strongest signal.</p>
       </div>
 
       {err && <p className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
