@@ -64,10 +64,11 @@ Deno.serve(async (req: Request) => {
   const voiceId = (body.brand_voice_id ?? '').trim()
   if (!voiceId) return json({ error: 'brand_voice_id is required' }, 400)
 
-  // Load the voice (ownership enforced) and its job.
+  // Load the voice (ownership enforced). Select only the columns we use — `select('*')`
+  // pulled every column incl. the large profile JSON on every poll.
   const { data: voice } = await admin
     .from('brand_voices')
-    .select('*')
+    .select('status, handle, platform, error, profile')
     .eq('id', voiceId)
     .eq('owner_id', user.id)
     .single()
@@ -77,10 +78,12 @@ Deno.serve(async (req: Request) => {
   if (voice.status === 'ready') return json({ status: 'ready', profile: voice.profile })
   if (voice.status === 'failed') return json({ status: 'failed', error: voice.error })
 
+  // One lookup for whichever DNA job exists: Apify `build_dna` (Instagram/YouTube)
+  // or worker `scrape_dna` (TikTok). Avoids a second round-trip on the TikTok path.
   const { data: job } = await admin
     .from('jobs')
-    .select('*')
-    .eq('type', 'build_dna')
+    .select('id, type, attempts, payload')
+    .in('type', ['build_dna', 'scrape_dna'])
     .eq('owner_id', user.id)
     .contains('payload', { brand_voice_id: voiceId })
     .order('created_at', { ascending: false })
@@ -88,21 +91,13 @@ Deno.serve(async (req: Request) => {
     .maybeSingle()
 
   if (!job) {
-    // Worker-built DNA (e.g. TikTok via yt-dlp) has no Apify `build_dna` job — the
-    // worker updates the brand_voice row directly (ready/failed), which the early
-    // returns above report. While it's still working, just say building.
-    const { data: workerJob } = await admin
-      .from('jobs')
-      .select('id')
-      .eq('type', 'scrape_dna')
-      .eq('owner_id', user.id)
-      .contains('payload', { brand_voice_id: voiceId })
-      .limit(1)
-      .maybeSingle()
-    if (workerJob) return json({ status: 'building' })
     await admin.from('brand_voices').update({ status: 'failed', error: 'Lost the scan job.' }).eq('id', voiceId)
     return json({ status: 'failed', error: 'Lost the scan job.' }, 200)
   }
+
+  // Worker-built DNA (TikTok via yt-dlp) has no Apify run to poll — the worker
+  // updates the row directly (ready/failed), which the early returns above report.
+  if (job.type === 'scrape_dna') return json({ status: 'building' })
 
   const fail = async (msg: string) => {
     await admin.from('jobs').update({ status: 'failed', error: msg }).eq('id', job.id)
@@ -146,6 +141,20 @@ Deno.serve(async (req: Request) => {
       )
     }
     const bio = extractProfileBio(ownItems)
+
+    // Atomically claim the synthesis so two concurrent polls (interval + a manual
+    // refresh) can't both pay for a Gemini call: only the poll that flips the job
+    // running->synthesizing proceeds; the other reports building. A stuck claim
+    // self-heals via the MAX_ATTEMPTS check above.
+    const { data: claim } = await admin
+      .from('jobs')
+      .update({ status: 'synthesizing' })
+      .eq('id', job.id)
+      .eq('status', 'running')
+      .select('id')
+      .maybeSingle()
+    if (!claim) return json({ status: 'building' })
+
     const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts, bio)
 
     await admin
