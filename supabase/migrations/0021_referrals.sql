@@ -11,9 +11,12 @@
 alter table public.profiles add column if not exists referral_code text unique;
 
 -- Short uppercase alphanumeric code from random bytes.
+-- search_path includes `extensions` because gen_random_bytes (pgcrypto) lives in
+-- the extensions schema on Supabase, not public — without it the function can't
+-- resolve the call at creation time.
 create or replace function public.gen_referral_code()
 returns text
-language sql volatile set search_path = public
+language sql volatile set search_path = public, extensions
 as $$
   select upper(substr(replace(replace(replace(encode(gen_random_bytes(8), 'base64'), '+', ''), '/', ''), '=', ''), 1, 8));
 $$;
