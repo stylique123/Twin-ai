@@ -16,6 +16,7 @@ import Record from './pages/Record'
 import Dashboard from './pages/Dashboard'
 import Brands from './pages/Brands'
 import Settings from './pages/Settings'
+import Billing from './pages/Billing'
 import Metrics from './pages/Metrics'
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -67,6 +68,7 @@ export default function App() {
     location.pathname.startsWith('/gallery') ||
     location.pathname.startsWith('/record') ||
     location.pathname.startsWith('/result') ||
+    location.pathname.startsWith('/billing') ||
     location.pathname.startsWith('/settings')
 
   return (
@@ -110,6 +112,10 @@ export default function App() {
           <Route
             path="/settings"
             element={<Protected><AppShell><Page><Settings /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/billing"
+            element={<Protected><AppShell><Page><Billing /></Page></AppShell></Protected>}
           />
           <Route
             path="/metrics"

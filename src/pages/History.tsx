@@ -12,10 +12,15 @@ type Filter = 'all' | 'scripts' | 'videos'
 export default function History() {
   const [items, setItems] = useState<Generation[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
   const [urls, setUrls] = useState<Record<string, string>>({})
   const [filter, setFilter] = useState<Filter>('all')
 
-  useEffect(() => {
+  // Pulled out so the error state can offer a real retry. A failed fetch must NOT
+  // fall through to the empty state — a network blip would otherwise look exactly
+  // like "you have no work yet" and scare a returning creator.
+  const load = () => {
+    setLoading(true); setError(false)
     listGenerations()
       .then(async (gens) => {
         setItems(gens)
@@ -23,9 +28,11 @@ export default function History() {
         const paths = gens.flatMap((g) => [g.thumb_path, g.edit_path].filter(Boolean) as string[])
         if (paths.length) setUrls(await signEditUrls(paths).catch(() => ({})))
       })
-      .catch(() => setItems([]))
+      .catch(() => setError(true))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { load() }, [])
 
   const editedCount = items.filter((g) => g.edit_path).length
   const displayed = items.filter((g) =>
@@ -89,6 +96,17 @@ export default function History() {
           <div className="mt-12 grid place-items-center text-sand">
             <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</span>
           </div>
+        ) : error ? (
+          <Reveal delay={0.1}>
+            <div className="glass mt-10 grid place-items-center p-12 text-center">
+              <span className="grid h-14 w-14 place-items-center rounded-2xl bg-coral/15">
+                <Video className="h-6 w-6 text-coral" />
+              </span>
+              <p className="mt-4 font-heading text-lg">Couldn't load your library.</p>
+              <p className="mt-1 text-sm text-stone">This is usually a brief connection hiccup — your work is safe.</p>
+              <button onClick={load} className="btn-gradient mt-6">Try again</button>
+            </div>
+          </Reveal>
         ) : items.length === 0 ? (
           <Reveal delay={0.1}>
             <div className="glass mt-10 grid place-items-center p-12 text-center">

@@ -22,10 +22,14 @@ export default function Dashboard() {
   const [selectedBrand, setSelectedBrand] = useState('') // '' = all brands
   const [brandStats, setBrandStats] = useState<BrandStats | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState(false)
 
   const credits = profile?.credits ?? 0
 
-  useEffect(() => {
+  // Extracted so a failed load surfaces a real retry instead of leaving every
+  // stat stuck on "…" with no way to recover.
+  const load = () => {
+    setLoading(true); setError(false)
     Promise.all([getDashboardStats(credits), listGenerations(), listPosts(), listBrandVoices().catch(() => [])])
       .then(([s, g, p, vs]) => {
         setStats(s)
@@ -33,8 +37,12 @@ export default function Dashboard() {
         setPosts(p)
         setVoices((vs as BrandVoice[]).filter((v) => v.status === 'ready'))
       })
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credits])
 
@@ -94,6 +102,12 @@ export default function Dashboard() {
             </div>
           )}
         </Reveal>
+        {error && !loading && (
+          <div className="mt-6 flex flex-col gap-3 rounded-card border border-coral/30 bg-coral/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-cream">We couldn't load your dashboard just now — usually a brief connection hiccup.</p>
+            <button onClick={load} className="btn-gradient shrink-0 self-start text-sm sm:self-auto">Try again</button>
+          </div>
+        )}
         {voices.length > 1 && (
           <Reveal>
             <div className="mt-8 flex flex-wrap items-center gap-2">

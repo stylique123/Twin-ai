@@ -46,12 +46,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Best-effort: never let a slow/stuck profile fetch block the whole app. The
   // route guards only need `session`; the profile fills in when it arrives.
+  // Retry a couple of times with short backoff — on first load the access token
+  // may still be refreshing, and a single transient miss would otherwise leave
+  // the user staring at a profile with no credits/plan until they navigate.
   const refreshProfile = async () => {
-    try {
-      const p = await getProfile()
-      setProfile(p)
-    } catch {
-      /* leave profile as-is — auth must never hang on the profile query */
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const p = await getProfile()
+        setProfile(p)
+        return
+      } catch {
+        if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)))
+        /* else leave profile as-is — auth must never hang on the profile query */
+      }
     }
   }
 
