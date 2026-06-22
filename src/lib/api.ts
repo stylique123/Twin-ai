@@ -87,6 +87,9 @@ export interface GenerateInput {
   reference_url: string
   reference_note: string
   fidelity: 'close' | 'balanced' | 'loose'
+  // How the script should SOUND (delivery energy), independent of fidelity (how
+  // close to the reference structure). Optional; defaults to 'balanced' server-side.
+  tone?: 'understated' | 'balanced' | 'punchy'
   // Optional: when the reference was analyzed by the worker (real transcript),
   // pass its transcript_id so the blueprint is built from the actual video.
   transcript_id?: string
