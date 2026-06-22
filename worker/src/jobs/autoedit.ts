@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { db, updateJobProgress, type Job } from '../db.js'
 import { env } from '../env.js'
-import { autoEdit } from '../edit.js'
+import { autoEdit, applyWatermark } from '../edit.js'
 import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
 
@@ -23,8 +23,21 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
   const localTake = join(dir, `take.${ext}`)
   let renderFile: string | null = null
   let thumbRender: string | null = null
+  let wmFile: string | null = null
   try {
     await downloadObject('takes', takePath, localTake)
+
+    // Watermark policy: a free user's FIRST export is CLEAN (so they can verify the
+    // real output before paying — the panel's #1 ask); every export AFTER that
+    // carries a subtle TwinAI mark. Paid users are never watermarked. Fail-open to
+    // clean if the profile read hiccups.
+    let applyWm = false
+    let markFreeClean = false
+    try {
+      const { data: prof } = await db.from('profiles').select('plan, free_export_used').eq('id', job.owner_id).maybeSingle()
+      const isFree = !prof?.plan || prof.plan === 'free'
+      if (isFree) { if (prof?.free_export_used) applyWm = true; else markFreeClean = true }
+    } catch { /* default: no watermark */ }
 
     // Smart decision: read the user's brand-DNA pacing + the reference's format
     // and auto-pick the edit energy (high → jump-zoom punches; calm → clean cuts).
@@ -91,16 +104,30 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       brollText,
       coverText,
       edl: editedEdl,
-      produceRevideoBase: !!env.revideoUrl && isFirstEdit,
+      // Skip the premium pass when watermarking so the burned-in mark stands (the
+      // separate Revideo service wouldn't carry it). Watermarked = free, non-first export.
+      produceRevideoBase: !!env.revideoUrl && isFirstEdit && !applyWm,
       onProgress: (phase, pct, label) => { void updateJobProgress(job.id, { phase, pct, label }) },
     })
     renderFile = outFile
     thumbRender = thumbFile ?? null
-    console.log(`[autoedit ${job.id}] coverText_len=${coverText.length} thumb=${thumbRender ? 'yes' : 'no'} broll=${broll}`)
+    console.log(`[autoedit ${job.id}] coverText_len=${coverText.length} thumb=${thumbRender ? 'yes' : 'no'} broll=${broll} wm=${applyWm}`)
+
+    // Burn the watermark as an isolated pass (fail-safe: returns the clean file on error).
+    let finalFile = outFile
+    if (applyWm) {
+      const wm = await applyWatermark(outFile)
+      if (wm !== outFile) { wmFile = wm; finalFile = wm }
+    }
 
     const outputPath = `${job.owner_id}/${job.id}.mp4`
-    await uploadObject('edits', outputPath, outFile, 'video/mp4')
+    await uploadObject('edits', outputPath, finalFile, 'video/mp4')
     const url = await signObject('edits', outputPath, 60 * 60 * 24 * 7)
+    // This free user just received their one clean export — mark it consumed so the
+    // next one is watermarked. Best-effort; never fails the render.
+    if (markFreeClean) {
+      await db.from('profiles').update({ free_export_used: true }).eq('id', job.owner_id).then(() => {}, () => {})
+    }
 
     // Upload the cover thumbnail (best-effort) and record its path.
     let thumbUrl: string | null = null
@@ -180,6 +207,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
     if (renderFile) await rm(renderFile, { force: true }).catch(() => {})
+    if (wmFile) await rm(wmFile, { force: true }).catch(() => {})
     if (thumbRender) await rm(thumbRender, { force: true }).catch(() => {})
   }
 }
