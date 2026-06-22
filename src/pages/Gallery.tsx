@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Wand2, Eye, Heart, Play, Search } from 'lucide-react'
+import { Wand2, Eye, Heart, Play, Search, Mic, Repeat, Layers, Film, Sparkles, TrendingUp, ChevronRight } from 'lucide-react'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
@@ -77,6 +77,59 @@ function resolveNiche(userNiche: string, known: string[]): string {
   }
   if (best) return best
   return known.find((n) => u.includes(n.toLowerCase()) || n.toLowerCase().includes(u)) ?? ''
+}
+
+// --- The Playbook (the "brain") --------------------------------------------
+// What KINDS of videos actually grow THIS creator — not just reference clips, but
+// the formats most likely to win in their niche. Each format carries a search term
+// (`q`) so tapping it surfaces real examples of that format in the feed below.
+interface Format { name: string; why: string; q: string; icon: typeof Mic }
+const PLAYBOOK: Record<string, Format[]> = {
+  Business: [
+    { name: 'Talking-head hot take', why: 'A sharp, contrarian POV straight to camera — the fastest, highest-trust format for founders.', q: 'hook', icon: Mic },
+    { name: 'Podcast / soundbite clip', why: 'A 30-second answer to one real question. Repurposable and authority-building.', q: 'insight', icon: Film },
+    { name: 'Case-study breakdown', why: 'A before → after result with the steps. Buyers save and share proof.', q: 'process', icon: TrendingUp },
+    { name: '“3 ways to…” listicle', why: 'Numbered value holds retention and is dead-simple to script.', q: 'explain', icon: Layers },
+  ],
+  Fitness: [
+    { name: 'Transformation transition', why: 'A clean before/after cut on the beat — the most-shared fitness format.', q: 'transition', icon: Repeat },
+    { name: 'Form-check talking head', why: 'Fix one common mistake to camera. Saves + “sending this to my gym buddy.”', q: 'callout', icon: Mic },
+    { name: 'Day-of-eating / routine', why: 'A relatable POV walkthrough that builds the para-social bond that retains.', q: 'routine', icon: Film },
+    { name: 'Myth-buster hot take', why: 'Name the bad advice, flip it. Comment-bait that drives reach.', q: 'hook', icon: TrendingUp },
+  ],
+  Beauty: [
+    { name: 'GRWM + a story', why: 'Get-ready-with-me while you talk — high completion, easy to film daily.', q: 'grwm', icon: Mic },
+    { name: 'Try-on / transition', why: 'Outfit or product transitions on the beat — the signature beauty/fashion win.', q: 'transition', icon: Repeat },
+    { name: 'Step-by-step tutorial', why: 'A clear how-to with a satisfying payoff. Saveable and re-watchable.', q: 'tutorial', icon: Layers },
+    { name: 'First-impression reaction', why: 'Honest real-time reactions earn trust and comments.', q: 'reaction', icon: Film },
+  ],
+  Food: [
+    { name: 'Jump-cut recipe', why: 'A beat every 1-2 seconds so attention never resets — the Lynja effect.', q: 'cook', icon: Repeat },
+    { name: 'ASMR / process reveal', why: 'Satisfying sound + visuals carry the watch with no script needed.', q: 'process', icon: Film },
+    { name: 'Taste-test reaction', why: 'Genuine reactions are inherently loopable and shareable.', q: 'reaction', icon: Mic },
+    { name: '3-ingredient / quick', why: 'Low-effort promise = high saves. Easy series to sustain.', q: 'recipe', icon: Layers },
+  ],
+  Education: [
+    { name: 'Explainer w/ visuals', why: 'One idea, clear payoff, no fluff — the format that makes expertise feel actionable.', q: 'explain', icon: Layers },
+    { name: '“Did you know” hook', why: 'A surprising fact cold-open that stops the scroll fast.', q: 'hook', icon: Sparkles },
+    { name: 'Process / how-it’s-made', why: 'Curiosity-driven step reveals are deeply saveable.', q: 'process', icon: Film },
+    { name: 'Authority insight clip', why: 'Name the outcome, give one concrete mechanism, keep it short.', q: 'insight', icon: Mic },
+  ],
+  Lifestyle: [
+    { name: 'Day-in-the-life', why: 'A micro-narrative arc builds the para-social bond that drives follows.', q: 'vlog', icon: Film },
+    { name: 'Relatable POV skit', why: 'A shared “that’s so me” moment — the most shareable lifestyle format.', q: 'relatable', icon: Sparkles },
+    { name: 'Get-ready chat', why: 'Talk to camera while doing something — high completion, low effort.', q: 'routine', icon: Mic },
+    { name: 'Story-time transition', why: 'Setup → escalation → payoff with tight cuts rewards a full watch.', q: 'story', icon: Repeat },
+  ],
+}
+const DEFAULT_PLAYBOOK: Format[] = [
+  { name: 'Talking-head hot take', why: 'A clear POV to camera is the fastest, highest-trust video to make in any niche.', q: 'hook', icon: Mic },
+  { name: 'On-beat transition', why: 'A satisfying before/after or scene cut on the beat — universally shareable.', q: 'transition', icon: Repeat },
+  { name: '“3 things” listicle', why: 'Numbered value is easy to script and holds retention.', q: 'explain', icon: Layers },
+  { name: 'Story-time', why: 'Setup → tension → payoff keeps people to the end.', q: 'story', icon: Film },
+]
+function playbookFor(niche: string): Format[] {
+  return PLAYBOOK[niche] ?? DEFAULT_PLAYBOOK
 }
 
 interface Card {
@@ -184,7 +237,11 @@ export default function Gallery() {
   // not the onboarding quiz. Handle-based users have an empty profile.dna, which is
   // why the gallery was stuck on "All" and showed unrelated niches. Prefer the voice
   // niche; fall back to the quiz dna for older quiz-only users.
-  const userNiche = (voiceNiche || profile?.dna?.niche || '').trim()
+  // Multi-keyword matching: a brand is never one keyword. Resolve the niche from
+  // the niche PLUS the audience + product/offer, so a vague niche still routes
+  // correctly via its other signals (the "3-4 keywords, nearest if one misses" ask).
+  const userNiche = [voiceNiche || profile?.dna?.niche, profile?.dna?.audience, profile?.dna?.product]
+    .filter(Boolean).join(' ').trim()
   const userSubNiche = voiceSubNiche.trim()
   const [niche, setNiche] = useState<string>('All')
   const [q, setQ] = useState('')
@@ -192,6 +249,7 @@ export default function Gallery() {
   const [community, setCommunity] = useState<Card[]>([])
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const [showAll, setShowAll] = useState(false)
+  const [chipsExpanded, setChipsExpanded] = useState(false)
   const touched = useRef(false)
 
   useEffect(() => {
@@ -274,7 +332,11 @@ export default function Gallery() {
     if (isForYou) {
       const rank = (c: Card) =>
         c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
-      return [...out].sort((a, b) => rank(a) - rank(b) || byScore(a, b))
+      // Drop the truly cross-niche items (the "random cars" complaint) — but only
+      // when there's enough on-niche/adjacent content left, so the feed is never empty.
+      const relevant = out.filter((c) => rank(c) < 3)
+      const base = relevant.length >= 6 ? relevant : out
+      return [...base].sort((a, b) => rank(a) - rank(b) || byScore(a, b))
     }
     return sort === 'top' ? [...out].sort(byScore) : out
   }, [all, myNiche, mySubNiche, niche, q, sort, searchBlobs, related, scores])
@@ -341,15 +403,48 @@ export default function Gallery() {
           </Reveal>
         </div>
       </div>
+      {/* The Playbook — the "brain": what FORMATS will actually grow this creator,
+          not just reference clips. Tap one to surface real examples in the feed. */}
+      <div className="relative mx-auto max-w-6xl px-5 pb-6">
+        <Reveal delay={0.03}>
+          <div className="mb-4 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber" />
+            <h2 className="font-heading text-lg text-cream">
+              Your playbook{myNiche ? <> — what wins in <span className="text-amber">{myNiche}</span></> : ' — formats that grow you'}
+            </h2>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {playbookFor(myNiche).map((f) => (
+              <button
+                key={f.name}
+                onClick={() => { touched.current = true; setShowAll(false); setQ(f.q); }}
+                className="group glass flex flex-col gap-2 rounded-card border border-white/8 p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-amber/30"
+              >
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber/10"><f.icon className="h-4 w-4 text-amber" /></span>
+                <span className="font-heading text-sm text-cream">{f.name}</span>
+                <span className="text-xs leading-relaxed text-stone">{f.why}</span>
+                <span className="mt-auto inline-flex items-center gap-1 pt-1 text-[11px] font-semibold text-amber opacity-80 transition-opacity group-hover:opacity-100">
+                  See examples <ChevronRight className="h-3 w-3" />
+                </span>
+              </button>
+            ))}
+          </div>
+        </Reveal>
+      </div>
       <div className="relative mx-auto max-w-6xl px-5 pb-16">
         <Reveal delay={0.04}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-              {nicheChips.map((n) => (
+              {(chipsExpanded ? nicheChips : nicheChips.slice(0, 7)).map((n) => (
                 <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip shrink-0 transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream', isMine(n) && niche !== n && 'border-teal/40 text-cream')}>
                   {n}{isMine(n) ? ' ✦' : ''}
                 </button>
               ))}
+              {nicheChips.length > 7 && (
+                <button onClick={() => setChipsExpanded((v) => !v)} className="chip shrink-0 text-stone hover:text-cream">
+                  {chipsExpanded ? 'Less' : `+${nicheChips.length - 7} more`}
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <div className="flex rounded-[12px] border border-white/10 bg-white/5 p-0.5">
@@ -405,7 +500,7 @@ export default function Gallery() {
                       </button>
                       <div className="flex flex-1 flex-col p-5">
                         <div className="flex items-center justify-between gap-2">
-                          <span className={cn('text-[11px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
+                          <span className={cn('min-w-0 truncate text-[11px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
                           <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-stone">{c.niche}</span>
                         </div>
                         {opp && <p className={cn('mt-1.5 text-[11px] font-medium', c.accent)}>Why for you · {opp.why}</p>}
