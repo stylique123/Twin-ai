@@ -277,6 +277,12 @@ export async function updateGenerationChoice(
   return !error
 }
 
+// Agency approval: mark a blueprint client-approved (or back to pending). Owner-only.
+export async function setGenerationApproved(id: string, approved: boolean): Promise<boolean> {
+  const { error } = await supabase.from('generations').update({ approved }).eq('id', id)
+  return !error
+}
+
 // Sign storage paths in the private `edits` bucket (rendered MP4s + cover JPEGs)
 // so the Library can show finished work. Returns a path->signedUrl map; any path
 // that fails to sign is simply omitted (caller falls back to a placeholder).

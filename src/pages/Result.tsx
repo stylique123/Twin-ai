@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
   Captions, ListChecks, Wand2, Timer, Send, Loader2, Video, ExternalLink,
-  SlidersHorizontal, Play,
+  SlidersHorizontal, Play, BadgeCheck,
 } from 'lucide-react'
 
 // Phase-0 guided publishing: deep-link straight into each platform's uploader.
@@ -14,7 +14,8 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, fetchEdl, getJob, logEvent } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, fetchEdl, getJob, logEvent } from '../lib/api'
+import { useAuth } from '../context/AuthContext'
 import type { Generation, EditDecisionList } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { RefinePanel } from '../components/RefinePanel'
@@ -23,9 +24,21 @@ import { cn } from '../lib/cn'
 
 export default function Result() {
   const { id } = useParams()
+  const { profile } = useAuth()
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
   const [chosenHook, setChosenHook] = useState('')
+  const [approved, setApproved] = useState(false)
+  // Agency approval workflow: agencies mark a blueprint client-approved before it's
+  // recorded/posted. Soft status (no hard block) so solo creators are unaffected.
+  const isAgency = profile?.plan === 'agency'
+  const toggleApproved = async () => {
+    if (!gen) return
+    const next = !approved
+    setApproved(next)
+    const ok = await setGenerationApproved(gen.id, next)
+    if (!ok) setApproved(!next) // revert on failure
+  }
   // Refine-from-Result: re-edit a finished video right from its blueprint page.
   const [refineOpen, setRefineOpen] = useState(false)
   const [refineEdl, setRefineEdl] = useState<EditDecisionList | null>(null)
@@ -62,6 +75,7 @@ export default function Result() {
     getGeneration(id)
       .then((g) => {
         setGen(g)
+        setApproved(!!g?.approved)
         // Default the shooting hook to the saved choice, else the recommended (1st).
         const hooks = (g?.blueprint?.hook_options ?? []) as string[]
         setChosenHook(g?.selected_hook ?? hooks[0] ?? '')
@@ -183,6 +197,16 @@ export default function Result() {
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <span className="chip"><Sparkles className="h-3.5 w-3.5 text-amber" /> {b.reference_read.platform}</span>
               <span className="chip">fidelity · {gen.fidelity}</span>
+              {isAgency && (
+                <button
+                  onClick={toggleApproved}
+                  className={cn('chip transition-colors', approved ? 'border-teal/50 bg-teal/10 text-teal' : 'hover:border-white/20 hover:text-cream')}
+                  title="Mark this blueprint client-approved before it's recorded or posted"
+                >
+                  <BadgeCheck className={cn('h-3.5 w-3.5', approved ? 'text-teal' : 'text-stone')} />
+                  {approved ? 'Client-approved' : 'Mark approved'}
+                </button>
+              )}
             </div>
           </motion.div>
         </div>

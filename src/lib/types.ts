@@ -108,6 +108,7 @@ export interface Generation {
   // take (the re-render source) + its Edit Decision List path.
   take_path?: string | null
   edl_path?: string | null
+  approved?: boolean // agency: marked client-approved before record/post
   created_at: string
 }
 
