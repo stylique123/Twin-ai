@@ -39,7 +39,11 @@ export async function completeJob(id: string, result: unknown): Promise<void> {
 // it's still running, so the UI can show a real, moving status instead of a stale
 // "Editing…" screen. complete_job overwrites this with the final result.
 export async function updateJobProgress(id: string, progress: { phase: string; pct: number; label: string; instant_url?: string }): Promise<void> {
-  try { await db.from('jobs').update({ result: { progress } }).eq('id', id) } catch { /* never block the render on a progress write */ }
+  // Only write progress for a job we STILL own AND that is still running. Without
+  // these guards, a job reclaimed after its visibility timeout (or already
+  // completed by the new owner) could have its final result column clobbered by a
+  // stale progress write from the original worker — losing the finished video URL.
+  try { await db.from('jobs').update({ result: { progress } }).eq('id', id).eq('status', 'running').eq('locked_by', env.workerId) } catch { /* never block the render on a progress write */ }
 }
 
 export async function failJob(id: string, message: string, backoffSecs = 30): Promise<void> {

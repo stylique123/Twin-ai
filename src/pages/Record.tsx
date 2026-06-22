@@ -50,6 +50,7 @@ export default function Record() {
   const [count, setCount] = useState(3)
   const [elapsed, setElapsed] = useState(0)
   const [takeUrl, setTakeUrl] = useState<string | null>(null)
+  const takeUrlRef = useRef<string | null>(null) // mirror of takeUrl for unmount revoke
   const takeBlobRef = useRef<Blob | null>(null)
 
   // auto-edit state
@@ -157,11 +158,14 @@ export default function Record() {
     }
   }
 
+  useEffect(() => { takeUrlRef.current = takeUrl }, [takeUrl])
   useEffect(() => {
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop())
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      if (takeUrl) URL.revokeObjectURL(takeUrl)
+      // Use the ref, not the stale closured takeUrl, so a recorded/uploaded take's
+      // object URL is actually revoked on navigate-away (was leaking before).
+      if (takeUrlRef.current) URL.revokeObjectURL(takeUrlRef.current)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

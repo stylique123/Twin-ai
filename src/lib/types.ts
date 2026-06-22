@@ -33,6 +33,9 @@ export interface VoiceProfile {
   tone: string
   pacing: string
   hook_style: string
+  hook_patterns?: string[]
+  pov?: string[]
+  enemy?: string
   vocabulary: string[]
   recurring_ctas: string[]
   dos: string[]

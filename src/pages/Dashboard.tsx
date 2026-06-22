@@ -210,7 +210,7 @@ function InviteCard() {
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal/15"><Gift className="h-5 w-5 text-teal" /></span>
             <div>
               <h2 className="font-heading text-base text-cream">Invite a creator, you both get 2 free remixes</h2>
-              <p className="mt-1 text-sm text-stone">Share your link. When they sign up and build their voice, you each get 2 remixes on us.</p>
+              <p className="mt-1 text-sm text-stone">Share your link. When they sign up, you each get 2 remixes on us.</p>
             </div>
           </div>
           <button onClick={copy} disabled={!code} className="btn-gradient shrink-0 text-sm disabled:opacity-50">
