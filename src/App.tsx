@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from './context/AuthContext'
@@ -5,19 +6,23 @@ import { Nav } from './components/Nav'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { EASE } from './components/motion'
+// Landing + Auth stay eager (the entry points — no chunk wait on first paint).
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
-import Onboarding from './pages/Onboarding'
-import Studio from './pages/Studio'
-import Result from './pages/Result'
-import History from './pages/History'
-import Gallery from './pages/Gallery'
-import Record from './pages/Record'
-import Dashboard from './pages/Dashboard'
-import Brands from './pages/Brands'
-import Settings from './pages/Settings'
-import Billing from './pages/Billing'
-import Metrics from './pages/Metrics'
+// The app pages are code-split so the initial bundle (which was a single ~724KB
+// chunk → slow parse, the "big lag / blank page" on load + login) only ships the
+// page you're actually on.
+const Onboarding = lazy(() => import('./pages/Onboarding'))
+const Studio = lazy(() => import('./pages/Studio'))
+const Result = lazy(() => import('./pages/Result'))
+const History = lazy(() => import('./pages/History'))
+const Gallery = lazy(() => import('./pages/Gallery'))
+const Record = lazy(() => import('./pages/Record'))
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Brands = lazy(() => import('./pages/Brands'))
+const Settings = lazy(() => import('./pages/Settings'))
+const Billing = lazy(() => import('./pages/Billing'))
+const Metrics = lazy(() => import('./pages/Metrics'))
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -45,10 +50,10 @@ function FullScreen({ children }: { children: React.ReactNode }) {
 function Page({ children }: { children: React.ReactNode }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.4, ease: EASE }}
+      exit={{ opacity: 0, y: -6 }}
+      transition={{ duration: 0.22, ease: EASE }}
     >
       {children}
     </motion.div>
@@ -76,6 +81,7 @@ export default function App() {
       {/* Marketing chrome only on the landing page, never over /auth, /onboarding, or the app. */}
       {location.pathname === '/' && <Nav />}
       <ErrorBoundary resetKey={location.pathname}>
+      <Suspense fallback={<FullScreen>Loading…</FullScreen>}>
       <AnimatePresence mode="wait">
         <Routes location={location} key={inApp ? 'app' : location.pathname}>
           <Route path="/" element={<Page><Landing /></Page>} />
@@ -124,6 +130,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AnimatePresence>
+      </Suspense>
       </ErrorBoundary>
     </div>
   )
