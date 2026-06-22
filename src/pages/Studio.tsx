@@ -63,9 +63,12 @@ export default function Studio() {
   // a real read, never a blind guess.
   const analyzeRealVideo = async (link: string): Promise<string> => {
     setPhase('fetching')
-    const jobId = await ingestReference(link)
+    const { jobId, transcriptId } = await ingestReference(link)
+    // Cache hit: this reference was already transcribed + structured — use it now,
+    // no polling, no transcribe wait.
+    if (transcriptId) return transcriptId
     for (let i = 0; i < 80; i++) {
-      await new Promise((r) => setTimeout(r, 3000))
+      await new Promise((r) => setTimeout(r, 2500))
       const job = await getJob(jobId)
       if (!job) continue
       if (job.status === 'done' && job.result?.transcript_id) return job.result.transcript_id

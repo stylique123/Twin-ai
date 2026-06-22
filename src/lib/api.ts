@@ -153,7 +153,7 @@ export async function reEditWithEdl(generationId: string, takePath: string, edl:
 }
 
 // Kick off real analysis of a reference URL. Returns the worker job id to watch.
-export async function ingestReference(url: string, platform?: string): Promise<string> {
+export async function ingestReference(url: string, platform?: string): Promise<{ jobId: string; transcriptId?: string }> {
   const { data, error } = await supabase.functions.invoke('ingest-reference', {
     body: { url, platform },
   })
@@ -170,7 +170,10 @@ export async function ingestReference(url: string, platform?: string): Promise<s
     }
     throw new Error(msg)
   }
-  return (data as { job_id: string }).job_id
+  // On a cache hit the function returns the transcript_id directly — the caller
+  // can skip polling entirely (instant instead of a multi-second transcribe wait).
+  const d = data as { job_id: string; transcript_id?: string }
+  return { jobId: d.job_id, transcriptId: d.transcript_id }
 }
 
 // Poll a worker job (RLS lets a user read only their own jobs).
