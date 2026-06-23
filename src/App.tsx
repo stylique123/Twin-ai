@@ -5,6 +5,7 @@ import { useAuth } from './context/AuthContext'
 import { Nav } from './components/Nav'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
+import { ProductTour } from './components/ProductTour'
 import { EASE } from './components/motion'
 // Landing + Auth stay eager (the entry points — no chunk wait on first paint).
 import Landing from './pages/Landing'
@@ -151,6 +152,7 @@ export default function App() {
       </AnimatePresence>
       </Suspense>
       </ErrorBoundary>
+      <ProductTour />
     </div>
   )
 }
