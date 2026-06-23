@@ -27,3 +27,11 @@ verify_jwt = true
 # webhook is rejected with 401.
 [functions.billing-webhook]
 verify_jwt = false
+
+# Social posting: the OAuth callback is hit by the browser redirect with no
+# Supabase JWT, so verification MUST be off. start/publish/disconnect authenticate
+# manually from the Authorization header; the callback authenticates from a signed
+# `state`. Without this it defaults to verify_jwt=true and the OAuth round-trip 401s.
+[functions.social]
+verify_jwt = false
+

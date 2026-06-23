@@ -850,7 +850,7 @@ function PricingSection() {
           Simple monthly remix counts. No per-action billing, no confusing credits. Cancel any time.
         </p>
       </Reveal>
-      <Stagger className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4" gap={0.06}>
+      <Stagger className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-5" gap={0.05}>
         {PLANS.map((p) => {
           const featured = p.id === 'professional'
           return (
