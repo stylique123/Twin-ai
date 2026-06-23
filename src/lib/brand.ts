@@ -11,6 +11,10 @@ export const BRAND = {
   avoid: ['copy / steal', 'guaranteed viral', 'synergy', '10x overnight'],
 }
 
+// Master switch: paid checkout is "Coming soon" until we flip this on (one line).
+// Free signup + free remixes always work regardless.
+export const PAYMENTS_LIVE = false
+
 export interface PlanTier {
   id: 'free' | 'aspiring' | 'professional' | 'studio' | 'agency'
   name: string
@@ -46,12 +50,12 @@ export const PLANS: PlanTier[] = [
     name: 'Free',
     price: 0,
     annual: null,
-    videos: 2,
-    credits: grant(2, 0), // 20 credits → 2 videos; enough to show value, no card
+    videos: 3,
+    credits: grant(3, 0), // 30 credits → 3 free remixes
     brandVoices: 1,
     hidden: true, // not shown on the pricing grid — reached via "Get started for free"
     blurb: 'See it work, free.',
-    features: ['2 videos / mo', 'Script + in-app teleprompter record', 'Watermark on exports'],
+    features: ['3 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
     id: 'aspiring',

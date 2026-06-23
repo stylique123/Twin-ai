@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit } from '../lib/api'
-import { PLANS, ADD_ONS, videosFromCredits } from '../lib/brand'
+import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { CAPTION_STYLE_OPTIONS, CAPTION_COLOR_OPTIONS } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -218,16 +218,27 @@ export default function Settings() {
                 <li key={f} className="flex items-start gap-2 text-sm text-sand"><Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {f}</li>
               ))}
             </ul>
-            <div className="mt-5 flex flex-wrap gap-2 border-t border-white/8 pt-4">
-              {higherPlans.length > 0 && (
-                <button onClick={() => setUpgradeOpen(true)} className="btn-gradient text-sm">
-                  <ArrowUpRight className="h-4 w-4" /> {plan.id === 'free' ? 'Upgrade plan' : 'Change plan'}
-                </button>
-              )}
-              {plan.price > 0 && (
-                <button onClick={() => upgrade(plan.id)} disabled={coBusy !== null} className="btn-ghost text-sm disabled:opacity-60">
-                  {coBusy === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Manage payment
-                </button>
+            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-white/8 pt-4">
+              {!PAYMENTS_LIVE ? (
+                <>
+                  <button onClick={() => setUpgradeOpen(true)} className="btn-ghost text-sm">
+                    <ArrowUpRight className="h-4 w-4" /> See plans
+                  </button>
+                  <span className="rounded-full border border-amber/25 bg-amber/10 px-3 py-1 text-xs font-medium text-amber">Paid plans coming soon</span>
+                </>
+              ) : (
+                <>
+                  {higherPlans.length > 0 && (
+                    <button onClick={() => setUpgradeOpen(true)} className="btn-gradient text-sm">
+                      <ArrowUpRight className="h-4 w-4" /> {plan.id === 'free' ? 'Upgrade plan' : 'Change plan'}
+                    </button>
+                  )}
+                  {plan.price > 0 && (
+                    <button onClick={() => upgrade(plan.id)} disabled={coBusy !== null} className="btn-ghost text-sm disabled:opacity-60">
+                      {coBusy === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Manage payment
+                    </button>
+                  )}
+                </>
               )}
             </div>
             {coMsg && <p className="mt-2 text-xs text-sand">{coMsg}</p>}
@@ -250,9 +261,13 @@ export default function Settings() {
                   <div className="font-heading text-sm text-cream">{a.name}</div>
                   <div className="mt-0.5 text-lg font-bold text-cream">${a.price}<span className="text-xs font-normal text-stone"> {a.unit}</span></div>
                   <p className="mt-1 flex-1 text-xs text-stone">{a.desc}</p>
-                  <button onClick={() => buyAddon(a.id)} disabled={addonBusy !== null} className="btn-ghost mt-3 text-xs disabled:opacity-60">
-                    {addonBusy === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
-                  </button>
+                  {!PAYMENTS_LIVE ? (
+                    <div className="mt-3 rounded-lg border border-amber/20 bg-amber/10 py-1.5 text-center text-[11px] font-medium text-amber">Coming soon</div>
+                  ) : (
+                    <button onClick={() => buyAddon(a.id)} disabled={addonBusy !== null} className="btn-ghost mt-3 text-xs disabled:opacity-60">
+                      {addonBusy === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -434,6 +449,8 @@ export default function Settings() {
                         <div className="rounded-lg bg-white/5 py-2 text-center text-xs font-semibold text-stone">Current plan</div>
                       ) : p.price === 0 ? (
                         <div className="py-2 text-center text-xs text-stone">—</div>
+                      ) : !PAYMENTS_LIVE ? (
+                        <div className="rounded-lg border border-amber/20 bg-amber/10 py-2 text-center text-xs font-medium text-amber">Coming soon</div>
                       ) : (
                         <button onClick={() => upgrade(p.id)} disabled={coBusy !== null} className={cn('w-full text-sm', isUp ? 'btn-gradient' : 'btn-ghost')}>
                           {coBusy === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : isUp ? <ArrowUpRight className="h-4 w-4" /> : null}

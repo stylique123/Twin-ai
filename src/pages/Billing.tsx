@@ -75,7 +75,7 @@ export default function Billing() {
                   <Sparkles className="h-6 w-6 text-sand" />
                 </div>
                 <h1 className="mt-5 font-display text-3xl tracking-tight">Checkout cancelled</h1>
-                <p className="mt-2 text-sm text-stone">No charge was made. You can upgrade any time — your free videos are still here.</p>
+                <p className="mt-2 text-sm text-stone">No charge was made. You can upgrade any time — your free remixes are still here.</p>
                 <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
                   <Link to="/settings" className="btn-gradient text-sm">View plans</Link>
                   <Link to="/dashboard" className="btn-ghost text-sm">Back to dashboard</Link>
