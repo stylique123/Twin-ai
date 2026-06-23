@@ -12,7 +12,7 @@ export const BRAND = {
 }
 
 export interface PlanTier {
-  id: 'free' | 'aspiring' | 'professional' | 'agency'
+  id: 'free' | 'aspiring' | 'professional' | 'studio' | 'agency'
   name: string
   price: number // monthly USD (intro pricing)
   annual: number | null // per-month when billed annually
@@ -46,22 +46,22 @@ export const PLANS: PlanTier[] = [
     price: 0,
     annual: null,
     videos: 3,
-    credits: grant(3, 0), // 30 credits → 3 remixes; advertised count matches what's granted
+    credits: grant(3, 0), // 30 credits → 3 videos; advertised count matches what's granted
     brandVoices: 1,
     blurb: 'See it work, free.',
-    features: ['3 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
+    features: ['3 videos / mo', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
     id: 'aspiring',
-    name: 'Starter',
-    price: 9,
-    annual: 7,
-    videos: 8,
-    credits: grant(8, 2), // 100 credits → 10, advertised 8, buffer 2
+    name: 'Creator',
+    price: 15,
+    annual: 12,
+    videos: 10,
+    credits: grant(10, 2), // 120 credits, advertised 10, buffer 2
     brandVoices: 1,
     blurb: 'Post weekly, no watermark.',
     features: [
-      '8 remixes / mo',
+      '10 videos / mo',
       'No watermark',
       '1 brand voice',
       'Auto-captions',
@@ -71,38 +71,55 @@ export const PLANS: PlanTier[] = [
   {
     id: 'professional',
     name: 'Pro',
-    price: 24,
-    annual: 19,
+    price: 29,
+    annual: 23,
     videos: 20,
-    credits: grant(20, 4), // 240 credits → 24, advertised 20, buffer 4
+    credits: grant(20, 4), // 240 credits, advertised 20, buffer 4
     brandVoices: 1,
     badge: 'Most popular',
     blurb: 'Ship every week, on autopilot.',
     features: [
-      '20 remixes / mo',
+      '20 videos / mo',
       '1 brand voice',
       'Full auto-edit (captions + cuts)',
       'Publish to all your platforms',
-      'Ad-mode variations',
+      'Content calendar',
       'Analytics',
+    ],
+  },
+  {
+    id: 'studio',
+    name: 'Studio',
+    price: 49,
+    annual: 39,
+    videos: 40,
+    credits: grant(40, 6), // 460 credits, advertised 40, buffer 6
+    brandVoices: 1,
+    badge: 'Best for volume',
+    blurb: 'Double the output, priority render.',
+    features: [
+      '40 videos / mo',
+      'Everything in Pro',
+      'Priority render',
+      'Bulk scheduling',
     ],
   },
   {
     id: 'agency',
     name: 'Agency',
-    price: 79,
-    annual: 65,
-    videos: 75,
-    credits: grant(75, 8), // 830 credits → 83, advertised 75, buffer 8
+    price: 99,
+    annual: 79,
+    videos: 100,
+    credits: grant(100, 10), // 1100 credits, advertised 100, buffer 10
     brandVoices: 15,
     badge: 'Best value',
     blurb: 'Every client, sounding like themselves.',
     features: [
-      '75 remixes / mo',
+      '100 videos / mo',
       '15 brand voices (one per client)',
-      'Everything in Pro',
-      'Switch client brands on web & mobile',
-      'Priority render',
+      'Everything in Studio',
+      'Workspaces & client switching',
+      'White-label client reports',
       'Add extra brand voices anytime',
     ],
   },

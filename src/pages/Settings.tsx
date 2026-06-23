@@ -277,11 +277,11 @@ export default function Settings() {
           routes the chosen one to checkout. */}
       {upgradeOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => setUpgradeOpen(false)}>
-          <div className="glass relative max-h-[88vh] w-full max-w-4xl overflow-y-auto p-6 sm:p-8" onClick={(e) => e.stopPropagation()}>
+          <div className="glass relative max-h-[88vh] w-full max-w-6xl overflow-y-auto p-6 sm:p-8" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setUpgradeOpen(false)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
             <h2 className="font-display text-2xl tracking-tight sm:text-3xl">Choose your plan</h2>
             <p className="mt-1 text-sm text-stone">Upgrade, downgrade, or switch any time. You keep credits you've already been granted.</p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
               {PLANS.map((p) => {
                 const current = p.id === plan.id
                 const isUp = p.price > plan.price

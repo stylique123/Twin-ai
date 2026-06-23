@@ -22,9 +22,10 @@ const json = (body: unknown, status = 200) =>
 // MUST match src/lib/brand.ts grant() so the credits granted == the advertised
 // allowance (Starter 8→100, Pro 20→240, Agency 75→830, incl. the hidden buffer).
 const PLAN_CREDITS: Record<string, number> = {
-  aspiring: Number(Deno.env.get('PLAN_CREDITS_ASPIRING') ?? '100'),
+  aspiring: Number(Deno.env.get('PLAN_CREDITS_ASPIRING') ?? '120'),
   professional: Number(Deno.env.get('PLAN_CREDITS_PROFESSIONAL') ?? '240'),
-  agency: Number(Deno.env.get('PLAN_CREDITS_AGENCY') ?? '830'),
+  studio: Number(Deno.env.get('PLAN_CREDITS_STUDIO') ?? '460'),
+  agency: Number(Deno.env.get('PLAN_CREDITS_AGENCY') ?? '1100'),
 }
 
 async function hmacHex(secret: string, msg: string): Promise<string> {
@@ -160,7 +161,7 @@ Deno.serve(async (req: Request) => {
   const env2 = (k: string) => Deno.env.get(k)
   const planFromVariant = (v: string | undefined): string | null => {
     if (!v) return null
-    for (const p of ['aspiring', 'professional', 'agency']) {
+    for (const p of ['aspiring', 'professional', 'studio', 'agency']) {
       if (env2(`LS_VARIANT_${p.toUpperCase()}`) === v || env2(`STRIPE_PRICE_${p.toUpperCase()}`) === v) return p
     }
     return null
