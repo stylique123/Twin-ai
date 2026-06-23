@@ -64,7 +64,7 @@ export default function Billing() {
   const left = videosFromCredits(profile?.credits ?? 0)
 
   return (
-    <main className="relative overflow-clip">
+    <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-60" />
       <div className="relative mx-auto grid min-h-[70vh] max-w-lg place-items-center px-5 py-16">
         <Reveal>

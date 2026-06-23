@@ -399,7 +399,7 @@ export default function Gallery() {
   }
 
   return (
-    <main className="relative overflow-clip">
+    <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-70" />
       <div className="relative">
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-coral/8 via-transparent to-transparent" />

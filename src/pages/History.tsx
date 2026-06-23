@@ -40,7 +40,7 @@ export default function History() {
   )
 
   return (
-    <main className="relative overflow-clip">
+    <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-60" />
       <div className="relative mx-auto max-w-5xl px-5 py-12 lg:py-16">
         <Reveal>

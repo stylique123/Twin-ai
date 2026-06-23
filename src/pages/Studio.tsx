@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText, Wind, Activity, Flame } from 'lucide-react'
+import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText, Wind, Activity, Flame, SlidersHorizontal } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { generateBlueprint, ingestReference, getJob, listBrandVoices } from '../lib/api'
 import type { BrandVoice } from '../lib/types'
@@ -50,6 +50,9 @@ export default function Studio() {
   const [note, setNote] = useState(() => params.get('note') ?? '')
   const [fidelity, setFidelity] = useState<'close' | 'balanced' | 'loose'>('balanced')
   const [tone, setTone] = useState<'understated' | 'balanced' | 'punchy'>('balanced')
+  // Fidelity + tone are advanced knobs — hidden by default so the studio is a single
+  // clear input (paste → make). Power users open "Advanced" to tune them.
+  const [advancedOpen, setAdvancedOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [slowRead, setSlowRead] = useState(false)
@@ -119,7 +122,7 @@ export default function Studio() {
   }
 
   return (
-    <main className="relative overflow-clip">
+    <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-60" />
       <div className="relative mx-auto max-w-3xl px-5 py-12 lg:py-16">
         <Reveal>
@@ -170,6 +173,15 @@ export default function Studio() {
               />
             </div>
 
+            {/* Advanced (fidelity + tone) — collapsed by default. */}
+            <button
+              type="button"
+              onClick={() => setAdvancedOpen((v) => !v)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-stone transition-colors hover:text-cream"
+            >
+              <SlidersHorizontal className="h-3.5 w-3.5" /> {advancedOpen ? 'Hide options' : 'Advanced — voice & fidelity'}
+            </button>
+            {advancedOpen && (<>
             {/* Fidelity */}
             <div>
               <label className="eyebrow">How close to the reference?</label>
@@ -223,6 +235,7 @@ export default function Studio() {
                 })}
               </div>
             </div>
+            </>)}
 
             {/* Action row */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-5">
