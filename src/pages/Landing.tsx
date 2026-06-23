@@ -56,20 +56,20 @@ function InstagramIcon({ className }: { className?: string }) {
 const PAIN = [
   {
     n: '01',
-    t: 'You want to post — you just don\'t know what to make',
-    d: 'You scroll past a hundred videos that pop, save the ones you love, and still open a blank screen with no idea where to start. The drive is there. The idea isn\'t.',
+    t: 'You want to post. The page stays blank.',
+    d: 'You save every video you love. You still don\'t know what to make of your own.',
     accent: 'coral',
   },
   {
     n: '02',
-    t: 'When you make it, it comes out nothing like your head',
-    d: 'Copy the format and it feels fake. Start from scratch and it sounds like everyone else. The version you pictured never quite makes it to camera.',
+    t: 'You make it. It\'s not what you saw.',
+    d: 'Copy the format, it feels fake. Start fresh, it sounds like everyone else.',
     accent: 'amber',
   },
   {
     n: '03',
-    t: 'And doing it properly eats hours you don\'t have',
-    d: 'Scripting, re-shooting, editing, captions — one post can swallow your whole evening. So you post less, you grow slower, and the spark fades.',
+    t: 'Doing it right costs your whole evening.',
+    d: 'Script, reshoot, edit, caption — one post eats the night. So you post less.',
     accent: 'teal',
   },
 ]
@@ -291,6 +291,15 @@ function HeroVisualNew() {
             <div className="h-[18px] w-[72px] rounded-full bg-black/60" />
           </div>
           <div className="relative h-[470px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
+            {/* Real footage playing inside the device, so the phone reads as a live
+                recording — not an empty mock. The teleprompter + script overlay sit
+                on top, exactly like the in-app record screen. */}
+            {HERO_VIDEO_SRC && (
+              <>
+                <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" src={HERO_VIDEO_SRC} />
+                <div className="absolute inset-0 bg-gradient-to-b from-ink/35 via-ink/30 to-ink/85" />
+              </>
+            )}
             {/* Rec indicator */}
             <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-bold text-cream backdrop-blur">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-coral" /> REC
@@ -446,8 +455,8 @@ function PainSection() {
           You don't have a motivation problem.{' '}
           <span className="gradient-text">You have a system problem.</span>
         </h2>
-        <p className="mx-auto mt-4 max-w-xl text-sand">
-          It's not that you don't want to post. It's that every creator hits the same three walls — and TwinAI is the system that breaks through all three.
+        <p className="mx-auto mt-4 max-w-lg text-sand">
+          Every creator hits the same three walls. TwinAI is the system that breaks all three.
         </p>
       </Reveal>
       <Stagger className="mt-14 grid gap-5 md:grid-cols-3" gap={0.08}>

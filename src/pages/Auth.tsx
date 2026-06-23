@@ -9,7 +9,8 @@ import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 import { EASE } from '../components/motion'
 
-const PERKS = ['3 free remixes', 'Script in your voice, record + edit in one place', 'No card required']
+const FREE_PERKS = ['3 free remixes', 'Script in your voice, record + edit in one place', 'No card required']
+const PAID_PERKS = ['Script in your voice, record + edit in one place', 'No watermark on your exports', 'Cancel any time']
 
 // Where we remember the plan the user picked on the pricing page, so the choice
 // survives signup + email confirmation and reaches onboarding / billing later.
@@ -19,6 +20,8 @@ export default function Auth() {
   const [params] = useSearchParams()
   const intendedPlanId = params.get('plan')
   const intendedPlan = intendedPlanId && PLANS.some((p) => p.id === intendedPlanId) ? planFor(intendedPlanId) : null
+  const isPaidIntent = !!intendedPlan && intendedPlan.id !== 'free'
+  const perks = isPaidIntent ? PAID_PERKS : FREE_PERKS
   const [mode, setMode] = useState<'signin' | 'signup'>(params.get('mode') === 'signin' ? 'signin' : 'signup')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -52,7 +55,15 @@ export default function Auth() {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: `${window.location.origin}/auth` },
+          // Stamp the chosen plan into the user's metadata so the server-side
+          // profile trigger can decide credits: free signups get the 3 free
+          // remixes; anyone who signs up FOR a paid plan does not (they activate
+          // their allowance by paying). This is the authoritative signal — it
+          // can't be spoofed by the client the way localStorage can.
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth`,
+            data: { intended_plan: intendedPlan?.id ?? 'free' },
+          },
         })
         if (error) throw error
         if (data.session) {
@@ -122,7 +133,7 @@ export default function Auth() {
               <span className="gradient-text">TwinAI makes it shootable.</span>
             </h2>
             <ul className="mt-6 space-y-3">
-              {PERKS.map((p) => (
+              {perks.map((p) => (
                 <li key={p} className="flex items-center gap-2.5 text-sand">
                   <span className="grid h-5 w-5 place-items-center rounded-full bg-teal/20">
                     <Check className="h-3 w-3 text-teal" />
@@ -158,10 +169,14 @@ export default function Auth() {
           )}
 
           <h1 className="mt-6 font-display text-3xl">
-            {mode === 'signup' ? 'Start free' : 'Welcome back'}
+            {mode === 'signin' ? 'Welcome back' : isPaidIntent ? `Start on ${intendedPlan!.name}` : 'Start free'}
           </h1>
           <p className="mt-1.5 text-sm text-sand">
-            {mode === 'signup' ? '3 free remixes. No card required.' : 'Pick up where you left off.'}
+            {mode === 'signin'
+              ? 'Pick up where you left off.'
+              : isPaidIntent
+                ? `Create your account, then activate ${intendedPlan!.name} — $${intendedPlan!.price}/mo.`
+                : '3 free remixes. No card required.'}
           </p>
 
           <button

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X } from 'lucide-react'
+import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { updateDisplayName, saveDNA, startCheckout } from '../lib/api'
+import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna } from '../lib/api'
 import { PLANS, videosFromCredits } from '../lib/brand'
 import type { CreatorDNA, Platform } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -42,6 +42,35 @@ export default function Settings() {
   const [coBusy, setCoBusy] = useState<string | null>(null)
   const [coMsg, setCoMsg] = useState<string | null>(null)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMsg, setRefreshMsg] = useState<string | null>(null)
+
+  // Re-scan the creator's handle so the Dashboard's stats (followers, posts, avg
+  // views/likes) and the voice profile are rebuilt from their latest public posts.
+  // This is the only re-scan path for solo accounts now that Workspaces is agency-
+  // only — and it back-fills stats for voices created before we captured them.
+  const refreshVoice = async () => {
+    setRefreshing(true); setRefreshMsg(null)
+    try {
+      const voices = await listBrandVoices()
+      const v = voices.find((x) => x.is_default) ?? voices[0]
+      if (!v?.handle) { setRefreshMsg('No handle on file yet — add one in onboarding first.'); return }
+      const started = await startDna(v.handle, v.platform)
+      const id = started.brand_voice_id ?? v.id
+      // Poll until the scan finishes (or we give up after ~90s).
+      for (let i = 0; i < 30; i++) {
+        await new Promise((r) => setTimeout(r, 3000))
+        const res = await pollDna(id)
+        if (res.status === 'ready') { setRefreshMsg('Voice & stats refreshed — your dashboard is up to date.'); await refreshProfile(); return }
+        if (res.status === 'failed') { setRefreshMsg(res.error || 'Couldn\'t refresh — please try again shortly.'); return }
+      }
+      setRefreshMsg('Still working in the background — check your dashboard in a minute.')
+    } catch (e) {
+      setRefreshMsg(e instanceof Error ? e.message : 'Couldn\'t refresh your voice. Try again.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   // Real checkout: routes a card user to the processor, or shows crypto/manual
   // details. This is the upgrade path that was missing entirely before.
@@ -164,10 +193,16 @@ export default function Settings() {
                 <p className="eyebrow !text-sand">Creator DNA</p>
               </div>
               {!editingDna && (
-                <button onClick={() => setEditingDna(true)} className="btn-ghost text-sm"><Pencil className="h-3.5 w-3.5" /> Edit</button>
+                <div className="flex items-center gap-2">
+                  <button onClick={refreshVoice} disabled={refreshing} className="btn-ghost text-sm disabled:opacity-60">
+                    <RefreshCw className={cn('h-3.5 w-3.5', refreshing && 'animate-spin')} /> {refreshing ? 'Scanning…' : 'Refresh voice & stats'}
+                  </button>
+                  <button onClick={() => setEditingDna(true)} className="btn-ghost text-sm"><Pencil className="h-3.5 w-3.5" /> Edit</button>
+                </div>
               )}
             </div>
             <p className="mt-2 text-sm text-stone">This shapes every script's voice and your gallery's default niche.</p>
+            {refreshMsg && <p className="mt-2 rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-sand">{refreshMsg}</p>}
 
             {!editingDna ? (
               /* Read-only view — what we already know about you. */
