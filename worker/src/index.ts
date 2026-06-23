@@ -26,8 +26,14 @@ async function tick(): Promise<boolean> {
     return true
   }
 
+  // Hard per-job timeout backstop: if a handler hangs (child process never returns),
+  // give up before the lease expires so this worker frees up instead of wedging.
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const guard = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Job exceeded hard timeout (${env.maxJobMs}ms)`)), env.maxJobMs)
+  })
   try {
-    const result = await handler(job)
+    const result = await Promise.race([handler(job), guard])
     await completeJob(job.id, result)
     log('info', 'done', { job: job.id, type: job.type })
   } catch (err) {
@@ -44,6 +50,8 @@ async function tick(): Promise<boolean> {
         .insert({ kind: 'job_dead_letter', severity: 'warn', user_id: job.owner_id ?? null, detail: { job_id: job.id, type: job.type, attempts: job.attempts, error: message.slice(0, 300) } })
         .then(() => {}, () => {})
     }
+  } finally {
+    if (timer) clearTimeout(timer)
   }
   return true
 }
