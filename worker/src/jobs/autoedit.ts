@@ -65,6 +65,8 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     let energy: 'high' | 'calm' = 'calm'
     let brollText = ''
     let coverText = ''
+    let brandStyle: string | undefined
+    let brandColor: number | undefined
     if (payload.generation_id) {
       try {
         const { data: gen } = await db
@@ -87,27 +89,30 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           ...(((bp?.shot_list as { shot?: string; notes?: string }[] | undefined) ?? []).map((s) => `${s?.shot ?? ''} ${s?.notes ?? ''}`)),
         ].filter(Boolean).join(' ').slice(0, 4000)
         coverText = chosenHook.slice(0, 120)
+        // Pull the workspace brand kit + voice once: the kit themes the caption
+        // style/color on new edits; the voice pacing tunes the energy default.
+        let pacing = ''
+        if (gen?.brand_voice_id) {
+          const { data: bv } = await db.from('brand_voices').select('profile, brand_kit').eq('id', gen.brand_voice_id).maybeSingle()
+          pacing = (bv?.profile as { pacing?: string } | null)?.pacing ?? ''
+          const kit = bv?.brand_kit as { caption_style?: string; color?: number } | null
+          if (kit?.caption_style) brandStyle = kit.caption_style
+          if (typeof kit?.color === 'number' && !Number.isFinite(payload.variation as number)) brandColor = kit.color
+        }
         // Edit style the creator picked takes priority over the DNA-derived energy.
         const style = (gen?.edit_style as string | undefined) ?? ''
         if (style === 'punchy') energy = 'high'
         else if (style === 'clean' || style === 'cinematic') energy = 'calm'
-        else {
-          let pacing = ''
-          if (gen?.brand_voice_id) {
-            const { data: bv } = await db.from('brand_voices').select('profile').eq('id', gen.brand_voice_id).maybeSingle()
-            pacing = (bv?.profile as { pacing?: string } | null)?.pacing ?? ''
-          }
-          if (/fast|quick|rapid|punch|energetic|aggressive|hype|high.?energy|snappy|no dead air/i.test(`${pacing} ${fmt}`)) {
-            energy = 'high'
-          }
+        else if (/fast|quick|rapid|punch|energetic|aggressive|hype|high.?energy|snappy|no dead air/i.test(`${pacing} ${fmt}`)) {
+          energy = 'high'
         }
       } catch {
         /* fall back to calm */
       }
     }
 
-    // Remakes pass a variation index; alternate energy on odd remakes for variety.
-    const variation = Number.isFinite(payload.variation as number) ? Number(payload.variation) : 0
+    // Remakes pass a variation index; else fall back to the brand-kit color, else 0.
+    const variation = Number.isFinite(payload.variation as number) ? Number(payload.variation) : (brandColor ?? 0)
     if (variation % 2 === 1) energy = energy === 'high' ? 'calm' : 'high'
 
     // Manual re-render: when the Refine panel sends an edited EDL, render straight
@@ -122,6 +127,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       captions: payload.skip_captions !== true,
       energy,
       variation,
+      captionStyle: brandStyle,
       brollText,
       coverText,
       edl: editedEdl,

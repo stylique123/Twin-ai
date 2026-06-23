@@ -83,6 +83,7 @@ export interface EditOptions {
   captions?: boolean // default true; skip when the source is already captioned
   energy?: 'high' | 'calm' // 'high' → jump-zoom punches on cuts; 'calm' → clean cuts
   variation?: number // remake index → different caption highlight color
+  captionStyle?: string // brand-kit default caption preset; loses to an explicit Refine choice
   brollText?: string // blueprint text (hook/script/captions) to source b-roll keywords from
   coverText?: string // hook/cover line to overlay on the generated thumbnail
   // Manual re-render: when present, autoEdit renders FROM this (creator-edited)
@@ -561,7 +562,10 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     }
 
     // Caption style: the creator's choice (EDL) wins; else the Director's pick; else default.
-    const captionStyle = edl?.captions.style ?? plan?.caption_style ?? 'bold-pop'
+    // Priority: a per-video Refine choice (edl) > the workspace brand kit > the
+    // Director's AI pick > default. So a brand kit themes every new edit, but the
+    // creator can still override one video in Refine.
+    const captionStyle = edl?.captions.style ?? opts.captionStyle ?? plan?.caption_style ?? 'bold-pop'
     await writeFile(ass, words.length ? buildAss(words, capVariation, captionStyle) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
 
     // 2b. Optional b-roll cutaway (best-effort, only if PEXELS_API_KEY is set and
