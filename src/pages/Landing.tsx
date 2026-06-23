@@ -56,20 +56,20 @@ function InstagramIcon({ className }: { className?: string }) {
 const PAIN = [
   {
     n: '01',
-    t: 'The blank page after the scroll',
-    d: 'You watch something hit a million views and know you could do your version. Then you open a doc and stare. The idea evaporates.',
+    t: 'You want to post — you just don\'t know what to make',
+    d: 'You scroll past a hundred videos that pop, save the ones you love, and still open a blank screen with no idea where to start. The drive is there. The idea isn\'t.',
     accent: 'coral',
   },
   {
     n: '02',
-    t: 'It comes out sounding like everyone else',
-    d: 'You copy the format and it feels fake, or you start from scratch and it takes hours. Either way, it doesn\'t sound like you.',
+    t: 'When you make it, it comes out nothing like your head',
+    d: 'Copy the format and it feels fake. Start from scratch and it sounds like everyone else. The version you pictured never quite makes it to camera.',
     accent: 'amber',
   },
   {
     n: '03',
-    t: 'You post it, and it dies',
-    d: 'Weak hook, slow edit, no idea why. No system, no feedback loop, no consistency. So you post less. So you grow slower.',
+    t: 'And doing it properly eats hours you don\'t have',
+    d: 'Scripting, re-shooting, editing, captions — one post can swallow your whole evening. So you post less, you grow slower, and the spark fades.',
     accent: 'teal',
   },
 ]
@@ -206,9 +206,9 @@ function HeroSection() {
               transition={{ duration: 0.7, ease: EASE, delay: 0.14 }}
               className="mt-5 max-w-xl text-lg leading-relaxed text-sand"
             >
-              Paste a video you wish you'd made. TwinAI reads it, writes the script in your voice,
-              and walks you from blank page to posted — teleprompter, edit, caption and all.{' '}
-              <span className="text-cream">The whole loop, in one window.</span>
+              Paste a video you wish you'd made. We turn it into a script in your voice, help you
+              record it, edit it for you, and hand you the caption to post.{' '}
+              <span className="text-cream">From "I don't know what to make" to posted — in one window.</span>
             </motion.p>
 
             <motion.div
@@ -441,13 +441,13 @@ function PainSection() {
   return (
     <section className="mx-auto max-w-content px-5 py-20 sm:py-28">
       <Reveal className="text-center">
-        <p className="eyebrow">The creator's trap</p>
+        <p className="eyebrow">Sound familiar?</p>
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-          More content isn't the problem.{' '}
-          <span className="gradient-text">Making it fast enough is.</span>
+          You don't have a motivation problem.{' '}
+          <span className="gradient-text">You have a system problem.</span>
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-sand">
-          Every creator hits the same three walls. TwinAI tears all three down.
+          It's not that you don't want to post. It's that every creator hits the same three walls — and TwinAI is the system that breaks through all three.
         </p>
       </Reveal>
       <Stagger className="mt-14 grid gap-5 md:grid-cols-3" gap={0.08}>
