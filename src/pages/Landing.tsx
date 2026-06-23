@@ -737,12 +737,14 @@ function AgencySection() {
 // The grand-slam value stack: the deliverables (all true, usually buried in the
 // FAQ) itemized and anchored so the price reads as a no-brainer.
 function ValueStack() {
+  // The grand-slam stack: each deliverable next to what that job costs when you
+  // hire it out, anchored so the total ($490) makes one subscription feel obvious.
   const items = [
-    { t: 'A full read of why the original won', s: 'hook window, retention beats — a strategist charges $200+' },
-    { t: '5 hook options + a complete script in your voice', s: 'a ghostwriter: $150+' },
-    { t: 'Shot list + a 20-minute shoot plan', s: 'so you just press record' },
-    { t: 'One-click edit: captions, cuts, b-roll, vertical export', s: 'an editor: $50–100 a video' },
-    { t: 'A ready-to-paste caption pack, per platform', s: 'posted in seconds' },
+    { icon: Wand2, t: 'A full read of why the original won', s: 'Hook window, pacing, the exact retention beats.', who: 'Strategist', price: '$200' },
+    { icon: FileText, t: '5 hook options + a full script in your voice', s: 'Not a caption — a shootable script with delivery notes.', who: 'Ghostwriter', price: '$150' },
+    { icon: Clapperboard, t: 'Shot list + a 20-minute shoot plan', s: 'Walk in, press record, walk out. No guesswork.', who: 'Producer', price: '$40' },
+    { icon: Scissors, t: 'One-click edit — captions, cuts, b-roll, vertical', s: 'Dead air trimmed, beat-timed cuts, exported ready.', who: 'Editor', price: '$75' },
+    { icon: Send, t: 'A ready-to-paste caption pack, per platform', s: 'On-brand copy + hashtags. Posted in seconds.', who: 'Copywriter', price: '$25' },
   ]
   return (
     <section className="mx-auto max-w-content px-5 py-20 sm:py-28">
@@ -751,24 +753,50 @@ function ValueStack() {
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
           One link in. A finished, on-brand video out, <span className="gradient-text">end to end.</span>
         </h2>
+        <p className="mx-auto mt-4 max-w-md text-sand">Five jobs you'd normally hire out — done from a single paste.</p>
       </Reveal>
-      <div className="glass mx-auto mt-12 max-w-2xl p-6 sm:p-8">
-        <ul className="space-y-3.5">
+
+      <div className="glass mx-auto mt-12 max-w-2xl overflow-hidden p-0">
+        <Stagger className="divide-y divide-white/8" gap={0.06}>
           {items.map((it) => (
-            <li key={it.t} className="flex items-start gap-3">
-              <Check className="mt-1 h-4 w-4 shrink-0 text-teal" />
-              <div>
-                <div className="text-cream">{it.t}</div>
-                <div className="text-xs text-stone">{it.s}</div>
+            <RevealItem key={it.t}>
+              <div className="group flex items-center gap-4 p-4 transition-colors hover:bg-white/[0.02] sm:p-5">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-white/8 bg-ink">
+                  <it.icon className="h-[18px] w-[18px] text-amber" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="font-heading text-[15px] leading-snug text-cream">{it.t}</div>
+                  <div className="mt-0.5 text-xs text-stone">{it.s}</div>
+                </div>
+                <div className="shrink-0 text-right">
+                  <div className="text-[10px] uppercase tracking-wider text-stone">{it.who}</div>
+                  <div className="font-display text-lg text-sand line-through decoration-coral/60">{it.price}</div>
+                </div>
               </div>
-            </li>
+            </RevealItem>
           ))}
-        </ul>
-        <div className="mt-6 border-t border-white/8 pt-5 text-center">
-          <p className="text-sand">Easily <span className="font-semibold text-cream">$400+ of work</span> per video — from one link, in minutes.</p>
-          <p className="mt-2 text-xs text-stone">And a remix only counts when it finishes. If the read fails, it's on us.</p>
+        </Stagger>
+
+        {/* Total bar — the anchor everything above adds up to, against your price. */}
+        <div className="grid gap-px bg-white/8 sm:grid-cols-2">
+          <div className="bg-ink2 p-5 text-center sm:text-left">
+            <div className="text-[11px] uppercase tracking-wider text-stone">Hire it all out</div>
+            <div className="mt-1 font-display text-3xl text-sand line-through decoration-coral/60">$490<span className="text-lg">/video</span></div>
+          </div>
+          <div className="relative overflow-hidden bg-ink2 p-5 text-center sm:text-left">
+            <div className="absolute inset-0 bg-gradient-to-br from-amber/12 via-coral/8 to-teal/12" />
+            <div className="relative">
+              <div className="text-[11px] uppercase tracking-wider text-amber">With TwinAI</div>
+              <div className="mt-1 font-display text-3xl text-cream">One link<span className="text-lg text-stone">, minutes</span></div>
+            </div>
+          </div>
         </div>
       </div>
+
+      <p className="mx-auto mt-5 flex max-w-2xl items-center justify-center gap-2 text-center text-xs text-stone">
+        <ShieldCheck className="h-3.5 w-3.5 text-teal" />
+        A remix only counts when it finishes. If the read fails, it's on us.
+      </p>
     </section>
   )
 }
