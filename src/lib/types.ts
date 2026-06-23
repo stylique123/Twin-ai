@@ -51,6 +51,8 @@ export interface BrandVoice {
   platform: Platform
   label: string | null
   profile: VoiceProfile | null
+  // Platform aggregates captured during the handle scan (dashboard "your stats").
+  stats?: { followers: number; videos: number; avg_views: number; avg_likes: number } | null
   status: 'building' | 'ready' | 'failed'
   is_default: boolean
   error: string | null

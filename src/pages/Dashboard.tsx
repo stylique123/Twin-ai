@@ -109,6 +109,16 @@ export default function Dashboard() {
               )}
             </div>
           )}
+          {/* Real "little things about you" from the handle scan: followers, videos
+              read, and average reach/likes for the active brand. */}
+          {brand?.stats && (brand.stats.followers > 0 || brand.stats.videos > 0) && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {brand.stats.followers > 0 && <BrandStat value={fmtNum(brand.stats.followers)} label="followers" />}
+              {brand.stats.videos > 0 && <BrandStat value={fmtNum(brand.stats.videos)} label="videos read" />}
+              {brand.stats.avg_views > 0 && <BrandStat value={fmtNum(brand.stats.avg_views)} label="avg views" />}
+              {brand.stats.avg_likes > 0 && <BrandStat value={fmtNum(brand.stats.avg_likes)} label="avg likes" />}
+            </div>
+          )}
         </Reveal>
         {error && !loading && (
           <div className="mt-6 flex flex-col gap-3 rounded-card border border-coral/30 bg-coral/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -344,6 +354,19 @@ function computeFormatInsight(posts: Post[], gens: Generation[]): FormatInsight 
   const multiple = restAvg > 0 ? top.avg / restAvg : 0
   if (multiple < 1.2) return null
   return { format: top.f, avg: Math.round(top.avg), multiple: Math.round(multiple * 10) / 10, n: top.n }
+}
+
+const fmtNum = (n: number) =>
+  n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M'
+  : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + 'K'
+  : String(n)
+
+function BrandStat({ value, label }: { value: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
+      <span className="font-semibold text-cream">{value}</span> {label}
+    </span>
+  )
 }
 
 function postingStreak(posts: Post[]): number {
