@@ -17,6 +17,10 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
   if (!job.owner_id) throw new Error('job has no owner')
   if (!takePath.startsWith(`${job.owner_id}/`)) throw new Error('take_path outside owner folder')
 
+  // Cost instrumentation: render wall-time per job, so $/video per cohort is
+  // measurable (the financial panel's "you can't manage a margin you don't measure").
+  const t0 = Date.now()
+
   // Preserve the source extension so ffmpeg/auto-editor detect the container.
   const ext = (takePath.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4'
   const dir = await mkdtemp(join(tmpdir(), 'twinai-take-'))
@@ -36,7 +40,24 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     try {
       const { data: prof } = await db.from('profiles').select('plan, free_export_used').eq('id', job.owner_id).maybeSingle()
       const isFree = !prof?.plan || prof.plan === 'free'
-      if (isFree) { if (prof?.free_export_used) applyWm = true; else markFreeClean = true }
+      if (isFree) {
+        if (prof?.free_export_used) {
+          applyWm = true
+        } else {
+          // The one free CLEAN export is now gated on a CONFIRMED EMAIL so burner-
+          // email farms can't harvest unlimited free clean exports (the financial
+          // panel's margin-leak fix). Google OAuth + confirmed signups already pass;
+          // unverified throwaways get the watermark. Conservative on lookup failure.
+          let verified = false
+          try {
+            const { data: u } = await db.auth.admin.getUserById(job.owner_id)
+            verified = !!((u?.user as { email_confirmed_at?: string; confirmed_at?: string } | undefined)?.email_confirmed_at
+              ?? (u?.user as { confirmed_at?: string } | undefined)?.confirmed_at)
+          } catch { /* can't verify → watermark */ }
+          if (verified) markFreeClean = true
+          else applyWm = true
+        }
+      }
     } catch { /* default: no watermark */ }
 
     // Smart decision: read the user's brand-DNA pacing + the reference's format
@@ -201,6 +222,13 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // first edit; remakes/refines don't re-bank the saving). Best-effort.
     await db.from('analytics_events')
       .insert({ user_id: job.owner_id, event: 'edit_rendered', time_saved_minutes: isFirstEdit ? 90 : 0, props: { generation_id: payload.generation_id ?? null, premium: finalUrl !== url, variation } })
+      .then(() => {}, () => {})
+
+    // Per-job cost signal: wall-time + the output length, so blended $/video and
+    // margin can be tracked per cohort. Best-effort — never affects the render.
+    const renderMs = Date.now() - t0
+    await db.from('ops_events')
+      .insert({ kind: 'render_cost', severity: 'info', user_id: job.owner_id, detail: { generation_id: payload.generation_id ?? null, render_ms: renderMs, output_sec: durationSec, watermarked: applyWm } })
       .then(() => {}, () => {})
 
     return { output_path: outputPath, output_url: finalUrl, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl, edl_path: edlPath }

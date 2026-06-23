@@ -125,8 +125,18 @@ export const PLANS: PlanTier[] = [
   },
 ]
 
-// Add-on: extra brand voice beyond the plan's included count.
+// Expansion revenue (the NRR engine): à-la-carte add-ons surfaced in Settings so
+// growing accounts can spend more without changing tier.
 export const EXTRA_BRAND_VOICE_PRICE = 9 // USD / mo each
+export const EXTRA_SEAT_PRICE = 5 // USD / mo each (agency teams)
+export const REMIX_TOPUP = { videos: 10, price: 15 } // one-off top-up, premium margin
+
+export interface AddOn { id: string; name: string; desc: string; price: number; unit: string }
+export const ADD_ONS: AddOn[] = [
+  { id: 'extra_voice', name: 'Extra brand voice', desc: 'One more distinct voice beyond your plan — for a new client or sub-brand.', price: EXTRA_BRAND_VOICE_PRICE, unit: '/mo' },
+  { id: 'extra_seat', name: 'Extra team seat', desc: 'Add a teammate to your workspace with their own login.', price: EXTRA_SEAT_PRICE, unit: '/mo' },
+  { id: 'topup_10', name: '10-video top-up', desc: 'Out of videos before renewal? Add 10 more, one-off.', price: REMIX_TOPUP.price, unit: 'once' },
+]
 
 // Look up a plan tier by id (defaults to Free).
 export const planFor = (id: string | null | undefined): PlanTier =>
