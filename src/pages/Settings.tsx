@@ -167,7 +167,7 @@ export default function Settings() {
                 <button onClick={() => setEditingDna(true)} className="btn-ghost text-sm"><Pencil className="h-3.5 w-3.5" /> Edit</button>
               )}
             </div>
-            <p className="mt-2 text-sm text-stone">This shapes every blueprint's voice and your gallery's default niche.</p>
+            <p className="mt-2 text-sm text-stone">This shapes every script's voice and your gallery's default niche.</p>
 
             {!editingDna ? (
               /* Read-only view — what we already know about you. */

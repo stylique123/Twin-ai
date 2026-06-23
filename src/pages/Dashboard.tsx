@@ -146,9 +146,9 @@ export default function Dashboard() {
         </Stagger>
         <Reveal delay={0.1}>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
-            <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New blueprint" desc="Paste a reference and get a shootable script in seconds." primary />
+            <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New script" desc="Paste a reference and get a shootable script in seconds." primary />
             <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Find your next hit" desc="See what's winning in your niche, remix any of it in one tap." />
-            <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every blueprint you've ever made, searchable." />
+            <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every script you've ever made, searchable." />
           </div>
         </Reveal>
         {formatInsight && (
@@ -174,7 +174,7 @@ export default function Dashboard() {
               <div className="relative flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber/15"><Clapperboard className="h-3.5 w-3.5 text-amber" /></span>
-                  <h2 className="font-heading text-base text-cream">Recent blueprints</h2>
+                  <h2 className="font-heading text-base text-cream">Recent scripts</h2>
                 </div>
                 <Link to="/history" className="group flex items-center gap-1 text-xs text-stone transition-colors hover:text-cream">
                   View all <ArrowUpRight className="h-3 w-3 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
@@ -282,7 +282,7 @@ function EmptyBlueprints() {
           <Zap className="h-6 w-6 text-amber" />
         </motion.div>
       </div>
-      <p className="font-heading text-sm text-cream">No blueprints yet</p>
+      <p className="font-heading text-sm text-cream">No scripts yet</p>
       <p className="mt-2 max-w-[220px] text-xs leading-relaxed text-stone">Paste any video link and get a shootable script tailored to your style.</p>
       <Link to="/app" className="btn-gradient mt-5 inline-flex items-center gap-2 text-sm"><Wand2 className="h-3.5 w-3.5" /> Make your first one</Link>
     </div>
@@ -438,7 +438,7 @@ function EmptyPublishing() {
         </motion.div>
       </div>
       <p className="font-heading text-sm text-cream">Nothing published yet</p>
-      <p className="mt-1.5 max-w-[190px] text-xs leading-relaxed text-stone">Open a blueprint, then hit <span className="text-cream">Publish</span> to log your post here.</p>
+      <p className="mt-1.5 max-w-[190px] text-xs leading-relaxed text-stone">Open a script, then hit <span className="text-cream">Publish</span> to log your post here.</p>
     </div>
   )
 }

@@ -38,7 +38,7 @@ const PHASE_ORDER: Phase[] = ['idle', 'fetching', 'transcribing', 'writing']
 const STUDIO_STAGES: BuildStage[] = [
   { label: 'Fetching the real video', icon: Link2, est: 8, flavor: ['Locating the source clip', 'Pulling the media'] },
   { label: 'Transcribing & reading its structure', icon: ScanSearch, est: 22, flavor: ['Transcribing the audio', 'Mapping the hook', 'Reading the retention beats', 'Spotting the winning pattern'] },
-  { label: 'Writing your blueprint, in your voice', icon: FileText, est: 42, flavor: ['Studying your voice DNA', 'Drafting hook options', 'Writing your script', 'Building the shot list', 'Polishing captions & publish plan'] },
+  { label: 'Writing your script, in your voice', icon: FileText, est: 42, flavor: ['Studying your voice DNA', 'Drafting hook options', 'Writing your script', 'Building the shot list', 'Polishing captions & publish plan'] },
 ]
 
 export default function Studio() {

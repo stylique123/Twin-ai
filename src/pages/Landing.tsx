@@ -77,7 +77,7 @@ const PAIN = [
 const LOOP = [
   { icon: Play, k: 'Paste', t: 'Paste a link you wish you\'d made', d: 'Any TikTok, Reel or Short. That\'s the whole input. We pull and transcribe the real audio.' },
   { icon: Wand2, k: 'Decode', t: 'We decode why it worked', d: 'The exact hook window, the beats, the pacing, the retention mechanics. Real analysis, not vibes.' },
-  { icon: FileText, k: 'Blueprint', t: 'Get a shootable blueprint', d: 'Hook options, full script in your voice, shot list, edit checklist, caption pack, a 20-min plan.' },
+  { icon: FileText, k: 'Script', t: 'Get a shootable script', d: 'Hook options, full script in your voice, shot list, edit checklist, caption pack, a 20-min plan.' },
   { icon: Clapperboard, k: 'Record', t: 'Record it right here', d: 'Your script loads into a built-in teleprompter. Hit record, nail the hook, done.' },
   { icon: Scissors, k: 'Edit', t: 'Edit in one click', d: 'Word-synced captions, dead-air trimmed, jump cuts and b-roll, exported vertical, automatically.' },
   { icon: Send, k: 'Post', t: 'Post it, and grow the gallery', d: 'One tap copies your on-brand caption so you can post in seconds, then log it. Mark it public and it joins the niche gallery others remix.' },
@@ -85,7 +85,7 @@ const LOOP = [
 
 const FEATURES = [
   { icon: AtSign, t: 'Voice DNA', d: 'Paste your @handle once. We read your real posts and build a voice profile every script is written in.', gradient: 'from-teal/20 to-teal/5' },
-  { icon: FileText, t: 'Full blueprint', d: 'Not a caption. A hook, script with delivery notes, shot list, edit checklist and a 20-minute shoot plan.', gradient: 'from-amber/20 to-amber/5' },
+  { icon: FileText, t: 'Full script', d: 'Not a caption. A hook, script with delivery notes, shot list, edit checklist and a 20-minute shoot plan.', gradient: 'from-amber/20 to-amber/5' },
   { icon: Clapperboard, t: 'In-app teleprompter', d: 'Record straight from the browser with your script scrolling. A hook-timing marker keeps you on pace.', gradient: 'from-coral/20 to-coral/5' },
   { icon: Scissors, t: 'One-click auto-edit', d: 'Animated captions, dead-air removal, beat-timed jump cuts, b-roll cutaways, vertical export. One tap.', gradient: 'from-teal/20 to-teal/5' },
   { icon: Send, t: 'Publish helper', d: 'One tap copies your on-brand caption and opens the post, then log it, so the loop ends with a post.', gradient: 'from-amber/20 to-amber/5' },
@@ -110,7 +110,7 @@ const FAQ = [
   { q: 'Do you copy other people\'s videos?', a: 'No. We read the structure (hook shape, pacing, retention beats) and rebuild it as an original in your voice. We never clip or repost footage. The idea stays yours; the format becomes yours too.' },
   { q: 'Will this make me go viral?', a: 'No honest tool can promise that. We give you a proven structure and a fast, repeatable way to ship, with more quality shots on goal, in less time. That\'s the real edge.' },
   { q: 'How is this different from a clipper?', a: 'Clippers chop footage you already have. TwinAI takes a reference you admire and makes it shootable as something new, in your voice, from scratch, with a full script, shot list, edit and post.' },
-  { q: 'What do I actually get from one link?', a: 'A complete blueprint (hooks, script, shot list, edit checklist, caption pack, 20-minute plan), an in-app teleprompter to record it, a one-click edit, and publishing. The whole loop in one window.' },
+  { q: 'What do I actually get from one link?', a: 'A complete script (hooks, script, shot list, edit checklist, caption pack, 20-minute plan), an in-app teleprompter to record it, a one-click edit, and publishing. The whole loop in one window.' },
   { q: 'How does it learn my voice?', a: 'You paste your @handle. We read your recent public posts, including captions, hooks and your spoken audio, then synthesise a voice profile you confirm and can edit. It sharpens as you create more.' },
   { q: 'Can I use it for clients?', a: 'Yes. The Agency plan gives you 15 brand voices, one per client, plus multi-brand workspaces. Switch context in one tap, batch a week of content in an afternoon, ship consistent quality across every account.' },
 ]
@@ -355,7 +355,7 @@ function HeroVisualNew() {
           className="absolute -left-4 bottom-20 z-20 hidden space-y-1.5 rounded-2xl border border-white/10 bg-ink2/95 p-3 shadow-lift backdrop-blur text-[10px] sm:block sm:-left-6"
         >
           <div className="flex items-center gap-1.5 text-teal font-semibold">
-            <Sparkles className="h-2.5 w-2.5" /> Blueprint ready
+            <Sparkles className="h-2.5 w-2.5" /> Script ready
           </div>
           <div className="flex items-center gap-1.5 text-sand"><FileText className="h-2.5 w-2.5 text-stone" /> Script + shot list</div>
           <div className="flex items-center gap-1.5 text-sand"><Captions className="h-2.5 w-2.5 text-stone" /> Auto-captions</div>
@@ -1031,7 +1031,7 @@ function LoopScreen({ index }: { index: number }) {
   if (index === 2) {
     return (
       <div className="flex h-full flex-col gap-2 p-5 pt-8">
-        <div className="text-[10px] uppercase tracking-wider text-stone">Your blueprint</div>
+        <div className="text-[10px] uppercase tracking-wider text-stone">Your script</div>
         {([
           [Sparkles, 'Hook · "Everyone says post more. Wrong."'],
           [FileText, 'Script · 6 beats, in your voice'],
