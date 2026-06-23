@@ -484,24 +484,21 @@ export default function Gallery() {
               return (
                 <RevealItem key={c.id}>
                   <Tilt max={6} className="h-full">
-                    <div className={cn('glass flex h-full flex-col overflow-hidden border border-white/8 transition-all duration-300 hover:-translate-y-0.5', glowClass)}>
-                      <button
-                        type="button"
-                        onClick={() => setDetail(c)}
-                        aria-label={`Details for ${c.creator} on ${c.platform}`}
-                        className="group/poster relative aspect-video w-full overflow-hidden text-left"
-                      >
+                    {/* The WHOLE card opens the detail modal (fixes "only the top
+                        was clickable"). Play opens the original; Remix goes to Studio. */}
+                    <div onClick={() => setDetail(c)} className={cn('glass flex h-full cursor-pointer flex-col overflow-hidden border border-white/8 transition-all duration-300 hover:-translate-y-0.5', glowClass)}>
+                      <div className="group/poster relative aspect-video w-full overflow-hidden">
                         <div className={cn('absolute inset-0 bg-gradient-to-br', c.poster)} />
                         {thumb && <img src={thumb} alt={c.label} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
                         <div className="absolute inset-0 bg-gradient-to-t from-ink/90 via-ink/20 to-transparent" />
                         <div className="absolute inset-0 grid place-items-center">
-                          <span className="grid h-11 w-11 place-items-center rounded-full bg-ink/60 ring-1 ring-white/20 backdrop-blur-sm transition-transform duration-200 hover:scale-110">
+                          <button type="button" onClick={(e) => { e.stopPropagation(); window.open(c.url, '_blank', 'noopener,noreferrer') }} aria-label="Open the original video" className="grid h-11 w-11 place-items-center rounded-full bg-ink/60 ring-1 ring-white/20 backdrop-blur-sm transition-transform duration-200 hover:scale-110">
                             <Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" />
-                          </span>
+                          </button>
                         </div>
                         <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-ink/75 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-cream backdrop-blur-sm">{c.platform}</span>
                         {opp && (
-                          <span className={cn('absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold backdrop-blur-sm', SCORE_SKIN[opp.tier])} title="Opportunity score — how likely this format is to win for your niche">
+                          <span className={cn('absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold backdrop-blur-sm', SCORE_SKIN[opp.tier])} title="Opportunity score">
                             {opp.tier === 'hot' ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {opp.score}
                           </span>
                         )}
@@ -509,7 +506,7 @@ export default function Gallery() {
                           <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-2 py-0.5 text-[11px] font-medium text-cream/90 backdrop-blur-sm"><Eye className="h-3 w-3 opacity-70" /> {c.reach}</span>
                           <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-2 py-0.5 text-[11px] font-medium text-cream/90 backdrop-blur-sm"><Heart className="h-3 w-3 opacity-70" /> {c.loves}</span>
                         </div>
-                      </button>
+                      </div>
                       <div className="flex flex-1 flex-col p-5">
                         <div className="flex items-center justify-between gap-2">
                           <span className={cn('min-w-0 truncate text-[11px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
@@ -520,7 +517,7 @@ export default function Gallery() {
                         <p className="mt-2 flex-1 text-sm text-sand line-clamp-3"><span className="font-medium text-stone">Why it works. </span>{c.why}</p>
                         <p className="mt-3 text-xs"><span className={cn('font-semibold', c.accent)}>@{c.creator}</span></p>
                         <div className="mt-4">
-                          <button onClick={() => remix(c)} className="btn-gradient flex w-full items-center justify-center gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); remix(c) }} className="btn-gradient flex w-full items-center justify-center gap-2">
                             <Wand2 className="h-4 w-4 shrink-0" /> Remix in my voice
                           </button>
                         </div>

@@ -53,7 +53,7 @@ export default function History() {
               </p>
             </div>
             <Link to="/app" className="btn-gradient">
-              <Wand2 className="h-4 w-4" /> New script
+              <Wand2 className="h-4 w-4" /> New remix
             </Link>
           </div>
         </Reveal>
