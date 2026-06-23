@@ -174,6 +174,89 @@ export default function Metrics() {
             </div>
           </Reveal>
         )}
+        {m.founder && (() => {
+          const fm = m.founder!
+          const sv = fm.second_video
+          const secondRate = sv.made_1 > 0 ? Math.round((sv.made_2plus / sv.made_1) * 100) : 0
+          const wow = fm.wow ?? []
+          const last = wow[wow.length - 1]?.active ?? 0
+          const prev = wow[wow.length - 2]?.active ?? 0
+          const wowPct = prev > 0 ? Math.round(((last - prev) / prev) * 100) : 0
+          const maxActive = Math.max(1, ...wow.map((w) => w.active))
+          const avgSec = (fm.cost.avg_render_ms / 1000).toFixed(1)
+          return (
+            <Reveal delay={0.115}>
+              <div className="glass mt-6 p-6">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-7 w-7 place-items-center rounded-lg bg-amber/15"><Activity className="h-4 w-4 text-amber" /></span>
+                  <h2 className="font-heading text-base text-cream">Founder metrics — what unlocks the seed</h2>
+                </div>
+
+                {/* Headline proof: do creators come back for a 2nd video? */}
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-teal/25 bg-teal/[0.05] p-4 text-center">
+                    <div className="font-display text-3xl text-cream">{secondRate}%</div>
+                    <div className="mt-1 text-xs font-medium text-stone">Make a 2nd+ video</div>
+                    <div className="mt-0.5 text-[10px] text-stone/60">{sv.made_2plus}/{sv.made_1} who made one</div>
+                  </div>
+                  <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 text-center">
+                    <div className={cn('font-display text-3xl', wowPct >= 0 ? 'text-teal' : 'text-coral')}>{wowPct >= 0 ? '+' : ''}{wowPct}%</div>
+                    <div className="mt-1 text-xs font-medium text-stone">WoW active creators</div>
+                    <div className="mt-0.5 text-[10px] text-stone/60">{last} this wk · {prev} last</div>
+                  </div>
+                  <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4 text-center">
+                    <div className="font-display text-3xl text-cream">{avgSec}s</div>
+                    <div className="mt-1 text-xs font-medium text-stone">Avg render / video</div>
+                    <div className="mt-0.5 text-[10px] text-stone/60">{fm.cost.renders} renders measured</div>
+                  </div>
+                </div>
+
+                {/* WoW growth bars */}
+                {wow.length > 0 && (
+                  <div className="mt-5">
+                    <p className="text-xs font-medium text-stone">Active creators / week (made a video)</p>
+                    <div className="mt-2 flex items-end gap-1.5" style={{ height: 70 }}>
+                      {wow.map((w) => (
+                        <div key={w.week} className="flex flex-1 flex-col items-center justify-end gap-1" title={`${w.week}: ${w.active}`}>
+                          <div className="w-full rounded-sm bg-gradient-to-t from-coral to-amber" style={{ height: `${Math.max(4, (w.active / maxActive) * 60)}px` }} />
+                          <span className="text-[9px] text-stone/60">{w.week.slice(5)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Cohort retention triangle (W1/W4/W8 by signup week) */}
+                {fm.cohorts.length > 0 && (
+                  <div className="mt-5 overflow-x-auto">
+                    <p className="text-xs font-medium text-stone">Retention by signup cohort</p>
+                    <table className="mt-2 w-full min-w-[440px] text-left text-xs">
+                      <thead className="text-[10px] uppercase tracking-wider text-stone/70">
+                        <tr><th className="pb-1.5 font-medium">Cohort</th><th className="pb-1.5 font-medium">Size</th><th className="pb-1.5 font-medium">W1</th><th className="pb-1.5 font-medium">W4</th><th className="pb-1.5 font-medium">W8</th></tr>
+                      </thead>
+                      <tbody>
+                        {fm.cohorts.slice(-8).map((c) => {
+                          const cell = (n: number) => {
+                            const p = c.size > 0 ? Math.round((n / c.size) * 100) : 0
+                            return <td className="py-1"><span className="inline-block rounded px-1.5 py-0.5 text-cream" style={{ backgroundColor: `rgba(101,229,216,${Math.min(0.5, p / 100)})` }}>{p}%</span></td>
+                          }
+                          return (
+                            <tr key={c.week} className="border-t border-white/6">
+                              <td className="py-1 text-sand">{c.week}</td>
+                              <td className="py-1 text-stone">{c.size}</td>
+                              {cell(c.w1)}{cell(c.w4)}{cell(c.w8)}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                    <p className="mt-2 text-[10px] text-stone/60">Seed bar: W4 ≥ 35–40% flattening. % = users active that week ÷ cohort size.</p>
+                  </div>
+                )}
+              </div>
+            </Reveal>
+          )
+        })()}
         <Reveal delay={0.12}>
           <div className="glass mt-6 p-6">
             <h2 className="font-heading text-base text-cream">Case-study lookup</h2>

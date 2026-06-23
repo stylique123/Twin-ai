@@ -21,11 +21,18 @@ export interface SystemHealth {
   failed_jobs: number; stuck_building: number; ops_24h: number
   recent_ops: { kind: string; severity: string; created_at: string }[]
 }
+export interface FounderMetrics {
+  cohorts: { week: string; size: number; w1: number; w4: number; w8: number }[]
+  wow: { week: string; active: number }[]
+  second_video: { made_1: number; made_2plus: number }
+  cost: { renders: number; avg_render_ms: number }
+}
 export interface MetricsOverview {
   total_users: number; onboarded_users: number; voices_built: number
   blueprints_generated: number; edits_rendered: number; posts_logged: number
   referrals_redeemed: number; total_hours_saved: number; wau: number; mau: number
   funnel?: Funnel | null; retention?: Retention | null; health?: SystemHealth | null
+  founder?: FounderMetrics | null
 }
 // Admin-only KPI rollup for the live data-room dashboard. Returns null if the
 // caller isn't a platform admin (the edge function enforces it).
