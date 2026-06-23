@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck } from 'lucide-react'
+import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { updateDisplayName, saveDNA, startCheckout } from '../lib/api'
 import { PLANS, videosFromCredits } from '../lib/brand'
@@ -35,6 +35,9 @@ export default function Settings() {
   const [dna, setDna] = useState<CreatorDNA>({ ...EMPTY_DNA, ...(profile?.dna ?? {}) })
   const [savingDna, setSavingDna] = useState(false)
   const [dnaSaved, setDnaSaved] = useState(false)
+  // DNA is SHOWN read-only by default (it's already saved from the scan); "Edit"
+  // reveals the form. Re-flagged feedback: don't dump editable fields by default.
+  const [editingDna, setEditingDna] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [coBusy, setCoBusy] = useState<string | null>(null)
   const [coMsg, setCoMsg] = useState<string | null>(null)
@@ -156,51 +159,71 @@ export default function Settings() {
         {/* Creator DNA */}
         <Reveal delay={0.15}>
           <section className="glass mt-5 p-5 sm:p-6">
-            <div className="flex items-center gap-2.5">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><ShieldCheck className="h-4 w-4 text-coral" /></span>
-              <p className="eyebrow !text-sand">Creator DNA</p>
-            </div>
-            <p className="mt-2 text-sm text-stone">This shapes every blueprint's voice and your gallery's default niche. Refine it any time.</p>
-            <div className="mt-5 space-y-4">
-              {DNA_FIELDS.map((f) => (
-                <div key={f.key}>
-                  <label className="eyebrow mb-1.5 block">{f.label}</label>
-                  <input
-                    className="field"
-                    value={dna[f.key]}
-                    placeholder={f.placeholder}
-                    onChange={(e) => setDna((d) => ({ ...d, [f.key]: e.target.value }))}
-                  />
-                </div>
-              ))}
-              <div>
-                <label className="eyebrow mb-1.5 block">How you write <span className="font-normal normal-case text-stone">— paste a few posts (optional)</span></label>
-                <textarea
-                  className="field min-h-[96px] resize-y"
-                  value={dna.voice_samples ?? ''}
-                  placeholder="Paste 2–3 of your real posts (LinkedIn, captions, a blog excerpt). We match your exact cadence and phrasing — the single strongest signal for sounding like you, especially if you're camera-shy or B2B."
-                  onChange={(e) => setDna((d) => ({ ...d, voice_samples: e.target.value }))}
-                />
+            <div className="flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><ShieldCheck className="h-4 w-4 text-coral" /></span>
+                <p className="eyebrow !text-sand">Creator DNA</p>
               </div>
-              <div>
-                <label className="eyebrow mb-2 block">Platforms</label>
-                <div className="flex flex-wrap gap-2">
-                  {PLATFORMS.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => togglePlatform(p)}
-                      className={`chip capitalize ${dna.platforms.includes(p) ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:border-white/20 hover:text-cream'}`}
-                    >
-                      {dna.platforms.includes(p) && <Check className="h-3.5 w-3.5 text-coral" />} {p}
-                    </button>
-                  ))}
+              {!editingDna && (
+                <button onClick={() => setEditingDna(true)} className="btn-ghost text-sm"><Pencil className="h-3.5 w-3.5" /> Edit</button>
+              )}
+            </div>
+            <p className="mt-2 text-sm text-stone">This shapes every blueprint's voice and your gallery's default niche.</p>
+
+            {!editingDna ? (
+              /* Read-only view — what we already know about you. */
+              <div className="mt-5 space-y-3">
+                {DNA_FIELDS.map((f) => (
+                  <div key={f.key} className="flex flex-col gap-0.5 border-b border-white/6 pb-3 sm:flex-row sm:items-baseline sm:gap-3">
+                    <span className="eyebrow w-40 shrink-0">{f.label}</span>
+                    <span className={`text-sm ${dna[f.key] ? 'text-cream' : 'text-stone/60'}`}>{dna[f.key] || 'Not set'}</span>
+                  </div>
+                ))}
+                <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
+                  <span className="eyebrow w-40 shrink-0">Platforms</span>
+                  <span className="flex flex-wrap gap-1.5">
+                    {dna.platforms.length ? dna.platforms.map((p) => <span key={p} className="chip capitalize !py-1 text-xs">{p}</span>) : <span className="text-sm text-stone/60">Not set</span>}
+                  </span>
+                </div>
+                {dna.voice_samples && (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="eyebrow">How you write</span>
+                    <span className="line-clamp-2 text-sm text-sand">{dna.voice_samples}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* Edit form. */
+              <div className="mt-5 space-y-4">
+                {DNA_FIELDS.map((f) => (
+                  <div key={f.key}>
+                    <label className="eyebrow mb-1.5 block">{f.label}</label>
+                    <input className="field" value={dna[f.key]} placeholder={f.placeholder} onChange={(e) => setDna((d) => ({ ...d, [f.key]: e.target.value }))} />
+                  </div>
+                ))}
+                <div>
+                  <label className="eyebrow mb-1.5 block">How you write <span className="font-normal normal-case text-stone">— paste a few posts (optional)</span></label>
+                  <textarea className="field min-h-[96px] resize-y" value={dna.voice_samples ?? ''} placeholder="Paste 2–3 of your real posts (LinkedIn, captions, a blog excerpt). We match your exact cadence." onChange={(e) => setDna((d) => ({ ...d, voice_samples: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="eyebrow mb-2 block">Platforms</label>
+                  <div className="flex flex-wrap gap-2">
+                    {PLATFORMS.map((p) => (
+                      <button key={p} onClick={() => togglePlatform(p)} className={`chip capitalize ${dna.platforms.includes(p) ? 'border-coral/60 bg-coral/10 text-cream' : 'hover:border-white/20 hover:text-cream'}`}>
+                        {dna.platforms.includes(p) && <Check className="h-3.5 w-3.5 text-coral" />} {p}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={async () => { await saveDna(); setEditingDna(false) }} disabled={savingDna} className="btn-gradient text-sm">
+                    {savingDna ? <Loader2 className="h-4 w-4 animate-spin" /> : dnaSaved ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+                    {dnaSaved ? 'Saved' : 'Save'}
+                  </button>
+                  <button onClick={() => { setDna({ ...EMPTY_DNA, ...(profile?.dna ?? {}) }); setEditingDna(false) }} className="btn-ghost text-sm">Cancel</button>
                 </div>
               </div>
-              <button onClick={saveDna} disabled={savingDna} className="btn-gradient text-sm">
-                {savingDna ? <Loader2 className="h-4 w-4 animate-spin" /> : dnaSaved ? <Check className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
-                {dnaSaved ? 'Saved' : 'Save creator DNA'}
-              </button>
-            </div>
+            )}
           </section>
         </Reveal>
 
