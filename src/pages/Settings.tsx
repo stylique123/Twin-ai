@@ -398,14 +398,14 @@ export default function Settings() {
                   return (
                   <div key={f.key} className="flex flex-col gap-0.5 border-b border-white/6 pb-3 sm:flex-row sm:items-baseline sm:gap-3">
                     <span className="eyebrow w-40 shrink-0">{f.label}</span>
-                    <span className={`text-sm ${v ? 'text-cream' : 'text-stone/60'}`}>{v || 'Not set'}</span>
+                    {v ? <span className="text-sm text-cream">{v}</span> : <button onClick={() => setEditingDna(true)} className="text-sm text-amber/80 hover:text-amber">+ Add</button>}
                   </div>
                   )
                 })}
                 <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
                   <span className="eyebrow w-40 shrink-0">Platforms</span>
                   <span className="flex flex-wrap gap-1.5">
-                    {dna.platforms.length ? dna.platforms.map((p) => <span key={p} className="chip capitalize !py-1 text-xs">{p}</span>) : <span className="text-sm text-stone/60">Not set</span>}
+                    {dna.platforms.length ? dna.platforms.map((p) => <span key={p} className="chip capitalize !py-1 text-xs">{p}</span>) : <button onClick={() => setEditingDna(true)} className="text-sm text-amber/80 hover:text-amber">+ Add</button>}
                   </span>
                 </div>
                 {dna.voice_samples && (
@@ -418,10 +418,11 @@ export default function Settings() {
             ) : (
               /* Edit form. */
               <div className="mt-5 space-y-4">
+                <p className="rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-sand">Your scanned niche &amp; voice are filled in below — tweak them, and add audience, product and goal so every script gets sharper.</p>
                 {DNA_FIELDS.map((f) => (
                   <div key={f.key}>
                     <label className="eyebrow mb-1.5 block">{f.label}</label>
-                    <input className="field" value={dna[f.key]} placeholder={f.placeholder} onChange={(e) => setDna((d) => ({ ...d, [f.key]: e.target.value }))} />
+                    <input className="field" value={shownDna(f.key)} placeholder={f.placeholder} onChange={(e) => setDna((d) => ({ ...d, [f.key]: e.target.value }))} />
                   </div>
                 ))}
                 <div>

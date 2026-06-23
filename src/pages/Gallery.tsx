@@ -94,45 +94,45 @@ interface Format { name: string; why: string; q: string; icon: typeof Mic }
 const PLAYBOOK: Record<string, Format[]> = {
   Business: [
     { name: 'Talking-head hot take', why: 'A sharp, contrarian POV straight to camera — the fastest, highest-trust format for founders.', q: 'hook', icon: Mic },
-    { name: 'Podcast / soundbite clip', why: 'A 30-second answer to one real question. Repurposable and authority-building.', q: 'insight', icon: Film },
+    { name: 'Soundbite clip', why: 'A 30-second answer to one real question. Repurposable and authority-building.', q: 'insight', icon: Film },
     { name: 'Case-study breakdown', why: 'A before → after result with the steps. Buyers save and share proof.', q: 'process', icon: TrendingUp },
-    { name: '“3 ways to…” listicle', why: 'Numbered value holds retention and is dead-simple to script.', q: 'explain', icon: Layers },
+    { name: '3 things they didn’t know', why: 'Numbered value holds retention and is dead-simple to script.', q: 'explain', icon: Layers },
   ],
   Fitness: [
     { name: 'Transformation transition', why: 'A clean before/after cut on the beat — the most-shared fitness format.', q: 'transition', icon: Repeat },
     { name: 'Form-check talking head', why: 'Fix one common mistake to camera. Saves + “sending this to my gym buddy.”', q: 'callout', icon: Mic },
-    { name: 'Day-of-eating / routine', why: 'A relatable POV walkthrough that builds the para-social bond that retains.', q: 'routine', icon: Film },
+    { name: 'Day-of-eating', why: 'A relatable POV walkthrough that builds the para-social bond that retains.', q: 'routine', icon: Film },
     { name: 'Myth-buster hot take', why: 'Name the bad advice, flip it. Comment-bait that drives reach.', q: 'hook', icon: TrendingUp },
   ],
   Beauty: [
     { name: 'GRWM + a story', why: 'Get-ready-with-me while you talk — high completion, easy to film daily.', q: 'grwm', icon: Mic },
-    { name: 'Try-on / transition', why: 'Outfit or product transitions on the beat — the signature beauty/fashion win.', q: 'transition', icon: Repeat },
+    { name: 'Outfit try-on', why: 'Outfit or product transitions on the beat — the signature beauty/fashion win.', q: 'transition', icon: Repeat },
     { name: 'Step-by-step tutorial', why: 'A clear how-to with a satisfying payoff. Saveable and re-watchable.', q: 'tutorial', icon: Layers },
     { name: 'First-impression reaction', why: 'Honest real-time reactions earn trust and comments.', q: 'reaction', icon: Film },
   ],
   Food: [
     { name: 'Jump-cut recipe', why: 'A beat every 1-2 seconds so attention never resets — the Lynja effect.', q: 'cook', icon: Repeat },
-    { name: 'ASMR / process reveal', why: 'Satisfying sound + visuals carry the watch with no script needed.', q: 'process', icon: Film },
+    { name: 'ASMR process reveal', why: 'Satisfying sound + visuals carry the watch with no script needed.', q: 'process', icon: Film },
     { name: 'Taste-test reaction', why: 'Genuine reactions are inherently loopable and shareable.', q: 'reaction', icon: Mic },
-    { name: '3-ingredient / quick', why: 'Low-effort promise = high saves. Easy series to sustain.', q: 'recipe', icon: Layers },
+    { name: '3-ingredient quick recipe', why: 'Low-effort promise = high saves. Easy series to sustain.', q: 'recipe', icon: Layers },
   ],
   Education: [
     { name: 'Explainer w/ visuals', why: 'One idea, clear payoff, no fluff — the format that makes expertise feel actionable.', q: 'explain', icon: Layers },
     { name: '“Did you know” hook', why: 'A surprising fact cold-open that stops the scroll fast.', q: 'hook', icon: Sparkles },
-    { name: 'Process / how-it’s-made', why: 'Curiosity-driven step reveals are deeply saveable.', q: 'process', icon: Film },
+    { name: 'How it’s made', why: 'Curiosity-driven step reveals are deeply saveable.', q: 'process', icon: Film },
     { name: 'Authority insight clip', why: 'Name the outcome, give one concrete mechanism, keep it short.', q: 'insight', icon: Mic },
   ],
   Lifestyle: [
     { name: 'Day-in-the-life', why: 'A micro-narrative arc builds the para-social bond that drives follows.', q: 'vlog', icon: Film },
     { name: 'Relatable POV skit', why: 'A shared “that’s so me” moment — the most shareable lifestyle format.', q: 'relatable', icon: Sparkles },
     { name: 'Get-ready chat', why: 'Talk to camera while doing something — high completion, low effort.', q: 'routine', icon: Mic },
-    { name: 'Story-time transition', why: 'Setup → escalation → payoff with tight cuts rewards a full watch.', q: 'story', icon: Repeat },
+    { name: 'Story-time', why: 'Setup → escalation → payoff with tight cuts rewards a full watch.', q: 'story', icon: Repeat },
   ],
 }
 const DEFAULT_PLAYBOOK: Format[] = [
   { name: 'Talking-head hot take', why: 'A clear POV to camera is the fastest, highest-trust video to make in any niche.', q: 'hook', icon: Mic },
   { name: 'On-beat transition', why: 'A satisfying before/after or scene cut on the beat — universally shareable.', q: 'transition', icon: Repeat },
-  { name: '“3 things” listicle', why: 'Numbered value is easy to script and holds retention.', q: 'explain', icon: Layers },
+  { name: '3 quick wins', why: 'Numbered value is easy to script and holds retention.', q: 'explain', icon: Layers },
   { name: 'Story-time', why: 'Setup → tension → payoff keeps people to the end.', q: 'story', icon: Film },
 ]
 function playbookFor(niche: string): Format[] {

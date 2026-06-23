@@ -186,15 +186,21 @@ export default function History() {
                           {formatTag && <span className="chip">{formatTag}</span>}
                           <span>{new Date(g.created_at).toLocaleDateString()}</span>
                         </div>
-                        {render ? (
-                          <a href={render} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-teal/30 bg-teal/10 px-2.5 py-1 font-medium text-teal transition-colors hover:bg-teal/20">
-                            <Play className="h-3 w-3 fill-teal" /> Watch
-                          </a>
-                        ) : (
-                          <Link to={`/record/${g.id}`} className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 font-medium text-stone transition-colors hover:text-cream">
-                            <Video className="h-3 w-3" /> Record
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {/* Always-visible way to open the script / blueprint. */}
+                          <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 font-medium text-sand transition-colors hover:text-cream">
+                            <FileText className="h-3 w-3" /> Open script
                           </Link>
-                        )}
+                          {render ? (
+                            <a href={render} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-teal/30 bg-teal/10 px-2.5 py-1 font-medium text-teal transition-colors hover:bg-teal/20">
+                              <Play className="h-3 w-3 fill-teal" /> Watch
+                            </a>
+                          ) : (
+                            <Link to={`/record/${g.id}`} className="inline-flex items-center gap-1 rounded-lg border border-amber/30 bg-amber/10 px-2.5 py-1 font-medium text-amber transition-colors hover:bg-amber/20">
+                              <Video className="h-3 w-3" /> Record
+                            </Link>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>
