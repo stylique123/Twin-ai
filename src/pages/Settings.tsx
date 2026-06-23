@@ -43,6 +43,8 @@ export default function Settings() {
   const [coBusy, setCoBusy] = useState<string | null>(null)
   const [coMsg, setCoMsg] = useState<string | null>(null)
   const [upgradeOpen, setUpgradeOpen] = useState(false)
+  const [cryptoPay, setCryptoPay] = useState<{ asset: string; address: string; amount: number; plan: string } | null>(null)
+  const [copied, setCopied] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null)
   const [addonBusy, setAddonBusy] = useState<string | null>(null)
@@ -128,7 +130,7 @@ export default function Settings() {
     try {
       const r = await startCheckout(planId)
       if (r.url) { window.location.href = r.url; return }
-      if (r.kind === 'crypto') { setCoMsg(`Send $${r.amount_usd} in ${r.asset} to ${r.address}, then contact us to activate.`); return }
+      if (r.kind === 'crypto' && r.address) { setUpgradeOpen(false); setCryptoPay({ asset: r.asset ?? 'USDT', address: r.address, amount: r.amount_usd ?? 0, plan: planId }); return }
       if (r.kind === 'manual') { setCoMsg(r.message ?? 'Contact us to activate this plan.'); return }
       if (r.kind === 'unconfigured') { setCoMsg('Checkout is not enabled yet — please contact support.'); return }
       setCoMsg('Could not start checkout. Please try again.')
@@ -444,6 +446,38 @@ export default function Settings() {
               })}
             </div>
             {coMsg && <p className="mt-4 text-center text-xs text-sand">{coMsg}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Crypto payment panel — copyable address + amount; the plan activates once
+          the on-chain payment is confirmed (admin/webhook). No bank or LLC needed. */}
+      {cryptoPay && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => setCryptoPay(null)}>
+          <div className="glass relative w-full max-w-md p-6 sm:p-7" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setCryptoPay(null)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
+            <h2 className="font-display text-2xl tracking-tight">Pay with crypto</h2>
+            <p className="mt-1 text-sm text-stone">Send the exact amount to the address below. Your plan activates once the payment is confirmed (usually within the hour).</p>
+            <div className="mt-5 space-y-3">
+              <div className="flex items-center justify-between rounded-card border border-white/8 bg-white/[0.02] px-4 py-3">
+                <span className="text-xs uppercase tracking-wider text-stone">Amount</span>
+                <span className="font-display text-xl text-cream">${cryptoPay.amount} <span className="text-sm text-sand">{cryptoPay.asset}</span></span>
+              </div>
+              <div className="rounded-card border border-white/8 bg-white/[0.02] px-4 py-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs uppercase tracking-wider text-stone">{cryptoPay.asset} address</span>
+                  <button
+                    onClick={() => { navigator.clipboard?.writeText(cryptoPay.address).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1500) }, () => {}) }}
+                    className="inline-flex items-center gap-1 text-xs text-amber hover:text-cream"
+                  >
+                    {copied ? <Check className="h-3.5 w-3.5 text-teal" /> : <CreditCard className="h-3.5 w-3.5" />} {copied ? 'Copied' : 'Copy'}
+                  </button>
+                </div>
+                <p className="mt-1.5 break-all font-mono text-sm text-cream">{cryptoPay.address}</p>
+              </div>
+              <p className="text-xs text-stone">Network: send {cryptoPay.asset} on a supported chain (e.g. TRC-20 / ERC-20). After sending, keep this window — we confirm and unlock your plan automatically.</p>
+            </div>
+            <button onClick={() => setCryptoPay(null)} className="btn-gradient mt-5 w-full">I've sent the payment</button>
           </div>
         </div>
       )}
