@@ -245,11 +245,12 @@ export default function Gallery() {
   const userSubNiche = voiceSubNiche.trim()
   const [niche, setNiche] = useState<string>('All')
   const [q, setQ] = useState('')
-  const [sort, setSort] = useState<'top' | 'all'>('top')
+  // Playbook format filter (no longer hijacks the search box — that left "hook"
+  // stuck in search). null = no format filter.
+  const [activeFormat, setActiveFormat] = useState<{ name: string; q: string } | null>(null)
   const [community, setCommunity] = useState<Card[]>([])
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const [showAll, setShowAll] = useState(false)
-  const [chipsExpanded, setChipsExpanded] = useState(false)
   const touched = useRef(false)
 
   useEffect(() => {
@@ -324,22 +325,25 @@ export default function Gallery() {
       const needle = q.trim().toLowerCase()
       out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(needle))
     }
-    // Rank by the Opportunity score (engagement × reach × your-niche fit), not raw
-    // reach — so the feed surfaces what's most likely to actually work for them.
+    // Playbook format filter: match the chosen format's keyword against the card text.
+    if (activeFormat) {
+      const fq = activeFormat.q.toLowerCase()
+      out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(fq))
+    }
+    // Always rank by the Opportunity score (engagement × reach × your-niche fit) —
+    // the redundant Top/All toggle is gone.
     const byScore = (a: Card, b: Card) => (scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0)
     const isForYou = (!!mySubNiche && niche === mySubNiche) || (!!myNiche && niche === myNiche)
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
     if (isForYou) {
       const rank = (c: Card) =>
         c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
-      // Drop the truly cross-niche items (the "random cars" complaint) — but only
-      // when there's enough on-niche/adjacent content left, so the feed is never empty.
       const relevant = out.filter((c) => rank(c) < 3)
       const base = relevant.length >= 6 ? relevant : out
       return [...base].sort((a, b) => rank(a) - rank(b) || byScore(a, b))
     }
-    return sort === 'top' ? [...out].sort(byScore) : out
-  }, [all, myNiche, mySubNiche, niche, q, sort, searchBlobs, related, scores])
+    return [...out].sort(byScore)
+  }, [all, myNiche, mySubNiche, niche, q, activeFormat, searchBlobs, related, scores])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
   // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
@@ -413,47 +417,48 @@ export default function Gallery() {
               Your playbook{myNiche ? <> — what wins in <span className="text-amber">{myNiche}</span></> : ' — formats that grow you'}
             </h2>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {playbookFor(myNiche).map((f) => (
+          <p className="mb-3 -mt-2 text-xs text-stone">Tap a format to see real examples of it below.</p>
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            {playbookFor(myNiche).map((f) => {
+              const on = activeFormat?.name === f.name
+              return (
               <button
                 key={f.name}
-                onClick={() => { touched.current = true; setShowAll(false); setQ(f.q); }}
-                className="group glass flex flex-col gap-2 rounded-card border border-white/8 p-4 text-left transition-all duration-300 hover:-translate-y-0.5 hover:border-amber/30"
+                title={f.why}
+                onClick={() => { touched.current = true; setShowAll(false); setActiveFormat(on ? null : { name: f.name, q: f.q }) }}
+                className={cn('inline-flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-all duration-200', on ? 'border-amber/60 bg-amber/15 text-cream' : 'border-white/10 bg-white/[0.03] text-sand hover:border-amber/30 hover:text-cream')}
               >
-                <span className="grid h-8 w-8 place-items-center rounded-lg bg-amber/10"><f.icon className="h-4 w-4 text-amber" /></span>
-                <span className="font-heading text-sm text-cream">{f.name}</span>
-                <span className="text-xs leading-relaxed text-stone">{f.why}</span>
-                <span className="mt-auto inline-flex items-center gap-1 pt-1 text-[11px] font-semibold text-amber opacity-80 transition-opacity group-hover:opacity-100">
-                  See examples <ChevronRight className="h-3 w-3" />
-                </span>
+                <f.icon className={cn('h-3.5 w-3.5', on ? 'text-amber' : 'text-stone')} /> {f.name}
               </button>
-            ))}
+              )
+            })}
           </div>
         </Reveal>
       </div>
       <div className="relative mx-auto max-w-6xl px-5 pb-16">
         <Reveal delay={0.04}>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0 sm:pb-0">
-              {(chipsExpanded ? nicheChips : nicheChips.slice(0, 7)).map((n) => (
-                <button key={n} onClick={() => { touched.current = true; setShowAll(false); setNiche(n) }} className={cn('chip shrink-0 transition-all duration-200', niche === n ? 'border-coral/60 bg-coral/10 text-cream shadow-[0_0_12px_rgba(255,91,123,0.2)]' : 'hover:border-white/20 hover:text-cream', isMine(n) && niche !== n && 'border-teal/40 text-cream')}>
-                  {n}{isMine(n) ? ' ✦' : ''}
-                </button>
-              ))}
-              {nicheChips.length > 7 && (
-                <button onClick={() => setChipsExpanded((v) => !v)} className="chip shrink-0 text-stone hover:text-cream">
-                  {chipsExpanded ? 'Less' : `+${nicheChips.length - 7} more`}
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2">
+              {/* Niches as a single dropdown instead of a long chip row. */}
+              <div className="relative">
+                <select
+                  value={niche}
+                  onChange={(e) => { touched.current = true; setShowAll(false); setNiche(e.target.value) }}
+                  className="field cursor-pointer appearance-none pr-9"
+                >
+                  {nicheChips.map((n) => (
+                    <option key={n} value={n} className="bg-ink2 text-cream">{n}{isMine(n) ? ' ✦ (you)' : ''}</option>
+                  ))}
+                </select>
+                <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-stone" />
+              </div>
+              {activeFormat && (
+                <button onClick={() => setActiveFormat(null)} className="chip border-amber/40 text-cream" title="Clear format filter">
+                  {activeFormat.name} <span className="text-stone">✕</span>
                 </button>
               )}
             </div>
             <div className="flex items-center gap-2">
-              <div className="flex rounded-[12px] border border-white/10 bg-white/5 p-0.5">
-                {(['top', 'all'] as const).map((s) => (
-                  <button key={s} onClick={() => setSort(s)} className={cn('rounded-[10px] px-3 py-1.5 text-xs font-medium capitalize transition-colors', sort === s ? 'bg-coral/20 text-cream' : 'text-stone hover:text-cream')}>
-                    {s === 'top' ? 'Top' : 'All'}
-                  </button>
-                ))}
-              </div>
               <div className="relative sm:w-56">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-stone" />
                 <input className="field pl-9" placeholder="Search a niche or topic…" value={q} onChange={(e) => setQ(e.target.value)} />
