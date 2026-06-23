@@ -11,7 +11,7 @@ export default {
         ink3: '#13131A',
         cream: '#F6F1E9',
         sand: '#C9BDAC',
-        stone: '#8D8475',
+        stone: '#9C9384',
         amber: '#FFB347',
         coral: '#FF5B7B',
         teal: '#65E5D8',

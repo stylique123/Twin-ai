@@ -30,6 +30,9 @@ export function RefinePanel({
   const [applying, setApplying] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   useEffect(() => { setEdl(initialEdl) }, [initialEdl])
+  // A re-render is a full ffmpeg pass (real compute). Only allow it when something
+  // actually changed, so identical "apply" clicks don't burn a render for nothing.
+  const changed = JSON.stringify(edl) !== JSON.stringify(initialEdl)
 
   const setCapStyle = (style: string) => setEdl((e) => e ? { ...e, captions: { ...e.captions, style } } : e)
   const setCapColor = (v: number) => setEdl((e) => e ? { ...e, variation: v, captions: { ...e.captions, variation: v } } : e)
@@ -131,9 +134,10 @@ export function RefinePanel({
                   )}
                 </div>
 
-                <button onClick={apply} disabled={applying || !takePath} className="btn-gradient w-full">
+                <button onClick={apply} disabled={applying || !takePath || !changed} className="btn-gradient w-full disabled:opacity-50">
                   {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Apply &amp; re-render (free)
                 </button>
+                {!changed && <p className="text-center text-xs text-stone">Tweak a setting above to re-render.</p>}
               </div>
             )}
           </motion.div>
