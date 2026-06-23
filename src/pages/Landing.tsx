@@ -18,7 +18,7 @@ import { cn } from '../lib/cn'
 // and four different vertical creator reels so the device mocks + showcase show
 // REAL, varied footage instead of one clip on repeat.
 const HF = 'https://d8j0ntlcm91z4.cloudfront.net/user_3A4BLQYlkqlIIcq5F4BohQmaHaz/'
-const HERO_VIDEO_SRC = HF + 'hf_20260623_023204_8bbe1bed-43ee-46c8-9567-101e083a9500.mp4' // abstract bg (hero + pain)
+const HERO_VIDEO_SRC = HF + 'hf_20260614_061422_7b59d7ac-3dc6-4376-9baa-bc3cad8bccb0.mp4' // the original brand hero clip (hero + pain bg)
 const HERO_PHONE_VIDEO = HF + 'hf_20260623_023132_98fe4f69-1b34-415e-8d5a-9627cec28c29.mp4' // founder talking-head, 9:16
 const REEL = {
   founder: HF + 'hf_20260623_023132_98fe4f69-1b34-415e-8d5a-9627cec28c29.mp4',
@@ -197,7 +197,7 @@ function HeroSection() {
 
       {/* Nav hint */}
       <div className="relative z-10 mx-auto max-w-content px-5 pb-20 pt-28 sm:pt-32 lg:pt-36">
-        <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+        <div className="grid items-center gap-12 lg:grid-cols-[0.88fr_1.12fr] lg:gap-10">
           <div>
             <motion.h1
               initial={{ opacity: 0, y: 24 }}
@@ -278,7 +278,7 @@ function HeroVisualNew() {
       initial={{ opacity: 0, y: 32, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.9, ease: EASE, delay: 0.2 }}
-      className="relative flex justify-center lg:justify-center"
+      className="relative flex justify-center lg:justify-end"
     >
       <div className="relative my-4 sm:my-8">
         {/* Reference card, top left. Hidden on the narrowest screens so it never
@@ -313,14 +313,14 @@ function HeroVisualNew() {
         <motion.div
           animate={{ y: [0, -6, 0] }}
           transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative w-[244px] overflow-hidden rounded-[48px] border-[6px] border-white/15 bg-ink p-1 sm:w-[264px]"
+          className="relative w-[280px] overflow-hidden rounded-[52px] border-[7px] border-white/15 bg-ink p-1 sm:w-[320px]"
           style={{ boxShadow: '0 0 0 1px rgba(255,255,255,.06), 0 32px 90px -16px rgba(0,0,0,.9), 0 0 60px -20px rgba(101,229,216,.15)' }}
         >
           <div className="overflow-hidden rounded-[36px] bg-ink">
           <div className="relative flex justify-center bg-ink pt-3 pb-0.5">
             <div className="h-[18px] w-[72px] rounded-full bg-black/60" />
           </div>
-          <div className="relative h-[470px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
+          <div className="relative h-[540px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
             {/* Real footage playing inside the device, so the phone reads as a live
                 recording — not an empty mock. The teleprompter + script overlay sit
                 on top, exactly like the in-app record screen. */}
@@ -437,7 +437,7 @@ function Particles() {
 
 function PlatformStrip() {
   return (
-    <section className="border-b border-white/8 bg-ink2/40 py-10">
+    <section className="bg-ink2/40 py-10">
       <div className="mx-auto max-w-content px-5">
         <p className="text-center text-xs font-semibold uppercase tracking-widest text-stone mb-6">
           Built for TikTok, YouTube and Instagram
@@ -450,14 +450,6 @@ function PlatformStrip() {
             >
               <p.Icon className={cn('h-4 w-4', p.tint)} />
               <span className="text-sm font-semibold text-cream">{p.label}</span>
-              <span
-                className={cn(
-                  'rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider',
-                  p.status === 'Live' ? 'bg-teal/12 text-teal' : 'bg-white/8 text-stone',
-                )}
-              >
-                {p.status}
-              </span>
             </div>
           ))}
           <div className="inline-flex items-center gap-2 rounded-full border border-dashed border-white/12 px-4 py-2 text-sm text-stone">
@@ -995,12 +987,11 @@ function LoopSequence() {
       {/* Steps */}
       <div className="order-2 lg:order-1">
         <div className="relative space-y-2">
-          <div className="absolute left-[22px] top-2 bottom-2 w-px bg-white/8" />
-          <motion.div
-            className="absolute left-[22px] top-2 w-px bg-signature"
-            animate={{ height: `${(active / (LOOP.length - 1)) * 100}%` }}
-            transition={{ duration: 0.5, ease: EASE }}
-          />
+          {/* Static rail aligned to the icon centres (12px row padding + 22px half-
+              icon = 34px). The animated height-fill was removed — it couldn't track
+              the active row's variable height, so it looked broken on every step. The
+              coloured nodes (done = teal, active = gradient) carry the progress now. */}
+          <div className="absolute left-[34px] top-6 bottom-6 w-px bg-gradient-to-b from-white/5 via-white/10 to-white/5" />
           {LOOP.map((s, i) => {
             const on = i === active
             const done = i < active
