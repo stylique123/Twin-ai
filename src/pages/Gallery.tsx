@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Wand2, Eye, Heart, Play, Search, Mic, Repeat, Layers, Film, Sparkles, TrendingUp, ChevronRight, Flame, Zap } from 'lucide-react'
+import { Wand2, Eye, Heart, Play, Search, Mic, Repeat, Layers, Film, Sparkles, TrendingUp, ChevronRight, Flame, Zap, X, ExternalLink } from 'lucide-react'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
@@ -251,6 +251,7 @@ export default function Gallery() {
   const [community, setCommunity] = useState<Card[]>([])
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const [showAll, setShowAll] = useState(false)
+  const [detail, setDetail] = useState<Card | null>(null)
   const touched = useRef(false)
 
   useEffect(() => {
@@ -486,8 +487,8 @@ export default function Gallery() {
                     <div className={cn('glass flex h-full flex-col overflow-hidden border border-white/8 transition-all duration-300 hover:-translate-y-0.5', glowClass)}>
                       <button
                         type="button"
-                        onClick={() => window.open(c.url, '_blank', 'noopener,noreferrer')}
-                        aria-label={`Watch ${c.creator} on ${c.platform}`}
+                        onClick={() => setDetail(c)}
+                        aria-label={`Details for ${c.creator} on ${c.platform}`}
                         className="group/poster relative aspect-video w-full overflow-hidden text-left"
                       >
                         <div className={cn('absolute inset-0 bg-gradient-to-br', c.poster)} />
@@ -543,6 +544,39 @@ export default function Gallery() {
           <button onClick={() => navigate('/app')} className="text-sm text-stone transition-colors hover:text-cream">Got a format you love? Remix it into your voice →</button>
         </div>
       </div>
+
+      {/* Card detail modal — opens on click instead of jumping straight to the video.
+          Explains WHY it works + stats, then lets you remix it or open the original. */}
+      {detail && (() => {
+        const opp = scores.get(detail.id)
+        return (
+          <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => setDetail(null)}>
+            <div className="glass relative max-h-[88vh] w-full max-w-lg overflow-y-auto p-6 sm:p-7" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setDetail(null)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-white/15 bg-ink/75 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-cream">{detail.platform}</span>
+                {opp && <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', SCORE_SKIN[opp.tier])}>{opp.tier === 'hot' ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {opp.score} score</span>}
+              </div>
+              <p className={cn('mt-3 text-[11px] font-bold uppercase tracking-wider', detail.accent)}>{detail.label}</p>
+              <h3 className="mt-1 font-heading text-lg leading-snug text-cream">{detail.hook}</h3>
+              <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-stone">
+                <span className="inline-flex items-center gap-1"><Eye className="h-3.5 w-3.5" /> {detail.reach}</span>
+                <span className="inline-flex items-center gap-1"><Heart className="h-3.5 w-3.5" /> {detail.loves}</span>
+                <span className={cn('font-semibold', detail.accent)}>@{detail.creator}</span>
+              </div>
+              <div className="mt-4 rounded-card border border-white/8 bg-white/[0.02] p-4">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-stone">Why it works</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-sand">{detail.why}</p>
+              </div>
+              {opp && <p className={cn('mt-3 text-xs font-medium', detail.accent)}>Why for you · {opp.why}</p>}
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <button onClick={() => { remix(detail); setDetail(null) }} className="btn-gradient flex-1"><Wand2 className="h-4 w-4" /> Remix in my voice</button>
+                <button onClick={() => window.open(detail.url, '_blank', 'noopener,noreferrer')} className="btn-ghost flex-1"><ExternalLink className="h-4 w-4" /> Open original</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
     </main>
   )
 }

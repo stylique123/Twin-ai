@@ -5,7 +5,7 @@ import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, 
 import { useAuth } from '../context/AuthContext'
 import { generateBlueprint, ingestReference, getJob, listBrandVoices } from '../lib/api'
 import type { BrandVoice } from '../lib/types'
-import { BLUEPRINT_COST, videosFromCredits } from '../lib/brand'
+import { BLUEPRINT_COST } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { Reveal, EASE } from '../components/motion'
 import { cn } from '../lib/cn'
@@ -67,7 +67,6 @@ export default function Studio() {
     }).catch(() => {})
   }, [])
 
-  const left = videosFromCredits(profile?.credits ?? 0)
   const lowCredits = (profile?.credits ?? 0) < BLUEPRINT_COST
 
   // Transcribe the real clip and return its transcript id. Throws (without ever
@@ -179,7 +178,7 @@ export default function Studio() {
               onClick={() => setAdvancedOpen((v) => !v)}
               className="flex items-center gap-1.5 text-xs font-semibold text-stone transition-colors hover:text-cream"
             >
-              <SlidersHorizontal className="h-3.5 w-3.5" /> {advancedOpen ? 'Hide options' : 'Advanced — voice & fidelity'}
+              <SlidersHorizontal className="h-3.5 w-3.5" /> {advancedOpen ? 'Hide' : 'Advanced'}
             </button>
             {advancedOpen && (<>
             {/* Fidelity */}
@@ -238,20 +237,8 @@ export default function Studio() {
             </>)}
 
             {/* Action row */}
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-white/8 pt-5">
-              <div className="flex flex-wrap items-center gap-2.5">
-                <span className="chip">
-                  <Sparkles className="h-3.5 w-3.5 text-amber" /> {left} {left === 1 ? 'remix' : 'remixes'} left
-                </span>
-                {/* Value-moment nudge: catch them on their LAST remix with an
-                    aspirational upgrade, not a hard wall at zero. */}
-                {left <= 1 && !lowCredits && (
-                  <Link to="/settings" className="text-xs font-medium text-amber transition-colors hover:text-cream">
-                    Last one — upgrade for more →
-                  </Link>
-                )}
-              </div>
-              <button className="btn-gradient w-full sm:w-auto sm:min-w-[220px]" onClick={run} disabled={busy}>
+            <div className="flex border-t border-white/8 pt-5">
+              <button className="btn-gradient w-full" onClick={run} disabled={busy}>
                 {busy ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" /> Reading the real clip…
