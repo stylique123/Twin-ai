@@ -9,26 +9,40 @@ import { Reveal, Stagger, RevealItem } from '../components/motion'
 
 type Filter = 'all' | 'scripts' | 'videos'
 
+// Stale-while-revalidate caches across remounts: re-opening the library paints
+// instantly from the last load (the "takes too long to open" fix) while a fresh
+// fetch revalidates in the background. Only the first-ever open shows a spinner.
+let GENERATIONS_CACHE: Generation[] | null = null
+let URLS_CACHE: Record<string, string> = {}
+
 export default function History() {
-  const [items, setItems] = useState<Generation[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<Generation[]>(GENERATIONS_CACHE ?? [])
+  const [loading, setLoading] = useState(GENERATIONS_CACHE === null)
   const [error, setError] = useState(false)
-  const [urls, setUrls] = useState<Record<string, string>>({})
+  const [urls, setUrls] = useState<Record<string, string>>(URLS_CACHE)
   const [filter, setFilter] = useState<Filter>('all')
 
   // Pulled out so the error state can offer a real retry. A failed fetch must NOT
   // fall through to the empty state — a network blip would otherwise look exactly
   // like "you have no work yet" and scare a returning creator.
   const load = () => {
-    setLoading(true); setError(false)
+    // Revalidate quietly when we already have cached items on screen; only show
+    // the full-page spinner on a true cold open.
+    if (GENERATIONS_CACHE === null) setLoading(true)
+    setError(false)
     listGenerations()
       .then(async (gens) => {
+        GENERATIONS_CACHE = gens
         setItems(gens)
         // Sign covers + renders so finished work shows in the library.
         const paths = gens.flatMap((g) => [g.thumb_path, g.edit_path].filter(Boolean) as string[])
-        if (paths.length) setUrls(await signEditUrls(paths).catch(() => ({})))
+        if (paths.length) {
+          const signed = await signEditUrls(paths).catch(() => ({}))
+          URLS_CACHE = { ...URLS_CACHE, ...signed }
+          setUrls(URLS_CACHE)
+        }
       })
-      .catch(() => setError(true))
+      .catch(() => { if (GENERATIONS_CACHE === null) setError(true) })
       .finally(() => setLoading(false))
   }
 

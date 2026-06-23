@@ -448,12 +448,30 @@ function PlatformStrip() {
 
 function PainSection() {
   return (
-    <section className="mx-auto max-w-content px-5 py-20 sm:py-28">
+    <section className="relative overflow-hidden">
+      {/* Live video backdrop — the same footage from the hero, dimmed almost to a
+          texture, so the "system problem" beat breathes instead of sitting on flat
+          ink. A heavy scrim keeps the copy crisp. */}
+      {HERO_VIDEO_SRC && (
+        <>
+          <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover opacity-[0.08]" src={HERO_VIDEO_SRC} />
+          <div className="absolute inset-0 bg-gradient-to-b from-ink via-ink/85 to-ink" />
+        </>
+      )}
+      <div className="relative mx-auto max-w-content px-5 py-20 sm:py-28">
       <Reveal className="text-center">
         <p className="eyebrow">Sound familiar?</p>
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
           You don't have a motivation problem.{' '}
-          <span className="gradient-text">You have a system problem.</span>
+          {/* Continuous gradient shimmer pulls the eye straight to the turn. */}
+          <motion.span
+            className="bg-gradient-to-r from-amber via-coral to-teal bg-clip-text text-transparent"
+            style={{ backgroundSize: '220% 100%' }}
+            animate={{ backgroundPositionX: ['0%', '220%'] }}
+            transition={{ duration: 6, repeat: Infinity, ease: 'linear' }}
+          >
+            You have a system problem.
+          </motion.span>
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-sand">
           Every creator hits the same three walls. TwinAI is the system that breaks all three.
@@ -477,6 +495,7 @@ function PainSection() {
           </RevealItem>
         ))}
       </Stagger>
+      </div>
     </section>
   )
 }

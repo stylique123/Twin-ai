@@ -16,6 +16,13 @@ const BASE_NICHES = ['Business', 'Fitness', 'Food', 'Education', 'Lifestyle', 'B
 // re-hit TikTok's oEmbed for every card again (survives component remounts).
 const THUMB_CACHE = new Map<string, string>()
 
+// Stale-while-revalidate caches: the gallery items + the creator's resolved niche
+// survive remounts, so RE-OPENING the gallery paints instantly from cache (the
+// "why does it take so long to open" fix) while a fresh fetch revalidates in the
+// background. First-ever open still fetches; every subsequent open is immediate.
+let COMMUNITY_CACHE: Card[] | null = null
+let VOICE_CACHE: { niche: string; sub: string } | null = null
+
 // A creator's real niche is almost never one of the bucket names ("Gen Z lifestyle
 // and relatable comedy", "luxury resale", "virtual try-on for fashion brands"). We
 // score their free-text niche against these keyword signals and pick the closest
@@ -231,8 +238,8 @@ const ACCENT_GLOW: Record<string, string> = {
 export default function Gallery() {
   const navigate = useNavigate()
   const { profile } = useAuth()
-  const [voiceNiche, setVoiceNiche] = useState('')
-  const [voiceSubNiche, setVoiceSubNiche] = useState('')
+  const [voiceNiche, setVoiceNiche] = useState(VOICE_CACHE?.niche ?? '')
+  const [voiceSubNiche, setVoiceSubNiche] = useState(VOICE_CACHE?.sub ?? '')
   // The creator's real niche lives in their default BRAND VOICE (the handle scan),
   // not the onboarding quiz. Handle-based users have an empty profile.dna, which is
   // why the gallery was stuck on "All" and showed unrelated niches. Prefer the voice
@@ -248,7 +255,7 @@ export default function Gallery() {
   // Playbook format filter (no longer hijacks the search box — that left "hook"
   // stuck in search). null = no format filter.
   const [activeFormat, setActiveFormat] = useState<{ name: string; q: string } | null>(null)
-  const [community, setCommunity] = useState<Card[]>([])
+  const [community, setCommunity] = useState<Card[]>(COMMUNITY_CACHE ?? [])
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const [showAll, setShowAll] = useState(false)
   const [detail, setDetail] = useState<Card | null>(null)
@@ -256,14 +263,21 @@ export default function Gallery() {
 
   useEffect(() => {
     listGalleryItems()
-      .then((items) => setCommunity(items.filter((i) => i.visibility === 'public').map(fromDb)))
-      .catch(() => setCommunity([]))
+      .then((items) => {
+        const cards = items.filter((i) => i.visibility === 'public').map(fromDb)
+        COMMUNITY_CACHE = cards
+        setCommunity(cards)
+      })
+      .catch(() => { if (!COMMUNITY_CACHE) setCommunity([]) })
     // Pull the creator's real niche from their default brand voice.
     listBrandVoices()
       .then((vs) => {
         const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready')
-        if (def?.profile?.niche) setVoiceNiche(def.profile.niche)
-        if (def?.profile?.sub_niche) setVoiceSubNiche(def.profile.sub_niche)
+        const niche = def?.profile?.niche ?? ''
+        const sub = def?.profile?.sub_niche ?? ''
+        VOICE_CACHE = { niche, sub }
+        if (niche) setVoiceNiche(niche)
+        if (sub) setVoiceSubNiche(sub)
       })
       .catch(() => {})
   }, [])
