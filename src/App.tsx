@@ -24,6 +24,7 @@ const Brands = lazy(() => import('./pages/Brands'))
 const Settings = lazy(() => import('./pages/Settings'))
 const Billing = lazy(() => import('./pages/Billing'))
 const Metrics = lazy(() => import('./pages/Metrics'))
+const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
 
 function Protected({ children }: { children: JSX.Element }) {
@@ -77,6 +78,7 @@ export default function App() {
       void import('./pages/Record'); void import('./pages/Result'); void import('./pages/History')
       void import('./pages/Brands'); void import('./pages/Settings'); void import('./pages/Billing')
       void import('./pages/Onboarding'); void import('./pages/Metrics'); void import('./pages/ClientReport')
+      void import('./pages/Calendar')
     }
     const w = window as unknown as { requestIdleCallback?: (cb: () => void) => void }
     if (w.requestIdleCallback) w.requestIdleCallback(warm)
@@ -87,6 +89,7 @@ export default function App() {
     location.pathname.startsWith('/app') ||
     location.pathname.startsWith('/dashboard') ||
     location.pathname.startsWith('/history') ||
+    location.pathname.startsWith('/calendar') ||
     location.pathname.startsWith('/brands') ||
     location.pathname.startsWith('/gallery') ||
     location.pathname.startsWith('/record') ||
@@ -134,6 +137,10 @@ export default function App() {
           <Route
             path="/history"
             element={<Protected><AppShell><Page><History /></Page></AppShell></Protected>}
+          />
+          <Route
+            path="/calendar"
+            element={<Protected><AppShell><Page><Calendar /></Page></AppShell></Protected>}
           />
           <Route
             path="/settings"

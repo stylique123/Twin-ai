@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useInView, useMotionValue, useSpring, useTransform } from 'framer-motion'
 import {
   ArrowRight, Check, Plus, Minus, AtSign, Wand2, Captions, Clapperboard, Scissors,
@@ -78,7 +78,7 @@ const PAIN = [
   {
     n: '03',
     t: 'Doing it right costs your whole evening.',
-    d: 'Script, reshoot, edit, caption — one post eats the night. So you post less.',
+    d: 'Script, reshoot, edit, caption. One post eats the night, so you post less.',
     accent: 'teal',
   },
 ]
@@ -110,9 +110,9 @@ const BENEFITS = [
 // Honest, non-attributed use-cases — NOT fabricated testimonials. We don't fake
 // reviews; these describe who the tool is built for and the job it does.
 const USE_CASES = [
-  { tag: 'Solo creators', title: 'Never stare at a blank page', body: 'Start from a reference that already works and get a shootable script in your voice in minutes, not hours.' },
-  { tag: 'Educators & founders', title: 'Stay consistent under pressure', body: 'Batch a week of on-brand videos in one sitting, so your cadence stops depending on a spark of inspiration.' },
-  { tag: 'Agencies', title: 'A distinct voice per client', body: 'Keep every client sounding like themselves, switch brands in a tap, and ship across accounts without growing the team.' },
+  { tag: 'Solo creators', title: 'Always know what to post', body: 'Start from a format that already works and get a shootable script in your voice in minutes, not hours.' },
+  { tag: 'Educators & founders', title: 'Show up consistently, without the grind', body: 'Batch a week of on-brand videos in one sitting, so your cadence stops depending on a spark of inspiration.' },
+  { tag: 'Agencies', title: 'A distinct voice for every client', body: 'Keep every client sounding like themselves, switch brands in a tap, and ship across accounts without growing the team.' },
 ]
 
 const FAQ = [
@@ -129,11 +129,12 @@ export default function Landing() {
     <main className="noise overflow-clip">
       <HeroSection />
       <PlatformStrip />
+      <PasteDemoSection />
       <PainSection />
       <HowItWorksSection />
       <BenefitsSection />
-      <FeaturesSection />
       <GalleryShowcase />
+      <FeaturesSection />
       <AgencySection />
       <ValueStack />
       <PricingSection />
@@ -203,7 +204,7 @@ function HeroSection() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
-              className="font-display text-[3.2rem] leading-[1.02] tracking-tight text-balance sm:text-[4rem] lg:text-[5.2rem]"
+              className="font-display text-[3.4rem] leading-[1.0] tracking-tight text-balance sm:text-[4.4rem] lg:text-[5.6rem]"
             >
               {/* Static (no flipping word) — a clear, always-readable headline. */}
               Paste a viral video. <span className="gradient-text">Remix</span> it in your voice.
@@ -213,44 +214,22 @@ function HeroSection() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.14 }}
-              className="mt-5 max-w-xl text-lg leading-relaxed text-sand"
+              className="mt-6 max-w-xl text-lg leading-relaxed text-sand"
             >
-              <span className="text-cream">Two ways in:</span> paste a viral link you love — or skip the
-              hunt entirely and pick from <span className="text-cream">your gallery</span>, where TwinAI
-              already knows your brand and surfaces what's actually working in your niche. Either way, you
-              get it back as a script in your voice — recorded, edited, captioned.
+              Paste a video you wish you'd made, or pick one from your niche gallery. Get it back as a
+              script in your voice, <span className="text-cream">recorded, edited and ready to post.</span>
             </motion.p>
-
-            {/* The two entry paths, made explicit so nobody wonders where to start. */}
-            <motion.div
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, ease: EASE, delay: 0.18 }}
-              className="mt-6 grid max-w-lg gap-2.5 sm:grid-cols-2"
-            >
-              <div className="rounded-card border border-white/8 bg-white/[0.02] p-3.5">
-                <div className="flex items-center gap-2 text-cream"><Play className="h-3.5 w-3.5 text-coral" /> <span className="text-sm font-semibold">Paste a viral link</span></div>
-                <p className="mt-1 text-xs text-stone">Got one in mind? Drop any TikTok, Reel or Short.</p>
-              </div>
-              <div className="rounded-card border border-amber/20 bg-amber/[0.04] p-3.5">
-                <div className="flex items-center gap-2 text-cream"><LayoutGrid className="h-3.5 w-3.5 text-amber" /> <span className="text-sm font-semibold">Pick from your gallery</span></div>
-                <p className="mt-1 text-xs text-stone">No idea today? We surface what's winning in your niche.</p>
-              </div>
-            </motion.div>
 
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.22 }}
-              className="mt-7 flex flex-wrap items-center gap-3"
+              className="mt-8 flex flex-wrap items-center gap-3"
             >
               <Link to="/auth?mode=signup" className="btn-gradient group px-7 py-3.5 text-base">
                 Get started for free
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
-              <a href="#gallery" className="btn-ghost px-6 py-3.5 text-base">
-                <LayoutGrid className="h-4 w-4" /> See your niche gallery
-              </a>
             </motion.div>
 
             <motion.p
@@ -436,28 +415,73 @@ function Particles() {
 /* ─── Platform strip ─────────────────────────────────────────────────── */
 
 function PlatformStrip() {
+  // A quiet running ticker, not a big banner: a small label, then the platforms
+  // scrolling by on a loop. The row is rendered twice and slid -50% so it loops
+  // seamlessly.
+  const stream = [...PLATFORMS, ...PLATFORMS, ...PLATFORMS, ...PLATFORMS]
   return (
-    <section className="bg-ink2/40 py-10">
-      <div className="mx-auto max-w-content px-5">
-        <p className="text-center text-xs font-semibold uppercase tracking-widest text-stone mb-6">
-          Built for TikTok, YouTube and Instagram
-        </p>
-        <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
-          {PLATFORMS.map((p) => (
-            <div
-              key={p.label}
-              className="group inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 transition-all duration-200 hover:border-white/20 hover:bg-white/[0.06]"
-            >
+    <section className="border-y border-white/8 bg-ink2/40 py-6">
+      <p className="mb-4 text-center text-[11px] font-semibold uppercase tracking-widest text-stone">
+        Make it for every feed
+      </p>
+      <div className="relative overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_12%,black_88%,transparent)]">
+        <motion.div
+          className="flex w-max gap-12 whitespace-nowrap"
+          animate={{ x: ['0%', '-50%'] }}
+          transition={{ duration: 22, repeat: Infinity, ease: 'linear' }}
+        >
+          {stream.map((p, i) => (
+            <span key={i} className="inline-flex items-center gap-2.5 text-cream">
               <p.Icon className={cn('h-4 w-4', p.tint)} />
-              <span className="text-sm font-semibold text-cream">{p.label}</span>
-            </div>
+              <span className="text-sm font-semibold">{p.label}</span>
+            </span>
           ))}
-          <div className="inline-flex items-center gap-2 rounded-full border border-dashed border-white/12 px-4 py-2 text-sm text-stone">
-            LinkedIn · X
-            <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-stone">Soon</span>
-          </div>
-        </div>
+          <span className="inline-flex items-center gap-2 text-stone">
+            LinkedIn · X <span className="rounded-full bg-white/8 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider">soon</span>
+          </span>
+        </motion.div>
       </div>
+    </section>
+  )
+}
+
+/* ─── Paste demo ─────────────────────────────────────────────────────── */
+
+// A simple "this is how it starts" beat: a real input where you drop a link (or
+// type the idea), and a Remix button that carries you to sign-up — prefilling the
+// reference so the Studio opens on what you pasted.
+function PasteDemoSection() {
+  const nav = useNavigate()
+  const [val, setVal] = useState('')
+  const go = () => nav(`/auth?mode=signup${val.trim() ? `&ref=${encodeURIComponent(val.trim())}` : ''}`)
+  return (
+    <section className="mx-auto max-w-content px-5 py-16 sm:py-20">
+      <Reveal className="mx-auto max-w-2xl text-center">
+        <p className="eyebrow">How it starts</p>
+        <h2 className="mt-3 font-display text-3xl leading-tight text-balance sm:text-4xl">
+          Drop a link. Get your first remix.
+        </h2>
+        <p className="mx-auto mt-3 max-w-lg text-sand">
+          Paste any TikTok, Reel or Short you wish you'd made, or just type the idea. Hit Remix and we take it from there.
+        </p>
+        <div className="glass mx-auto mt-8 flex max-w-xl flex-col gap-2.5 p-2.5 sm:flex-row sm:items-center">
+          <div className="flex flex-1 items-center gap-2 rounded-card bg-ink/40 px-3.5 py-3">
+            <Play className="h-4 w-4 shrink-0 text-coral" />
+            <input
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && go()}
+              placeholder="Paste a link, or type a video idea…"
+              className="w-full bg-transparent text-sm text-cream placeholder:text-stone focus:outline-none"
+            />
+          </div>
+          <button onClick={go} className="btn-gradient group shrink-0 px-6 py-3 text-base">
+            <Wand2 className="h-4 w-4" /> Remix
+            <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+          </button>
+        </div>
+        <p className="mt-3 text-xs text-stone">Free to start. No card required.</p>
+      </Reveal>
     </section>
   )
 }
@@ -625,13 +649,13 @@ function GalleryShowcase() {
             Stop hunting for ideas. <span className="gradient-text">We've got you covered.</span>
           </h2>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-sand">
-            You don't need to find the next thing to make — TwinAI already <span className="text-cream">understands your brand</span> and keeps a live gallery of what's <span className="text-cream">actually working in your niche</span>, scored for you. Open it, pick the one you like, and it's a script in your voice. That's the whole search, gone.
+            You don't need to find the next thing to make. TwinAI already <span className="text-cream">understands your brand</span> and keeps a live gallery of what's <span className="text-cream">actually working in your niche</span>, scored for you. Open it, pick the one you like, and it's a script in your voice. That's the whole search, gone.
           </p>
           <ul className="mt-6 space-y-3.5">
             {[
               ['It knows your brand', 'Built from your handle and DNA, so every pick fits how you sound.'],
-              ['What\'s working now', 'A live feed of proven formats in your niche, scored by what will win for you — not raw views.'],
-              ['Nothing left to find', 'No more saved-folder graveyard. The idea is already waiting — remix it in one tap.'],
+              ['What\'s working now', 'A live feed of proven formats in your niche, scored by what will win for you, not raw views.'],
+              ['Nothing left to find', 'No more saved-folder graveyard. The idea is already waiting, so remix it in one tap.'],
             ].map(([t, d]) => (
               <li key={t} className="flex gap-3">
                 <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-teal/15"><Check className="h-3 w-3 text-teal" /></span>
@@ -649,7 +673,7 @@ function GalleryShowcase() {
           <div className="glass p-5 sm:p-6">
             <div className="mb-4 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-amber" />
-              <span className="text-sm font-semibold text-cream">Your playbook — what wins in your niche</span>
+              <span className="text-sm font-semibold text-cream">Your playbook · what wins in your niche</span>
             </div>
             <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
               {SHOWCASE_FORMATS.map((f) => (
@@ -754,9 +778,9 @@ function ValueStack() {
   // hire it out, anchored so the total ($490) makes one subscription feel obvious.
   const items = [
     { icon: Wand2, t: 'A full read of why the original won', s: 'Hook window, pacing, the exact retention beats.', who: 'Strategist', price: '$200' },
-    { icon: FileText, t: '5 hook options + a full script in your voice', s: 'Not a caption — a shootable script with delivery notes.', who: 'Ghostwriter', price: '$150' },
+    { icon: FileText, t: '5 hook options + a full script in your voice', s: 'Not a caption, but a shootable script with delivery notes.', who: 'Ghostwriter', price: '$150' },
     { icon: Clapperboard, t: 'Shot list + a 20-minute shoot plan', s: 'Walk in, press record, walk out. No guesswork.', who: 'Producer', price: '$40' },
-    { icon: Scissors, t: 'One-click edit — captions, cuts, b-roll, vertical', s: 'Dead air trimmed, beat-timed cuts, exported ready.', who: 'Editor', price: '$75' },
+    { icon: Scissors, t: 'One-click edit: captions, cuts, b-roll, vertical', s: 'Dead air trimmed, beat-timed cuts, exported ready.', who: 'Editor', price: '$75' },
     { icon: Send, t: 'A ready-to-paste caption pack, per platform', s: 'On-brand copy + hashtags. Posted in seconds.', who: 'Copywriter', price: '$25' },
   ]
   return (
@@ -766,7 +790,7 @@ function ValueStack() {
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
           One link in. A finished, on-brand video out, <span className="gradient-text">end to end.</span>
         </h2>
-        <p className="mx-auto mt-4 max-w-md text-sand">Five jobs you'd normally hire out — done from a single paste.</p>
+        <p className="mx-auto mt-4 max-w-md text-sand">Five jobs you'd normally hire out, done from a single paste.</p>
       </Reveal>
 
       <div className="glass mx-auto mt-12 max-w-2xl overflow-hidden p-0">
@@ -883,10 +907,10 @@ function TestimonialsSection() {
       <Reveal className="text-center">
         <p className="eyebrow">Who it's for</p>
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-          Built for how creators actually work.
+          Made for the way you already create.
         </h2>
         <p className="mx-auto mt-3 max-w-md text-xs text-stone">
-          We don't fake reviews. Here's the job it does — try it free and judge the output yourself.
+          We don't fake reviews. Here's the job it does. Try it free and judge the output yourself.
         </p>
       </Reveal>
       <Stagger className="mt-14 grid gap-5 md:grid-cols-3" gap={0.08}>

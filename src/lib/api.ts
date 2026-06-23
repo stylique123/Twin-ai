@@ -385,6 +385,49 @@ export async function markPosted(input: {
   return data as Post
 }
 
+// Schedule a post for a future date on a chosen platform, from a library item.
+// status='scheduled'; the calendar shows it on `scheduled_for`. Real auto-posting
+// (platform OAuth) lands later; until then this is a calendar + caption holder so
+// the creator posts on time with everything ready.
+export async function schedulePost(input: {
+  generationId: string
+  platform: string
+  scheduledFor: string // ISO timestamp
+  caption?: string
+}): Promise<Post> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) throw new Error('Not signed in')
+  const { data, error } = await supabase
+    .from('posts')
+    .insert({
+      owner_id: auth.user.id,
+      generation_id: input.generationId,
+      platform: input.platform,
+      caption: input.caption ?? null,
+      status: 'scheduled',
+      scheduled_for: input.scheduledFor,
+    })
+    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
+    .single()
+  if (error) throw error
+  return data as Post
+}
+
+// Flip a scheduled post to posted (the creator confirms they published it).
+export async function markScheduledPosted(postId: string, externalUrl?: string): Promise<void> {
+  const { error } = await supabase
+    .from('posts')
+    .update({ status: 'posted', posted_at: new Date().toISOString(), external_url: externalUrl ?? null })
+    .eq('id', postId)
+  if (error) throw error
+}
+
+// Remove a scheduled (or posted) entry from the calendar.
+export async function deletePost(postId: string): Promise<void> {
+  const { error } = await supabase.from('posts').delete().eq('id', postId)
+  if (error) throw error
+}
+
 // ---- Brand voices (Phase 2, DNA from handle) ---------------------------
 
 // supabase-js puts non-2xx function responses in error.context (a Response),
