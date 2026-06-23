@@ -230,7 +230,7 @@ function HeroSection() {
               className="mt-8 flex flex-wrap items-center gap-3"
             >
               <Link to="/auth?mode=signup" className="btn-gradient group px-7 py-3.5 text-base">
-                Get started for free
+                Claim your 3 free remixes
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
             </motion.div>
@@ -241,7 +241,7 @@ function HeroSection() {
               transition={{ duration: 1, delay: 0.34 }}
               className="mt-3 text-xs text-stone"
             >
-              3 free remixes · no card required.
+              No card required. Your first finished video in minutes.
             </motion.p>
           </div>
 
@@ -456,7 +456,13 @@ function PlatformStrip() {
 function PasteDemoSection() {
   const nav = useNavigate()
   const [val, setVal] = useState('')
-  const go = () => nav(`/auth?mode=signup${val.trim() ? `&ref=${encodeURIComponent(val.trim())}` : ''}`)
+  // Stash the pasted link so it survives signup → onboarding → Studio. We do NOT
+  // put it on ?ref= — that param is the REFERRAL code on /auth, and a video URL
+  // there both breaks referral redemption and never reaches the Studio.
+  const go = () => {
+    if (val.trim()) { try { localStorage.setItem('twinai_pending_remix', val.trim()) } catch { /* storage off */ } }
+    nav('/auth?mode=signup')
+  }
   return (
     <section className="mx-auto max-w-content px-5 py-16 sm:py-20">
       <Reveal className="mx-auto max-w-2xl text-center">
@@ -746,14 +752,14 @@ function AgencySection() {
                 </li>
               ))}
             </ul>
-            {PAYMENTS_LIVE ? (
-              <Link to="/auth?plan=agency&mode=signup" className="btn-gradient mt-8">
-                Start an agency workspace <ArrowRight className="h-4 w-4" />
-              </Link>
-            ) : (
-              <Link to="/auth?mode=signup" className="btn-gradient mt-8">
-                Start free — Agency coming soon <ArrowRight className="h-4 w-4" />
-              </Link>
+            <Link to="/auth?plan=agency&mode=signup" className="btn-gradient mt-8">
+              {PAYMENTS_LIVE ? 'Start an agency workspace' : 'Start your agency free — 3 remixes'}
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            {!PAYMENTS_LIVE && (
+              <p className="mt-2 text-xs text-stone">
+                Build a client voice and remix today. Agency billing opens soon — no card needed.
+              </p>
             )}
           </div>
           <div className="grid grid-cols-2 gap-px bg-white/8">
@@ -897,17 +903,22 @@ function PricingSection() {
                     </li>
                   ))}
                 </ul>
-                {!PAYMENTS_LIVE && p.price > 0 ? (
-                  <div className="mt-7 w-full cursor-default rounded-xl border border-white/10 bg-white/[0.03] py-3 text-center text-sm font-medium text-stone">
-                    Coming soon
-                  </div>
-                ) : (
-                  <Link
-                    to={`/auth?plan=${p.id}&mode=signup`}
-                    className={cn('mt-7 w-full', featured ? 'btn-gradient' : 'btn-ghost')}
-                  >
-                    {p.price === 0 ? 'Start free' : `Choose ${p.name}`}
-                  </Link>
+                {/* Until paid checkout is live, EVERY plan starts the same free
+                    signup — no dead "Coming soon" wall. The chosen plan is still
+                    stamped so we can honour the intent when billing opens, and
+                    every signup gets the 3 free remixes to try right now. */}
+                <Link
+                  to={`/auth?plan=${p.id}&mode=signup`}
+                  className={cn('mt-7 w-full', featured ? 'btn-gradient' : 'btn-ghost')}
+                >
+                  {PAYMENTS_LIVE
+                    ? (p.price === 0 ? 'Start free' : `Choose ${p.name}`)
+                    : 'Start free — 3 remixes'}
+                </Link>
+                {!PAYMENTS_LIVE && p.price > 0 && (
+                  <p className="mt-2 text-center text-xs text-stone">
+                    {p.name} billing opens soon — no card needed today.
+                  </p>
                 )}
               </div>
             </RevealItem>

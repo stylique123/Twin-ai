@@ -45,8 +45,18 @@ export default function Studio() {
   const { profile, refreshProfile } = useAuth()
   const navigate = useNavigate()
   const [params] = useSearchParams()
-  // A "Remix" click from the Gallery deep-links here with ?ref= prefilled.
-  const [url, setUrl] = useState(() => params.get('ref') ?? '')
+  // A "Remix" click from the Gallery deep-links here with ?ref= prefilled; the
+  // landing "Drop a link" stashes it in localStorage so it survives signup +
+  // onboarding. Consume the stash once.
+  const [url, setUrl] = useState(() => {
+    const q = params.get('ref')
+    if (q) return q
+    try {
+      const pending = localStorage.getItem('twinai_pending_remix')
+      if (pending) { localStorage.removeItem('twinai_pending_remix'); return pending }
+    } catch { /* storage off */ }
+    return ''
+  })
   const [note, setNote] = useState(() => params.get('note') ?? '')
   const [fidelity, setFidelity] = useState<'close' | 'balanced' | 'loose'>('balanced')
   const [tone, setTone] = useState<'understated' | 'balanced' | 'punchy'>('balanced')
