@@ -194,7 +194,7 @@ function HeroSection() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
-              className="font-display text-[3rem] leading-[1.05] tracking-tight text-balance sm:text-[3.4rem] lg:text-[4.4rem]"
+              className="font-display text-[3.2rem] leading-[1.02] tracking-tight text-balance sm:text-[4rem] lg:text-[5.2rem]"
             >
               {/* Static (no flipping word) — a clear, always-readable headline. */}
               Paste a viral video. <span className="gradient-text">Remix</span> it in your voice.
@@ -227,9 +227,9 @@ function HeroSection() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1, delay: 0.34 }}
-              className="mt-7 text-sm leading-relaxed text-sand"
+              className="mt-3 text-xs text-stone"
             >
-              3 free remixes, no card. A remix only counts when it finishes — if the read fails, it's on us.
+              3 remixes · no card required.
             </motion.p>
           </div>
 
@@ -248,7 +248,7 @@ function HeroVisualNew() {
       initial={{ opacity: 0, y: 32, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.9, ease: EASE, delay: 0.2 }}
-      className="relative flex justify-center lg:justify-end"
+      className="relative flex justify-center lg:justify-center"
     >
       <div className="relative my-4 sm:my-8">
         {/* Reference card, top left. Hidden on the narrowest screens so it never

@@ -453,7 +453,7 @@ export default function Gallery() {
                   className="field cursor-pointer appearance-none pr-9"
                 >
                   {nicheChips.map((n) => (
-                    <option key={n} value={n} className="bg-ink2 text-cream">{n}{isMine(n) ? ' ✦ (you)' : ''}</option>
+                    <option key={n} value={n} className="bg-ink2 text-cream">{n}{isMine(n) ? ' (you)' : ''}</option>
                   ))}
                 </select>
                 <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-stone" />
