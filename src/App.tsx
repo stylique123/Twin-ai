@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from './context/AuthContext'
@@ -66,6 +66,22 @@ function Page({ children }: { children: React.ReactNode }) {
 // like a product instead of a page.
 export default function App() {
   const location = useLocation()
+
+  // Warm ALL route chunks shortly after first paint so navigation never hits a
+  // cold lazy chunk → no more full-screen "Loading…" blank on every click. Keeps
+  // the small initial bundle from code-splitting without the per-route blank.
+  useEffect(() => {
+    const warm = () => {
+      void import('./pages/Dashboard'); void import('./pages/Studio'); void import('./pages/Gallery')
+      void import('./pages/Record'); void import('./pages/Result'); void import('./pages/History')
+      void import('./pages/Brands'); void import('./pages/Settings'); void import('./pages/Billing')
+      void import('./pages/Onboarding'); void import('./pages/Metrics'); void import('./pages/ClientReport')
+    }
+    const w = window as unknown as { requestIdleCallback?: (cb: () => void) => void }
+    if (w.requestIdleCallback) w.requestIdleCallback(warm)
+    else setTimeout(warm, 800)
+  }, [])
+
   const inApp =
     location.pathname.startsWith('/app') ||
     location.pathname.startsWith('/dashboard') ||
