@@ -13,10 +13,19 @@ import { Reveal, Stagger, RevealItem, EASE } from '../components/motion'
 import { Counter } from '../components/Counter'
 import { cn } from '../lib/cn'
 
-// Hero background. Left empty so the hero uses the clean Aurora gradient instead
-// of an AI-generated clip — the honest-FAQ brand shouldn't lead with synthetic
-// "footage". Set a real product-demo URL here when one exists.
-const HERO_VIDEO_SRC = 'https://d8j0ntlcm91z4.cloudfront.net/user_3A4BLQYlkqlIIcq5F4BohQmaHaz/hf_20260614_061422_7b59d7ac-3dc6-4376-9baa-bc3cad8bccb0.mp4'
+// Brand footage (generated in-house with Higgsfield). One CDN base, then the
+// specific clips: an abstract liquid-light loop behind the hero + pain sections,
+// and four different vertical creator reels so the device mocks + showcase show
+// REAL, varied footage instead of one clip on repeat.
+const HF = 'https://d8j0ntlcm91z4.cloudfront.net/user_3A4BLQYlkqlIIcq5F4BohQmaHaz/'
+const HERO_VIDEO_SRC = HF + 'hf_20260623_023204_8bbe1bed-43ee-46c8-9567-101e083a9500.mp4' // abstract bg (hero + pain)
+const HERO_PHONE_VIDEO = HF + 'hf_20260623_023132_98fe4f69-1b34-415e-8d5a-9627cec28c29.mp4' // founder talking-head, 9:16
+const REEL = {
+  founder: HF + 'hf_20260623_023132_98fe4f69-1b34-415e-8d5a-9627cec28c29.mp4',
+  beauty:  HF + 'hf_20260623_023134_b4da463a-9a9b-45b7-ac53-7b7f30d4cf77.mp4',
+  food:    HF + 'hf_20260623_023138_bc9b8790-daeb-44e5-9521-85f9bfa85a7d.mp4',
+  fitness: HF + 'hf_20260623_023153_2e6a4b56-e474-439d-9e13-0c5b373425d8.mp4',
+}
 
 
 
@@ -294,12 +303,8 @@ function HeroVisualNew() {
             {/* Real footage playing inside the device, so the phone reads as a live
                 recording — not an empty mock. The teleprompter + script overlay sit
                 on top, exactly like the in-app record screen. */}
-            {HERO_VIDEO_SRC && (
-              <>
-                <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" src={HERO_VIDEO_SRC} />
-                <div className="absolute inset-0 bg-gradient-to-b from-ink/35 via-ink/30 to-ink/85" />
-              </>
-            )}
+            <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" src={HERO_PHONE_VIDEO} />
+            <div className="absolute inset-0 bg-gradient-to-b from-ink/35 via-ink/30 to-ink/85" />
             {/* Rec indicator */}
             <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-bold text-cream backdrop-blur">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-coral" /> REC
@@ -594,8 +599,8 @@ const SHOWCASE_FORMATS = [
   { name: 'Podcast clip', icon: Clapperboard },
 ]
 const SHOWCASE_CARDS = [
-  { title: 'Stitch a comment, flip it positive', reach: '976K', loves: '157K', score: 92, hot: true, tint: 'from-coral/30' },
-  { title: 'One counter-intuitive hot take', reach: '1.5M', loves: '111K', score: 84, hot: false, tint: 'from-teal/25' },
+  { title: 'Jump-cut recipe, beat every second', reach: '976K', loves: '157K', score: 92, hot: true, tint: 'from-coral/30', video: REEL.food },
+  { title: 'Form-check hot take to camera', reach: '1.5M', loves: '111K', score: 84, hot: false, tint: 'from-teal/25', video: REEL.fitness },
 ]
 function GalleryShowcase() {
   return (
@@ -641,8 +646,10 @@ function GalleryShowcase() {
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {SHOWCASE_CARDS.map((c) => (
                 <div key={c.title} className="overflow-hidden rounded-card border border-white/8 bg-ink2/60">
-                  <div className={cn('relative grid aspect-video place-items-center bg-gradient-to-br to-ink', c.tint)}>
-                    <span className="grid h-10 w-10 place-items-center rounded-full bg-ink/60 ring-1 ring-white/20"><Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" /></span>
+                  <div className={cn('relative grid aspect-[4/5] place-items-center bg-gradient-to-br to-ink', c.tint)}>
+                    <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" src={c.video} />
+                    <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-transparent to-ink/20" />
+                    <span className="relative grid h-10 w-10 place-items-center rounded-full bg-ink/55 ring-1 ring-white/25 backdrop-blur-sm"><Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" /></span>
                     <span className={cn('absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', c.hot ? 'border-coral/50 bg-coral/20 text-coral' : 'border-amber/50 bg-amber/20 text-amber')}>
                       {c.hot ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {c.score}
                     </span>
