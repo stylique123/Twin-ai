@@ -287,9 +287,12 @@ export default function Gallery() {
   // niche, then All, then everything else discovery has surfaced.
   const nicheChips = useMemo(() => {
     const mine = [mySubNiche, myNiche].filter(Boolean)
-    const rest = knownNiches.filter((n) => !mine.includes(n)).sort()
-    return [...mine, 'All', ...rest]
-  }, [knownNiches, myNiche, mySubNiche])
+    // Curated, short list for the dropdown: the creator's niches + All + the core
+    // buckets only — NOT every niche discovery has ever surfaced (that made the
+    // dropdown a mile-long list of irrelevant options).
+    const core = BASE_NICHES.filter((n) => !mine.includes(n))
+    return Array.from(new Set([...mine, 'All', ...core]))
+  }, [myNiche, mySubNiche])
 
   // Open on the creator's sub-niche (most specific), else their niche, until they
   // touch the filter.
@@ -325,14 +328,17 @@ export default function Gallery() {
       const needle = q.trim().toLowerCase()
       out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(needle))
     }
-    // Playbook format filter: match the chosen format's keyword against the card text.
-    if (activeFormat) {
-      const fq = activeFormat.q.toLowerCase()
-      out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(fq))
+    // Playbook format: a SOFT boost (not a hard filter) — examples of the chosen
+    // format float to the top, but the feed never goes empty when the small seed
+    // pool has no exact keyword match (the "Transition shows nothing" bug).
+    const fmtBoost = (c: Card) => {
+      if (!activeFormat) return 0
+      return (searchBlobs.get(c.id) ?? '').includes(activeFormat.q.toLowerCase()) ? 1 : 0
     }
     // Always rank by the Opportunity score (engagement × reach × your-niche fit) —
-    // the redundant Top/All toggle is gone.
-    const byScore = (a: Card, b: Card) => (scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0)
+    // the redundant Top/All toggle is gone. Format matches are boosted first.
+    const byScore = (a: Card, b: Card) =>
+      (fmtBoost(b) - fmtBoost(a)) || ((scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0))
     const isForYou = (!!mySubNiche && niche === mySubNiche) || (!!myNiche && niche === myNiche)
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
     if (isForYou) {
