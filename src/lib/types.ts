@@ -44,6 +44,14 @@ export interface VoiceProfile {
   sample_hooks: string[]
 }
 
+// Per-workspace brand kit: default caption style + highlight color (indexes into
+// CAPTION_STYLE_OPTIONS / CAPTION_COLOR_OPTIONS), plus an optional logo for burn-in.
+export interface BrandKit {
+  caption_style?: string
+  color?: number
+  logo_path?: string | null
+}
+
 export interface BrandVoice {
   id: string
   owner_id: string
@@ -51,6 +59,7 @@ export interface BrandVoice {
   platform: Platform
   label: string | null
   profile: VoiceProfile | null
+  brand_kit?: BrandKit | null
   // Platform aggregates captured during the handle scan (dashboard "your stats").
   stats?: { followers: number; videos: number; avg_views: number; avg_likes: number } | null
   status: 'building' | 'ready' | 'failed'
