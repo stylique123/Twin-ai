@@ -13,6 +13,7 @@ import {
 import type { Generation, Platform } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
+import { POSTING_LIVE } from '../lib/brand'
 import { cn } from '../lib/cn'
 
 const PLATFORM_SKIN: Record<string, string> = {
@@ -147,12 +148,13 @@ export default function Calendar() {
           </div>
         </Reveal>
 
-        {/* Connected accounts — real OAuth connect/disconnect for one-click posting. */}
+        {/* Connected accounts — one-click posting. While posting isn't live we show
+            a clean "Coming soon" (no dev-key details, no stuck spinners). */}
         <Reveal delay={0.05}>
           <section className="glass mt-8 p-5">
             <div className="flex items-center justify-between gap-3">
               <p className="eyebrow !text-sand">Connected accounts</p>
-              <span className="text-[11px] text-stone">Connect an account to post in one click.</span>
+              <span className="text-[11px] text-stone">{POSTING_LIVE ? 'Connect an account to post in one click.' : 'One-click posting is coming soon.'}</span>
             </div>
             <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
               {ALL_PLATFORMS.map((p) => {
@@ -165,9 +167,11 @@ export default function Calendar() {
                         <span className={cn('h-2 w-2 shrink-0 rounded-full', c ? 'bg-teal' : 'bg-white/25')} />
                         {cap(p)}
                       </div>
-                      <div className="mt-0.5 truncate text-[11px] text-stone">{c ? (c.account_label ?? 'Connected') : 'Not connected'}</div>
+                      <div className="mt-0.5 truncate text-[11px] text-stone">{c ? (c.account_label ?? 'Connected') : POSTING_LIVE ? 'Not connected' : 'Coming soon'}</div>
                     </div>
-                    {c ? (
+                    {!POSTING_LIVE ? (
+                      <span className="shrink-0 rounded-full border border-amber/20 bg-amber/10 px-2.5 py-1 text-[10px] font-medium text-amber">Soon</span>
+                    ) : c ? (
                       <button onClick={() => disconnect(p)} disabled={busy} className="shrink-0 text-xs text-stone hover:text-coral disabled:opacity-50">
                         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Disconnect'}
                       </button>
@@ -180,7 +184,7 @@ export default function Calendar() {
                 )
               })}
             </div>
-            {connMsg && <p className="mt-2 text-xs text-sand">{connMsg}</p>}
+            {POSTING_LIVE && connMsg && <p className="mt-2 text-xs text-sand">{connMsg}</p>}
           </section>
         </Reveal>
 
@@ -260,7 +264,7 @@ export default function Calendar() {
                           <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {new Date(p.scheduled_for!).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
                         </div>
                       </div>
-                      {connOf(p.platform) && (
+                      {POSTING_LIVE && connOf(p.platform) && (
                         <button onClick={() => postNow(p.id)} disabled={publishingId !== null} title={`Post to ${cap(p.platform)} now`} className="btn-gradient text-xs disabled:opacity-60">
                           {publishingId === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Post now
                         </button>

@@ -11,6 +11,15 @@ export const BRAND = {
   avoid: ['copy / steal', 'guaranteed viral', 'synergy', '10x overnight'],
 }
 
+// Master switch: paid checkout is "Coming soon" until we flip this on (one line).
+// Free signup + free remixes always work regardless.
+export const PAYMENTS_LIVE = false
+
+// Master switch: one-click posting (platform OAuth) is "Coming soon" until the
+// platform developer-app keys are set. Until then the Calendar shows a clean
+// "Coming soon" instead of dev-level "needs developer app keys" messages.
+export const POSTING_LIVE = false
+
 export interface PlanTier {
   id: 'free' | 'aspiring' | 'professional' | 'studio' | 'agency'
   name: string
@@ -46,12 +55,12 @@ export const PLANS: PlanTier[] = [
     name: 'Free',
     price: 0,
     annual: null,
-    videos: 2,
-    credits: grant(2, 0), // 20 credits → 2 videos; enough to show value, no card
+    videos: 3,
+    credits: grant(3, 0), // 30 credits → 3 free remixes
     brandVoices: 1,
     hidden: true, // not shown on the pricing grid — reached via "Get started for free"
     blurb: 'See it work, free.',
-    features: ['2 videos / mo', 'Script + in-app teleprompter record', 'Watermark on exports'],
+    features: ['3 free remixes', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
     id: 'aspiring',
@@ -127,18 +136,27 @@ export const PLANS: PlanTier[] = [
   },
 ]
 
-// Expansion revenue (the NRR engine): à-la-carte add-ons surfaced in Settings so
-// growing accounts can spend more without changing tier.
-export const EXTRA_BRAND_VOICE_PRICE = 9 // USD / mo each
-export const EXTRA_SEAT_PRICE = 5 // USD / mo each (agency teams)
-export const REMIX_TOPUP = { videos: 10, price: 15 } // one-off top-up, premium margin
+// Expansion revenue: à-la-carte REMIX TOP-UPS only. These are one-off packs that
+// never expire and are NOT part of the monthly allowance — a subscriber buys the
+// basic plan and tops up remixes as needed. (Extra brand voices / seats are NOT
+// à-la-carte — they come with the Studio/Agency tiers.)
+export const REMIX_TOPUPS = [
+  { id: 'topup_10', remixes: 10, price: 15 },
+  { id: 'topup_20', remixes: 20, price: 25 },
+]
+
+// Extra brand voices are NOT à-la-carte for everyone — they're an Agency/Studio
+// capability (priced per extra voice on those plans, surfaced in Workspaces).
+export const EXTRA_BRAND_VOICE_PRICE = 9 // USD / mo each (Agency/Studio only)
 
 export interface AddOn { id: string; name: string; desc: string; price: number; unit: string }
-export const ADD_ONS: AddOn[] = [
-  { id: 'extra_voice', name: 'Extra brand voice', desc: 'One more distinct voice beyond your plan — for a new client or sub-brand.', price: EXTRA_BRAND_VOICE_PRICE, unit: '/mo' },
-  { id: 'extra_seat', name: 'Extra team seat', desc: 'Add a teammate to your workspace with their own login.', price: EXTRA_SEAT_PRICE, unit: '/mo' },
-  { id: 'topup_10', name: '10-video top-up', desc: 'Out of videos before renewal? Add 10 more, one-off.', price: REMIX_TOPUP.price, unit: 'once' },
-]
+export const ADD_ONS: AddOn[] = REMIX_TOPUPS.map((t) => ({
+  id: t.id,
+  name: `${t.remixes} remixes`,
+  desc: `A one-off pack of ${t.remixes} extra remixes. Never expires, separate from your monthly plan.`,
+  price: t.price,
+  unit: 'once',
+}))
 
 // Look up a plan tier by id (defaults to Free).
 export const planFor = (id: string | null | undefined): PlanTier =>

@@ -6,7 +6,7 @@ import {
   ShieldCheck, Building2, Users, Clock, Eye, Heart, Play, Send, LayoutGrid,
   FileText, Sparkles, TrendingUp, Mic, BarChart3, Flame, Zap, Repeat,
 } from 'lucide-react'
-import { BRAND, PLANS } from '../lib/brand'
+import { BRAND, PLANS, PAYMENTS_LIVE } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 import { Reveal, Stagger, RevealItem, EASE } from '../components/motion'
@@ -238,7 +238,7 @@ function HeroSection() {
               transition={{ duration: 1, delay: 0.34 }}
               className="mt-3 text-xs text-stone"
             >
-              2 videos · no card required.
+              3 free remixes · no card required.
             </motion.p>
           </div>
 
@@ -739,9 +739,15 @@ function AgencySection() {
                 </li>
               ))}
             </ul>
-            <Link to="/auth?plan=agency&mode=signup" className="btn-gradient mt-8">
-              Start an agency workspace <ArrowRight className="h-4 w-4" />
-            </Link>
+            {PAYMENTS_LIVE ? (
+              <Link to="/auth?plan=agency&mode=signup" className="btn-gradient mt-8">
+                Start an agency workspace <ArrowRight className="h-4 w-4" />
+              </Link>
+            ) : (
+              <Link to="/auth?mode=signup" className="btn-gradient mt-8">
+                Start free — Agency coming soon <ArrowRight className="h-4 w-4" />
+              </Link>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-px bg-white/8">
             {[
@@ -847,7 +853,7 @@ function PricingSection() {
           Start free. Scale when it's working.
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-sand">
-          Simple monthly video counts. No per-action billing, no confusing credits. Start free, no card required.
+          Start free with 3 remixes, no card required. {PAYMENTS_LIVE ? 'Upgrade any time.' : 'Paid plans are launching soon.'}
         </p>
       </Reveal>
       <Stagger className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
@@ -884,12 +890,18 @@ function PricingSection() {
                     </li>
                   ))}
                 </ul>
-                <Link
-                  to={`/auth?plan=${p.id}&mode=signup`}
-                  className={cn('mt-7 w-full', featured ? 'btn-gradient' : 'btn-ghost')}
-                >
-                  {p.price === 0 ? 'Start free' : `Choose ${p.name}`}
-                </Link>
+                {!PAYMENTS_LIVE && p.price > 0 ? (
+                  <div className="mt-7 w-full cursor-default rounded-xl border border-white/10 bg-white/[0.03] py-3 text-center text-sm font-medium text-stone">
+                    Coming soon
+                  </div>
+                ) : (
+                  <Link
+                    to={`/auth?plan=${p.id}&mode=signup`}
+                    className={cn('mt-7 w-full', featured ? 'btn-gradient' : 'btn-ghost')}
+                  >
+                    {p.price === 0 ? 'Start free' : `Choose ${p.name}`}
+                  </Link>
+                )}
               </div>
             </RevealItem>
           )
@@ -973,7 +985,7 @@ function CTASection() {
             </Link>
             <a href="#pricing" className="btn-ghost text-base px-8 py-4">See pricing</a>
           </div>
-          <p className="mt-4 text-sm text-stone">2 free videos. No card required.</p>
+          <p className="mt-4 text-sm text-stone">3 free remixes. No card required.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-stone">
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-teal" /> Finish-or-it's-free

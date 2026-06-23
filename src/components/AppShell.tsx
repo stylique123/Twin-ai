@@ -18,7 +18,7 @@ const NAV = [
   // solo/aspiring/pro, whose single voice is managed in Settings.
   { to: '/brands',    label: 'Workspaces', icon: Users,           note: 'Your clients', agencyOnly: true },
   { to: '/history',   label: 'Library',    icon: LibraryBig,      note: 'All your scripts' },
-  { to: '/calendar',  label: 'Calendar',   icon: CalendarDays,    note: 'Schedule posts' },
+  { to: '/calendar',  label: 'Content calendar', icon: CalendarDays, note: 'Schedule posts' },
   { to: '/settings',  label: 'Settings',   icon: Settings,        note: 'Account & DNA' },
 ]
 
