@@ -6,7 +6,7 @@ import {
   Play, Pause, FlipHorizontal2, Minus, Plus, Gauge, Mic, AlertTriangle, Check, Sparkles, Upload,
   SlidersHorizontal,
 } from 'lucide-react'
-import { getGeneration, autoEditTake, remakeEdit, getJob, updateGenerationChoice, fetchEdl } from '../lib/api'
+import { getGeneration, autoEditTake, remakeEdit, getJob, updateGenerationChoice, fetchEdl, listBrandVoices } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { RefinePanel } from '../components/RefinePanel'
 import type { EditDecisionList, Generation } from '../lib/types'
@@ -90,6 +90,18 @@ export default function Record() {
       .catch(() => setGen(null))
       .finally(() => setLoading(false))
   }, [id])
+
+  // Default the caption highlight color to the workspace brand kit, so the first
+  // edit comes out in the creator's brand color (still tweakable per-video in Refine).
+  useEffect(() => {
+    listBrandVoices()
+      .then((vs) => {
+        const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready')
+        const c = def?.brand_kit?.color
+        if (typeof c === 'number') setVariation(c)
+      })
+      .catch(() => {})
+  }, [])
 
   // Teleprompter shows ONLY what the creator speaks (chosen hook + script lines).
   // The hook is the one the creator picked on the blueprint (selected_hook), so

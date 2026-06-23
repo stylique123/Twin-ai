@@ -581,6 +581,12 @@ export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promi
   if (error) throw error
 }
 
+// Brand kit: caption-style + highlight-color defaults for a workspace's renders.
+export async function saveBrandKit(brandId: string, kit: import('./types').BrandKit): Promise<void> {
+  const { error } = await supabase.from('brand_voices').update({ brand_kit: kit }).eq('id', brandId)
+  if (error) throw error
+}
+
 export async function setDefaultBrandVoice(id: string): Promise<void> {
   const { error } = await supabase.from('brand_voices').update({ is_default: true }).eq('id', id)
   if (error) throw error

@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna } from '../lib/api'
+import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits } from '../lib/brand'
-import type { CreatorDNA, Platform, VoiceProfile } from '../lib/types'
+import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
+import { CAPTION_STYLE_OPTIONS, CAPTION_COLOR_OPTIONS } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
 import { cn } from '../lib/cn'
@@ -51,14 +52,24 @@ export default function Settings() {
   // (brand_voices.profile), not profile.dna — which is why this panel showed "Not
   // set" for everything ("I can't see my own brand DNA"). Load it and surface it.
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null)
+  const [defaultVoiceId, setDefaultVoiceId] = useState<string | null>(null)
+  const [brandKit, setBrandKit] = useState<BrandKit>({})
+  const [kitSaved, setKitSaved] = useState(false)
   useEffect(() => {
     listBrandVoices()
       .then((vs) => {
-        const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready')
+        const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready') ?? vs[0]
         if (def?.profile) setVoiceProfile(def.profile as VoiceProfile)
+        if (def?.id) setDefaultVoiceId(def.id)
+        if (def?.brand_kit) setBrandKit(def.brand_kit)
       })
       .catch(() => {})
   }, [])
+  const saveKit = async (next: BrandKit) => {
+    setBrandKit(next)
+    if (!defaultVoiceId) return
+    try { await saveBrandKit(defaultVoiceId, next); setKitSaved(true); setTimeout(() => setKitSaved(false), 1500) } catch { /* ignore */ }
+  }
   // Fall back to the scanned voice when a quiz field is empty, so the view shows
   // the creator's actual niche/voice instead of blanks.
   const voiceFallback: Partial<Record<keyof CreatorDNA, string>> = voiceProfile
@@ -244,6 +255,49 @@ export default function Settings() {
               ))}
             </div>
             {addonMsg && <p className="mt-2 text-xs text-sand">{addonMsg}</p>}
+          </section>
+        </Reveal>
+
+        {/* Brand kit — default caption look applied to every edit (rides the EDL,
+            no render change). The editor panel's #1 churn ask, render-safe slice. */}
+        <Reveal delay={0.13}>
+          <section className="glass mt-5 p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2.5">
+                <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><Sparkles className="h-4 w-4 text-coral" /></span>
+                <p className="eyebrow !text-sand">Brand kit</p>
+              </div>
+              {kitSaved && <span className="inline-flex items-center gap-1 text-xs text-teal"><Check className="h-3.5 w-3.5" /> Saved</span>}
+            </div>
+            <p className="mt-2 text-sm text-stone">Your default caption look — applied to every video you edit.</p>
+            {!defaultVoiceId ? (
+              <p className="mt-4 text-sm text-stone/70">Scan a brand voice first to set a brand kit.</p>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <div>
+                  <label className="eyebrow mb-2 block">Caption style</label>
+                  <div className="flex flex-wrap gap-2">
+                    {CAPTION_STYLE_OPTIONS.map((s) => (
+                      <button key={s.id} onClick={() => saveKit({ ...brandKit, caption_style: s.id })}
+                        className={cn('rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors', brandKit.caption_style === s.id ? 'border-coral/60 bg-coral/15 text-cream' : 'border-white/10 bg-white/5 text-stone hover:text-cream')}>
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="eyebrow mb-2 block">Highlight color</label>
+                  <div className="flex flex-wrap gap-2.5">
+                    {CAPTION_COLOR_OPTIONS.map((c) => (
+                      <button key={c.id} onClick={() => saveKit({ ...brandKit, color: c.id })} title={c.label}
+                        className={cn('h-9 w-9 rounded-full ring-2 ring-offset-2 ring-offset-ink transition-all', brandKit.color === c.id ? 'scale-110 ring-cream' : 'ring-transparent hover:ring-white/30')}
+                        style={{ backgroundColor: c.hex }} />
+                    ))}
+                  </div>
+                </div>
+                <p className="text-xs text-stone">Used as the default on new edits. You can still tweak any single video in Refine. Logo burn-in and 16:9 / long-form export are coming next.</p>
+              </div>
+            )}
           </section>
         </Reveal>
 
