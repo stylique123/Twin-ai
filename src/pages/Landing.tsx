@@ -257,7 +257,7 @@ function HeroVisualNew() {
           initial={{ opacity: 0, x: -24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 1.0, duration: 0.6, ease: EASE }}
-          className="absolute -left-6 top-4 z-20 hidden w-44 rounded-2xl border border-white/12 bg-ink2/95 p-3.5 shadow-lift backdrop-blur sm:block sm:-left-16 lg:-left-20"
+          className="absolute -left-4 top-6 z-20 hidden w-44 rounded-2xl border border-white/12 bg-ink2/95 p-3.5 shadow-lift backdrop-blur sm:block sm:-left-6 lg:-left-8"
         >
           <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-stone">
             <div className="flex h-4 w-4 items-center justify-center rounded-full bg-coral/20">
@@ -283,14 +283,14 @@ function HeroVisualNew() {
         <motion.div
           animate={{ y: [0, -6, 0] }}
           transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative w-[200px] overflow-hidden rounded-[42px] border-[5px] border-white/15 bg-ink p-1 sm:w-[210px]"
+          className="relative w-[244px] overflow-hidden rounded-[48px] border-[6px] border-white/15 bg-ink p-1 sm:w-[264px]"
           style={{ boxShadow: '0 0 0 1px rgba(255,255,255,.06), 0 32px 90px -16px rgba(0,0,0,.9), 0 0 60px -20px rgba(101,229,216,.15)' }}
         >
           <div className="overflow-hidden rounded-[36px] bg-ink">
           <div className="relative flex justify-center bg-ink pt-3 pb-0.5">
             <div className="h-[18px] w-[72px] rounded-full bg-black/60" />
           </div>
-          <div className="relative h-[372px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
+          <div className="relative h-[470px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
             {/* Rec indicator */}
             <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-[9px] font-bold text-cream backdrop-blur">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-coral" /> REC
@@ -342,7 +342,7 @@ function HeroVisualNew() {
           initial={{ opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1, rotate: -3 }}
           transition={{ delay: 1.5, duration: 0.5, ease: EASE }}
-          className="absolute bottom-24 right-1 z-30 hidden rounded-2xl bg-signature px-3.5 py-2 text-xs font-bold text-ink shadow-glow sm:block sm:-right-8"
+          className="absolute bottom-28 right-1 z-30 hidden rounded-2xl bg-signature px-3.5 py-2 text-xs font-bold text-ink shadow-glow sm:block sm:-right-3"
         >
           In your voice
         </motion.div>
@@ -352,7 +352,7 @@ function HeroVisualNew() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.7, duration: 0.5, ease: EASE }}
-          className="absolute -left-6 bottom-16 z-20 hidden space-y-1.5 rounded-2xl border border-white/10 bg-ink2/95 p-3 shadow-lift backdrop-blur text-[10px] sm:block sm:-left-12"
+          className="absolute -left-4 bottom-20 z-20 hidden space-y-1.5 rounded-2xl border border-white/10 bg-ink2/95 p-3 shadow-lift backdrop-blur text-[10px] sm:block sm:-left-6"
         >
           <div className="flex items-center gap-1.5 text-teal font-semibold">
             <Sparkles className="h-2.5 w-2.5" /> Blueprint ready
@@ -362,7 +362,7 @@ function HeroVisualNew() {
         </motion.div>
 
         {/* Glow ring behind phone */}
-        <div className="absolute inset-0 -z-10 mx-auto my-auto h-[300px] w-[300px] rounded-full bg-teal/8 blur-[80px]" />
+        <div className="absolute inset-0 -z-10 mx-auto my-auto h-[380px] w-[380px] rounded-full bg-teal/10 blur-[100px]" />
       </div>
     </motion.div>
   )
