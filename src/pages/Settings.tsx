@@ -1,12 +1,12 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil } from 'lucide-react'
+import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { updateDisplayName, saveDNA, startCheckout } from '../lib/api'
 import { PLANS, videosFromCredits } from '../lib/brand'
 import type { CreatorDNA, Platform } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
+import { cn } from '../lib/cn'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube']
 
@@ -41,6 +41,7 @@ export default function Settings() {
   const [err, setErr] = useState<string | null>(null)
   const [coBusy, setCoBusy] = useState<string | null>(null)
   const [coMsg, setCoMsg] = useState<string | null>(null)
+  const [upgradeOpen, setUpgradeOpen] = useState(false)
 
   // Real checkout: routes a card user to the processor, or shows crypto/manual
   // details. This is the upgrade path that was missing entirely before.
@@ -137,22 +138,20 @@ export default function Settings() {
                 <li key={f} className="flex items-start gap-2 text-sm text-sand"><Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {f}</li>
               ))}
             </ul>
-            {higherPlans.length > 0 && (
-              <div className="mt-5 border-t border-white/8 pt-4">
-                <div className="eyebrow !text-sand">Upgrade</div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {higherPlans.map((p) => (
-                    <button key={p.id} onClick={() => upgrade(p.id)} disabled={coBusy !== null} className="btn-gradient text-sm disabled:opacity-60">
-                      {coBusy === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUpRight className="h-4 w-4" />}
-                      {p.name} · ${p.price}/mo
-                    </button>
-                  ))}
-                </div>
-                {coMsg && <p className="mt-2 text-xs text-sand">{coMsg}</p>}
-                <Link to="/#pricing" className="mt-2 inline-block text-xs text-stone hover:text-cream">Compare plans →</Link>
-              </div>
-            )}
-            <p className="mt-4 text-xs text-stone">Manage or cancel your subscription from your payment provider's portal. Cancelling keeps any credits you've already been granted.</p>
+            <div className="mt-5 flex flex-wrap gap-2 border-t border-white/8 pt-4">
+              {higherPlans.length > 0 && (
+                <button onClick={() => setUpgradeOpen(true)} className="btn-gradient text-sm">
+                  <ArrowUpRight className="h-4 w-4" /> {plan.id === 'free' ? 'Upgrade plan' : 'Change plan'}
+                </button>
+              )}
+              {plan.price > 0 && (
+                <button onClick={() => upgrade(plan.id)} disabled={coBusy !== null} className="btn-ghost text-sm disabled:opacity-60">
+                  {coBusy === plan.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />} Manage payment
+                </button>
+              )}
+            </div>
+            {coMsg && <p className="mt-2 text-xs text-sand">{coMsg}</p>}
+            <p className="mt-3 text-xs text-stone">Cancel any time — cancelling keeps any credits you've already been granted.</p>
           </section>
         </Reveal>
 
@@ -238,6 +237,50 @@ export default function Settings() {
           </section>
         </Reveal>
       </div>
+
+      {/* Plan-comparison upgrade modal (SaaS-style): explains each plan, then
+          routes the chosen one to checkout. */}
+      {upgradeOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => setUpgradeOpen(false)}>
+          <div className="glass relative max-h-[88vh] w-full max-w-4xl overflow-y-auto p-6 sm:p-8" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setUpgradeOpen(false)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
+            <h2 className="font-display text-2xl tracking-tight sm:text-3xl">Choose your plan</h2>
+            <p className="mt-1 text-sm text-stone">Upgrade, downgrade, or switch any time. You keep credits you've already been granted.</p>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {PLANS.map((p) => {
+                const current = p.id === plan.id
+                const isUp = p.price > plan.price
+                return (
+                  <div key={p.id} className={cn('flex flex-col rounded-card border p-5', current ? 'border-teal/50 bg-teal/[0.05]' : p.id === 'professional' ? 'border-amber/40 bg-amber/[0.04]' : 'border-white/10 bg-white/[0.02]')}>
+                    {p.id === 'professional' && !current && <span className="mb-2 inline-block w-fit rounded-full bg-amber/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber">Most popular</span>}
+                    <div className="font-display text-xl text-cream">{p.name}</div>
+                    <div className="mt-1 text-3xl font-bold text-cream">{p.price ? `$${p.price}` : 'Free'}<span className="text-sm font-normal text-stone">{p.price ? '/mo' : ''}</span></div>
+                    <p className="mt-1 text-xs text-stone">{p.blurb}</p>
+                    <ul className="mt-3 flex-1 space-y-1.5">
+                      {p.features.map((f) => (
+                        <li key={f} className="flex items-start gap-1.5 text-xs text-sand"><Check className="mt-0.5 h-3 w-3 shrink-0 text-teal" /> {f}</li>
+                      ))}
+                    </ul>
+                    <div className="mt-4">
+                      {current ? (
+                        <div className="rounded-lg bg-white/5 py-2 text-center text-xs font-semibold text-stone">Current plan</div>
+                      ) : p.price === 0 ? (
+                        <div className="py-2 text-center text-xs text-stone">—</div>
+                      ) : (
+                        <button onClick={() => upgrade(p.id)} disabled={coBusy !== null} className={cn('w-full text-sm', isUp ? 'btn-gradient' : 'btn-ghost')}>
+                          {coBusy === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : isUp ? <ArrowUpRight className="h-4 w-4" /> : null}
+                          {isUp ? `Upgrade to ${p.name}` : `Switch to ${p.name}`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+            {coMsg && <p className="mt-4 text-center text-xs text-sand">{coMsg}</p>}
+          </div>
+        </div>
+      )}
     </main>
   )
 }
