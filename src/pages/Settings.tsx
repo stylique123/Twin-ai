@@ -61,9 +61,22 @@ export default function Settings() {
     listBrandVoices()
       .then((vs) => {
         const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready') ?? vs[0]
-        if (def?.profile) setVoiceProfile(def.profile as VoiceProfile)
         if (def?.id) setDefaultVoiceId(def.id)
         if (def?.brand_kit) setBrandKit(def.brand_kit)
+        if (def?.profile) {
+          const vp = def.profile as VoiceProfile
+          setVoiceProfile(vp)
+          // Pre-fill the EDIT form from the scan so "Edit" starts from the creator's
+          // existing DNA, not a blank slate ("why does it tell me to edit from start?").
+          // Only fills EMPTY fields — never clobbers anything the user already saved.
+          setDna((d) => ({
+            ...d,
+            niche: d.niche || [vp.niche, vp.sub_niche].filter(Boolean).join(' · '),
+            voice: d.voice || [vp.tone, vp.pacing].filter(Boolean).join(', '),
+            editing_style: d.editing_style || vp.hook_style || '',
+            platforms: d.platforms.length ? d.platforms : (def.platform ? [def.platform] : []),
+          }))
+        }
       })
       .catch(() => {})
   }, [])

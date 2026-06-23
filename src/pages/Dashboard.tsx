@@ -399,11 +399,8 @@ function InviteCard() {
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal/15"><Gift className="h-5 w-5 text-teal" /></span>
             <div>
-              <h2 className="font-heading text-base text-cream">Invite a creator — you both get 2 free videos</h2>
-              <p className="mt-1 text-sm text-stone">Share your code or link. The moment they sign up, 2 remixes land on each of you.</p>
-              <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber/30 bg-amber/10 px-2.5 py-1 text-[11px] font-semibold text-amber">
-                <TrendingUp className="h-3 w-3" /> Coming soon: earn cash when creators you refer keep creating
-              </p>
+              <h2 className="font-heading text-base text-cream">Invite a creator — you both get 2 free remixes</h2>
+              <p className="mt-1 text-sm text-stone">Share your code or link. The moment they sign up, 2 remixes land on each of you — every time.</p>
             </div>
           </div>
         </div>
