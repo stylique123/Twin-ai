@@ -356,7 +356,7 @@ export default function Gallery() {
   // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
   // the gradient fallback. Fetching only the visible slice (+ a cross-mount cache)
   // avoids a network request per card for the whole gallery on every visit.
-  const visible = useMemo(() => (showAll ? shown : shown.slice(0, 9)), [shown, showAll])
+  const visible = useMemo(() => (showAll ? shown : shown.slice(0, 12)), [shown, showAll])
   useEffect(() => {
     const controller = new AbortController()
     const { signal } = controller
@@ -476,51 +476,53 @@ export default function Gallery() {
         {shown.length === 0 ? (
           <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">Nothing here for that yet. Try another niche, or paste a video you love in the Studio.</div>
         ) : (
-          <Stagger immediate className="mt-8 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
+          <Stagger immediate className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4" gap={0.05}>
             {visible.map((c) => {
               const thumb = thumbnails[c.id]
               const glowClass = ACCENT_GLOW[c.accent] ?? 'hover:border-white/20'
               const opp = scores.get(c.id)
               return (
                 <RevealItem key={c.id}>
-                  <Tilt max={6} className="h-full">
-                    {/* The WHOLE card opens the detail modal (fixes "only the top
-                        was clickable"). Play opens the original; Remix goes to Studio. */}
-                    <div onClick={() => setDetail(c)} className={cn('glass flex h-full cursor-pointer flex-col overflow-hidden border border-white/8 transition-all duration-300 hover:-translate-y-0.5', glowClass)}>
-                      <div className="group/poster relative aspect-video w-full overflow-hidden">
-                        <div className={cn('absolute inset-0 bg-gradient-to-br', c.poster)} />
-                        {thumb && <img src={thumb} alt={c.label} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
-                        <div className="absolute inset-0 bg-gradient-to-t from-ink/90 via-ink/20 to-transparent" />
-                        <div className="absolute inset-0 grid place-items-center">
-                          <button type="button" onClick={(e) => { e.stopPropagation(); window.open(c.url, '_blank', 'noopener,noreferrer') }} aria-label="Open the original video" className="grid h-11 w-11 place-items-center rounded-full bg-ink/60 ring-1 ring-white/20 backdrop-blur-sm transition-transform duration-200 hover:scale-110">
-                            <Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" />
-                          </button>
-                        </div>
-                        <span className="absolute left-3 top-3 rounded-full border border-white/15 bg-ink/75 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-cream backdrop-blur-sm">{c.platform}</span>
-                        {opp && (
-                          <span className={cn('absolute right-3 top-3 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold backdrop-blur-sm', SCORE_SKIN[opp.tier])} title="Opportunity score">
-                            {opp.tier === 'hot' ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {opp.score}
-                          </span>
-                        )}
-                        <div className="absolute bottom-3 left-3 flex gap-2">
-                          <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-2 py-0.5 text-[11px] font-medium text-cream/90 backdrop-blur-sm"><Eye className="h-3 w-3 opacity-70" /> {c.reach}</span>
-                          <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-2 py-0.5 text-[11px] font-medium text-cream/90 backdrop-blur-sm"><Heart className="h-3 w-3 opacity-70" /> {c.loves}</span>
-                        </div>
+                  <Tilt max={5} className="h-full">
+                    {/* Reel-shaped (9:16) tile — the gallery now browses like a
+                        feed of vertical videos. The WHOLE tile opens the detail
+                        modal; Play opens the original; Remix deep-links the Studio. */}
+                    <div onClick={() => setDetail(c)} className={cn('group relative flex aspect-[9/16] cursor-pointer flex-col justify-end overflow-hidden rounded-card border border-white/8 transition-all duration-300 hover:-translate-y-0.5', glowClass)}>
+                      {/* Backdrop: gradient skin, a soft shimmer while the thumb
+                          loads (so an empty tile reads as "loading", not broken),
+                          then the real cover frame fades in. */}
+                      <div className={cn('absolute inset-0 bg-gradient-to-br', c.poster)} />
+                      {!thumb && <div className="absolute inset-0 animate-pulse bg-gradient-to-t from-white/[0.06] via-transparent to-white/[0.03]" />}
+                      {thumb && <img src={thumb} alt={c.label} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
+                      <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/55 to-ink/10" />
+
+                      {/* Top badges */}
+                      <span className="absolute left-2.5 top-2.5 rounded-full border border-white/15 bg-ink/75 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-cream backdrop-blur-sm">{c.platform}</span>
+                      {opp && (
+                        <span className={cn('absolute right-2.5 top-2.5 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-bold backdrop-blur-sm', SCORE_SKIN[opp.tier])} title="Opportunity score">
+                          {opp.tier === 'hot' ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {opp.score}
+                        </span>
+                      )}
+
+                      {/* Play (original) — surfaces on hover, centred over the reel. */}
+                      <div className="absolute inset-0 grid place-items-center">
+                        <button type="button" onClick={(e) => { e.stopPropagation(); window.open(c.url, '_blank', 'noopener,noreferrer') }} aria-label="Open the original video" className="grid h-12 w-12 place-items-center rounded-full bg-ink/55 ring-1 ring-white/25 backdrop-blur-sm transition-all duration-200 group-hover:scale-110 group-hover:bg-ink/70">
+                          <Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" />
+                        </button>
                       </div>
-                      <div className="flex flex-1 flex-col p-5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={cn('min-w-0 truncate text-[11px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
-                          <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-stone">{c.niche}</span>
+
+                      {/* Bottom overlay: stats, hook, creator, and the remix CTA. */}
+                      <div className="relative z-10 flex flex-col gap-2 p-3.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-1.5 py-0.5 text-[10px] font-medium text-cream/90 backdrop-blur-sm"><Eye className="h-2.5 w-2.5 opacity-70" /> {c.reach}</span>
+                          <span className="inline-flex items-center gap-1 rounded-full bg-ink/65 px-1.5 py-0.5 text-[10px] font-medium text-cream/90 backdrop-blur-sm"><Heart className="h-2.5 w-2.5 opacity-70" /> {c.loves}</span>
                         </div>
-                        {opp && <p className={cn('mt-1.5 text-[11px] font-medium', c.accent)}>Why for you · {opp.why}</p>}
-                        <p className="mt-2 font-heading leading-snug text-cream line-clamp-2">{c.hook}</p>
-                        <p className="mt-2 flex-1 text-sm text-sand line-clamp-3"><span className="font-medium text-stone">Why it works. </span>{c.why}</p>
-                        <p className="mt-3 text-xs"><span className={cn('font-semibold', c.accent)}>@{c.creator}</span></p>
-                        <div className="mt-4">
-                          <button onClick={(e) => { e.stopPropagation(); remix(c) }} className="btn-gradient flex w-full items-center justify-center gap-2">
-                            <Wand2 className="h-4 w-4 shrink-0" /> Remix in my voice
-                          </button>
-                        </div>
+                        <span className={cn('truncate text-[10px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
+                        <p className="font-heading text-sm leading-snug text-cream line-clamp-2">{c.hook}</p>
+                        <p className="text-[11px]"><span className={cn('font-semibold', c.accent)}>@{c.creator}</span></p>
+                        <button onClick={(e) => { e.stopPropagation(); remix(c) }} className="btn-gradient mt-0.5 flex w-full items-center justify-center gap-1.5 !py-2 text-xs">
+                          <Wand2 className="h-3.5 w-3.5 shrink-0" /> Remix in my voice
+                        </button>
                       </div>
                     </div>
                   </Tilt>
@@ -529,7 +531,7 @@ export default function Gallery() {
             })}
           </Stagger>
         )}
-        {!showAll && shown.length > 9 && (
+        {!showAll && shown.length > 12 && (
           <div className="mt-8 flex justify-center">
             <button onClick={() => setShowAll(true)} className="chip hover:border-coral/40 hover:text-cream">
               View all {shown.length} →
