@@ -20,6 +20,7 @@ export interface PlanTier {
   credits: number // INTERNAL granted credits, includes a hidden buffer above `videos`
   brandVoices: number
   badge?: string
+  hidden?: boolean // Free: excluded from the pricing grid (reached via "Start free")
   blurb: string
   features: string[]
 }
@@ -45,23 +46,24 @@ export const PLANS: PlanTier[] = [
     name: 'Free',
     price: 0,
     annual: null,
-    videos: 3,
-    credits: grant(3, 0), // 30 credits → 3 videos; advertised count matches what's granted
+    videos: 2,
+    credits: grant(2, 0), // 20 credits → 2 videos; enough to show value, no card
     brandVoices: 1,
+    hidden: true, // not shown on the pricing grid — reached via "Get started for free"
     blurb: 'See it work, free.',
-    features: ['3 videos / mo', 'Script + in-app teleprompter record', 'Watermark on exports'],
+    features: ['2 videos / mo', 'Script + in-app teleprompter record', 'Watermark on exports'],
   },
   {
     id: 'aspiring',
     name: 'Creator',
     price: 9,
     annual: 7,
-    videos: 8,
-    credits: grant(8, 2), // 100 credits, advertised 8, buffer 2
+    videos: 7,
+    credits: grant(7, 1), // 80 credits, advertised 7, buffer 1
     brandVoices: 1,
     blurb: 'Post weekly, no watermark.',
     features: [
-      '8 videos / mo',
+      '7 videos / mo',
       'No watermark',
       '1 brand voice',
       'Auto-captions',
@@ -73,13 +75,13 @@ export const PLANS: PlanTier[] = [
     name: 'Pro',
     price: 25,
     annual: 20,
-    videos: 16,
-    credits: grant(16, 4), // 200 credits, advertised 16, buffer 4
+    videos: 15,
+    credits: grant(15, 3), // 180 credits, advertised 15, buffer 3
     brandVoices: 1,
     badge: 'Most popular',
     blurb: 'Ship every week, on autopilot.',
     features: [
-      '16 videos / mo',
+      '15 videos / mo',
       '1 brand voice',
       'Full auto-edit (captions + cuts)',
       'Publish to all your platforms',
@@ -92,13 +94,13 @@ export const PLANS: PlanTier[] = [
     name: 'Studio',
     price: 49,
     annual: 39,
-    videos: 40,
-    credits: grant(40, 6), // 460 credits, advertised 40, buffer 6
+    videos: 35,
+    credits: grant(35, 5), // 400 credits, advertised 35, buffer 5
     brandVoices: 1,
     badge: 'Best for volume',
     blurb: 'Double the output, priority render.',
     features: [
-      '40 videos / mo',
+      '35 videos / mo',
       'Everything in Pro',
       'Priority render',
       'Bulk scheduling',
@@ -109,13 +111,13 @@ export const PLANS: PlanTier[] = [
     name: 'Agency',
     price: 99,
     annual: 79,
-    videos: 100,
-    credits: grant(100, 10), // 1100 credits, advertised 100, buffer 10
+    videos: 80,
+    credits: grant(80, 8), // 880 credits, advertised 80, buffer 8
     brandVoices: 15,
     badge: 'Best value',
     blurb: 'Every client, sounding like themselves.',
     features: [
-      '100 videos / mo',
+      '80 videos / mo',
       '15 brand voices (one per client)',
       'Everything in Studio',
       'Workspaces & client switching',

@@ -9,7 +9,7 @@ import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 import { EASE } from '../components/motion'
 
-const FREE_PERKS = ['3 free remixes', 'Script in your voice, record + edit in one place', 'No card required']
+const FREE_PERKS = ['2 free videos', 'Script in your voice, record + edit in one place', 'No card required']
 const PAID_PERKS = ['Script in your voice, record + edit in one place', 'No watermark on your exports', 'Cancel any time']
 
 // Where we remember the plan the user picked on the pricing page, so the choice
@@ -183,7 +183,7 @@ export default function Auth() {
               ? 'Pick up where you left off.'
               : isPaidIntent
                 ? `Create your account, then activate ${intendedPlan!.name} — $${intendedPlan!.price}/mo.`
-                : '3 free remixes. No card required.'}
+                : '2 free videos. No card required.'}
           </p>
 
           <button

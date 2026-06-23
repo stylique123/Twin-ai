@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits } from '../lib/brand'
-import type { CreatorDNA, Platform } from '../lib/types'
+import type { CreatorDNA, Platform, VoiceProfile } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
 import { cn } from '../lib/cn'
@@ -46,6 +46,29 @@ export default function Settings() {
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null)
   const [addonBusy, setAddonBusy] = useState<string | null>(null)
   const [addonMsg, setAddonMsg] = useState<string | null>(null)
+
+  // The REAL brand DNA for handle-scanned users lives in their default brand voice
+  // (brand_voices.profile), not profile.dna — which is why this panel showed "Not
+  // set" for everything ("I can't see my own brand DNA"). Load it and surface it.
+  const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null)
+  useEffect(() => {
+    listBrandVoices()
+      .then((vs) => {
+        const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready')
+        if (def?.profile) setVoiceProfile(def.profile as VoiceProfile)
+      })
+      .catch(() => {})
+  }, [])
+  // Fall back to the scanned voice when a quiz field is empty, so the view shows
+  // the creator's actual niche/voice instead of blanks.
+  const voiceFallback: Partial<Record<keyof CreatorDNA, string>> = voiceProfile
+    ? {
+        niche: [voiceProfile.niche, voiceProfile.sub_niche].filter(Boolean).join(' · '),
+        voice: [voiceProfile.tone, voiceProfile.pacing].filter(Boolean).join(', '),
+        editing_style: voiceProfile.hook_style ?? '',
+      }
+    : {}
+  const shownDna = (k: keyof Omit<CreatorDNA, 'platforms'>): string => (dna[k] as string) || voiceFallback[k] || ''
 
   // Expansion add-ons: attempt checkout; until billing is connected, tell the user
   // plainly how to get it rather than throwing a raw error.
@@ -247,12 +270,26 @@ export default function Settings() {
             {!editingDna ? (
               /* Read-only view — what we already know about you. */
               <div className="mt-5 space-y-3">
-                {DNA_FIELDS.map((f) => (
+                {voiceProfile?.summary && (
+                  <div className="rounded-card border border-teal/15 bg-teal/[0.04] p-4">
+                    <p className="eyebrow !text-teal">What we learned from your posts</p>
+                    <p className="mt-1.5 text-sm leading-relaxed text-sand">{voiceProfile.summary}</p>
+                    {voiceProfile.vocabulary?.length > 0 && (
+                      <div className="mt-2.5 flex flex-wrap gap-1.5">
+                        {voiceProfile.vocabulary.slice(0, 8).map((w) => <span key={w} className="chip !py-1 text-xs">{w}</span>)}
+                      </div>
+                    )}
+                  </div>
+                )}
+                {DNA_FIELDS.map((f) => {
+                  const v = shownDna(f.key)
+                  return (
                   <div key={f.key} className="flex flex-col gap-0.5 border-b border-white/6 pb-3 sm:flex-row sm:items-baseline sm:gap-3">
                     <span className="eyebrow w-40 shrink-0">{f.label}</span>
-                    <span className={`text-sm ${dna[f.key] ? 'text-cream' : 'text-stone/60'}`}>{dna[f.key] || 'Not set'}</span>
+                    <span className={`text-sm ${v ? 'text-cream' : 'text-stone/60'}`}>{v || 'Not set'}</span>
                   </div>
-                ))}
+                  )
+                })}
                 <div className="flex flex-col gap-0.5 sm:flex-row sm:items-baseline sm:gap-3">
                   <span className="eyebrow w-40 shrink-0">Platforms</span>
                   <span className="flex flex-wrap gap-1.5">
@@ -321,8 +358,8 @@ export default function Settings() {
             <button onClick={() => setUpgradeOpen(false)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
             <h2 className="font-display text-2xl tracking-tight sm:text-3xl">Choose your plan</h2>
             <p className="mt-1 text-sm text-stone">Upgrade, downgrade, or switch any time. You keep credits you've already been granted.</p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-              {PLANS.map((p) => {
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {PLANS.filter((p) => !p.hidden).map((p) => {
                 const current = p.id === plan.id
                 const isUp = p.price > plan.price
                 return (

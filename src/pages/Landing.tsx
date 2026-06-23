@@ -238,7 +238,7 @@ function HeroSection() {
               transition={{ duration: 1, delay: 0.34 }}
               className="mt-3 text-xs text-stone"
             >
-              3 remixes · no card required.
+              2 videos · no card required.
             </motion.p>
           </div>
 
@@ -847,11 +847,11 @@ function PricingSection() {
           Start free. Scale when it's working.
         </h2>
         <p className="mx-auto mt-4 max-w-xl text-sand">
-          Simple monthly remix counts. No per-action billing, no confusing credits. Cancel any time.
+          Simple monthly video counts. No per-action billing, no confusing credits. Start free, no card required.
         </p>
       </Reveal>
-      <Stagger className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-5" gap={0.05}>
-        {PLANS.map((p) => {
+      <Stagger className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
+        {PLANS.filter((p) => !p.hidden).map((p) => {
           const featured = p.id === 'professional'
           return (
             <RevealItem key={p.id}>
@@ -973,7 +973,7 @@ function CTASection() {
             </Link>
             <a href="#pricing" className="btn-ghost text-base px-8 py-4">See pricing</a>
           </div>
-          <p className="mt-4 text-sm text-stone">3 free remixes. No card required.</p>
+          <p className="mt-4 text-sm text-stone">2 free videos. No card required.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-stone">
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-teal" /> Finish-or-it's-free
