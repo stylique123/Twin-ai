@@ -385,6 +385,10 @@ Deno.serve(async (req: Request) => {
         : ['tiktok']
 
     const subNiche = vp?.sub_niche ?? dna.sub_niche ?? ''
+    // Founder/B2B fix (panel): a founder's real voice lives in their TEXT (LinkedIn
+    // posts, blog) more than a sparse video scan. If they pasted writing samples,
+    // they're the single strongest voice signal — feed them verbatim (bounded).
+    const voiceSamples = String((vp as { voice_samples?: string } | null)?.voice_samples ?? dna.voice_samples ?? '').trim().slice(0, 3000)
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
 - Specific angle (what their audience searches for): ${subNiche}` : ''}
@@ -405,7 +409,8 @@ Deno.serve(async (req: Request) => {
 - Enemy (the bad advice / villain they push against): ${vp.enemy ?? '(none captured)'}
 - Do: ${(vp.dos ?? []).join('; ')}
 - Don't: ${(vp.donts ?? []).join('; ')}
-- Voice summary: ${vp.summary ?? ''}` : ''}
+- Voice summary: ${vp.summary ?? ''}` : ''}${voiceSamples ? `
+- HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}
 - Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}`
 
     // When we have the real transcript, override the format-pattern caveat: the

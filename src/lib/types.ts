@@ -10,6 +10,7 @@ export interface CreatorDNA {
   voice: string // how they sound: e.g. "direct, warm, a little punchy"
   platforms: Platform[]
   editing_style: string // e.g. "fast jump cuts, burned-in captions"
+  voice_samples?: string // verbatim writing samples (e.g. pasted LinkedIn posts) — the strongest voice signal
 }
 
 export interface Profile {
@@ -107,6 +108,7 @@ export interface Generation {
   // take (the re-render source) + its Edit Decision List path.
   take_path?: string | null
   edl_path?: string | null
+  approved?: boolean // agency: marked client-approved before record/post
   created_at: string
 }
 

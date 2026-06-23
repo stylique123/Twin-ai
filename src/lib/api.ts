@@ -277,6 +277,12 @@ export async function updateGenerationChoice(
   return !error
 }
 
+// Agency approval: mark a blueprint client-approved (or back to pending). Owner-only.
+export async function setGenerationApproved(id: string, approved: boolean): Promise<boolean> {
+  const { error } = await supabase.from('generations').update({ approved }).eq('id', id)
+  return !error
+}
+
 // Sign storage paths in the private `edits` bucket (rendered MP4s + cover JPEGs)
 // so the Library can show finished work. Returns a path->signedUrl map; any path
 // that fails to sign is simply omitted (caller falls back to a placeholder).
@@ -492,6 +498,21 @@ export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promi
 export async function setDefaultBrandVoice(id: string): Promise<void> {
   const { error } = await supabase.from('brand_voices').update({ is_default: true }).eq('id', id)
   if (error) throw error
+}
+
+// Agency white-label: a login-free CLIENT REPORT link per brand.
+export interface BrandReport { label: string; handle: string; blueprints: number; edits: number; posts: number; views: number; hours_saved: number }
+// Generate (lazily) + return the shareable token for a brand the caller owns.
+export async function ensureBrandShareToken(brandId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('ensure_brand_share_token', { p_brand: brandId })
+  if (error) throw error
+  return data as string
+}
+// Public (no login): a token → that brand's aggregate results, for the client page.
+export async function getBrandReport(token: string): Promise<BrandReport | null> {
+  const { data, error } = await supabase.rpc('brand_report', { p_token: token })
+  if (error || !data) return null
+  return data as BrandReport
 }
 
 // Rename a brand's friendly label (the per-client name agencies set).

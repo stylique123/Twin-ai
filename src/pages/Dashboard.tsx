@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -17,6 +17,7 @@ export default function Dashboard() {
   const { profile } = useAuth()
   const [stats, setStats] = useState<DashboardStats | null>(null)
   const [recent, setRecent] = useState<Generation[]>([])
+  const [gens, setGens] = useState<Generation[]>([])
   const [posts, setPosts] = useState<Post[]>([])
   const [voices, setVoices] = useState<BrandVoice[]>([])
   const [selectedBrand, setSelectedBrand] = useState('') // '' = all brands
@@ -34,6 +35,7 @@ export default function Dashboard() {
       .then(([s, g, p, vs]) => {
         setStats(s)
         setRecent(g.slice(0, 5))
+        setGens(g)
         setPosts(p)
         setVoices((vs as BrandVoice[]).filter((v) => v.status === 'ready'))
       })
@@ -58,6 +60,10 @@ export default function Dashboard() {
   const edVal = scoped ? brandStats!.edits : stats?.edits
   const poVal = scoped ? brandStats!.posts : stats?.posts
   const streak = postingStreak(posts)
+  // The learning loop (panel: analytics that actually TEACHES): tie each post's
+  // self-reported views back to the FORMAT it was built from, and surface the
+  // format that's winning for this creator. Available to everyone (not paywalled).
+  const formatInsight = useMemo(() => computeFormatInsight(posts, gens), [posts, gens])
   // Creator-facing value: hours saved (30 min/blueprint + 90 min/edit) and the
   // top-performing post by their self-reported views.
   const hoursSaved = stats ? Math.round(((stats.blueprints ?? 0) * 0.5 + (stats.edits ?? 0) * 1.5)) : 0
@@ -132,6 +138,22 @@ export default function Dashboard() {
             <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every blueprint you've ever made, searchable." />
           </div>
         </Reveal>
+        {formatInsight && (
+          <Reveal delay={0.12}>
+            <div className="glass mt-6 flex flex-col gap-3 border border-teal/20 bg-teal/[0.04] p-5 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-3">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-teal/15"><TrendingUp className="h-4 w-4 text-teal" /></span>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-teal">What's working for you</p>
+                  <p className="mt-1 text-sm text-cream">
+                    Your <span className="font-semibold">{formatInsight.format}</span> videos average <span className="font-semibold">{formatInsight.avg.toLocaleString()}</span> views — <span className="font-semibold text-teal">{formatInsight.multiple}×</span> your other formats. Make more like it.
+                  </p>
+                </div>
+              </div>
+              <Link to="/gallery" className="btn-gradient shrink-0 self-start text-sm sm:self-auto"><Wand2 className="h-4 w-4" /> Make another</Link>
+            </div>
+          </Reveal>
+        )}
         <InviteCard />
         <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
           <Reveal>
@@ -289,6 +311,38 @@ function PostRow({ p, isTop }: { p: Post; isTop: boolean }) {
 
 // Consecutive-day posting streak from logged posts (anchored to today or
 // yesterday so a not-yet-posted-today streak still counts).
+// Tie outcomes to choices: group the creator's self-reported post views by the
+// FORMAT each post was built from (generation.blueprint.reference_read.format_label),
+// and return the format that's outperforming — the "lean into X" learning signal.
+// Returns null until there's real signal (≥2 formats, the winner has ≥2 posts, and
+// it's meaningfully ahead) so it never shows noise.
+interface FormatInsight { format: string; avg: number; multiple: number; n: number }
+function computeFormatInsight(posts: Post[], gens: Generation[]): FormatInsight | null {
+  const fmtOf = new Map<string, string>()
+  for (const g of gens) {
+    const f = g.blueprint?.reference_read?.format_label?.trim()
+    if (f) fmtOf.set(g.id, f)
+  }
+  const byFmt = new Map<string, number[]>()
+  for (const p of posts) {
+    const v = Number(p.views ?? 0)
+    if (!(v > 0) || !p.generation_id) continue
+    const f = fmtOf.get(p.generation_id)
+    if (!f) continue
+    if (!byFmt.has(f)) byFmt.set(f, [])
+    byFmt.get(f)!.push(v)
+  }
+  const stats = [...byFmt.entries()].map(([f, vs]) => ({ f, n: vs.length, avg: vs.reduce((a, b) => a + b, 0) / vs.length }))
+  if (stats.length < 2) return null
+  stats.sort((a, b) => b.avg - a.avg)
+  const top = stats[0]
+  if (top.n < 2) return null
+  const restAvg = stats.slice(1).reduce((a, s) => a + s.avg, 0) / (stats.length - 1)
+  const multiple = restAvg > 0 ? top.avg / restAvg : 0
+  if (multiple < 1.2) return null
+  return { format: top.f, avg: Math.round(top.avg), multiple: Math.round(multiple * 10) / 10, n: top.n }
+}
+
 function postingStreak(posts: Post[]): number {
   const days = new Set(posts.map((p) => new Date(p.posted_at ?? p.created_at).toDateString()))
   const d = new Date()
