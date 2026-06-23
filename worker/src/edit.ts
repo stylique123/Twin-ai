@@ -66,6 +66,24 @@ export async function applyWatermark(inFile: string): Promise<string> {
   }
 }
 
+// Burn a brand logo (PNG) into the top-right corner. Discrete final pass that
+// FAIL-OPENS to the clean render on any error — exactly like applyWatermark — so a
+// logo problem can never break a paying customer's export.
+export async function applyLogo(inFile: string, logoFile: string): Promise<string> {
+  try {
+    if ((await fileSize(logoFile)) < 64) return inFile
+    const out = join(tmpdir(), `twinai-logo-${Date.now()}.mp4`)
+    // Scale the logo to ~120px tall, place it 36px from the top-right.
+    const fc = '[1:v]scale=-1:120[lg];[0:v][lg]overlay=W-w-36:36:format=auto'
+    await run('ffmpeg', ['-y', '-i', inFile, '-i', logoFile, '-filter_complex', fc, '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-movflags', '+faststart', out], 300_000)
+    if ((await fileSize(out)) > 2048) return out
+    return inFile
+  } catch (e) {
+    console.error('[logo] failed, shipping render without logo:', e)
+    return inFile
+  }
+}
+
 export interface EditResult {
   outFile: string
   durationSec: number

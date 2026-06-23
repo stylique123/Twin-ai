@@ -596,6 +596,15 @@ export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promi
   if (error) throw error
 }
 
+// Upload a brand-kit logo (data URL) via the service-role edge fn; returns the
+// storage path to save into the brand kit.
+export async function uploadBrandLogo(dataUrl: string): Promise<string> {
+  const content_type = dataUrl.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png'
+  const { data, error } = await supabase.functions.invoke('brand-logo', { body: { image_base64: dataUrl, content_type } })
+  if (error) throw new Error(await readInvokeError(error))
+  return (data as { path: string }).path
+}
+
 // Brand kit: caption-style + highlight-color defaults for a workspace's renders.
 export async function saveBrandKit(brandId: string, kit: import('./types').BrandKit): Promise<void> {
   const { error } = await supabase.from('brand_voices').update({ brand_kit: kit }).eq('id', brandId)

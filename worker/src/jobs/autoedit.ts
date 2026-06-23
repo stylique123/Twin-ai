@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { db, updateJobProgress, type Job } from '../db.js'
 import { env } from '../env.js'
-import { autoEdit, applyWatermark } from '../edit.js'
+import { autoEdit, applyWatermark, applyLogo } from '../edit.js'
 import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
 
@@ -28,6 +28,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
   let renderFile: string | null = null
   let thumbRender: string | null = null
   let wmFile: string | null = null
+  let logoOut: string | null = null
   try {
     await downloadObject('takes', takePath, localTake)
 
@@ -67,6 +68,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     let coverText = ''
     let brandStyle: string | undefined
     let brandColor: number | undefined
+    let brandLogoPath: string | undefined
     if (payload.generation_id) {
       try {
         const { data: gen } = await db
@@ -95,9 +97,10 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
         if (gen?.brand_voice_id) {
           const { data: bv } = await db.from('brand_voices').select('profile, brand_kit').eq('id', gen.brand_voice_id).maybeSingle()
           pacing = (bv?.profile as { pacing?: string } | null)?.pacing ?? ''
-          const kit = bv?.brand_kit as { caption_style?: string; color?: number } | null
+          const kit = bv?.brand_kit as { caption_style?: string; color?: number; logo_path?: string } | null
           if (kit?.caption_style) brandStyle = kit.caption_style
           if (typeof kit?.color === 'number' && !Number.isFinite(payload.variation as number)) brandColor = kit.color
+          if (kit?.logo_path) brandLogoPath = kit.logo_path
         }
         // Edit style the creator picked takes priority over the DNA-derived energy.
         const style = (gen?.edit_style as string | undefined) ?? ''
@@ -145,6 +148,19 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     if (applyWm) {
       const wm = await applyWatermark(outFile)
       if (wm !== outFile) { wmFile = wm; finalFile = wm }
+    }
+
+    // Brand logo burn-in (every package): a discrete, fail-open overlay pass — a
+    // logo problem returns the clean render, never breaks the export.
+    if (brandLogoPath) {
+      try {
+        const logoLocal = join(dir, 'logo.png')
+        await downloadObject('edits', brandLogoPath, logoLocal)
+        const withLogo = await applyLogo(finalFile, logoLocal)
+        if (withLogo !== finalFile) { logoOut = withLogo; finalFile = withLogo }
+      } catch (e) {
+        console.error(`[autoedit ${job.id}] logo overlay skipped:`, e instanceof Error ? e.message : e)
+      }
     }
 
     const outputPath = `${job.owner_id}/${job.id}.mp4`
@@ -242,6 +258,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     await rm(dir, { recursive: true, force: true }).catch(() => {})
     if (renderFile) await rm(renderFile, { force: true }).catch(() => {})
     if (wmFile) await rm(wmFile, { force: true }).catch(() => {})
+    if (logoOut) await rm(logoOut, { force: true }).catch(() => {})
     if (thumbRender) await rm(thumbRender, { force: true }).catch(() => {})
   }
 }

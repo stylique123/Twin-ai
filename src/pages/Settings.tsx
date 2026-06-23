@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit } from '../lib/api'
+import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { CAPTION_STYLE_OPTIONS, CAPTION_COLOR_OPTIONS } from '../lib/types'
@@ -84,6 +84,17 @@ export default function Settings() {
     setBrandKit(next)
     if (!defaultVoiceId) return
     try { await saveBrandKit(defaultVoiceId, next); setKitSaved(true); setTimeout(() => setKitSaved(false), 1500) } catch { /* ignore */ }
+  }
+  const [logoBusy, setLogoBusy] = useState(false)
+  const onLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !defaultVoiceId) return
+    setLogoBusy(true)
+    try {
+      const dataUrl: string = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.onerror = rej; r.readAsDataURL(file) })
+      const path = await uploadBrandLogo(dataUrl)
+      await saveKit({ ...brandKit, logo_path: path })
+    } catch { /* ignore */ } finally { setLogoBusy(false); e.target.value = '' }
   }
   // Fall back to the scanned voice when a quiz field is empty, so the view shows
   // the creator's actual niche/voice instead of blanks.
@@ -325,7 +336,24 @@ export default function Settings() {
                     ))}
                   </div>
                 </div>
-                <p className="text-xs text-stone">Used as the default on new edits. You can still tweak any single video in Refine. Logo burn-in and 16:9 / long-form export are coming next.</p>
+                <div>
+                  <label className="eyebrow mb-2 block">Logo <span className="font-normal normal-case text-stone">— burned into the top-right of every export</span></label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="btn-ghost cursor-pointer text-sm">
+                      {logoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                      {brandKit.logo_path ? 'Replace logo' : 'Upload logo'}
+                      <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={onLogo} disabled={logoBusy} />
+                    </label>
+                    {brandKit.logo_path && (
+                      <>
+                        <span className="inline-flex items-center gap-1 text-xs text-teal"><Check className="h-3.5 w-3.5" /> Logo set</span>
+                        <button onClick={() => saveKit({ ...brandKit, logo_path: undefined })} className="text-xs text-stone hover:text-coral">Remove</button>
+                      </>
+                    )}
+                  </div>
+                  <p className="mt-1 text-[11px] text-stone">PNG with transparency works best. Max 3MB.</p>
+                </div>
+                <p className="text-xs text-stone">Applied as the default on new edits, on every plan. You can still tweak any single video in Refine. (16:9 / long-form export + trending audio are coming next.)</p>
               </div>
             )}
           </section>
