@@ -13,6 +13,7 @@ import { createClient } from 'jsr:@supabase/supabase-js@2'
 import {
   cors,
   extractPosts,
+  computeStats,
   extractProfileBio,
   extractVideoUrls,
   isPrivateProfile,
@@ -156,10 +157,11 @@ Deno.serve(async (req: Request) => {
     if (!claim) return json({ status: 'building' })
 
     const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts, bio)
+    const stats = computeStats(ownItems, posts)
 
     await admin
       .from('brand_voices')
-      .update({ status: 'ready', profile, error: null })
+      .update({ status: 'ready', profile, stats, error: null })
       .eq('id', voiceId)
     await admin
       .from('jobs')

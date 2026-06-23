@@ -184,6 +184,26 @@ export function extractPosts(items: Record<string, unknown>[]): PostSample[] {
     .filter((p) => p.text.length > 0)
 }
 
+// Aggregate creator stats for the dashboard ("little things about them"): follower
+// count (from the author meta, best-effort across actors) + counts/averages derived
+// from the posts we read. Returns 0s when an actor doesn't expose a field.
+export interface CreatorStats { followers: number; videos: number; avg_views: number; avg_likes: number }
+export function computeStats(items: Record<string, unknown>[], posts: PostSample[]): CreatorStats {
+  let followers = 0
+  for (const it of items ?? []) {
+    const f = pickNum(it, ['authorMeta.fans', 'followersCount', 'followers', 'subscriberCount', 'author.fans', 'authorMeta.followerCount', 'fansCount', 'edge_followed_by.count'])
+    if (f > followers) followers = f
+  }
+  const videos = posts.length
+  const sum = (sel: (p: PostSample) => number) => posts.reduce((a, p) => a + (sel(p) || 0), 0)
+  return {
+    followers,
+    videos,
+    avg_views: videos ? Math.round(sum((p) => p.plays) / videos) : 0,
+    avg_likes: videos ? Math.round(sum((p) => p.likes) / videos) : 0,
+  }
+}
+
 // Pull the top video URLs (highest reach first) so the worker can transcribe the
 // creator's ACTUAL spoken audio and upgrade the voice beyond captions.
 export function extractVideoUrls(items: Record<string, unknown>[], max = 5): string[] {
