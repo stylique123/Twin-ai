@@ -65,20 +65,23 @@ function InstagramIcon({ className }: { className?: string }) {
 const PAIN = [
   {
     n: '01',
-    t: 'You want to post. The page stays blank.',
-    d: 'You save every video you love. You still don\'t know what to make of your own.',
+    t: "You don't know what to post",
+    d: 'You save dozens of videos you love, then open a blank screen with no idea where to start.',
+    fix: 'TwinAI shows you what\'s already working in your niche — pick one and go.',
     accent: 'coral',
   },
   {
     n: '02',
-    t: 'You make it. It\'s not what you saw.',
-    d: 'Copy the format, it feels fake. Start fresh, it sounds like everyone else.',
+    t: 'It never comes out like your head',
+    d: 'Copy a format and it feels fake. Start from scratch and it sounds like everyone else.',
+    fix: 'We rebuild the idea in your voice, so it actually sounds like you.',
     accent: 'amber',
   },
   {
     n: '03',
-    t: 'Doing it right costs your whole evening.',
-    d: 'Script, reshoot, edit, caption. One post eats the night, so you post less.',
+    t: 'One video eats your whole night',
+    d: 'Scripting, re-shooting, editing, captions — hours per post, so you end up posting less.',
+    fix: 'Paste → script → record → edit → caption, in one window, in minutes.',
     accent: 'teal',
   },
 ]
@@ -129,10 +132,10 @@ export default function Landing() {
     <main className="noise overflow-clip">
       <HeroSection />
       <PlatformStrip />
-      <PasteDemoSection />
       <PainSection />
       <HowItWorksSection />
       <BenefitsSection />
+      <PasteDemoSection />
       <GalleryShowcase />
       <FeaturesSection />
       <AgencySection />
@@ -533,6 +536,10 @@ function PainSection() {
               )}>{p.n}</span>
               <h3 className="mt-3 font-heading text-lg text-cream">{p.t}</h3>
               <p className="mt-2 text-sm leading-relaxed text-sand">{p.d}</p>
+              <div className="mt-4 flex items-start gap-2 border-t border-white/8 pt-3">
+                <Check className={cn('mt-0.5 h-4 w-4 shrink-0', p.accent === 'coral' ? 'text-coral' : p.accent === 'amber' ? 'text-amber' : 'text-teal')} />
+                <p className="text-sm font-medium text-cream">{p.fix}</p>
+              </div>
             </div>
           </RevealItem>
         ))}

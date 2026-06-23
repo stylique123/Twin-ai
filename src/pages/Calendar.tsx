@@ -75,7 +75,7 @@ export default function Calendar() {
     try {
       const r = await startConnect(p)
       if (r.url) { window.location.href = r.url; return }
-      if (r.unconfigured) { setConnMsg(`${cap(p)} posting isn't enabled yet — needs its developer-app keys.`); return }
+      if (r.unconfigured) { setConnMsg(`One-click posting for ${cap(p)} is coming soon.`); return }
       setConnMsg('Could not start the connection. Try again.')
     } catch (e) { setConnMsg(e instanceof Error ? e.message : 'Could not connect.') }
     finally { setConnBusy(null) }

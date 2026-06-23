@@ -187,7 +187,10 @@ function skinForNiche(niche: string): { accent: string; poster: string } {
 
 function fromDb(it: GalleryItem): Card {
   const skin = skinForNiche(it.niche)
-  return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || 'Shared by a TwinAI creator.', reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url }
+  // A real "why it works" even when the community item shipped without one — so the
+  // detail card always teaches the creator something, not just a view count.
+  const fallbackWhy = `A proven ${it.niche || 'niche'} format that earned real reach. Tap Remix and TwinAI rebuilds its hook, pacing and structure as an original in your voice — you keep the idea, not the footage.`
+  return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || fallbackWhy, reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url }
 }
 
 function ytId(url: string): string | null {
