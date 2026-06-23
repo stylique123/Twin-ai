@@ -215,21 +215,42 @@ function HeroSection() {
               transition={{ duration: 0.7, ease: EASE, delay: 0.14 }}
               className="mt-5 max-w-xl text-lg leading-relaxed text-sand"
             >
-              Paste a video you wish you'd made. We turn it into a script in your voice, help you
-              record it, edit it for you, and hand you the caption to post.{' '}
-              <span className="text-cream">From "I don't know what to make" to posted — in one window.</span>
+              <span className="text-cream">Two ways in:</span> paste a viral link you love — or skip the
+              hunt entirely and pick from <span className="text-cream">your gallery</span>, where TwinAI
+              already knows your brand and surfaces what's actually working in your niche. Either way, you
+              get it back as a script in your voice — recorded, edited, captioned.
             </motion.p>
+
+            {/* The two entry paths, made explicit so nobody wonders where to start. */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.7, ease: EASE, delay: 0.18 }}
+              className="mt-6 grid max-w-lg gap-2.5 sm:grid-cols-2"
+            >
+              <div className="rounded-card border border-white/8 bg-white/[0.02] p-3.5">
+                <div className="flex items-center gap-2 text-cream"><Play className="h-3.5 w-3.5 text-coral" /> <span className="text-sm font-semibold">Paste a viral link</span></div>
+                <p className="mt-1 text-xs text-stone">Got one in mind? Drop any TikTok, Reel or Short.</p>
+              </div>
+              <div className="rounded-card border border-amber/20 bg-amber/[0.04] p-3.5">
+                <div className="flex items-center gap-2 text-cream"><LayoutGrid className="h-3.5 w-3.5 text-amber" /> <span className="text-sm font-semibold">Pick from your gallery</span></div>
+                <p className="mt-1 text-xs text-stone">No idea today? We surface what's winning in your niche.</p>
+              </div>
+            </motion.div>
 
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.22 }}
-              className="mt-8 flex flex-wrap items-center gap-3"
+              className="mt-7 flex flex-wrap items-center gap-3"
             >
               <Link to="/auth?mode=signup" className="btn-gradient group px-7 py-3.5 text-base">
                 Get started for free
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
+              <a href="#gallery" className="btn-ghost px-6 py-3.5 text-base">
+                <LayoutGrid className="h-4 w-4" /> See your niche gallery
+              </a>
             </motion.div>
 
             <motion.p
@@ -604,21 +625,21 @@ const SHOWCASE_CARDS = [
 ]
 function GalleryShowcase() {
   return (
-    <section className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
+    <section id="gallery" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
       <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
         <Reveal>
-          <p className="eyebrow">The discovery engine</p>
+          <p className="eyebrow">No link in mind? Start here.</p>
           <h2 className="mt-3 font-display text-4xl leading-tight text-balance sm:text-5xl">
-            Never stare at a <span className="gradient-text">blank page</span> again.
+            Stop hunting for ideas. <span className="gradient-text">We've got you covered.</span>
           </h2>
           <p className="mt-5 max-w-xl text-lg leading-relaxed text-sand">
-            TwinAI scores every viral format for <span className="text-cream">your</span> niche and hands you a playbook of the content types most likely to grow you — talking-head, transitions, GRWM, podcast clips and more. Tap one, and it's a script in your voice.
+            You don't need to find the next thing to make — TwinAI already <span className="text-cream">understands your brand</span> and keeps a live gallery of what's <span className="text-cream">actually working in your niche</span>, scored for you. Open it, pick the one you like, and it's a script in your voice. That's the whole search, gone.
           </p>
           <ul className="mt-6 space-y-3.5">
             {[
-              ['Opportunity score', 'Ranked by what will actually win for you — not raw view counts.'],
-              ['Your playbook', 'The exact formats proven to grow creators in your niche, business and creative.'],
-              ['One-tap remix', 'Every reference becomes your next shoot — rebuilt in your voice.'],
+              ['It knows your brand', 'Built from your handle and DNA, so every pick fits how you sound.'],
+              ['What\'s working now', 'A live feed of proven formats in your niche, scored by what will win for you — not raw views.'],
+              ['Nothing left to find', 'No more saved-folder graveyard. The idea is already waiting — remix it in one tap.'],
             ].map(([t, d]) => (
               <li key={t} className="flex gap-3">
                 <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-teal/15"><Check className="h-3 w-3 text-teal" /></span>
