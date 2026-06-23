@@ -18,7 +18,6 @@ import { cn } from '../lib/cn'
 // "footage". Set a real product-demo URL here when one exists.
 const HERO_VIDEO_SRC = 'https://d8j0ntlcm91z4.cloudfront.net/user_3A4BLQYlkqlIIcq5F4BohQmaHaz/hf_20260614_061422_7b59d7ac-3dc6-4376-9baa-bc3cad8bccb0.mp4'
 
-const ROTATING_VERBS = ['recreate', 'remix', 'own', 'post']
 
 
 // Exactly the three platforms we support. TikTok + YouTube are live; Instagram
@@ -140,18 +139,12 @@ export default function Landing() {
 /* ─── Hero ───────────────────────────────────────────────────────────── */
 
 function HeroSection() {
-  const [verbIdx, setVerbIdx] = useState(0)
   const mouseX = useMotionValue(0)
   const mouseY = useMotionValue(0)
   const springX = useSpring(mouseX, { stiffness: 60, damping: 20 })
   const springY = useSpring(mouseY, { stiffness: 60, damping: 20 })
   const glowX = useTransform(springX, [0, 1], ['-20%', '20%'])
   const glowY = useTransform(springY, [0, 1], ['-20%', '20%'])
-
-  useEffect(() => {
-    const t = setInterval(() => setVerbIdx((v) => (v + 1) % ROTATING_VERBS.length), 2800)
-    return () => clearInterval(t)
-  }, [])
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const rect = e.currentTarget.getBoundingClientRect()
@@ -201,30 +194,10 @@ function HeroSection() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
-              className="font-display text-[2.8rem] leading-[1.04] tracking-tight text-balance sm:text-5xl lg:text-[3.8rem]"
+              className="font-display text-[3rem] leading-[1.05] tracking-tight text-balance sm:text-[3.4rem] lg:text-[4.4rem]"
             >
-              Paste a viral video.{' '}
-              <span className="whitespace-nowrap text-cream">
-                <span className="relative inline-grid place-items-center align-baseline">
-                  {/* Invisible sizer reserves space for the widest verb so the line never shifts */}
-                  <span className="invisible col-start-1 row-start-1" aria-hidden>recreate</span>
-                  <AnimatePresence mode="wait">
-                    <motion.span
-                      key={verbIdx}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      transition={{ duration: 0.3, ease: EASE }}
-                      // gradient applied DIRECTLY to the word (not via a grid ancestor) so
-                      // background-clip:text always paints — fixes the "missing word".
-                      className="col-start-1 row-start-1 gradient-text"
-                    >
-                      {ROTATING_VERBS[verbIdx]}
-                    </motion.span>
-                  </AnimatePresence>
-                </span>{' '}it
-              </span>
-              {' '}in your voice.
+              {/* Static (no flipping word) — a clear, always-readable headline. */}
+              Paste a viral video. <span className="gradient-text">Remix</span> it in your voice.
             </motion.h1>
 
             <motion.p
@@ -244,8 +217,8 @@ function HeroSection() {
               transition={{ duration: 0.7, ease: EASE, delay: 0.22 }}
               className="mt-8 flex flex-wrap items-center gap-3"
             >
-              <Link to="/auth?mode=signup" className="btn-gradient group text-base px-6 py-3">
-                Paste your first link — free
+              <Link to="/auth?mode=signup" className="btn-gradient group px-7 py-3.5 text-base">
+                Get started for free
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
             </motion.div>
