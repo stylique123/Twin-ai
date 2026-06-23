@@ -403,7 +403,7 @@ export default function Record() {
   if (!gen)
     return (
       <div className="mx-auto max-w-md px-5 py-20 text-center">
-        <p className="font-heading text-lg">We couldn’t load that blueprint.</p>
+        <p className="font-heading text-lg">We couldn’t load that script.</p>
         <Link to="/history" className="btn-gradient mt-6 inline-flex">Back to Library</Link>
       </div>
     )
@@ -412,7 +412,7 @@ export default function Record() {
     <main className="relative mx-auto max-w-6xl px-5 py-8 lg:py-10">
       <div className="flex items-center justify-between gap-3">
         <Link to={`/result/${id}`} className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-cream">
-          <ArrowLeft className="h-4 w-4" /> Back to blueprint
+          <ArrowLeft className="h-4 w-4" /> Back to script
         </Link>
         <span className="chip"><Mic className="h-3.5 w-3.5 text-coral" /> {uploadMode ? 'Edit your clip' : 'Record studio'}</span>
       </div>
@@ -669,7 +669,7 @@ export default function Record() {
         <div className="space-y-4">
           <div className="glass p-5">
             <h2 className="font-heading text-lg">Teleprompter</h2>
-            <p className="mt-1 text-sm text-stone">Loaded from your blueprint, read it naturally.</p>
+            <p className="mt-1 text-sm text-stone">Loaded from your script, read it naturally.</p>
 
             <div className="mt-4 space-y-4">
               <Control icon={Play} label="Scroll">

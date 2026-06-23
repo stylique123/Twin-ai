@@ -62,7 +62,7 @@ export default function History() {
         <Reveal delay={0.06}>
           <div className="mt-8 grid gap-3 sm:grid-cols-2">
             <Stat icon={Clapperboard} label="Scripts" value={loading ? '…' : String(items.length)} />
-            <Stat icon={Video} label="Rendered videos" value={loading ? '…' : String(editedCount)} />
+            <Stat icon={Video} label="Videos" value={loading ? '…' : String(editedCount)} />
           </div>
         </Reveal>
 
@@ -73,7 +73,7 @@ export default function History() {
               {([
                 ['all', `All (${items.length})`],
                 ['scripts', `Scripts only (${items.length - editedCount})`],
-                ['videos', `Rendered videos (${editedCount})`],
+                ['videos', `Videos (${editedCount})`],
               ] as [Filter, string][]).map(([key, label]) => (
                 <button
                   key={key}
@@ -113,7 +113,7 @@ export default function History() {
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-signature-soft">
                 <Wand2 className="h-6 w-6 text-cream" />
               </span>
-              <p className="mt-4 font-heading text-lg">No blueprints yet.</p>
+              <p className="mt-4 font-heading text-lg">No scripts yet.</p>
               <p className="mt-1 text-sm text-stone">Paste a reference link and get your first one in ~30 seconds.</p>
               <Link to="/app" className="btn-gradient mt-6">Make your first one</Link>
             </div>
@@ -121,8 +121,8 @@ export default function History() {
         ) : displayed.length === 0 ? (
           <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">
             {filter === 'videos'
-              ? 'No finished videos yet. Record and auto-edit a blueprint and it shows up here.'
-              : 'Nothing un-recorded here — every blueprint is already edited. Switch to “All”.'}
+              ? 'No finished videos yet. Record and auto-edit a script and it shows up here.'
+              : 'Nothing un-recorded here — every script is already edited. Switch to “All”.'}
           </div>
         ) : (
           <Stagger immediate className="mt-10 grid gap-4 sm:grid-cols-2" gap={0.06}>

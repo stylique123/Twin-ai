@@ -12,12 +12,12 @@ import { EASE } from './motion'
 
 const NAV = [
   { to: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard, note: 'Your overview' },
-  { to: '/app',       label: 'Studio',     icon: Wand2,           note: 'Make a blueprint' },
+  { to: '/app',       label: 'Studio',     icon: Wand2,           note: 'Make a script' },
   { to: '/gallery',   label: 'Gallery',    icon: LayoutGrid,      note: 'Formats to remix' },
   // Workspaces (one voice per client) only makes sense for agencies — hidden for
   // solo/aspiring/pro, whose single voice is managed in Settings.
   { to: '/brands',    label: 'Workspaces', icon: Users,           note: 'Your clients', agencyOnly: true },
-  { to: '/history',   label: 'Library',    icon: LibraryBig,      note: 'All your blueprints' },
+  { to: '/history',   label: 'Library',    icon: LibraryBig,      note: 'All your scripts' },
   { to: '/settings',  label: 'Settings',   icon: Settings,        note: 'Account & DNA' },
 ]
 

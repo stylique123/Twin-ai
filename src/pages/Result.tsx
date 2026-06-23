@@ -95,7 +95,7 @@ export default function Result() {
     return (
       <main className="grid min-h-[60vh] place-items-center text-sand">
         <span className="inline-flex items-center gap-2">
-          <Loader2 className="h-4 w-4 animate-spin" /> Loading your blueprint…
+          <Loader2 className="h-4 w-4 animate-spin" /> Loading your script…
         </span>
       </main>
     )
@@ -103,7 +103,7 @@ export default function Result() {
     return (
       <main className="mx-auto grid min-h-[60vh] max-w-md place-items-center px-5 text-center">
         <div>
-          <p className="font-heading text-lg text-cream">We couldn’t find that blueprint.</p>
+          <p className="font-heading text-lg text-cream">We couldn’t find that script.</p>
           <p className="mt-2 text-sm text-stone">It may have been removed, or the link is out of date.</p>
           <Link to="/history" className="btn-gradient mt-6 inline-flex">
             <ArrowLeft className="h-4 w-4" /> Back to Library
@@ -120,7 +120,7 @@ export default function Result() {
   const b = {
     ...raw,
     reference_read: {
-      format_label: rr.format_label ?? 'Your blueprint',
+      format_label: rr.format_label ?? 'Your script',
       platform: rr.platform ?? '',
       why_it_works: Array.isArray(rr.why_it_works) ? rr.why_it_works : [],
       retention_map: Array.isArray(rr.retention_map) ? rr.retention_map : [],
@@ -177,7 +177,7 @@ export default function Result() {
               transition={{ delay: 0.18, duration: 0.5, ease: EASE }}
               className="mt-8 inline-flex items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-3 py-1 text-xs font-bold text-teal"
             >
-              <Sparkles className="h-3.5 w-3.5" /> Reading complete — your blueprint is ready
+              <Sparkles className="h-3.5 w-3.5" /> Reading complete — your script is ready
             </motion.span>
             <motion.h1
               initial={{ opacity: 0, y: 10 }}
@@ -201,7 +201,7 @@ export default function Result() {
                 <button
                   onClick={toggleApproved}
                   className={cn('chip transition-colors', approved ? 'border-teal/50 bg-teal/10 text-teal' : 'hover:border-white/20 hover:text-cream')}
-                  title="Mark this blueprint client-approved before it's recorded or posted"
+                  title="Mark this script client-approved before it's recorded or posted"
                 >
                   <BadgeCheck className={cn('h-3.5 w-3.5', approved ? 'text-teal' : 'text-stone')} />
                   {approved ? 'Client-approved' : 'Mark approved'}
