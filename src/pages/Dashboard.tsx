@@ -352,39 +352,55 @@ function postingStreak(posts: Post[]): number {
   return streak
 }
 
-// Viral loop: a two-sided referral. The "2 free remixes" copy mirrors the
-// REFERRAL_REWARD_CREDITS default (20 credits) on the referral edge function.
+// Viral loop: a two-sided referral. Shows the short CODE prominently (not just a
+// long URL), stays usable while the code loads, and teases the creator-payout
+// program. The "2 free remixes" mirrors REFERRAL_REWARD_CREDITS on the edge fn.
 function InviteCard() {
   const [code, setCode] = useState<string | null>(null)
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'code' | 'link' | null>(null)
   useEffect(() => { getReferralCode().then(setCode).catch(() => {}) }, [])
   const link = code ? `${window.location.origin}/auth?mode=signup&ref=${code}` : ''
-  const copy = async () => {
-    if (!link) return
-    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* clipboard blocked */ }
+  const copy = async (what: 'code' | 'link') => {
+    const text = what === 'code' ? code : link
+    if (!text) return
+    try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(null), 1600) } catch { /* clipboard blocked */ }
   }
   return (
     <Reveal delay={0.08}>
-      <div className="glass relative mt-6 overflow-hidden p-6">
-        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="glass relative mt-6 overflow-hidden border border-teal/15 p-6">
+        <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-teal/10 blur-3xl" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-start gap-3">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-teal/15"><Gift className="h-5 w-5 text-teal" /></span>
             <div>
-              <h2 className="font-heading text-base text-cream">Invite a creator, you both get 2 free remixes</h2>
-              <p className="mt-1 text-sm text-stone">Share your link. When they sign up, you each get 2 remixes on us.</p>
+              <h2 className="font-heading text-base text-cream">Invite a creator — you both get 2 free remixes</h2>
+              <p className="mt-1 text-sm text-stone">Share your code or link. The moment they sign up, 2 remixes land on each of you.</p>
+              <p className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber/30 bg-amber/10 px-2.5 py-1 text-[11px] font-semibold text-amber">
+                <TrendingUp className="h-3 w-3" /> Coming soon: earn cash when creators you refer keep creating
+              </p>
             </div>
           </div>
-          <button onClick={copy} disabled={!code} className="btn-gradient shrink-0 text-sm disabled:opacity-50">
-            {copied ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy invite link</>}
+        </div>
+        {/* The short code, prominent + copyable — plus the full link. */}
+        <div className="relative mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+          <button
+            onClick={() => copy('code')}
+            disabled={!code}
+            className="group flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3.5 py-2.5 transition-colors hover:border-teal/40 disabled:opacity-50 sm:min-w-[200px]"
+            title="Copy your referral code"
+          >
+            <span className="font-mono text-lg tracking-widest text-cream">{code ?? '••••••'}</span>
+            {copied === 'code' ? <Check className="h-4 w-4 text-teal" /> : <Copy className="h-4 w-4 text-stone group-hover:text-cream" />}
+          </button>
+          <button onClick={() => copy('link')} disabled={!code} className="btn-gradient shrink-0 text-sm disabled:opacity-50">
+            {copied === 'link' ? <><Check className="h-4 w-4" /> Copied</> : <><Copy className="h-4 w-4" /> Copy invite link</>}
           </button>
         </div>
-        {code && (
-          <div className="relative mt-3 truncate rounded-lg border border-white/8 bg-white/[0.02] px-3 py-2 text-xs text-stone">{link}</div>
-        )}
       </div>
     </Reveal>
   )
 }
+
 
 function EmptyPublishing() {
   return (
