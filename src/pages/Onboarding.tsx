@@ -76,6 +76,7 @@ async function finish(refreshProfile: () => Promise<void>, navigate: (to: string
 // session, never concurrent) so the confirm step can load it without prop drilling.
 let activeVoiceId: string | null = null
 let activeProfile: VoiceProfile | null = null
+let activePlatform: Platform = 'tiktok'
 
 // --- Step 1: paste a handle ------------------------------------------------
 function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual: () => void }) {
@@ -91,6 +92,7 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
     try {
       const res = await startDna(handle.trim(), platform)
       activeVoiceId = res.brand_voice_id
+      activePlatform = platform
       onBuilding()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not start the scan.')
@@ -299,6 +301,9 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
 // --- Step 3: confirm / edit the voice in one tap ---------------------------
 function ConfirmStep({ onDone }: { onDone: () => void }) {
   const [vp, setVp] = useState<VoiceProfile | null>(activeProfile)
+  const [audience, setAudience] = useState('')
+  const [product, setProduct] = useState('')
+  const [goal, setGoal] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -319,6 +324,18 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
     setBusy(true)
     try {
       if (activeVoiceId) await saveVoiceProfile(activeVoiceId, vp)
+      // ALSO seed the Creator DNA (profile.dna) from the scan + these answers, so
+      // the scanned signup isn't left with a half-empty DNA (the "audience/product/
+      // goal Not set" bug). Best-effort — never blocks entering the studio.
+      await saveDNA({
+        niche: vp.niche,
+        audience,
+        product,
+        goal: goal || 'turn attention into trust',
+        voice: [vp.tone, vp.pacing].filter(Boolean).join(', '),
+        platforms: [activePlatform],
+        editing_style: vp.hook_style || '',
+      }).catch(() => {})
       await onDone()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not save your voice.')
@@ -349,6 +366,19 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
       <div className="mt-6 space-y-4">
         <Labeled label="Niche">
           <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
+        </Labeled>
+        {/* Captured here so the DNA is complete from day one (the scan can't read
+            these). Optional — empty is fine, the creator can fill them in Settings. */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Labeled label="Who you're talking to">
+            <input className="field" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. busy founders, 25-40" />
+          </Labeled>
+          <Labeled label="What you sell / build">
+            <input className="field" value={product} onChange={(e) => setProduct(e.target.value)} placeholder="e.g. a coaching program, an app" />
+          </Labeled>
+        </div>
+        <Labeled label="Your goal">
+          <input className="field" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. grow to 50k, drive signups, build trust" />
         </Labeled>
         <div className="grid gap-4 sm:grid-cols-2">
           <Labeled label="Tone">
