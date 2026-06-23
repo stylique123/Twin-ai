@@ -153,7 +153,7 @@ export interface AddOn { id: string; name: string; desc: string; price: number; 
 export const ADD_ONS: AddOn[] = REMIX_TOPUPS.map((t) => ({
   id: t.id,
   name: `${t.remixes} remixes`,
-  desc: `A one-off pack of ${t.remixes} extra remixes. Never expires, separate from your monthly plan.`,
+  desc: `A one-off pack of ${t.remixes} extra remixes. They never expire — use them any month you have an active plan.`,
   price: t.price,
   unit: 'once',
 }))
