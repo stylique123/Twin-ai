@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   CalendarDays, Plus, Check, Trash2, ChevronLeft, ChevronRight, Loader2, X,
-  Clapperboard, Video, Send, Clock,
+  Clapperboard, Video, Send, Clock, Link2,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { listPosts, listGenerations, schedulePost, markScheduledPosted, deletePost, type Post } from '../lib/api'
+import {
+  listPosts, listGenerations, schedulePost, markScheduledPosted, deletePost,
+  listConnections, startConnect, disconnectPlatform, publishPost,
+  type Post, type PlatformConnection,
+} from '../lib/api'
 import type { Generation, Platform } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -36,17 +40,59 @@ export default function Calendar() {
   const [loading, setLoading] = useState(POSTS_CACHE === null)
   const [cursor, setCursor] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [composeFor, setComposeFor] = useState<Date | null>(null)
+  const [conns, setConns] = useState<PlatformConnection[]>([])
+  const [connBusy, setConnBusy] = useState<string | null>(null)
+  const [connMsg, setConnMsg] = useState<string | null>(null)
+  const [publishingId, setPublishingId] = useState<string | null>(null)
+  const [params, setParams] = useSearchParams()
 
   // Which platforms this creator makes for (their DNA), else all three.
   const platforms = (profile?.dna?.platforms?.length ? profile.dna.platforms : ALL_PLATFORMS) as Platform[]
+  const connOf = (p: string) => conns.find((c) => c.platform === p && c.status === 'connected')
 
   const load = () => {
     if (POSTS_CACHE === null) setLoading(true)
     Promise.all([listPosts(), listGenerations().catch(() => [])])
       .then(([p, g]) => { POSTS_CACHE = p; GENS_CACHE = g; setPosts(p); setGens(g) })
       .finally(() => setLoading(false))
+    listConnections().then(setConns).catch(() => {})
   }
   useEffect(() => { load() }, [])
+
+  // Surface the OAuth round-trip result (social fn redirects back with these).
+  useEffect(() => {
+    const ok = params.get('connected')
+    const err = params.get('connect_error')
+    if (ok) { setConnMsg(`${cap(ok)} connected.`); listConnections().then(setConns).catch(() => {}) }
+    else if (err) { setConnMsg(`Couldn't connect: ${err}`) }
+    if (ok || err) { params.delete('connected'); params.delete('connect_error'); setParams(params, { replace: true }) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const connect = async (p: string) => {
+    setConnBusy(p); setConnMsg(null)
+    try {
+      const r = await startConnect(p)
+      if (r.url) { window.location.href = r.url; return }
+      if (r.unconfigured) { setConnMsg(`${cap(p)} posting isn't enabled yet — needs its developer-app keys.`); return }
+      setConnMsg('Could not start the connection. Try again.')
+    } catch (e) { setConnMsg(e instanceof Error ? e.message : 'Could not connect.') }
+    finally { setConnBusy(null) }
+  }
+  const disconnect = async (p: string) => {
+    setConnBusy(p)
+    try { await disconnectPlatform(p); setConns((cs) => cs.filter((c) => c.platform !== p)) }
+    catch { /* ignore */ } finally { setConnBusy(null) }
+  }
+  const postNow = async (postId: string) => {
+    setPublishingId(postId); setConnMsg(null)
+    try {
+      const r = await publishPost(postId)
+      if (r.ok) { setConnMsg('Posted ✓'); POSTS_CACHE = null; load() }
+      else setConnMsg(r.error ?? 'Could not post.')
+    } catch (e) { setConnMsg(e instanceof Error ? e.message : 'Could not post.') }
+    finally { setPublishingId(null) }
+  }
 
   // Scheduled posts keyed by day (yyyy-mm-dd) for fast calendar lookup.
   const byDay = useMemo(() => {
@@ -101,25 +147,40 @@ export default function Calendar() {
           </div>
         </Reveal>
 
-        {/* Connected platforms */}
+        {/* Connected accounts — real OAuth connect/disconnect for one-click posting. */}
         <Reveal delay={0.05}>
           <section className="glass mt-8 p-5">
             <div className="flex items-center justify-between gap-3">
-              <p className="eyebrow !text-sand">Your platforms</p>
-              <span className="text-[11px] text-stone">One-click auto-post is coming. For now we hold each post ready so you publish on time.</span>
+              <p className="eyebrow !text-sand">Connected accounts</p>
+              <span className="text-[11px] text-stone">Connect an account to post in one click.</span>
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
+            <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
               {ALL_PLATFORMS.map((p) => {
-                const active = platforms.includes(p)
+                const c = connOf(p)
+                const busy = connBusy === p
                 return (
-                  <span key={p} className={cn('inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm', active ? 'border-teal/40 bg-teal/[0.06] text-cream' : 'border-white/10 bg-white/[0.02] text-stone')}>
-                    <span className={cn('h-2 w-2 rounded-full', active ? 'bg-teal' : 'bg-white/25')} />
-                    {cap(p)}
-                    <span className="text-[10px] uppercase tracking-wider text-stone">{active ? 'Active' : 'Add in settings'}</span>
-                  </span>
+                  <div key={p} className={cn('flex items-center justify-between gap-2 rounded-card border px-3.5 py-3', c ? 'border-teal/30 bg-teal/[0.05]' : 'border-white/10 bg-white/[0.02]')}>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 text-sm font-medium text-cream">
+                        <span className={cn('h-2 w-2 shrink-0 rounded-full', c ? 'bg-teal' : 'bg-white/25')} />
+                        {cap(p)}
+                      </div>
+                      <div className="mt-0.5 truncate text-[11px] text-stone">{c ? (c.account_label ?? 'Connected') : 'Not connected'}</div>
+                    </div>
+                    {c ? (
+                      <button onClick={() => disconnect(p)} disabled={busy} className="shrink-0 text-xs text-stone hover:text-coral disabled:opacity-50">
+                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : 'Disconnect'}
+                      </button>
+                    ) : (
+                      <button onClick={() => connect(p)} disabled={busy} className="btn-ghost shrink-0 text-xs disabled:opacity-50">
+                        {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />} Connect
+                      </button>
+                    )}
+                  </div>
                 )
               })}
             </div>
+            {connMsg && <p className="mt-2 text-xs text-sand">{connMsg}</p>}
           </section>
         </Reveal>
 
@@ -199,6 +260,11 @@ export default function Calendar() {
                           <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {new Date(p.scheduled_for!).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
                         </div>
                       </div>
+                      {connOf(p.platform) && (
+                        <button onClick={() => postNow(p.id)} disabled={publishingId !== null} title={`Post to ${cap(p.platform)} now`} className="btn-gradient text-xs disabled:opacity-60">
+                          {publishingId === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />} Post now
+                        </button>
+                      )}
                       <button onClick={async () => { await markScheduledPosted(p.id); refresh() }} title="Mark as posted" className="btn-ghost text-xs"><Check className="h-3.5 w-3.5" /> Posted</button>
                       <button onClick={async () => { await deletePost(p.id); refresh() }} title="Remove" className="grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-coral"><Trash2 className="h-4 w-4" /></button>
                     </div>

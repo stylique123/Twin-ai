@@ -428,6 +428,42 @@ export async function deletePost(postId: string): Promise<void> {
   if (error) throw error
 }
 
+// ---- Social connections (one-click posting) ----------------------------
+// The token columns are locked down server-side; we only ever read the descriptor.
+export interface PlatformConnection {
+  id: string
+  platform: string
+  account_label: string | null
+  status: string
+  created_at: string
+}
+
+export async function listConnections(): Promise<PlatformConnection[]> {
+  const { data, error } = await supabase
+    .from('platform_connections')
+    .select('id, platform, account_label, status, created_at')
+  if (error) return [] // table may not be migrated everywhere; fail soft
+  return (data ?? []) as PlatformConnection[]
+}
+
+export interface ConnectResult { url?: string; unconfigured?: boolean; platform?: string; needs?: string[] }
+export async function startConnect(platform: string): Promise<ConnectResult> {
+  const { data, error } = await supabase.functions.invoke('social', { body: { action: 'start', platform } })
+  if (error) throw new Error(await readInvokeError(error))
+  return data as ConnectResult
+}
+
+export async function disconnectPlatform(platform: string): Promise<void> {
+  const { error } = await supabase.functions.invoke('social', { body: { action: 'disconnect', platform } })
+  if (error) throw new Error(await readInvokeError(error))
+}
+
+export async function publishPost(postId: string): Promise<{ ok?: boolean; external_url?: string; error?: string }> {
+  const { data, error } = await supabase.functions.invoke('social', { body: { action: 'publish', post_id: postId } })
+  if (error) throw new Error(await readInvokeError(error))
+  return data as { ok?: boolean; external_url?: string; error?: string }
+}
+
 // ---- Brand voices (Phase 2, DNA from handle) ---------------------------
 
 // supabase-js puts non-2xx function responses in error.context (a Response),

@@ -1,0 +1,12 @@
+{
+  "_comment": "Golden set for blueprint-quality regression. Add stable, public references across niches. The eval scores the generated blueprint's STRUCTURE + basic quality so a prompt change that breaks output is caught before it ships.",
+  "threshold": 0.8,
+  "cases": [
+    { "url": "https://www.tiktok.com/@garyvee/video/7528533857688243511", "niche": "Business", "note": "talking-head hot take" },
+    { "url": "https://www.tiktok.com/@thejoeyswoll/video/7649568372018941214", "niche": "Fitness", "note": "stitch callout to positivity" },
+    { "url": "https://www.tiktok.com/@cookingwithlynja/video/7322531619825257771", "niche": "Food", "note": "jump-cut comedy cook" },
+    { "url": "https://www.tiktok.com/@humphreytalks/video/7421658047539399967", "niche": "Education", "note": "process reveal explainer" },
+    { "url": "https://www.tiktok.com/@hubermanlab/video/7591981806514162974", "niche": "Education", "note": "authority insight clip" },
+    { "url": "https://www.tiktok.com/@cookingwithlynja/video/7322137035152706858", "niche": "Lifestyle", "note": "travel vlog micro-story" }
+  ]
+}
