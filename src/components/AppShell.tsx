@@ -11,12 +11,14 @@ import { cn } from '../lib/cn'
 import { EASE } from './motion'
 
 const NAV = [
-  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, note: 'Your overview' },
-  { to: '/app',       label: 'Studio',    icon: Wand2,            note: 'Make a blueprint' },
-  { to: '/gallery',   label: 'Gallery',   icon: LayoutGrid,       note: 'Formats to remix' },
-  { to: '/brands',    label: 'Brands',    icon: Users,            note: 'Your voices' },
-  { to: '/history',   label: 'Library',   icon: LibraryBig,       note: 'All your blueprints' },
-  { to: '/settings',  label: 'Settings',  icon: Settings,         note: 'Account & DNA' },
+  { to: '/dashboard', label: 'Dashboard',  icon: LayoutDashboard, note: 'Your overview' },
+  { to: '/app',       label: 'Studio',     icon: Wand2,           note: 'Make a blueprint' },
+  { to: '/gallery',   label: 'Gallery',    icon: LayoutGrid,      note: 'Formats to remix' },
+  // Workspaces (one voice per client) only makes sense for agencies — hidden for
+  // solo/aspiring/pro, whose single voice is managed in Settings.
+  { to: '/brands',    label: 'Workspaces', icon: Users,           note: 'Your clients', agencyOnly: true },
+  { to: '/history',   label: 'Library',    icon: LibraryBig,      note: 'All your blueprints' },
+  { to: '/settings',  label: 'Settings',   icon: Settings,        note: 'Account & DNA' },
 ]
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -26,6 +28,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // Engagement depth: log a page_view per route (best-effort, never blocks).
   useEffect(() => { void logEvent('page_view', { path: pathname }) }, [pathname])
   const left = videosFromCredits(profile?.credits ?? 0)
+  // Hide agency-only items (Workspaces) from solo/aspiring/pro plans.
+  const navItems = NAV.filter((n) => !n.agencyOnly || profile?.plan === 'agency')
   const isActive = (to: string) => to === '/app' ? pathname === '/app' || pathname.startsWith('/result') : pathname.startsWith(to)
   // Hard navigation (full reload), not SPA navigate(): a client-side route change
   // here raced the AnimatePresence route exit while `profile` was torn down,
@@ -38,7 +42,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <div className="px-5 py-5"><Link to="/app"><Logo /></Link></div>
         <BrandSwitcher />
         <nav className="flex-1 space-y-1 px-3 pt-2">
-          {NAV.map((n) => {
+          {navItems.map((n) => {
             const active = isActive(n.to)
             return (
               <Link key={n.to} to={n.to} className={cn('group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors', active ? 'bg-white/[0.06] text-cream' : 'text-sand hover:bg-white/[0.04] hover:text-cream')}>
@@ -82,7 +86,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 <div className="space-y-1 p-3">
                   {/* Agencies switch the active client from here on a phone. */}
                   <BrandSwitcher />
-                  {NAV.map((n) => (
+                  {navItems.map((n) => (
                     <Link key={n.to} to={n.to} onClick={() => setOpen(false)} className={cn('flex items-center gap-3 rounded-xl px-3 py-3 text-sm', isActive(n.to) ? 'bg-white/[0.06] text-cream' : 'text-sand')}>
                       <n.icon className="h-[18px] w-[18px]" /> {n.label}
                       <span className="ml-auto text-xs text-stone">{n.note}</span>

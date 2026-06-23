@@ -69,8 +69,10 @@ export default function Dashboard() {
   const hoursSaved = stats ? Math.round(((stats.blueprints ?? 0) * 0.5 + (stats.edits ?? 0) * 1.5)) : 0
   const topId = posts.reduce((best, p) => ((p.views ?? 0) > 0 && (p.views ?? 0) > (posts.find((x) => x.id === best)?.views ?? 0) ? p.id : best), '')
 
-  const rawName = profile?.email?.split('@')[0] ?? 'creator'
-  const name = rawName.charAt(0).toUpperCase() + rawName.slice(1)
+  // Greet with their real identity: the display name they set, else their active
+  // brand handle, else the email prefix as a last resort (not "itsabs126").
+  const rawName = (profile?.display_name?.trim() || (brand?.handle ? `@${brand.handle}` : '') || profile?.email?.split('@')[0] || 'creator')
+  const name = rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
   return (
     <main className="relative overflow-clip">
@@ -125,11 +127,12 @@ export default function Dashboard() {
             </div>
           </Reveal>
         )}
-        <Stagger className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4" gap={0.07}>
-          <StatCard icon={FileText} glow="amber" label="Blueprints" value={bpVal} loading={loading} />
-          <StatCard icon={Clapperboard} glow="coral" label="Edits rendered" value={edVal} loading={loading} />
-          <StatCard icon={Send} glow="teal" label="Posts logged" value={poVal} loading={loading} />
-          <StatCard icon={Sparkles} glow="amber" label="Remixes left" value={stats?.recreationsLeft} loading={loading} />
+        {/* Remixes-left moved to Settings → Usage (it's a billing detail, not an
+            achievement). These three are what they've shipped. */}
+        <Stagger className="mt-6 grid grid-cols-3 gap-4" gap={0.07}>
+          <StatCard icon={FileText} glow="amber" label="Scripts" value={bpVal} loading={loading} />
+          <StatCard icon={Clapperboard} glow="coral" label="Videos edited" value={edVal} loading={loading} />
+          <StatCard icon={Send} glow="teal" label="Published" value={poVal} loading={loading} />
         </Stagger>
         <Reveal delay={0.1}>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
