@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Users, Sparkles, FileText, Clapperboard, Send, Gift, Clock, Activity, Loader2, ShieldAlert } from 'lucide-react'
-import { getMetrics, getCaseStudy, type MetricsOverview, type CaseStudy } from '../lib/api'
+import { getMetrics, getCaseStudy, adminActivatePlan, type MetricsOverview, type CaseStudy } from '../lib/api'
+import { PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
@@ -17,6 +18,18 @@ export default function Metrics() {
   const [cs, setCs] = useState<CaseStudy | null>(null)
   const [csBusy, setCsBusy] = useState(false)
   const [csErr, setCsErr] = useState('')
+
+  const [actEmail, setActEmail] = useState('')
+  const [actPlan, setActPlan] = useState('professional')
+  const [actMsg, setActMsg] = useState('')
+  const [actBusy, setActBusy] = useState(false)
+  const activate = async () => {
+    if (!actEmail.trim()) return
+    setActBusy(true); setActMsg('')
+    const r = await adminActivatePlan(actEmail.trim(), actPlan)
+    setActMsg(r.ok ? `✓ ${actEmail} is now on ${actPlan}.` : (r.error ?? 'Failed.'))
+    setActBusy(false)
+  }
 
   const lookup = async () => {
     if (!csEmail.trim()) return
@@ -257,6 +270,23 @@ export default function Metrics() {
             </Reveal>
           )
         })()}
+        {/* Confirm a crypto (or manual) payment: activate a user's paid plan. */}
+        <Reveal delay={0.118}>
+          <div className="glass mt-6 p-6">
+            <h2 className="font-heading text-base text-cream">Activate a payment</h2>
+            <p className="mt-1 text-xs text-stone">Got a crypto payment? Activate the customer's plan + credits here (superadmin).</p>
+            <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <input value={actEmail} onChange={(e) => setActEmail(e.target.value)} placeholder="customer@email.com" className="field sm:max-w-xs" />
+              <select value={actPlan} onChange={(e) => setActPlan(e.target.value)} className="field sm:w-40">
+                {PLANS.filter((p) => p.price > 0).map((p) => <option key={p.id} value={p.id} className="bg-ink2">{p.name} (${p.price})</option>)}
+              </select>
+              <button onClick={activate} disabled={actBusy} className="btn-gradient text-sm disabled:opacity-60">
+                {actBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} Activate
+              </button>
+            </div>
+            {actMsg && <p className={cn('mt-2 text-xs', actMsg.startsWith('✓') ? 'text-teal' : 'text-coral')}>{actMsg}</p>}
+          </div>
+        </Reveal>
         <Reveal delay={0.12}>
           <div className="glass mt-6 p-6">
             <h2 className="font-heading text-base text-cream">Case-study lookup</h2>

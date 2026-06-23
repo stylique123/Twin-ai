@@ -47,6 +47,21 @@ export interface CaseStudy {
   blueprints: number; edits: number; posts: number; voices: number; remixes: number
   hours_saved: number; first_seen: string | null; last_seen: string | null; active_days: number
 }
+// Admin (superadmin): activate a paid plan for a user by email — used to confirm a
+// crypto payment and unlock the plan + its credit allowance. Resolves the user via
+// the admin `users` search, then calls grant_plan with the plan's full credits.
+export async function adminActivatePlan(email: string, plan: string): Promise<{ ok: boolean; error?: string }> {
+  const { planFor } = await import('./brand')
+  const list = await supabase.functions.invoke('admin', { body: { action: 'users', q: email, limit: 1 } })
+  if (list.error) return { ok: false, error: 'Lookup failed — admin access required.' }
+  const u = ((list.data?.users ?? []) as { id: string; email: string }[])[0]
+  if (!u) return { ok: false, error: 'No user with that email.' }
+  const credits = planFor(plan).credits
+  const g = await supabase.functions.invoke('admin', { body: { action: 'grant_plan', user_id: u.id, plan, credits } })
+  if (g.error) return { ok: false, error: 'Activation failed — superadmin required.' }
+  return { ok: true }
+}
+
 // Admin-only: one creator's case-study rollup, looked up by email.
 export async function getCaseStudy(email: string): Promise<CaseStudy | null> {
   const { data, error } = await supabase.functions.invoke('admin-metrics', { body: { email } })
