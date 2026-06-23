@@ -136,7 +136,7 @@ export default function Result() {
   const cap = b.caption_packet ?? b.submagic_packet ?? { caption_style: '', pacing: '', emphasis: '', export: '' }
 
   return (
-    <main className="relative overflow-clip pb-20">
+    <main className="relative min-h-screen overflow-clip pb-20">
       {/* Hero header */}
       <section className="relative border-b border-white/8">
         <Aurora className="opacity-70" />

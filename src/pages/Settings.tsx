@@ -80,7 +80,7 @@ export default function Settings() {
     setDna((d) => ({ ...d, platforms: d.platforms.includes(p) ? d.platforms.filter((x) => x !== p) : [...d.platforms, p] }))
 
   return (
-    <main className="relative overflow-clip">
+    <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-60" />
       <div className="relative mx-auto max-w-2xl px-5 py-12 lg:py-16">
         <Reveal>

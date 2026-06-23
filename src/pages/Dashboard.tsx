@@ -75,7 +75,7 @@ export default function Dashboard() {
   const name = rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
   return (
-    <main className="relative overflow-clip">
+    <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-70" />
       <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
         <div className="absolute left-1/2 top-1/3 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-teal/10 blur-[180px]" />

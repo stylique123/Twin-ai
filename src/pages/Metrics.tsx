@@ -67,7 +67,7 @@ export default function Metrics() {
   const glowMap = { amber: 'bg-amber/15 text-amber', teal: 'bg-teal/15 text-teal', coral: 'bg-coral/15 text-coral' }
 
   return (
-    <main className="relative overflow-clip">
+    <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-60" />
       <div className="relative mx-auto max-w-6xl px-5 py-14 lg:py-20">
         <Reveal>
