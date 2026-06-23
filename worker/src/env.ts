@@ -57,6 +57,12 @@ export const env = {
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight
   // and double-run. ffmpeg can run up to maxMediaSecs*2 (~1800s), so lease 2400s.
   visibilitySecs: Number(process.env.WORKER_VISIBILITY_SECS ?? '2400'),
+  // Loop-level HARD timeout: a backstop so a hung handler (an ffmpeg/yt-dlp that
+  // never returns) can't pin THIS worker forever and stall its queue. Kept UNDER the
+  // lease (2400s) so the worker gives up before the job is reclaimed by a peer —
+  // avoiding a double-run overlap. With SKIP-LOCKED claims this is what makes running
+  // N concurrent worker containers across hosts genuinely safe.
+  maxJobMs: Number(process.env.WORKER_MAX_JOB_MS ?? '2100000'), // 35 min, < lease
 
   // ASR. 'base' is the speed/quality sweet spot for short-form English (≈1.5-2x
   // faster than 'small'); the filler pre-pass only needs rough word boundaries so
