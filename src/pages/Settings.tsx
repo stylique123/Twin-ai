@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw } from 'lucide-react'
+import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna } from '../lib/api'
-import { PLANS, videosFromCredits } from '../lib/brand'
+import { PLANS, ADD_ONS, videosFromCredits } from '../lib/brand'
 import type { CreatorDNA, Platform } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
@@ -44,6 +44,21 @@ export default function Settings() {
   const [upgradeOpen, setUpgradeOpen] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMsg, setRefreshMsg] = useState<string | null>(null)
+  const [addonBusy, setAddonBusy] = useState<string | null>(null)
+  const [addonMsg, setAddonMsg] = useState<string | null>(null)
+
+  // Expansion add-ons: attempt checkout; until billing is connected, tell the user
+  // plainly how to get it rather than throwing a raw error.
+  const buyAddon = async (id: string) => {
+    setAddonBusy(id); setAddonMsg(null)
+    try {
+      const r = await startCheckout(id)
+      if (r.url) { window.location.href = r.url; return }
+      setAddonMsg("Add-ons activate as soon as checkout is connected — contact support and we'll add it to your account today.")
+    } catch {
+      setAddonMsg("Add-ons activate as soon as checkout is connected — contact support and we'll add it to your account today.")
+    } finally { setAddonBusy(null) }
+  }
 
   // Re-scan the creator's handle so the Dashboard's stats (followers, posts, avg
   // views/likes) and the voice profile are rebuilt from their latest public posts.
@@ -181,6 +196,31 @@ export default function Settings() {
             </div>
             {coMsg && <p className="mt-2 text-xs text-sand">{coMsg}</p>}
             <p className="mt-3 text-xs text-stone">Cancel any time — cancelling keeps any credits you've already been granted.</p>
+          </section>
+        </Reveal>
+
+        {/* Add-ons — expansion revenue, surfaced so growing accounts can spend more
+            without changing tier. */}
+        <Reveal delay={0.12}>
+          <section className="glass mt-5 p-5 sm:p-6">
+            <div className="flex items-center gap-2.5">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><Plus className="h-4 w-4 text-amber" /></span>
+              <p className="eyebrow !text-sand">Add-ons</p>
+            </div>
+            <p className="mt-2 text-sm text-stone">Top up your plan as you grow — no need to switch tiers.</p>
+            <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
+              {ADD_ONS.map((a) => (
+                <div key={a.id} className="flex flex-col rounded-card border border-white/8 bg-white/[0.02] p-4">
+                  <div className="font-heading text-sm text-cream">{a.name}</div>
+                  <div className="mt-0.5 text-lg font-bold text-cream">${a.price}<span className="text-xs font-normal text-stone"> {a.unit}</span></div>
+                  <p className="mt-1 flex-1 text-xs text-stone">{a.desc}</p>
+                  <button onClick={() => buyAddon(a.id)} disabled={addonBusy !== null} className="btn-ghost mt-3 text-xs disabled:opacity-60">
+                    {addonBusy === a.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Add
+                  </button>
+                </div>
+              ))}
+            </div>
+            {addonMsg && <p className="mt-2 text-xs text-sand">{addonMsg}</p>}
           </section>
         </Reveal>
 
