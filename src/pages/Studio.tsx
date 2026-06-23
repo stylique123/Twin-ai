@@ -245,7 +245,7 @@ export default function Studio() {
                   </>
                 ) : (
                   <>
-                    <Wand2 className="h-4 w-4" /> Make it shootable
+                    <Wand2 className="h-4 w-4" /> Remix
                   </>
                 )}
               </button>
