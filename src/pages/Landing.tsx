@@ -85,7 +85,7 @@ const PAIN = [
 
 const LOOP = [
   { icon: Play, k: 'Paste', t: 'Paste a link you wish you\'d made', d: 'Any TikTok, Reel or Short. That\'s the whole input. We pull and transcribe the real audio.' },
-  { icon: Wand2, k: 'Decode', t: 'We decode why it worked', d: 'The exact hook window, the beats, the pacing, the retention mechanics. Real analysis, not vibes.' },
+  { icon: Wand2, k: 'Decode', t: 'We decode why it worked', d: 'The hook shape, the beats, the pacing, the estimated retention mechanics. A structural read, not vibes.' },
   { icon: FileText, k: 'Script', t: 'Get a shootable script', d: 'Hook options, full script in your voice, shot list, edit checklist, caption pack, a 20-min plan.' },
   { icon: Clapperboard, k: 'Record', t: 'Record it right here', d: 'Your script loads into a built-in teleprompter. Hit record, nail the hook, done.' },
   { icon: Scissors, k: 'Edit', t: 'Edit in one click', d: 'Word-synced captions, dead-air trimmed, jump cuts and b-roll, exported vertical, automatically.' },
@@ -777,7 +777,7 @@ function ValueStack() {
   // The grand-slam stack: each deliverable next to what that job costs when you
   // hire it out, anchored so the total ($490) makes one subscription feel obvious.
   const items = [
-    { icon: Wand2, t: 'A full read of why the original won', s: 'Hook window, pacing, the exact retention beats.', who: 'Strategist', price: '$200' },
+    { icon: Wand2, t: 'A full read of why the original won', s: 'Hook shape, pacing, the estimated retention beats.', who: 'Strategist', price: '$200' },
     { icon: FileText, t: '5 hook options + a full script in your voice', s: 'Not a caption, but a shootable script with delivery notes.', who: 'Ghostwriter', price: '$150' },
     { icon: Clapperboard, t: 'Shot list + a 20-minute shoot plan', s: 'Walk in, press record, walk out. No guesswork.', who: 'Producer', price: '$40' },
     { icon: Scissors, t: 'One-click edit: captions, cuts, b-roll, vertical', s: 'Dead air trimmed, beat-timed cuts, exported ready.', who: 'Editor', price: '$75' },
@@ -1117,7 +1117,7 @@ function LoopScreen({ index }: { index: number }) {
       <div className="flex h-full flex-col justify-center gap-2.5 p-5">
         <div className="text-[10px] uppercase tracking-wider text-stone">Why it worked</div>
         <Bar label="Hook window" v="0.0 to 1.8s" />
-        <Bar label="Retention" v="62%" />
+        <Bar label="Est. retention" v="~62%" />
         <div className="mt-1 flex items-end gap-1" style={{ height: 90 }}>
           {[40, 70, 55, 85, 60, 95, 72, 50].map((h, i) => (
             <motion.span key={i} initial={{ height: 0 }} animate={{ height: h }} transition={{ delay: i * 0.05 }}

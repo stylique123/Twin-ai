@@ -44,7 +44,18 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     console.error('scrape_dna: synth failed', err instanceof Error ? err.message : err)
     return await fail('We could not finish building your voice. Please try again or set it up manually.')
   }
-  await db.from('brand_voices').update({ status: 'ready', profile, error: null }).eq('id', voiceId)
+  // Capture platform stats for the dashboard ("understand your brand"). The TikTok
+  // path previously wrote none, so every TikTok creator's dashboard showed blank
+  // analytics. yt-dlp's flat output gives per-video views/likes but not a reliable
+  // follower count, so followers stays 0 until the audio-upgrade/Apify path fills it.
+  const n = posts.length
+  const stats = {
+    followers: 0,
+    videos: n,
+    avg_views: n ? Math.round(posts.reduce((a, x) => a + (x.plays || 0), 0) / n) : 0,
+    avg_likes: n ? Math.round(posts.reduce((a, x) => a + (x.likes || 0), 0) / n) : 0,
+  }
+  await db.from('brand_voices').update({ status: 'ready', profile, stats, error: null }).eq('id', voiceId)
 
   // Data layer: a voice was built (activation funnel).
   if (ownerId) {

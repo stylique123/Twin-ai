@@ -78,7 +78,11 @@ export default function Result() {
         setApproved(!!g?.approved)
         // Default the shooting hook to the saved choice, else the recommended (1st).
         const hooks = (g?.blueprint?.hook_options ?? []) as string[]
-        setChosenHook(g?.selected_hook ?? hooks[0] ?? '')
+        const initial = g?.selected_hook ?? hooks[0] ?? ''
+        setChosenHook(initial)
+        // Capture the default the first time, so the gallery's learning signal isn't
+        // empty when a creator shoots without explicitly tapping a hook (was 1/15).
+        if (id && !g?.selected_hook && initial) void updateGenerationChoice(id, { selected_hook: initial })
       })
       .catch(() => setGen(null))
       .finally(() => setLoading(false))
@@ -223,7 +227,8 @@ export default function Result() {
           </ul>
         </Section>
 
-        <Section icon={Activity} title="Retention pattern">
+        <Section icon={Activity} title="Estimated retention pattern">
+          <p className="mb-3 text-xs text-stone">A structural read of how the original holds attention beat-by-beat — estimated from the content, not measured analytics.</p>
           <ol className="relative ml-1 space-y-3 border-l border-white/10 pl-5">
             {b.reference_read.retention_map.map((r, i) => (
               <li key={i} className="relative">
