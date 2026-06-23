@@ -54,14 +54,14 @@ export const PLANS: PlanTier[] = [
   {
     id: 'aspiring',
     name: 'Creator',
-    price: 15,
-    annual: 12,
-    videos: 10,
-    credits: grant(10, 2), // 120 credits, advertised 10, buffer 2
+    price: 9,
+    annual: 7,
+    videos: 8,
+    credits: grant(8, 2), // 100 credits, advertised 8, buffer 2
     brandVoices: 1,
     blurb: 'Post weekly, no watermark.',
     features: [
-      '10 videos / mo',
+      '8 videos / mo',
       'No watermark',
       '1 brand voice',
       'Auto-captions',
@@ -71,15 +71,15 @@ export const PLANS: PlanTier[] = [
   {
     id: 'professional',
     name: 'Pro',
-    price: 29,
-    annual: 23,
-    videos: 20,
-    credits: grant(20, 4), // 240 credits, advertised 20, buffer 4
+    price: 25,
+    annual: 20,
+    videos: 16,
+    credits: grant(16, 4), // 200 credits, advertised 16, buffer 4
     brandVoices: 1,
     badge: 'Most popular',
     blurb: 'Ship every week, on autopilot.',
     features: [
-      '20 videos / mo',
+      '16 videos / mo',
       '1 brand voice',
       'Full auto-edit (captions + cuts)',
       'Publish to all your platforms',

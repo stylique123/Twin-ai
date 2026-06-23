@@ -22,8 +22,8 @@ const json = (body: unknown, status = 200) =>
 // MUST match src/lib/brand.ts grant() so the credits granted == the advertised
 // allowance (Starter 8→100, Pro 20→240, Agency 75→830, incl. the hidden buffer).
 const PLAN_CREDITS: Record<string, number> = {
-  aspiring: Number(Deno.env.get('PLAN_CREDITS_ASPIRING') ?? '120'),
-  professional: Number(Deno.env.get('PLAN_CREDITS_PROFESSIONAL') ?? '240'),
+  aspiring: Number(Deno.env.get('PLAN_CREDITS_ASPIRING') ?? '100'),
+  professional: Number(Deno.env.get('PLAN_CREDITS_PROFESSIONAL') ?? '200'),
   studio: Number(Deno.env.get('PLAN_CREDITS_STUDIO') ?? '460'),
   agency: Number(Deno.env.get('PLAN_CREDITS_AGENCY') ?? '1100'),
 }
