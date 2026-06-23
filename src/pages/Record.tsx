@@ -698,7 +698,16 @@ export default function Record() {
               </Control>
 
               <Control icon={Gauge} label={`Speed · ${speed}px/s`}>
-                <Stepper onMinus={() => setSpeed((s) => Math.max(12, s - 6))} onPlus={() => setSpeed((s) => Math.min(120, s + 6))} />
+                <input
+                  type="range"
+                  min={12}
+                  max={120}
+                  step={2}
+                  value={speed}
+                  onChange={(e) => setSpeed(Number(e.target.value))}
+                  className="w-28 cursor-pointer accent-coral"
+                  aria-label="Teleprompter scroll speed"
+                />
               </Control>
 
               <Control icon={Plus} label={`Text size · ${fontPx}px`}>

@@ -275,10 +275,16 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
       </div>
 
       {err && (
-        <p className="mt-6 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
+        <div className="mt-6 space-y-2">
+          <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
+          <p className="text-sm text-sand">
+            No problem — your account can stay private. Just tell us about you instead and you’ll be in the studio in 90 seconds.
+          </p>
+        </div>
       )}
 
-      {/* Always-visible escapes so the user is never trapped on the spinner. */}
+      {/* Always-visible escapes so the user is never trapped on the spinner. On
+          an error we promote the manual path to the primary action. */}
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
         <button className="btn-ghost" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" /> Back
@@ -289,8 +295,8 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
               <RotateCcw className="h-4 w-4" /> Try again
             </button>
           )}
-          <button className="btn-ghost" onClick={onManual}>
-            <PenLine className="h-4 w-4" /> Set it up manually
+          <button className={cn('btn-ghost', err && 'btn-gradient')} onClick={onManual}>
+            <PenLine className="h-4 w-4" /> {err ? 'Tell us about you instead' : 'Set it up manually'}
           </button>
         </div>
       </div>
@@ -578,6 +584,7 @@ function ManualQuiz({ onBack }: { onBack: () => void }) {
   return (
     <>
       <p className="eyebrow">Set up your voice manually · 90 seconds</p>
+      <p className="mt-2 text-sm text-stone">No scan needed — your account can stay private. A few quick answers and we’ll write in your voice.</p>
       <div className="mt-4 flex gap-1.5">
         {steps.map((_, i) => (
           <motion.div

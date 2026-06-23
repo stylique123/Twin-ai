@@ -167,6 +167,9 @@ export default function Studio() {
               <p className="mt-2 flex items-center gap-1.5 text-xs text-teal">
                 <ScanSearch className="h-3.5 w-3.5" /> We transcribe and analyze the real clip, every time.
               </p>
+              <p className="mt-1.5 text-xs text-stone">
+                Best results: a short, punchy reel / Short / TikTok with a strong hook (under ~90s) from your niche — the one you wish you'd made.
+              </p>
             </div>
 
             {/* Optional personalization */}
