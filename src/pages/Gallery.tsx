@@ -193,6 +193,35 @@ function fromDb(it: GalleryItem): Card {
   return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || fallbackWhy, reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url }
 }
 
+// Classify a card into a content CATEGORY from its text — so tapping a playbook
+// format actually surfaces a different, relevant set instead of barely changing
+// (the "Story-time and 3-things look the same" complaint). Works on every card,
+// featured or community, without hand-tagging each one.
+function cardCat(c: Card): string {
+  const t = `${c.label} ${c.hook} ${c.why}`.toLowerCase()
+  if (/transition|before.?after|glow.?up|outfit|try.?on/.test(t)) return 'transition'
+  if (/reaction|react|stitch|callout|taste.?test|first.?impression|reassure|reply|reframe/.test(t)) return 'reaction'
+  if (/recipe|cook|ingredient|kitchen|asmr|baking|pun|gag/.test(t)) return 'recipe'
+  if (/process|reveal|how.?it|behind.?the|made|breakdown|case.?study/.test(t)) return 'process'
+  if (/vlog|day.?in|travel|day.?of|routine|micro.?story/.test(t)) return 'vlog'
+  if (/story.?time|story/.test(t)) return 'story'
+  if (/grwm|get.?ready|makeup|skincare/.test(t)) return 'grwm'
+  if (/tutorial|step.?by.?step|how.?to/.test(t)) return 'tutorial'
+  if (/listicle|ways to|3 things|three things|did.?n.?t know|quick wins/.test(t)) return 'listicle'
+  if (/insight|authority|did you know|explain/.test(t)) return 'insight'
+  return 'talkinghead' // hot take, POV, motivational, hook…
+}
+// Map a playbook format's search term to the same category space.
+function qToCat(q: string): string {
+  const m: Record<string, string> = {
+    hook: 'talkinghead', relatable: 'talkinghead', callout: 'reaction', reaction: 'reaction',
+    transition: 'transition', cook: 'recipe', recipe: 'recipe', process: 'process',
+    routine: 'vlog', vlog: 'vlog', story: 'story', grwm: 'grwm', tutorial: 'tutorial',
+    explain: 'insight', insight: 'insight',
+  }
+  return m[q] ?? 'talkinghead'
+}
+
 function ytId(url: string): string | null {
   const m = url.match(/[?&]v=([\w-]+)/) || url.match(/youtu\.be\/([\w-]+)/) || url.match(/shorts\/([\w-]+)/)
   return m ? m[1] : null
@@ -346,12 +375,13 @@ export default function Gallery() {
       const needle = q.trim().toLowerCase()
       out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(needle))
     }
-    // Playbook format: a SOFT boost (not a hard filter) — examples of the chosen
-    // format float to the top, but the feed never goes empty when the small seed
-    // pool has no exact keyword match (the "Transition shows nothing" bug).
+    // Playbook format: a SOFT boost (not a hard filter) — cards whose CATEGORY
+    // matches the chosen format float to the top (so each format shows a different
+    // set), but the feed never goes empty when the seed pool is thin.
+    const fmtCat = activeFormat ? qToCat(activeFormat.q) : ''
     const fmtBoost = (c: Card) => {
       if (!activeFormat) return 0
-      return (searchBlobs.get(c.id) ?? '').includes(activeFormat.q.toLowerCase()) ? 1 : 0
+      return cardCat(c) === fmtCat ? 1 : 0
     }
     // Always rank by the Opportunity score (engagement × reach × your-niche fit) —
     // the redundant Top/All toggle is gone. Format matches are boosted first.
