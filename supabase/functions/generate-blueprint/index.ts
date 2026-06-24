@@ -240,6 +240,16 @@ Deno.serve(async (req: Request) => {
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
+  // Team seats: if this user is a member of a workspace, they create IN that
+  // workspace — writing in the OWNER's brand voice and spending the OWNER's
+  // remixes. Solo users resolve to themselves (no membership row).
+  const { data: mem } = await admin
+    .from('workspace_members')
+    .select('owner_id')
+    .eq('member_id', user.id)
+    .maybeSingle()
+  const ownerId = mem?.owner_id ?? user.id
+
   // Abuse / runaway-cost defense: cap blueprint generations per user per minute
   // BEFORE we ever call the model. Bounded by credits anyway, but this stops
   // scripted bursts that would hammer the model API.
@@ -325,12 +335,12 @@ Deno.serve(async (req: Request) => {
   const { data: profile } = await admin
     .from('profiles')
     .select('dna, credits')
-    .eq('id', user.id)
+    .eq('id', ownerId)
     .single()
   const { data: voice } = await admin
     .from('brand_voices')
     .select('id, handle, platform, profile')
-    .eq('owner_id', user.id)
+    .eq('owner_id', ownerId)
     .eq('is_default', true)
     .eq('status', 'ready')
     .maybeSingle()
@@ -368,7 +378,7 @@ Deno.serve(async (req: Request) => {
 
   // Spend credits atomically BEFORE the model call. Refund on failure.
   const { error: spendErr } = await admin.rpc('spend_credits', {
-    p_user: user.id,
+    p_user: ownerId,
     p_amount: BLUEPRINT_COST,
     p_reason: 'blueprint',
   })
@@ -487,7 +497,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // Refund credits if anything after the spend failed. Log loudly if the
     // refund itself fails so it can be reconciled manually (never silently eat it).
     const { error: refundErr } = await admin.rpc('refund_credits', {
-      p_user: user.id,
+      p_user: ownerId,
       p_amount: BLUEPRINT_COST,
       p_reason: 'blueprint_refund',
     })

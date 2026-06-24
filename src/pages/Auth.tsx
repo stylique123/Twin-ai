@@ -67,7 +67,10 @@ export default function Auth() {
         })
         if (error) throw error
         if (data.session) {
-          navigate('/onboarding')
+          // A teammate who clicked an invite link goes straight to accept it
+          // (they use the owner's workspace and skip their own onboarding).
+          const pendingJoin = (() => { try { return localStorage.getItem('twinai_pending_join') } catch { return null } })()
+          navigate(pendingJoin ? `/join/${pendingJoin}` : '/onboarding')
         } else {
           setMsg('Account created! Check your inbox to confirm your email, then sign in below.')
           setMsgType('success')
@@ -76,7 +79,8 @@ export default function Auth() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        navigate('/app')
+        const pendingJoin = (() => { try { return localStorage.getItem('twinai_pending_join') } catch { return null } })()
+        navigate(pendingJoin ? `/join/${pendingJoin}` : '/app')
       }
     } catch (err) {
       setMsg(err instanceof Error ? err.message : 'Something went wrong')
