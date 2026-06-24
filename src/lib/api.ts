@@ -309,6 +309,35 @@ export async function setGenerationApproved(id: string, approved: boolean): Prom
   return !error
 }
 
+// ---- Team seats / shared workspace -----------------------------------------
+export interface WorkspaceState {
+  members: { member_id: string; created_at: string }[] // teammates I host
+  memberOf: string | null // the owner_id whose workspace I'm a teammate in
+}
+export async function getWorkspace(): Promise<WorkspaceState> {
+  const { data: auth } = await supabase.auth.getUser()
+  const me = auth.user?.id
+  const { data } = await supabase.from('workspace_members').select('owner_id, member_id, created_at')
+  const rows = (data ?? []) as { owner_id: string; member_id: string; created_at: string }[]
+  return {
+    members: rows.filter((r) => r.owner_id === me).map((r) => ({ member_id: r.member_id, created_at: r.created_at })),
+    memberOf: rows.find((r) => r.member_id === me)?.owner_id ?? null,
+  }
+}
+export async function createWorkspaceInvite(): Promise<string | null> {
+  const { data, error } = await supabase.rpc('create_workspace_invite')
+  if (error || !data) return null
+  return `${window.location.origin}/join/${data}`
+}
+export async function removeWorkspaceMember(memberId: string): Promise<void> {
+  await supabase.from('workspace_members').delete().eq('member_id', memberId)
+}
+export async function acceptWorkspaceInvite(token: string): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc('accept_workspace_invite', { p_token: token })
+  if (error) return { ok: false, error: error.message }
+  return (data ?? { ok: false }) as { ok: boolean; error?: string }
+}
+
 // ---- Reusable reference templates ------------------------------------------
 export interface ReferenceTemplate {
   id: string

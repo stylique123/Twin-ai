@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus } from 'lucide-react'
+import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus, Users, Copy, Link2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo } from '../lib/api'
+import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { CAPTION_STYLE_OPTIONS, CAPTION_COLOR_OPTIONS } from '../lib/types'
@@ -224,6 +224,11 @@ export default function Settings() {
               </div>
             </div>
           </section>
+        </Reveal>
+
+        {/* Team seats */}
+        <Reveal delay={0.07}>
+          <TeamSeats />
         </Reveal>
 
         {/* Plan */}
@@ -541,5 +546,91 @@ export default function Settings() {
         </div>
       )}
     </main>
+  )
+}
+
+// Team seats: invite ONE teammate (free for now) into your workspace — they see
+// and work on your client voices + scripts on your remixes. More seats are paid
+// (later). If you're a teammate yourself, this shows your workspace status.
+const SEAT_LIMIT = 1
+function TeamSeats() {
+  const [ws, setWs] = useState<WorkspaceState | null>(null)
+  const [link, setLink] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  const load = () => { getWorkspace().then(setWs).catch(() => {}) }
+  useEffect(load, [])
+
+  const invite = async () => {
+    setBusy(true)
+    const url = await createWorkspaceInvite()
+    setBusy(false)
+    if (!url) return
+    setLink(url)
+    try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 1600) } catch { /* shown to copy */ }
+  }
+  const remove = async (memberId: string) => {
+    setWs((w) => (w ? { ...w, members: w.members.filter((m) => m.member_id !== memberId) } : w))
+    await removeWorkspaceMember(memberId).catch(() => {})
+  }
+
+  // A teammate in someone else's workspace — show status, no invite controls.
+  if (ws?.memberOf) {
+    return (
+      <section className="glass mt-5 p-5 sm:p-6">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><Users className="h-4 w-4 text-amber" /></span>
+          <p className="eyebrow !text-sand">Team</p>
+        </div>
+        <p className="mt-4 text-sm text-sand">You're a teammate in a shared workspace. You can create and edit in the workspace's brand voices — billing stays with the workspace owner.</p>
+      </section>
+    )
+  }
+
+  const used = ws?.members.length ?? 0
+  const atCap = used >= SEAT_LIMIT
+
+  return (
+    <section className="glass mt-5 p-5 sm:p-6">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><Users className="h-4 w-4 text-amber" /></span>
+          <p className="eyebrow !text-sand">Team</p>
+        </div>
+        <span className="text-xs text-stone">{used} / {SEAT_LIMIT} seat{SEAT_LIMIT === 1 ? '' : 's'} used</span>
+      </div>
+      <p className="mt-3 text-sm text-stone">
+        Invite a teammate into your workspace — they work on your client voices and scripts, on your remixes. You keep billing and can remove them anytime.
+      </p>
+
+      {(ws?.members ?? []).length > 0 && (
+        <div className="mt-4 space-y-2">
+          {ws!.members.map((m) => (
+            <div key={m.member_id} className="flex items-center justify-between rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5">
+              <span className="inline-flex items-center gap-2 text-sm text-sand"><span className="grid h-6 w-6 place-items-center rounded-full bg-teal/15 text-[10px] font-bold text-teal">{m.member_id.slice(0, 2).toUpperCase()}</span> Teammate</span>
+              <button onClick={() => remove(m.member_id)} className="text-xs text-stone transition-colors hover:text-coral">Remove</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        {atCap ? (
+          <span className="text-xs text-stone">Seat full. <span className="text-amber">More seats are coming soon.</span></span>
+        ) : (
+          <button onClick={invite} disabled={busy} className="btn-ghost text-sm disabled:opacity-50">
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />} {link ? 'Copy invite link' : 'Create invite link'}
+          </button>
+        )}
+        {copied && <span className="inline-flex items-center gap-1 text-xs text-teal"><Check className="h-3.5 w-3.5" /> Copied</span>}
+      </div>
+      {link && (
+        <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/8 bg-ink/40 px-3 py-2">
+          <span className="min-w-0 flex-1 truncate text-xs text-stone">{link}</span>
+          <button onClick={() => { navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600) }, () => {}) }} className="shrink-0 text-stone hover:text-cream"><Copy className="h-3.5 w-3.5" /></button>
+        </div>
+      )}
+    </section>
   )
 }

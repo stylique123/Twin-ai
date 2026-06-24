@@ -27,6 +27,7 @@ const Metrics = lazy(() => import('./pages/Metrics'))
 const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
 const ReviewApproval = lazy(() => import('./pages/ReviewApproval'))
+const JoinWorkspace = lazy(() => import('./pages/JoinWorkspace'))
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -113,6 +114,9 @@ export default function App() {
           {/* Public, login-free client APPROVAL of a finished video (agency → client). */}
           <Route path="/review/:token" element={<Page><ReviewApproval /></Page>} />
           <Route path="/onboarding" element={<AuthOnly><Page><Onboarding /></Page></AuthOnly>} />
+          {/* Teammate accepting a workspace invite — auth required, but NOT onboarded
+              (a teammate uses the owner's workspace and skips their own onboarding). */}
+          <Route path="/join/:token" element={<AuthOnly><Page><JoinWorkspace /></Page></AuthOnly>} />
           <Route
             path="/dashboard"
             element={<Protected><AppShell><Page><Dashboard /></Page></AppShell></Protected>}

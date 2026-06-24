@@ -32,6 +32,14 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
   try {
     await downloadObject('takes', takePath, localTake)
 
+    // Team seats: watermark + free-export follow the WORKSPACE owner's plan, not the
+    // teammate's. Storage paths still use job.owner_id (the take lives in their folder).
+    let planOwner = job.owner_id
+    try {
+      const { data: m } = await db.from('workspace_members').select('owner_id').eq('member_id', job.owner_id).maybeSingle()
+      if (m?.owner_id) planOwner = m.owner_id
+    } catch { /* fall back to the take owner */ }
+
     // Watermark policy: a free user's FIRST export is CLEAN (so they can verify the
     // real output before paying — the panel's #1 ask); every export AFTER that
     // carries a subtle TwinAI mark. Paid users are never watermarked. Fail-open to
@@ -39,7 +47,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     let applyWm = false
     let markFreeClean = false
     try {
-      const { data: prof } = await db.from('profiles').select('plan, free_export_used').eq('id', job.owner_id).maybeSingle()
+      const { data: prof } = await db.from('profiles').select('plan, free_export_used').eq('id', planOwner).maybeSingle()
       const isFree = !prof?.plan || prof.plan === 'free'
       if (isFree) {
         if (prof?.free_export_used) {
@@ -51,7 +59,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           // unverified throwaways get the watermark. Conservative on lookup failure.
           let verified = false
           try {
-            const { data: u } = await db.auth.admin.getUserById(job.owner_id)
+            const { data: u } = await db.auth.admin.getUserById(planOwner)
             verified = !!((u?.user as { email_confirmed_at?: string; confirmed_at?: string } | undefined)?.email_confirmed_at
               ?? (u?.user as { confirmed_at?: string } | undefined)?.confirmed_at)
           } catch { /* can't verify → watermark */ }
@@ -169,7 +177,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // This free user just received their one clean export — mark it consumed so the
     // next one is watermarked. Best-effort; never fails the render.
     if (markFreeClean) {
-      await db.from('profiles').update({ free_export_used: true }).eq('id', job.owner_id).then(() => {}, () => {})
+      await db.from('profiles').update({ free_export_used: true }).eq('id', planOwner).then(() => {}, () => {})
     }
 
     // Upload the cover thumbnail (best-effort) and record its path.
