@@ -39,6 +39,7 @@ export default function Record() {
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
   const [editStyle, setEditStyle] = useState('punchy')
+  const [selectedHook, setSelectedHook] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -86,7 +87,16 @@ export default function Record() {
   useEffect(() => {
     if (!id) return
     getGeneration(id)
-      .then((g) => { setGen(g); if (g?.edit_style) setEditStyle(g.edit_style) })
+      .then((g) => {
+        setGen(g)
+        if (g?.edit_style) setEditStyle(g.edit_style)
+        // The script + hook are now picked here (one screen), so seed the chosen
+        // hook from the saved choice or the first option, and persist that default.
+        const hooks = (g?.blueprint?.hook_options ?? []) as string[]
+        const hook = g?.selected_hook ?? hooks[0] ?? ''
+        setSelectedHook(hook)
+        if (!g?.selected_hook && hook) void updateGenerationChoice(id, { selected_hook: hook })
+      })
       .catch(() => setGen(null))
       .finally(() => setLoading(false))
   }, [id])
@@ -121,6 +131,13 @@ export default function Record() {
   const chooseStyle = (s: string) => {
     setEditStyle(s)
     if (id) void updateGenerationChoice(id, { edit_style: s })
+  }
+
+  // Pick which hook to open on. Drives the teleprompter lead, the generated cover,
+  // and the b-roll keywords on the edit — so it has to be chosen before recording.
+  const pickHook = (h: string) => {
+    setSelectedHook(h)
+    if (id) void updateGenerationChoice(id, { selected_hook: h })
   }
 
   // Upload-your-own-clip path: load a picked video as the "take" and jump to
@@ -455,7 +472,7 @@ export default function Record() {
     <main className="relative mx-auto max-w-6xl px-5 py-8 lg:py-10">
       <div className="flex items-center justify-between gap-3">
         <Link to={`/result/${id}`} className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-cream">
-          <ArrowLeft className="h-4 w-4" /> Back to script
+          <ArrowLeft className="h-4 w-4" /> Full blueprint
         </Link>
         <span className="chip"><Mic className="h-3.5 w-3.5 text-coral" /> {uploadMode ? 'Edit your clip' : 'Record studio'}</span>
       </div>
@@ -779,10 +796,23 @@ export default function Record() {
               <span className="text-xs text-stone">{gen.blueprint.script?.length ?? 0} lines</span>
             </div>
             <div className="mt-3 max-h-72 space-y-3 overflow-y-auto pr-1">
-              {gen.blueprint.hook_options?.[0] && (
-                <p className="rounded-lg bg-amber/10 px-3 py-2 text-sm font-heading text-amber">
-                  {gen.blueprint.hook_options[0]}
-                </p>
+              {gen.blueprint.hook_options && gen.blueprint.hook_options.length > 0 && (
+                <div className="space-y-1.5">
+                  <div className="text-[10px] uppercase tracking-wider text-stone">Pick your hook</div>
+                  {gen.blueprint.hook_options.map((h, i) => (
+                    <button
+                      key={i}
+                      onClick={() => pickHook(h)}
+                      className={cn(
+                        'flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left text-sm font-heading transition-colors',
+                        selectedHook === h ? 'bg-amber/15 text-amber ring-1 ring-amber/40' : 'bg-white/[0.03] text-sand hover:bg-white/[0.06]',
+                      )}
+                    >
+                      <Check className={cn('mt-0.5 h-3.5 w-3.5 shrink-0', selectedHook === h ? 'text-amber' : 'text-transparent')} />
+                      {h}
+                    </button>
+                  ))}
+                </div>
               )}
               {gen.blueprint.script?.map((s, i) => (
                 <div key={i} className="border-l-2 border-white/10 pl-3">
