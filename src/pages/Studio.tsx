@@ -396,12 +396,14 @@ export default function Studio() {
 
             {/* Action row */}
             <div className="flex border-t border-white/8 pt-5">
-              <button className="btn-gradient w-full" onClick={run} disabled={busy}>
+              <button className="btn-gradient w-full" onClick={run} disabled={busy || lowCredits}>
                 {busy ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
                     {bulkProgress ? `Making ${bulkProgress.done + 1} of ${bulkProgress.total}…` : 'Reading the real clip…'}
                   </>
+                ) : lowCredits ? (
+                  <>Out of remixes</>
                 ) : (
                   <>
                     <Wand2 className="h-4 w-4" /> {bulk ? 'Remix all links' : 'Remix'}
@@ -409,6 +411,11 @@ export default function Studio() {
                 )}
               </button>
             </div>
+            {lowCredits && (
+              <p className="text-center text-xs text-stone">
+                You're out of remixes. <Link to="/settings" className="text-amber hover:text-cream">Upgrade</Link> to keep creating — every video you've already finished stays yours to download.
+              </p>
+            )}
 
             <AnimatePresence>
               {err && (
