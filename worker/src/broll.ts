@@ -1,4 +1,5 @@
 import { writeFile } from 'node:fs/promises'
+import { spawn } from 'node:child_process'
 import { join } from 'node:path'
 import { env } from './env.js'
 
@@ -70,39 +71,85 @@ export interface Broll {
   query: string
 }
 
-// Returns a downloaded vertical stock clip for the best-matching keyword, or null.
-export async function fetchBroll(keywords: string[], dir: string): Promise<Broll | null> {
+// CLIP-rank candidate thumbnails against the spoken line so the cutaway actually
+// MATCHES what's being said, instead of keyword-roulette. Spawns clip_rank.py;
+// returns the best candidate index, or -1 on any failure (caller falls back).
+function clipPick(query: string, imageUrls: string[]): Promise<number> {
+  return new Promise((resolve) => {
+    try {
+      const py = spawn('python3', [join(import.meta.dirname, '..', 'clip_rank.py'), query], { stdio: ['pipe', 'pipe', 'ignore'] })
+      let out = ''
+      const timer = setTimeout(() => { try { py.kill() } catch { /* */ } resolve(-1) }, 30_000)
+      py.stdout.on('data', (d) => { out += d })
+      py.on('close', () => { clearTimeout(timer); const n = parseInt(out.trim(), 10); resolve(Number.isFinite(n) ? n : -1) })
+      py.on('error', () => { clearTimeout(timer); resolve(-1) })
+      py.stdin.on('error', () => { /* broken pipe if py died early */ })
+      py.stdin.write(imageUrls.join('\n')); py.stdin.end()
+    } catch { resolve(-1) }
+  })
+}
+
+// Returns a downloaded vertical stock clip best-matching the spoken line, or null.
+// `clipText` (the line / Director reason) drives the CLIP visual match; `keywords`
+// are the Pexels search terms. Entirely best-effort — fail-open at every step.
+export async function fetchBroll(keywords: string[], dir: string, clipText?: string): Promise<Broll | null> {
   const key = env.pexelsKey
   if (!key) return null
   // Cap a b-roll clip at 60 MB: a cutaway is a few seconds, so anything larger is
   // a mis-pick we don't want to pull into the single worker's memory.
   const BROLL_CAP = 60 * 1024 * 1024
+  type Cand = { query: string; image?: string; link: string }
+  const cands: Cand[] = []
   for (const q of keywords) {
     try {
       const res = await fetch(
-        `https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&orientation=portrait&size=small&per_page=3`,
+        `https://api.pexels.com/videos/search?query=${encodeURIComponent(q)}&orientation=portrait&size=small&per_page=6`,
         { headers: { Authorization: key }, signal: AbortSignal.timeout(10_000) },
       )
       if (!res.ok) continue
       const data = (await res.json()) as {
-        videos?: { video_files?: { file_type?: string; width?: number; link?: string }[] }[]
+        videos?: { image?: string; video_files?: { file_type?: string; width?: number; link?: string }[] }[]
       }
       for (const v of data.videos ?? []) {
         const mp4s = (v.video_files ?? []).filter((f) => f.file_type === 'video/mp4' && f.link)
         // smallest portrait mp4 keeps the download + decode cheap
         const pick = mp4s.sort((a, b) => (a.width ?? 9999) - (b.width ?? 9999))[0]
-        if (!pick?.link) continue
-        const vr = await fetch(pick.link, { signal: AbortSignal.timeout(20_000) })
-        if (!vr.ok) continue
-        if (Number(vr.headers.get('content-length') ?? '0') > BROLL_CAP) continue
-        const buf = Buffer.from(await vr.arrayBuffer())
-        if (buf.byteLength > BROLL_CAP) continue
-        const out = join(dir, 'broll.mp4')
-        await writeFile(out, buf)
-        return { file: out, query: q }
+        if (pick?.link) cands.push({ query: q, image: v.image, link: pick.link })
       }
     } catch {
       /* try next keyword */
+    }
+    if (cands.length >= 8) break
+  }
+  if (!cands.length) return null
+
+  // Rank: pick the candidate whose THUMBNAIL best matches the line. Fail-open — if
+  // CLIP is unavailable or errors, we keep the original (smallest-first) order.
+  let order = [...cands.keys()]
+  const withImg = cands.map((c, i) => ({ i, image: c.image })).filter((c) => !!c.image)
+  if (withImg.length > 1) {
+    const q = (clipText && clipText.trim()) || cands[0].query
+    const best = await clipPick(q, withImg.map((c) => c.image as string))
+    if (best >= 0 && best < withImg.length) {
+      const winner = withImg[best].i
+      order = [winner, ...order.filter((i) => i !== winner)]
+    }
+  }
+
+  // Download in ranked order; first clip that fits the cap wins.
+  for (const i of order) {
+    const c = cands[i]
+    try {
+      const vr = await fetch(c.link, { signal: AbortSignal.timeout(20_000) })
+      if (!vr.ok) continue
+      if (Number(vr.headers.get('content-length') ?? '0') > BROLL_CAP) continue
+      const buf = Buffer.from(await vr.arrayBuffer())
+      if (buf.byteLength > BROLL_CAP) continue
+      const out = join(dir, 'broll.mp4')
+      await writeFile(out, buf)
+      return { file: out, query: c.query }
+    } catch {
+      /* next candidate */
     }
   }
   return null

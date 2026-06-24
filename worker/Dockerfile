@@ -26,6 +26,15 @@ RUN fc-cache -f
 RUN pip3 install --no-cache-dir --break-system-packages \
       "yt-dlp>=2025.1.15" "faster-whisper>=1.0.3" "youtube-transcript-api>=0.6.2"
 
+# CLIP semantic b-roll matching: rank stock-clip thumbnails against the spoken line so
+# the cutaway is RELEVANT, not keyword-roulette. CPU-only torch keeps the image lean;
+# the model is pre-downloaded so no render pays for it. Entirely fail-open in code —
+# if any of this is missing at runtime, broll.ts falls back to its keyword pick.
+RUN pip3 install --no-cache-dir --break-system-packages \
+      --extra-index-url https://download.pytorch.org/whl/cpu \
+      "torch>=2.2,<2.6" "sentence-transformers>=3.0,<4" "pillow>=10.0" \
+ && python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('clip-ViT-B-32')"
+
 WORKDIR /app
 
 # Install node deps first for layer caching.
@@ -37,6 +46,7 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY whisper_transcribe.py ./whisper_transcribe.py
 COPY youtube_transcript.py ./youtube_transcript.py
+COPY clip_rank.py ./clip_rank.py
 RUN npm run build
 
 # Pre-download the ASR models at build time so no job ever pays a download.
