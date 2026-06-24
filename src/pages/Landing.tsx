@@ -130,8 +130,6 @@ export default function Landing() {
   return (
     <main className="noise overflow-clip">
       <HeroSection />
-      <ResultsStrip />
-      <OfferStrip />
       <PlatformStrip />
       <PainSection />
       <HowItWorksSection />
@@ -428,48 +426,6 @@ function Particles() {
 
 /* ─── Platform strip ─────────────────────────────────────────────────── */
 
-/* ─── Results strip (proof band) ─────────────────────────────────────── */
-
-function ResultsStrip() {
-  const items = [
-    'Hours per video → minutes.',
-    'Ship 15+ a month, same effort.',
-    'One link in → one finished, on-brand video out.',
-    '100% in your voice — never generic.',
-  ]
-  return (
-    <section className="border-y border-white/8 bg-ink2/40">
-      <div className="mx-auto max-w-content px-5 py-5">
-        <Stagger className="grid gap-y-3 gap-x-6 text-center sm:grid-cols-2 lg:grid-cols-4" gap={0.06}>
-          {items.map((t) => (
-            <RevealItem key={t}>
-              <p className="inline-flex items-center justify-center gap-2 text-sm font-medium text-cream">
-                <Check className="h-4 w-4 shrink-0 text-teal" /> {t}
-              </p>
-            </RevealItem>
-          ))}
-        </Stagger>
-      </div>
-    </section>
-  )
-}
-
-/* ─── Offer strip (free remixes) ─────────────────────────────────────── */
-
-function OfferStrip() {
-  return (
-    <section className="mx-auto max-w-content px-5 pt-10">
-      <Reveal>
-        <div className="relative overflow-hidden rounded-panel border border-amber/25 bg-gradient-to-r from-amber/10 via-coral/[0.06] to-teal/10 px-6 py-5 text-center">
-          <p className="text-base font-medium text-cream">
-            <span className="mr-1.5">🎁</span> Sign up free → <span className="font-bold text-amber">3 full remixes</span>. Invite one creator → <span className="font-bold text-teal">2 extra, instantly</span>. Zero cost to find out it works.
-          </p>
-        </div>
-      </Reveal>
-    </section>
-  )
-}
-
 function PlatformStrip() {
   // A quiet running ticker, not a big banner: a small label, then the platforms
   // scrolling by on a loop. The row is rendered twice and slid -50% so it loops
@@ -752,12 +708,6 @@ function FeaturesSection() {
           </RevealItem>
         ))}
       </Stagger>
-      <Reveal className="mt-10 text-center">
-        <p className="mx-auto max-w-md text-sm text-sand">Plus: ship 15+ a month and the algorithm remembers you.</p>
-        <Link to="/auth?mode=signup" className="btn-gradient group mt-5 inline-flex px-7 py-3.5 text-base">
-          Start free — claim 3 remixes <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
-        </Link>
-      </Reveal>
     </section>
   )
 }
@@ -965,7 +915,7 @@ function ValueStack() {
             <div className="absolute inset-0 bg-gradient-to-br from-amber/12 via-coral/8 to-teal/12" />
             <div className="relative">
               <div className="text-[11px] uppercase tracking-wider text-amber">With TwinAI</div>
-              <div className="mt-1 font-display text-3xl text-cream">One link<span className="text-lg text-stone">, minutes</span></div>
+              <div className="mt-1 font-display text-3xl text-cream">from $9<span className="text-lg text-stone">/month</span></div>
             </div>
           </div>
         </div>
@@ -1074,11 +1024,11 @@ function PricingSection() {
                     every signup gets the 3 free remixes to try right now. */}
                 <Link
                   to={`/auth?plan=${p.id}&mode=signup`}
-                  className={cn('mt-7 w-full', featured ? 'btn-gradient' : 'btn-ghost')}
+                  className="btn-ghost mt-7 w-full"
                 >
                   {PAYMENTS_LIVE
                     ? (p.price === 0 ? 'Start free' : `Choose ${p.name}`)
-                    : 'Start free — 3 remixes'}
+                    : 'Start free'}
                 </Link>
                 {!PAYMENTS_LIVE && p.price > 0 && (
                   <p className="mt-2 text-center text-xs text-stone">
