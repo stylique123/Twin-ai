@@ -26,6 +26,7 @@ const Billing = lazy(() => import('./pages/Billing'))
 const Metrics = lazy(() => import('./pages/Metrics'))
 const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
+const ReviewApproval = lazy(() => import('./pages/ReviewApproval'))
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -109,6 +110,8 @@ export default function App() {
           <Route path="/auth" element={<Page><Auth /></Page>} />
           {/* Public, login-free white-label client report (agency → client). */}
           <Route path="/r/:token" element={<Page><ClientReport /></Page>} />
+          {/* Public, login-free client APPROVAL of a finished video (agency → client). */}
+          <Route path="/review/:token" element={<Page><ReviewApproval /></Page>} />
           <Route path="/onboarding" element={<AuthOnly><Page><Onboarding /></Page></AuthOnly>} />
           <Route
             path="/dashboard"
