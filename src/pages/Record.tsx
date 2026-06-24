@@ -316,6 +316,7 @@ export default function Record() {
       const job = await getJob(jobId)
       if (!job) continue
       if (job.status === 'done' && job.result?.output_url) {
+        try { if (id) localStorage.removeItem('twinai_edit_' + id) } catch { /* storage off */ }
         setEditPct(100)
         setEditUrl(job.result.output_url)
         setEdlPath(job.result.edl_path ?? null)
@@ -323,7 +324,10 @@ export default function Record() {
         setEditPhase('done')
         return
       }
-      if (job.status === 'failed') throw new Error(job.error || 'The edit could not finish.')
+      if (job.status === 'failed') {
+        try { if (id) localStorage.removeItem('twinai_edit_' + id) } catch { /* storage off */ }
+        throw new Error(job.error || 'The edit could not finish.')
+      }
       // Show the REAL stage the worker reports (Reading words → Directing → Cutting
       // → Rendering → Finishing) so it never looks frozen.
       const p = job.result?.progress
@@ -335,6 +339,19 @@ export default function Record() {
     }
     throw new Error('The edit is taking longer than expected, check your Library shortly.')
   }
+
+  // Resumability: if the creator left mid-edit, the job kept running on the worker and
+  // the remix is already spent — re-attach to it on return so they pick up at the same
+  // step instead of paying again. Runs once when the page loads with a saved job.
+  useEffect(() => {
+    if (!id) return
+    let jobId: string | null = null
+    try { jobId = localStorage.getItem('twinai_edit_' + id) } catch { /* storage off */ }
+    if (!jobId) return
+    setCamReady(true); setPhase('review'); setEditPhase('working'); setEditStatus('Resuming your edit…')
+    pollEdit(jobId).catch((err) => { setEditErr(err instanceof Error ? err.message : 'Could not resume the edit.'); setEditPhase('error') })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
 
   // ---- first auto-edit: FREE (bundled with the blueprint) ----
   const runAutoEdit = async () => {
@@ -348,6 +365,9 @@ export default function Record() {
     try {
       const { jobId, takePath } = await autoEditTake(id, takeBlobRef.current)
       takePathRef.current = takePath
+      // Persist the in-flight job so a reload / leaving resumes this exact edit (the
+      // remix is already spent — never charge twice). Cleared when it finishes.
+      try { localStorage.setItem('twinai_edit_' + id, jobId) } catch { /* storage off */ }
       await pollEdit(jobId)
     } catch (e) {
       setEditErr(e instanceof Error ? e.message : 'Auto-edit failed.')
@@ -589,7 +609,7 @@ export default function Record() {
             </AnimatePresence>
 
             {/* review, show the edited render once ready, else the raw take */}
-            {phase === 'review' && (takeUrl || editUrl) && (
+            {phase === 'review' && (takeUrl || editUrl || editPhase === 'working') && (
               <div className="absolute inset-0 bg-black">
                 <video
                   key={editUrl ?? takeUrl ?? ''}
