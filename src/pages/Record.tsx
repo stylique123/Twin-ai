@@ -786,7 +786,7 @@ export default function Record() {
           {camReady && (
             <div className="flex flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-ink2/80 p-3">
               {phase === 'idle' && (
-                <button onClick={startCountdown} className="btn-gradient">
+                <button onClick={startCountdown} className="btn-gradient w-full py-3.5 text-base">
                   <Circle className="h-4 w-4 fill-current" /> Start recording
                 </button>
               )}
