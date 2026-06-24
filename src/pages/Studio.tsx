@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText, Wind, Activity, Flame, SlidersHorizontal } from 'lucide-react'
+import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText, Wind, Activity, Flame, SlidersHorizontal, Layers, Video, Mic } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { generateBlueprint, ingestReference, getJob, listBrandVoices } from '../lib/api'
 import type { BrandVoice } from '../lib/types'
@@ -23,6 +23,13 @@ const TONE = [
   { id: 'understated', label: 'Understated', note: 'Calm, credible, no hype — great for B2B / founders.', icon: Wind },
   { id: 'balanced', label: 'Balanced', note: 'Natural energy, your default.', icon: Activity },
   { id: 'punchy', label: 'Punchy', note: 'High-energy, bold hooks.', icon: Flame },
+] as const
+
+// DELIVERY decides whether the creator has to be on camera. Panel finding: the
+// founder/B2B persona wanted a "no-face" mode they could actually ship.
+const DELIVERY = [
+  { id: 'on_camera', label: 'On camera', note: 'You appear and deliver to camera.', icon: Video },
+  { id: 'voiceover', label: 'Voiceover / no face', note: 'Voiceover over screen-recordings, demos & b-roll — no face needed.', icon: Mic },
 ] as const
 
 // The studio ALWAYS reads the real video now: paste a link, we transcribe the
@@ -60,6 +67,11 @@ export default function Studio() {
   const [note, setNote] = useState(() => params.get('note') ?? '')
   const [fidelity, setFidelity] = useState<'close' | 'balanced' | 'loose'>('balanced')
   const [tone, setTone] = useState<'understated' | 'balanced' | 'punchy'>('balanced')
+  const [delivery, setDelivery] = useState<'on_camera' | 'voiceover'>('on_camera')
+  // Bulk mode: paste several links (one per line) and get a script for each in
+  // one run — the agency "batch a week in an afternoon" ask.
+  const [bulk, setBulk] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
   // Fidelity + tone are advanced knobs — hidden by default so the studio is a single
   // clear input (paste → make). Power users open "Advanced" to tune them.
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -99,27 +111,63 @@ export default function Studio() {
     throw new Error('Reading the video is taking longer than usual. Try again in a moment — you weren’t charged a remix.')
   }
 
+  // Read one real clip then write its blueprint. Returns the new generation id.
+  const runOne = async (link: string): Promise<string> => {
+    const transcript_id = await analyzeRealVideo(link)
+    setPhase('writing')
+    const gen = await generateBlueprint({
+      reference_url: link,
+      reference_note: note.trim(),
+      fidelity,
+      tone,
+      delivery,
+      transcript_id,
+    })
+    return gen.id
+  }
+
   const run = async () => {
     setErr(null)
-    if (!url.trim()) return setErr('Paste a reference link first.')
+    // In bulk mode the field holds one link per line; otherwise it's a single link.
+    const links = (bulk ? url.split(/\n+/) : [url]).map((l) => l.trim()).filter(Boolean)
+    if (!links.length) return setErr(bulk ? 'Paste at least one link, one per line.' : 'Paste a reference link first.')
     if (lowCredits) return setErr('That was your last remix. Upgrade to keep going.')
     setBusy(true)
     // Long clips can push the read past the advertised ~1-2 min. After 90s, swap
     // the footer copy so the progress overlay stays HONEST instead of looking stuck.
     const slowTimer = setTimeout(() => setSlowRead(true), 90_000)
     try {
-      // ALWAYS read the actual video first.
-      const transcript_id = await analyzeRealVideo(url.trim())
-      setPhase('writing')
-      const gen = await generateBlueprint({
-        reference_url: url.trim(),
-        reference_note: note.trim(),
-        fidelity,
-        tone,
-        transcript_id,
-      })
-      await refreshProfile()
-      navigate(`/result/${gen.id}`)
+      // Single link: the classic flow — straight to the finished script.
+      if (links.length === 1) {
+        const id = await runOne(links[0])
+        await refreshProfile()
+        navigate(`/result/${id}`)
+        return
+      }
+      // Bulk: process sequentially. Skip a link that can't be read; stop early if
+      // remixes run out. Each finished script lands in the Library.
+      let made = 0
+      let outOfRemixes = false
+      for (let i = 0; i < links.length; i++) {
+        setBulkProgress({ done: i, total: links.length })
+        setPhase('fetching')
+        try {
+          await runOne(links[i])
+          made++
+          await refreshProfile()
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : ''
+          if (/credit|remix|upgrade/i.test(msg)) { outOfRemixes = true; break }
+          // a single unreadable link shouldn't kill the batch — skip it
+        }
+      }
+      setBulkProgress(null)
+      if (made > 0) {
+        if (outOfRemixes) setErr(`Made ${made} of ${links.length} — that was your last remix.`)
+        navigate('/history')
+      } else {
+        setErr('None of those links could be read. Try different references.')
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Generation failed')
     } finally {
@@ -127,6 +175,7 @@ export default function Studio() {
       setSlowRead(false)
       setBusy(false)
       setPhase('idle')
+      setBulkProgress(null)
     }
   }
 
@@ -154,21 +203,48 @@ export default function Studio() {
           <div className="glass relative mt-9 space-y-6 p-6 sm:p-7">
             {/* Reference link */}
             <div>
-              <label className="eyebrow flex items-center gap-2">
-                <Link2 className="h-3.5 w-3.5" /> Reference link
-              </label>
-              <input
-                className="field mt-2"
-                placeholder="https://www.tiktok.com/@… or Reel / Short / YouTube link"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                disabled={busy}
-              />
+              <div className="flex items-center justify-between gap-2">
+                <label className="eyebrow flex items-center gap-2">
+                  <Link2 className="h-3.5 w-3.5" /> {bulk ? 'Reference links' : 'Reference link'}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setBulk((v) => !v)}
+                  disabled={busy}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50',
+                    bulk ? 'border-coral/50 bg-coral/10 text-cream' : 'border-white/10 text-stone hover:text-cream',
+                  )}
+                  title="Paste several links and get a script for each"
+                >
+                  <Layers className="h-3.5 w-3.5" /> Bulk
+                </button>
+              </div>
+              {bulk ? (
+                <textarea
+                  className="field mt-2 resize-none"
+                  rows={4}
+                  placeholder={'One link per line:\nhttps://www.tiktok.com/@…\nhttps://www.youtube.com/shorts/…'}
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={busy}
+                />
+              ) : (
+                <input
+                  className="field mt-2"
+                  placeholder="https://www.tiktok.com/@… or Reel / Short / YouTube link"
+                  value={url}
+                  onChange={(e) => setUrl(e.target.value)}
+                  disabled={busy}
+                />
+              )}
               <p className="mt-2 flex items-center gap-1.5 text-xs text-teal">
                 <ScanSearch className="h-3.5 w-3.5" /> We transcribe and analyze the real clip, every time.
               </p>
               <p className="mt-1.5 text-xs text-stone">
-                Best results: a short, punchy reel / Short / TikTok with a strong hook (under ~90s) from your niche — the one you wish you'd made.
+                {bulk
+                  ? 'One link per line. We write a script for each — one remix per link — and they all land in your Library.'
+                  : "Best results: a short, punchy reel / Short / TikTok with a strong hook (under ~90s) from your niche — the one you wish you'd made."}
               </p>
             </div>
 
@@ -247,6 +323,33 @@ export default function Studio() {
                 })}
               </div>
             </div>
+
+            {/* Delivery: on-camera vs no-face voiceover */}
+            <div>
+              <label className="eyebrow">Will you be on camera?</label>
+              <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+                {DELIVERY.map((d) => {
+                  const active = delivery === d.id
+                  return (
+                    <button
+                      key={d.id}
+                      onClick={() => setDelivery(d.id)}
+                      disabled={busy}
+                      className={cn(
+                        'rounded-card border p-3.5 text-left transition-all duration-300 disabled:opacity-50',
+                        active
+                          ? 'border-coral/50 bg-coral/10 shadow-glow'
+                          : 'border-white/8 bg-white/[0.03] hover:border-white/16',
+                      )}
+                    >
+                      <d.icon className={cn('h-4 w-4', active ? 'text-coral' : 'text-stone')} />
+                      <div className="mt-2 font-heading">{d.label}</div>
+                      <div className="text-xs text-stone">{d.note}</div>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
             </>)}
 
             {/* Action row */}
@@ -254,11 +357,12 @@ export default function Studio() {
               <button className="btn-gradient w-full" onClick={run} disabled={busy}>
                 {busy ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin" /> Reading the real clip…
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {bulkProgress ? `Making ${bulkProgress.done + 1} of ${bulkProgress.total}…` : 'Reading the real clip…'}
                   </>
                 ) : (
                   <>
-                    <Wand2 className="h-4 w-4" /> Remix
+                    <Wand2 className="h-4 w-4" /> {bulk ? 'Remix all links' : 'Remix'}
                   </>
                 )}
               </button>
@@ -292,7 +396,9 @@ export default function Studio() {
                     <BuildProgress
                       stages={STUDIO_STAGES}
                       active={Math.max(0, PHASE_ORDER.indexOf(phase) - 1)}
-                      footer={slowRead
+                      footer={bulkProgress
+                        ? `Batch in progress — ${bulkProgress.done + 1} of ${bulkProgress.total}. Each finished script lands in your Library.`
+                        : slowRead
                         ? "Still reading — longer clips take a little more. We don't charge a remix unless this finishes."
                         : "Reading the real clip takes ~1-2 min. Hang tight, we don't charge a remix unless this finishes."}
                     />

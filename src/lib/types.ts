@@ -1,6 +1,6 @@
 // Shared domain types for TwinAI
 
-export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'other'
+export type Platform = 'tiktok' | 'instagram' | 'youtube' | 'linkedin' | 'other'
 
 export interface CreatorDNA {
   niche: string
