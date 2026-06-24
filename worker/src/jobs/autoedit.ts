@@ -74,6 +74,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     let energy: 'high' | 'calm' = 'calm'
     let brollText = ''
     let coverText = ''
+    let scriptText = ''
     let brandStyle: string | undefined
     let brandColor: number | undefined
     let brandLogoPath: string | undefined
@@ -99,6 +100,8 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           ...(((bp?.shot_list as { shot?: string; notes?: string }[] | undefined) ?? []).map((s) => `${s?.shot ?? ''} ${s?.notes ?? ''}`)),
         ].filter(Boolean).join(' ').slice(0, 4000)
         coverText = chosenHook.slice(0, 120)
+        // The spoken script lines only — the caption fallback for no-speech takes.
+        scriptText = (((bp?.script as { line?: string }[] | undefined) ?? []).map((s) => s?.line ?? '').filter(Boolean).join(' ')).slice(0, 2000)
         // Pull the workspace brand kit + voice once: the kit themes the caption
         // style/color on new edits; the voice pacing tunes the energy default.
         let pacing = ''
@@ -141,6 +144,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       captionStyle: brandStyle,
       brollText,
       coverText,
+      scriptText,
       edl: editedEdl,
       // Skip the premium pass when watermarking so the burned-in mark stands (the
       // separate Revideo service wouldn't carry it). Watermarked = free, non-first export.
