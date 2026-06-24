@@ -595,6 +595,12 @@ export default function Record() {
               </div>
             )}
 
+            {/* Teleprompter status pill (idle only — the REC badge takes over while recording). */}
+            {camReady && !uploadMode && phase === 'idle' && (
+              <span className="absolute left-3 top-3 z-20 inline-flex items-center gap-1.5 rounded-full bg-black/55 px-2.5 py-1 text-xs font-semibold text-cream backdrop-blur">
+                Teleprompter <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-teal" />
+              </span>
+            )}
             {/* teleprompter overlay — only while recording yourself, never over an
                 uploaded clip and never on the review/edited result. */}
             {camReady && !uploadMode && phase !== 'review' && (
