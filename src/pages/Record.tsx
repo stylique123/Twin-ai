@@ -80,6 +80,12 @@ export default function Record() {
   const takePathRef = useRef<string | null>(null)
   const submitting = useRef(false) // blocks double-submit of a charged edit
   const [variation, setVariation] = useState(0)
+  // Per-shot capture: record each shot as its own segment via MediaRecorder
+  // pause/resume. shotBoundsRef holds the recorded-seconds at each cut, so the editor
+  // can cut exactly there and caption each shot from its script line.
+  const [shotIdx, setShotIdx] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const shotBoundsRef = useRef<number[]>([])
 
   // teleprompter controls
   const [scrolling, setScrolling] = useState(false)
@@ -287,6 +293,9 @@ export default function Record() {
     rec.start()
     setPhase('recording')
     setElapsed(0)
+    setShotIdx(0)
+    setPaused(false)
+    shotBoundsRef.current = []
     resetPrompt()
     setScrolling(true)
   }
@@ -306,14 +315,14 @@ export default function Record() {
   // elapsed timer while recording — auto-stops at the max length so a take can
   // never run away (and land the user with a huge upload + slow, costly edit).
   useEffect(() => {
-    if (phase !== 'recording') return
+    if (phase !== 'recording' || paused) return
     const t = setInterval(() => setElapsed((e) => {
       const next = e + 0.1
       if (next >= MAX_RECORD_SECS) { recorderRef.current?.stop(); setScrolling(false) }
       return next
     }), 100)
     return () => clearInterval(t)
-  }, [phase])
+  }, [phase, paused])
 
   const startCountdown = () => {
     setCount(3)
@@ -323,9 +332,44 @@ export default function Record() {
     recorderRef.current?.stop()
     setScrolling(false)
   }
+
+  // Per-shot capture: pause after the current shot so the creator can reset / reposition /
+  // change location, then resume for the next. Each pause records the cut point (recorded
+  // seconds so far). MediaRecorder pause/resume yields ONE clean stitched video.
+  const nextShot = () => {
+    const rec = recorderRef.current
+    if (!rec || rec.state !== 'recording') return
+    rec.pause()
+    shotBoundsRef.current = [...shotBoundsRef.current, Number(elapsed.toFixed(2))]
+    setPaused(true)
+    setScrolling(false)
+    setShotIdx((s) => Math.min(s + 1, Math.max(0, lines.length - 1)))
+  }
+  const resumeShot = () => {
+    const rec = recorderRef.current
+    if (!rec || rec.state !== 'paused') return
+    rec.resume()
+    setPaused(false)
+    setScrolling(true)
+  }
+
+  // Jump the prompter to the shot you're about to record when it advances.
+  useEffect(() => {
+    const el = promptRef.current
+    const tgt = lineEls.current[shotIdx]
+    if (el && tgt) {
+      offsetRef.current = Math.max(0, tgt.offsetTop - el.clientHeight * 0.34)
+      el.scrollTop = offsetRef.current
+      setActive(shotIdx)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shotIdx])
   const reshoot = () => {
     setPhase('idle')
     resetPrompt()
+    setShotIdx(0)
+    setPaused(false)
+    shotBoundsRef.current = []
     setEditPhase('none')
     setEditUrl(null)
     if (editUrl) URL.revokeObjectURL(editUrl)
@@ -598,9 +642,14 @@ export default function Record() {
             {/* recording HUD */}
             {phase === 'recording' && (
               <div className="absolute left-3 top-3 flex items-center gap-2">
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-coral/90 px-2.5 py-1 text-xs font-bold text-cream">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-cream" /> REC {elapsed.toFixed(1)}s
+                <span className={cn('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold text-cream', paused ? 'bg-black/70' : 'bg-coral/90')}>
+                  <span className={cn('h-2 w-2 rounded-full bg-cream', !paused && 'animate-pulse')} /> {paused ? 'PAUSED' : `REC ${elapsed.toFixed(1)}s`}
                 </span>
+                {lines.length > 1 && (
+                  <span className="rounded-full bg-black/60 px-2 py-1 text-xs font-semibold text-amber">
+                    {paused ? `Line up shot ${shotIdx + 1}` : `Shot ${shotIdx + 1} of ${lines.length}`}
+                  </span>
+                )}
                 {MAX_RECORD_SECS - elapsed <= 15 && (
                   <span className="rounded-full bg-black/60 px-2 py-1 text-xs font-semibold text-amber">
                     Wrapping at {MAX_RECORD_SECS}s · {Math.max(0, Math.ceil(MAX_RECORD_SECS - elapsed))}s left
@@ -693,9 +742,20 @@ export default function Record() {
                 </button>
               )}
               {(phase === 'recording' || phase === 'countdown') && (
-                <button onClick={stopRecording} className="btn-gradient">
-                  <Square className="h-4 w-4 fill-current" /> Stop
-                </button>
+                <>
+                  {paused ? (
+                    <button onClick={resumeShot} className="btn-gradient">
+                      <Circle className="h-4 w-4 fill-current" /> Record shot {shotIdx + 1}
+                    </button>
+                  ) : shotIdx < lines.length - 1 ? (
+                    <button onClick={nextShot} className="btn-ghost" title="Pause, reposition / change location, then record the next shot">
+                      <Pause className="h-4 w-4" /> Cut · next shot
+                    </button>
+                  ) : null}
+                  <button onClick={stopRecording} className="btn-gradient">
+                    <Square className="h-4 w-4 fill-current" /> Finish
+                  </button>
+                </>
               )}
               {phase === 'review' && (
                 <>
