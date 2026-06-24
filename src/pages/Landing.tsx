@@ -542,9 +542,66 @@ function PasteDemoSection() {
             <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
           </button>
         </div>
-        <p className="mt-3 text-xs text-stone">Free to start. No card required.</p>
+        <p className="mt-3 text-xs text-stone">Your first of <span className="text-cream">3 free remixes</span>. No card required.</p>
+        <PasteMicroDemo />
       </Reveal>
     </section>
+  )
+}
+
+/* Live "paste → script" micro-demo under the Drop-a-link input: a reference card
+   on the left analysing, a script in-your-voice materialising on the right. The
+   progress bar loops; the script lines stagger in when scrolled into view, so the
+   transformation reads at a glance without a video. */
+function PasteMicroDemo() {
+  const lines = [
+    'Hook: "Everyone gets this wrong…"',
+    'Beat 1 — bust the myth, fast',
+    'Beat 2 — the real reason',
+    'Payoff — your one-liner',
+    'CTA: follow for part 2',
+  ]
+  return (
+    <div className="mx-auto mt-9 grid max-w-2xl items-stretch gap-3 text-left sm:grid-cols-[1fr_auto_1.1fr] sm:items-center">
+      <div className="rounded-card border border-white/10 bg-ink2/70 p-4">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-stone">
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-coral/20"><Play className="h-2 w-2 text-coral" /></span> Reference pasted
+        </div>
+        <div className="mt-2 text-sm font-semibold text-cream">2.1M views · TikTok</div>
+        <div className="mt-0.5 truncate text-[11px] text-stone">tiktok.com/@creator/…</div>
+        <motion.div
+          className="mt-3 h-1 rounded-full bg-gradient-to-r from-amber via-coral to-teal"
+          initial={{ width: '4%' }}
+          animate={{ width: ['4%', '100%', '100%'] }}
+          transition={{ duration: 3, repeat: Infinity, times: [0, 0.55, 1], ease: EASE }}
+        />
+        <div className="mt-1.5 flex items-center gap-1 text-[10px] text-teal"><Sparkles className="h-2.5 w-2.5" /> Reading the structure…</div>
+      </div>
+      <div className="flex items-center justify-center py-1">
+        <motion.div animate={{ x: [0, 5, 0] }} transition={{ duration: 1.4, repeat: Infinity, ease: 'easeInOut' }}>
+          <ArrowRight className="h-5 w-5 rotate-90 text-amber sm:rotate-0" />
+        </motion.div>
+      </div>
+      <div className="rounded-card border border-teal/20 bg-ink2/70 p-4">
+        <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-stone">
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-teal/20"><FileText className="h-2 w-2 text-teal" /></span> Script in your voice
+        </div>
+        <div className="mt-2.5 space-y-1.5">
+          {lines.map((l, i) => (
+            <motion.div
+              key={l}
+              className="flex items-center gap-1.5 text-[11px] text-sand"
+              initial={{ opacity: 0, x: 8 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true, margin: '-10%' }}
+              transition={{ duration: 0.45, delay: 0.15 + i * 0.18, ease: EASE }}
+            >
+              <Check className="h-3 w-3 shrink-0 text-teal" /> {l}
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -760,9 +817,9 @@ function GalleryShowcase() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {SHOWCASE_CARDS.map((c) => (
-                <div key={c.title} className="overflow-hidden rounded-card border border-white/8 bg-ink2/60">
-                  <div className={cn('relative grid aspect-[4/5] place-items-center bg-gradient-to-br to-ink', c.tint)}>
-                    <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover" src={c.video} />
+                <div key={c.title} className="group overflow-hidden rounded-card border border-white/8 bg-ink2/60 transition-all duration-300 hover:-translate-y-1 hover:border-white/16 hover:shadow-glass">
+                  <div className={cn('relative grid aspect-[4/5] place-items-center overflow-hidden bg-gradient-to-br to-ink', c.tint)}>
+                    <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" src={c.video} />
                     <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-transparent to-ink/20" />
                     <span className="relative grid h-10 w-10 place-items-center rounded-full bg-ink/55 ring-1 ring-white/25 backdrop-blur-sm"><Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" /></span>
                     <span className={cn('absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', c.hot ? 'border-coral/50 bg-coral/20 text-coral' : 'border-amber/50 bg-amber/20 text-amber')}>
@@ -922,6 +979,14 @@ function ValueStack() {
   )
 }
 
+const REPLACES = [
+  { t: 'Idea research + endless scrolling', p: 'hours' },
+  { t: 'AI scripting (ChatGPT Plus)', p: '$20/mo' },
+  { t: 'Teleprompter app', p: '$10/mo' },
+  { t: 'Editing (CapCut Pro)', p: '$10/mo' },
+  { t: 'Captions + scheduler', p: '$27/mo' },
+]
+
 function PricingSection() {
   return (
     <section id="pricing" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
@@ -934,7 +999,42 @@ function PricingSection() {
           Start free with 3 remixes, no card required. {PAYMENTS_LIVE ? 'Upgrade any time.' : 'Paid plans are launching soon.'}
         </p>
       </Reveal>
-      <Stagger className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
+
+      {/* 10× value — the stack of tools (and the evening) TwinAI replaces, vs one app. */}
+      <Reveal className="mx-auto mt-12 max-w-3xl">
+        <div className="rounded-panel border border-white/8 bg-ink2/50 p-6 sm:p-8">
+          <p className="text-center text-xs font-semibold uppercase tracking-wider text-stone">What TwinAI replaces</p>
+          <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto_0.9fr] sm:items-center">
+            <div className="space-y-2 text-sm">
+              {REPLACES.map((r) => (
+                <div key={r.t} className="flex items-center justify-between gap-3 text-sand">
+                  <span className="flex items-center gap-2"><Minus className="h-3.5 w-3.5 shrink-0 text-stone" /> {r.t}</span>
+                  <span className="shrink-0 text-stone line-through">{r.p}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between gap-3 border-t border-white/8 pt-2.5 text-cream">
+                <span className="font-semibold">5 tools + your whole evening</span>
+                <span className="font-semibold">~$67/mo</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-center py-1">
+              <ArrowRight className="h-6 w-6 rotate-90 text-amber sm:rotate-0" />
+            </div>
+            <motion.div
+              whileInView={{ scale: [0.96, 1] }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, ease: EASE }}
+              className="rounded-card border border-teal/25 bg-teal/[0.06] p-5 text-center shadow-glow"
+            >
+              <p className="text-[11px] uppercase tracking-wider text-teal">One app</p>
+              <p className="mt-1 font-display text-4xl text-cream">$9<span className="text-base text-stone">/mo</span></p>
+              <p className="mt-2 text-xs leading-relaxed text-sand">Reference → posted, in minutes. 10× the output, a fraction of the cost.</p>
+            </motion.div>
+          </div>
+        </div>
+      </Reveal>
+
+      <Stagger className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
         {PLANS.filter((p) => !p.hidden).map((p) => {
           const featured = p.id === 'professional'
           return (
