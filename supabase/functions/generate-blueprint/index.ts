@@ -264,7 +264,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; delivery?: string; transcript_id?: string }
   try {
     body = await req.json()
   } catch {
@@ -303,6 +303,20 @@ Deno.serve(async (req: Request) => {
       'TONE = PUNCHY. High-energy, bold, pattern-interrupting hooks and fast, emphatic delivery. Lean into momentum and big stakes — while staying within the creator\'s DNA and avoiding outright false claims.',
   }
   const toneRule = TONE_RULE[tone]
+  // DELIVERY decides whether the creator has to be ON CAMERA. The panel's founder
+  // persona wanted a "no-face / voiceover" mode — a script shot entirely as
+  // voiceover over screen-recordings, demos and b-roll, so camera-shy founders can
+  // still ship. Independent of tone/fidelity.
+  const delivery = ['on_camera', 'voiceover'].includes(body.delivery ?? '')
+    ? body.delivery!
+    : 'on_camera'
+  const DELIVERY_RULE: Record<string, string> = {
+    on_camera:
+      'DELIVERY = ON CAMERA. The creator appears on camera delivering the lines; talking-head framing is fine alongside b-roll.',
+    voiceover:
+      'DELIVERY = VOICEOVER / NO FACE. The creator does NOT appear on camera. Write every line as voiceover narration, and write each shot DIRECTION as something to SHOW, never a person talking to camera: screen recordings, product/app demos, b-roll, hands / over-the-shoulder, and on-screen text. The hook must land as on-screen text + voiceover. Forbid "talk to camera", "talking head" and "look at lens" directions. Built for founders/B2B who will not film their face.',
+  }
+  const deliveryRule = DELIVERY_RULE[delivery]
   if (!reference_url) return json({ error: 'reference_url is required' }, 400)
   if (reference_url.length > 2048) return json({ error: 'That reference link is too long.' }, 400)
 
@@ -436,6 +450,7 @@ ${referenceBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
 - ${fidelityRule}
 - ${toneRule}
+- ${deliveryRule}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.

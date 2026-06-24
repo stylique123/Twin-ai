@@ -16,6 +16,7 @@ const PLACEHOLDER: Record<Platform, string> = {
   tiktok: '@yourhandle  or  https://tiktok.com/@yourhandle',
   instagram: '@yourhandle  or  https://instagram.com/@yourhandle',
   youtube: '@yourchannel  or  https://youtube.com/@yourchannel',
+  linkedin: '@yourname  or  https://linkedin.com/in/yourname',
   other: '@yourhandle',
 }
 
