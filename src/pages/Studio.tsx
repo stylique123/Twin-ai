@@ -164,7 +164,9 @@ export default function Studio() {
       if (links.length === 1) {
         const id = await runOne(links[0])
         await refreshProfile()
-        navigate(`/result/${id}`)
+        // One flow: straight to the create screen (script + hook + record/upload +
+        // edit + download, one page). The full blueprint stays a click away there.
+        navigate(`/record/${id}`)
         return
       }
       // Bulk: process sequentially. Skip a link that can't be read; stop early if
