@@ -24,9 +24,9 @@ const MAX_RECORD_SECS = 180
 // the moment inspiration hits. Everything stays client-side, the take is yours
 // to download (Phase 6 will hand it to the auto-editor).
 const EDIT_STYLES = [
-  { id: 'punchy', label: 'Punchy', note: 'Fast jump-cuts, energetic captions' },
-  { id: 'clean', label: 'Clean', note: 'Tidy cuts, calm captions' },
-  { id: 'cinematic', label: 'Cinematic', note: 'Smoother pacing, softer captions' },
+  { id: 'punchy', label: 'Punchy', note: 'Fast jump-cuts, energetic captions', desc: 'Fast-paced, high-energy edits. Great for social media.', tint: 'from-coral/35 to-amber/20', popular: true },
+  { id: 'clean', label: 'Clean', note: 'Tidy cuts, calm captions', desc: 'Clean cuts, natural pacing, a professional look.', tint: 'from-teal/35 to-teal/10', popular: false },
+  { id: 'cinematic', label: 'Cinematic', note: 'Smoother pacing, softer captions', desc: 'Story-driven edits with smooth transitions and mood.', tint: 'from-amber/35 to-coral/10', popular: false },
 ] as const
 
 export default function Record() {
@@ -888,24 +888,35 @@ export default function Record() {
           </div>
 
           <div className="glass p-5">
-            <h3 className="font-heading">Edit style</h3>
-            <p className="mt-1 text-sm text-stone">How your auto-edit should feel.</p>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {EDIT_STYLES.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => chooseStyle(s.id)}
-                  title={s.note}
-                  className={cn(
-                    'rounded-card border px-2 py-2.5 text-center text-xs font-medium transition-colors',
-                    editStyle === s.id ? 'border-coral/55 bg-coral/10 text-cream' : 'border-white/8 bg-white/[0.02] text-stone hover:border-white/16',
-                  )}
-                >
-                  {s.label}
-                </button>
-              ))}
+            <h3 className="font-heading">Choose edit style</h3>
+            <p className="mt-1 text-sm text-stone">This helps us edit your video the way you want.</p>
+            <div className="mt-3 space-y-2">
+              {EDIT_STYLES.map((s) => {
+                const active = editStyle === s.id
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => chooseStyle(s.id)}
+                    className={cn(
+                      'flex w-full items-center gap-3 rounded-card border p-3 text-left transition-colors',
+                      active ? 'border-coral/55 bg-coral/10' : 'border-white/8 bg-white/[0.02] hover:border-white/16',
+                    )}
+                  >
+                    <span className={cn('h-9 w-9 shrink-0 rounded-xl bg-gradient-to-br', s.tint)} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className={cn('text-sm font-semibold', active ? 'text-cream' : 'text-sand')}>{s.label}</span>
+                        {s.popular && <span className="rounded-full bg-coral/20 px-1.5 py-0.5 text-[10px] font-bold text-coral">Popular</span>}
+                      </div>
+                      <div className="text-[11px] leading-snug text-stone">{s.desc}</div>
+                    </div>
+                    <span className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-full border', active ? 'border-coral bg-coral' : 'border-white/20')}>
+                      {active && <Check className="h-3 w-3 text-ink" />}
+                    </span>
+                  </button>
+                )
+              })}
             </div>
-            <p className="mt-2 text-[11px] text-stone">{EDIT_STYLES.find((s) => s.id === editStyle)?.note}</p>
           </div>
 
           <div className="glass p-5">
