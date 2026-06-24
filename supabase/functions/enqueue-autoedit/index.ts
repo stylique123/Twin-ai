@@ -44,7 +44,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Easy there — too many edits in a row. Give it a few seconds.' }, 429)
   }
 
-  let body: { generation_id?: string; take_path?: string; remake?: boolean; variation?: number; edl?: unknown }
+  let body: { generation_id?: string; take_path?: string; remake?: boolean; variation?: number; edl?: unknown; shots?: { bounds?: unknown; total?: unknown; lines?: unknown } }
   try {
     body = await req.json()
   } catch {
@@ -53,6 +53,13 @@ Deno.serve(async (req: Request) => {
   const generationId = (body.generation_id ?? '').trim()
   const takePath = (body.take_path ?? '').trim()
   const variation = Number.isFinite(body.variation) ? Number(body.variation) : 0
+  // Per-shot capture metadata (optional) — cut points + the script line per shot, so the
+  // worker captions each segment from the script. Validated + clamped; ignored if malformed.
+  const sb = body.shots
+  const shots = (sb && Array.isArray(sb.bounds) && Array.isArray(sb.lines) && typeof sb.total === 'number' && sb.total > 0
+    && sb.bounds.every((n) => typeof n === 'number' && Number.isFinite(n)))
+    ? { bounds: (sb.bounds as number[]).slice(0, 50), total: sb.total, lines: (sb.lines as unknown[]).slice(0, 60).map((s) => String(s).slice(0, 400)) }
+    : null
   // A REFINE carries the creator's edited EDL — they're correcting a video they
   // already paid to make, so it re-renders FREE (rate-limited above, not billed).
   const refineEdl = body.edl && typeof body.edl === 'object' ? body.edl : null
@@ -121,7 +128,7 @@ Deno.serve(async (req: Request) => {
       status: 'queued',
       // Stamp the billing outcome so a dead-lettered job refunds the exact charged
       // amount, exactly once, via the trg_refund_failed_autoedit trigger (#4).
-      payload: { generation_id: generationId || null, take_path: takePath, variation, charged: charge, cost: REMAKE_COST, ...(refineEdl ? { edl: refineEdl } : {}) },
+      payload: { generation_id: generationId || null, take_path: takePath, variation, charged: charge, cost: REMAKE_COST, ...(refineEdl ? { edl: refineEdl } : {}), ...(shots ? { shots } : {}) },
     })
     .select('id')
     .single()

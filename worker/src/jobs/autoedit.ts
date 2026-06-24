@@ -137,6 +137,12 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // is what the creator wants, so we skip the expensive render. This caps render
     // COGS at ~one premium pass per blueprint and makes remakes nearly free.
     const isFirstEdit = variation === 0 && !editedEdl
+    // Per-shot capture: cut points + the script line per shot, so each segment is
+    // captioned from the script (perfect timing) instead of guessed by transcription.
+    const ps = payload.shots as { bounds?: unknown; total?: unknown; lines?: unknown } | undefined
+    const shots = (ps && Array.isArray(ps.bounds) && Array.isArray(ps.lines) && typeof ps.total === 'number' && ps.total > 1)
+      ? { bounds: (ps.bounds as number[]).filter((n) => Number.isFinite(n)), total: ps.total as number, lines: (ps.lines as unknown[]).map((s) => String(s)) }
+      : undefined
     const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl, baseRevideoFile } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
@@ -145,6 +151,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       brollText,
       coverText,
       scriptText,
+      shots,
       edl: editedEdl,
       // Skip the premium pass when watermarking so the burned-in mark stands (the
       // separate Revideo service wouldn't carry it). Watermarked = free, non-first export.

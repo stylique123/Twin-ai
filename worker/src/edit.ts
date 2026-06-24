@@ -109,6 +109,10 @@ export interface EditOptions {
   // we burn THIS as captions, evenly timed across the clip — so a no-speech upload
   // still gets on-brand captions instead of silently shipping a caption-less video.
   scriptText?: string
+  // Per-shot capture: cut points (recorded seconds) + the script line per shot. When
+  // present, captions are built from the script PER SEGMENT (perfect timing, tied to
+  // what the creator actually filmed) instead of transcribing the take.
+  shots?: { bounds: number[]; total: number; lines: string[] }
   // Manual re-render: when present, autoEdit renders FROM this (creator-edited)
   // Edit Decision List instead of re-detecting cuts / re-transcribing. This is the
   // bridge that makes the manual Refine panel flow back through this same renderer.
@@ -551,6 +555,20 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     if (edl) {
       words = (edl.captions.words ?? []).filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end))
       durationSec = edl.durationSec ?? 0
+    } else if (captions && opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
+      // Per-shot capture: caption each segment from its SCRIPT line, timed to the
+      // window the creator recorded it in. Perfect captions, no transcription guessing.
+      prog('transcribing', 42, 'Captioning your shots…')
+      const sh = opts.shots
+      durationSec = sh.total
+      const cuts = [0, ...sh.bounds.filter((n) => Number.isFinite(n) && n > 0 && n < sh.total).sort((a, b) => a - b), sh.total]
+      for (let i = 0; i < cuts.length - 1; i++) {
+        const toks = String(sh.lines[i] ?? '').split(/\s+/).filter(Boolean)
+        if (!toks.length) continue
+        const s0 = cuts[i], s1 = cuts[i + 1]
+        const per = Math.max(0.12, (s1 - s0 - 0.2) / toks.length)
+        toks.forEach((w, k) => words.push({ w, start: s0 + 0.1 + k * per, end: s0 + 0.1 + (k + 1) * per }))
+      }
     } else if (captions) {
       prog('transcribing', 42, 'Reading your words…')
       await run('ffmpeg', ['-y', '-i', base, '-vn', '-ac', '1', '-ar', '16000', audio], 120_000)

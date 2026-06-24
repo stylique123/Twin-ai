@@ -430,7 +430,12 @@ export default function Record() {
     setEditPhase('working')
     setEditStatus('Uploading your take…'); setEditPct(3)
     try {
-      const { jobId, takePath } = await autoEditTake(id, takeBlobRef.current)
+      // Per-shot capture: hand the editor the cut points + the script line per shot so
+      // it cuts exactly where the creator did and captions each segment from the script.
+      const shots = shotBoundsRef.current.length
+        ? { bounds: shotBoundsRef.current, total: Number(elapsed.toFixed(2)), lines: lines.map((l) => l.text) }
+        : undefined
+      const { jobId, takePath } = await autoEditTake(id, takeBlobRef.current, shots)
       takePathRef.current = takePath
       // Persist the in-flight job so a reload / leaving resumes this exact edit (the
       // remix is already spent — never charge twice). Cleared when it finishes.

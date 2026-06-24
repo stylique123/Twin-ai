@@ -149,7 +149,7 @@ export interface IngestJob {
 // First auto-edit is FREE (bundled with the blueprint). Uploads the take, then
 // enqueues THROUGH the edge function, the only credit-enforced path. The server
 // decides free-vs-paid, so the client can't grant itself a free render.
-export async function autoEditTake(generationId: string, blob: Blob): Promise<{ jobId: string; takePath: string }> {
+export async function autoEditTake(generationId: string, blob: Blob, shots?: { bounds: number[]; total: number; lines: string[] }): Promise<{ jobId: string; takePath: string }> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
   const uid = auth.user.id
@@ -162,7 +162,7 @@ export async function autoEditTake(generationId: string, blob: Blob): Promise<{ 
   if (up.error) throw up.error
 
   const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
-    body: { generation_id: generationId, take_path },
+    body: { generation_id: generationId, take_path, ...(shots ? { shots } : {}) },
   })
   if (error) throw new Error(await readInvokeError(error))
   return { jobId: (data as { job_id: string }).job_id, takePath: take_path }
