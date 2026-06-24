@@ -1,11 +1,45 @@
 import { rm, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { spawn } from 'node:child_process'
 import { db, updateJobProgress, type Job } from '../db.js'
 import { env } from '../env.js'
 import { autoEdit, applyWatermark, applyLogo } from '../edit.js'
 import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
+
+// Upload scenes: detect scene cuts in a clip (PySceneDetect) so a multi-scene upload
+// gets per-scene boundaries → the SAME per-shot script-caption path the record flow
+// uses. CPU, fail-open: any failure returns no scenes and the edit proceeds normally.
+function detectScenes(file: string): Promise<{ bounds: number[]; total: number }> {
+  return new Promise((resolve) => {
+    const done = (b: number[], t: number) => resolve({ bounds: b, total: t })
+    try {
+      const py = spawn('python3', [join(import.meta.dirname, '..', '..', 'scene_detect.py'), file], { stdio: ['ignore', 'pipe', 'ignore'] })
+      let out = ''
+      const timer = setTimeout(() => { try { py.kill() } catch { /* */ } done([], 0) }, 60_000)
+      py.stdout.on('data', (d) => { out += d })
+      py.on('close', () => {
+        clearTimeout(timer)
+        try {
+          const j = JSON.parse(out.trim()) as { bounds?: unknown; total?: unknown }
+          done(Array.isArray(j.bounds) ? (j.bounds as unknown[]).filter((n): n is number => typeof n === 'number') : [], typeof j.total === 'number' ? j.total : 0)
+        } catch { done([], 0) }
+      })
+      py.on('error', () => { clearTimeout(timer); done([], 0) })
+    } catch { done([], 0) }
+  })
+}
+
+// Split a script into n roughly-equal caption chunks — one per detected scene.
+function splitScript(text: string, n: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean)
+  if (n <= 1 || !words.length) return [text]
+  const per = Math.ceil(words.length / n)
+  const out: string[] = []
+  for (let i = 0; i < n; i++) out.push(words.slice(i * per, (i + 1) * per).join(' '))
+  return out
+}
 
 // Handles `autoedit` jobs.
 // payload: { generation_id?: string, take_path: string, skip_captions?: boolean }
@@ -140,9 +174,21 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // Per-shot capture: cut points + the script line per shot, so each segment is
     // captioned from the script (perfect timing) instead of guessed by transcription.
     const ps = payload.shots as { bounds?: unknown; total?: unknown; lines?: unknown } | undefined
-    const shots = (ps && Array.isArray(ps.bounds) && Array.isArray(ps.lines) && typeof ps.total === 'number' && ps.total > 1)
+    let shots = (ps && Array.isArray(ps.bounds) && Array.isArray(ps.lines) && typeof ps.total === 'number' && ps.total > 1)
       ? { bounds: (ps.bounds as number[]).filter((n) => Number.isFinite(n)), total: ps.total as number, lines: (ps.lines as unknown[]).map((s) => String(s)) }
       : undefined
+    // Uploads / multi-scene clips: no client per-shot boundaries → detect scene cuts so
+    // the editor still cuts + captions per scene (uploads first-class). Conservative —
+    // only when >=2 interior cuts (a genuinely multi-scene clip), so a single-shot
+    // recording keeps its real transcribed captions. Fail-open.
+    if (!shots && scriptText && scriptText.trim()) {
+      try {
+        const det = await detectScenes(localTake)
+        if (det.total > 1 && det.bounds.length >= 2) {
+          shots = { bounds: det.bounds, total: det.total, lines: splitScript(scriptText, det.bounds.length + 1) }
+        }
+      } catch { /* keep undefined */ }
+    }
     const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl, baseRevideoFile } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
