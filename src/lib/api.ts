@@ -305,6 +305,45 @@ export async function setGenerationApproved(id: string, approved: boolean): Prom
   return !error
 }
 
+// ---- Client approval: agency shares /review/:token with a client -----------
+// The client watches the rendered reel + reads the script and approves or
+// requests changes, no account. Minting the token is owner-gated (RPC); the
+// public read/submit go through the `review` edge fn (service role signs media).
+export async function createReviewLink(generationId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('ensure_review_token', { p_gen: generationId })
+  if (error || !data) return null
+  return `${window.location.origin}/review/${data}`
+}
+
+export interface ReviewPayload {
+  brand: string
+  hook: string
+  script: string[]
+  reference_url: string | null
+  video_url: string | null
+  thumb_url: string | null
+  status: 'pending' | 'approved' | 'changes'
+  note: string | null
+  created_at: string
+}
+
+export async function getReview(token: string): Promise<ReviewPayload | null> {
+  const { data, error } = await supabase.functions.invoke('review', { body: { action: 'get', token } })
+  if (error || !data || (data as { error?: string }).error) return null
+  return data as ReviewPayload
+}
+
+export async function submitReview(
+  token: string,
+  decision: 'approved' | 'changes',
+  note: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.functions.invoke('review', {
+    body: { action: 'submit', token, decision, note },
+  })
+  return !error && !!(data as { ok?: boolean })?.ok
+}
+
 // Sign storage paths in the private `edits` bucket (rendered MP4s + cover JPEGs)
 // so the Library can show finished work. Returns a path->signedUrl map; any path
 // that fails to sign is simply omitted (caller falls back to a placeholder).

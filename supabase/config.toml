@@ -35,3 +35,8 @@ verify_jwt = false
 [functions.social]
 verify_jwt = false
 
+# Client approval: the client opens /review/:token with no Supabase JWT. The
+# unguessable review_token is the access control; without this it would 401.
+[functions.review]
+verify_jwt = false
+

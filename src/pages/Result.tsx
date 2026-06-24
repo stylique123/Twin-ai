@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
   Captions, ListChecks, Wand2, Timer, Send, Loader2, Video, ExternalLink,
-  SlidersHorizontal, Play, BadgeCheck,
+  SlidersHorizontal, Play, BadgeCheck, Link2, MessageSquare, Users,
 } from 'lucide-react'
 
 // Phase-0 guided publishing: deep-link straight into each platform's uploader.
@@ -14,7 +14,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, fetchEdl, getJob, logEvent } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, getJob, logEvent } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import type { Generation, EditDecisionList } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -217,6 +217,7 @@ export default function Result() {
       </section>
 
       <div className="mx-auto max-w-3xl space-y-4 px-5 py-8">
+        {isAgency && <ClientApprovalCard gen={gen} />}
         <Section icon={Activity} title="Why this format works">
           <ul className="space-y-2">
             {b.reference_read.why_it_works.map((w, i) => (
@@ -502,6 +503,68 @@ function Spec({ label, value }: { label: string; value: string }) {
     <div className="rounded-card border border-white/8 bg-white/[0.02] p-3.5">
       <div className="text-xs uppercase tracking-wider text-stone">{label}</div>
       <div className="mt-1 text-sm text-cream">{value || '·'}</div>
+    </div>
+  )
+}
+
+// Agency → client approval. Mints (idempotently) a login-free /review/:token link
+// the client opens to watch the finished reel and Approve / Request changes; the
+// decision flows back into review_status (and the internal `approved` flag).
+function ClientApprovalCard({ gen }: { gen: Generation }) {
+  const [link, setLink] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const status = gen.review_status ?? 'none'
+
+  const make = async () => {
+    setBusy(true)
+    const url = await createReviewLink(gen.id)
+    setBusy(false)
+    if (!url) return
+    setLink(url)
+    try {
+      await navigator.clipboard.writeText(url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1600)
+    } catch { /* clipboard blocked — link is shown to copy manually */ }
+  }
+
+  const badge =
+    status === 'approved' ? { cls: 'border-teal/40 bg-teal/10 text-teal', icon: BadgeCheck, label: 'Client approved' }
+    : status === 'changes' ? { cls: 'border-amber/40 bg-amber/10 text-amber', icon: MessageSquare, label: 'Changes requested' }
+    : status === 'pending' ? { cls: 'border-white/15 bg-white/5 text-sand', icon: Loader2, label: 'Waiting on your client' }
+    : null
+
+  return (
+    <div className="rounded-card border border-white/10 bg-white/[0.02] p-5">
+      <div className="flex items-center justify-between gap-3">
+        <p className="inline-flex items-center gap-2 font-heading text-cream">
+          <Users className="h-4 w-4 text-amber" /> Client approval
+        </p>
+        {badge && (
+          <span className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold', badge.cls)}>
+            <badge.icon className="h-3.5 w-3.5" /> {badge.label}
+          </span>
+        )}
+      </div>
+      <p className="mt-1.5 text-sm text-stone">
+        Send your client a private link to watch this video and sign off — no account needed. Their decision shows up right here.
+      </p>
+
+      {status === 'changes' && gen.review_note && (
+        <p className="mt-3 rounded-lg bg-amber/10 px-3 py-2 text-sm text-sand">“{gen.review_note}”</p>
+      )}
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
+        <button onClick={make} className="btn-ghost py-2 text-sm" disabled={busy}>
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+          {link ? 'Copy approval link' : status === 'none' ? 'Create approval link' : 'Copy approval link'}
+        </button>
+        {copied && <span className="inline-flex items-center gap-1 text-xs text-teal"><Check className="h-3.5 w-3.5" /> Copied to clipboard</span>}
+      </div>
+      {link && (
+        <p className="mt-2 break-all rounded-lg border border-white/8 bg-ink/40 px-3 py-2 text-xs text-stone">{link}</p>
+      )}
     </div>
   )
 }

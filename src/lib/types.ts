@@ -120,6 +120,9 @@ export interface Generation {
   take_path?: string | null
   edl_path?: string | null
   approved?: boolean // agency: marked client-approved before record/post
+  // Client approval link (agency → client, login-free /review/:token).
+  review_status?: 'none' | 'pending' | 'approved' | 'changes'
+  review_note?: string | null
   created_at: string
 }
 
