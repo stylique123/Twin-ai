@@ -123,12 +123,13 @@ export default function Record() {
   // the prompter opens with exactly what they decided to shoot.
   const lines = useMemo(() => {
     const b = gen?.blueprint
-    if (!b) return [] as { kind: 'hook' | 'line'; text: string }[]
-    const out: { kind: 'hook' | 'line'; text: string }[] = []
+    type Beat = { kind: 'hook' | 'line'; text: string; shot: number; label: string; note?: string }
+    if (!b) return [] as Beat[]
+    const out: Beat[] = []
     const hook = gen?.selected_hook ?? b.hook_options?.[0]
-    if (hook) out.push({ kind: 'hook', text: hook })
+    if (hook) out.push({ kind: 'hook', text: hook, shot: 1, label: 'Hook', note: b.shot_list?.[0]?.framing?.slice(0, 90) })
     for (const s of b.script ?? []) {
-      if (s.line?.trim()) out.push({ kind: 'line', text: s.line })
+      if (s.line?.trim()) out.push({ kind: 'line', text: s.line, shot: out.length + 1, label: s.section || 'Shot', note: s.direction?.slice(0, 90) || undefined })
     }
     return out
   }, [gen])
@@ -563,19 +564,30 @@ export default function Record() {
                       default 38px doesn't overflow / collide on a 375px screen. */}
                   <div className="space-y-5 text-center" style={{ fontSize: `min(${fontPx}px, 7.2vw)` }}>
                     {lines.map((l, i) => (
-                      <p
-                        key={i}
-                        ref={(el) => { lineEls.current[i] = el }}
-                        className={cn(
-                          'font-heading font-bold leading-tight transition-all duration-200',
-                          i === active
-                            ? 'scale-[1.04] text-cream opacity-100 [text-shadow:0_2px_12px_rgba(0,0,0,0.7)]'
-                            : 'opacity-35',
-                          l.kind === 'hook' && i === active && 'text-amber',
+                      <div key={i}>
+                        {/* Scene cut: tell the creator to pause — that pause becomes a clean
+                            cut in the edit — then line up the next shot. */}
+                        {i > 0 && (
+                          <div className="mb-3 flex items-center justify-center gap-2 text-[0.3em] font-semibold uppercase tracking-[0.18em] text-coral/80">
+                            <span className="h-px w-[1.1em] bg-coral/45" /> Cut · pause — line up shot {l.shot} <span className="h-px w-[1.1em] bg-coral/45" />
+                          </div>
                         )}
-                      >
-                        {l.text}
-                      </p>
+                        <div className="mb-1 text-[0.3em] font-semibold uppercase tracking-[0.12em] text-amber/90">
+                          Shot {l.shot} · {l.label}{l.note ? ` — ${l.note}` : ''}
+                        </div>
+                        <p
+                          ref={(el) => { lineEls.current[i] = el }}
+                          className={cn(
+                            'font-heading font-bold leading-tight transition-all duration-200',
+                            i === active
+                              ? 'scale-[1.04] text-cream opacity-100 [text-shadow:0_2px_12px_rgba(0,0,0,0.7)]'
+                              : 'opacity-35',
+                            l.kind === 'hook' && i === active && 'text-amber',
+                          )}
+                        >
+                          {l.text}
+                        </p>
+                      </div>
                     ))}
                     <div className="h-[60%]" />
                   </div>
@@ -735,7 +747,7 @@ export default function Record() {
         <div className="space-y-4">
           <div className="glass p-5">
             <h2 className="font-heading text-lg">Teleprompter</h2>
-            <p className="mt-1 text-sm text-stone">Loaded from your script, read it naturally.</p>
+            <p className="mt-1 text-sm text-stone">Directs you shot by shot — read a beat, <span className="text-coral">pause at each Cut</span> to reset or change location, then continue. Your pauses become clean scene cuts in the edit.</p>
 
             <div className="mt-4 space-y-4">
               <Control icon={Play} label="Scroll">
