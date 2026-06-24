@@ -43,9 +43,9 @@ const PHASE_ORDER: Phase[] = ['idle', 'fetching', 'transcribing', 'writing']
 // Stages for the live BuildProgress overlay. `est` paces the creeping bar and the
 // rotating `flavor` lines so the long "writing" model call never looks frozen.
 const STUDIO_STAGES: BuildStage[] = [
-  { label: 'Fetching the real video', icon: Link2, est: 8, flavor: ['Locating the source clip', 'Pulling the media'] },
-  { label: 'Transcribing & reading its structure', icon: ScanSearch, est: 22, flavor: ['Transcribing the audio', 'Mapping the hook', 'Reading the retention beats', 'Spotting the winning pattern'] },
-  { label: 'Writing your script, in your voice', icon: FileText, est: 42, flavor: ['Studying your voice DNA', 'Drafting hook options', 'Writing your script', 'Building the shot list', 'Polishing captions & publish plan'] },
+  { label: 'Fetching the real video', icon: Link2, est: 12, flavor: ['Locating the source clip', 'Pulling the media'] },
+  { label: 'Transcribing & reading its structure', icon: ScanSearch, est: 48, flavor: ['Transcribing the audio', 'Mapping the hook', 'Reading the retention beats', 'Spotting the winning pattern'] },
+  { label: 'Writing your script, in your voice', icon: FileText, est: 52, flavor: ['Studying your voice DNA', 'Drafting hook options', 'Writing your script', 'Building the shot list', 'Polishing captions & publish plan'] },
 ]
 
 export default function Studio() {
@@ -158,7 +158,7 @@ export default function Studio() {
     setBusy(true)
     // Long clips can push the read past the advertised ~1-2 min. After 90s, swap
     // the footer copy so the progress overlay stays HONEST instead of looking stuck.
-    const slowTimer = setTimeout(() => setSlowRead(true), 90_000)
+    const slowTimer = setTimeout(() => setSlowRead(true), 150_000)
     try {
       // Single link: the classic flow — straight to the finished script.
       if (links.length === 1) {
@@ -449,7 +449,7 @@ export default function Studio() {
                         ? `Batch in progress — ${bulkProgress.done + 1} of ${bulkProgress.total}. Each finished script lands in your Library.`
                         : slowRead
                         ? "Still reading — longer clips take a little more. We don't charge a remix unless this finishes."
-                        : "Reading the real clip takes ~1-2 min. Hang tight, we don't charge a remix unless this finishes."}
+                        : "Reading the real clip takes ~2-3 min — longer for longer videos. We don't charge a remix unless this finishes."}
                     />
                   </div>
                 </motion.div>
