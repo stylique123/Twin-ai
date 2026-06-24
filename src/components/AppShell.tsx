@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users, CalendarDays } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { BrandSwitcher } from './BrandSwitcher'
+import { NotificationBell } from './NotificationBell'
 import { useAuth } from '../context/AuthContext'
 import { videosFromCredits } from '../lib/brand'
 import { cn } from '../lib/cn'
@@ -58,10 +59,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {/* Quiet usage hint only — the full picture lives on the Dashboard.
               Recreations are a back-of-house meter, not a number we put front and
               center, so it's a single subtle line here. */}
-          <Link to="/dashboard" className="flex items-center justify-between rounded-xl px-3 py-2 text-[11px] text-stone transition-colors hover:text-sand">
-            <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3 w-3 text-amber/70" /> Remixes</span>
-            <span className="text-sand">{left}</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link to="/dashboard" className="flex flex-1 items-center justify-between rounded-xl px-3 py-2 text-[11px] text-stone transition-colors hover:text-sand">
+              <span className="inline-flex items-center gap-1.5"><Sparkles className="h-3 w-3 text-amber/70" /> Remixes</span>
+              <span className="text-sand">{left}</span>
+            </Link>
+            <NotificationBell />
+          </div>
           <button onClick={doSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-stone transition-colors hover:bg-white/[0.04] hover:text-cream">
             <LogOut className="h-[18px] w-[18px]" /> Sign out
           </button>
@@ -77,9 +81,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <LogoMark size={26} />
               <span className="font-bold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
             </Link>
-            <button className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 active:bg-white/10" onClick={() => setOpen((v) => !v)} aria-label="Menu">
-              {open ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
-            </button>
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <button className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 active:bg-white/10" onClick={() => setOpen((v) => !v)} aria-label="Menu">
+                {open ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
+              </button>
+            </div>
           </header>
           <AnimatePresence>
             {open && (

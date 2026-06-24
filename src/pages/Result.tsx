@@ -163,7 +163,7 @@ export default function Result() {
                 <Video className="h-4 w-4" /> Record with teleprompter
               </Link>
               <Link to={`/record/${gen.id}?upload=1`} className="btn-ghost py-2 text-sm">
-                <Wand2 className="h-4 w-4" /> Edit my own clip
+                <Wand2 className="h-4 w-4" /> Upload your own clip
               </Link>
             </div>
           </div>
@@ -212,6 +212,9 @@ export default function Result() {
                 </button>
               )}
             </div>
+            <p className="mt-3 text-xs text-stone">
+              Camera-shy? You don't have to film your face — <Link to={`/record/${gen.id}?upload=1`} className="text-amber hover:text-cream">upload a screen-recording or any clip</Link> and we'll auto-edit it.
+            </p>
           </motion.div>
         </div>
       </section>
