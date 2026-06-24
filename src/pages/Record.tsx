@@ -400,9 +400,9 @@ export default function Record() {
       const p = job.result?.progress
       if (p && p.label) { setEditStatus(p.label); setEditPct(Math.max(8, Math.min(99, p.pct))) }
       else setEditStatus(job.status === 'running' ? 'Editing your video…' : 'Queued…')
-      // One flow: the moment the instant ffmpeg edit is ready, play it while the
-      // premium captions render in the background — never make the creator wait.
-      if (p?.instant_url) { setEditUrl(p.instant_url); setPolishing(true) }
+      // ONE output: keep the processing checklist running through the FULL edit
+      // (cuts + captions + b-roll + the premium pass) and reveal the single finished
+      // video only when it's done — no instant preview that swaps under the creator.
     }
     throw new Error('The edit is taking longer than expected, check your Library shortly.')
   }
