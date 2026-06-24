@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText, Wind, Activity, Flame, SlidersHorizontal, Layers, Video, Mic } from 'lucide-react'
+import { Link2, Wand2, Loader2, Sparkles, Target, Shuffle, Feather, ScanSearch, FileText, Wind, Activity, Flame, SlidersHorizontal, Layers, Video, Mic, Bookmark, BookmarkPlus, X } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { generateBlueprint, ingestReference, getJob, listBrandVoices } from '../lib/api'
+import { generateBlueprint, ingestReference, getJob, listBrandVoices, listTemplates, saveTemplate, deleteTemplate, type ReferenceTemplate } from '../lib/api'
 import type { BrandVoice } from '../lib/types'
 import { BLUEPRINT_COST } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
@@ -72,6 +72,29 @@ export default function Studio() {
   // one run — the agency "batch a week in an afternoon" ask.
   const [bulk, setBulk] = useState(false)
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null)
+  // Reusable reference templates — save a proven reference + its settings, re-remix later.
+  const [templates, setTemplates] = useState<ReferenceTemplate[]>([])
+  useEffect(() => { listTemplates().then(setTemplates).catch(() => {}) }, [])
+  const applyTemplate = (t: ReferenceTemplate) => {
+    setBulk(false)
+    setUrl(t.reference_url)
+    setNote(t.note ?? '')
+    if (t.fidelity) setFidelity(t.fidelity as 'close' | 'balanced' | 'loose')
+    if (t.tone) setTone(t.tone as 'understated' | 'balanced' | 'punchy')
+    if (t.delivery) setDelivery(t.delivery as 'on_camera' | 'voiceover')
+  }
+  const saveAsTemplate = async () => {
+    const link = (bulk ? url.split(/\n+/)[0] : url).trim()
+    if (!link) return setErr('Paste a link first, then save it as a template.')
+    const name = (window.prompt('Name this template', link.slice(0, 48)) || '').trim()
+    if (!name) return
+    const t = await saveTemplate({ name, reference_url: link, note: note.trim(), fidelity, tone, delivery })
+    if (t) setTemplates((prev) => [t, ...prev])
+  }
+  const removeTemplate = async (id: string) => {
+    setTemplates((prev) => prev.filter((t) => t.id !== id))
+    await deleteTemplate(id).catch(() => {})
+  }
   // Fidelity + tone are advanced knobs — hidden by default so the studio is a single
   // clear input (paste → make). Power users open "Advanced" to tune them.
   const [advancedOpen, setAdvancedOpen] = useState(false)
@@ -201,6 +224,23 @@ export default function Studio() {
 
         <Reveal delay={0.08}>
           <div className="glass relative mt-9 space-y-6 p-6 sm:p-7">
+            {/* Reusable templates: save a proven reference + settings, re-remix later. */}
+            <div className="flex flex-wrap items-center gap-2">
+              {templates.map((t) => (
+                <span key={t.id} className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.03] py-1 pl-3 pr-1 text-xs text-sand">
+                  <button onClick={() => applyTemplate(t)} className="inline-flex items-center gap-1 transition-colors hover:text-cream" title="Load this template">
+                    <Bookmark className="h-3 w-3 text-amber" /> {t.name}
+                  </button>
+                  <button onClick={() => removeTemplate(t.id)} aria-label="Delete template" className="grid h-4 w-4 place-items-center rounded-full text-stone transition-colors hover:text-coral">
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+              <button onClick={saveAsTemplate} disabled={busy} className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-white/15 px-3 py-1 text-xs text-stone transition-colors hover:text-cream disabled:opacity-50">
+                <BookmarkPlus className="h-3.5 w-3.5" /> Save as template
+              </button>
+            </div>
+
             {/* Reference link */}
             <div>
               <div className="flex items-center justify-between gap-2">
