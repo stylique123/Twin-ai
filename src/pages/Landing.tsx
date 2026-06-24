@@ -66,33 +66,32 @@ const PAIN = [
   {
     n: '01',
     t: "You don't know what to post",
-    d: 'You save dozens of videos you love, then open a blank screen with no idea where to start.',
-    fix: 'TwinAI shows you what\'s already working in your niche — pick one and go.',
+    d: 'You save fifty videos you love, then stare at a blank screen with nowhere to start.',
+    fix: 'Found one you love? Paste the link and make it yours. No link in mind? Start here — TwinAI shows you what\'s already winning in your niche. Pick one and go.',
     accent: 'coral',
   },
   {
     n: '02',
-    t: 'It never comes out like your head',
-    d: 'Copy a format and it feels fake. Start from scratch and it sounds like everyone else.',
-    fix: 'We rebuild the idea in your voice, so it actually sounds like you.',
+    t: "It never comes out like it did in your head",
+    d: 'Copy the format and it feels fake. Build from scratch and you sound like everyone else.',
+    fix: 'TwinAI rebuilds the idea in your voice — so it lands like you, not a template.',
     accent: 'amber',
   },
   {
     n: '03',
-    t: 'One video eats your whole night',
-    d: 'Scripting, re-shooting, editing, captions — hours per post, so you end up posting less.',
-    fix: 'Paste → script → record → edit → caption, in one window, in minutes.',
+    t: 'One video eats your whole night across five apps',
+    d: 'Script in one tab, record on your phone, edit in CapCut, captions somewhere else, then schedule in yet another tool. So you post less, and the algorithm forgets you.',
+    fix: 'With TwinAI it\'s one window: paste → script → record → fully edit → render → post. You never switch apps. Minutes, not nights.',
     accent: 'teal',
   },
 ]
 
 const LOOP = [
-  { icon: Play, k: 'Paste', t: 'Paste a link you wish you\'d made', d: 'Any TikTok, Reel or Short. That\'s the whole input. We pull and transcribe the real audio.' },
-  { icon: Wand2, k: 'Decode', t: 'We decode why it worked', d: 'The hook shape, the beats, the pacing, the estimated retention mechanics. A structural read, not vibes.' },
-  { icon: FileText, k: 'Script', t: 'Get a shootable script', d: 'Hook options, full script in your voice, shot list, edit checklist, caption pack, a 20-min plan.' },
-  { icon: Clapperboard, k: 'Record', t: 'Record it right here', d: 'Your script loads into a built-in teleprompter. Hit record, nail the hook, done.' },
-  { icon: Scissors, k: 'Edit', t: 'Edit in one click', d: 'Word-synced captions, dead-air trimmed, jump cuts and b-roll, exported vertical, automatically.' },
-  { icon: Send, k: 'Post', t: 'Post it, and grow the gallery', d: 'One tap copies your on-brand caption so you can post in seconds, then log it. Mark it public and it joins the niche gallery others remix.' },
+  { icon: Play, k: 'Paste', t: 'Paste any link', d: 'Drop the link to any TikTok, Reel or Short. No link in mind? Pick from what\'s trending in your niche.' },
+  { icon: FileText, k: 'Get your script', t: 'Get your script', d: 'TwinAI reads the real video and rewrites it in your voice — hooks, full script, shot list, caption pack.' },
+  { icon: Clapperboard, k: 'Record', t: 'Record', d: 'The built-in teleprompter walks you through it. Hit record, nail the hook, done.' },
+  { icon: Scissors, k: 'Edit + render', t: 'Edit + render', d: 'Real editing — cuts, captions, polish — rendered inside the app. No CapCut, no exporting.' },
+  { icon: Send, k: 'Post', t: 'Post', d: 'Caption, hashtags, best time, and one-tap posting. Right from here. You never leave the app.' },
 ]
 
 const FEATURES = [
@@ -131,6 +130,8 @@ export default function Landing() {
   return (
     <main className="noise overflow-clip">
       <HeroSection />
+      <ResultsStrip />
+      <OfferStrip />
       <PlatformStrip />
       <PainSection />
       <HowItWorksSection />
@@ -141,6 +142,7 @@ export default function Landing() {
       <AgencySection />
       <ValueStack />
       <PricingSection />
+      <ReferralSection />
       <TestimonialsSection />
       <FAQSection />
       <CTASection />
@@ -203,14 +205,21 @@ function HeroSection() {
       <div className="relative z-10 mx-auto max-w-content px-5 pb-20 pt-28 sm:pt-32 lg:pt-36">
         <div className="grid items-center gap-12 lg:grid-cols-[0.88fr_1.12fr] lg:gap-10">
           <div>
+            <motion.p
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, ease: EASE }}
+              className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/[0.04] px-3.5 py-1.5 text-xs font-semibold tracking-wide text-sand backdrop-blur"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-amber" /> Reference to posted. One platform. Your voice.
+            </motion.p>
             <motion.h1
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
               className="font-display text-[3.4rem] leading-[1.0] tracking-tight text-balance sm:text-[4.4rem] lg:text-[5.6rem]"
             >
-              {/* Static (no flipping word) — a clear, always-readable headline. */}
-              Paste a viral video. <span className="gradient-text">Remix</span> it in your voice.
+              Steal the format. <span className="gradient-text">Keep your voice.</span>
             </motion.h1>
 
             <motion.p
@@ -219,8 +228,10 @@ function HeroSection() {
               transition={{ duration: 0.7, ease: EASE, delay: 0.14 }}
               className="mt-6 max-w-xl text-lg leading-relaxed text-sand"
             >
-              Paste a video you wish you'd made, or pick one from your niche gallery. Get it back as a
-              script in your voice, <span className="text-cream">recorded, edited and ready to post.</span>
+              Paste any video you wish you'd made. TwinAI rebuilds it in your voice, fully edits it, and
+              posts it — <span className="text-cream">script, teleprompter, real editing, render, caption,
+              hashtags and one-tap posting, all without leaving the app.</span> The video that took a pro a
+              full day takes you minutes.
             </motion.p>
 
             <motion.div
@@ -230,7 +241,7 @@ function HeroSection() {
               className="mt-8 flex flex-wrap items-center gap-3"
             >
               <Link to="/auth?mode=signup" className="btn-gradient group px-7 py-3.5 text-base">
-                Claim your 3 free remixes
+                Start free — 3 remixes on us
                 <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
               </Link>
             </motion.div>
@@ -241,7 +252,7 @@ function HeroSection() {
               transition={{ duration: 1, delay: 0.34 }}
               className="mt-3 text-xs text-stone"
             >
-              No card required. Your first finished video in minutes.
+              No card. No other apps. Refer a friend, get 2 more.
             </motion.p>
           </div>
 
@@ -417,6 +428,48 @@ function Particles() {
 
 /* ─── Platform strip ─────────────────────────────────────────────────── */
 
+/* ─── Results strip (proof band) ─────────────────────────────────────── */
+
+function ResultsStrip() {
+  const items = [
+    'Hours per video → minutes.',
+    'Ship 15+ a month, same effort.',
+    'One link in → one finished, on-brand video out.',
+    '100% in your voice — never generic.',
+  ]
+  return (
+    <section className="border-y border-white/8 bg-ink2/40">
+      <div className="mx-auto max-w-content px-5 py-5">
+        <Stagger className="grid gap-y-3 gap-x-6 text-center sm:grid-cols-2 lg:grid-cols-4" gap={0.06}>
+          {items.map((t) => (
+            <RevealItem key={t}>
+              <p className="inline-flex items-center justify-center gap-2 text-sm font-medium text-cream">
+                <Check className="h-4 w-4 shrink-0 text-teal" /> {t}
+              </p>
+            </RevealItem>
+          ))}
+        </Stagger>
+      </div>
+    </section>
+  )
+}
+
+/* ─── Offer strip (free remixes) ─────────────────────────────────────── */
+
+function OfferStrip() {
+  return (
+    <section className="mx-auto max-w-content px-5 pt-10">
+      <Reveal>
+        <div className="relative overflow-hidden rounded-panel border border-amber/25 bg-gradient-to-r from-amber/10 via-coral/[0.06] to-teal/10 px-6 py-5 text-center">
+          <p className="text-base font-medium text-cream">
+            <span className="mr-1.5">🎁</span> Sign up free → <span className="font-bold text-amber">3 full remixes</span>. Invite one creator → <span className="font-bold text-teal">2 extra, instantly</span>. Zero cost to find out it works.
+          </p>
+        </div>
+      </Reveal>
+    </section>
+  )
+}
+
 function PlatformStrip() {
   // A quiet running ticker, not a big banner: a small label, then the platforms
   // scrolling by on a loop. The row is rendered twice and slid -50% so it loops
@@ -525,7 +578,7 @@ function PainSection() {
           </motion.span>
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-sand">
-          Every creator hits the same three walls. TwinAI is the system that breaks all three.
+          Every creator hits the same three walls. TwinAI tears down all three.
         </p>
       </Reveal>
       <Stagger className="mt-14 grid gap-5 md:grid-cols-3" gap={0.08}>
@@ -569,10 +622,16 @@ function HowItWorksSection() {
             The entire workflow, in one place.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-sand">
-            Paste, decode, blueprint, record, edit, post. No tab-juggling, no agency, no two-hour edit.
+            Paste, script, record, edit + render, post. No tab-juggling, no agency, no two-hour edit.
           </p>
         </Reveal>
         <LoopSequence />
+        <Reveal className="mt-12 text-center">
+          <p className="font-heading text-lg text-cream">The whole loop. One platform. Reference to posted.</p>
+          <Link to="/auth?mode=signup" className="btn-gradient group mt-5 inline-flex px-6 py-3 text-base">
+            Get your first remix free <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+          </Link>
+        </Reveal>
       </div>
     </section>
   )
@@ -636,6 +695,12 @@ function FeaturesSection() {
           </RevealItem>
         ))}
       </Stagger>
+      <Reveal className="mt-10 text-center">
+        <p className="mx-auto max-w-md text-sm text-sand">Plus: ship 15+ a month and the algorithm remembers you.</p>
+        <Link to="/auth?mode=signup" className="btn-gradient group mt-5 inline-flex px-7 py-3.5 text-base">
+          Start free — claim 3 remixes <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+        </Link>
+      </Reveal>
     </section>
   )
 }
@@ -981,6 +1046,36 @@ function FAQSection() {
 
 /* ─── Final CTA ──────────────────────────────────────────────────────── */
 
+/* ─── Referral (loud) ────────────────────────────────────────────────── */
+
+function ReferralSection() {
+  return (
+    <section className="mx-auto max-w-content px-5 py-16 sm:py-20">
+      <Reveal>
+        <div className="relative overflow-hidden rounded-panel border border-white/10 bg-gradient-to-br from-coral/12 via-ink2 to-teal/12 p-8 text-center sm:p-12">
+          <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-amber/15 blur-[70px]" />
+          <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-teal/15 blur-[70px]" />
+          <div className="relative">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-amber"><Repeat className="h-3.5 w-3.5" /> Referrals</span>
+            <h2 className="mx-auto mt-4 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+              Love it? Your friends get you free remixes.
+            </h2>
+            <p className="mx-auto mt-4 max-w-xl text-sand">
+              Every creator you bring in unlocks <span className="text-cream">2 more free remixes</span> — instantly, no limit. Three referrals and your first week basically runs itself.
+            </p>
+            <Link to="/auth?mode=signup" className="btn-gradient group mt-7 inline-flex px-7 py-3.5 text-base">
+              Get my referral link <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+            </Link>
+            <p className="mt-3 text-xs text-stone">They get 3 free. You get 2 more for each one who joins.</p>
+          </div>
+        </div>
+      </Reveal>
+    </section>
+  )
+}
+
+/* ─── Final CTA ──────────────────────────────────────────────────────── */
+
 function CTASection() {
   return (
     <section className="mx-auto max-w-content px-5 pb-28">
@@ -991,19 +1086,19 @@ function CTASection() {
         <div className="relative z-10">
           <p className="eyebrow">Ready?</p>
           <h2 className="mx-auto mt-4 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
-            Your next post starts with a reference you already love.
+            Your next viral video is already in your saved folder.
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-sand">
-            Paste it, record it, post it. The whole loop, in one window.
+          <p className="mx-auto mt-4 max-w-lg text-sand">
+            You've watched it ten times. Stop wishing you'd made it. Paste it, edit it, post it — tonight, from one app. No link in mind? Start from what's already working in your niche.
           </p>
           <div className="mt-10 flex flex-wrap justify-center gap-3">
             <Link to="/auth?mode=signup" className="btn-gradient group text-base px-8 py-4">
-              Remix your first video free
+              Claim your 3 free remixes
               <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
             </Link>
             <a href="#pricing" className="btn-ghost text-base px-8 py-4">See pricing</a>
           </div>
-          <p className="mt-4 text-sm text-stone">3 free remixes. No card required.</p>
+          <p className="mt-4 text-sm text-stone">Free to start. No card. Refer a creator, unlock 2 more.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm text-stone">
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-teal" /> Finish-or-it's-free
