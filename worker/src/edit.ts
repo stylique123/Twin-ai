@@ -104,6 +104,11 @@ export interface EditOptions {
   captionStyle?: string // brand-kit default caption preset; loses to an explicit Refine choice
   brollText?: string // blueprint text (hook/script/captions) to source b-roll keywords from
   coverText?: string // hook/cover line to overlay on the generated thumbnail
+  // The creator's SCRIPT (what they're meant to say). Caption fallback: when speech
+  // detection returns no words (silent take, music bed, b-roll, unsupported language),
+  // we burn THIS as captions, evenly timed across the clip — so a no-speech upload
+  // still gets on-brand captions instead of silently shipping a caption-less video.
+  scriptText?: string
   // Manual re-render: when present, autoEdit renders FROM this (creator-edited)
   // Edit Decision List instead of re-detecting cuts / re-transcribing. This is the
   // bridge that makes the manual Refine panel flow back through this same renderer.
@@ -584,6 +589,23 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     // Director's AI pick > default. So a brand kit themes every new edit, but the
     // creator can still override one video in Refine.
     const captionStyle = edl?.captions.style ?? opts.captionStyle ?? plan?.caption_style ?? 'bold-pop'
+    // Caption fallback — speech detection found NO words (silent take, music bed,
+    // b-roll, unsupported language). Instead of silently shipping a caption-LESS video
+    // (the "the edit did nothing / captions didn't change" bug), burn the creator's
+    // SCRIPT as captions, evenly timed across the clip. Runs AFTER the Edit Director so
+    // b-roll placement still only keys off real speech, never these synthetic timings.
+    let captionSource: 'speech' | 'script' | 'none' = words.length ? 'speech' : 'none'
+    if (captions && !edl && !words.length && durationSec > 1 && opts.scriptText) {
+      const toks = opts.scriptText.split(/\s+/).filter(Boolean).slice(0, 240)
+      if (toks.length) {
+        const span = Math.max(1, durationSec - 0.6)
+        const per = span / toks.length
+        words = toks.map((w, i) => ({ w, start: 0.3 + i * per, end: 0.3 + (i + 1) * per })) as Word[]
+        captionSource = 'script'
+      }
+    }
+    if (captions && captionSource === 'none') console.warn('[autoedit] no speech detected + no script text — shipping without captions')
+    else if (captionSource === 'script') console.log('[autoedit] captioned from script (no speech detected in take)')
     await writeFile(ass, words.length ? buildAss(words, capVariation, captionStyle) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
 
     // 2b. Optional b-roll cutaway (best-effort, only if PEXELS_API_KEY is set and
