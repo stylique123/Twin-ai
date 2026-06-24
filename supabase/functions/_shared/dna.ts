@@ -369,7 +369,7 @@ ${corpus || '(no captions available — infer a sensible starting voice from the
 Synthesize this creator's voice profile.`
 
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 45_000)
+  const timer = setTimeout(() => ctrl.abort(), 60_000)
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,

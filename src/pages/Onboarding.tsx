@@ -196,7 +196,7 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
     // Hard cap: if the scan never resolves (stuck worker, dropped job), don't
     // trap the user on an infinite spinner, surface the manual fallback.
     const startedAt = Date.now()
-    const MAX_WAIT_MS = 100_000
+    const MAX_WAIT_MS = 220_000
     const tick = async () => {
       try {
         const res = await pollDna(activeVoiceId!)

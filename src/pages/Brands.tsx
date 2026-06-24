@@ -342,7 +342,7 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
       // forever — the server-side reaper will still settle the row, and the user
       // gets an honest "taking longer" message instead of an infinite spinner.
       let polls = 0
-      const MAX_POLLS = 30
+      const MAX_POLLS = 55
       timer.current = setInterval(async () => {
         polls++
         try {
