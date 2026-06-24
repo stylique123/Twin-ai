@@ -707,9 +707,12 @@ export default function Record() {
                   className="h-full w-full object-contain"
                 />
                 {editUrl && !polishing && (
-                  <span className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full bg-teal/90 px-2.5 py-1 text-xs font-bold text-ink">
-                    <Check className="h-3.5 w-3.5" /> Auto-edited
-                  </span>
+                  <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center gap-1 bg-gradient-to-b from-ink/85 via-ink/40 to-transparent px-4 pb-9 pt-4 text-center">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber to-coral px-3 py-1 text-xs font-bold text-ink shadow-glow">
+                      <Check className="h-3.5 w-3.5" /> Your video is ready!
+                    </span>
+                    <p className="text-[11px] font-medium text-cream/85">Optimized and ready to share — download or post it below.</p>
+                  </div>
                 )}
                 {/* Premium pass: instant edit is playable, premium captions polishing. */}
                 {polishing && (
