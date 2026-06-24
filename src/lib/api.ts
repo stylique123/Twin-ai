@@ -309,6 +309,30 @@ export async function setGenerationApproved(id: string, approved: boolean): Prom
   return !error
 }
 
+// ---- In-app notifications (video ready, client approval decisions) ---------
+export interface AppNotification {
+  id: string
+  type: string
+  title: string
+  body: string | null
+  link: string | null
+  read: boolean
+  created_at: string
+}
+export async function listNotifications(limit = 20): Promise<AppNotification[]> {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error || !data) return []
+  return data as AppNotification[]
+}
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  if (!ids.length) return
+  await supabase.from('notifications').update({ read: true }).in('id', ids)
+}
+
 // ---- Client approval: agency shares /review/:token with a client -----------
 // The client watches the rendered reel + reads the script and approves or
 // requests changes, no account. Minting the token is owner-gated (RPC); the
@@ -321,6 +345,7 @@ export async function createReviewLink(generationId: string): Promise<string | n
 
 export interface ReviewPayload {
   brand: string
+  brand_logo: string | null
   hook: string
   script: string[]
   reference_url: string | null

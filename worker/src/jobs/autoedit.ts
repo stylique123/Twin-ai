@@ -206,6 +206,16 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
         .update({ edit_path: outputPath, take_path: takePath, edl_path: edlPath })
         .eq('id', payload.generation_id)
         .then(() => {}, () => {})
+
+      // Tell the creator their video is ready — covers the common case where they
+      // navigated away during the ~1-2 min render. Best-effort; never fails the job.
+      await db.from('notifications').insert({
+        user_id: job.owner_id,
+        type: 'video_ready',
+        title: 'Your video is ready',
+        body: 'Your edit finished rendering. Tap to watch, then publish.',
+        link: `/result/${payload.generation_id}`,
+      }).then(() => {}, () => {})
     }
 
     // ---- Premium pass (one flow): the ffmpeg result above is the INSTANT result,

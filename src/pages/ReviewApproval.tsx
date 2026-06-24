@@ -58,9 +58,12 @@ export default function ReviewApproval() {
           </div>
         ) : data && (
           <>
-            <div className="flex items-center justify-between">
+            {/* White-label: lead with the CLIENT's own brand (logo + name). */}
+            <div className="flex items-center gap-3">
+              {data.brand_logo && (
+                <img src={data.brand_logo} alt={data.brand} className="h-10 w-auto max-w-[150px] object-contain" />
+              )}
               <p className="eyebrow">For your approval</p>
-              <span className="inline-flex items-center gap-1.5 text-xs text-stone">Powered by <Logo className="h-4" /></span>
             </div>
             <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">
               <span className="gradient-text">{data.brand}</span>
@@ -136,7 +139,9 @@ export default function ReviewApproval() {
               </div>
             )}
 
-            <p className="mt-8 text-center text-[11px] text-stone">This link is private to you.</p>
+            <p className="mt-8 flex items-center justify-center gap-1.5 text-center text-[11px] text-stone">
+              This link is private to you. · Powered by <Logo className="h-3.5" />
+            </p>
           </>
         )}
       </div>

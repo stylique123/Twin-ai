@@ -58,13 +58,18 @@ Deno.serve(async (req: Request) => {
       if (!g) return json({ error: 'not_found' }, 404)
 
       let brand = 'Your brand'
+      let brand_logo: string | null = null
       if (g.brand_voice_id) {
         const { data: bv } = await db
           .from('brand_voices')
-          .select('label, handle')
+          .select('label, handle, brand_kit')
           .eq('id', g.brand_voice_id)
           .maybeSingle()
         brand = (bv?.label && bv.label.trim()) || (bv?.handle ? `@${bv.handle}` : brand)
+        // White-label: show the CLIENT's own logo (from their brand kit) so the
+        // approval page reads as the agency's, not TwinAI's.
+        const logoPath = (bv?.brand_kit as { logo_path?: string } | null)?.logo_path
+        if (logoPath) brand_logo = await sign(db, logoPath)
       }
 
       const bp = (g.blueprint ?? {}) as Record<string, unknown>
@@ -75,6 +80,7 @@ Deno.serve(async (req: Request) => {
 
       return json({
         brand,
+        brand_logo,
         hook,
         script,
         reference_url: g.reference_url ?? null,
@@ -94,7 +100,7 @@ Deno.serve(async (req: Request) => {
       if (decision !== 'approved' && decision !== 'changes') return json({ error: 'bad decision' }, 400)
 
       // Look the row up by token first so we only ever touch the one it points at.
-      const { data: g } = await db.from('generations').select('id').eq('review_token', token).maybeSingle()
+      const { data: g } = await db.from('generations').select('id, user_id').eq('review_token', token).maybeSingle()
       if (!g) return json({ error: 'not_found' }, 404)
 
       const { error } = await db
@@ -107,6 +113,16 @@ Deno.serve(async (req: Request) => {
         })
         .eq('id', g.id)
       if (error) return json({ error: 'update_failed' }, 500)
+
+      // Notify the agency owner of the client's decision (covers them being away).
+      await db.from('notifications').insert({
+        user_id: g.user_id,
+        type: decision === 'approved' ? 'review_approved' : 'review_changes',
+        title: decision === 'approved' ? 'A client approved your video' : 'A client requested changes',
+        body: note ? note.slice(0, 140) : (decision === 'approved' ? 'Tap to view the approved video.' : 'Tap to see the requested changes.'),
+        link: `/result/${g.id}`,
+      }).then(() => {}, () => {})
+
       return json({ ok: true, status: decision })
     }
 
