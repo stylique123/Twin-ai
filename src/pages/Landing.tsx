@@ -868,11 +868,11 @@ function ValueStack() {
   // The grand-slam stack: each deliverable next to what that job costs when you
   // hire it out, anchored so the total ($490) makes one subscription feel obvious.
   const items = [
-    { icon: Wand2, t: 'A full read of why the original won', s: 'Hook shape, pacing, the estimated retention beats.', who: 'Strategist', price: '$200' },
-    { icon: FileText, t: '5 hook options + a full script in your voice', s: 'Not a caption, but a shootable script with delivery notes.', who: 'Ghostwriter', price: '$150' },
-    { icon: Clapperboard, t: 'Shot list + a 20-minute shoot plan', s: 'Walk in, press record, walk out. No guesswork.', who: 'Producer', price: '$40' },
-    { icon: Scissors, t: 'One-click edit: captions, cuts, b-roll, vertical', s: 'Dead air trimmed, beat-timed cuts, exported ready.', who: 'Editor', price: '$75' },
-    { icon: Send, t: 'A ready-to-paste caption pack, per platform', s: 'On-brand copy + hashtags. Posted in seconds.', who: 'Copywriter', price: '$25' },
+    { icon: Wand2, t: 'A full breakdown of why it worked', s: 'Hook, pacing and the retention beats — decoded, not guessed.', who: 'Strategist', price: '$200' },
+    { icon: FileText, t: '5 hooks + a full script in your voice', s: 'A shootable script with delivery notes, not just a caption.', who: 'Ghostwriter', price: '$150' },
+    { icon: Clapperboard, t: 'Shot list + a 20-minute shoot plan', s: 'Walk in, hit record, walk out. Zero guesswork.', who: 'Producer', price: '$40' },
+    { icon: Scissors, t: 'One-click edit — captions, cuts, b-roll, vertical', s: 'Dead air gone, beat-timed cuts, exported ready to post.', who: 'Editor', price: '$75' },
+    { icon: Send, t: 'A caption pack tuned per platform', s: 'On-brand copy and hashtags, ready to paste and post.', who: 'Copywriter', price: '$25' },
   ]
   return (
     <section className="mx-auto max-w-content px-5 py-20 sm:py-28">
@@ -881,7 +881,7 @@ function ValueStack() {
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
           One link in. A finished, on-brand video out, <span className="gradient-text">end to end.</span>
         </h2>
-        <p className="mx-auto mt-4 max-w-md text-sand">Five jobs you'd normally hire out, done from a single paste.</p>
+        <p className="mx-auto mt-4 max-w-lg text-sand">Five jobs you'd normally hire a team for — strategist, writer, producer, editor, copywriter — all done from a single paste, in minutes.</p>
       </Reveal>
 
       <div className="glass mx-auto mt-12 max-w-2xl overflow-hidden p-0">
@@ -923,19 +923,11 @@ function ValueStack() {
 
       <p className="mx-auto mt-5 flex max-w-2xl items-center justify-center gap-2 text-center text-xs text-stone">
         <ShieldCheck className="h-3.5 w-3.5 text-teal" />
-        A remix only counts when it finishes. If the read fails, it's on us.
+        You only spend a remix when it finishes. If the read fails, it's on us.
       </p>
     </section>
   )
 }
-
-const REPLACES = [
-  { t: 'Idea research + endless scrolling', p: 'hours' },
-  { t: 'AI scripting (ChatGPT Plus)', p: '$20/mo' },
-  { t: 'Teleprompter app', p: '$10/mo' },
-  { t: 'Editing (CapCut Pro)', p: '$10/mo' },
-  { t: 'Captions + scheduler', p: '$27/mo' },
-]
 
 function PricingSection() {
   return (
@@ -945,46 +937,9 @@ function PricingSection() {
         <h2 className="mt-3 font-display text-4xl text-balance sm:text-5xl">
           Start free. Scale when it's working.
         </h2>
-        <p className="mx-auto mt-4 max-w-xl text-sand">
-          Start free with 3 remixes, no card required. {PAYMENTS_LIVE ? 'Upgrade any time.' : 'Paid plans are launching soon.'}
-        </p>
       </Reveal>
 
-      {/* 10× value — the stack of tools (and the evening) TwinAI replaces, vs one app. */}
-      <Reveal className="mx-auto mt-12 max-w-3xl">
-        <div className="rounded-panel border border-white/8 bg-ink2/50 p-6 sm:p-8">
-          <p className="text-center text-xs font-semibold uppercase tracking-wider text-stone">What TwinAI replaces</p>
-          <div className="mt-5 grid gap-4 sm:grid-cols-[1fr_auto_0.9fr] sm:items-center">
-            <div className="space-y-2 text-sm">
-              {REPLACES.map((r) => (
-                <div key={r.t} className="flex items-center justify-between gap-3 text-sand">
-                  <span className="flex items-center gap-2"><Minus className="h-3.5 w-3.5 shrink-0 text-stone" /> {r.t}</span>
-                  <span className="shrink-0 text-stone line-through">{r.p}</span>
-                </div>
-              ))}
-              <div className="flex items-center justify-between gap-3 border-t border-white/8 pt-2.5 text-cream">
-                <span className="font-semibold">5 tools + your whole evening</span>
-                <span className="font-semibold">~$67/mo</span>
-              </div>
-            </div>
-            <div className="flex items-center justify-center py-1">
-              <ArrowRight className="h-6 w-6 rotate-90 text-amber sm:rotate-0" />
-            </div>
-            <motion.div
-              whileInView={{ scale: [0.96, 1] }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, ease: EASE }}
-              className="rounded-card border border-teal/25 bg-teal/[0.06] p-5 text-center shadow-glow"
-            >
-              <p className="text-[11px] uppercase tracking-wider text-teal">One app</p>
-              <p className="mt-1 font-display text-4xl text-cream">$9<span className="text-base text-stone">/mo</span></p>
-              <p className="mt-2 text-xs leading-relaxed text-sand">Reference → posted, in minutes. 10× the output, a fraction of the cost.</p>
-            </motion.div>
-          </div>
-        </div>
-      </Reveal>
-
-      <Stagger className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
+      <Stagger className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
         {PLANS.filter((p) => !p.hidden).map((p) => {
           const featured = p.id === 'professional'
           return (
