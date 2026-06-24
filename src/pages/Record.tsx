@@ -525,11 +525,15 @@ export default function Record() {
 
   return (
     <main className="relative mx-auto max-w-6xl px-5 py-8 lg:py-10">
-      <div className="flex items-center justify-between gap-3">
+      <div className="relative flex items-center justify-between gap-3">
         <Link to={`/result/${id}`} className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-cream">
-          <ArrowLeft className="h-4 w-4" /> Full blueprint
+          <ArrowLeft className="h-4 w-4" /><span className="hidden sm:inline">Full blueprint</span>
         </Link>
-        <span className="chip"><Mic className="h-3.5 w-3.5 text-coral" /> {uploadMode ? 'Edit your clip' : 'Record studio'}</span>
+        <div className="absolute left-1/2 -translate-x-1/2 text-center">
+          <div className="font-heading text-base leading-tight text-cream">{uploadMode ? 'Edit your clip' : 'Record studio'}</div>
+          <div className="text-[11px] text-stone">{uploadMode ? 'Add or replace your clip' : "You're ready to record"}</div>
+        </div>
+        <span className="chip text-[11px]"><Mic className="h-3.5 w-3.5 text-coral" /> Private</span>
       </div>
       <input
         ref={fileInputRef}
