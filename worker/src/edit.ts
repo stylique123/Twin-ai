@@ -589,13 +589,14 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     // Director's AI pick > default. So a brand kit themes every new edit, but the
     // creator can still override one video in Refine.
     const captionStyle = edl?.captions.style ?? opts.captionStyle ?? plan?.caption_style ?? 'bold-pop'
-    // Caption fallback — speech detection found NO words (silent take, music bed,
-    // b-roll, unsupported language). Instead of silently shipping a caption-LESS video
-    // (the "the edit did nothing / captions didn't change" bug), burn the creator's
-    // SCRIPT as captions, evenly timed across the clip. Runs AFTER the Edit Director so
-    // b-roll placement still only keys off real speech, never these synthetic timings.
+    // Caption fallback — speech detection found NO or only SPARSE words (silent take,
+    // music, b-roll, noisy/garbled audio, unsupported language). Fewer than ~0.7
+    // words/sec is not real continuous speech, so burn the creator's SCRIPT as captions
+    // instead of shipping a near-empty / garbage caption track. Runs AFTER the Edit
+    // Director so b-roll still keys off real detected speech, never these synthetic timings.
+    const sparseCaptions = words.length < Math.max(3, Math.round(durationSec * 0.7))
     let captionSource: 'speech' | 'script' | 'none' = words.length ? 'speech' : 'none'
-    if (captions && !edl && !words.length && durationSec > 1 && opts.scriptText) {
+    if (captions && !edl && sparseCaptions && durationSec > 1 && opts.scriptText) {
       const toks = opts.scriptText.split(/\s+/).filter(Boolean).slice(0, 240)
       if (toks.length) {
         const span = Math.max(1, durationSec - 0.6)
