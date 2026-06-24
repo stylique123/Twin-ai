@@ -309,6 +309,44 @@ export async function setGenerationApproved(id: string, approved: boolean): Prom
   return !error
 }
 
+// ---- Reusable reference templates ------------------------------------------
+export interface ReferenceTemplate {
+  id: string
+  name: string
+  reference_url: string
+  note: string | null
+  fidelity: string | null
+  tone: string | null
+  delivery: string | null
+  created_at: string
+}
+export async function listTemplates(): Promise<ReferenceTemplate[]> {
+  const { data, error } = await supabase
+    .from('templates')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error || !data) return []
+  return data as ReferenceTemplate[]
+}
+export async function saveTemplate(t: {
+  name: string
+  reference_url: string
+  note?: string
+  fidelity?: string
+  tone?: string
+  delivery?: string
+}): Promise<ReferenceTemplate | null> {
+  const { data: auth } = await supabase.auth.getUser()
+  const owner_id = auth.user?.id
+  if (!owner_id) return null
+  const { data, error } = await supabase.from('templates').insert({ owner_id, ...t }).select().single()
+  if (error || !data) return null
+  return data as ReferenceTemplate
+}
+export async function deleteTemplate(id: string): Promise<void> {
+  await supabase.from('templates').delete().eq('id', id)
+}
+
 // ---- In-app notifications (video ready, client approval decisions) ---------
 export interface AppNotification {
   id: string
