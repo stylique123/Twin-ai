@@ -20,8 +20,9 @@ const PLATFORM_SKIN: Record<string, string> = {
   tiktok: 'bg-cream/15 text-cream',
   instagram: 'bg-coral/15 text-coral',
   youtube: 'bg-[#FF4D4D]/15 text-[#FF6B6B]',
+  linkedin: 'bg-[#0A66C2]/20 text-[#4DA3FF]',
 }
-const ALL_PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube']
+const ALL_PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'linkedin']
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 // Module-level stale-while-revalidate cache (matches Gallery/Library) so re-opening

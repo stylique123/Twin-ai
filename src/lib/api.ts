@@ -112,6 +112,10 @@ export interface GenerateInput {
   // How the script should SOUND (delivery energy), independent of fidelity (how
   // close to the reference structure). Optional; defaults to 'balanced' server-side.
   tone?: 'understated' | 'balanced' | 'punchy'
+  // Whether the creator has to be ON camera. 'voiceover' writes a no-face script
+  // shot entirely as voiceover over screen-recordings / b-roll (for founders).
+  // Optional; defaults to 'on_camera' server-side.
+  delivery?: 'on_camera' | 'voiceover'
   // Optional: when the reference was analyzed by the worker (real transcript),
   // pass its transcript_id so the blueprint is built from the actual video.
   transcript_id?: string

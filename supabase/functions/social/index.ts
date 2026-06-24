@@ -153,6 +153,30 @@ const ADAPTERS: Record<string, Adapter> = {
     account: async () => ({ id: '', label: 'Instagram' }),
     publish: async () => { throw new Error('Instagram publishing requires a Business account + app review; connect is ready, posting unlocks on approval.') },
   },
+  linkedin: {
+    label: 'LinkedIn', needs: ['LINKEDIN_CLIENT_ID', 'LINKEDIN_CLIENT_SECRET'],
+    configured: () => !!(env('LINKEDIN_CLIENT_ID') && env('LINKEDIN_CLIENT_SECRET')),
+    authorizeUrl: (state) => {
+      const p = new URLSearchParams({ response_type: 'code', client_id: env('LINKEDIN_CLIENT_ID')!, redirect_uri: REDIRECT(), scope: 'openid profile w_member_social', state })
+      return `https://www.linkedin.com/oauth/v2/authorization?${p}`
+    },
+    exchange: async (code) => {
+      const r = await fetch('https://www.linkedin.com/oauth/v2/accessToken', {
+        method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT(), client_id: env('LINKEDIN_CLIENT_ID')!, client_secret: env('LINKEDIN_CLIENT_SECRET')! }),
+      })
+      if (!r.ok) throw new Error(`LinkedIn token ${r.status}`)
+      return await r.json()
+    },
+    account: async (accessToken) => {
+      try {
+        const r = await fetch('https://api.linkedin.com/v2/userinfo', { headers: { Authorization: `Bearer ${accessToken}` } })
+        if (r.ok) { const j = await r.json(); return { id: j.sub ?? '', label: j.name ? `LinkedIn · ${j.name}` : 'LinkedIn' } }
+      } catch { /* fall through to default label */ }
+      return { id: '', label: 'LinkedIn' }
+    },
+    publish: async () => { throw new Error('LinkedIn video publishing requires app review (w_member_social); connect is ready, posting unlocks on approval.') },
+  },
 }
 
 Deno.serve(async (req: Request) => {
