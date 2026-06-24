@@ -24,7 +24,7 @@ import {
   type Platform,
 } from '../_shared/dna.ts'
 
-const MAX_ATTEMPTS = Number(Deno.env.get('DNA_MAX_POLLS') ?? '40')
+const MAX_ATTEMPTS = Number(Deno.env.get('DNA_MAX_POLLS') ?? '60')
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -115,7 +115,9 @@ Deno.serve(async (req: Request) => {
     await admin.from('jobs').update({ attempts: job.attempts + 1 }).eq('id', job.id)
 
     if (status === 'RUNNING') return json({ status: 'building' })
-    if (status !== 'SUCCEEDED') return await fail('The scan could not finish. Try again or set up manually.')
+    // A transient Apify hiccup (FAILED/TIMED-OUT/ABORTED) shouldn't kill the scan — keep
+    // polling (attempts is bumped above); the MAX_ATTEMPTS guard ends it if it never recovers.
+    if (status !== 'SUCCEEDED') return json({ status: 'building' })
 
     // Scrape done. A PRIVATE account can't be read; the actor returns OTHER
     // profiles' posts (Instagram) or none — refuse rather than build a voice from

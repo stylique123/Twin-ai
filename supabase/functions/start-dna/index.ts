@@ -155,6 +155,8 @@ Deno.serve(async (req: Request) => {
         owner_id: user.id,
         type: 'scrape_dna',
         status: 'queued',
+        // Let a transient yt-dlp / Gemini hiccup retry with backoff instead of a hard fail.
+        max_attempts: 3,
         payload: { brand_voice_id: voiceId, handle, platform, owner_id: user.id },
       })
       .select('id')

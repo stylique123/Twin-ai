@@ -139,5 +139,5 @@ Synthesize this creator's voice profile.`
 
   // DNA-specific thinking budget (A/B-proven lossless), matching the edge function.
   const budget = Number(process.env.DNA_THINKING_BUDGET ?? process.env.GEMINI_THINKING_BUDGET ?? '4096')
-  return (await geminiJson(POSTS_SYSTEM, prompt, postsSchema, 45_000, budget)) as Record<string, unknown>
+  return (await geminiJson(POSTS_SYSTEM, prompt, postsSchema, 60_000, budget)) as Record<string, unknown>
 }
