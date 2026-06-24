@@ -357,6 +357,17 @@ export default function Record() {
     }
   }
 
+  // One flow: the moment a take exists (recorded OR uploaded) it edits automatically —
+  // no "now go find the Auto-edit button" dead-end. Record → stop → edit → finished
+  // video, in one move. editPhase flips to 'working' inside runAutoEdit so this never
+  // double-fires; an error leaves editPhase 'error' (not 'none') so it won't loop.
+  useEffect(() => {
+    if (phase === 'review' && editPhase === 'none' && takeBlobRef.current && !submitting.current) {
+      void runAutoEdit()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, editPhase])
+
   // ---- remake: a fresh look, costs one recreation ----
   const runRemake = async () => {
     if (!takePathRef.current || !id || submitting.current) return
@@ -488,8 +499,9 @@ export default function Record() {
               </div>
             )}
 
-            {/* teleprompter overlay */}
-            {camReady && phase !== 'review' && (
+            {/* teleprompter overlay — only while recording yourself, never over an
+                uploaded clip and never on the review/edited result. */}
+            {camReady && !uploadMode && phase !== 'review' && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[22%]">
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent" />
                 {/* read-line guide: the eye reads at this band */}
@@ -634,17 +646,12 @@ export default function Record() {
               {phase === 'review' && (
                 <>
                   <button onClick={reshoot} className="btn-ghost" disabled={editPhase === 'working'}>
-                    <RotateCcw className="h-4 w-4" /> Reshoot
+                    <RotateCcw className="h-4 w-4" /> {uploadMode ? 'Replace clip' : 'Reshoot'}
                   </button>
-                  {takeUrl && editPhase !== 'done' && (
-                    <a href={takeUrl} download={`twinai-take-${id}.webm`} className="btn-ghost" title="Download the raw take">
-                      <Download className="h-4 w-4" /> Download take
-                    </a>
-                  )}
                   {editPhase === 'done' && editUrl ? (
                     <>
-                      <button onClick={openRefine} disabled={refineLoading} className="btn-ghost" title="Tweak captions, colors, b-roll & cuts — free">
-                        {refineLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} Refine
+                      <button onClick={openRefine} disabled={refineLoading} className="btn-ghost" title="Manually edit captions, colors, cuts & b-roll — free">
+                        {refineLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} Edit manually
                       </button>
                       <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look, 1 remix">
                         <Sparkles className="h-4 w-4" /> Remake · 1 remix
