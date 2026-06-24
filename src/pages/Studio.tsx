@@ -209,9 +209,9 @@ export default function Studio() {
       <Aurora className="opacity-60" />
       <div className="relative mx-auto max-w-3xl px-5 py-12 lg:py-16">
         <Reveal>
-          <p className="eyebrow">The studio</p>
-          <h1 className="mt-3 font-display text-4xl leading-tight sm:text-5xl">
-            Drop a reference. Get it <span className="gradient-text">shootable.</span>
+          <span className="inline-flex items-center rounded-full border border-coral/40 px-3 py-1 text-xs font-bold tracking-wider text-coral">STEP 1 OF 5</span>
+          <h1 className="mt-4 font-display text-4xl leading-tight sm:text-5xl">
+            Give us a reference. <span className="gradient-text">We'll build your blueprint.</span>
           </h1>
           <p className="mt-3 text-sand">
             We read the actual video, transcript and true structure, then write your blueprint in your voice.
@@ -455,6 +455,21 @@ export default function Studio() {
                 </motion.div>
               )}
             </AnimatePresence>
+          </div>
+        </Reveal>
+
+        {/* Flow rail — the real stages: reference now, then blueprint, record, edit, export. */}
+        <Reveal delay={0.15}>
+          <div className="mt-8 flex items-center">
+            {['Reference', 'Blueprint', 'Record', 'Edit', 'Export'].map((label, i) => (
+              <div key={label} className="flex flex-1 items-center last:flex-none">
+                <div className="flex flex-col items-center">
+                  <span className={cn('grid h-8 w-8 place-items-center rounded-full border text-xs font-bold', i === 0 ? 'border-coral bg-coral/15 text-coral' : 'border-white/15 text-stone')}>{i + 1}</span>
+                  <span className={cn('mt-1.5 text-[11px]', i === 0 ? 'text-cream' : 'text-stone')}>{label}</span>
+                </div>
+                {i < 4 && <span className="mx-1 mb-5 h-px flex-1 bg-white/10" />}
+              </div>
+            ))}
           </div>
         </Reveal>
       </div>

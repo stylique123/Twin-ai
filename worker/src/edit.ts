@@ -633,16 +633,16 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     if (edl) {
       // Re-render: the EDL decides — re-fetch its (possibly swapped) query, or skip.
       if (edl.broll) {
-        try { broll = await fetchBroll([edl.broll.query], dir) } catch { broll = null }
+        try { broll = await fetchBroll([edl.broll.query], dir, edl.broll.query) } catch { broll = null }
       }
     } else if (plan && plan.broll.length) {
       // Director-grounded b-roll: a literal query tied to what's actually said.
-      try { broll = await fetchBroll([plan.broll[0].query], dir) } catch { broll = null }
+      try { broll = await fetchBroll([plan.broll[0].query], dir, plan.broll[0].reason || plan.broll[0].query) } catch { broll = null }
     } else if (words.length && durationSec > 6) {
       try {
         // Fallback (no Director plan): keywords from the blueprint, else transcript.
         const kwSource = opts.brollText && opts.brollText.trim() ? opts.brollText : words.map((w) => w.w).join(' ')
-        broll = await fetchBroll(pickKeywords(kwSource), dir)
+        broll = await fetchBroll(pickKeywords(kwSource), dir, kwSource.slice(0, 200))
       } catch {
         broll = null
       }
