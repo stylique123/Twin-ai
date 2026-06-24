@@ -718,19 +718,50 @@ export default function Record() {
                   </span>
                 )}
                 {editPhase === 'working' && !polishing && (
-                  <div className="absolute inset-0 grid place-items-center bg-ink/85 px-8 text-center backdrop-blur-sm">
-                    <div className="w-full max-w-xs">
-                      <Loader2 className="mx-auto h-7 w-7 animate-spin text-coral" />
-                      <p className="mt-3 font-heading text-cream">{editStatus || 'Editing your video…'}</p>
-                      {/* Real, moving progress bar so it never looks frozen/broken. */}
-                      <div className="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal transition-all duration-700 ease-out"
-                          style={{ width: `${editPct}%` }}
-                        />
+                  <div className="absolute inset-0 overflow-y-auto bg-ink/92 px-6 py-7 backdrop-blur-md">
+                    <div className="mx-auto w-full max-w-sm">
+                      <div className="flex items-center justify-between">
+                        <p className="font-heading text-cream">Creating your video</p>
+                        <span className="text-sm font-semibold text-coral">{editPct}%</span>
                       </div>
-                      <p className="mt-2 text-xs font-medium text-stone">{editPct}%</p>
-                      <p className="mt-3 text-[11px] leading-relaxed text-stone/80">Reading your words → directing the edit → cutting → rendering. Usually under a minute.</p>
+                      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+                        <div className="h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal transition-all duration-700 ease-out" style={{ width: `${editPct}%` }} />
+                      </div>
+                      {/* The checklist is driven by the REAL worker progress: editPct decides
+                          which stage is active, and the active stage shows the worker's live label. */}
+                      <div className="mt-5 space-y-3">
+                        {(() => {
+                          const steps: [string, string][] = [
+                            ['Uploading your recording', 'Sending it up securely'],
+                            ['Analyzing speech', 'Detecting words and pauses'],
+                            ['Generating captions', 'Accurate, synced captions'],
+                            ['Enhancing visuals', 'Color, sharpness & framing'],
+                            ['Adding b-roll & transitions', 'Finding the perfect moments'],
+                            ['Finalizing & rendering', 'Bringing it all together'],
+                          ]
+                          const active = editPct < 8 ? 0 : editPct < 42 ? 1 : editPct < 58 ? 2 : editPct < 72 ? 3 : editPct < 85 ? 4 : 5
+                          return steps.map(([t, s], i) => {
+                            const done = i < active, now = i === active
+                            return (
+                              <div key={t} className="flex items-center gap-3 text-left">
+                                <span className={cn('grid h-7 w-7 shrink-0 place-items-center rounded-full border', done ? 'border-transparent bg-gradient-to-br from-amber to-coral' : now ? 'border-coral/70' : 'border-dashed border-white/15')}>
+                                  {done ? <Check className="h-4 w-4 text-ink" /> : now ? <Loader2 className="h-3.5 w-3.5 animate-spin text-coral" /> : null}
+                                </span>
+                                <div className="min-w-0 flex-1">
+                                  <div className={cn('text-sm font-semibold', done || now ? 'text-cream' : 'text-stone')}>{t}</div>
+                                  <div className="truncate text-[11px] text-stone">{now ? (editStatus || s) : s}</div>
+                                </div>
+                                <span className={cn('shrink-0 text-[11px] font-semibold', done ? 'text-teal' : now ? 'text-amber' : 'text-stone/60')}>
+                                  {done ? 'Done' : now ? 'In progress' : 'Pending'}
+                                </span>
+                              </div>
+                            )
+                          })
+                        })()}
+                      </div>
+                      <p className="mt-5 rounded-card border border-white/8 bg-white/[0.03] px-3 py-2.5 text-[11px] leading-relaxed text-stone">
+                        Good things take a little time. You can leave this screen — it keeps rendering and picks up right here when you're back.
+                      </p>
                     </div>
                   </div>
                 )}
