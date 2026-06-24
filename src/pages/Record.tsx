@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { getGeneration, autoEditTake, remakeEdit, getJob, updateGenerationChoice, fetchEdl, listBrandVoices } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
+import { BLUEPRINT_COST } from '../lib/brand'
 import { RefinePanel } from '../components/RefinePanel'
 import type { EditDecisionList, Generation } from '../lib/types'
 import { cn } from '../lib/cn'
@@ -36,6 +37,10 @@ export default function Record() {
   // Free exports carry a watermark — surface the removal upsell ON the finished
   // video, where the user feels it, not buried on the pricing page.
   const isFree = (profile?.plan ?? 'free') === 'free'
+  // A remix is spent at blueprint time; the FIRST edit of it is bundled/free. A Remake
+  // is a NEW paid look, so it needs another remix — block it (and a new generation) when
+  // they're out. The already-finished video is still theirs to download.
+  const outOfRemixes = (profile?.credits ?? 0) < BLUEPRINT_COST
   const [gen, setGen] = useState<Generation | null>(null)
   const [loading, setLoading] = useState(true)
   const [editStyle, setEditStyle] = useState('punchy')
@@ -690,7 +695,7 @@ export default function Record() {
                       <button onClick={openRefine} disabled={refineLoading} className="btn-ghost" title="Manually edit captions, colors, cuts & b-roll — free">
                         {refineLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SlidersHorizontal className="h-4 w-4" />} Edit manually
                       </button>
-                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done'} title="Re-edit with a fresh look, 1 remix">
+                      <button onClick={runRemake} className="btn-ghost" disabled={editPhase !== 'done' || outOfRemixes} title={outOfRemixes ? 'Out of remixes — upgrade to remake' : 'Re-edit with a fresh look, 1 remix'}>
                         <Sparkles className="h-4 w-4" /> Remake · 1 remix
                       </button>
                       <a href={editUrl} download={`twinai-edited-${id}.mp4`} className="btn-gradient">
@@ -700,6 +705,11 @@ export default function Record() {
                         <Link to="/settings" className="chip border-amber/40 text-amber" title="Free exports include a watermark">
                           <Sparkles className="h-3.5 w-3.5" /> Remove watermark
                         </Link>
+                      )}
+                      {outOfRemixes && (
+                        <p className="w-full text-center text-[11px] text-stone">
+                          This video is yours — download it. Out of remixes for a new one? <Link to="/settings" className="text-amber hover:text-cream">Upgrade</Link>.
+                        </p>
                       )}
                     </>
                   ) : (
