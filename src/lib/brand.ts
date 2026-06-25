@@ -15,6 +15,11 @@ export const BRAND = {
 // Free signup + free remixes always work regardless.
 export const PAYMENTS_LIVE = false
 
+// V2 Creative Studio (5-screen flow driven by the Scene Timeline). Off by default
+// so the existing Studio is 100% unchanged; flip to true to route /app → /v2 and
+// expose the new flow. Additive: V1 and V2 share the same generations + worker.
+export const STUDIO_V2 = false
+
 // Master switch: one-click posting (platform OAuth) is "Coming soon" until the
 // platform developer-app keys are set. Until then the Calendar shows a clean
 // "Coming soon" instead of dev-level "needs developer app keys" messages.

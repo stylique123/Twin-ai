@@ -7,6 +7,7 @@ import { env } from '../env.js'
 import { autoEdit, applyWatermark, applyLogo } from '../edit.js'
 import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
+import { isSceneTimeline } from '../timeline.js'
 
 // Upload scenes: detect scene cuts in a clip (PySceneDetect) so a multi-scene upload
 // gets per-scene boundaries → the SAME per-shot script-caption path the record flow
@@ -116,7 +117,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       try {
         const { data: gen } = await db
           .from('generations')
-          .select('blueprint, brand_voice_id, selected_hook, edit_style')
+          .select('blueprint, brand_voice_id, selected_hook, edit_style, scene_timeline')
           .eq('id', payload.generation_id)
           .maybeSingle()
         const bp = gen?.blueprint as Record<string, unknown> | null
@@ -136,6 +137,19 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
         coverText = chosenHook.slice(0, 120)
         // The spoken script lines only — the caption fallback for no-speech takes.
         scriptText = (((bp?.script as { line?: string }[] | undefined) ?? []).map((s) => s?.line ?? '').filter(Boolean).join(' ')).slice(0, 2000)
+        // V2: when this generation carries a Scene Timeline, it is the single source
+        // of truth — derive b-roll keywords (incl. each scene's b_roll_instruction),
+        // cover line, and the caption fallback FROM the timeline rather than the
+        // blueprint, so cutaways + cover + captions match the planned scenes exactly.
+        // Fail-open: V1 generations have no timeline and this block is skipped.
+        if (gen && isSceneTimeline(gen.scene_timeline)) {
+          const tl = gen.scene_timeline
+          const dialogue = tl.scenes.map((s) => s.dialogue ?? '').filter(Boolean)
+          const brollHints = tl.scenes.map((s) => s.broll_instruction ?? '').filter(Boolean)
+          brollText = [tl.hook, ...dialogue, ...brollHints].filter(Boolean).join(' ').slice(0, 4000)
+          coverText = (tl.hook || coverText).slice(0, 120)
+          scriptText = dialogue.join(' ').slice(0, 2000)
+        }
         // Pull the workspace brand kit + voice once: the kit themes the caption
         // style/color on new edits; the voice pacing tunes the energy default.
         let pacing = ''
