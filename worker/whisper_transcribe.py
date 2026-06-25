@@ -1,14 +1,105 @@
 #!/usr/bin/env python3
 """Transcription wrapper with word-level timestamps.
 
-Tries stable-ts FIRST (DTW-refined word timings → tighter karaoke captions) and
-falls back to plain faster-whisper on ANY failure. Because faster-whisper is the
-guaranteed fallback, stable-ts can only IMPROVE timing or no-op — it can never
-break captions. Invoked as a subprocess so the heavy ML stays isolated.
+Tries a ladder of refiners, tightest first, and falls back on ANY failure:
+  1. wav2vec2 FORCED ALIGNMENT (WhisperX-style) — faster-whisper transcript +
+     torchaudio CTC forced_align for frame-accurate word boundaries (English).
+  2. stable-ts — DTW-refined word timings.
+  3. plain faster-whisper — the proven, guaranteed path.
+Because faster-whisper is the guaranteed fallback, every refiner can only IMPROVE
+timing or no-op — none can ever break captions. The forced-align tier reuses
+torchaudio (already in the image for Silero-VAD), so it adds NO heavy new deps
+(no whisperx/pyannote dependency tree). Invoked as a subprocess so the heavy ML
+stays isolated.
 """
 import argparse
 import json
 import sys
+
+
+def transcribe_forced_align(args, compute_type, lang):
+    """WhisperX-style word timings: take the faster-whisper transcript, then align
+    every word to the audio with torchaudio's wav2vec2 CTC forced alignment for
+    frame-accurate boundaries. English-only (the BASE wav2vec2 acoustic model);
+    raises on ANY problem so the caller falls back to stable-ts then faster-whisper."""
+    if (lang or "en") != "en":
+        raise ValueError("forced-align supports English only")
+    import torch
+    import torchaudio
+
+    # 1. Transcript (text + rough word list) from the proven faster-whisper path.
+    base = transcribe_faster(args, compute_type, lang)
+    if base is None:
+        raise ValueError("media too long for forced-align")
+    src_words = base["words"]
+    if not src_words:
+        raise ValueError("no words to align")
+
+    # 2. wav2vec2 emission probabilities over the audio (model pre-cached at build).
+    bundle = torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H
+    model = bundle.get_model()
+    labels = bundle.get_labels()
+    dictionary = {c: i for i, c in enumerate(labels)}
+    wav, sr = torchaudio.load(args.audio)
+    if wav.size(0) > 1:
+        wav = wav.mean(0, keepdim=True)  # mono
+    if sr != bundle.sample_rate:
+        wav = torchaudio.functional.resample(wav, sr, bundle.sample_rate)
+    with torch.inference_mode():
+        emission, _ = model(wav)
+        emission = torch.log_softmax(emission, dim=-1)
+    num_frames = emission.size(1)
+    # seconds per emission frame, derived from the actual decimation ratio.
+    sec_per_frame = (wav.size(1) / num_frames) / bundle.sample_rate
+
+    # 3. Build the CTC target sequence (A-Z + apostrophe) and remember which source
+    # word each token belongs to. Punctuation/emoji-only words have no tokens.
+    targets, tok_to_word = [], []
+    for wi, w in enumerate(src_words):
+        cw = "".join(ch for ch in w["w"].upper() if ch in dictionary and ch not in ("-", "|"))
+        for ch in cw:
+            targets.append(dictionary[ch])
+            tok_to_word.append(wi)
+    if not targets:
+        raise ValueError("no alignable characters")
+
+    targets_t = torch.tensor([targets], dtype=torch.int32)
+    aligned, scores = torchaudio.functional.forced_align(emission, targets_t, blank=0)
+    spans = torchaudio.functional.merge_tokens(aligned[0], scores[0])
+    if len(spans) != len(targets):
+        raise ValueError("alignment span mismatch")
+
+    # 4. Aggregate token spans into per-word frame ranges, then to seconds.
+    word_frames = {}
+    for si, span in enumerate(spans):
+        wi = tok_to_word[si]
+        if wi not in word_frames:
+            word_frames[wi] = [span.start, span.end]
+        else:
+            word_frames[wi][1] = span.end
+
+    out_words = []
+    for wi, w in enumerate(src_words):
+        if wi in word_frames:
+            st, en = word_frames[wi]
+            s, e = round(st * sec_per_frame, 3), round(en * sec_per_frame, 3)
+            out_words.append({"w": w["w"], "start": s, "end": max(e, s)})
+        else:
+            out_words.append(w)  # keep faster-whisper timing for punctuation-only words
+
+    # Sanity guard: alignment must be monotonic and inside the clip. A silent
+    # mis-alignment wouldn't raise on its own, so reject implausible output here
+    # and fall back rather than burn in subtly-wrong caption timings.
+    dur = base.get("duration_sec") or (src_words[-1]["end"] if src_words else 0)
+    last = -1.0
+    for wi in word_frames:
+        s, e = out_words[wi]["start"], out_words[wi]["end"]
+        if s < -0.05 or e < s or (dur and e > dur + 1.0) or s < last - 0.10:
+            raise ValueError("forced-align produced implausible timings")
+        last = s
+
+    base["words"] = out_words
+    return base
 
 
 def transcribe_stable(args, compute_type, lang):
@@ -103,15 +194,18 @@ def main() -> int:
     compute_type = "float16" if args.device == "cuda" else "int8"
     lang = None if args.language.lower() in ("auto", "", "detect") else args.language
 
-    # stable-ts first (tighter timings); fall back to the proven faster-whisper path
-    # on ANY failure so captions never break.
+    # Refiner ladder, tightest first: wav2vec2 forced alignment → stable-ts. Each
+    # falls back on ANY failure so captions never break.
     out = None
-    try:
-        out = transcribe_stable(args, compute_type, lang)
-    except Exception as e:  # noqa: BLE001 — any failure must fall back, never crash captions
-        print(f"stable-ts unavailable, using faster-whisper: {e}", file=sys.stderr)
+    for refine in (transcribe_forced_align, transcribe_stable):
+        try:
+            out = refine(args, compute_type, lang)
+            break
+        except Exception as e:  # noqa: BLE001 — any failure must fall back, never crash captions
+            print(f"{refine.__name__} unavailable: {e}", file=sys.stderr)
 
     if out is None:
+        # The proven path is the guaranteed fallback.
         out = transcribe_faster(args, compute_type, lang)
         if out is None:
             print(f"media too long: > {args.max_seconds}s", file=sys.stderr)
