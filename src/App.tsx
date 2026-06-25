@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from './context/AuthContext'
+import { STUDIO_V2 } from './lib/brand'
 import { Nav } from './components/Nav'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -28,6 +29,12 @@ const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
 const ReviewApproval = lazy(() => import('./pages/ReviewApproval'))
 const JoinWorkspace = lazy(() => import('./pages/JoinWorkspace'))
+// V2 Creative Studio (5-screen flow, behind the STUDIO_V2 flag).
+const V2Create = lazy(() => import('./pages/v2/V2Create'))
+const V2Building = lazy(() => import('./pages/v2/V2Building'))
+const V2Plan = lazy(() => import('./pages/v2/V2Plan'))
+const V2Capture = lazy(() => import('./pages/v2/V2Capture'))
+const V2Review = lazy(() => import('./pages/v2/V2Review'))
 
 function Protected({ children }: { children: JSX.Element }) {
   const { session, profile, loading } = useAuth()
@@ -123,8 +130,18 @@ export default function App() {
           />
           <Route
             path="/app"
-            element={<Protected><AppShell><Page><Studio /></Page></AppShell></Protected>}
+            element={
+              STUDIO_V2
+                ? <Navigate to="/v2" replace />
+                : <Protected><AppShell><Page><Studio /></Page></AppShell></Protected>
+            }
           />
+          {/* V2 Creative Studio — full-screen flow (no AppShell nav). */}
+          <Route path="/v2" element={<Protected><Page><V2Create /></Page></Protected>} />
+          <Route path="/v2/building" element={<Protected><Page><V2Building /></Page></Protected>} />
+          <Route path="/v2/plan/:id" element={<Protected><Page><V2Plan /></Page></Protected>} />
+          <Route path="/v2/capture/:id" element={<Protected><Page><V2Capture /></Page></Protected>} />
+          <Route path="/v2/review/:id" element={<Protected><Page><V2Review /></Page></Protected>} />
           <Route
             path="/result/:id"
             element={<Protected><AppShell><Page><Result /></Page></AppShell></Protected>}

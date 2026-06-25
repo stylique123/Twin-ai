@@ -7,6 +7,7 @@ import { env } from '../env.js'
 import { autoEdit, applyWatermark, applyLogo } from '../edit.js'
 import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
+import { isSceneTimeline, sceneCaptionSpans, sceneCutPoints } from '../timeline.js'
 
 // Upload scenes: detect scene cuts in a clip (PySceneDetect) so a multi-scene upload
 // gets per-scene boundaries → the SAME per-shot script-caption path the record flow
@@ -112,14 +113,27 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     let brandStyle: string | undefined
     let brandColor: number | undefined
     let brandLogoPath: string | undefined
+    // V2 Scene Timeline hints (additive; empty for V1 generations).
+    let sceneCaptions: { start: number; end: number; text: string }[] = []
+    let sceneCuts: number[] = []
+    void sceneCaptions; void sceneCuts // exposed for the V2 render path (wired incrementally)
     if (payload.generation_id) {
       try {
         const { data: gen } = await db
           .from('generations')
-          .select('blueprint, brand_voice_id, selected_hook, edit_style')
+          .select('blueprint, brand_voice_id, selected_hook, edit_style, scene_timeline')
           .eq('id', payload.generation_id)
           .maybeSingle()
         const bp = gen?.blueprint as Record<string, unknown> | null
+        // V2: if this generation carries a Scene Timeline, expose its per-scene
+        // caption spans + cut points for the render. Purely additive + fail-open —
+        // when no timeline is present (all V1 generations) this is a no-op and the
+        // existing edit path is unchanged.
+        if (gen && isSceneTimeline(gen.scene_timeline)) {
+          const tl = gen.scene_timeline
+          sceneCaptions = sceneCaptionSpans(tl)
+          sceneCuts = sceneCutPoints(tl)
+        }
         const fmt = ((bp?.reference_read as { format_label?: string } | undefined)?.format_label) ?? ''
         // The creator picks which hook to shoot; that hook drives the cover and
         // leads the b-roll keyword source so cutaways match what they actually said.
