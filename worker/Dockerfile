@@ -60,5 +60,10 @@ RUN npm run build
 # small kept for opt-in higher accuracy.
 RUN python3 -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('tiny','base','small')]"
 
+# Pre-cache the wav2vec2 acoustic model for WhisperX-style forced alignment so no
+# render pays its download. Best-effort: the forced-align tier is fail-open, so if
+# this ever fails the build still works and captions fall back to stable-ts.
+RUN python3 -c "import torchaudio; torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H.get_model()" || true
+
 ENV NODE_ENV=production
 CMD ["node", "--enable-source-maps", "dist/index.js"]
