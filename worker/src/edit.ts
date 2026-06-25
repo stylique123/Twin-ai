@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { mkdtemp, rm, readFile, writeFile, stat } from 'node:fs/promises'
+import { mkdtemp, rm, readFile, writeFile, stat, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { env } from './env.js'
@@ -367,33 +367,78 @@ export function fillerSpans(words: Word[]): [number, number][] {
   return spans
 }
 
-// Jump-cuts via ffmpeg silencedetect: find silent gaps (plus any extraRemove word
-// spans from fillerSpans), keep the spoken segments with a small margin, and
-// concat them back together. Returns true if it actually tightened the clip.
+// Speech-aware silence detection via Silero-VAD: returns the NON-speech gaps
+// (>= 0.35s, to match silencedetect's d=0.35) as silence intervals in the exact
+// {starts, ends} shape jumpCutSilence already consumes — so it's a drop-in
+// upgrade to the detector with zero change to the downstream cut/render logic.
+// Returns null on ANY failure so the caller falls back to ffmpeg silencedetect.
+async function vadSilence(base: string, duration: number): Promise<{ starts: number[]; ends: number[] } | null> {
+  const wav = `${base}.vad.wav`
+  try {
+    await run('ffmpeg', ['-y', '-i', base, '-vn', '-ac', '1', '-ar', '16000', wav], Math.max(60_000, duration * 1500))
+    const { stdout } = await run(
+      'python3',
+      [join(import.meta.dirname, '..', 'vad.py'), wav],
+      Math.max(60_000, duration * 2000),
+    )
+    const line = stdout.trim().split('\n').filter(Boolean).pop() || '{}'
+    const r = JSON.parse(line) as { speech?: [number, number][] }
+    const sp = (r.speech ?? [])
+      .filter((x) => Array.isArray(x) && x.length === 2 && Number.isFinite(x[0]) && Number.isFinite(x[1]) && x[1] > x[0])
+      .sort((a, b) => a[0] - b[0])
+    if (!sp.length) return null // no speech detected → let silencedetect decide
+    // Silence = the gaps the speech leaves, only counting pauses >= 0.35s.
+    const starts: number[] = []
+    const ends: number[] = []
+    let cursor = 0
+    for (const [s, e] of sp) {
+      if (s - cursor >= 0.35) { starts.push(cursor); ends.push(s) }
+      cursor = Math.max(cursor, e)
+    }
+    if (duration - cursor >= 0.35) { starts.push(cursor); ends.push(duration) }
+    return { starts, ends }
+  } catch {
+    return null
+  } finally {
+    try { await unlink(wav) } catch { /* best-effort temp cleanup */ }
+  }
+}
+
+// Jump-cuts: find silent gaps (plus any extraRemove word spans from fillerSpans),
+// keep the spoken segments with a small margin, and concat them back together.
+// Silence is detected by Silero-VAD (speech-aware) when available, falling back
+// to ffmpeg silencedetect (amplitude threshold). Returns true if it tightened the clip.
 async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'calm' = 'calm', extraRemove: [number, number][] = []): Promise<{ applied: boolean; segments: EdlSegment[] }> {
   const NOCUT = { applied: false, segments: [] as EdlSegment[] }
   const duration = await probeDuration(base)
   if (duration < 3) return NOCUT // too short to bother
 
-  // Adaptive silence threshold: measure the take's mean loudness, then treat
-  // anything ~8dB below the average as a pause. Clamped to a safe band so we
-  // never clip speech (threshold too high) or never fire (too low). Falls back to -30dB.
-  let noiseDb = -30
-  try {
-    const { stderr: vd } = await run('ffmpeg', ['-i', base, '-af', 'volumedetect', '-f', 'null', '-'], Math.max(60_000, duration * 1500))
-    const mm = vd.match(/mean_volume:\s*(-?[0-9.]+)\s*dB/)
-    if (mm) noiseDb = Math.max(-45, Math.min(-28, parseFloat(mm[1]) - 8))
-  } catch { /* keep -30 */ }
-  // Detect silence quieter than the adaptive threshold for >= 0.35s.
-  const { stderr } = await run(
-    'ffmpeg',
-    ['-i', base, '-af', `silencedetect=noise=${noiseDb.toFixed(1)}dB:d=0.35`, '-f', 'null', '-'],
-    Math.max(120_000, duration * 2000),
-  )
   const starts: number[] = []
   const ends: number[] = []
-  for (const m of stderr.matchAll(/silence_start:\s*([0-9.]+)/g)) starts.push(parseFloat(m[1]))
-  for (const m of stderr.matchAll(/silence_end:\s*([0-9.]+)/g)) ends.push(parseFloat(m[1]))
+  // Prefer speech-aware VAD; fall back to amplitude silencedetect on any failure.
+  const vad = await vadSilence(base, duration)
+  if (vad) {
+    starts.push(...vad.starts)
+    ends.push(...vad.ends)
+  } else {
+    // Adaptive silence threshold: measure the take's mean loudness, then treat
+    // anything ~8dB below the average as a pause. Clamped to a safe band so we
+    // never clip speech (threshold too high) or never fire (too low). Falls back to -30dB.
+    let noiseDb = -30
+    try {
+      const { stderr: vd } = await run('ffmpeg', ['-i', base, '-af', 'volumedetect', '-f', 'null', '-'], Math.max(60_000, duration * 1500))
+      const mm = vd.match(/mean_volume:\s*(-?[0-9.]+)\s*dB/)
+      if (mm) noiseDb = Math.max(-45, Math.min(-28, parseFloat(mm[1]) - 8))
+    } catch { /* keep -30 */ }
+    // Detect silence quieter than the adaptive threshold for >= 0.35s.
+    const { stderr } = await run(
+      'ffmpeg',
+      ['-i', base, '-af', `silencedetect=noise=${noiseDb.toFixed(1)}dB:d=0.35`, '-f', 'null', '-'],
+      Math.max(120_000, duration * 2000),
+    )
+    for (const m of stderr.matchAll(/silence_start:\s*([0-9.]+)/g)) starts.push(parseFloat(m[1]))
+    for (const m of stderr.matchAll(/silence_end:\s*([0-9.]+)/g)) ends.push(parseFloat(m[1]))
+  }
   if (!starts.length && !extraRemove.length) return NOCUT
 
   // Remove set = silence intervals (shrunk by a 0.15s margin so we never clip
