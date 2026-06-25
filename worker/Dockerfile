@@ -32,7 +32,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 # if any of this is missing at runtime, broll.ts falls back to its keyword pick.
 RUN pip3 install --no-cache-dir --break-system-packages \
       --extra-index-url https://download.pytorch.org/whl/cpu \
-      "torch>=2.2,<2.6" "sentence-transformers>=3.0,<4" "pillow>=10.0" \
+      "torch>=2.2,<2.6" "torchaudio>=2.2,<2.6" "sentence-transformers>=3.0,<4" "pillow>=10.0" \
       "scenedetect>=0.6.4" "opencv-python-headless>=4.9" "stable-ts>=2.17" \
       "silero-vad>=5.1" "soundfile>=0.12" \
  && python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('clip-ViT-B-32')" \
