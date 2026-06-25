@@ -367,6 +367,27 @@ export function fillerSpans(words: Word[]): [number, number][] {
   return spans
 }
 
+// Snap a time to the nearest music-bed beat within `tol` seconds (librosa beat
+// grid) so visual cutaways land ON the beat. Returns the original time on ANY
+// failure (no librosa, no beats, analysis error) — purely best-effort polish.
+async function snapToBeat(bedFile: string, t: number, tol = 0.4): Promise<number> {
+  try {
+    const { stdout } = await run('python3', [join(import.meta.dirname, '..', 'beats.py'), bedFile], 60_000)
+    const line = stdout.trim().split('\n').filter(Boolean).pop() || '{}'
+    const beats = (JSON.parse(line).beats ?? []) as number[]
+    let best = t
+    let bestD = tol
+    for (const b of beats) {
+      if (!Number.isFinite(b)) continue
+      const dd = Math.abs(b - t)
+      if (dd < bestD) { bestD = dd; best = b }
+    }
+    return best
+  } catch {
+    return t
+  }
+}
+
 // Speech-aware silence detection via Silero-VAD: returns the NON-speech gaps
 // (>= 0.35s, to match silencedetect's d=0.35) as silence intervals in the exact
 // {starts, ends} shape jumpCutSilence already consumes — so it's a drop-in
@@ -720,6 +741,14 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       const q = broll.query.toLowerCase()
       const hit = words.find((w) => w.w.toLowerCase().replace(/[^a-z]/g, '').includes(q))
       if (hit) brollStart = Math.max(1.2, Math.min(hit.start, Math.max(1.2, durationSec - 3)))
+    }
+    // Beat-sync: nudge the cutaway onto the nearest music beat so it "drops on the
+    // beat". Only a small ±0.4s snap (so it still aligns with the spoken keyword),
+    // only on a fresh edit with a bed + b-roll, and fully best-effort — the cutaway
+    // is an overlay over continuing voice, so a tiny nudge never affects speech.
+    if (broll && bedFile && !edl) {
+      const snapped = await snapToBeat(bedFile, brollStart)
+      brollStart = Math.max(1.2, Math.min(snapped, Math.max(1.2, durationSec - 3)))
     }
     const brollEnd = edl?.broll ? edl.broll.end : brollStart + 2.2
 

@@ -34,7 +34,7 @@ RUN pip3 install --no-cache-dir --break-system-packages \
       --extra-index-url https://download.pytorch.org/whl/cpu \
       "torch>=2.2,<2.6" "torchaudio>=2.2,<2.6" "sentence-transformers>=3.0,<4" "pillow>=10.0" \
       "scenedetect>=0.6.4" "opencv-python-headless>=4.9" "stable-ts>=2.17" \
-      "silero-vad>=5.1" "soundfile>=0.12" \
+      "silero-vad>=5.1" "soundfile>=0.12" "librosa>=0.10,<0.11" \
  && python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('clip-ViT-B-32')" \
  && python3 -c "from silero_vad import load_silero_vad; load_silero_vad()"
 
@@ -52,6 +52,7 @@ COPY youtube_transcript.py ./youtube_transcript.py
 COPY clip_rank.py ./clip_rank.py
 COPY scene_detect.py ./scene_detect.py
 COPY vad.py ./vad.py
+COPY beats.py ./beats.py
 RUN npm run build
 
 # Pre-download the ASR models at build time so no job ever pays a download.
