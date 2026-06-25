@@ -186,7 +186,7 @@ function emojiFor(line: Word[]): string {
 // outlines), so we burn them as Twemoji PNG overlays instead. Compute up to `max`
 // emoji moments from the same 3-word caption grouping, evenly spaced so they
 // punctuate the video rather than clutter every line.
-function emojiMoments(words: Word[], max = 6): { emoji: string; start: number; end: number }[] {
+function emojiMoments(words: Word[], max = 4): { emoji: string; start: number; end: number }[] {
   const lines: Word[][] = []
   let cur: Word[] = []
   for (const w of words) {
@@ -202,9 +202,23 @@ function emojiMoments(words: Word[], max = 6): { emoji: string; start: number; e
     const end = line[line.length - 1].end + 0.2
     if (end > start) all.push({ emoji: e, start, end })
   }
-  if (all.length <= max) return all
-  const step = all.length / max
-  return Array.from({ length: max }, (_, i) => all[Math.floor(i * step)])
+  // Taste pass: emoji should read as deliberate punctuation, not spam. Drop a
+  // candidate if it repeats the previous emoji or lands within MIN_GAP of the last
+  // kept one, and cap the total. Fewer, well-spaced emoji rate far better than a
+  // sticker every 3 words.
+  const MIN_GAP = 2.5
+  const picked: { emoji: string; start: number; end: number }[] = []
+  let lastEnd = -Infinity
+  let lastEmoji = ''
+  for (const c of all) {
+    if (c.emoji === lastEmoji) continue
+    if (c.start - lastEnd < MIN_GAP) continue
+    picked.push(c)
+    lastEnd = c.end
+    lastEmoji = c.emoji
+    if (picked.length >= max) break
+  }
+  return picked
 }
 
 // Emoji char → Twemoji asset codepoint (lowercase hex, FE0F variation selector
@@ -505,9 +519,22 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
   // The kept windows ARE the cut decisions; carry the per-segment zoom punch on
   // 'high' energy, then render. renderCutSegments is shared with the manual
   // re-render path so an edited EDL produces the same kind of cut.
-  const segments: EdlSegment[] = segs.map(([s, e], i) => ({
-    start: s, end: e, zoom: energy === 'high' && i % 2 === 1,
-  }))
+  //
+  // Rhythmic punches: a rigid every-other-segment punch clusters on rapid cuts and
+  // reads as mechanical (the #1 editor complaint). Instead, punch on sentence-ish
+  // segment starts spaced by a musical cadence (~1.6s on the FINAL timeline) so the
+  // zooms land like they're on a beat and always breathe between hits.
+  const ZOOM_CADENCE = 1.6
+  let finalT = 0
+  let lastZoom = -ZOOM_CADENCE
+  const segments: EdlSegment[] = segs.map(([s, e], i) => {
+    const len = e - s
+    const at = finalT
+    finalT += len
+    const punch = energy === 'high' && i > 0 && len >= 0.8 && at - lastZoom >= ZOOM_CADENCE
+    if (punch) lastZoom = at
+    return { start: s, end: e, zoom: punch }
+  })
   const ok = await renderCutSegments(base, outFile, segments)
   return ok ? { applied: true, segments } : NOCUT
 }
