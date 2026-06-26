@@ -78,7 +78,14 @@ export interface Blueprint {
     retention_map: { beat: string; goal: string; tactic?: string }[]
   }
   hook_options: string[]
-  script: { section: string; line: string; direction: string }[]
+  script: {
+    section: string
+    line: string
+    direction: string
+    background?: string
+    cuts_info?: string
+    action_posing?: string
+  }[]
   shot_list: { shot: string; framing: string; notes: string }[]
   captions: string[]
   edit_checklist: string[]

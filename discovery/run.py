@@ -27,7 +27,7 @@ YT_LIMIT = int(os.environ.get('DISCOVERY_YT_LIMIT', '12'))
 TT_LIMIT = int(os.environ.get('DISCOVERY_TT_LIMIT', '12'))
 IG_LIMIT = int(os.environ.get('DISCOVERY_IG_LIMIT', '3'))  # reduced to keep IG ~$5/mo
 # Cap how many creator-derived niches we add per run, so a growing user base can't
-# blow up run time. Free scrapers (YT/TikTok) only for these — IG stays base-only.
+# blow up run time. Free scrapers (YT/TikTok) for these; paid IG scraper enabled if APIFY_TOKEN is set.
 CREATOR_NICHE_CAP = int(os.environ.get('DISCOVERY_CREATOR_NICHE_CAP', '14'))
 
 
@@ -176,8 +176,9 @@ def main():
         q = search_query(niche)  # clean query for search; full `niche` stays the label
         srcs = [('youtube', lambda: discover.youtube(q + ' tips', YT_LIMIT)),
                 ('tiktok', lambda: discover.tiktok(q, TT_LIMIT))]
-        # Instagram uses paid Apify, so keep it to the base niches only (cost cap).
-        if niche.strip().lower() in base_set:
+        # Instagram uses paid Apify. If APIFY_TOKEN is set, enable it for all niches
+        # to ensure the gallery is highly relevant to their connected brand niche.
+        if APIFY_TOKEN:
             srcs.append(('instagram', lambda: instagram(q, IG_LIMIT)))
         items = []
         for label, fn in srcs:

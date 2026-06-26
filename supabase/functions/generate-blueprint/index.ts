@@ -75,7 +75,19 @@ const blueprintSchema = obj(
       ['platform', 'format_label', 'why_it_works', 'retention_map'],
     ),
     hook_options: arr(str),
-    script: arr(obj({ section: str, line: str, direction: str }, ['section', 'line', 'direction'])),
+    script: arr(
+      obj(
+        {
+          section: str,
+          line: str,
+          direction: str,
+          background: str,
+          cuts_info: str,
+          action_posing: str,
+        },
+        ['section', 'line', 'direction', 'background', 'cuts_info', 'action_posing'],
+      ),
+    ),
     shot_list: arr(obj({ shot: str, framing: str, notes: str }, ['shot', 'framing', 'notes'])),
     captions: arr(str),
     edit_checklist: arr(str),
@@ -136,6 +148,9 @@ HOOKS (the single most important field):
 
 SCRIPT:
 - Write filmable beats, not an essay. Each beat is one short spoken line plus a direction (what to do or show on camera while saying it). Keep lines breath-sized so they read naturally on a teleprompter.
+- background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
+- cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
+- action_posing: specify the creator's physical actions, hand gestures, body language, facial expressions, and positioning (e.g., "Hold product at eye level, point finger, maintain intense eye contact with lens", "Lean forward slightly with a knowing smile, hands open to suggest accessibility").
 - KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never goes flat. Mark that beat's section as "Re-hook".
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
