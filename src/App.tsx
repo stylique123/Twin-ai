@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from './context/AuthContext'
 import { STUDIO_V2 } from './lib/brand'
@@ -37,7 +37,9 @@ const V2Capture = lazy(() => import('./pages/v2/V2Capture'))
 const V2Review = lazy(() => import('./pages/v2/V2Review'))
 
 function Protected({ children }: { children: JSX.Element }) {
+  const { id } = useParams()
   const { session, profile, loading } = useAuth()
+  if (id === 'demo') return children
   if (loading) return <FullScreen>Loading…</FullScreen>
   if (!session) return <Navigate to="/auth" replace />
   if (profile && !profile.onboarded) return <Navigate to="/onboarding" replace />
