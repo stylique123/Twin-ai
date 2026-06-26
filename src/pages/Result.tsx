@@ -22,6 +22,104 @@ import { RefinePanel } from '../components/RefinePanel'
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
 
+const MOCK_BLUEPRINT = {
+  reference_read: {
+    platform: 'instagram',
+    format_label: 'The Hook-Switch Strategy',
+    why_it_works: [
+      'High-contrast pattern interrupt hooks stop scrolling immediately.',
+      'Frequent frame changes and visual cues keep attention high in the middle.',
+      'Strong self-relevance naming calls out the exact target audience.'
+    ],
+    retention_map: [
+      { beat: '0-3s Hook', goal: 'Stop the scroll by calling out a specific creator problem', tactic: 'Curiosity loop + Pattern interrupt' },
+      { beat: '4-10s Setup', goal: 'Deliver the core concept immediately without fluff', tactic: 'Visual change every 2 seconds' },
+      { beat: '11-20s Middle Re-hook', goal: 'Re-open curiosity loop before interest sags', tactic: 'Contrarian claim' },
+      { beat: '21-30s CTA / Payoff', goal: 'Drive high-conversion saves and comments', tactic: 'Comment-bait question' }
+    ]
+  },
+  hook_options: [
+    'Here is the part nobody tells you about building AI agents...',
+    'Stop building AI agents like a school project. Do this instead.',
+    'I built 10 AI agents this week, and this is my biggest mistake.',
+    'If you are not using this specific prompt format, your agents will fail.',
+    'The secret to making your AI agents look premium in under 2 minutes.'
+  ],
+  script: [
+    {
+      section: 'Hook',
+      line: 'Here is the part nobody tells you about building AI agents...',
+      direction: 'Zoom in slowly on creator sitting in front of a dark screen with warm backlight',
+      background: 'Sleek dark room, desk with warm amber ambient strip light, monitor displaying code editor in background.',
+      action_posing: 'Lean forward slightly, make direct eye contact with the camera, point finger index for emphasis.',
+      cuts_info: 'Start wide, cut to a tight punchy chest-up shot exactly as the first word is spoken.'
+    },
+    {
+      section: 'Setup',
+      line: 'They tell you it is all about the model. But actually, it is about the system design.',
+      direction: 'Cut to high-resolution product demo showing visual canvas editor',
+      background: 'Clean desktop screen-recording showing code flows and visual builder.',
+      action_posing: 'Maintain voiceover with high energy and pacing, point to screen features with cursor.',
+      cuts_info: 'Slide transition to screen recording, crop and zoom in on key code blocks.'
+    },
+    {
+      section: 'Re-hook',
+      line: 'But here is the part where most creators get stuck and fail.',
+      direction: 'Cut back to creator looking concerned, shaking head slightly',
+      background: 'Sleek dark room, warm amber lighting.',
+      action_posing: 'Shake head slowly, hands open in a posture of warning, maintain intense eye contact.',
+      cuts_info: 'Jump cut to slightly tighter framing on the word "stuck".'
+    },
+    {
+      section: 'CTA',
+      line: 'Comment "AGENT" and I will send you my complete design blueprint for free.',
+      direction: 'Display kinetic text overlay on screen: AGENT',
+      background: 'Sleek dark room, warm lighting with a teal highlight glow.',
+      action_posing: 'Smile confidently, gesture with hands bringing them together, point at the screen.',
+      cuts_info: 'Slow zoom out, display big bold teal colored captions in the center.'
+    }
+  ],
+  shot_list: [
+    { shot: 'Opener Hook', framing: 'Chest-up shot', notes: 'Warm amber backlight, direct lens look.' },
+    { shot: 'Product Canvas', framing: 'Screen recording', notes: 'Zoomed-in highlight on coding steps.' },
+    { shot: 'Warning Beat', framing: 'Close-up shot', notes: 'Creator warns audience about main failure points.' },
+    { shot: 'Closing Offer', framing: 'Chest-up shot', notes: 'Teal accent glow, callout text on screen.' }
+  ],
+  captions: ['AI Agents', 'System Design', 'Creator Blueprint', 'Coding Tips'],
+  edit_checklist: [
+    'Cut out all silent gaps and filler words immediately.',
+    'Dampen background music to -20dB during spoken dialogue.',
+    'Apply teal colored word highlights on keywords: AGENT, STUCK, FAIL.'
+  ],
+  caption_packet: {
+    caption_style: 'Cinematic word-by-word',
+    pacing: 'Fast cuts, bold emphasis',
+    emphasis: 'Teal word glow',
+    export: '9:16 vertical MP4, 60fps'
+  },
+  publish_plan: [
+    { platform: 'instagram', caption: 'Stop building basic AI agents. Comment AGENT to get my blueprint.', hashtags: ['#ai', '#coding', '#build'], best_time: '12:00 PM' },
+    { platform: 'tiktok', caption: 'The secret to premium AI agents.', hashtags: ['#ai', '#tech', '#developer'], best_time: '5:00 PM' }
+  ],
+  production_sprint: [
+    { minute: '0:00 - 5:00', task: 'Setup amber/teal lighting and adjust camera framing.' },
+    { minute: '5:00 - 10:00', task: 'Record 3 takes of the script with hook options.' },
+    { minute: '10:00 - 20:00', task: 'Upload to TwinAI and export final cut.' }
+  ]
+}
+
+const MOCK_GENERATION = {
+  id: 'demo',
+  user_id: 'demo-user',
+  reference_url: 'https://instagram.com/reel/demo',
+  reference_note: 'A premium showcase script',
+  fidelity: 'balanced',
+  blueprint: MOCK_BLUEPRINT,
+  selected_hook: 'Here is the part nobody tells you about building AI agents...',
+  edit_style: 'cinematic',
+  approved: false
+}
+
 export default function Result() {
   const { id } = useParams()
   const { profile } = useAuth()
@@ -73,6 +171,13 @@ export default function Result() {
 
   useEffect(() => {
     if (!id) return
+    if (id === 'demo') {
+      setGen(MOCK_GENERATION as any)
+      setApproved(false)
+      setChosenHook(MOCK_GENERATION.selected_hook)
+      setLoading(false)
+      return
+    }
     getGeneration(id)
       .then((g) => {
         setGen(g)
@@ -113,6 +218,12 @@ export default function Result() {
           <Link to="/history" className="btn-gradient mt-6 inline-flex">
             <ArrowLeft className="h-4 w-4" /> Back to Library
           </Link>
+          <div className="mt-6 border-t border-white/5 pt-6">
+            <p className="text-xs text-stone mb-2">Local database not configured yet?</p>
+            <Link to="/result/demo" className="btn-ghost py-2.5 text-xs w-full inline-flex justify-center">
+              ⚡ View Interactive Demo Workspace
+            </Link>
+          </div>
         </div>
       </main>
     )
