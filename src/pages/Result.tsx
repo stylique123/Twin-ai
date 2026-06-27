@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Sparkles, Activity, Quote, FileText, Clapperboard,
-  Wand2, Timer, Send, Loader2, Video, ExternalLink,
+  Wand2, Send, Loader2, Video, ExternalLink,
   SlidersHorizontal, Play, BadgeCheck, Link2, MessageSquare, Users,
 } from 'lucide-react'
 
@@ -127,7 +127,6 @@ export default function Result() {
   const [loading, setLoading] = useState(true)
   const [chosenHook, setChosenHook] = useState('')
   const [approved, setApproved] = useState(false)
-  const [activeTab, setActiveTab] = useState<'strategy' | 'spec' | 'publish'>('strategy')
   // Agency approval workflow: agencies mark a blueprint client-approved before it's
   // recorded/posted. Soft status (no hard block) so solo creators are unaffected.
   const isAgency = profile?.plan === 'agency'
@@ -253,106 +252,92 @@ export default function Result() {
 
   const updatedScript = b.script.map((s, i) => {
     if (i === 0 && chosenHook) {
+      const sentences = s.line.split(/(?<=[.!?])\s+/)
+      if (sentences.length > 1) {
+        return { ...s, line: `${chosenHook.trim()} ${sentences.slice(1).join(' ')}` }
+      }
       return { ...s, line: chosenHook }
     }
     return s
   })
 
   return (
-    <main className="relative min-h-screen overflow-clip pb-20">
-      {/* Hero header */}
-      <section className="relative border-b border-white/8">
-        <Aurora className="opacity-70" />
-        <div className="relative mx-auto max-w-7xl px-5 pb-10 pt-12">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Link to="/history" className="inline-flex items-center gap-1.5 text-sm text-stone hover:text-cream">
-              <ArrowLeft className="h-4 w-4" /> History
+    <main className="relative min-h-screen overflow-clip bg-zinc-950 text-sand pb-20">
+      {/* Hero Header */}
+      <section className="relative border-b border-white/5 bg-zinc-900/10">
+        <Aurora className="opacity-40" />
+        <div className="relative mx-auto max-w-7xl px-6 pb-10 pt-12">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <Link to="/history" className="inline-flex items-center gap-1.5 text-xs text-stone hover:text-cream transition-colors">
+              <ArrowLeft className="h-4 w-4" /> Library
             </Link>
-            {/* Record is the real next step → primary; bring-your-own-clip is the
-                alternate path → secondary. Stacks full-width on mobile. */}
+            
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              {/* If this blueprint already has a finished edit, let them re-edit it
-                  here (caption style/color, cuts, b-roll) without re-recording. */}
               {gen.edit_path && gen.take_path && (
-                <button onClick={openRefine} className="btn-ghost py-2 text-sm">
-                  <SlidersHorizontal className="h-4 w-4" /> Refine edit
+                <button onClick={openRefine} className="btn-ghost py-2 text-xs font-medium">
+                  <SlidersHorizontal className="h-3.5 w-3.5" /> Refine Edit
                 </button>
               )}
-              <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-sm">
-                <Video className="h-4 w-4" /> Record with teleprompter
+              <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-xs font-semibold">
+                <Video className="h-3.5 w-3.5" /> Record Script
               </Link>
-              <Link to={`/record/${gen.id}?upload=1`} className="btn-ghost py-2 text-sm">
-                <Wand2 className="h-4 w-4" /> Upload your own clip
+              <Link to={`/record/${gen.id}?upload=1`} className="btn-ghost py-2 text-xs font-medium">
+                <Wand2 className="h-3.5 w-3.5" /> Upload Take
               </Link>
             </div>
           </div>
 
           <motion.div
-            initial={{ opacity: 0, y: 18 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: EASE }}
+            transition={{ duration: 0.5, ease: EASE }}
+            className="mt-8"
           >
-            {/* Celebrate the arrival — this is the payoff moment (the AI read a
-                real viral video and wrote THIS creator a script). Make it feel like one. */}
-            <motion.span
-              initial={{ opacity: 0, scale: 0.85 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.18, duration: 0.5, ease: EASE }}
-              className="mt-8 inline-flex items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-3 py-1 text-xs font-bold text-teal"
-            >
-              <Sparkles className="h-3.5 w-3.5" /> Reading complete — your script is ready
-            </motion.span>
-            <motion.h1
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.6, ease: EASE }}
-              className="mt-3 font-display text-4xl leading-tight tracking-tight sm:text-5xl"
-            >
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/20 bg-teal/5 px-2.5 py-0.5 text-xs font-medium text-teal">
+              <Sparkles className="h-3.5 w-3.5" /> Ready to Shoot
+            </span>
+            <h1 className="mt-3 font-display text-3xl leading-tight tracking-tight text-cream sm:text-4xl">
               {b.reference_read.format_label}
-            </motion.h1>
-            {/* Surface the hook the creator is shooting right in the hero, so they
-                don't have to scroll past 3 sections to see their own choice. */}
+            </h1>
             {chosenHook && (
-              <p className="mt-3 max-w-4xl font-heading text-lg leading-snug text-cream/90">
+              <p className="mt-4 max-w-4xl font-heading text-base leading-relaxed text-cream/90 italic pl-3 border-l border-zinc-700">
                 “{chosenHook}”
               </p>
             )}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <span className="chip"><Sparkles className="h-3.5 w-3.5 text-amber" /> {b.reference_read.platform}</span>
-              <span className="chip">fidelity · {gen.fidelity}</span>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="chip text-xs"><Sparkles className="h-3.5 w-3.5 text-amber" /> {b.reference_read.platform}</span>
+              <span className="chip text-xs">Fidelity · {gen.fidelity}</span>
               {isAgency && (
                 <button
                   onClick={toggleApproved}
-                  className={cn('chip transition-colors', approved ? 'border-teal/50 bg-teal/10 text-teal' : 'hover:border-white/20 hover:text-cream')}
-                  title="Mark this script client-approved before it's recorded or posted"
+                  className={cn('chip text-xs transition-colors', approved ? 'border-teal/50 bg-teal/5 text-teal' : 'hover:border-white/10 hover:text-cream')}
+                  title="Mark approved"
                 >
                   <BadgeCheck className={cn('h-3.5 w-3.5', approved ? 'text-teal' : 'text-stone')} />
-                  {approved ? 'Client-approved' : 'Mark approved'}
+                  {approved ? 'Approved' : 'Mark Approved'}
                 </button>
               )}
             </div>
-            <p className="mt-3 text-xs text-stone">
-              Camera-shy? You don't have to film your face — <Link to={`/record/${gen.id}?upload=1`} className="text-amber hover:text-cream">upload a screen-recording or any clip</Link> and we'll auto-edit it.
-            </p>
           </motion.div>
         </div>
       </section>
 
-      <div className="mx-auto max-w-7xl px-5 py-8 animate-in fade-in duration-500">
-        {isAgency && <div className="mb-6"><ClientApprovalCard gen={gen} /></div>}
+      <div className="mx-auto max-w-7xl px-6 py-10">
+        {isAgency && <div className="mb-8"><ClientApprovalCard gen={gen} /></div>}
         
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Left Column: Script Workspace (7 columns) */}
-          <div className="lg:col-span-7 space-y-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
+          
+          {/* Left Column: Script Teleprompter & Shot list (7 cols) */}
+          <div className="lg:col-span-7 space-y-10">
             
-            {/* Hook Selector inline */}
-            <div className="rounded-card border border-white/8 bg-zinc-950/20 p-5 space-y-4">
+            {/* Hook Selector */}
+            <div className="rounded-card border border-white/5 bg-zinc-900/20 p-5 space-y-4">
               <div className="flex items-center gap-2">
-                <Quote className="h-4 w-4 text-amber animate-pulse" />
-                <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Hook Angle Selector</span>
+                <Quote className="h-4 w-4 text-amber" />
+                <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Select Hook Angle</span>
               </div>
-              <p className="text-xs text-stone">The teleprompter script and your generated video will adopt your selected hook. Tap one to preview the updated script flow.</p>
-              <div className="grid grid-cols-1 gap-2.5">
+              <p className="text-xs text-stone">Tap a hook. The teleprompter script body below will dynamically adapt to maintain a cohesive flow.</p>
+              <div className="grid grid-cols-1 gap-2">
                 {b.hook_options.map((h, i) => {
                   const isChosen = h === chosenHook
                   return (
@@ -360,18 +345,18 @@ export default function Result() {
                       key={i}
                       onClick={() => pickHook(h)}
                       className={cn(
-                        'w-full text-left flex items-start gap-3.5 rounded-lg border p-4 text-xs transition-all duration-300',
+                        'w-full text-left flex items-start gap-3 rounded-lg border p-3 text-xs transition-all duration-200',
                         isChosen
-                          ? 'border-coral/55 bg-coral/10 text-cream shadow-lg shadow-coral/5'
-                          : 'border-white/5 bg-white/[0.01] text-sand hover:border-white/12 hover:bg-white/[0.03]'
+                          ? 'border-coral/40 bg-coral/5 text-cream'
+                          : 'border-white/5 bg-zinc-900/10 text-sand hover:border-white/10 hover:bg-zinc-900/25'
                       )}
                     >
-                      <span className={cn('mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border', isChosen ? 'border-coral bg-coral text-ink' : 'border-white/30')}>
-                        {isChosen && <Check className="h-2.5 w-2.5 text-zinc-950 stroke-[3.5]" />}
+                      <span className={cn('mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full border', isChosen ? 'border-coral bg-coral text-zinc-950' : 'border-white/20')}>
+                        {isChosen && <Check className="h-2.5 w-2.5 text-zinc-950 stroke-[3]" />}
                       </span>
                       <div className="flex-1 min-w-0">
-                        {i === 0 && <span className="mr-1.5 rounded-full bg-amber/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-amber">Recommended</span>}
-                        <span className="italic font-medium">“{h}”</span>
+                        {i === 0 && <span className="mr-1.5 rounded-full bg-amber/10 border border-amber/20 px-1.5 py-0.5 text-xs font-bold text-amber">Recommended</span>}
+                        <span className="italic">“{h}”</span>
                       </div>
                     </button>
                   )
@@ -379,71 +364,68 @@ export default function Result() {
               </div>
             </div>
 
-            {/* Interactive Script Workspace */}
+            {/* Script Teleprompter */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="font-heading text-sm font-semibold tracking-wide uppercase text-cream flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-coral" /> Interactive Script Teleprompter
+                <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-stone" /> Script teleprompter
                 </h2>
-                <span className="text-xs text-stone">{updatedScript.length} script beats</span>
+                <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
               
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {updatedScript.map((s, i) => {
                   const isHook = s.section?.toLowerCase().includes('hook')
                   const isRehook = s.section?.toLowerCase().includes('re-hook') || s.section?.toLowerCase().includes('rehook')
                   const isCta = s.section?.toLowerCase().includes('cta')
-                  const tagColor = isHook ? 'border-amber/30 bg-amber/10 text-amber'
-                                 : isRehook ? 'border-coral/30 bg-coral/10 text-coral'
-                                 : isCta ? 'border-teal/30 bg-teal/10 text-teal'
-                                 : 'border-white/10 bg-white/5 text-sand'
+                  const tagColor = isHook ? 'border-amber/20 bg-amber/5 text-amber'
+                                 : isRehook ? 'border-coral/20 bg-coral/5 text-coral'
+                                 : isCta ? 'border-teal/20 bg-teal/5 text-teal'
+                                 : 'border-white/5 bg-zinc-900/20 text-sand'
 
                   return (
-                    <div key={i} className="group rounded-card border border-white/8 bg-zinc-950/20 p-5 hover:border-white/16 transition-all duration-300">
+                    <div key={i} className="rounded-card border border-white/5 bg-zinc-900/10 p-5 space-y-4">
                       <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-3">
-                        <span className={cn('rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider', tagColor)}>
+                        <span className={cn('rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wider', tagColor)}>
                           {s.section || `Beat ${i + 1}`}
                         </span>
-                        <span className="text-[10px] font-mono text-stone">Scene {i + 1}</span>
+                        <span className="text-xs font-mono text-stone">Scene {i + 1}</span>
                       </div>
                       
-                      {/* Spoken dialogue line in a large, premium look */}
-                      <div className="mt-4 font-display text-lg leading-relaxed text-cream pl-3 border-l-2 border-amber/30">
+                      {/* Dialogue line */}
+                      <div className="font-display text-base leading-relaxed text-cream pl-3 border-l border-zinc-700">
                         “{s.line}”
                       </div>
 
-                      {/* Detailed scene parameters grid */}
-                      <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-3 pt-4 border-t border-white/5">
-                        {/* Background settings card */}
-                        <div className="rounded-lg bg-white/[0.01] p-3.5 border border-white/5 space-y-1.5">
+                      {/* Scene Parameters Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-4 border-t border-white/5">
+                        <div className="rounded-lg bg-zinc-950/20 p-3 border border-white/5 space-y-1">
                           <div className="flex items-center gap-1.5 text-stone">
-                            <Video className="h-3.5 w-3.5 text-amber shrink-0" />
-                            <span className="text-[9px] font-heading uppercase tracking-wider">Background</span>
+                            <Video className="h-3.5 w-3.5 text-stone shrink-0" />
+                            <span className="text-xs font-heading uppercase tracking-wider">Background</span>
                           </div>
                           <p className="text-xs text-sand leading-relaxed">
-                            {s.background || 'Visual setup matching scene context.'}
+                            {s.background || 'Visual context matching scene.'}
                           </p>
                         </div>
 
-                        {/* Action and posing card */}
-                        <div className="rounded-lg bg-white/[0.01] p-3.5 border border-white/5 space-y-1.5">
+                        <div className="rounded-lg bg-zinc-950/20 p-3 border border-white/5 space-y-1">
                           <div className="flex items-center gap-1.5 text-stone">
-                            <Activity className="h-3.5 w-3.5 text-coral shrink-0" />
-                            <span className="text-[9px] font-heading uppercase tracking-wider">Posing & Action</span>
+                            <Activity className="h-3.5 w-3.5 text-stone shrink-0" />
+                            <span className="text-xs font-heading uppercase tracking-wider">Action & Pose</span>
                           </div>
                           <p className="text-xs text-sand leading-relaxed">
-                            {s.action_posing || s.direction || 'Natural gestures and lens presence.'}
+                            {s.action_posing || s.direction || 'Camera-facing presence.'}
                           </p>
                         </div>
 
-                        {/* Pacing and Cuts card */}
-                        <div className="rounded-lg bg-white/[0.01] p-3.5 border border-white/5 space-y-1.5">
+                        <div className="rounded-lg bg-zinc-950/20 p-3 border border-white/5 space-y-1">
                           <div className="flex items-center gap-1.5 text-stone">
-                            <SlidersHorizontal className="h-3.5 w-3.5 text-teal shrink-0" />
-                            <span className="text-[9px] font-heading uppercase tracking-wider">Cuts & Transitions</span>
+                            <SlidersHorizontal className="h-3.5 w-3.5 text-stone shrink-0" />
+                            <span className="text-xs font-heading uppercase tracking-wider">Cuts & Pace</span>
                           </div>
                           <p className="text-xs text-sand leading-relaxed">
-                            {s.cuts_info || 'Cut timing aligned with speech rhythm.'}
+                            {s.cuts_info || 'Cut pacing instructions.'}
                           </p>
                         </div>
                       </div>
@@ -452,152 +434,111 @@ export default function Result() {
                 })}
               </div>
             </div>
+
+            {/* Shot List */}
+            <div className="space-y-4">
+              <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
+                <Clapperboard className="h-4 w-4 text-stone" /> Shot List & visuals
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {b.shot_list.map((s, i) => (
+                  <div key={i} className="rounded-lg border border-white/5 bg-zinc-900/10 p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="font-heading text-cream text-sm font-medium">{s.shot}</span>
+                      <span className="rounded bg-zinc-900 border border-white/10 px-2 py-0.5 text-xs text-sand font-mono shrink-0">{s.framing}</span>
+                    </div>
+                    <p className="text-xs text-stone leading-relaxed">{s.notes}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
 
-          {/* Right Column: Strategy, Spec, and Publishing (5 columns) */}
-          <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-6">
-            <div className="rounded-card border border-white/8 bg-zinc-950/20 overflow-hidden">
-              {/* Tab headers */}
-              <div className="flex border-b border-white/10 bg-white/[0.02]">
-                {(['strategy', 'spec', 'publish'] as const).map((tab) => {
-                  const isSelected = activeTab === tab
-                  const label = tab === 'strategy' ? 'Strategy' : tab === 'spec' ? 'Production' : 'Publishing'
-                  const Icon = tab === 'strategy' ? Activity : tab === 'spec' ? SlidersHorizontal : Send
-                  return (
-                    <button
-                      key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={cn(
-                        'flex-1 py-3.5 text-[10px] font-heading uppercase tracking-wider flex items-center justify-center gap-1.5 border-b-2 transition-all duration-300',
-                        isSelected ? 'border-amber text-amber font-bold bg-white/[0.01]' : 'border-transparent text-stone hover:text-sand'
+          {/* Right Column: Strategy, Production checklist, Publishing plan (5 cols) */}
+          <div className="lg:col-span-5 space-y-8 lg:sticky lg:top-6">
+            
+            {/* Strategy Card */}
+            <div className="rounded-card border border-white/5 bg-zinc-900/10 p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-stone" />
+                <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why this works</h3>
+              </div>
+              <ul className="space-y-2.5">
+                {b.reference_read.why_it_works.map((w, i) => (
+                  <li key={i} className="flex gap-2 text-xs text-sand leading-relaxed">
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal" /> {w}
+                  </li>
+                ))}
+              </ul>
+
+              <div className="border-t border-white/5 pt-4 space-y-3">
+                <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Estimated Retention map</h3>
+                <ol className="relative ml-1 space-y-4 border-l border-white/10 pl-4">
+                  {b.reference_read.retention_map.map((r, i) => (
+                    <li key={i} className="relative">
+                      <span className="absolute -left-[20px] top-1.5 h-1.5 w-1.5 rounded-full bg-zinc-700" />
+                      <div className="text-xs font-heading text-cream">{r.beat}</div>
+                      <div className="text-xs text-sand leading-relaxed mt-0.5">{r.goal}</div>
+                      {r.tactic && (
+                        <div className="mt-1 text-xs text-coral font-medium">↳ {r.tactic}</div>
                       )}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                      {label}
-                    </button>
-                  )
-                })}
-              </div>
-
-              {/* Tab contents */}
-              <div className="p-5 space-y-5">
-                {activeTab === 'strategy' && (
-                  <div className="space-y-5">
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Activity className="h-4 w-4 text-amber" />
-                        <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why this format works</h3>
-                      </div>
-                      <ul className="space-y-2.5">
-                        {b.reference_read.why_it_works.map((w, i) => (
-                          <li key={i} className="flex gap-2.5 text-xs text-sand leading-relaxed">
-                            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal" /> {w}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <div className="border-t border-white/5 pt-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Activity className="h-4 w-4 text-amber" />
-                        <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Estimated retention pattern</h3>
-                      </div>
-                      <p className="mb-4 text-[11px] text-stone leading-relaxed">
-                        A structural read of how the original holds attention beat-by-beat — estimated from the content.
-                      </p>
-                      <ol className="relative ml-1 space-y-4 border-l border-white/10 pl-5">
-                        {b.reference_read.retention_map.map((r, i) => (
-                          <li key={i} className="relative">
-                            <span className="absolute -left-[25px] top-1.5 h-1.5 w-1.5 rounded-full bg-signature" />
-                            <div className="text-xs font-heading text-cream">{r.beat}</div>
-                            <div className="text-xs text-sand leading-relaxed mt-0.5">{r.goal}</div>
-                            {r.tactic && (
-                              <div className="mt-1 text-[10px] text-coral font-medium">↳ {r.tactic}</div>
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'spec' && (
-                  <div className="space-y-5">
-                    <div>
-                      <div className="flex items-center gap-2 mb-3">
-                        <Clapperboard className="h-4 w-4 text-amber" />
-                        <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Shot list</h3>
-                      </div>
-                      <div className="space-y-2">
-                        {b.shot_list.map((s, i) => (
-                          <div key={i} className="rounded-lg border border-white/6 bg-white/[0.01] p-3 text-xs leading-relaxed">
-                            <div className="flex items-start justify-between gap-2">
-                              <span className="font-heading text-cream text-[11px] font-medium">{s.shot}</span>
-                              <span className="rounded bg-teal/10 border border-teal/20 px-1.5 py-0.5 text-[9px] text-teal font-mono shrink-0">{s.framing}</span>
-                            </div>
-                            <div className="mt-1.5 text-stone text-[11px]">{s.notes}</div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="border-t border-white/5 pt-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <SlidersHorizontal className="h-4 w-4 text-amber" />
-                        <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Editing Spec & checklist</h3>
-                      </div>
-                      <div className="grid gap-2.5 grid-cols-2 mb-4">
-                        <Spec label="Captions" value={cap.caption_style} />
-                        <Spec label="Pacing" value={cap.pacing} />
-                        <Spec label="Emphasis" value={cap.emphasis} />
-                        <Spec label="Export" value={cap.export} />
-                      </div>
-                      <div className="border-t border-white/5 pt-3 space-y-2">
-                        <p className="text-[10px] text-stone font-heading mb-1.5 uppercase tracking-wider">Editing Checklist</p>
-                        {b.edit_checklist.map((c, i) => (
-                          <div key={i} className="flex gap-2 text-[11px] text-sand leading-relaxed">
-                            <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal" /> {c}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="border-t border-white/5 pt-4">
-                      <div className="flex items-center gap-2 mb-3">
-                        <Timer className="h-4 w-4 text-amber" />
-                        <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">20-minute production sprint</h3>
-                      </div>
-                      <div className="space-y-2">
-                        {b.production_sprint.map((p, i) => (
-                          <div key={i} className="flex items-start gap-2.5 text-[11px] leading-relaxed">
-                            <span className="chip shrink-0 font-mono text-[9px] py-0.5 px-1 bg-white/5 border-white/10">{p.minute}</span>
-                            <span className="text-sand">{p.task}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeTab === 'publish' && (
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Send className="h-4 w-4 text-amber" />
-                      <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Platform publish plans</h3>
-                    </div>
-                    <div className="space-y-3">
-                      {b.publish_plan.map((p, i) => (
-                        <PublishRow key={i} generationId={gen.id} platform={p.platform} caption={p.caption} hashtags={p.hashtags} bestTime={p.best_time} />
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-stone mt-2 leading-relaxed">
-                      Copy a caption and post. Your metrics update on the Dashboard as you publish.
-                    </p>
-                  </div>
-                )}
+                    </li>
+                  ))}
+                </ol>
               </div>
             </div>
+
+            {/* Spec & Checklist Card */}
+            <div className="rounded-card border border-white/5 bg-zinc-900/10 p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4 text-stone" />
+                <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Editing specifications</h3>
+              </div>
+              <div className="grid gap-2.5 grid-cols-2">
+                <Spec label="Captions" value={cap.caption_style} />
+                <Spec label="Pacing" value={cap.pacing} />
+                <Spec label="Emphasis" value={cap.emphasis} />
+                <Spec label="Export" value={cap.export} />
+              </div>
+              
+              <div className="border-t border-white/5 pt-4 space-y-2.5">
+                <h4 className="text-xs text-stone font-heading uppercase tracking-wider">Editing Checklist</h4>
+                {b.edit_checklist.map((c, i) => (
+                  <div key={i} className="flex gap-2 text-xs text-sand leading-relaxed">
+                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-teal" /> {c}
+                  </div>
+                ))}
+              </div>
+
+              <div className="border-t border-white/5 pt-4 space-y-2.5">
+                <h4 className="text-xs text-stone font-heading uppercase tracking-wider">Production Sprint</h4>
+                <div className="space-y-2">
+                  {b.production_sprint.map((p, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs leading-relaxed">
+                      <span className="chip shrink-0 font-mono text-xs py-0.5 px-1.5 bg-zinc-900 border-white/10">{p.minute}</span>
+                      <span className="text-sand">{p.task}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Publishing Plan Card */}
+            <div className="rounded-card border border-white/5 bg-zinc-900/10 p-5 space-y-4">
+              <div className="flex items-center gap-2">
+                <Send className="h-4 w-4 text-stone" />
+                <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Distribution Plan</h3>
+              </div>
+              <div className="space-y-4">
+                {b.publish_plan.map((p, i) => (
+                  <PublishRow key={i} generationId={gen.id} platform={p.platform} caption={p.caption} hashtags={p.hashtags} bestTime={p.best_time} />
+                ))}
+              </div>
+            </div>
+
           </div>
+          
         </div>
       </div>
 

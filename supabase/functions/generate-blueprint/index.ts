@@ -146,12 +146,13 @@ HOOKS (the single most important field):
 - Ban weak openers and tell-words that signal a skippable video: "Hey guys", "In this video", "Today I want to talk about", "So basically", "Let me tell you". Open mid-action or mid-claim.
 - THE FIRST FRAME decides the scroll-stop as much as the first words. In the script's Hook beat direction, name the literal first half-second on screen: the exact shot size, the facial expression, and any on-screen text, so the very first frame already stops the thumb.
 
-SCRIPT:
-- Write filmable beats, not an essay. Each beat is one short spoken line plus a direction (what to do or show on camera while saying it). Keep lines breath-sized so they read naturally on a teleprompter.
+SCRIPT & HOOK INTEGRATION:
+- Script beats must be realistic, full spoken paragraphs (typically 2 to 4 sentences per beat, not just single short lines), telling the full story for each section (Hook, Setup, Re-hook, CTA). Keep them highly conversational, engaging, and ready for teleprompter reading.
+- Make the script beats modular and cohesive. Ensure the transition between the Hook options and Scene 2 (Setup) is grammatically correct and logically seamless for ANY of the 5 hook options. Scene 2 must not repeat or assume specific words from Hook Option 1, but rather flow naturally from any selected hook.
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
 - action_posing: specify the creator's physical actions, hand gestures, body language, facial expressions, and positioning (e.g., "Hold product at eye level, point finger, maintain intense eye contact with lens", "Lean forward slightly with a knowing smile, hands open to suggest accessibility").
-- KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never goes flat. Mark that beat's section as "Re-hook".
+- KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never sags. Mark that beat's section as "Re-hook".
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
 CAPTIONS (burned-in, for our own renderer):
