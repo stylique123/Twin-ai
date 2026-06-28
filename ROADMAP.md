@@ -1,5 +1,8 @@
 # TwinAI — Vision Roadmap
 
+> For how the system is built today, see **[`ARCHITECTURE.md`](ARCHITECTURE.md)**.
+> This file is what comes *next* on top of that architecture.
+
 The product is a loop: **learn your voice → find a reference → blueprint → record →
 auto-edit → publish → analytics.** Everything below extends that loop. The editing
 engine and the gallery should each be strong enough to stand on their own — and

@@ -1,12 +1,13 @@
 # TwinAI — Deploy runbook
 
 How to take what's built from "in the repo" to "live and provable". This is a
-**you-side action**: it needs the Supabase + Fly CLIs authenticated to your
-accounts and real secrets. Nothing here runs from the Claude sandbox.
+**you-side action**: it needs the Supabase CLI authenticated to your account, SSH
+access to the VPS, and real secrets. Nothing here runs from the Claude sandbox.
+For the system shape behind these steps, see **`ARCHITECTURE.md`**.
 
-**Prereqs (once):** `npm i -g supabase` · install Fly CLI (`flyctl`) ·
-`supabase login` · `fly auth login`. Have ready: Supabase **project ref**,
-**service-role key**, **anon key**, **Gemini key**, **Apify token**.
+**Prereqs (once):** `npm i -g supabase` · `supabase login` · SSH into your VPS with
+Docker installed (`curl -fsSL https://get.docker.com | sh`). Have ready: Supabase
+**project ref**, **service-role key**, **anon key**, **Gemini key**, **Apify token**.
 
 ## 1. Database — apply all migrations (0001–0005)
 ```bash
@@ -26,29 +27,63 @@ supabase functions deploy dna-poll
 supabase functions deploy ingest-reference
 ```
 
-## 3. Worker → Fly (makes "Read the actual video" + voice-from-audio actually run)
+## 3. Worker → VPS / Hetzner (makes "Read the actual video" + voice-from-audio actually run)
+The worker runs as a Docker container on a plain Ubuntu box (Hetzner or any VPS).
+This is the production path (the stack runs on a VPS, not Fly).
 ```bash
-cd worker
-fly launch --no-deploy           # creates the app from fly.toml
-fly secrets set \
-  SUPABASE_URL=https://YOUR_REF.supabase.co \
-  SUPABASE_SERVICE_ROLE_KEY=xxx \
-  GEMINI_API_KEY=xxx
-fly deploy
-fly logs                         # expect {"msg":"worker up",...}
-# more throughput later: fly scale count 2
+# On the server (once): install Docker
+curl -fsSL https://get.docker.com | sh
+
+# Create the secrets file (chmod 600) — see the header of worker/deploy-vps.sh:
+sudo nano /opt/twinai-worker.env
+#   SUPABASE_URL=https://YOUR_REF.supabase.co
+#   SUPABASE_SERVICE_ROLE_KEY=xxx
+#   GEMINI_API_KEY=xxx
+#   APIFY_TOKEN=xxx            # YouTube + Instagram transcripts (yt-dlp is bot-blocked there)
+#   WORKER_JOB_TYPES=ingest,transcribe,build_voice,autoedit,scrape_dna
+#   WHISPER_MODEL=small        # drop to base/tiny on a small box
+#   WORKER_MAX_MEDIA_SECS=900
+
+# Deploy / update (pulls main, builds, restarts):
+sudo bash worker/deploy-vps.sh
+docker logs -f twinai-worker     # expect {"msg":"worker up",...} then claimed → done
+
+# More throughput later: run additional containers with distinct HOSTNAME,
+# or the same image on another box — they share one queue (SKIP LOCKED). See worker/SCALING.md.
 ```
+
+### 3b. Satellite services (same VPS, Docker)
+```bash
+# Discovery — daily cron that finds fresh viral references per niche
+#   (reuses the worker container's secrets at run time)
+cd discovery && sudo bash deploy-vps.sh
+
+# Renderer — timeline-driven video render service
+docker build -t twinai-revideo revideo/ && \
+  docker run -d --name twinai-revideo --restart unless-stopped twinai-revideo
+
+# Publishing + analytics — self-hosted Postiz (docker-compose + Caddy)
+cd postiz && docker compose up -d
+```
+
+> **Alt host (optional): Fly.io.** A `worker/fly.toml` is kept for convenience.
+> `cd worker && fly launch --no-deploy && fly secrets set SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… GEMINI_API_KEY=… && fly deploy`.
+> The VPS path above is the supported production deployment.
 
 ## 4. Seed the first super-admin (SQL console / service role only)
 ```sql
 insert into public.platform_admins (user_id, role) values ('YOUR_AUTH_UID', 'superadmin');
 ```
 
-## 5. Frontend
-```bash
-# host env: VITE_SUPABASE_URL=...  VITE_SUPABASE_ANON_KEY=...
-npm run build                    # deploy dist/ to Vercel/Netlify/etc.
+## 5. Frontend → Vercel
+Import the repo in Vercel (framework = Vite); it auto-deploys on every push to
+`main`. Set the two public env vars in the Vercel project:
 ```
+VITE_SUPABASE_URL=https://YOUR_REF.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-public-key
+```
+`vercel.json` already rewrites all routes → `index.html` for the SPA. (Manual
+alternative: `npm run build` and upload `dist/` to any static host.)
 
 ## 6. (Optional) Kill the DNA frontend-poll stall — server-side advance
 Enable `pg_cron` + `pg_net` in Supabase, then schedule a periodic POST to
@@ -81,4 +116,4 @@ $$);
    (`voiced_from_audio: true`) → worker + `build_voice` confirmed.
 2. Studio → paste a TikTok → tick **"Read the actual video"** → ~1–2 min →
    retention map from the real transcript → ingest + structure confirmed.
-3. `fly logs` shows `claimed` → `done` for `ingest` / `build_voice`.
+3. `docker logs twinai-worker` shows `claimed` → `done` for `ingest` / `build_voice`.
