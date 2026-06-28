@@ -408,7 +408,7 @@ export default function Result() {
                     key={tab}
                     onClick={() => setMobileTab(tab)}
                     className={cn(
-                      'rounded-lg py-2.5 text-center text-xs font-semibold uppercase tracking-wider transition-all duration-200',
+                      'rounded-lg py-2.5 text-center text-[10px] sm:text-xs font-semibold uppercase tracking-normal sm:tracking-wider transition-all duration-200',
                       active
                         ? 'bg-ink2 text-cream shadow border border-white/5'
                         : 'text-stone hover:text-sand'

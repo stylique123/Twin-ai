@@ -142,7 +142,7 @@ export default function Metrics() {
             <Reveal delay={0.1}>
               <div className="glass mt-6 p-6">
                 <h2 className="font-heading text-base text-cream">Retention</h2>
-                <div className="mt-4 grid grid-cols-3 gap-4">
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
                   {wins.map(({ label, w }) => {
                     const pct = w.eligible > 0 ? Math.round((w.retained / w.eligible) * 100) : 0
                     return (
@@ -162,7 +162,7 @@ export default function Metrics() {
           <Reveal delay={0.11}>
             <div className="glass mt-6 p-6">
               <h2 className="font-heading text-base text-cream">System health</h2>
-              <div className="mt-4 grid grid-cols-3 gap-4">
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
                 {[
                   { label: 'Failed jobs', v: m.health.failed_jobs },
                   { label: 'Stuck building', v: m.health.stuck_building },
@@ -304,7 +304,7 @@ export default function Metrics() {
                   <span className="font-heading text-cream">{cs.name || cs.email}</span>
                   <span className="text-xs text-stone">{cs.plan} · joined {new Date(cs.joined).toLocaleDateString()}</span>
                 </div>
-                <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4">
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
                     { l: 'Hours saved', v: cs.hours_saved }, { l: 'Blueprints', v: cs.blueprints }, { l: 'Edits', v: cs.edits },
                     { l: 'Posts', v: cs.posts }, { l: 'Voices', v: cs.voices }, { l: 'Remixes', v: cs.remixes }, { l: 'Active days', v: cs.active_days },
