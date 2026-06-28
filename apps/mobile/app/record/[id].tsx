@@ -2,7 +2,7 @@ import { Stack, useLocalSearchParams } from 'expo-router'
 import { useEffect, useRef, useState } from 'react'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera'
-import { ResizeMode, Video } from 'expo-av'
+import { useVideoPlayer, VideoView } from 'expo-video'
 import {
   autoEditTake,
   buildTimeline,
@@ -61,6 +61,13 @@ export default function Record() {
   const [uploadPct, setUploadPct] = useState<number | null>(null)
   const lastUri = useRef<string | null>(null)   // recorded take, kept so a failed upload can retry without re-recording
   const lastJobId = useRef<string | null>(null)  // once enqueued, retry resumes polling this job (never re-charges)
+
+  // Finished-video player (expo-video). Created once at top level (hook rules);
+  // the source is set when the render completes.
+  const player = useVideoPlayer(null, (p) => { p.loop = false })
+  useEffect(() => {
+    if (videoUrl) { player.replace(videoUrl); player.play() }
+  }, [videoUrl, player])
 
   useEffect(() => {
     if (!id) return
@@ -179,12 +186,12 @@ export default function Record() {
         <Stack.Screen options={{ title: 'Your video' }} />
         <Body>Done — here's your finished, captioned vertical.</Body>
         {videoUrl ? (
-          <Video
-            source={{ uri: videoUrl }}
+          <VideoView
+            player={player}
             style={{ width: '100%', aspectRatio: 9 / 16, borderRadius: radius.card, backgroundColor: '#000' }}
-            useNativeControls
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay
+            contentFit="contain"
+            nativeControls
+            allowsFullscreen
           />
         ) : (
           <Body muted>Rendered — find it in your Library.</Body>
