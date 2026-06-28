@@ -1007,7 +1007,7 @@ export default function Record() {
                   <div className="border-t border-white/5 pt-4 space-y-2">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-stone">Next Up</div>
                     <div className="text-base font-heading font-semibold text-cream">
-                      {sceneTransition.nextKind === 'b_roll_pause' ? 'B-Roll Insert' : sceneTransition.nextLabel}
+                      {sceneTransition.nextLabel}
                     </div>
                     {sceneTransition.nextBrollVisual && (
                       <div className="rounded-lg border border-coral/20 bg-coral/5 p-3">
