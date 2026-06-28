@@ -36,7 +36,10 @@ function Gate() {
         headerShadowVisible: false,
         contentStyle: { backgroundColor: colors.ink },
       }}
-    />
+    >
+      {/* The tab group renders its own headers — hide the outer stack header for it. */}
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+    </Stack>
   )
 }
 

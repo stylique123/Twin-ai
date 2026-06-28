@@ -1,11 +1,11 @@
-import { Stack, useFocusEffect, useRouter } from 'expo-router'
+import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
-import { Pressable, RefreshControl, Text, View } from 'react-native'
+import { RefreshControl, Text, View } from 'react-native'
 import { getProfile, listGenerations, videosFromCredits, type Generation } from '@twinai/shared'
-import { Body, Button, Card, Chip, Eyebrow, H1, Screen } from '../src/components/ui'
-import { colors } from '../src/theme'
+import { Body, Button, Card, Chip, Eyebrow, H1, Screen } from '../../src/components/ui'
+import { colors } from '../../src/theme'
 
-export default function Home() {
+export default function Library() {
   const router = useRouter()
   const [items, setItems] = useState<Generation[] | null>(null)
   const [remixes, setRemixes] = useState<number | null>(null)
@@ -31,16 +31,6 @@ export default function Home() {
 
   return (
     <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.stone} />}>
-      <Stack.Screen
-        options={{
-          title: 'Library',
-          headerRight: () => (
-            <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
-              <Text style={{ color: colors.stone }}>Settings</Text>
-            </Pressable>
-          ),
-        }}
-      />
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
         <Eyebrow>Your videos</Eyebrow>
         {remixes !== null ? <Chip label={`${remixes} remixes left`} /> : null}
@@ -56,7 +46,7 @@ export default function Home() {
         </>
       ) : null}
       {items && items.length === 0 ? (
-        <Card><Body muted>No videos yet. Paste a reference to make your first one.</Body></Card>
+        <Card><Body muted>No videos yet. Find a reference in the Gallery or paste a link to make your first one.</Body></Card>
       ) : null}
 
       {items?.map((g) => (

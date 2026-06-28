@@ -1,4 +1,4 @@
-import { Stack, useRouter } from 'expo-router'
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router'
 import { useState } from 'react'
 import { View } from 'react-native'
 import { generateBlueprint, getJob, ingestReference } from '@twinai/shared'
@@ -8,7 +8,9 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 export default function Create() {
   const router = useRouter()
-  const [url, setUrl] = useState('')
+  // Prefilled when arriving from a Gallery "Remix this" tap.
+  const params = useLocalSearchParams<{ url?: string }>()
+  const [url, setUrl] = useState(params.url ?? '')
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
