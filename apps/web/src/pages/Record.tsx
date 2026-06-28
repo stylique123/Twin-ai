@@ -1275,13 +1275,7 @@ export default function Record() {
                     disabled={refineLoading}
                     className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-white/10 bg-white/5 text-xs text-cream hover:bg-white/10 transition-all"
                   >
-                    <SlidersHorizontal className="h-3.5 w-3.5 text-teal" /> Subtitles
-                  </button>
-                  <button
-                    onClick={() => alert("Timeline cut editor opened!")}
-                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-white/10 bg-white/5 text-xs text-cream hover:bg-white/10 transition-all"
-                  >
-                    <Clapperboard className="h-3.5 w-3.5 text-coral" /> Cut List
+                    <SlidersHorizontal className="h-3.5 w-3.5 text-teal" /> Adjust Subtitles
                   </button>
                 </div>
               )}
@@ -1657,16 +1651,6 @@ export default function Record() {
                       </span>
                       <ChevronRight className="h-4 w-4 text-stone" />
                     </button>
-                    <button
-                      onClick={openRefine}
-                      disabled={refineLoading}
-                      className="w-full flex items-center justify-between p-3.5 rounded-xl border border-white/10 bg-white/5 text-xs text-cream hover:bg-white/10 transition-all text-left"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Clapperboard className="h-4 w-4 text-coral" /> Interactive Cut List
-                      </span>
-                      <ChevronRight className="h-4 w-4 text-stone" />
-                    </button>
                   </div>
                 </div>
 
@@ -1677,12 +1661,12 @@ export default function Record() {
                     <a href={editUrl} download={`stylique-edited-${id}.mp4`} className="btn-gradient w-full py-3 text-sm flex items-center justify-center gap-1.5">
                       <Download className="h-4 w-4" /> Download High-Res Video
                     </a>
-                    <button className="btn-ghost w-full py-2.5 text-xs text-stone hover:text-cream border border-white/10 bg-white/5 rounded-xl flex items-center justify-center gap-1.5 transition-all">
-                      <Folder className="h-3.5 w-3.5" /> Save to Private Library
-                    </button>
-                    <button className="btn-ghost w-full py-2.5 text-xs text-stone hover:text-cream border border-white/10 bg-white/5 rounded-xl flex items-center justify-center gap-1.5 transition-all">
+                    <Link to="/history" className="btn-ghost w-full py-2.5 text-xs text-stone hover:text-cream border border-white/10 bg-white/5 rounded-xl flex items-center justify-center gap-1.5 transition-all">
+                      <Folder className="h-3.5 w-3.5" /> View in your Library
+                    </Link>
+                    <Link to="/calendar" className="btn-ghost w-full py-2.5 text-xs text-stone hover:text-cream border border-white/10 bg-white/5 rounded-xl flex items-center justify-center gap-1.5 transition-all">
                       <Share2 className="h-3.5 w-3.5 text-teal" /> Publish to Connected Socials
-                    </button>
+                    </Link>
                   </div>
                 </div>
               </div>
