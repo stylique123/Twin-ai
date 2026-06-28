@@ -58,6 +58,12 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [exitSheet, setExitSheet] = useState(false)
   const [camError, setCamError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  // Selfie-cam mirror is the platform-standard preview for front-camera capture
+  // (Instagram, TikTok, FaceTime all do it). Default ON; toggle persists per device.
+  const [mirror, setMirror] = useState<boolean>(() => {
+    try { return localStorage.getItem('v2-cap-mirror') !== '0' } catch { return true }
+  })
+  useEffect(() => { try { localStorage.setItem('v2-cap-mirror', mirror ? '1' : '0') } catch { /* */ } }, [mirror])
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -78,7 +84,16 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     ;(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 1080 }, height: { ideal: 1920 } },
+          // Prefer portrait 9:16. Phones honor this (front cam returns vertical);
+          // desktop webcams ignore and return their native landscape — the worker
+          // crops to 1080x1920 in either case, but asking for portrait gives us the
+          // sharper crop region when the device supports it.
+          video: {
+            facingMode: 'user',
+            width: { ideal: 1080 },
+            height: { ideal: 1920 },
+            aspectRatio: { ideal: 9 / 16 },
+          },
           audio: true,
         })
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
@@ -183,7 +198,13 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
       {/* live camera preview behind the prompter text */}
       <div className="relative flex-1 mx-4 my-3 rounded-2xl overflow-hidden bg-black">
-        <video ref={videoRef} playsInline muted className="absolute inset-0 h-full w-full object-cover opacity-60" />
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          className="absolute inset-0 h-full w-full object-cover opacity-60"
+          style={{ transform: mirror ? 'scaleX(-1)' : undefined }}
+        />
         <div className="absolute inset-0 flex flex-col justify-center px-6">
           {camError ? (
             <div className="text-center text-white/80">
@@ -219,6 +240,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
           <div className="flex items-center justify-between text-sm text-white/70 px-1">
             <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0} className="disabled:opacity-30 py-2 px-1">Previous</button>
             <button onClick={replayScene} className="py-2 px-1">Replay</button>
+            <button onClick={() => setMirror((m) => !m)} className={`py-2 px-1 ${mirror ? 'text-white' : 'text-white/50'}`} aria-pressed={mirror}>Mirror</button>
             <button onClick={() => setSpeedSheet(true)} className="py-2 px-1">Speed</button>
           </div>
         </div>
