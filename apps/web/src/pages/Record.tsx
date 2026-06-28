@@ -435,7 +435,7 @@ export default function Record() {
       const shots = shotBoundsRef.current.length
         ? { bounds: shotBoundsRef.current, total: Number(elapsed.toFixed(2)), lines: lines.map((l) => l.text) }
         : undefined
-      const { jobId, takePath } = await autoEditTake(id, takeBlobRef.current, shots)
+      const { jobId, takePath } = await autoEditTake(id, { blob: takeBlobRef.current, contentType: takeBlobRef.current?.type || 'video/webm' }, shots)
       takePathRef.current = takePath
       // Persist the in-flight job so a reload / leaving resumes this exact edit (the
       // remix is already spent — never charge twice). Cleared when it finishes.
