@@ -659,16 +659,30 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     } else if (captions && opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
       // Per-shot capture: caption each segment from its SCRIPT line, timed to the
       // window the creator recorded it in. Perfect captions, no transcription guessing.
+      //
+      // Pacing: the previous 0.12s-per-word minimum (~8 words/sec) was unreadable —
+      // single words flashed past and adjacent words butted up with no visible gap.
+      // Raise the floor to 0.30s/word (~3 words/sec, comfortable karaoke pace) and
+      // ALWAYS introduce a small (0.05s) gap between adjacent words so each word
+      // has a clean fade-in instead of looking overlapped. We also let words pace
+      // SLOWER than minimum if the scene is long enough (no max), so a roomy take
+      // breathes naturally.
       prog('transcribing', 42, 'Captioning your shots…')
       const sh = opts.shots
       durationSec = sh.total
       const cuts = [0, ...sh.bounds.filter((n) => Number.isFinite(n) && n > 0 && n < sh.total).sort((a, b) => a - b), sh.total]
+      const MIN_PER = 0.30      // min seconds per word (~3 words/sec, readable)
+      const GAP = 0.05          // visible gap between words
+      const LEAD = 0.15         // breathing room before the first word in a scene
       for (let i = 0; i < cuts.length - 1; i++) {
         const toks = String(sh.lines[i] ?? '').split(/\s+/).filter(Boolean)
         if (!toks.length) continue
         const s0 = cuts[i], s1 = cuts[i + 1]
-        const per = Math.max(0.12, (s1 - s0 - 0.2) / toks.length)
-        toks.forEach((w, k) => words.push({ w, start: s0 + 0.1 + k * per, end: s0 + 0.1 + (k + 1) * per }))
+        const per = Math.max(MIN_PER, (s1 - s0 - LEAD - GAP) / toks.length)
+        toks.forEach((w, k) => {
+          const ws = s0 + LEAD + k * per
+          words.push({ w, start: ws, end: Math.max(ws + 0.12, ws + per - GAP) })
+        })
       }
     } else if (captions) {
       prog('transcribing', 42, 'Reading your words…')
