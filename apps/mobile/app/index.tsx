@@ -1,57 +1,62 @@
 import { Stack, useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
-import { Pressable, Text, View } from 'react-native'
-import { getProfile, listGenerations, type Generation } from '@twinai/shared'
-import { Body, Button, Card, Eyebrow, H1, Screen } from '../src/components/ui'
-import { useAuth } from '../src/context/AuthContext'
+import { Pressable, RefreshControl, Text, View } from 'react-native'
+import { getProfile, listGenerations, videosFromCredits, type Generation } from '@twinai/shared'
+import { Body, Button, Card, Chip, Eyebrow, H1, Screen } from '../src/components/ui'
 import { colors } from '../src/theme'
 
 export default function Home() {
   const router = useRouter()
-  const { signOut } = useAuth()
   const [items, setItems] = useState<Generation[] | null>(null)
+  const [remixes, setRemixes] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [refreshing, setRefreshing] = useState(false)
 
-  useFocusEffect(
-    useCallback(() => {
-      let alive = true
-      ;(async () => {
-        try {
-          const profile = await getProfile()
-          if (alive && profile && !profile.onboarded) {
-            router.replace('/onboarding')
-            return
-          }
-          const gens = await listGenerations()
-          if (alive) setItems(gens)
-        } catch (e) {
-          if (alive) setError(e instanceof Error ? e.message : 'Could not load')
-        }
-      })()
-      return () => { alive = false }
-    }, [router]),
-  )
+  const load = useCallback(async () => {
+    try {
+      setError(null)
+      const profile = await getProfile()
+      if (profile && !profile.onboarded) { router.replace('/onboarding'); return }
+      if (profile) setRemixes(videosFromCredits(profile.credits))
+      const gens = await listGenerations()
+      setItems(gens)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load')
+    }
+  }, [router])
+
+  useFocusEffect(useCallback(() => { let alive = true; load().finally(() => { if (!alive) return }); return () => { alive = false } }, [load]))
+
+  const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false) }
 
   return (
-    <Screen>
+    <Screen refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.stone} />}>
       <Stack.Screen
         options={{
           title: 'Library',
           headerRight: () => (
-            <Pressable onPress={signOut} hitSlop={10}>
-              <Text style={{ color: colors.stone }}>Sign out</Text>
+            <Pressable onPress={() => router.push('/settings')} hitSlop={10}>
+              <Text style={{ color: colors.stone }}>Settings</Text>
             </Pressable>
           ),
         }}
       />
-      <Eyebrow>Your videos</Eyebrow>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Eyebrow>Your videos</Eyebrow>
+        {remixes !== null ? <Chip label={`${remixes} remixes left`} /> : null}
+      </View>
       <H1>Library</H1>
       <Button label="+ Create a video" onPress={() => router.push('/create')} />
 
       {error ? <Body>{`⚠ ${error}`}</Body> : null}
-      {items === null && !error ? <Body muted>Loading…</Body> : null}
+      {items === null && !error ? (
+        <>
+          <Card><Body muted>Loading…</Body></Card>
+          <Card><Body muted> </Body></Card>
+        </>
+      ) : null}
       {items && items.length === 0 ? (
-        <Body muted>No videos yet. Paste a reference to make your first one.</Body>
+        <Card><Body muted>No videos yet. Paste a reference to make your first one.</Body></Card>
       ) : null}
 
       {items?.map((g) => (
