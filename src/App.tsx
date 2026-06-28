@@ -39,7 +39,7 @@ const V2Review = lazy(() => import('./pages/v2/V2Review'))
 function Protected({ children }: { children: JSX.Element }) {
   const { id } = useParams()
   const { session, profile, loading } = useAuth()
-  if (id === 'demo' || id === 'mock-123' || (id && id.startsWith('mock-'))) return children
+  if (import.meta.env.DEV && (id === 'demo' || id === 'mock-123' || (id && id.startsWith('mock-')))) return children
   if (loading) return <FullScreen>Loading…</FullScreen>
   if (!session) return <Navigate to="/auth" replace />
   if (profile && !profile.onboarded) return <Navigate to="/onboarding" replace />
