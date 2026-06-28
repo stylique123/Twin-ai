@@ -35,6 +35,7 @@ export default function Record() {
   const [wpm, setWpm] = useState<WpmPreset>(DEFAULT_WPM)
   const [mirror, setMirror] = useState(false)
 
+  const [cameraReady, setCameraReady] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
   const [count, setCount] = useState(3)
   const [status, setStatus] = useState<string | null>(null)
@@ -72,8 +73,9 @@ export default function Record() {
     try {
       setErr(null); setPhase('countdown')
       for (let c = 3; c >= 1; c--) { setCount(c); await sleep(800) }
+      if (!cameraRef.current) throw new Error('Camera not ready — try again')
       setPhase('recording')
-      recordingPromise.current = cameraRef.current?.recordAsync() as Promise<{ uri: string }>
+      recordingPromise.current = cameraRef.current.recordAsync() as Promise<{ uri: string }>
       startAutoScroll()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not start recording'); setPhase('error')
@@ -146,7 +148,7 @@ export default function Record() {
   return (
     <View style={styles.full}>
       <Stack.Screen options={{ headerShown: false }} />
-      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front" mode="video" />
+      <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front" mode="video" onCameraReady={() => setCameraReady(true)} />
 
       {/* WPM + mirror controls (hidden once processing) */}
       {!processing ? (
@@ -192,7 +194,9 @@ export default function Record() {
         {status ? <Text style={styles.status}>{status}</Text> : null}
         {err ? <Text style={[styles.status, { color: colors.coral }]}>{`⚠ ${err}`}</Text> : null}
         {phase === 'idle' || phase === 'error' ? (
-          <Pressable style={styles.recBtn} onPress={start}><View style={styles.recDot} /></Pressable>
+          <Pressable style={[styles.recBtn, !cameraReady && { opacity: 0.4 }]} disabled={!cameraReady} onPress={start}>
+            <View style={styles.recDot} />
+          </Pressable>
         ) : recording ? (
           <Pressable style={styles.recBtn} onPress={stop}><View style={styles.stopSquare} /></Pressable>
         ) : (

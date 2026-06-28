@@ -75,15 +75,26 @@ cd postiz && docker compose up -d
 insert into public.platform_admins (user_id, role) values ('YOUR_AUTH_UID', 'superadmin');
 ```
 
-## 5. Frontend → Vercel
-Import the repo in Vercel (framework = Vite); it auto-deploys on every push to
-`main`. Set the two public env vars in the Vercel project:
+## 5. Frontend → Vercel (monorepo)
+The web app now lives in **`apps/web`** (npm workspace) and depends on the
+`@twinai/shared` workspace package, so the Vercel project must be pointed at it:
+
+- **Root Directory: `apps/web`** (Project → Settings → Build & Deployment → Root
+  Directory). Enable **"Include source files outside the root directory"** so the
+  workspace install at the repo root creates the `@twinai/shared` symlink the build needs.
+- Framework: **Vite**. Build: `npm run build`. Output: `dist`. Install runs at the
+  workspace root (Vercel detects the root `package.json` `workspaces`).
+- It auto-deploys on every push to `main`. Set the two public env vars in the project:
 ```
 VITE_SUPABASE_URL=https://YOUR_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-public-key
 ```
-`vercel.json` already rewrites all routes → `index.html` for the SPA. (Manual
-alternative: `npm run build` and upload `dist/` to any static host.)
+`apps/web/vercel.json` rewrites all routes → `index.html` for the SPA (only applies
+once Root Directory = `apps/web`). Manual alternative: `npm run web:build` from the
+repo root and upload `apps/web/dist/` to any static host.
+
+> The **mobile** app (`apps/mobile`) does **not** deploy to Vercel — it ships to the
+> App Store / Play Store via Expo EAS (see `apps/mobile/README.md`).
 
 ## 6. (Optional) Kill the DNA frontend-poll stall — server-side advance
 Enable `pg_cron` + `pg_net` in Supabase, then schedule a periodic POST to

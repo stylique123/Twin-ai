@@ -31,11 +31,20 @@ initApi({
   appOrigin: 'https://app.twinai.com',
   uploadTake: async (path, file) => {
     if (!file.uri) throw new Error('No file URI to upload')
-    const res = await fetch(file.uri)
-    const bytes = await res.arrayBuffer()
+    // Stream the file from disk via FormData. RN's network layer reads the uri
+    // directly, so the whole video is never materialized in the JS heap — avoids
+    // the OOM/crash risk of fetch(uri).arrayBuffer() on large (50–200MB) takes.
+    const contentType = file.contentType || 'video/mp4'
+    const form = new FormData()
+    form.append('file', {
+      uri: file.uri,
+      name: file.name || path.split('/').pop() || 'take.mp4',
+      type: contentType,
+      // RN's FormData file part is not a DOM Blob; cast to satisfy the web typings.
+    } as unknown as Blob)
     const { error } = await supabase.storage
       .from('takes')
-      .upload(path, bytes, { contentType: file.contentType || 'video/mp4', upsert: true })
+      .upload(path, form, { contentType, upsert: true })
     if (error) throw error
   },
 })
