@@ -58,6 +58,9 @@ export default function Record() {
   const [status, setStatus] = useState<string | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+  const [uploadPct, setUploadPct] = useState<number | null>(null)
+  const lastUri = useRef<string | null>(null)   // recorded take, kept so a failed upload can retry without re-recording
+  const lastJobId = useRef<string | null>(null)  // once enqueued, retry resumes polling this job (never re-charges)
 
   useEffect(() => {
     if (!id) return
@@ -112,20 +115,40 @@ export default function Record() {
       cameraRef.current?.stopRecording()
       const video = await recordingPromise.current
       if (!video?.uri) throw new Error('No recording captured')
+      lastUri.current = video.uri
+      await runUpload(video.uri)
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Something went wrong'); setPhase('error')
+    }
+  }
 
-      const bounds = boundsRef.current
-      const total = bounds.length
-      const lines = linesRef.current
-      // Per-scene cut bounds + spoken line → the worker captions/cuts per scene
-      // (Scene Timeline contract). Falls back to scene-detection if <2 segments.
-      const shots = total > 1 ? { bounds, total, lines } : undefined
-      const { jobId } = await autoEditTake(id, { uri: video.uri, contentType: 'video/mp4' }, shots)
+  // Upload the recorded take + run the auto-edit. Separated so a flaky-network
+  // failure can be RETRIED without re-recording. Once the job is enqueued we cache
+  // its id, so a retry after a polling timeout resumes that job instead of
+  // enqueueing again (which would charge a second remix).
+  const runUpload = async (uri: string) => {
+    if (!id) return
+    try {
+      setErr(null)
+      let jobId = lastJobId.current
+      if (!jobId) {
+        setPhase('uploading'); setUploadPct(0); setStatus('Uploading your take…')
+        const bounds = boundsRef.current
+        const total = bounds.length
+        const lines = linesRef.current
+        // Per-scene cut bounds + spoken line → the worker captions/cuts per scene
+        // (Scene Timeline contract). Falls back to scene-detection if <2 segments.
+        const shots = total > 1 ? { bounds, total, lines } : undefined
+        const r = await autoEditTake(id, { uri, contentType: 'video/mp4' }, shots, undefined, (f) => setUploadPct(f < 0 ? null : f))
+        jobId = r.jobId
+        lastJobId.current = jobId
+      }
 
-      setPhase('editing'); setStatus('Auto-editing — captions, cuts, vertical…')
+      setUploadPct(null); setPhase('editing'); setStatus('Auto-editing — captions, cuts, vertical…')
       for (let n = 0; n < 120; n++) {
         const job = await getJob(jobId)
         if (job?.status === 'done') { setVideoUrl(job.result?.output_url ?? null); setStatus(null); setPhase('done'); return }
-        if (job?.status === 'failed') throw new Error(job.error || 'The edit failed')
+        if (job?.status === 'failed') { lastJobId.current = null; throw new Error(job.error || 'The edit failed') }
         if (job?.result?.progress?.label) setStatus(job.result.progress.label)
         await sleep(3000)
       }
@@ -134,6 +157,8 @@ export default function Record() {
       setErr(e instanceof Error ? e.message : 'Something went wrong'); setPhase('error')
     }
   }
+
+  const retry = () => { if (lastUri.current) void runUpload(lastUri.current) }
 
   if (!camPerm || !micPerm) return <Screen><Body muted>Checking camera…</Body></Screen>
   if (!ready) {
@@ -217,12 +242,24 @@ export default function Record() {
       ) : null}
 
       <View style={styles.controls}>
-        {status ? <Text style={styles.status}>{status}</Text> : null}
+        {status ? (
+          <Text style={styles.status}>
+            {status}{phase === 'uploading' && uploadPct !== null ? ` ${Math.round(uploadPct * 100)}%` : ''}
+          </Text>
+        ) : null}
         {err ? <Text style={[styles.status, { color: colors.coral }]}>{`⚠ ${err}`}</Text> : null}
 
         {between ? (
           <Pressable style={styles.cta} onPress={continueNext}><Text style={styles.ctaText}>Continue</Text></Pressable>
-        ) : phase === 'idle' || phase === 'error' ? (
+        ) : phase === 'error' ? (
+          lastUri.current ? (
+            <Pressable style={styles.cta} onPress={retry}><Text style={styles.ctaText}>Retry</Text></Pressable>
+          ) : (
+            <Pressable style={[styles.cta, !cameraReady && { opacity: 0.4 }]} disabled={!cameraReady} onPress={start}>
+              <Text style={styles.ctaText}>Record this scene</Text>
+            </Pressable>
+          )
+        ) : phase === 'idle' ? (
           <Pressable style={[styles.cta, !cameraReady && { opacity: 0.4 }]} disabled={!cameraReady} onPress={start}>
             <Text style={styles.ctaText}>Record this scene</Text>
           </Pressable>

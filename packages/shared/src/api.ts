@@ -10,7 +10,8 @@ import type { BrandVoice, CreatorDNA, EditDecisionList, Generation, Platform, Pr
 
 // A recorded take, described platform-neutrally. Web sets `blob`; mobile sets `uri`.
 export interface TakeFile { contentType: string; blob?: unknown; uri?: string; name?: string }
-export type UploadTake = (path: string, file: TakeFile) => Promise<void>
+// onProgress reports upload completion as a 0..1 fraction, or -1 for indeterminate.
+export type UploadTake = (path: string, file: TakeFile, onProgress?: (fraction: number) => void) => Promise<void>
 
 let _sb: SupabaseClient | undefined
 let _appOrigin = ''
@@ -191,7 +192,7 @@ export interface IngestJob {
 // First auto-edit is FREE (bundled with the blueprint). Uploads the take, then
 // enqueues THROUGH the edge function, the only credit-enforced path. The server
 // decides free-vs-paid, so the client can't grant itself a free render.
-export async function autoEditTake(generationId: string, file: TakeFile, shots?: { bounds: number[]; total: number; lines: string[] }, aspect?: '9:16' | '1:1'): Promise<{ jobId: string; takePath: string }> {
+export async function autoEditTake(generationId: string, file: TakeFile, shots?: { bounds: number[]; total: number; lines: string[] }, aspect?: '9:16' | '1:1', onProgress?: (fraction: number) => void): Promise<{ jobId: string; takePath: string }> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
   const uid = auth.user.id
@@ -201,7 +202,7 @@ export async function autoEditTake(generationId: string, file: TakeFile, shots?:
 
   // Upload is platform-specific (web: Blob; mobile: file URI) — injected via initApi.
   if (!_uploadTake) throw new Error('No uploadTake configured — pass it to initApi().')
-  await _uploadTake(take_path, file)
+  await _uploadTake(take_path, file, onProgress)
 
   const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
     body: { generation_id: generationId, take_path, aspect, ...(shots ? { shots } : {}) },
