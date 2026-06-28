@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { planFor } from './brand'
 import type { BrandVoice, CreatorDNA, EditDecisionList, Generation, Platform, Profile, VoiceProfile } from './types'
 
 // ---- Platform injection ----------------------------------------------------
@@ -87,7 +88,6 @@ export interface CaseStudy {
 // crypto payment and unlock the plan + its credit allowance. Resolves the user via
 // the admin `users` search, then calls grant_plan with the plan's full credits.
 export async function adminActivatePlan(email: string, plan: string): Promise<{ ok: boolean; error?: string }> {
-  const { planFor } = await import('./brand')
   const list = await supabase.functions.invoke('admin', { body: { action: 'users', q: email, limit: 1 } })
   if (list.error) return { ok: false, error: 'Lookup failed — admin access required.' }
   const u = ((list.data?.users ?? []) as { id: string; email: string }[])[0]
