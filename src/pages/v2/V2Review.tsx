@@ -1,19 +1,22 @@
 // Screen 5 — Editing + Final Video Review. Shows the REAL auto-edit job: live
 // stage labels emitted by the worker (never a timer), then the finished video
-// first, with Download + Publish. On failure: retry / back. No teleprompter, no
-// recording UI, no script document. See PRODUCT_VISION §12,§14.
+// first, with Download + Publish. On failure: retry / back. Supports captions selector,
+// manual refinement panel, and dashboard return navigation.
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { getGeneration, getJob, signEditUrls } from '../../lib/api'
+import { getGeneration, getJob, signEditUrls, fetchEdl, reEditWithEdl } from '../../lib/api'
 import { loadTimeline } from '../../lib/timelineApi'
+import { CAPTION_STYLE_OPTIONS } from '../../lib/types'
+import { RefinePanel } from '../../components/RefinePanel'
+import { SlidersHorizontal, Loader2 } from 'lucide-react'
 import type { SceneTimeline } from '../../lib/timeline'
 
 type Phase = 'rendering' | 'done' | 'failed'
 
 export default function V2Review() {
   const { id = '' } = useParams()
-  const [params] = useSearchParams()
+  const [params, setParams] = useSearchParams()
   const jobId = params.get('job')
   const nav = useNavigate()
 
@@ -27,6 +30,12 @@ export default function V2Review() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const stopped = useRef(false)
 
+  // Refine & EDL sync states
+  const [refineOpen, setRefineOpen] = useState(false)
+  const [refineEdl, setRefineEdl] = useState<any>(null)
+  const [takePath, setTakePath] = useState<string | null>(null)
+  const [refineLoading, setRefineLoading] = useState(false)
+
   useEffect(() => { loadTimeline(id).then(setTimeline) }, [id])
 
   // Real status polling: read the worker's live progress, then the finished video.
@@ -36,9 +45,23 @@ export default function V2Review() {
     const showFinished = async () => {
       // Prefer the generation's stored edit_path (signed); else the job output_url.
       const g = await getGeneration(id)
-      if (g?.edit_path) {
-        const urls = await signEditUrls([g.edit_path])
-        if (urls[g.edit_path]) { setVideoUrl(urls[g.edit_path]); return true }
+      if (g) {
+        setTakePath(g.take_path || null)
+        if (g.edl_path) {
+          setRefineLoading(true)
+          try {
+            const edl = await fetchEdl(g.edl_path)
+            setRefineEdl(edl)
+          } catch (e) {
+            console.error('Failed to load EDL', e)
+          } finally {
+            setRefineLoading(false)
+          }
+        }
+        if (g.edit_path) {
+          const urls = await signEditUrls([g.edit_path])
+          if (urls[g.edit_path]) { setVideoUrl(urls[g.edit_path]); return true }
+        }
       }
       return false
     }
@@ -56,7 +79,7 @@ export default function V2Review() {
           if (job.status === 'done') {
             const url = job.result?.output_url
             if (url) setVideoUrl(url)
-            else await showFinished()
+            await showFinished()
             setPct(100); setPhase('done'); return
           }
           const p = job.result?.progress
@@ -73,6 +96,38 @@ export default function V2Review() {
 
   const retry = () => nav(`/v2/capture/${id}?mode=record`)
 
+  // Wire up Caption selection remake trigger
+  const applyCaptionStyle = async (styleId: string) => {
+    if (!refineEdl || !takePath) return
+    setCaptionSheet(false)
+    setPhase('rendering')
+    setLabel('Re-rendering caption style…')
+    setPct(10)
+
+    const nextEdl = {
+      ...refineEdl,
+      captions: {
+        ...refineEdl.captions,
+        style: styleId,
+      },
+    }
+
+    try {
+      const newJobId = await reEditWithEdl(id, takePath, nextEdl)
+      setParams(new URLSearchParams({ job: newJobId }))
+    } catch (e) {
+      setPhase('failed')
+      setLabel(e instanceof Error ? e.message : 'Could not re-render.')
+    }
+  }
+
+  const handleRefineApplied = (newJobId: string) => {
+    setPhase('rendering')
+    setLabel('Re-rendering visual edits…')
+    setPct(5)
+    setParams(new URLSearchParams({ job: newJobId }))
+  }
+
   return (
     <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-stone-950 text-white flex flex-col overflow-x-hidden">
       <div className="flex items-center justify-between px-4 pt-4">
@@ -82,7 +137,7 @@ export default function V2Review() {
       </div>
 
       <div className="px-4 pt-3">
-        <div className="relative aspect-[9/16] w-full rounded-2xl overflow-hidden bg-stone-900">
+        <div className="relative aspect-[9/16] w-full rounded-2xl overflow-hidden bg-stone-900 shadow-2xl">
           {phase === 'done' && videoUrl ? (
             <video ref={videoRef} src={videoUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline controls />
           ) : phase === 'failed' ? (
@@ -96,7 +151,7 @@ export default function V2Review() {
           ) : (
             <div className="absolute inset-0 grid place-items-center text-center px-6">
               <div className="w-full">
-                <div className="h-10 w-10 mx-auto rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                <Loader2 className="h-8 w-8 mx-auto animate-spin text-coral mb-2" />
                 <p className="mt-3 text-sm text-white/80">{label}</p>
                 <div className="mt-3 mx-auto h-1.5 w-40 rounded-full bg-white/10 overflow-hidden">
                   <div className="h-full bg-white transition-all" style={{ width: `${pct}%` }} />
@@ -108,33 +163,62 @@ export default function V2Review() {
       </div>
 
       {timeline && (
-        <div className="px-4 pt-3 flex gap-2 overflow-x-auto">
+        <div className="px-4 pt-3 flex gap-2 overflow-x-auto scrollbar-none">
           {timeline.scenes.map((s) => (
-            <div key={s.scene_number} className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/70">{s.scene_number}</div>
+            <div key={s.scene_number} className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/70">Scene {s.scene_number}</div>
           ))}
         </div>
       )}
 
       <div className="flex-1" />
 
-      <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 space-y-3">
+      <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 space-y-4">
         <div className="grid grid-cols-2 gap-2">
           <button disabled={!videoUrl} onClick={() => videoUrl && window.open(videoUrl, '_blank')}
-            className="rounded-2xl bg-white text-stone-900 font-semibold py-4 disabled:opacity-40">Download</button>
+            className="rounded-2xl bg-white text-stone-900 font-semibold py-4 disabled:opacity-40 hover:bg-stone-100 active:scale-[0.99] transition-all">Download</button>
           <button disabled={!videoUrl} onClick={() => setPublishSheet(true)}
-            className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40">Publish</button>
+            className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40 hover:bg-emerald-600 active:scale-[0.99] transition-all">Publish</button>
         </div>
-        <div className="flex items-center justify-center gap-5 text-sm text-white/60">
-          <button onClick={() => setCaptionSheet(true)}>Captions</button>
-          <button onClick={() => nav('/v2')}>Make another</button>
+        
+        {/* Wired Action Toolbar */}
+        <div className="flex items-center justify-center gap-6 text-sm text-white/60">
+          <button onClick={() => setCaptionSheet(true)} className="hover:text-white transition-colors">Captions</button>
+          
+          <button 
+            onClick={() => setRefineOpen(true)} 
+            disabled={!takePath || !refineEdl || refineLoading}
+            className="flex items-center gap-1.5 hover:text-white disabled:opacity-30 transition-all"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Fine-Tune
+          </button>
+          
+          <button onClick={() => nav('/v2')} className="hover:text-white transition-colors">Make another</button>
+          <button onClick={() => nav('/dashboard')} className="hover:text-white transition-colors font-medium text-coral">Dashboard</button>
         </div>
       </div>
 
+      {/* Wired Subtitle Style Sheet */}
       <BottomSheet open={captionSheet} title="Caption style" onClose={() => setCaptionSheet(false)}>
-        {[['Fast captions', 'Recommended — word-by-word, high energy.'], ['Classic', ''], ['Big word', ''], ['None', '']].map(([l, r], idx) => (
-          <SheetOption key={idx} label={l} reason={r || undefined} selected={idx === 0} onPick={() => setCaptionSheet(false)} />
+        {CAPTION_STYLE_OPTIONS.map((style) => (
+          <SheetOption 
+            key={style.id} 
+            label={style.label} 
+            selected={refineEdl?.captions?.style === style.id} 
+            onPick={() => applyCaptionStyle(style.id)} 
+          />
         ))}
       </BottomSheet>
+
+      {/* Manual Visual Refinement Editor Modal */}
+      <RefinePanel
+        open={refineOpen}
+        edl={refineEdl}
+        loading={refineLoading}
+        generationId={id}
+        takePath={takePath}
+        onClose={() => setRefineOpen(false)}
+        onApplied={handleRefineApplied}
+      />
 
       <BottomSheet open={publishSheet} title="Publish to" onClose={() => setPublishSheet(false)}>
         {['TikTok', 'Reels', 'YouTube Shorts', 'LinkedIn'].map((p) => (

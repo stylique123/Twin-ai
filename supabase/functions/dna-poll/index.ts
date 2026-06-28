@@ -210,6 +210,14 @@ Deno.serve(async (req: Request) => {
     return json({ status: 'ready', profile })
   } catch (err) {
     console.error('dna-poll error:', err)
-    return await fail('Something went wrong building your voice. You can set it up manually.')
+    // Reset the job status back to 'running' so that a subsequent poll can retry the synthesis.
+    // This protects against transient Gemini API overloads or Deno edge network timeouts.
+    try {
+      await admin.from('jobs').update({ status: 'running' }).eq('id', job.id)
+    } catch (dbErr) {
+      console.error('Failed to reset job status to running:', dbErr)
+    }
+    // Return building so the frontend keeps polling and retrying instead of showing a hard failure.
+    return json({ status: 'building' })
   }
 })

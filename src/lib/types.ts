@@ -77,9 +77,28 @@ export interface Blueprint {
     why_it_works: string[]
     retention_map: { beat: string; goal: string; tactic?: string }[]
   }
+  b_roll_stats?: {
+    original_b_roll_count: string
+    suggested_b_roll_count: string
+  }
   hook_options: string[]
-  script: { section: string; line: string; direction: string }[]
-  shot_list: { shot: string; framing: string; notes: string }[]
+  script: {
+    section: string
+    line: string
+    direction: string
+    background?: string
+    cuts_info?: string
+    action_posing?: string
+  }[]
+  shot_list: {
+    shot: string
+    framing: string
+    notes: string
+    shot_type?: 'talking_head' | 'b_roll' | 'cover_frame'
+    b_roll_type?: 'stock' | 'replicate' | 'none'
+    b_roll_visual?: string
+    spoken_text?: string
+  }[]
   captions: string[]
   edit_checklist: string[]
   // TwinAI's own auto-captioner spec (renamed from submagic_packet, we own the
@@ -136,7 +155,7 @@ export interface EditDecisionList {
   segments: { start: number; end: number; zoom?: boolean }[]
   captions: { style: string; variation: number; words: { w: string; start: number; end: number }[] }
   emoji: { emoji: string; start: number; end: number }[]
-  broll: { query: string; start: number; end: number } | null
+  broll: { query: string; start: number; end: number; layout?: 'overlay' | 'split-screen' } | null
   music: boolean
   framing: { width: number; height: number }
   audio: { targetLufs: number }

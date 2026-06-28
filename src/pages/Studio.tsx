@@ -68,6 +68,7 @@ export default function Studio() {
   const [fidelity, setFidelity] = useState<'close' | 'balanced' | 'loose'>('balanced')
   const [tone, setTone] = useState<'understated' | 'balanced' | 'punchy'>('balanced')
   const [delivery, setDelivery] = useState<'on_camera' | 'voiceover'>('on_camera')
+  const [reviewFirst, setReviewFirst] = useState(true)
   // Bulk mode: paste several links (one per line) and get a script for each in
   // one run — the agency "batch a week in an afternoon" ask.
   const [bulk, setBulk] = useState(false)
@@ -166,7 +167,7 @@ export default function Studio() {
         await refreshProfile()
         // One flow: straight to the create screen (script + hook + record/upload +
         // edit + download, one page). The full blueprint stays a click away there.
-        navigate(`/record/${id}`)
+        navigate(reviewFirst ? `/result/${id}` : `/record/${id}`)
         return
       }
       // Bulk: process sequentially. Skip a link that can't be read; stop early if
@@ -390,6 +391,43 @@ export default function Studio() {
                     </button>
                   )
                 })}
+              </div>
+            </div>
+
+            {/* Post-Remix Destination */}
+            <div>
+              <label className="eyebrow">Destination after Remix</label>
+              <div className="mt-2 grid gap-2.5 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setReviewFirst(true)}
+                  disabled={busy}
+                  className={cn(
+                    'rounded-card border p-3.5 text-left transition-all duration-300 disabled:opacity-50',
+                    reviewFirst
+                      ? 'border-coral/50 bg-coral/10 shadow-glow'
+                      : 'border-white/8 bg-white/[0.03] hover:border-white/16',
+                  )}
+                >
+                  <FileText className={cn('h-4 w-4', reviewFirst ? 'text-coral' : 'text-stone')} />
+                  <div className="mt-2 font-heading">Review Script & Blueprint</div>
+                  <div className="text-xs text-stone">Review hooks, shot list, and format retention beats first.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewFirst(false)}
+                  disabled={busy}
+                  className={cn(
+                    'rounded-card border p-3.5 text-left transition-all duration-300 disabled:opacity-50',
+                    !reviewFirst
+                      ? 'border-coral/50 bg-coral/10 shadow-glow'
+                      : 'border-white/8 bg-white/[0.03] hover:border-white/16',
+                  )}
+                >
+                  <Video className={cn('h-4 w-4', !reviewFirst ? 'text-coral' : 'text-stone')} />
+                  <div className="mt-2 font-heading">Go to Teleprompter / Recorder</div>
+                  <div className="text-xs text-stone">Jump straight into filming or uploading your video clip.</div>
+                </button>
               </div>
             </div>
             </>)}

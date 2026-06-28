@@ -74,9 +74,41 @@ const blueprintSchema = obj(
       },
       ['platform', 'format_label', 'why_it_works', 'retention_map'],
     ),
+    b_roll_stats: obj(
+      {
+        original_b_roll_count: str,
+        suggested_b_roll_count: str,
+      },
+      ['original_b_roll_count', 'suggested_b_roll_count']
+    ),
     hook_options: arr(str),
-    script: arr(obj({ section: str, line: str, direction: str }, ['section', 'line', 'direction'])),
-    shot_list: arr(obj({ shot: str, framing: str, notes: str }, ['shot', 'framing', 'notes'])),
+    script: arr(
+      obj(
+        {
+          section: str,
+          line: str,
+          direction: str,
+          background: str,
+          cuts_info: str,
+          action_posing: str,
+        },
+        ['section', 'line', 'direction', 'background', 'cuts_info', 'action_posing'],
+      ),
+    ),
+    shot_list: arr(
+      obj(
+        {
+          shot: str,
+          framing: str,
+          notes: str,
+          shot_type: str,
+          b_roll_type: str,
+          b_roll_visual: str,
+          spoken_text: str,
+        },
+        ['shot', 'framing', 'notes', 'shot_type', 'b_roll_type', 'b_roll_visual', 'spoken_text'],
+      ),
+    ),
     captions: arr(str),
     edit_checklist: arr(str),
     caption_packet: obj(
@@ -93,6 +125,7 @@ const blueprintSchema = obj(
   },
   [
     'reference_read',
+    'b_roll_stats',
     'hook_options',
     'script',
     'shot_list',
@@ -108,6 +141,7 @@ const SYSTEM = `You are TwinAI's reference engine and a world-class short-form r
 
 WRITING STYLE (non-negotiable):
 - NEVER use the em dash or en dash character anywhere in any field. Use a period, a comma, or restructure the sentence. Zero dashes.
+- NEVER use any emojis, icons, or symbols (e.g. no 💓, ⚡, 📈, 🚀, etc.) in any text fields. Keep the output clean, editorial, and professional. Zero emojis.
 - No hype, no fluff, no "guaranteed viral" or "10x overnight" or words like "synergy", "game-changer", "unlock". Earn attention with specificity, not adjectives.
 - Write everything in the creator's voice and niche, using their signature vocabulary and cadence. Everything must be shootable by one person today with a phone.
 
@@ -134,10 +168,22 @@ HOOKS (the single most important field):
 - Ban weak openers and tell-words that signal a skippable video: "Hey guys", "In this video", "Today I want to talk about", "So basically", "Let me tell you". Open mid-action or mid-claim.
 - THE FIRST FRAME decides the scroll-stop as much as the first words. In the script's Hook beat direction, name the literal first half-second on screen: the exact shot size, the facial expression, and any on-screen text, so the very first frame already stops the thumb.
 
-SCRIPT:
-- Write filmable beats, not an essay. Each beat is one short spoken line plus a direction (what to do or show on camera while saying it). Keep lines breath-sized so they read naturally on a teleprompter.
-- KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never goes flat. Mark that beat's section as "Re-hook".
+SCRIPT & HOOK INTEGRATION:
+- Script beats must be realistic, full spoken paragraphs (typically 2 to 4 sentences per beat, not just single short lines), telling the full story for each section (Hook, Setup, Re-hook, CTA). Keep them highly conversational, engaging, and ready for teleprompter reading.
+- Make the script beats modular and cohesive. Ensure the transition between the Hook options and Scene 2 (Setup) is grammatically correct and logically seamless for ANY of the 5 hook options. Scene 2 must not repeat or assume specific words from Hook Option 1, but rather flow naturally from any selected hook.
+- background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
+- cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
+- action_posing: specify the creator's physical actions, hand gestures, body language, facial expressions, and positioning (e.g., "Hold product at eye level, point finger, maintain intense eye contact with lens", "Lean forward slightly with a knowing smile, hands open to suggest accessibility").
+- KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never sags. Mark that beat's section as "Re-hook".
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
+
+SHOT LIST & ASSET SPECIFICATION (B-ROLL & TALKING HEADS):
+- shot_list: specify all shots required to construct the final edit (talking heads, B-roll overlay inserts, and the cover/thumbnail frame).
+- shot_type: specify either 'talking_head' (camera on creator speaking), 'b_roll' (overlay/cutaway footage), or 'cover_frame' (the thumbnail image/first frame).
+- b_roll_type: if shot_type is 'b_roll', specify 'replicate' (real footage from the reference video that we want to copy, e.g. "real footage of endless cardboard boxes") or 'stock' (standard B-roll/stock video that fits the topic). If it is a talking head or cover frame, set to 'none'.
+- b_roll_visual: if shot_type is 'b_roll', write a detailed visual description of the overlay footage to display. For talking head or cover frames, set to an empty string.
+- spoken_text: if this shot contains spoken lines (voiceover/narrative spoken during the B-roll overlay, or talking head lines), specify the exact spoken dialogue lines here. If this shot is a silent B-roll overlay or a cover thumbnail frame, set spoken_text to an empty string. This ensures some B-roll lines have spoken dialogue, while others remain silent.
+- b_roll_stats: in the main object, estimate the total B-roll overlays in the original reference video (original_b_roll_count) and recommend the total number of B-roll overlays to use in our suggested recreation (suggested_b_roll_count).
 
 CAPTIONS (burned-in, for our own renderer):
 - Short, 3 to 6 words each, punchy, matched to the spoken line. These are the on-screen kinetic captions.
