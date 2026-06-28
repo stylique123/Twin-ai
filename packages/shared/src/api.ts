@@ -460,7 +460,9 @@ export interface ReviewPayload {
   reference_url: string | null
   video_url: string | null
   thumb_url: string | null
-  status: 'pending' | 'approved' | 'changes'
+  // 'none' = the generation was never shared (DB default, migration 0046) — widen
+  // the union so callers reading an unshared generation handle it.
+  status: 'none' | 'pending' | 'approved' | 'changes'
   note: string | null
   created_at: string
 }
@@ -685,7 +687,8 @@ async function readInvokeError(error: unknown): Promise<string> {
 export interface StartDnaResult {
   brand_voice_id: string
   job_id: string | null
-  status: 'building'
+  // 'ready' is returned on a DNA cache hit (start-dna returns it directly); 'building' otherwise.
+  status: 'building' | 'ready'
 }
 
 // ---- Referrals -----------------------------------------------------------

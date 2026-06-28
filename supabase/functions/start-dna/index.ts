@@ -14,7 +14,7 @@ const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
 
 // Brand voices included per plan. Non-agency plans are single-brand by design
 // ("one voice profile per client" is the agency moat). Tunable later via billing.
-const BRAND_LIMIT: Record<string, number> = { free: 1, aspiring: 1, professional: 1, agency: 15 }
+const BRAND_LIMIT: Record<string, number> = { free: 1, aspiring: 1, professional: 1, studio: 1, agency: 15 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
