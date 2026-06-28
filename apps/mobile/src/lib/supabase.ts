@@ -1,5 +1,6 @@
 import 'react-native-url-polyfill/auto'
 import AsyncStorage from '@react-native-async-storage/async-storage'
+import * as FileSystem from 'expo-file-system'
 import { createClient } from '@supabase/supabase-js'
 import { initApi } from '@twinai/shared'
 
@@ -29,22 +30,39 @@ export const supabase = createClient(
 initApi({
   client: supabase,
   appOrigin: 'https://app.twinai.com',
-  uploadTake: async (path, file) => {
+  uploadTake: async (path, file, onProgress) => {
     if (!file.uri) throw new Error('No file URI to upload')
-    // Stream the file from disk via FormData. RN's network layer reads the uri
-    // directly, so the whole video is never materialized in the JS heap — avoids
-    // the OOM/crash risk of fetch(uri).arrayBuffer() on large (50–200MB) takes.
     const contentType = file.contentType || 'video/mp4'
-    const form = new FormData()
-    form.append('file', {
-      uri: file.uri,
-      name: file.name || path.split('/').pop() || 'take.mp4',
-      type: contentType,
-      // RN's FormData file part is not a DOM Blob; cast to satisfy the web typings.
-    } as unknown as Blob)
-    const { error } = await supabase.storage
-      .from('takes')
-      .upload(path, form, { contentType, upsert: true })
-    if (error) throw error
+    const name = file.name || path.split('/').pop() || 'take.mp4'
+
+    // Preferred path: stream the file from disk to a signed upload URL via
+    // expo-file-system. It reports byte progress and never buffers the whole
+    // video in the JS heap, so large (50–200MB) takes won't OOM the device.
+    try {
+      const { data: signed, error: signErr } = await supabase.storage.from('takes').createSignedUploadUrl(path)
+      if (signErr || !signed?.signedUrl) throw signErr || new Error('No signed upload URL')
+      const putUrl = `${url}/storage/v1${signed.signedUrl}`
+      const task = FileSystem.createUploadTask(
+        putUrl,
+        file.uri,
+        {
+          httpMethod: 'PUT',
+          uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+          headers: { 'content-type': contentType, 'x-upsert': 'true' },
+        },
+        (p) => { if (p.totalBytesExpectedToSend > 0) onProgress?.(p.totalBytesSent / p.totalBytesExpectedToSend) },
+      )
+      const res = await task.uploadAsync()
+      if (!res || res.status >= 300) throw new Error(`Upload failed (${res?.status ?? 'no response'})`)
+    } catch {
+      // Fallback: supabase-js multipart upload (also streams from disk via
+      // FormData, just without progress). Keeps takes uploadable if the signed
+      // PUT path is unavailable.
+      onProgress?.(-1)
+      const form = new FormData()
+      form.append('file', { uri: file.uri, name, type: contentType } as unknown as Blob)
+      const { error } = await supabase.storage.from('takes').upload(path, form, { contentType, upsert: true })
+      if (error) throw error
+    }
   },
 })
