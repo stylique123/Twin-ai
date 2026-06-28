@@ -31,8 +31,11 @@ export default function V2Plan() {
 
   const pickHook = async (hook: string) => {
     if (!timeline) return
-    // Hook lands once, in scene 1 — keep the timeline's invariant intact.
-    const scenes = timeline.scenes.map((s) => (s.scene_number === 1 ? { ...s, dialogue: hook } : s))
+    // Hook lands once, in scene 1 — keep the timeline's invariant intact, and
+    // update scene 1's on-screen caption to match the new hook so the plan, the
+    // teleprompter, and the burned-in caption all agree.
+    const cap = hook.trim().split(/\s+/).slice(0, 7).join(' ').replace(/[.,;:!?]+$/, '')
+    const scenes = timeline.scenes.map((s) => (s.scene_number === 1 ? { ...s, dialogue: hook, caption_text: cap } : s))
     const next = { ...timeline, hook, scenes }
     setTimeline(next)
     setHookSheet(false)

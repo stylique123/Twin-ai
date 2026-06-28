@@ -304,7 +304,7 @@ function HeroVisualNew() {
         <motion.div
           animate={{ y: [0, -6, 0] }}
           transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative w-[280px] overflow-hidden rounded-[52px] border-[7px] border-white/15 bg-ink p-1 sm:w-[320px]"
+          className="relative w-full max-w-[270px] sm:max-w-[320px] overflow-hidden rounded-[52px] border-[7px] border-white/15 bg-ink p-1"
           style={{ boxShadow: '0 0 0 1px rgba(255,255,255,.06), 0 32px 90px -16px rgba(0,0,0,.9), 0 0 60px -20px rgba(101,229,216,.15)' }}
         >
           <div className="overflow-hidden rounded-[36px] bg-ink">
@@ -834,14 +834,14 @@ function AgencySection() {
               </p>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-px bg-white/8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-white/8">
             {[
               { icon: Clock, to: 12, suffix: 'h', label: 'Saved / client / week', sub: 'vs. scripting + editing by hand' },
               { icon: Eye, to: 3, suffix: '×', label: 'More posts shipped', sub: 'same headcount, more output' },
               { icon: Heart, to: 47, suffix: '%', label: 'More engagement', sub: 'proven hooks, on-brand' },
               { icon: Users, to: 15, suffix: '+', label: 'Brands per workspace', sub: 'each with its own voice' },
             ].map((m) => (
-              <div key={m.label} className="bg-ink2 p-7">
+              <div key={m.label} className="bg-ink2 p-5 sm:p-7">
                 <m.icon className="h-5 w-5 text-amber" />
                 <div className="mt-4 font-display text-4xl tracking-tight">
                   <Counter to={m.to} suffix={m.suffix} />
@@ -850,7 +850,7 @@ function AgencySection() {
                 <div className="mt-0.5 text-xs text-stone">{m.sub}</div>
               </div>
             ))}
-            <div className="col-span-2 bg-ink2/60 px-7 py-3 text-center text-[11px] text-stone">
+            <div className="col-span-1 sm:col-span-2 bg-ink2/60 px-7 py-3 text-center text-[11px] text-stone">
               Illustrative targets from early agency workflows. Results vary by niche, cadence and offer.
             </div>
           </div>

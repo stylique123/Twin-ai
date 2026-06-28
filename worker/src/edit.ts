@@ -628,6 +628,14 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       if (segs.length && !full) {
         try { jumpCut = await renderCutSegments(takeFile, cut, segs); if (jumpCut) cutSegments = segs } catch { jumpCut = false }
       }
+    } else if (opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
+      // V2 Scene-Timeline capture: the take was recorded scene-by-scene (the
+      // recorder paused between scenes), so the inter-scene dead air is already
+      // gone and `shots.bounds` ARE the real scene boundaries. Do NOT silence-cut
+      // here — that re-fragments the scenes into extra cuts (the "5 scenes -> 8
+      // cuts" bug) AND desyncs the per-scene captions (which are timed against the
+      // FULL take below). Keep the take whole so the edit follows the script.
+      jumpCut = false
     } else {
       try {
         const jc = await jumpCutSilence(takeFile, cut, opts.energy ?? 'calm', removeSpans)

@@ -75,11 +75,25 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
     show_in_teleprompter: true,
   })
 
-  // Remaining script lines → talking scenes. Skip any line that repeats the hook.
-  const hookHead = hook.toLowerCase().split(' ').slice(0, 6).join(' ')
+  // Remaining script lines → talking scenes. The hook is already scene 1, so we
+  // must drop ANY script line that is the hook — the common bug is the script's
+  // opening line being a *reworded* version of the selected hook (so a plain
+  // substring match misses it and the creator hears the hook twice). We catch it
+  // three ways: a "Hook"/"Opener" section label, an exact prefix match, or strong
+  // word-overlap with the hook.
+  const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean)
+  const hookWords = new Set(norm(hook).slice(0, 8))
+  const looksLikeHook = (line: string): boolean => {
+    const lw = norm(line).slice(0, 8)
+    if (!lw.length) return false
+    const overlap = lw.filter((w) => hookWords.has(w)).length
+    return overlap >= Math.min(4, Math.ceil(lw.length * 0.6))
+  }
   const body = (blueprint.script ?? []).filter((s) => {
-    const l = (s.line || '').trim().toLowerCase()
-    return l && !l.includes(hookHead)
+    const l = (s.line || '').trim()
+    if (!l) return false
+    if (/hook|opener/i.test(s.section || '')) return false
+    return !looksLikeHook(l)
   })
 
   body.forEach((seg, i) => {

@@ -139,7 +139,7 @@ export default function Dashboard() {
         )}
         {/* Remixes-left moved to Settings → Usage (it's a billing detail, not an
             achievement). These three are what they've shipped. */}
-        <Stagger className="mt-6 grid grid-cols-3 gap-4" gap={0.07}>
+        <Stagger className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4" gap={0.07}>
           <StatCard icon={FileText} glow="amber" label="Scripts" value={bpVal} loading={loading} />
           <StatCard icon={Clapperboard} glow="coral" label="Videos edited" value={edVal} loading={loading} />
           <StatCard icon={Send} glow="teal" label="Published" value={poVal} loading={loading} />
