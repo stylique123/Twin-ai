@@ -27,6 +27,12 @@ function activeClient(): SupabaseClient {
   return _sb
 }
 
+// The initialized Supabase client, for sibling shared modules (e.g. timelineApi)
+// that need direct table access without re-importing the platform wiring.
+export function getClient(): SupabaseClient {
+  return activeClient()
+}
+
 // Proxy so existing `supabase.from(...)` / `.auth` / `.functions` / `.storage`
 // call sites work unchanged, forwarding to whichever client initApi() set.
 // Methods are bound to the real client so `this` stays correct.

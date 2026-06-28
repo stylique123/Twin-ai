@@ -4,4 +4,6 @@
 export * from './types'
 export * from './brand'
 export * from './timeline'
+export * from './timelineAdapter'
+export * from './timelineApi'
 export * from './api'
