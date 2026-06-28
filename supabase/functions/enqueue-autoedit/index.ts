@@ -56,7 +56,7 @@ Deno.serve(async (req: Request) => {
   // Per-shot capture metadata (optional) — cut points + the script line per shot, so the
   // worker captions each segment from the script. Validated + clamped; ignored if malformed.
   const sb = body.shots
-  const shots = (sb && Array.isArray(sb.bounds) && Array.isArray(sb.lines) && typeof sb.total === 'number' && sb.total > 0
+  const shots = (sb && Array.isArray(sb.bounds) && Array.isArray(sb.lines) && typeof sb.total === 'number' && sb.total > 1
     && sb.bounds.every((n) => typeof n === 'number' && Number.isFinite(n)))
     ? { bounds: (sb.bounds as number[]).slice(0, 50), total: sb.total, lines: (sb.lines as unknown[]).slice(0, 60).map((s) => String(s).slice(0, 400)) }
     : null

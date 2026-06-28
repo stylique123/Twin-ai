@@ -1,5 +1,48 @@
-import { supabase } from './supabase'
-import type { Blueprint, BrandVoice, CreatorDNA, EditDecisionList, Generation, Platform, Profile, VoiceProfile } from './types'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { planFor } from './brand'
+import type { BrandVoice, CreatorDNA, EditDecisionList, Generation, Platform, Profile, VoiceProfile } from './types'
+
+// ---- Platform injection ----------------------------------------------------
+// This API layer is shared by web (Vercel) and mobile (Expo). Each app injects
+// its own Supabase client (they persist sessions differently — browser storage
+// vs. AsyncStorage), an app origin (for share links), and a file-upload impl
+// (web uploads a Blob; mobile uploads a file URI) via initApi() at startup.
+
+// A recorded take, described platform-neutrally. Web sets `blob`; mobile sets `uri`.
+export interface TakeFile { contentType: string; blob?: unknown; uri?: string; name?: string }
+export type UploadTake = (path: string, file: TakeFile) => Promise<void>
+
+let _sb: SupabaseClient | undefined
+let _appOrigin = ''
+let _uploadTake: UploadTake | undefined
+
+export function initApi(opts: { client: SupabaseClient; appOrigin?: string; uploadTake?: UploadTake }): void {
+  _sb = opts.client
+  _appOrigin = opts.appOrigin ?? ''
+  _uploadTake = opts.uploadTake
+}
+
+function activeClient(): SupabaseClient {
+  if (!_sb) throw new Error('TwinAI API not initialized — call initApi({ client }) at app startup.')
+  return _sb
+}
+
+// The initialized Supabase client, for sibling shared modules (e.g. timelineApi)
+// that need direct table access without re-importing the platform wiring.
+export function getClient(): SupabaseClient {
+  return activeClient()
+}
+
+// Proxy so existing `supabase.from(...)` / `.auth` / `.functions` / `.storage`
+// call sites work unchanged, forwarding to whichever client initApi() set.
+// Methods are bound to the real client so `this` stays correct.
+const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_t, prop) {
+    const client = activeClient() as unknown as Record<string | symbol, unknown>
+    const value = client[prop]
+    return typeof value === 'function' ? value.bind(client) : value
+  },
+})
 
 // ---- Profile / Creator DNA ----------------------------------------------
 
@@ -51,7 +94,6 @@ export interface CaseStudy {
 // crypto payment and unlock the plan + its credit allowance. Resolves the user via
 // the admin `users` search, then calls grant_plan with the plan's full credits.
 export async function adminActivatePlan(email: string, plan: string): Promise<{ ok: boolean; error?: string }> {
-  const { planFor } = await import('./brand')
   const list = await supabase.functions.invoke('admin', { body: { action: 'users', q: email, limit: 1 } })
   if (list.error) return { ok: false, error: 'Lookup failed — admin access required.' }
   const u = ((list.data?.users ?? []) as { id: string; email: string }[])[0]
@@ -149,17 +191,17 @@ export interface IngestJob {
 // First auto-edit is FREE (bundled with the blueprint). Uploads the take, then
 // enqueues THROUGH the edge function, the only credit-enforced path. The server
 // decides free-vs-paid, so the client can't grant itself a free render.
-export async function autoEditTake(generationId: string, blob: Blob, shots?: { bounds: number[]; total: number; lines: string[] }, aspect?: '9:16' | '1:1'): Promise<{ jobId: string; takePath: string }> {
+export async function autoEditTake(generationId: string, file: TakeFile, shots?: { bounds: number[]; total: number; lines: string[] }, aspect?: '9:16' | '1:1'): Promise<{ jobId: string; takePath: string }> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
   const uid = auth.user.id
-  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+  const contentType = file.contentType || 'video/webm'
+  const ext = contentType.includes('mp4') ? 'mp4' : 'webm'
   const take_path = `${uid}/${generationId}-${Date.now()}.${ext}`
 
-  const up = await supabase.storage
-    .from('takes')
-    .upload(take_path, blob, { contentType: blob.type || 'video/webm', upsert: true })
-  if (up.error) throw up.error
+  // Upload is platform-specific (web: Blob; mobile: file URI) — injected via initApi.
+  if (!_uploadTake) throw new Error('No uploadTake configured — pass it to initApi().')
+  await _uploadTake(take_path, file)
 
   const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
     body: { generation_id: generationId, take_path, aspect, ...(shots ? { shots } : {}) },
@@ -327,7 +369,7 @@ export async function getWorkspace(): Promise<WorkspaceState> {
 export async function createWorkspaceInvite(): Promise<string | null> {
   const { data, error } = await supabase.rpc('create_workspace_invite')
   if (error || !data) return null
-  return `${window.location.origin}/join/${data}`
+  return `${_appOrigin}/join/${data}`
 }
 export async function removeWorkspaceMember(memberId: string): Promise<void> {
   await supabase.from('workspace_members').delete().eq('member_id', memberId)
@@ -407,7 +449,7 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
 export async function createReviewLink(generationId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc('ensure_review_token', { p_gen: generationId })
   if (error || !data) return null
-  return `${window.location.origin}/review/${data}`
+  return `${_appOrigin}/review/${data}`
 }
 
 export interface ReviewPayload {
@@ -813,5 +855,3 @@ export async function listGalleryItems(): Promise<GalleryItem[]> {
 // scraper (service role), and migration 0032 locks authenticated inserts to
 // private-only until there's a moderation flow. Re-add a submit helper alongside
 // that flow when public contributions ship.
-
-export type { Blueprint }

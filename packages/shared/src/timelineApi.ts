@@ -2,11 +2,11 @@
 // (see supabase/migrations/0050_scene_timeline.sql) so it travels with the
 // generation the V2 flow already loads. Load / save whole, or patch one scene.
 
-import { supabase } from './supabase'
+import { getClient } from './api'
 import { type Scene, type SceneTimeline, type WpmPreset, totalDurationSec } from './timeline'
 
 export async function loadTimeline(generationId: string): Promise<SceneTimeline | null> {
-  const { data, error } = await supabase
+  const { data, error } = await getClient()
     .from('generations')
     .select('scene_timeline')
     .eq('id', generationId)
@@ -17,7 +17,7 @@ export async function loadTimeline(generationId: string): Promise<SceneTimeline 
 
 export async function saveTimeline(t: SceneTimeline): Promise<void> {
   const next = { ...t, total_duration_sec: totalDurationSec(t.scenes) }
-  const { error } = await supabase
+  const { error } = await getClient()
     .from('generations')
     .update({ scene_timeline: next })
     .eq('id', t.generation_id)

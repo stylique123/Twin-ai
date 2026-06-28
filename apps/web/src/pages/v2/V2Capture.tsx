@@ -150,7 +150,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       // builds captions from THESE lines, cut at THESE boundaries. Falls back to
       // whole-clip auto-edit if we somehow have <2 segments.
       const shots = total > 1 ? { bounds, total, lines } : undefined
-      const { jobId } = await autoEditTake(genId, blob, shots)
+      const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots)
       onJob(jobId)
     } catch (e) {
       setCamError(e instanceof Error ? e.message : 'Could not start the edit')
@@ -251,7 +251,7 @@ function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => voi
     setBusy(true); setErr(null)
     try {
       // No shots → the worker runs PySceneDetect on the clip and maps segments.
-      const { jobId } = await autoEditTake(genId, file)
+      const { jobId } = await autoEditTake(genId, { blob: file, contentType: file.type || 'video/webm' })
       onJob(jobId)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Upload failed')

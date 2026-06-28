@@ -198,7 +198,11 @@ export default function Record() {
   const lineEls = useRef<(HTMLParagraphElement | null)[]>([])
   const prevActiveRef = useRef(0) // track previous active for scene boundary detection
   const [showFinishConfirm, setShowFinishConfirm] = useState(false)
-  const [selectedAspect, setSelectedAspect] = useState<'9:16' | '1:1'>('9:16')
+  // Output is always 9:16 — the render pipeline (worker) hardcodes 1080x1920 and the
+  // enqueue-autoedit edge fn doesn't carry an aspect, so a 1:1 option would be a no-op.
+  // Kept as a union-typed const so the preview comparisons below stay valid; re-add a
+  // selector only once the worker supports square render.
+  const selectedAspect: '9:16' | '1:1' = '9:16'
 
   const phaseRef = useRef(phase)
   useEffect(() => { phaseRef.current = phase }, [phase])
@@ -736,7 +740,7 @@ export default function Record() {
       const shots = shotBoundsRef.current.length
         ? { bounds: shotBoundsRef.current, total: Number(elapsed.toFixed(2)), lines: lines.map((l) => l.text) }
         : undefined
-      const { jobId, takePath } = await autoEditTake(id, takeBlobRef.current, shots, selectedAspect)
+      const { jobId, takePath } = await autoEditTake(id, { blob: takeBlobRef.current, contentType: takeBlobRef.current?.type || 'video/webm' }, shots, selectedAspect)
       takePathRef.current = takePath
       // Persist the in-flight job so a reload / leaving resumes this exact edit (the
       // remix is already spent — never charge twice). Cleared when it finishes.
@@ -853,9 +857,7 @@ export default function Record() {
         {/* ---------- camera + teleprompter ---------- */}
         <div className={cn(
           "relative overflow-hidden rounded-none sm:rounded-panel border-0 sm:border border-white/10 bg-black shadow-lift transition-all duration-300 w-full max-w-full mx-auto",
-          phase === 'review' && selectedAspect === '1:1'
-            ? "aspect-square h-auto sm:max-h-[60vh] max-w-[60vh]"
-            : "aspect-[9/16] h-[calc(100vh-170px)] sm:h-auto sm:max-h-[78vh]"
+          "aspect-[9/16] h-[calc(100vh-170px)] sm:h-auto sm:max-h-[78vh]"
         )}>
           {/* Always 9:16 or 1:1 based on outer parent */}
           <div className="relative h-full w-full">
@@ -1147,10 +1149,7 @@ export default function Record() {
                   src={editUrl ?? takeUrl ?? ''}
                   controls
                   playsInline
-                  className={cn(
-                    "h-full w-full transition-all duration-300",
-                    selectedAspect === '1:1' ? "object-cover" : "object-contain"
-                  )}
+                  className="h-full w-full transition-all duration-300 object-contain"
                 />
                 {editUrl && !polishing && (
                   <div className="pointer-events-none absolute inset-x-0 top-0 flex flex-col items-center gap-1 bg-gradient-to-b from-ink/85 via-ink/40 to-transparent px-4 pb-9 pt-4 text-center">
@@ -1221,38 +1220,6 @@ export default function Record() {
           {/* Mobile Configurator & Status checklist (lg:hidden) */}
           {phase === 'review' && (
             <div className="block lg:hidden border-t border-white/10 bg-ink2/90 p-5 space-y-4">
-              {/* Aspect Ratio */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-[10px] font-bold uppercase tracking-wider text-sand">Aspect Ratio</label>
-                  <span className="text-[8px] text-stone bg-ink3/50 px-1.5 py-0.5 rounded border border-white/5 font-semibold">Live Preview</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setSelectedAspect('9:16')}
-                    className={cn(
-                      "flex-1 rounded-xl border py-2.5 text-center text-xs font-semibold transition-all",
-                      selectedAspect === '9:16'
-                        ? "border-coral bg-coral/10 text-cream"
-                        : "border-white/10 bg-white/5 text-stone"
-                    )}
-                  >
-                    9:16 Portrait
-                  </button>
-                  <button
-                    onClick={() => setSelectedAspect('1:1')}
-                    className={cn(
-                      "flex-1 rounded-xl border py-2.5 text-center text-xs font-semibold transition-all",
-                      selectedAspect === '1:1'
-                        ? "border-coral bg-coral/10 text-cream"
-                        : "border-white/10 bg-white/5 text-stone"
-                    )}
-                  >
-                    1:1 Square
-                  </button>
-                </div>
-              </div>
-
               {editPhase === 'none' && (
                 <div className="space-y-4">
 
@@ -1577,38 +1544,6 @@ export default function Record() {
         {/* ---------- side panel: AI Edit Configurator & Post Production (Review Phase) ---------- */}
         {phase === 'review' && (
           <div className="hidden lg:block space-y-4">
-            {/* Aspect Ratio Selector (Permanently visible in Review) */}
-            <div className="glass p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-sand">Aspect Ratio</label>
-                <span className="text-[10px] text-stone bg-ink3/50 px-2 py-0.5 rounded border border-white/5 font-semibold">Live Preview</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedAspect('9:16')}
-                  className={cn(
-                    "flex-1 rounded-xl border py-2.5 text-center text-xs font-semibold transition-all",
-                    selectedAspect === '9:16'
-                      ? "border-coral bg-coral/10 text-cream"
-                      : "border-white/10 bg-white/5 text-stone hover:text-cream"
-                  )}
-                >
-                  9:16 Portrait
-                </button>
-                <button
-                  onClick={() => setSelectedAspect('1:1')}
-                  className={cn(
-                    "flex-1 rounded-xl border py-2.5 text-center text-xs font-semibold transition-all",
-                    selectedAspect === '1:1'
-                      ? "border-coral bg-coral/10 text-cream"
-                      : "border-white/10 bg-white/5 text-stone hover:text-cream"
-                  )}
-                >
-                  1:1 Square
-                </button>
-              </div>
-            </div>
-
             {/* Phase 1: Pre-edit Style Selection */}
             {editPhase === 'none' && (
               <div className="glass p-5 space-y-5">

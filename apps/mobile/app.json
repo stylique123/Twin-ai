@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "TwinAI",
+    "slug": "twinai",
+    "version": "1.0.0",
+    "scheme": "twinai",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#07070A"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.twinai.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "TwinAI uses the camera to record your video takes.",
+        "NSMicrophoneUsageDescription": "TwinAI uses the microphone to record audio for your takes."
+      }
+    },
+    "android": {
+      "package": "com.twinai.app"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "TwinAI uses the camera to record your video takes.",
+          "microphonePermission": "TwinAI uses the microphone to record audio for your takes."
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

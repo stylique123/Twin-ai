@@ -251,7 +251,7 @@ Deno.serve(async (req: Request) => {
     // The finished render lives in storage on the generation; sign a short URL.
     const { data: gen } = await admin.from('generations').select('edit_path').eq('id', post.generation_id).maybeSingle()
     if (!gen?.edit_path) return json({ error: 'This post has no finished video to publish yet.' }, 400)
-    const { data: signed } = await admin.storage.from('renders').createSignedUrl(gen.edit_path, 600)
+    const { data: signed } = await admin.storage.from('edits').createSignedUrl(gen.edit_path, 600)
     if (!signed?.signedUrl) return json({ error: 'Could not read the video file.' }, 500)
 
     try {

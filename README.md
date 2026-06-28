@@ -14,6 +14,10 @@ This is a fresh, real rebuild: a Vite + React + TypeScript frontend, a Supabase 
 | Auth + DB | Supabase (Postgres, Row Level Security, Auth) |
 | AI | Google Gemini (`gemini-3.1-pro`) via a Supabase Edge Function — provider isolated to one function, swappable |
 
+> **System shape:** see **[`ARCHITECTURE.md`](ARCHITECTURE.md)** — the authoritative
+> end-to-end design (Vercel SPA → Supabase data plane → Edge Functions → `jobs` queue
+> → VPS worker → satellites). For deploy steps see [`DEPLOY.md`](DEPLOY.md).
+
 ## What's real vs. roadmap
 
 **Real now**

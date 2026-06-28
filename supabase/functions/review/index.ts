@@ -76,7 +76,12 @@ Deno.serve(async (req: Request) => {
       const hook =
         (g.selected_hook && String(g.selected_hook)) ||
         (Array.isArray(bp.hook_options) && bp.hook_options.length ? String((bp.hook_options as unknown[])[0]) : '')
-      const script = Array.isArray(bp.script) ? (bp.script as unknown[]).map((l) => String(l)) : []
+      // bp.script items are objects ({ section, line, direction, ... }); show the spoken line.
+      const script = Array.isArray(bp.script)
+        ? (bp.script as unknown[]).map((l) =>
+            typeof l === 'string' ? l : String((l as { line?: string })?.line ?? ''),
+          )
+        : []
 
       return json({
         brand,
