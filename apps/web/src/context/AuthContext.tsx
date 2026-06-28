@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       events.forEach((e) => window.removeEventListener(e, onActivity))
       window.clearInterval(timer)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [session])
 
   const signOut = async () => {
