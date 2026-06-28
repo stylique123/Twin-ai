@@ -15,12 +15,6 @@ export default function JoinWorkspace() {
   const [state, setState] = useState<'idle' | 'joining' | 'done' | 'error'>('idle')
   const [msg, setMsg] = useState('')
 
-  // Not signed in → stash the invite and send them to signup; they return here.
-  if (!session) {
-    try { localStorage.setItem('twinai_pending_join', token) } catch { /* storage off */ }
-    return <Navigate to="/auth?mode=signup" replace />
-  }
-
   const join = async () => {
     setState('joining')
     const r = await acceptWorkspaceInvite(token)
@@ -38,7 +32,15 @@ export default function JoinWorkspace() {
     }
   }
 
-  useEffect(() => { if (token) join() /* eslint-disable-next-line */ }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- run once when session + token are ready
+  useEffect(() => { if (session && token) join() }, [session, token])
+
+  // Not signed in → stash the invite and send them to signup; they return here.
+  // (Placed AFTER all hooks so hook order stays stable across renders.)
+  if (!session) {
+    try { localStorage.setItem('twinai_pending_join', token) } catch { /* storage off */ }
+    return <Navigate to="/auth?mode=signup" replace />
+  }
 
   return (
     <main className="relative grid min-h-screen place-items-center overflow-clip px-5">

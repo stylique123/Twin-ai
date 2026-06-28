@@ -485,7 +485,6 @@ export default function Record() {
       // object URL is actually revoked on navigate-away (was leaking before).
       if (takeUrlRef.current) URL.revokeObjectURL(takeUrlRef.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ---- teleprompter scroll loop ----
@@ -666,7 +665,6 @@ export default function Record() {
       el.scrollTop = offsetRef.current
       setActive(shotIdx)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shotIdx])
   const reshoot = () => {
     setPhase('idle')

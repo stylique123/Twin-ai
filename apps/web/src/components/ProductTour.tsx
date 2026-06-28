@@ -68,15 +68,15 @@ const STEPS: Step[] = [
     icon: CreditCard,
     badge: 'Plan',
     title: 'Upgrade when it\'s working',
-    body: "Start on free remixes. When you\'re ready for more — no watermark, more videos, analytics — open your plan, compare them side by side, and add a card in seconds.",
+    body: "Start on free remixes. When you're ready for more — no watermark, more videos, analytics — open your plan, compare them side by side, and add a card in seconds.",
     doThis: 'Hit Upgrade → compare plans → pay. That\'s it.',
   },
   {
     route: '/dashboard',
     icon: Sparkles,
     badge: 'You\'re set',
-    title: "That\'s the whole loop 🎬",
-    body: "Paste → script → record → edit → post. You\'ve got free remixes to start — go make your first one. Have fun.",
+    title: "That's the whole loop 🎬",
+    body: "Paste → script → record → edit → post. You've got free remixes to start — go make your first one. Have fun.",
     doThis: 'Ready when you are. Paste your first link.',
   },
 ]
