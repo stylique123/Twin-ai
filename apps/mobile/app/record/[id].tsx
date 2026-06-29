@@ -51,6 +51,13 @@ export default function Record() {
   const startTs = useRef(0)
   const boundsRef = useRef<number[]>([])
   const linesRef = useRef<string[]>([])
+  // Per-scene keep-windows [{start,end,line}] in recording seconds. Each accepted
+  // scene appends one window; Retake pops the last window and re-reads from now, so
+  // the flubbed footage falls into the dropped gap between windows. The worker
+  // trims+concats these (dropping flubs + between-scene dead air) and captions each.
+  const segmentsRef = useRef<{ start: number; end: number; line: string }[]>([])
+  const sceneStartRef = useRef(0) // current scene's window start (recording seconds)
+  const nowSec = () => Math.round(((Date.now() - startTs.current) / 1000) * 1000) / 1000
 
   const [cameraReady, setCameraReady] = useState(false)
   const [phase, setPhase] = useState<Phase>('idle')
@@ -94,6 +101,7 @@ export default function Record() {
       for (let c = 3; c >= 1; c--) { setCount(c); await sleep(800) }
       if (!cameraRef.current) throw new Error('Camera not ready — try again')
       startTs.current = Date.now()
+      sceneStartRef.current = 0 // scene 1's window opens at recording start
       recordingPromise.current = cameraRef.current.recordAsync() as Promise<{ uri: string }>
       setPhase('recording')
     } catch (e) {
@@ -101,19 +109,35 @@ export default function Record() {
     }
   }
 
-  // Mark the current scene's boundary (cumulative recording seconds) + its line.
-  const markBoundary = () => {
-    boundsRef.current.push(Math.round(((Date.now() - startTs.current) / 1000) * 1000) / 1000)
-    linesRef.current.push((scene?.dialogue || scene?.caption_text || '').trim())
+  // Close the current scene: append its kept window [start,end] + line, and a
+  // cumulative cut point (back-compat for the bounds path).
+  const closeScene = () => {
+    const end = nowSec()
+    const line = (scene?.dialogue || scene?.caption_text || '').trim()
+    segmentsRef.current.push({ start: sceneStartRef.current, end, line })
+    boundsRef.current.push(end)
+    linesRef.current.push(line)
   }
 
   const nextScene = () => {
-    markBoundary()
+    closeScene()
     if (last) { void finish(); return }
     setPhase('between')
   }
 
-  const continueNext = () => { setI((v) => v + 1); setPhase('recording') }
+  // Advance to the next scene — its window opens now, so the time spent reading
+  // this card is dropped (it's outside every kept window).
+  const continueNext = () => { sceneStartRef.current = nowSec(); setI((v) => v + 1); setPhase('recording') }
+
+  // Retake this scene: discard the read we just closed and re-open the scene from
+  // now. The flubbed take + card time fall into the dropped gap before the new window.
+  const retakeScene = () => {
+    segmentsRef.current.pop()
+    boundsRef.current.pop()
+    linesRef.current.pop()
+    sceneStartRef.current = nowSec()
+    setPhase('recording')
+  }
 
   const finish = async () => {
     if (!id) return
@@ -143,9 +167,14 @@ export default function Record() {
         const bounds = boundsRef.current
         const total = bounds.length
         const lines = linesRef.current
-        // Per-scene cut bounds + spoken line → the worker captions/cuts per scene
-        // (Scene Timeline contract). Falls back to scene-detection if <2 segments.
-        const shots = total > 1 ? { bounds, total, lines } : undefined
+        const segments = segmentsRef.current.filter((s) => s.end > s.start)
+        // Per-scene keep-windows + spoken line → the worker trims+concats the kept
+        // windows (dropping flubs/dead air) and captions each per scene (Scene
+        // Timeline contract). bounds/total/lines kept for back-compat. Single-scene
+        // (<2 windows) → no shots, the worker transcribes normally.
+        const shots = total > 1
+          ? { bounds, total, lines, ...(segments.length > 1 ? { segments } : {}) }
+          : undefined
         const r = await autoEditTake(id, { uri, contentType: 'video/mp4' }, shots, undefined, (f) => setUploadPct(f < 0 ? null : f))
         jobId = r.jobId
         lastJobId.current = jobId
@@ -231,10 +260,25 @@ export default function Record() {
       {/* Center: current scene line, or the between-scene beat */}
       <View style={styles.center} pointerEvents="none">
         {between ? (
-          <View style={{ alignItems: 'center', gap: 8 }}>
-            <Text style={styles.complete}>Scene complete ✓</Text>
-            <Text style={styles.nextLabel}>Next: {sceneLabel(next?.scene_type)}</Text>
+          <View style={styles.card}>
+            <Text style={styles.complete}>Scene {i + 1} complete ✓</Text>
+            <Text style={styles.cardTitle}>
+              Next · Scene {i + 2} of {scenes.length} — {sceneLabel(next?.scene_type)}
+            </Text>
             <Text style={styles.nextSecs}>about {Math.round(estimateDurationSec(next?.dialogue ?? null, wpm))}s</Text>
+            {next?.camera_framing ? (
+              <Text style={styles.cardRow}><Text style={styles.cardKey}>Positioning  </Text>{next.camera_framing}</Text>
+            ) : null}
+            {next?.background ? (
+              <Text style={styles.cardRow}><Text style={styles.cardKey}>Background  </Text>{next.background}</Text>
+            ) : null}
+            {next?.purpose ? (
+              <Text style={styles.cardRow}><Text style={styles.cardKey}>This scene  </Text>{next.purpose}</Text>
+            ) : null}
+            {next?.movement ? (
+              <Text style={styles.cardRow}><Text style={styles.cardKey}>Movement  </Text>{next.movement}</Text>
+            ) : null}
+            <Text style={styles.retakeHint}>Flubbed it? Retake re-reads the scene you just finished.</Text>
           </View>
         ) : (
           <View style={{ transform: [{ scaleX: mirror ? -1 : 1 }] }}>
@@ -257,7 +301,14 @@ export default function Record() {
         {err ? <Text style={[styles.status, { color: colors.coral }]}>{`⚠ ${err}`}</Text> : null}
 
         {between ? (
-          <Pressable style={styles.cta} onPress={continueNext}><Text style={styles.ctaText}>Continue</Text></Pressable>
+          <View style={styles.row}>
+            <Pressable style={[styles.cta, styles.ctaHalf, styles.ctaGhost]} onPress={retakeScene}>
+              <Text style={[styles.ctaText, { color: '#fff' }]}>Retake scene</Text>
+            </Pressable>
+            <Pressable style={[styles.cta, styles.ctaHalf]} onPress={continueNext}>
+              <Text style={styles.ctaText}>Next scene</Text>
+            </Pressable>
+          </View>
         ) : phase === 'error' ? (
           lastUri.current ? (
             <Pressable style={styles.cta} onPress={retry}><Text style={styles.ctaText}>Retry</Text></Pressable>
@@ -291,14 +342,21 @@ const styles = StyleSheet.create({
   center: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
   line: { color: colors.cream, fontSize: 26, lineHeight: 34, fontWeight: '700', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 6 },
   framing: { color: 'rgba(255,255,255,0.6)', fontSize: 12, textAlign: 'center', marginTop: 16 },
-  complete: { color: colors.teal, fontSize: 20, fontWeight: '800' },
-  nextLabel: { color: '#fff', fontSize: 15 },
-  nextSecs: { color: 'rgba(255,255,255,0.5)', fontSize: 12 },
+  complete: { color: colors.teal, fontSize: 20, fontWeight: '800', textAlign: 'center' },
+  card: { width: '100%', maxWidth: 420, gap: 8, backgroundColor: 'rgba(7,7,10,0.72)', borderRadius: radius.card, borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)', padding: 18 },
+  cardTitle: { color: '#fff', fontSize: 16, fontWeight: '700', textAlign: 'center' },
+  cardRow: { color: 'rgba(255,255,255,0.92)', fontSize: 14, lineHeight: 20 },
+  cardKey: { color: colors.teal, fontSize: 12, fontWeight: '700' },
+  retakeHint: { color: 'rgba(255,255,255,0.45)', fontSize: 11, marginTop: 4, textAlign: 'center' },
+  nextSecs: { color: 'rgba(255,255,255,0.5)', fontSize: 12, textAlign: 'center' },
   countWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   count: { color: '#fff', fontSize: 96, fontWeight: '800' },
   controls: { position: 'absolute', bottom: 44, left: 24, right: 24, alignItems: 'center', gap: 10 },
   status: { color: colors.cream, backgroundColor: 'rgba(7,7,10,0.7)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999, overflow: 'hidden' },
+  row: { flexDirection: 'row', gap: 10, width: '100%' },
   cta: { width: '100%', height: 54, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff' },
+  ctaHalf: { flex: 1, width: undefined },
+  ctaGhost: { backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.3)' },
   ctaRec: { backgroundColor: colors.coral },
   ctaText: { color: colors.ink, fontSize: 16, fontWeight: '700' },
 })

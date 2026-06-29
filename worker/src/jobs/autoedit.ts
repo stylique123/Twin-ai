@@ -187,9 +187,25 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     const isFirstEdit = variation === 0 && !editedEdl
     // Per-shot capture: cut points + the script line per shot, so each segment is
     // captioned from the script (perfect timing) instead of guessed by transcription.
-    const ps = payload.shots as { bounds?: unknown; total?: unknown; lines?: unknown } | undefined
-    let shots = (ps && Array.isArray(ps.bounds) && Array.isArray(ps.lines) && typeof ps.total === 'number' && ps.total > 1)
+    const ps = payload.shots as { bounds?: unknown; total?: unknown; lines?: unknown; segments?: unknown } | undefined
+    // Per-scene Retake keep-windows: explicit [{start,end,line}] the creator accepted.
+    // When present the editor trims+concats these and drops the flubbed gaps.
+    const segments = ps && Array.isArray(ps.segments)
+      ? (ps.segments as unknown[])
+          .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+          .filter((s) => typeof s.start === 'number' && typeof s.end === 'number' && Number.isFinite(s.start as number) && Number.isFinite(s.end as number) && (s.end as number) > (s.start as number))
+          .map((s) => ({ start: s.start as number, end: s.end as number, line: String((s as { line?: unknown }).line ?? '') }))
+      : []
+    const baseShots = (ps && Array.isArray(ps.bounds) && Array.isArray(ps.lines) && typeof ps.total === 'number' && ps.total > 1)
       ? { bounds: (ps.bounds as number[]).filter((n) => Number.isFinite(n)), total: ps.total as number, lines: (ps.lines as unknown[]).map((s) => String(s)) }
+      : undefined
+    let shots = (baseShots || segments.length > 1)
+      ? {
+          bounds: baseShots?.bounds ?? [],
+          total: baseShots?.total ?? segments.length,
+          lines: baseShots?.lines ?? segments.map((s) => s.line),
+          ...(segments.length > 1 ? { segments } : {}),
+        }
       : undefined
     // Uploads / multi-scene clips: no client per-shot boundaries → detect scene cuts so
     // the editor still cuts + captions per scene (uploads first-class). Conservative —
