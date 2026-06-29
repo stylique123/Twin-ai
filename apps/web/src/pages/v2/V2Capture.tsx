@@ -132,16 +132,22 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   // Idle: parked with the first lines at the read-line. Recording: travels up over
   // the scene's estimated time. Mirror is folded into the same transform so it's
   // always accurate.
+  //
+  // The box/text are measured INSIDE the rAF tick (not once at effect start): after
+  // the between-scene card unmounts and remounts the prompter, the new scene's
+  // element may not be laid out the instant the effect fires — measuring per frame
+  // means EVERY scene scrolls, not just the first hook. A floor on travel keeps even
+  // a short scene visibly gliding upward.
   useEffect(() => {
     const p = textRef.current, box = promptScrollRef.current
     if (!p || !box) return
     const mir = mirror ? ' scaleX(-1)' : ''
-    const readY = box.clientHeight * 0.40          // read-line sits 40% down
-    if (!recording) { p.style.transform = `translateY(${readY}px)${mir}`; return }
-    const travel = p.offsetHeight + readY          // scroll the whole script past the top
     let raf = 0
     const start = performance.now()
     const tick = (now: number) => {
+      const readY = box.clientHeight * 0.5         // read-line at the middle — text starts lower
+      if (!recording) { p.style.transform = `translateY(${readY}px)${mir}`; return }
+      const travel = Math.max(p.offsetHeight + readY, box.clientHeight * 0.9) // always a visible glide
       const prog = Math.min(1, (now - start) / 1000 / estSec)
       p.style.transform = `translateY(${readY - prog * travel}px)${mir}`
       raf = requestAnimationFrame(tick)
@@ -284,98 +290,124 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     )
   }
 
-  return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-ink text-cream flex flex-col overflow-x-hidden">
-      <div className="flex items-center justify-between px-4 pt-4 text-sm text-white/60">
-        <span>Scene {i + 1} of {scenes.length} · {sceneTypeLabel(scene?.scene_type)}</span>
-        <button onClick={() => setExitSheet(true)} aria-label="Exit" className="h-11 w-11 grid place-items-center rounded-full bg-white/10">✕</button>
+  // The between-scene "Next up" card — shown in the control rail (right on desktop,
+  // below the camera on phone). Pure UI over data already in `next`.
+  const nextCard = (
+    <div className="text-left space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+      <div className="text-emerald-400 text-base font-semibold text-center">Scene {i + 1} complete ✓</div>
+      <div className="text-center">
+        <div className="text-white font-semibold">Next · Scene {i + 2} of {scenes.length} — {sceneTypeLabel(next?.scene_type)}</div>
+        <div className="text-white/40 text-xs mt-0.5">about {Math.round(estimateDurationSec(next?.dialogue ?? null, timeline.wpm))}s</div>
       </div>
+      <div className="space-y-1.5 text-sm text-white/90">
+        {next?.camera_framing && <p><span className="text-emerald-400 text-xs font-semibold">Positioning  </span>{next.camera_framing}</p>}
+        {next?.background && <p><span className="text-emerald-400 text-xs font-semibold">Background  </span>{next.background}</p>}
+        {next?.purpose && <p><span className="text-emerald-400 text-xs font-semibold">This scene  </span>{next.purpose}</p>}
+        {next?.movement && <p><span className="text-emerald-400 text-xs font-semibold">Movement  </span>{next.movement}</p>}
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button onClick={retakeScene} className="flex-1 rounded-2xl bg-white/10 border border-white/30 text-white font-semibold py-3 hover:bg-white/20">Retake scene</button>
+        <button onClick={continueNext} className="flex-1 rounded-2xl bg-cream text-ink font-semibold py-3 hover:bg-white">Next scene</button>
+      </div>
+      <p className="text-white/40 text-[11px] text-center">Flubbed it? Retake re-reads the scene you just finished.</p>
+    </div>
+  )
 
-      {/* live camera preview behind the prompter text — a clean centered 9:16 frame
-          (so on desktop it's a tidy portrait card, not a stretched/black-band fill). */}
-      <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-black">
-        <video ref={videoRef} playsInline muted className="absolute inset-0 h-full w-full object-cover opacity-60" />
-        <div className="absolute inset-0 flex flex-col justify-center px-6">
-          {camError ? (
-            <div className="text-center text-white/80">
-              <p className="font-medium">Camera needed to record</p>
-              <p className="text-xs text-white/50 mt-1">{camError}</p>
-            </div>
-          ) : between ? (
-            <div className="text-left space-y-3 bg-black/55 border border-white/10 rounded-2xl p-5 backdrop-blur">
-              <div className="text-emerald-400 text-base font-semibold text-center">Scene {i + 1} complete ✓</div>
-              <div className="text-center">
-                <div className="text-white font-semibold">Next · Scene {i + 2} of {scenes.length} — {sceneTypeLabel(next?.scene_type)}</div>
-                <div className="text-white/40 text-xs mt-0.5">about {Math.round(estimateDurationSec(next?.dialogue ?? null, timeline.wpm))}s</div>
-              </div>
-              <div className="space-y-1.5 text-sm text-white/90">
-                {next?.camera_framing && <p><span className="text-emerald-400 text-xs font-semibold">Positioning  </span>{next.camera_framing}</p>}
-                {next?.background && <p><span className="text-emerald-400 text-xs font-semibold">Background  </span>{next.background}</p>}
-                {next?.purpose && <p><span className="text-emerald-400 text-xs font-semibold">This scene  </span>{next.purpose}</p>}
-                {next?.movement && <p><span className="text-emerald-400 text-xs font-semibold">Movement  </span>{next.movement}</p>}
-              </div>
-              <div className="flex gap-2 pt-1">
-                <button onClick={retakeScene} className="flex-1 rounded-2xl bg-white/10 border border-white/30 text-white font-semibold py-3">Retake scene</button>
-                <button onClick={continueNext} className="flex-1 rounded-2xl bg-cream text-ink font-semibold py-3">Next scene</button>
-              </div>
-              <p className="text-white/40 text-[11px] text-center">Flubbed it? Retake re-reads the scene you just finished.</p>
-            </div>
-          ) : (
-            <div className="w-full">
-              {/* read-line teleprompter: the script glides UP past a fixed line, with
-                  a soft fade top + bottom. The transform is driven by the effect above. */}
-              <div ref={promptScrollRef} className="relative mx-auto max-w-[36rem] h-[44vh] overflow-hidden px-2 [mask-image:linear-gradient(to_bottom,transparent,#000_16%,#000_84%,transparent)]">
-                <p ref={textRef} className="absolute inset-x-0 top-0 text-center font-semibold leading-[1.5] drop-shadow will-change-transform" style={{ fontSize: FONT_PX[fontIdx] }}>
-                  {words.map((w, idx) => (
-                    <span
-                      key={idx}
-                      className={!recording ? 'text-cream' : idx < readCount ? 'text-cream/40' : idx === readCount ? 'text-teal' : 'text-cream'}
-                    >
-                      {w}{' '}
-                    </span>
-                  ))}
-                </p>
-              </div>
-              {/* subtle pace readout — no deadline bar; recording isn't time-limited */}
-              <p className="mt-3 text-center text-xs text-white/45">
-                {scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {wpmVal} wpm{recording ? ` · ${Math.floor(sceneElapsed)}s` : ` · ~${estSec}s`}
-              </p>
-            </div>
-          )}
+  // The live control deck — record button + size/speed/mirror/camera. On desktop the
+  // controls stack into a labelled panel; on phone they wrap into a compact row.
+  const controlDeck = (
+    <div className="space-y-3">
+      <button
+        onClick={() => (recording ? finishScene() : beginScene())}
+        disabled={!!camError || countdown > 0}
+        className={`w-full rounded-2xl py-4 font-semibold disabled:opacity-40 ${recording ? 'bg-red-500 text-white' : 'bg-cream text-ink hover:bg-white'}`}
+      >
+        {recording ? (last ? 'Stop & finish' : 'Stop & next scene') : countdown > 0 ? `Starting in ${countdown}…` : 'Record this scene'}
+      </button>
+      {/* Self-explanatory, bordered controls (clear on desktop, not bare text). */}
+      <div className="flex flex-wrap items-center justify-center gap-2 text-sm lg:flex-col lg:items-stretch">
+        <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0 || recording} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 disabled:opacity-30 lg:rounded-xl lg:py-2.5 lg:text-left">← Previous scene</button>
+        <div className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1 lg:justify-between lg:rounded-xl lg:px-3 lg:py-2">
+          <span className="px-1 text-xs text-white/45">Text size</span>
+          <span className="inline-flex gap-1">
+            <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
+            <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-sm font-bold">A+</button>
+          </span>
         </div>
-        {recording && <div className="absolute top-3 left-3 flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />REC</div>}
-        {countdown > 0 && (
-          <div className="absolute inset-0 grid place-items-center bg-black/50 backdrop-blur-sm">
-            <span className="text-7xl font-display font-bold text-cream tabular-nums">{countdown}</span>
-          </div>
+        <button onClick={() => setSpeedSheet(true)} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 lg:rounded-xl lg:py-2.5 lg:text-left">Speed · {wpmVal} wpm</button>
+        <button onClick={() => setMirror((m) => !m)} className={`rounded-full border px-3 py-1.5 hover:bg-white/10 lg:rounded-xl lg:py-2.5 lg:text-left ${mirror ? 'border-teal text-teal' : 'border-white/15 text-white/85'}`}>Mirror: {mirror ? 'on' : 'off'}</button>
+        {!recording && activeMsRef.current === 0 && (
+          <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 lg:rounded-xl lg:py-2.5 lg:text-left">{facing === 'user' ? 'Front camera' : 'Back camera'} · flip</button>
         )}
       </div>
+    </div>
+  )
 
-      {!between && (
-        <div className="px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 space-y-3">
-          <button
-            onClick={() => (recording ? finishScene() : beginScene())}
-            disabled={!!camError || countdown > 0}
-            className={`w-full rounded-2xl py-4 font-semibold disabled:opacity-40 ${recording ? 'bg-red-500 text-white' : 'bg-cream text-ink'}`}
-          >
-            {recording ? (last ? 'Stop & finish' : 'Stop & next scene') : countdown > 0 ? `Starting in ${countdown}…` : 'Record this scene'}
-          </button>
-          {/* Self-explanatory, bordered controls (clear on desktop, not bare text). */}
-          <div className="flex flex-wrap items-center justify-center gap-2 text-sm">
-            <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0 || recording} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 disabled:opacity-30">← Previous scene</button>
-            <div className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1">
-              <span className="px-1 text-xs text-white/45">Text size</span>
-              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
-              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-sm font-bold">A+</button>
+  return (
+    // Surface-aware shell: phone = single centered column; desktop (lg) = a two-pane
+    // studio — a tall camera stage on the left, a fixed control rail on the right.
+    // This is NOT the phone layout stretched wide; each surface gets its own grid.
+    <div className="min-h-[100dvh] w-full bg-ink text-cream overflow-x-hidden">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-5xl lg:flex-row lg:items-center lg:gap-10 lg:px-8">
+        {/* MAIN STAGE — header + live camera with the teleprompter on the glass */}
+        <div className="flex flex-1 flex-col lg:min-w-0 lg:py-6">
+          <div className="flex items-center justify-between px-4 pt-4 text-sm text-white/60 lg:px-0 lg:pt-0">
+            <span>Scene {i + 1} of {scenes.length} · {sceneTypeLabel(scene?.scene_type)}</span>
+            <button onClick={() => setExitSheet(true)} aria-label="Exit" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 hover:bg-white/20">✕</button>
+          </div>
+
+          {/* live camera preview behind the prompter text — a clean 9:16 frame that fills
+              available height on phone and becomes a viewport-tall portrait on desktop. */}
+          <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-black lg:my-0 lg:flex-none lg:h-[82vh] lg:max-h-[82vh] lg:w-auto lg:max-w-none">
+            <video ref={videoRef} playsInline muted className="absolute inset-0 h-full w-full object-cover opacity-60" />
+            <div className="absolute inset-0 flex flex-col justify-center px-6">
+              {camError ? (
+                <div className="text-center text-white/80">
+                  <p className="font-medium">Camera needed to record</p>
+                  <p className="text-xs text-white/50 mt-1">{camError}</p>
+                </div>
+              ) : between ? (
+                <div className="text-center text-white/85">
+                  <div className="text-emerald-400 text-lg font-semibold">Scene {i + 1} complete ✓</div>
+                  <p className="text-xs text-white/50 mt-1">Review the next scene{' '}<span className="lg:hidden">below</span><span className="hidden lg:inline">on the right</span>, then continue.</p>
+                </div>
+              ) : (
+                <div className="w-full">
+                  {/* read-line teleprompter: the script glides UP past a fixed line, with
+                      a soft fade top + bottom. The transform is driven by the effect above. */}
+                  <div ref={promptScrollRef} className="relative mx-auto max-w-[36rem] h-[44vh] overflow-hidden px-2 [mask-image:linear-gradient(to_bottom,transparent,#000_16%,#000_84%,transparent)]">
+                    <p ref={textRef} className="absolute inset-x-0 top-0 text-center font-semibold leading-[1.5] drop-shadow will-change-transform" style={{ fontSize: FONT_PX[fontIdx] }}>
+                      {words.map((w, idx) => (
+                        <span
+                          key={idx}
+                          className={!recording ? 'text-cream' : idx < readCount ? 'text-cream/40' : idx === readCount ? 'text-teal' : 'text-cream'}
+                        >
+                          {w}{' '}
+                        </span>
+                      ))}
+                    </p>
+                  </div>
+                  {/* subtle pace readout — no deadline bar; recording isn't time-limited */}
+                  <p className="mt-3 text-center text-xs text-white/45">
+                    {scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {wpmVal} wpm{recording ? ` · ${Math.floor(sceneElapsed)}s` : ` · ~${estSec}s`}
+                  </p>
+                </div>
+              )}
             </div>
-            <button onClick={() => setSpeedSheet(true)} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10">Speed · {wpmVal} wpm</button>
-            <button onClick={() => setMirror((m) => !m)} className={`rounded-full border px-3 py-1.5 hover:bg-white/10 ${mirror ? 'border-teal text-teal' : 'border-white/15 text-white/85'}`}>Mirror: {mirror ? 'on' : 'off'}</button>
-            {!recording && activeMsRef.current === 0 && (
-              <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10">{facing === 'user' ? 'Front camera' : 'Back camera'} · flip</button>
+            {recording && <div className="absolute top-3 left-3 flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />REC</div>}
+            {countdown > 0 && (
+              <div className="absolute inset-0 grid place-items-center bg-black/50 backdrop-blur-sm">
+                <span className="text-7xl font-display font-bold text-cream tabular-nums">{countdown}</span>
+              </div>
             )}
           </div>
         </div>
-      )}
+
+        {/* CONTROL RAIL — below the camera on phone, a fixed side panel on desktop */}
+        <div className="px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
+          {between ? nextCard : controlDeck}
+        </div>
+      </div>
 
       <BottomSheet open={speedSheet} title="Teleprompter speed" onClose={() => setSpeedSheet(false)}>
         {(Object.keys(WPM_PRESETS) as WpmPreset[]).map((k) => (

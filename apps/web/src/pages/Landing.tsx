@@ -215,7 +215,7 @@ function HeroSection() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
-              className="font-display text-left text-[3.6rem] leading-[0.98] -tracking-[0.02em] sm:text-[4.8rem] lg:text-[6.2rem]"
+              className="font-display text-left text-[2.9rem] leading-[1.0] -tracking-[0.02em] sm:text-[4.8rem] sm:leading-[0.98] lg:text-[6.2rem]"
             >
               Steal the format.<br /><span className="gradient-text">Keep your voice.</span>
             </motion.h1>
@@ -278,7 +278,7 @@ function HeroVisualNew() {
           initial={{ opacity: 0, x: -24 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 1.0, duration: 0.6, ease: EASE }}
-          className="absolute -left-4 top-6 z-20 hidden w-44 rounded-2xl border border-white/12 bg-ink2/95 p-3.5 shadow-lift backdrop-blur sm:block sm:-left-6 lg:-left-8"
+          className="absolute right-full top-8 z-20 mr-4 hidden w-44 rounded-2xl border border-white/12 bg-ink2/95 p-3.5 shadow-lift backdrop-blur lg:block"
         >
           <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-stone">
             <div className="flex h-4 w-4 items-center justify-center rounded-full bg-coral/20">
@@ -304,11 +304,11 @@ function HeroVisualNew() {
         <motion.div
           animate={{ y: [0, -6, 0] }}
           transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative w-full max-w-[290px] sm:max-w-[330px] overflow-hidden rounded-[3.2rem] border-[10px] border-[#1a1a22] bg-ink p-0"
+          className="relative w-[280px] shrink-0 sm:w-[330px] overflow-hidden rounded-[3.2rem] border-[10px] border-[#1a1a22] bg-ink p-0"
           style={{ boxShadow: '0 0 0 2px rgba(255,255,255,.06), 0 40px 110px -16px rgba(0,0,0,.92), 0 0 70px -20px rgba(101,229,216,.18)' }}
         >
           <div className="overflow-hidden rounded-[2.4rem] bg-ink">
-          <div className="relative h-[640px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
+          <div className="relative aspect-[9/19.5] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
             {/* Dynamic Island */}
             <div className="absolute left-1/2 top-2.5 z-30 h-[26px] w-[92px] -translate-x-1/2 rounded-full bg-black" />
             {/* Real footage playing inside the device, so the phone reads as a live
@@ -366,7 +366,7 @@ function HeroVisualNew() {
           initial={{ opacity: 0, scale: 0.7 }}
           animate={{ opacity: 1, scale: 1, rotate: -3 }}
           transition={{ delay: 1.5, duration: 0.5, ease: EASE }}
-          className="absolute bottom-28 right-1 z-30 hidden rounded-2xl bg-signature px-3.5 py-2 text-xs font-bold text-ink shadow-glow sm:block sm:-right-3"
+          className="absolute top-[44%] -right-3 z-30 hidden -translate-y-1/2 rounded-2xl bg-signature px-3.5 py-2 text-xs font-bold text-ink shadow-glow sm:block lg:-right-5"
         >
           In your voice
         </motion.div>
@@ -376,7 +376,7 @@ function HeroVisualNew() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.7, duration: 0.5, ease: EASE }}
-          className="absolute -left-4 bottom-20 z-20 hidden space-y-1.5 rounded-2xl border border-white/10 bg-ink2/95 p-3 shadow-lift backdrop-blur text-[10px] sm:block sm:-left-6"
+          className="absolute right-full bottom-16 z-20 mr-4 hidden space-y-1.5 rounded-2xl border border-white/10 bg-ink2/95 p-3 shadow-lift backdrop-blur text-[10px] lg:block"
         >
           <div className="flex items-center gap-1.5 text-teal font-semibold">
             <Sparkles className="h-2.5 w-2.5" /> Script ready
