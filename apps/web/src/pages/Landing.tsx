@@ -201,7 +201,7 @@ function HeroSection() {
 
       {/* Nav hint */}
       <div className="relative z-10 mx-auto max-w-content px-5 pb-20 pt-28 sm:pt-32 lg:pt-36">
-        <div className="grid items-center gap-12 lg:grid-cols-[0.88fr_1.12fr] lg:gap-10">
+        <div className="grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-12">
           <div>
             <motion.p
               initial={{ opacity: 0, y: 12 }}
@@ -215,9 +215,9 @@ function HeroSection() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
-              className="font-display text-[3.4rem] leading-[1.0] tracking-tight text-balance sm:text-[4.4rem] lg:text-[5.6rem]"
+              className="font-display text-left text-[3.6rem] leading-[0.98] -tracking-[0.02em] sm:text-[4.8rem] lg:text-[6.2rem]"
             >
-              Steal the format. <span className="gradient-text">Keep your voice.</span>
+              Steal the format.<br /><span className="gradient-text">Keep your voice.</span>
             </motion.h1>
 
             <motion.p
@@ -304,14 +304,13 @@ function HeroVisualNew() {
         <motion.div
           animate={{ y: [0, -6, 0] }}
           transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative w-full max-w-[270px] sm:max-w-[320px] overflow-hidden rounded-[52px] border-[7px] border-white/15 bg-ink p-1"
-          style={{ boxShadow: '0 0 0 1px rgba(255,255,255,.06), 0 32px 90px -16px rgba(0,0,0,.9), 0 0 60px -20px rgba(101,229,216,.15)' }}
+          className="relative w-full max-w-[290px] sm:max-w-[330px] overflow-hidden rounded-[3.2rem] border-[10px] border-[#1a1a22] bg-ink p-0"
+          style={{ boxShadow: '0 0 0 2px rgba(255,255,255,.06), 0 40px 110px -16px rgba(0,0,0,.92), 0 0 70px -20px rgba(101,229,216,.18)' }}
         >
-          <div className="overflow-hidden rounded-[36px] bg-ink">
-          <div className="relative flex justify-center bg-ink pt-3 pb-0.5">
-            <div className="h-[18px] w-[72px] rounded-full bg-black/60" />
-          </div>
-          <div className="relative h-[540px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
+          <div className="overflow-hidden rounded-[2.4rem] bg-ink">
+          <div className="relative h-[640px] overflow-hidden bg-gradient-to-b from-coral/30 via-ink2 to-ink">
+            {/* Dynamic Island */}
+            <div className="absolute left-1/2 top-2.5 z-30 h-[26px] w-[92px] -translate-x-1/2 rounded-full bg-black" />
             {/* Real footage playing inside the device, so the phone reads as a live
                 recording — not an empty mock. The teleprompter + script overlay sit
                 on top, exactly like the in-app record screen. */}
@@ -356,9 +355,8 @@ function HeroVisualNew() {
                 />
               </div>
             </div>
-          </div>
-          <div className="flex justify-center bg-ink py-2.5">
-            <div className="h-1 w-20 rounded-full bg-white/18" />
+            {/* home indicator, inside the screen like a modern iPhone */}
+            <div className="absolute bottom-2 left-1/2 z-30 h-1 w-28 -translate-x-1/2 rounded-full bg-white/45" />
           </div>
           </div>
         </motion.div>
