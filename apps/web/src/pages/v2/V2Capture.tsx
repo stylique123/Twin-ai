@@ -89,6 +89,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [sceneElapsed, setSceneElapsed] = useState(0)
   const [mirror, setMirror] = useState(false)   // flip horizontally for teleprompter glass
   const [countdown, setCountdown] = useState(0)  // 3-2-1 before a scene starts
+  const [facing, setFacing] = useState<'user' | 'environment'>('user') // front / back camera
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -104,6 +105,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const segmentsRef = useRef<{ start: number; end: number; line: string }[]>([])
   const sceneStartSecRef = useRef(0)   // current scene's window start (active seconds)
   const promptScrollRef = useRef<HTMLDivElement>(null)
+  const textRef = useRef<HTMLParagraphElement>(null)
 
   const scene = scenes[i]
   const last = i >= scenes.length - 1
@@ -125,33 +127,38 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     return () => window.clearInterval(h)
   }, [recording, i])
 
-  // Smooth, continuous auto-scroll (the real-teleprompter feel): drive scrollTop
-  // every animation frame from elapsed/estimated so the script glides upward at the
-  // chosen pace, instead of jumping word-to-word. Short scenes that don't overflow
-  // simply don't scroll.
+  // Real teleprompter motion: the whole script GLIDES UPWARD (translateY on the text
+  // block) past a fixed read-line, regardless of length — not a word-by-word jump.
+  // Idle: parked with the first lines at the read-line. Recording: travels up over
+  // the scene's estimated time. Mirror is folded into the same transform so it's
+  // always accurate.
   useEffect(() => {
-    if (!recording) return
+    const p = textRef.current, box = promptScrollRef.current
+    if (!p || !box) return
+    const mir = mirror ? ' scaleX(-1)' : ''
+    const readY = box.clientHeight * 0.40          // read-line sits 40% down
+    if (!recording) { p.style.transform = `translateY(${readY}px)${mir}`; return }
+    const travel = p.offsetHeight + readY          // scroll the whole script past the top
     let raf = 0
     const start = performance.now()
     const tick = (now: number) => {
-      const el = promptScrollRef.current
-      if (el) {
-        const max = el.scrollHeight - el.clientHeight
-        if (max > 4) el.scrollTop = Math.min(max, ((now - start) / 1000 / estSec) * max)
-      }
+      const prog = Math.min(1, (now - start) / 1000 / estSec)
+      p.style.transform = `translateY(${readY - prog * travel}px)${mir}`
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [recording, i, estSec])
+  }, [recording, i, estSec, mirror, fontIdx])
 
-  // Acquire the camera once, show a live preview.
+  // Acquire the camera (front or back); re-acquire when the creator flips it. Flipping
+  // is only offered before recording starts (see the Flip control), so tearing down
+  // the recorder here is safe.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: 'user', width: { ideal: 1080 }, height: { ideal: 1920 } },
+          video: { facingMode: facing, width: { ideal: 1080 }, height: { ideal: 1920 } },
           audio: true,
         })
         if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return }
@@ -164,9 +171,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     return () => {
       cancelled = true
       try { recRef.current?.state !== 'inactive' && recRef.current?.stop() } catch { /* */ }
+      recRef.current = null // a flipped camera needs a fresh recorder bound to the new stream
       streamRef.current?.getTracks().forEach((t) => t.stop())
     }
-  }, [])
+  }, [facing])
 
   const ensureRecorder = () => {
     if (recRef.current || !streamRef.current) return
@@ -314,27 +322,24 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
             </div>
           ) : (
             <div className="w-full">
-              <div ref={promptScrollRef} className="mx-auto max-w-[34rem] max-h-[46vh] overflow-y-auto px-2 text-center" style={{ scrollbarWidth: 'none', transform: mirror ? 'scaleX(-1)' : undefined }}>
-                <p className="font-semibold leading-[1.5] drop-shadow" style={{ fontSize: FONT_PX[fontIdx] }}>
+              {/* read-line teleprompter: the script glides UP past a fixed line, with
+                  a soft fade top + bottom. The transform is driven by the effect above. */}
+              <div ref={promptScrollRef} className="relative mx-auto max-w-[36rem] h-[44vh] overflow-hidden px-2 [mask-image:linear-gradient(to_bottom,transparent,#000_16%,#000_84%,transparent)]">
+                <p ref={textRef} className="absolute inset-x-0 top-0 text-center font-semibold leading-[1.5] drop-shadow will-change-transform" style={{ fontSize: FONT_PX[fontIdx] }}>
                   {words.map((w, idx) => (
                     <span
                       key={idx}
-                      className={!recording ? 'text-cream' : idx < readCount ? 'text-cream' : idx === readCount ? 'text-teal' : 'text-white/35'}
+                      className={!recording ? 'text-cream' : idx < readCount ? 'text-cream/40' : idx === readCount ? 'text-teal' : 'text-cream'}
                     >
                       {w}{' '}
                     </span>
                   ))}
                 </p>
               </div>
-              {/* timing bar — fills over the scene's estimated length while recording */}
-              <div className="mt-4 mx-auto max-w-[34rem] px-2">
-                <div className="h-1 rounded-full bg-white/15 overflow-hidden">
-                  <div className="h-full bg-coral transition-[width] duration-100 ease-linear" style={{ width: `${recording ? Math.min(100, (sceneElapsed / estSec) * 100) : 0}%` }} />
-                </div>
-                <p className="mt-2 text-center text-xs text-white/50">
-                  {scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {wpmVal} WPM · ~{estSec}s{recording ? ` · ${sceneElapsed.toFixed(1)}s` : ''}
-                </p>
-              </div>
+              {/* subtle pace readout — no deadline bar; recording isn't time-limited */}
+              <p className="mt-3 text-center text-xs text-white/45">
+                {scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {wpmVal} wpm{recording ? ` · ${Math.floor(sceneElapsed)}s` : ` · ~${estSec}s`}
+              </p>
             </div>
           )}
         </div>
@@ -355,15 +360,19 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
           >
             {recording ? (last ? 'Stop & finish' : 'Stop & next scene') : countdown > 0 ? `Starting in ${countdown}…` : 'Record this scene'}
           </button>
-          <div className="flex items-center justify-between text-sm text-white/70 px-1">
-            <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0} className="disabled:opacity-30 py-2 px-1">Previous</button>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-white/40">Size</span>
-              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-8 w-8 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
-              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-8 w-8 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-base font-bold">A+</button>
+          {/* Self-explanatory, bordered controls (clear on desktop, not bare text). */}
+          <div className="flex flex-wrap items-center justify-center gap-2 text-sm">
+            <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0 || recording} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 disabled:opacity-30">← Previous scene</button>
+            <div className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1">
+              <span className="px-1 text-xs text-white/45">Text size</span>
+              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
+              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-sm font-bold">A+</button>
             </div>
-            <button onClick={() => setMirror((m) => !m)} className={`py-2 px-1 ${mirror ? 'text-teal' : ''}`}>Mirror</button>
-            <button onClick={() => setSpeedSheet(true)} className="py-2 px-1">Speed {wpmVal}</button>
+            <button onClick={() => setSpeedSheet(true)} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10">Speed · {wpmVal} wpm</button>
+            <button onClick={() => setMirror((m) => !m)} className={`rounded-full border px-3 py-1.5 hover:bg-white/10 ${mirror ? 'border-teal text-teal' : 'border-white/15 text-white/85'}`}>Mirror: {mirror ? 'on' : 'off'}</button>
+            {!recording && activeMsRef.current === 0 && (
+              <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10">{facing === 'user' ? 'Front camera' : 'Back camera'} · flip</button>
+            )}
           </div>
         </div>
       )}
