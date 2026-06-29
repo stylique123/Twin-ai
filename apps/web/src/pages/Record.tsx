@@ -620,7 +620,22 @@ export default function Record() {
     shotBoundsRef.current = [...shotBoundsRef.current, Number(elapsed.toFixed(2))]
     setPaused(true)
     setScrolling(false)
-    setShotIdx((s) => Math.min(s + 1, Math.max(0, lines.length - 1)))
+    const completed = lines[shotIdx]
+    const nextIdx = Math.min(shotIdx + 1, Math.max(0, lines.length - 1))
+    setShotIdx(nextIdx)
+    // Explicit scene-stop: show the SAME rich card the scroll path shows — next
+    // scene's framing/background/b-roll + Continue/Retake — so the creator who reads
+    // at their own pace (scroll off / mistimed) still gets the scene-stop + retake.
+    const nextBeat = lines[nextIdx]
+    setSceneTransition({
+      completedShot: completed?.shot ?? shotIdx + 1,
+      nextLabel: nextBeat?.label ?? 'Next Shot',
+      nextKind: nextBeat?.kind ?? 'talking_head',
+      nextNote: nextBeat?.note,
+      nextBrollVisual: nextBeat?.b_roll_visual,
+      nextFraming: nextBeat?.framing,
+      nextBackground: nextBeat?.background,
+    })
   }
   const resumeShot = () => {
     const rec = recorderRef.current
@@ -629,6 +644,15 @@ export default function Record() {
     setPaused(false)
     setScrolling(true)
     setSceneTransition(null)
+  }
+
+  // Tap-anywhere-on-the-prompter pause/resume. Ignored while a scene card is up
+  // (the card's own Continue/Retake buttons drive that decision).
+  const togglePause = () => {
+    const rec = recorderRef.current
+    if (!rec || sceneTransition) return
+    if (rec.state === 'recording') { rec.pause(); setPaused(true); setScrolling(false) }
+    else if (rec.state === 'paused') { rec.resume(); setPaused(false); setScrolling(true) }
   }
 
   const retakeScene = () => {
@@ -912,6 +936,21 @@ export default function Record() {
             {camReady && !uploadMode && phase !== 'review' && (
               <div className="pointer-events-none absolute inset-x-0 bottom-0 top-[22%]">
                 <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent" />
+                {/* Tap-anywhere to pause/resume while recording (the small side-panel
+                    control is easy to miss). Hidden while a scene card is up. */}
+                {phase === 'recording' && !sceneTransition && (
+                  <button
+                    type="button"
+                    onClick={togglePause}
+                    aria-label={paused ? 'Resume recording' : 'Pause recording'}
+                    className="pointer-events-auto absolute inset-0 z-20 flex items-end justify-center pb-5"
+                  >
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-black/55 px-3 py-1.5 text-xs font-semibold text-cream backdrop-blur">
+                      {paused ? <Play className="h-3.5 w-3.5 fill-current" /> : <Pause className="h-3.5 w-3.5" />}
+                      {paused ? 'Tap to resume' : 'Tap to pause'}
+                    </span>
+                  </button>
+                )}
                 {/* read-line guide: the eye reads at this band */}
                 <div className="absolute inset-x-0 top-[38%] z-10 flex items-center gap-2 px-4 opacity-60">
                   <span className="h-px flex-1 bg-gradient-to-r from-transparent to-coral/70" />

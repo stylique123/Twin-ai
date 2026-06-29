@@ -76,6 +76,12 @@ export default function Record() {
     if (videoUrl) { player.replace(videoUrl); player.play() }
   }, [videoUrl, player])
 
+  // Safety: if the screen unmounts while still recording (the creator navigates
+  // away mid-take), stop the camera so it never keeps recording in the background.
+  useEffect(() => {
+    return () => { try { cameraRef.current?.stopRecording() } catch { /* already stopped */ } }
+  }, [])
+
   useEffect(() => {
     if (!id) return
     ;(async () => {
