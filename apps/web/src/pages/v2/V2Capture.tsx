@@ -11,10 +11,11 @@
 // Only talking scenes (show_in_teleprompter) are recorded; silent b-roll is added
 // by the editor as cutaways. Takes are preserved in-memory across back/exit.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
-import { autoEditTake, pickRecorderMime } from '../../lib/api'
+import { buildTimeline } from '../../lib/timelineAdapter'
+import { autoEditTake, pickRecorderMime, getGeneration } from '../../lib/api'
 import {
   type SceneTimeline,
   type Scene,
@@ -25,22 +26,45 @@ import {
   estimateDurationSec,
 } from '../../lib/timeline'
 
+// The single scene-by-scene recorder for the web — served at BOTH the live
+// `/record/:id` route and the V2 `/v2/capture/:id` route, so web and mobile share
+// one capture flow (mobile's recorder mirrors this exact model). The only per-route
+// difference is where Back returns to.
 export default function V2Capture() {
   const { id = '' } = useParams()
   const [params] = useSearchParams()
   const mode = params.get('mode') === 'upload' ? 'upload' : 'record'
   const nav = useNavigate()
+  const inV2Flow = useLocation().pathname.startsWith('/v2')
   const [timeline, setTimeline] = useState<SceneTimeline | null>(null)
 
-  useEffect(() => { loadTimeline(id).then(setTimeline) }, [id])
+  // Load the persisted Scene Timeline; if there isn't one (e.g. a blueprint made via
+  // the classic Studio flow), synthesize it from the blueprint in-memory — the SAME
+  // fallback the mobile recorder uses, so every generation is recordable here.
+  useEffect(() => {
+    let alive = true
+    ;(async () => {
+      let tl = await loadTimeline(id)
+      if (!tl) {
+        const g = await getGeneration(id)
+        if (g) tl = buildTimeline({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook })
+      }
+      if (alive) setTimeline(tl)
+    })()
+    return () => { alive = false }
+  }, [id])
+
+  // Back returns to the blueprint (classic flow) or the V2 plan screen (V2 flow).
+  // The finished-video screen (V2Review) is shared by both.
+  const onBack = () => nav(inV2Flow ? `/v2/plan/${id}` : `/result/${id}`)
+  const onJob = (job: string) => nav(`/v2/review/${id}?job=${job}`)
 
   if (!timeline) {
     return <div className="min-h-[100dvh] grid place-items-center bg-stone-900 text-white/60">Loading…</div>
   }
   return mode === 'upload'
-    ? <UploadMode genId={id} onBack={() => nav(`/v2/plan/${id}`)} onJob={(job) => nav(`/v2/review/${id}?job=${job}`)} />
-    : <Teleprompter genId={id} timeline={timeline} setTimeline={setTimeline}
-        onBack={() => nav(`/v2/plan/${id}`)} onJob={(job) => nav(`/v2/review/${id}?job=${job}`)} />
+    ? <UploadMode genId={id} onBack={onBack} onJob={onJob} />
+    : <Teleprompter genId={id} timeline={timeline} setTimeline={setTimeline} onBack={onBack} onJob={onJob} />
 }
 
 function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
