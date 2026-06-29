@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { getGeneration, getJob, signEditUrls, fetchEdl, reEditWithEdl } from '../../lib/api'
+import { getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob } from '../../lib/api'
 import { loadTimeline } from '../../lib/timelineApi'
 import { CAPTION_STYLE_OPTIONS } from '../../lib/types'
 import { RefinePanel } from '../../components/RefinePanel'
@@ -72,23 +72,18 @@ export default function V2Review() {
         if (await showFinished()) { setPhase('done') } else { setPhase('failed'); setLabel('No render found for this video.') }
         return
       }
-      for (let i = 0; i < 300 && !stopped.current; i++) {
-        const job = await getJob(jobId)
-        if (job) {
-          if (job.status === 'failed') { setPhase('failed'); setLabel(job.error || 'The edit failed.'); return }
-          if (job.status === 'done') {
-            const url = job.result?.output_url
-            if (url) setVideoUrl(url)
-            await showFinished()
-            setPct(100); setPhase('done'); return
-          }
-          const p = job.result?.progress
-          if (p?.label) setLabel(p.label)
-          if (typeof p?.pct === 'number') setPct(Math.max(5, Math.min(99, p.pct)))
-        }
-        await new Promise((r) => setTimeout(r, 2000))
-      }
-      if (!stopped.current) { setPhase('failed'); setLabel('Still rendering — check your Library shortly.') }
+      const job = await pollEditJob(
+        jobId,
+        (label, pct) => { if (label) setLabel(label); if (pct) setPct(Math.max(5, Math.min(99, pct))) },
+        { attempts: 300, shouldStop: () => stopped.current },
+      )
+      if (stopped.current) return
+      if (!job) { setPhase('failed'); setLabel('Still rendering — check your Library shortly.'); return }
+      if (job.status === 'failed') { setPhase('failed'); setLabel(job.error || 'The edit failed.'); return }
+      const url = job.result?.output_url
+      if (url) setVideoUrl(url)
+      await showFinished()
+      setPct(100); setPhase('done')
     })()
 
     return () => { stopped.current = true }

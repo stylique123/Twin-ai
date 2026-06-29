@@ -8,7 +8,7 @@ import {
   buildTimeline,
   estimateDurationSec,
   getGeneration,
-  getJob,
+  pollEditJob,
   loadTimeline,
   teleprompterScenes,
   WPM_LABEL,
@@ -181,14 +181,10 @@ export default function Record() {
       }
 
       setUploadPct(null); setPhase('editing'); setStatus('Auto-editing — captions, cuts, vertical…')
-      for (let n = 0; n < 120; n++) {
-        const job = await getJob(jobId)
-        if (job?.status === 'done') { setVideoUrl(job.result?.output_url ?? null); setStatus(null); setPhase('done'); return }
-        if (job?.status === 'failed') { lastJobId.current = null; throw new Error(job.error || 'The edit failed') }
-        if (job?.result?.progress?.label) setStatus(job.result.progress.label)
-        await sleep(3000)
-      }
-      throw new Error('The edit is taking longer than usual — check your Library shortly.')
+      const job = await pollEditJob(jobId, (label) => { if (label) setStatus(label) }, { attempts: 120, intervalMs: 3000 })
+      if (!job) throw new Error('The edit is taking longer than usual — check your Library shortly.')
+      if (job.status === 'failed') { lastJobId.current = null; throw new Error(job.error || 'The edit failed') }
+      setVideoUrl(job.result?.output_url ?? null); setStatus(null); setPhase('done')
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong'); setPhase('error')
     }
