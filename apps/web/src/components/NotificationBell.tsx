@@ -22,9 +22,11 @@ export function NotificationBell() {
   const navigate = useNavigate()
   const seen = useRef<Set<string>>(new Set())
   const primed = useRef(false) // skip browser-notifying the very first load
+  const alive = useRef(true)
 
   const refresh = async () => {
     const next = await listNotifications(20)
+    if (!alive.current) return // unmounted while the fetch was in flight
     // Fire a browser notification for unread items we haven't seen this session.
     if (primed.current && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
       for (const n of next) {
@@ -39,9 +41,10 @@ export function NotificationBell() {
   }
 
   useEffect(() => {
+    alive.current = true
     refresh()
     const t = setInterval(refresh, 45_000)
-    return () => clearInterval(t)
+    return () => { alive.current = false; clearInterval(t) }
   }, [])
 
   const unread = items.filter((n) => !n.read).length

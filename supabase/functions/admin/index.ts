@@ -126,7 +126,9 @@ Deno.serve(async (req: Request) => {
       if (!userId || !PLANS.includes(plan)) return json({ error: 'user_id and a valid plan are required' }, 400)
       const credits = Number.isFinite(Number(body.credits)) ? Number(body.credits) : null
       const patch: Record<string, unknown> = { plan, ...(plan === 'agency' ? { account_type: 'agency' } : {}) }
-      if (credits !== null) patch.credits = credits
+      // Clamp to non-negative — a negative balance would make every spend fail
+      // permanently (matches the guard in adjust_credits).
+      if (credits !== null) patch.credits = Math.max(0, credits)
       const { error } = await admin.from('profiles').update(patch).eq('id', userId)
       if (error) throw error
       await admin.from('subscriptions').upsert(
