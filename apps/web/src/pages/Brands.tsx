@@ -38,6 +38,10 @@ export default function Brands() {
   const [adding, setAdding] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
+  // Track the in-place retry poller so it's cleared if the user leaves the page
+  // mid-scan (otherwise it keeps polling for up to ~2 minutes after unmount).
+  const retryTimer = useRef<ReturnType<typeof setInterval> | null>(null)
+  useEffect(() => () => { if (retryTimer.current) clearInterval(retryTimer.current) }, [])
 
   const plan = planFor(profile?.plan)
   const ready = voices.filter((v) => v.status === 'ready')
@@ -78,13 +82,15 @@ export default function Brands() {
       const { brand_voice_id } = await startDna(v.handle, v.platform)
       await load()
       let n = 0
+      if (retryTimer.current) clearInterval(retryTimer.current) // only one scan poller at a time
       const t = setInterval(async () => {
         n++
         try {
           const res = await pollDna(brand_voice_id)
-          if (res.status === 'ready' || res.status === 'failed' || n >= 30) { clearInterval(t); await load() }
+          if (res.status === 'ready' || res.status === 'failed' || n >= 30) { clearInterval(t); retryTimer.current = null; await load() }
         } catch { /* keep polling */ }
       }, 4000)
+      retryTimer.current = t
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not restart the scan')
       await load()

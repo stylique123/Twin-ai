@@ -45,7 +45,7 @@ export async function updateJobProgress(id: string, progress: { phase: string; p
   // these guards, a job reclaimed after its visibility timeout (or already
   // completed by the new owner) could have its final result column clobbered by a
   // stale progress write from the original worker — losing the finished video URL.
-  try { await db.from('jobs').update({ result: { progress } }).eq('id', id).eq('status', 'running').eq('locked_by', env.workerId) } catch { /* never block the render on a progress write */ }
+  try { await db.from('jobs').update({ result: { progress } }).eq('id', id).eq('status', 'running').eq('locked_by', env.workerId) } catch (e) { console.warn(`[job ${id}] progress write failed:`, e) /* never block the render on a progress write */ }
 }
 
 export async function failJob(id: string, message: string, backoffSecs = 30): Promise<void> {

@@ -7,9 +7,9 @@ import { handleScrapeDna } from './scrapeDna.js'
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
 // Registry of job type -> handler. Add `publish`, etc. here as phases land.
+// (`transcribe` was retired — nothing enqueues it; ingest-reference enqueues `ingest`.)
 export const handlers: Record<string, JobHandler> = {
   ingest: handleTranscribe,
-  transcribe: handleTranscribe,
   build_voice: handleBuildVoice,
   autoedit: handleAutoEdit,
   scrape_dna: handleScrapeDna,

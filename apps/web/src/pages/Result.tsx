@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -194,6 +194,10 @@ export default function Result() {
     const ok = await setGenerationApproved(gen.id, next)
     if (!ok) setApproved(!next) // revert on failure
   }
+  // Live across the long refine poll so we don't setState (or keep polling) after
+  // the user navigates away mid-render.
+  const alive = useRef(true)
+  useEffect(() => () => { alive.current = false }, [])
   // Refine-from-Result: re-edit a finished video right from its blueprint page.
   const [refineOpen, setRefineOpen] = useState(false)
   const [refineEdl, setRefineEdl] = useState<EditDecisionList | null>(null)
@@ -211,18 +215,19 @@ export default function Result() {
     setRefineStatus('Re-rendering your edit…')
     for (let i = 0; i < 200; i++) {
       await new Promise((r) => setTimeout(r, 2000))
+      if (!alive.current) return // navigated away — stop polling, don't setState
       const job = await getJob(jobId)
       if (!job) continue
       if (job.status === 'done' && job.result?.output_url) {
         setRefineStatus(''); setRefineUrl(job.result.output_url)
-        getGeneration(id!).then((g) => g && setGen(g)).catch(() => {})
+        getGeneration(id!).then((g) => g && alive.current && setGen(g)).catch(() => {})
         return
       }
       if (job.status === 'failed') { setRefineStatus('Refine failed — try again.'); return }
       const p = job.result?.progress
       if (p?.label) setRefineStatus(p.label)
     }
-    setRefineStatus('Still rendering — check your Library shortly.')
+    if (alive.current) setRefineStatus('Still rendering — check your Library shortly.')
   }
 
   useEffect(() => {
