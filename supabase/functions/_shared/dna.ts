@@ -319,6 +319,9 @@ export const voiceProfileSchema = obj(
     dos: arr(str),
     donts: arr(str),
     sample_hooks: arr(str), // 3 hooks written in their voice
+    // The creator's brand palette as #RRGGBB hex — inferred from their aesthetic so
+    // captions + scene backgrounds can be rendered on-brand (auto-fills brand_kit).
+    brand_colors: obj({ primary: str, secondary: str, highlight: str }, []),
   },
   ['summary', 'niche', 'sub_niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'hook_patterns', 'vocabulary', 'recurring_ctas', 'pov', 'enemy', 'dos', 'donts', 'sample_hooks'],
 )
@@ -336,7 +339,8 @@ Hard rules:
 - Be concrete and specific to this creator — no generic "be authentic" filler. Every field should be unmistakably about THIS creator and useless for anyone else.
 - vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each drawing on a DIFFERENT hook_pattern and using their vocabulary.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
-- If the sample is thin, infer sensibly from what's there rather than refusing. For pov/enemy specifically, prefer a shorter honest list over inventing beliefs the posts do not show.`
+- If the sample is thin, infer sensibly from what's there rather than refusing. For pov/enemy specifically, prefer a shorter honest list over inventing beliefs the posts do not show.
+- brand_colors = this creator's brand palette as #RRGGBB hex: primary (their dominant brand color), secondary (a supporting color), highlight (the punchy accent best for caption emphasis). Infer it from their niche, aesthetic, vibe and any visual cues in the captions/bio. Return real, distinct, legible hex values (the highlight must read clearly as bright caption text on video). If you truly cannot tell, return an empty object.`
 
 export async function synthesizeVoice(
   handle: string,
