@@ -14,7 +14,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
-import { autoEditTake } from '../../lib/api'
+import { autoEditTake, pickRecorderMime } from '../../lib/api'
 import {
   type SceneTimeline,
   type Scene,
@@ -102,9 +102,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
   const ensureRecorder = () => {
     if (recRef.current || !streamRef.current) return
-    const mime = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
-      .find((m) => typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) || 'video/webm'
-    const rec = new MediaRecorder(streamRef.current, { mimeType: mime })
+    const rec = new MediaRecorder(streamRef.current, { mimeType: pickRecorderMime() || undefined })
     rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunksRef.current.push(ev.data) }
     recRef.current = rec
   }

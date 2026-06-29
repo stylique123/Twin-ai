@@ -6,7 +6,7 @@ import {
   Play, Pause, FlipHorizontal2, Minus, Plus, Gauge, Mic, AlertTriangle, Check, Sparkles, Upload,
   SlidersHorizontal, Clapperboard, ChevronRight, Folder, Share2,
 } from 'lucide-react'
-import { getGeneration, autoEditTake, remakeEdit, getJob, updateGenerationChoice, fetchEdl, listBrandVoices } from '../lib/api'
+import { getGeneration, autoEditTake, remakeEdit, updateGenerationChoice, fetchEdl, listBrandVoices, pickRecorderMime, pollEditJob } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import { BLUEPRINT_COST } from '../lib/brand'
 import { RefinePanel } from '../components/RefinePanel'
@@ -528,11 +528,6 @@ export default function Record() {
   }
 
   // ---- recording ----
-  const pickMime = () => {
-    const c = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
-    return c.find((t) => MediaRecorder.isTypeSupported(t)) ?? ''
-  }
-
   const beginRecording = () => {
     if (!streamRef.current) return
     chunksRef.current = []
@@ -540,7 +535,7 @@ export default function Record() {
       URL.revokeObjectURL(takeUrl)
       setTakeUrl(null)
     }
-    const mime = pickMime()
+    const mime = pickRecorderMime()
     const rec = new MediaRecorder(streamRef.current, {
       mimeType: mime || undefined,
       videoBitsPerSecond: 5_000_000,
@@ -681,33 +676,26 @@ export default function Record() {
   // ---- poll a queued edit job to completion ----
   const pollEdit = async (jobId: string) => {
     setEditStatus('Queued…'); setEditPct(8); setPolishing(false)
-    for (let i = 0; i < 200; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      const job = await getJob(jobId)
-      if (!job) continue
-      if (job.status === 'done' && job.result?.output_url) {
-        try { if (id) localStorage.removeItem('twinai_edit_' + id) } catch { /* storage off */ }
-        setEditPct(100)
-        setEditUrl(job.result.output_url)
-        setEdlPath(job.result.edl_path ?? null)
-        setPolishing(false)
-        setEditPhase('done')
-        return
-      }
-      if (job.status === 'failed') {
-        try { if (id) localStorage.removeItem('twinai_edit_' + id) } catch { /* storage off */ }
-        throw new Error(job.error || 'The edit could not finish.')
-      }
-      // Show the REAL stage the worker reports (Reading words → Directing → Cutting
-      // → Rendering → Finishing) so it never looks frozen.
-      const p = job.result?.progress
-      if (p && p.label) { setEditStatus(p.label); setEditPct(Math.max(8, Math.min(99, p.pct))) }
-      else setEditStatus(job.status === 'running' ? 'Editing your video…' : 'Queued…')
-      // ONE output: keep the processing checklist running through the FULL edit
-      // (cuts + captions + b-roll + the premium pass) and reveal the single finished
-      // video only when it's done — no instant preview that swaps under the creator.
+    // Shared poll skeleton; this surface keeps its own done/failed/resume handling.
+    // Show the REAL stage the worker reports (Reading words → Directing → Cutting →
+    // Rendering → Finishing) so it never looks frozen.
+    const job = await pollEditJob(jobId, (label, pct, j) => {
+      if (label) { setEditStatus(label); setEditPct(Math.max(8, Math.min(99, pct))) }
+      else setEditStatus(j.status === 'running' ? 'Editing your video…' : 'Queued…')
+    })
+    // null → timed out (the job kept running; the remix is already spent).
+    if (!job) throw new Error('The edit is taking longer than expected, check your Library shortly.')
+    // Reaching here the job is terminal. Clear the resume marker either way.
+    try { if (id) localStorage.removeItem('twinai_edit_' + id) } catch { /* storage off */ }
+    if (job.status === 'failed' || !job.result?.output_url) {
+      throw new Error(job.error || 'The edit could not finish.')
     }
-    throw new Error('The edit is taking longer than expected, check your Library shortly.')
+    setEditPct(100)
+    setEditUrl(job.result.output_url)
+    setEdlPath(job.result.edl_path ?? null)
+    setPolishing(false)
+    setEditPhase('done')
+    // ONE output: the finished video is revealed only when done — no instant preview.
   }
 
   // Resumability: if the creator left mid-edit, the job kept running on the worker and
