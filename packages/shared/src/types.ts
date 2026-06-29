@@ -53,6 +53,10 @@ export interface BrandKit {
   caption_style?: string
   color?: number
   palette?: { primary?: string; secondary?: string; highlight?: string }
+  // How `palette` was set. 'manual' = the creator hand-picked it (sacred — a re-scan
+  // never overwrites it); 'auto' = learned from their DNA imagery, so a fresh scan
+  // may refresh it with better data. Absent on legacy rows → treated as 'auto'.
+  palette_source?: 'auto' | 'manual'
   logo_path?: string | null
 }
 

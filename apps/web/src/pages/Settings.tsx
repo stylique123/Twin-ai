@@ -350,7 +350,7 @@ export default function Settings() {
                           key={brandKit.palette?.[key] ?? `d-${key}`}
                           type="color"
                           defaultValue={brandKit.palette?.[key] ?? '#65E5D8'}
-                          onBlur={(e) => { if (e.target.value !== brandKit.palette?.[key]) saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value } }) }}
+                          onBlur={(e) => { if (e.target.value !== brandKit.palette?.[key]) saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value }, palette_source: 'manual' }) }}
                           className="h-10 w-10 cursor-pointer rounded-lg border border-white/15 bg-transparent p-0"
                         />
                         {label}
