@@ -46,9 +46,13 @@ export interface VoiceProfile {
 
 // Per-workspace brand kit: default caption style + highlight color (indexes into
 // CAPTION_STYLE_OPTIONS / CAPTION_COLOR_OPTIONS), plus an optional logo for burn-in.
+// `palette` holds the creator's REAL brand colors as hex (#RRGGBB) — set manually or
+// learned from their DNA. When `palette.highlight` is set it overrides the preset
+// `color` index in the render; primary/secondary feed the blueprint's look guidance.
 export interface BrandKit {
   caption_style?: string
   color?: number
+  palette?: { primary?: string; secondary?: string; highlight?: string }
   logo_path?: string | null
 }
 

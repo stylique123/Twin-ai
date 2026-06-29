@@ -385,7 +385,7 @@ Deno.serve(async (req: Request) => {
     .single()
   const { data: voice } = await admin
     .from('brand_voices')
-    .select('id, handle, platform, profile')
+    .select('id, handle, platform, profile, brand_kit')
     .eq('owner_id', ownerId)
     .eq('is_default', true)
     .eq('status', 'ready')
@@ -393,6 +393,10 @@ Deno.serve(async (req: Request) => {
 
   const dna = profile?.dna ?? {}
   const vp = voice?.profile ?? null
+  // The creator's real brand palette (hex), if set — used to steer scene
+  // backgrounds, props and wardrobe so the shoot looks on-brand.
+  const pal = (voice?.brand_kit as { palette?: { primary?: string; secondary?: string; highlight?: string } } | null)?.palette ?? null
+  const paletteHex = [pal?.primary, pal?.secondary, pal?.highlight].filter(Boolean).join(', ')
 
   // Guard the "Aspiring creator falls off a cliff" case: if the DNA scan failed
   // and the user never did the manual quiz, we'd generate a generic "unspecified
@@ -481,7 +485,8 @@ Deno.serve(async (req: Request) => {
 - Don't: ${(vp.donts ?? []).join('; ')}
 - Voice summary: ${vp.summary ?? ''}` : ''}${voiceSamples ? `
 - HOW THEY ACTUALLY WRITE (verbatim samples — match this EXACT cadence, diction, sentence length and rhythm; weight this above every other signal, it is the most reliable evidence of their true voice): ${voiceSamples}` : ''}
-- Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}`
+- Platforms (publish_plan MUST use ONLY these, one entry each): ${platforms.join(', ')}${paletteHex ? `
+- Brand colors (the creator's real palette, hex): ${paletteHex}. Weave these into the BACKGROUND, props and wardrobe of each beat's setup so the shoot looks on-brand (e.g. a backdrop, object, or outfit in these colors). Do NOT name hex codes in the script the creator speaks.` : ''}`
 
     // When we have the real transcript, override the format-pattern caveat: the
     // model IS now reading the actual video, so reference_read must describe THIS clip.

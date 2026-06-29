@@ -112,6 +112,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     let scriptText = ''
     let brandStyle: string | undefined
     let brandColor: number | undefined
+    let brandHighlightHex: string | undefined
     let brandLogoPath: string | undefined
     if (payload.generation_id) {
       try {
@@ -156,9 +157,11 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
         if (gen?.brand_voice_id) {
           const { data: bv } = await db.from('brand_voices').select('profile, brand_kit').eq('id', gen.brand_voice_id).maybeSingle()
           pacing = (bv?.profile as { pacing?: string } | null)?.pacing ?? ''
-          const kit = bv?.brand_kit as { caption_style?: string; color?: number; logo_path?: string } | null
+          const kit = bv?.brand_kit as { caption_style?: string; color?: number; palette?: { highlight?: string }; logo_path?: string } | null
           if (kit?.caption_style) brandStyle = kit.caption_style
           if (typeof kit?.color === 'number' && !Number.isFinite(payload.variation as number)) brandColor = kit.color
+          // A real brand-highlight hex overrides the preset color in the caption render.
+          if (kit?.palette?.highlight && !Number.isFinite(payload.variation as number)) brandHighlightHex = kit.palette.highlight
           if (kit?.logo_path) brandLogoPath = kit.logo_path
         }
         // Edit style the creator picked takes priority over the DNA-derived energy.
@@ -224,6 +227,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       energy,
       variation,
       captionStyle: brandStyle,
+      highlightHex: brandHighlightHex,
       brollText,
       coverText,
       scriptText,

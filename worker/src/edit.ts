@@ -102,6 +102,7 @@ export interface EditOptions {
   energy?: 'high' | 'calm' // 'high' → jump-zoom punches on cuts; 'calm' → clean cuts
   variation?: number // remake index → different caption highlight color
   captionStyle?: string // brand-kit default caption preset; loses to an explicit Refine choice
+  highlightHex?: string // brand-kit custom caption highlight (#RRGGBB); overrides the variation preset
   brollText?: string // blueprint text (hook/script/captions) to source b-roll keywords from
   coverText?: string // hook/cover line to overlay on the generated thumbnail
   // The creator's SCRIPT (what they're meant to say). Caption fallback: when speech
@@ -151,6 +152,16 @@ function wrapText(s: string, width: number, maxLines: number): string {
 
 // Highlight-color palette (BGR). Remakes rotate through it so each looks fresh.
 const POP_PALETTE = ['&H23A6F5&' /*amber*/, '&H70E4D5&' /*teal*/, '&H6B6BFF&' /*coral*/, '&H00E5FF&' /*gold*/]
+
+// Convert a #RRGGBB brand hex to the ASS &HBBGGRR& byte order. Returns null if the
+// hex is missing/malformed so callers fall back to the preset palette.
+function hexToAssBgr(hex?: string): string | null {
+  if (!hex) return null
+  const m = /^#?([0-9a-fA-F]{6})$/.exec(hex.trim())
+  if (!m) return null
+  const h = m[1].toUpperCase()
+  return `&H${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}&`
+}
 
 
 // ASS time h:mm:ss.cs
@@ -287,8 +298,8 @@ export const CAPTION_STYLES = Object.keys(CAP_STYLES)
 // Single-layer captions: 3-word groups, the active word pops (color + animated
 // scale), optional emoji. One Dialogue per word window so exactly ONE caption
 // shows at a time (no overlap). `style` picks the preset; `variation` the color.
-function buildAss(words: Word[], variation = 0, style = 'bold-pop'): string {
-  const POP = POP_PALETTE[((variation % POP_PALETTE.length) + POP_PALETTE.length) % POP_PALETTE.length]
+function buildAss(words: Word[], variation = 0, style = 'bold-pop', highlightHex?: string): string {
+  const POP = hexToAssBgr(highlightHex) ?? POP_PALETTE[((variation % POP_PALETTE.length) + POP_PALETTE.length) % POP_PALETTE.length]
   const styleLine = CAP_STYLES[style] ?? CAP_STYLES['bold-pop']
   const head = `[Script Info]
 ScriptType: v4.00+
@@ -763,7 +774,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     }
     if (captions && captionSource === 'none') console.warn('[autoedit] no speech detected + no script text — shipping without captions')
     else if (captionSource === 'script') console.log('[autoedit] captioned from script (no speech detected in take)')
-    await writeFile(ass, words.length ? buildAss(words, capVariation, captionStyle) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
+    await writeFile(ass, words.length ? buildAss(words, capVariation, captionStyle, opts.highlightHex) : '[Script Info]\nPlayResX: 1080\nPlayResY: 1920\n[Events]\n')
 
     // 2b. Optional b-roll cutaway (best-effort, only if PEXELS_API_KEY is set and
     //     the clip is long enough to spare a 2s window after the hook).

@@ -342,6 +342,24 @@ export default function Settings() {
                   </div>
                 </div>
                 <div>
+                  <label className="eyebrow mb-2 block">Your brand colors <span className="font-normal normal-case text-stone">— your real palette, in hex</span></label>
+                  <div className="flex flex-wrap gap-5">
+                    {([['highlight', 'Caption highlight'], ['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => (
+                      <label key={key} className="flex flex-col items-center gap-1.5 text-[11px] text-stone">
+                        <input
+                          key={brandKit.palette?.[key] ?? `d-${key}`}
+                          type="color"
+                          defaultValue={brandKit.palette?.[key] ?? '#65E5D8'}
+                          onBlur={(e) => { if (e.target.value !== brandKit.palette?.[key]) saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value } }) }}
+                          className="h-10 w-10 cursor-pointer rounded-lg border border-white/15 bg-transparent p-0"
+                        />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="mt-1.5 text-[11px] text-stone">Caption highlight overrides the preset above in every render. Primary/secondary steer the background &amp; wardrobe suggestions in your blueprints.</p>
+                </div>
+                <div>
                   <label className="eyebrow mb-2 block">Logo <span className="font-normal normal-case text-stone">— burned into the top-right of every export</span></label>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="btn-ghost cursor-pointer text-sm">
