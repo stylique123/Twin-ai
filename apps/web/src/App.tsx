@@ -19,7 +19,6 @@ const Studio = lazy(() => import('./pages/Studio'))
 const Result = lazy(() => import('./pages/Result'))
 const History = lazy(() => import('./pages/History'))
 const Gallery = lazy(() => import('./pages/Gallery'))
-const Record = lazy(() => import('./pages/Record'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Brands = lazy(() => import('./pages/Brands'))
 const Settings = lazy(() => import('./pages/Settings'))
@@ -86,7 +85,7 @@ export default function App() {
   useEffect(() => {
     const warm = () => {
       void import('./pages/Dashboard'); void import('./pages/Studio'); void import('./pages/Gallery')
-      void import('./pages/Record'); void import('./pages/Result'); void import('./pages/History')
+      void import('./pages/v2/V2Capture'); void import('./pages/Result'); void import('./pages/History')
       void import('./pages/Brands'); void import('./pages/Settings'); void import('./pages/Billing')
       void import('./pages/Onboarding'); void import('./pages/Metrics'); void import('./pages/ClientReport')
       void import('./pages/Calendar')
@@ -148,9 +147,11 @@ export default function App() {
             path="/result/:id"
             element={<Protected><AppShell><Page><Result /></Page></AppShell></Protected>}
           />
+          {/* The live recorder is the SAME scene-by-scene flow as mobile + the V2
+              route (full-screen, no AppShell). V1's scroll recorder is retired. */}
           <Route
             path="/record/:id"
-            element={<Protected><AppShell><Page><Record /></Page></AppShell></Protected>}
+            element={<Protected><Page><V2Capture /></Page></Protected>}
           />
           <Route
             path="/brands"
