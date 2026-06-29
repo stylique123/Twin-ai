@@ -38,31 +38,10 @@ export interface SceneTimeline {
   total_duration_sec: number
 }
 
-// Scene boundaries the editor cuts on: cumulative start time of each scene that
-// carries a clean cut marker. The renderer uses these instead of re-detecting
-// boundaries, so cuts land exactly where the teleprompter paused.
-export function sceneCutPoints(t: SceneTimeline): number[] {
-  const points: number[] = []
-  let at = 0
-  for (const s of t.scenes) {
-    if (s.cut_point) points.push(Math.round(at * 1000) / 1000)
-    at += s.duration_sec || 0
-  }
-  return points
-}
-
-// Per-scene caption spans on the final timeline — captions reset at scene timing,
-// never duplicated, never independently re-guessed.
-export function sceneCaptionSpans(t: SceneTimeline): { start: number; end: number; text: string }[] {
-  const spans: { start: number; end: number; text: string }[] = []
-  let at = 0
-  for (const s of t.scenes) {
-    const end = at + (s.duration_sec || 0)
-    if (s.caption_text) spans.push({ start: Math.round(at * 1000) / 1000, end: Math.round(end * 1000) / 1000, text: s.caption_text })
-    at = end
-  }
-  return spans
-}
+// NOTE: the editor does NOT cut/caption from the timeline's *planned* durations.
+// Those are estimates; real cut points come from what the creator actually filmed
+// — `shots.bounds`/`shots.segments` (recorded seconds), consumed in edit.ts. The
+// timeline drives the teleprompter + b-roll hints, not the cut math.
 
 export function isSceneTimeline(v: unknown): v is SceneTimeline {
   return !!v && typeof v === 'object' && Array.isArray((v as SceneTimeline).scenes) && (v as SceneTimeline).version === 1
