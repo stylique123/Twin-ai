@@ -17,10 +17,10 @@ export default function BottomSheet({
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-stone-900/40" onClick={onClose} />
-      <div className="relative w-full max-w-screen-sm bg-white rounded-t-3xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[80dvh] overflow-y-auto animate-[slideUp_.2s_ease]">
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-stone-300" />
-        <h3 className="text-base font-bold text-stone-900 mb-3">{title}</h3>
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="relative w-full max-w-screen-sm bg-ink2 border border-white/10 rounded-t-3xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[80dvh] overflow-y-auto animate-[slideUp_.2s_ease]">
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
+        <h3 className="text-base font-bold text-cream mb-3">{title}</h3>
         <div className="space-y-2">{children}</div>
       </div>
     </div>
@@ -43,11 +43,11 @@ export function SheetOption({
     <button
       onClick={onPick}
       className={`w-full text-left rounded-2xl border p-3 active:scale-[0.99] transition ${
-        selected ? 'border-stone-900 bg-stone-50' : 'border-stone-200'
+        selected ? 'border-coral bg-white/10' : 'border-white/15'
       }`}
     >
-      <div className="font-medium text-stone-900">{label}</div>
-      {reason && <div className="text-xs text-stone-500 mt-0.5">{reason}</div>}
+      <div className="font-medium text-cream">{label}</div>
+      {reason && <div className="text-xs text-sand mt-0.5">{reason}</div>}
     </button>
   )
 }

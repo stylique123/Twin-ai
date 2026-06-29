@@ -60,7 +60,7 @@ export default function V2Capture() {
   const onJob = (job: string) => nav(`/v2/review/${id}?job=${job}`)
 
   if (!timeline) {
-    return <div className="min-h-[100dvh] grid place-items-center bg-stone-900 text-white/60">Loading…</div>
+    return <div className="min-h-[100dvh] grid place-items-center bg-ink text-sand">Loading…</div>
   }
   return mode === 'upload'
     ? <UploadMode genId={id} onBack={onBack} onJob={onJob} />
@@ -211,7 +211,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
   if (uploading) {
     return (
-      <div className="min-h-[100dvh] grid place-items-center bg-stone-950 text-white">
+      <div className="min-h-[100dvh] grid place-items-center bg-ink text-cream">
         <div className="text-center">
           <div className="h-10 w-10 mx-auto rounded-full border-2 border-white/20 border-t-white animate-spin" />
           <p className="mt-3 text-sm text-white/70">Uploading your take and starting the edit…</p>
@@ -221,14 +221,15 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   }
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-stone-950 text-white flex flex-col overflow-x-hidden">
+    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-ink text-cream flex flex-col overflow-x-hidden">
       <div className="flex items-center justify-between px-4 pt-4 text-sm text-white/60">
         <span>Scene {i + 1} of {scenes.length} · {sceneTypeLabel(scene?.scene_type)}</span>
         <button onClick={() => setExitSheet(true)} aria-label="Exit" className="h-11 w-11 grid place-items-center rounded-full bg-white/10">✕</button>
       </div>
 
-      {/* live camera preview behind the prompter text */}
-      <div className="relative flex-1 mx-4 my-3 rounded-2xl overflow-hidden bg-black">
+      {/* live camera preview behind the prompter text — a clean centered 9:16 frame
+          (so on desktop it's a tidy portrait card, not a stretched/black-band fill). */}
+      <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-black">
         <video ref={videoRef} playsInline muted className="absolute inset-0 h-full w-full object-cover opacity-60" />
         <div className="absolute inset-0 flex flex-col justify-center px-6">
           {camError ? (
@@ -251,7 +252,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
               </div>
               <div className="flex gap-2 pt-1">
                 <button onClick={retakeScene} className="flex-1 rounded-2xl bg-white/10 border border-white/30 text-white font-semibold py-3">Retake scene</button>
-                <button onClick={continueNext} className="flex-1 rounded-2xl bg-white text-stone-900 font-semibold py-3">Next scene</button>
+                <button onClick={continueNext} className="flex-1 rounded-2xl bg-cream text-ink font-semibold py-3">Next scene</button>
               </div>
               <p className="text-white/40 text-[11px] text-center">Flubbed it? Retake re-reads the scene you just finished.</p>
             </div>
@@ -270,7 +271,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
           <button
             onClick={() => (recording ? finishScene() : startScene())}
             disabled={!!camError}
-            className={`w-full rounded-2xl py-4 font-semibold disabled:opacity-40 ${recording ? 'bg-red-500' : 'bg-white text-stone-900'}`}
+            className={`w-full rounded-2xl py-4 font-semibold disabled:opacity-40 ${recording ? 'bg-red-500 text-white' : 'bg-cream text-ink'}`}
           >
             {recording ? (last ? 'Stop & finish' : 'Stop & next scene') : 'Record this scene'}
           </button>
@@ -291,9 +292,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       </BottomSheet>
 
       <BottomSheet open={exitSheet} title="Save and exit?" onClose={() => setExitSheet(false)}>
-        <p className="text-sm text-stone-500">Your recorded scenes so far are kept on this device until you finish.</p>
-        <button onClick={onBack} className="w-full rounded-2xl bg-stone-900 text-white font-semibold py-3">Save & exit</button>
-        <button onClick={() => setExitSheet(false)} className="w-full rounded-2xl border border-stone-300 py-3 font-medium">Keep recording</button>
+        <p className="text-sm text-sand">Your recorded scenes so far are kept on this device until you finish.</p>
+        <button onClick={onBack} className="w-full rounded-2xl bg-cream text-ink font-semibold py-3">Save & exit</button>
+        <button onClick={() => setExitSheet(false)} className="w-full rounded-2xl border border-white/25 text-cream py-3 font-medium">Keep recording</button>
       </BottomSheet>
     </div>
   )
@@ -318,7 +319,7 @@ function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => voi
   }
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-stone-950 text-white flex flex-col overflow-x-hidden">
+    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-ink text-cream flex flex-col overflow-x-hidden">
       <div className="flex items-center justify-between px-4 pt-4 text-sm text-white/60">
         <button onClick={onBack} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10">←</button>
         <span>Upload your clip</span>
