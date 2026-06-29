@@ -112,7 +112,12 @@ export interface EditOptions {
   // Per-shot capture: cut points (recorded seconds) + the script line per shot. When
   // present, captions are built from the script PER SEGMENT (perfect timing, tied to
   // what the creator actually filmed) instead of transcribing the take.
-  shots?: { bounds: number[]; total: number; lines: string[] }
+  //
+  // `segments` (optional) are explicit keep-windows [{start,end,line}] in recorded
+  // seconds — set when the creator used per-scene Retake. Flubbed footage lives in the
+  // GAPS between windows, so we trim+concat the kept windows (dropping the flubs) and
+  // caption each window from its line against the concatenated timeline.
+  shots?: { bounds: number[]; total: number; lines: string[]; segments?: { start: number; end: number; line: string }[] }
   // Manual re-render: when present, autoEdit renders FROM this (creator-edited)
   // Edit Decision List instead of re-detecting cuts / re-transcribing. This is the
   // bridge that makes the manual Refine panel flow back through this same renderer.
@@ -628,6 +633,19 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       if (segs.length && !full) {
         try { jumpCut = await renderCutSegments(takeFile, cut, segs); if (jumpCut) cutSegments = segs } catch { jumpCut = false }
       }
+    } else if (opts.shots?.segments && opts.shots.segments.length > 1) {
+      // Per-scene Retake: `segments` are the kept [start,end] windows the creator
+      // accepted; the flubbed reads live in the gaps between them. Trim+concat the
+      // kept windows so the bad takes are dropped from the final cut. Captions below
+      // are timed against this concatenated timeline. If the render fails we fall
+      // back to the whole take (and normal transcription) so we still ship a video.
+      const segs = opts.shots.segments
+        .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start)
+        .sort((a, b) => a.start - b.start)
+        .map((s) => ({ start: s.start, end: s.end }))
+      if (segs.length) {
+        try { jumpCut = await renderCutSegments(takeFile, cut, segs); if (jumpCut) cutSegments = segs } catch { jumpCut = false }
+      }
     } else if (opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
       // V2 Scene-Timeline capture: the take was recorded scene-by-scene (the
       // recorder paused between scenes), so the inter-scene dead air is already
@@ -656,6 +674,25 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     if (edl) {
       words = (edl.captions.words ?? []).filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end))
       durationSec = edl.durationSec ?? 0
+    } else if (captions && opts.shots?.segments && opts.shots.segments.length > 1 && jumpCut) {
+      // Per-scene Retake captions: the base is now the concatenated kept windows, so
+      // caption each window from its line laid end-to-end on the cumulative timeline.
+      // (Only when the trim+concat actually applied — else fall through to transcribe.)
+      prog('transcribing', 42, 'Captioning your scenes…')
+      const segs = opts.shots.segments
+        .filter((s) => Number.isFinite(s.start) && Number.isFinite(s.end) && s.end > s.start)
+        .sort((a, b) => a.start - b.start)
+      let cursor = 0
+      for (const seg of segs) {
+        const segDur = seg.end - seg.start
+        const toks = String(seg.line ?? '').split(/\s+/).filter(Boolean)
+        if (toks.length) {
+          const per = Math.max(0.12, (segDur - 0.2) / toks.length)
+          toks.forEach((w, k) => words.push({ w, start: cursor + 0.1 + k * per, end: cursor + 0.1 + (k + 1) * per }))
+        }
+        cursor += segDur
+      }
+      durationSec = cursor
     } else if (captions && opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
       // Per-shot capture: caption each segment from its SCRIPT line, timed to the
       // window the creator recorded it in. Perfect captions, no transcription guessing.

@@ -67,6 +67,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const segStartRef = useRef(0)        // perf.now() when current active segment began
   const boundsRef = useRef<number[]>([]) // cumulative seconds at each scene boundary
   const linesRef = useRef<string[]>([])  // spoken line per recorded scene
+  // Per-scene keep-windows in ACTIVE-recording seconds (= the blob's playback
+  // timeline, since pause/resume leaves no gap). On Retake we drop the flubbed
+  // window and re-read; the worker trims+concats these and captions each per scene.
+  const segmentsRef = useRef<{ start: number; end: number; line: string }[]>([])
+  const sceneStartSecRef = useRef(0)   // current scene's window start (active seconds)
 
   const scene = scenes[i]
   const last = i >= scenes.length - 1
@@ -111,6 +116,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     if (!rec) return
     if (rec.state === 'inactive') rec.start(250)       // first scene: begin the single session
     else if (rec.state === 'paused') rec.resume()       // later scene: resume same session
+    // This scene's kept window opens at the current cumulative active time. (After a
+    // Retake, that's past the flubbed read — so the bad take is dropped.)
+    sceneStartSecRef.current = Math.round((activeMsRef.current / 1000) * 1000) / 1000
     segStartRef.current = performance.now()
     setRecording(true)
   }
@@ -122,8 +130,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       activeMsRef.current += performance.now() - segStartRef.current
       rec.pause()
     }
-    boundsRef.current.push(Math.round((activeMsRef.current / 1000) * 1000) / 1000)
-    linesRef.current.push((scene?.dialogue || scene?.caption_text || '').trim())
+    const end = Math.round((activeMsRef.current / 1000) * 1000) / 1000
+    const line = (scene?.dialogue || scene?.caption_text || '').trim()
+    boundsRef.current.push(end)
+    linesRef.current.push(line)
+    segmentsRef.current.push({ start: sceneStartSecRef.current, end, line })
     setRecording(false)
   }
 
@@ -146,10 +157,14 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       const bounds = boundsRef.current
       const total = bounds.length
       const lines = linesRef.current
-      // Timeline-driven: per-segment cut bounds + spoken line per scene → the worker
-      // builds captions from THESE lines, cut at THESE boundaries. Falls back to
+      const segments = segmentsRef.current.filter((s) => s.end > s.start)
+      // Timeline-driven: per-scene keep-windows + spoken line → the worker trims+concats
+      // the kept windows (dropping any retaken/flubbed read) and builds captions from
+      // THESE lines per scene. bounds/lines kept for back-compat. Falls back to
       // whole-clip auto-edit if we somehow have <2 segments.
-      const shots = total > 1 ? { bounds, total, lines } : undefined
+      const shots = total > 1
+        ? { bounds, total, lines, ...(segments.length > 1 ? { segments } : {}) }
+        : undefined
       const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots)
       onJob(jobId)
     } catch (e) {
@@ -159,6 +174,15 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   }
 
   const continueNext = () => { setBetween(false); setI((v) => v + 1) }
+  // Retake the scene we just finished: drop its kept window (the flubbed read stays
+  // in the blob but is trimmed out by the worker) and re-open the SAME scene. The
+  // next startScene reopens the window past the bad read.
+  const retakeScene = () => {
+    segmentsRef.current.pop()
+    boundsRef.current.pop()
+    linesRef.current.pop()
+    setBetween(false)
+  }
   const replayScene = () => { /* keep take; let the user re-read — boundary is recorded on Stop&next */ setRecording(false) }
 
   const pickSpeed = async (wpm: WpmPreset) => { setTimeline(await setWpm(timeline, wpm)); setSpeedSheet(false) }
@@ -191,11 +215,23 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
               <p className="text-xs text-white/50 mt-1">{camError}</p>
             </div>
           ) : between ? (
-            <div className="text-center space-y-3">
-              <div className="text-emerald-400 text-lg font-semibold">Scene complete ✓</div>
-              <div className="text-white/70 text-sm">Next: {sceneTypeLabel(next?.scene_type)}</div>
-              <div className="text-white/40 text-xs">about {Math.round(estimateDurationSec(next?.dialogue ?? null, timeline.wpm))}s</div>
-              <button onClick={continueNext} className="mt-2 rounded-2xl bg-white text-stone-900 font-semibold px-6 py-3">Continue</button>
+            <div className="text-left space-y-3 bg-black/55 border border-white/10 rounded-2xl p-5 backdrop-blur">
+              <div className="text-emerald-400 text-base font-semibold text-center">Scene {i + 1} complete ✓</div>
+              <div className="text-center">
+                <div className="text-white font-semibold">Next · Scene {i + 2} of {scenes.length} — {sceneTypeLabel(next?.scene_type)}</div>
+                <div className="text-white/40 text-xs mt-0.5">about {Math.round(estimateDurationSec(next?.dialogue ?? null, timeline.wpm))}s</div>
+              </div>
+              <div className="space-y-1.5 text-sm text-white/90">
+                {next?.camera_framing && <p><span className="text-emerald-400 text-xs font-semibold">Positioning  </span>{next.camera_framing}</p>}
+                {next?.background && <p><span className="text-emerald-400 text-xs font-semibold">Background  </span>{next.background}</p>}
+                {next?.purpose && <p><span className="text-emerald-400 text-xs font-semibold">This scene  </span>{next.purpose}</p>}
+                {next?.movement && <p><span className="text-emerald-400 text-xs font-semibold">Movement  </span>{next.movement}</p>}
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button onClick={retakeScene} className="flex-1 rounded-2xl bg-white/10 border border-white/30 text-white font-semibold py-3">Retake scene</button>
+                <button onClick={continueNext} className="flex-1 rounded-2xl bg-white text-stone-900 font-semibold py-3">Next scene</button>
+              </div>
+              <p className="text-white/40 text-[11px] text-center">Flubbed it? Retake re-reads the scene you just finished.</p>
             </div>
           ) : (
             <>

@@ -192,7 +192,20 @@ export interface IngestJob {
 // First auto-edit is FREE (bundled with the blueprint). Uploads the take, then
 // enqueues THROUGH the edge function, the only credit-enforced path. The server
 // decides free-vs-paid, so the client can't grant itself a free render.
-export async function autoEditTake(generationId: string, file: TakeFile, shots?: { bounds: number[]; total: number; lines: string[] }, aspect?: '9:16' | '1:1', onProgress?: (fraction: number) => void): Promise<{ jobId: string; takePath: string }> {
+// `shots` describes the per-scene structure of a recorded take.
+// - bounds/total/lines: cumulative cut points (contiguous scenes) — original contract.
+// - segments: explicit keep-windows [{start,end,line}] in seconds. When present, the
+//   worker trims to ONLY these windows and concatenates them (so a re-taken/flubbed
+//   stretch between windows is dropped), captioning each window from its line. This is
+//   what makes per-scene Retake correct on a single continuous recording.
+export interface TakeShots {
+  bounds: number[]
+  total: number
+  lines: string[]
+  segments?: { start: number; end: number; line: string }[]
+}
+
+export async function autoEditTake(generationId: string, file: TakeFile, shots?: TakeShots, aspect?: '9:16' | '1:1', onProgress?: (fraction: number) => void): Promise<{ jobId: string; takePath: string }> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
   const uid = auth.user.id

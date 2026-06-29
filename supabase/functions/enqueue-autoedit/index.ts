@@ -44,7 +44,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Easy there — too many edits in a row. Give it a few seconds.' }, 429)
   }
 
-  let body: { generation_id?: string; take_path?: string; remake?: boolean; variation?: number; edl?: unknown; shots?: { bounds?: unknown; total?: unknown; lines?: unknown } }
+  let body: { generation_id?: string; take_path?: string; remake?: boolean; variation?: number; edl?: unknown; shots?: { bounds?: unknown; total?: unknown; lines?: unknown; segments?: unknown } }
   try {
     body = await req.json()
   } catch {
@@ -56,10 +56,19 @@ Deno.serve(async (req: Request) => {
   // Per-shot capture metadata (optional) — cut points + the script line per shot, so the
   // worker captions each segment from the script. Validated + clamped; ignored if malformed.
   const sb = body.shots
-  const shots = (sb && Array.isArray(sb.bounds) && Array.isArray(sb.lines) && typeof sb.total === 'number' && sb.total > 1
-    && sb.bounds.every((n) => typeof n === 'number' && Number.isFinite(n)))
-    ? { bounds: (sb.bounds as number[]).slice(0, 50), total: sb.total, lines: (sb.lines as unknown[]).slice(0, 60).map((s) => String(s).slice(0, 400)) }
-    : null
+  // Optional per-scene keep-windows [{start,end,line}] — enables per-scene Retake by
+  // dropping flubbed footage between windows. Validated + clamped; ignored if malformed.
+  const rawSeg = sb && Array.isArray((sb as { segments?: unknown }).segments) ? ((sb as { segments: unknown[] }).segments) : []
+  const segments = rawSeg
+    .slice(0, 60)
+    .filter((s): s is Record<string, unknown> => !!s && typeof s === 'object')
+    .filter((s) => typeof s.start === 'number' && typeof s.end === 'number' && Number.isFinite(s.start as number) && Number.isFinite(s.end as number) && (s.end as number) > (s.start as number))
+    .map((s) => ({ start: s.start as number, end: s.end as number, line: String((s as { line?: unknown }).line ?? '').slice(0, 400) }))
+  const baseValid = !!(sb && Array.isArray(sb.bounds) && Array.isArray(sb.lines) && typeof sb.total === 'number' && sb.total > 1
+    && (sb.bounds as unknown[]).every((n) => typeof n === 'number' && Number.isFinite(n)))
+  const shots = baseValid
+    ? { bounds: (sb!.bounds as number[]).slice(0, 50), total: sb!.total as number, lines: (sb!.lines as unknown[]).slice(0, 60).map((s) => String(s).slice(0, 400)), ...(segments.length > 1 ? { segments } : {}) }
+    : (segments.length > 1 ? { bounds: [], total: segments.length, lines: segments.map((s) => s.line), segments } : null)
   // A REFINE carries the creator's edited EDL — they're correcting a video they
   // already paid to make, so it re-renders FREE (rate-limited above, not billed).
   const refineEdl = body.edl && typeof body.edl === 'object' ? body.edl : null
