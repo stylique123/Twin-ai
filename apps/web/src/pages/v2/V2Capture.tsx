@@ -84,9 +84,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [uploading, setUploading] = useState(false)
   // Teleprompter feel: font size (S/M/L/XL) + a per-scene timing clock so the script
   // can advance word-by-word in step with the chosen WPM.
-  const FONT_PX = [22, 28, 36, 46]
+  const FONT_PX = [24, 30, 38, 48]
   const [fontIdx, setFontIdx] = useState(1)
   const [sceneElapsed, setSceneElapsed] = useState(0)
+  const [mirror, setMirror] = useState(false)   // flip horizontally for teleprompter glass
+  const [countdown, setCountdown] = useState(0)  // 3-2-1 before a scene starts
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -102,7 +104,6 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const segmentsRef = useRef<{ start: number; end: number; line: string }[]>([])
   const sceneStartSecRef = useRef(0)   // current scene's window start (active seconds)
   const promptScrollRef = useRef<HTMLDivElement>(null)
-  const activeWordRef = useRef<HTMLSpanElement>(null)
 
   const scene = scenes[i]
   const last = i >= scenes.length - 1
@@ -124,10 +125,25 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     return () => window.clearInterval(h)
   }, [recording, i])
 
-  // Keep the currently-spoken word centered in the prompter as it advances.
+  // Smooth, continuous auto-scroll (the real-teleprompter feel): drive scrollTop
+  // every animation frame from elapsed/estimated so the script glides upward at the
+  // chosen pace, instead of jumping word-to-word. Short scenes that don't overflow
+  // simply don't scroll.
   useEffect(() => {
-    if (recording && activeWordRef.current) activeWordRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
-  }, [readCount, recording])
+    if (!recording) return
+    let raf = 0
+    const start = performance.now()
+    const tick = (now: number) => {
+      const el = promptScrollRef.current
+      if (el) {
+        const max = el.scrollHeight - el.clientHeight
+        if (max > 4) el.scrollTop = Math.min(max, ((now - start) / 1000 / estSec) * max)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [recording, i, estSec])
 
   // Acquire the camera once, show a live preview.
   useEffect(() => {
@@ -158,6 +174,19 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunksRef.current.push(ev.data) }
     recRef.current = rec
   }
+
+  // A 3-2-1 countdown before the scene actually records, so the creator can get set
+  // (and it never clips the first word).
+  const beginScene = () => { if (!camError && !recording) setCountdown(3) }
+  useEffect(() => {
+    if (countdown <= 0) return
+    const h = window.setTimeout(() => {
+      if (countdown === 1) { setCountdown(0); startScene() }
+      else setCountdown((c) => c - 1)
+    }, 800)
+    return () => window.clearTimeout(h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [countdown])
 
   const startScene = () => {
     if (camError) return
@@ -285,12 +314,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
             </div>
           ) : (
             <div className="w-full">
-              <div ref={promptScrollRef} className="mx-auto max-w-[34rem] max-h-[46vh] overflow-y-auto px-2 text-center" style={{ scrollbarWidth: 'none' }}>
+              <div ref={promptScrollRef} className="mx-auto max-w-[34rem] max-h-[46vh] overflow-y-auto px-2 text-center" style={{ scrollbarWidth: 'none', transform: mirror ? 'scaleX(-1)' : undefined }}>
                 <p className="font-semibold leading-[1.5] drop-shadow" style={{ fontSize: FONT_PX[fontIdx] }}>
                   {words.map((w, idx) => (
                     <span
                       key={idx}
-                      ref={idx === readCount ? activeWordRef : undefined}
                       className={!recording ? 'text-cream' : idx < readCount ? 'text-cream' : idx === readCount ? 'text-teal' : 'text-white/35'}
                     >
                       {w}{' '}
@@ -311,16 +339,21 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
           )}
         </div>
         {recording && <div className="absolute top-3 left-3 flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />REC</div>}
+        {countdown > 0 && (
+          <div className="absolute inset-0 grid place-items-center bg-black/50 backdrop-blur-sm">
+            <span className="text-7xl font-display font-bold text-cream tabular-nums">{countdown}</span>
+          </div>
+        )}
       </div>
 
       {!between && (
         <div className="px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 space-y-3">
           <button
-            onClick={() => (recording ? finishScene() : startScene())}
-            disabled={!!camError}
+            onClick={() => (recording ? finishScene() : beginScene())}
+            disabled={!!camError || countdown > 0}
             className={`w-full rounded-2xl py-4 font-semibold disabled:opacity-40 ${recording ? 'bg-red-500 text-white' : 'bg-cream text-ink'}`}
           >
-            {recording ? (last ? 'Stop & finish' : 'Stop & next scene') : 'Record this scene'}
+            {recording ? (last ? 'Stop & finish' : 'Stop & next scene') : countdown > 0 ? `Starting in ${countdown}…` : 'Record this scene'}
           </button>
           <div className="flex items-center justify-between text-sm text-white/70 px-1">
             <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0} className="disabled:opacity-30 py-2 px-1">Previous</button>
@@ -329,6 +362,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
               <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-8 w-8 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
               <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-8 w-8 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-base font-bold">A+</button>
             </div>
+            <button onClick={() => setMirror((m) => !m)} className={`py-2 px-1 ${mirror ? 'text-teal' : ''}`}>Mirror</button>
             <button onClick={() => setSpeedSheet(true)} className="py-2 px-1">Speed {wpmVal}</button>
           </div>
         </div>
