@@ -69,7 +69,7 @@ Deno.serve(async (req: Request) => {
   // pulled every column incl. the large profile JSON on every poll.
   const { data: voice } = await admin
     .from('brand_voices')
-    .select('status, handle, platform, error, profile')
+    .select('status, handle, platform, error, profile, brand_kit')
     .eq('id', voiceId)
     .eq('owner_id', user.id)
     .single()
@@ -161,9 +161,19 @@ Deno.serve(async (req: Request) => {
     const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts, bio)
     const stats = computeStats(ownItems, posts)
 
+    // Auto-fill the brand palette from the inferred colors — but NEVER clobber a
+    // palette the creator set by hand. Only valid #RRGGBB values are kept.
+    const hex = (v: unknown) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim()) ? v.trim() : undefined)
+    const bc = (profile as { brand_colors?: { primary?: unknown; secondary?: unknown; highlight?: unknown } } | null)?.brand_colors
+    const inferred = bc ? Object.fromEntries(Object.entries({ primary: hex(bc.primary), secondary: hex(bc.secondary), highlight: hex(bc.highlight) }).filter(([, v]) => v)) : {}
+    const existingKit = (voice.brand_kit as { palette?: Record<string, string> } | null) ?? null
+    const brandKitPatch = (!existingKit?.palette && Object.keys(inferred).length)
+      ? { brand_kit: { ...existingKit, palette: inferred } }
+      : {}
+
     await admin
       .from('brand_voices')
-      .update({ status: 'ready', profile, stats, error: null })
+      .update({ status: 'ready', profile, stats, error: null, ...brandKitPatch })
       .eq('id', voiceId)
     await admin
       .from('jobs')
