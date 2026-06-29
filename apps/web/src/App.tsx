@@ -133,7 +133,7 @@ export default function App() {
           <Route
             path="/app"
             element={
-              STUDIO_V2
+              (import.meta.env.VITE_STUDIO_V2 === 'true' || STUDIO_V2)
                 ? <Navigate to="/v2" replace />
                 : <Protected><AppShell><Page><Studio /></Page></AppShell></Protected>
             }

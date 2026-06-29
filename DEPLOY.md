@@ -89,6 +89,12 @@ The web app now lives in **`apps/web`** (npm workspace) and depends on the
 VITE_SUPABASE_URL=https://YOUR_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-public-key
 ```
+Optional feature flag — **`VITE_STUDIO_V2=true`** routes `/app` into the new
+5-screen V2 Creative Studio flow (`/v2`). Leave it unset (default) and `/app` serves
+the current V1 Studio unchanged. To QA V2 without touching production, set it as a
+**Preview-scoped** env var in Vercel (Project → Settings → Environment Variables →
+Preview only) so only branch/preview deploys expose it.
+
 `apps/web/vercel.json` rewrites all routes → `index.html` for the SPA (only applies
 once Root Directory = `apps/web`). Manual alternative: `npm run web:build` from the
 repo root and upload `apps/web/dist/` to any static host.
