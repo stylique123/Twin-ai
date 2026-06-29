@@ -82,6 +82,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [exitSheet, setExitSheet] = useState(false)
   const [camError, setCamError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  // Teleprompter feel: font size (S/M/L/XL) + a per-scene timing clock so the script
+  // can advance word-by-word in step with the chosen WPM.
+  const FONT_PX = [22, 28, 36, 46]
+  const [fontIdx, setFontIdx] = useState(1)
+  const [sceneElapsed, setSceneElapsed] = useState(0)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -96,10 +101,33 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   // window and re-read; the worker trims+concats these and captions each per scene.
   const segmentsRef = useRef<{ start: number; end: number; line: string }[]>([])
   const sceneStartSecRef = useRef(0)   // current scene's window start (active seconds)
+  const promptScrollRef = useRef<HTMLDivElement>(null)
+  const activeWordRef = useRef<HTMLSpanElement>(null)
 
   const scene = scenes[i]
   const last = i >= scenes.length - 1
   const next = scenes[i + 1]
+
+  // Running-prompter timing: how many words SHOULD be read by now at the chosen WPM,
+  // and the scene's estimated length — drives the word highlight + the timing bar.
+  const words = useMemo(() => (scene?.dialogue || '').split(/\s+/).filter(Boolean), [scene])
+  const wpmVal = WPM_PRESETS[timeline.wpm]
+  const readCount = recording ? Math.floor((sceneElapsed / 60) * wpmVal) : -1
+  const estSec = Math.max(1, Math.round(estimateDurationSec(scene?.dialogue ?? null, timeline.wpm)))
+
+  // Tick a per-scene clock only while actively recording THIS scene.
+  useEffect(() => {
+    if (!recording) { setSceneElapsed(0); return }
+    const t0 = performance.now()
+    setSceneElapsed(0)
+    const h = window.setInterval(() => setSceneElapsed((performance.now() - t0) / 1000), 100)
+    return () => window.clearInterval(h)
+  }, [recording, i])
+
+  // Keep the currently-spoken word centered in the prompter as it advances.
+  useEffect(() => {
+    if (recording && activeWordRef.current) activeWordRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
+  }, [readCount, recording])
 
   // Acquire the camera once, show a live preview.
   useEffect(() => {
@@ -205,7 +233,6 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     linesRef.current.pop()
     setBetween(false)
   }
-  const replayScene = () => { /* keep take; let the user re-read — boundary is recorded on Stop&next */ setRecording(false) }
 
   const pickSpeed = async (wpm: WpmPreset) => { setTimeline(await setWpm(timeline, wpm)); setSpeedSheet(false) }
 
@@ -257,10 +284,30 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
               <p className="text-white/40 text-[11px] text-center">Flubbed it? Retake re-reads the scene you just finished.</p>
             </div>
           ) : (
-            <>
-              <p className="text-2xl font-semibold leading-relaxed text-center drop-shadow">{scene?.dialogue}</p>
-              <p className="mt-5 text-center text-xs text-white/50">{scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {WPM_PRESETS[timeline.wpm]} WPM</p>
-            </>
+            <div className="w-full">
+              <div ref={promptScrollRef} className="mx-auto max-w-[34rem] max-h-[46vh] overflow-y-auto px-2 text-center" style={{ scrollbarWidth: 'none' }}>
+                <p className="font-semibold leading-[1.5] drop-shadow" style={{ fontSize: FONT_PX[fontIdx] }}>
+                  {words.map((w, idx) => (
+                    <span
+                      key={idx}
+                      ref={idx === readCount ? activeWordRef : undefined}
+                      className={!recording ? 'text-cream' : idx < readCount ? 'text-cream' : idx === readCount ? 'text-teal' : 'text-white/35'}
+                    >
+                      {w}{' '}
+                    </span>
+                  ))}
+                </p>
+              </div>
+              {/* timing bar — fills over the scene's estimated length while recording */}
+              <div className="mt-4 mx-auto max-w-[34rem] px-2">
+                <div className="h-1 rounded-full bg-white/15 overflow-hidden">
+                  <div className="h-full bg-coral transition-[width] duration-100 ease-linear" style={{ width: `${recording ? Math.min(100, (sceneElapsed / estSec) * 100) : 0}%` }} />
+                </div>
+                <p className="mt-2 text-center text-xs text-white/50">
+                  {scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {wpmVal} WPM · ~{estSec}s{recording ? ` · ${sceneElapsed.toFixed(1)}s` : ''}
+                </p>
+              </div>
+            </div>
           )}
         </div>
         {recording && <div className="absolute top-3 left-3 flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />REC</div>}
@@ -277,8 +324,12 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
           </button>
           <div className="flex items-center justify-between text-sm text-white/70 px-1">
             <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0} className="disabled:opacity-30 py-2 px-1">Previous</button>
-            <button onClick={replayScene} className="py-2 px-1">Replay</button>
-            <button onClick={() => setSpeedSheet(true)} className="py-2 px-1">Speed</button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-white/40">Size</span>
+              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-8 w-8 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
+              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-8 w-8 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-base font-bold">A+</button>
+            </div>
+            <button onClick={() => setSpeedSheet(true)} className="py-2 px-1">Speed {wpmVal}</button>
           </div>
         </div>
       )}
