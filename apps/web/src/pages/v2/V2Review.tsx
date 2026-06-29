@@ -124,7 +124,7 @@ export default function V2Review() {
   }
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-stone-950 text-white flex flex-col overflow-x-hidden">
+    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-ink text-cream flex flex-col overflow-x-hidden">
       <div className="flex items-center justify-between px-4 pt-4">
         <button onClick={() => nav(`/v2/plan/${id}`)} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10">←</button>
         <span className="text-sm text-white/70 truncate">Your video</span>
@@ -132,7 +132,7 @@ export default function V2Review() {
       </div>
 
       <div className="px-4 pt-3">
-        <div className="relative aspect-[9/16] w-full rounded-2xl overflow-hidden bg-stone-900 shadow-2xl">
+        <div className="relative aspect-[9/16] w-full max-w-[460px] mx-auto rounded-2xl overflow-hidden bg-ink2 shadow-2xl">
           {phase === 'done' && videoUrl ? (
             <video ref={videoRef} src={videoUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline controls />
           ) : phase === 'failed' ? (
@@ -140,7 +140,7 @@ export default function V2Review() {
               <div>
                 <p className="text-white/80 font-medium">We couldn't finish the edit</p>
                 <p className="text-xs text-white/50 mt-1">{label}</p>
-                <button onClick={retry} className="mt-4 rounded-xl bg-white text-stone-900 font-semibold px-5 py-2 text-sm">Re-record & try again</button>
+                <button onClick={retry} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Re-record & try again</button>
               </div>
             </div>
           ) : (
@@ -170,7 +170,7 @@ export default function V2Review() {
       <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 space-y-4">
         <div className="grid grid-cols-2 gap-2">
           <button disabled={!videoUrl} onClick={() => videoUrl && window.open(videoUrl, '_blank')}
-            className="rounded-2xl bg-white text-stone-900 font-semibold py-4 disabled:opacity-40 hover:bg-stone-100 active:scale-[0.99] transition-all">Download</button>
+            className="rounded-2xl bg-cream text-ink font-semibold py-4 disabled:opacity-40 hover:bg-cream/90 active:scale-[0.99] transition-all">Download</button>
           <button disabled={!videoUrl} onClick={() => setPublishSheet(true)}
             className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40 hover:bg-emerald-600 active:scale-[0.99] transition-all">Publish</button>
         </div>
