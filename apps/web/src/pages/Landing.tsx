@@ -215,7 +215,7 @@ function HeroSection() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
-              className="font-display text-left text-[3.6rem] leading-[0.98] -tracking-[0.02em] sm:text-[4.8rem] lg:text-[6.2rem]"
+              className="font-display text-left text-[2.9rem] leading-[1.0] -tracking-[0.02em] sm:text-[4.8rem] sm:leading-[0.98] lg:text-[6.2rem]"
             >
               Steal the format.<br /><span className="gradient-text">Keep your voice.</span>
             </motion.h1>
@@ -304,7 +304,7 @@ function HeroVisualNew() {
         <motion.div
           animate={{ y: [0, -6, 0] }}
           transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-          className="relative w-full max-w-[290px] sm:max-w-[330px] overflow-hidden rounded-[3.2rem] border-[10px] border-[#1a1a22] bg-ink p-0"
+          className="relative w-[280px] shrink-0 sm:w-[330px] overflow-hidden rounded-[3.2rem] border-[10px] border-[#1a1a22] bg-ink p-0"
           style={{ boxShadow: '0 0 0 2px rgba(255,255,255,.06), 0 40px 110px -16px rgba(0,0,0,.92), 0 0 70px -20px rgba(101,229,216,.18)' }}
         >
           <div className="overflow-hidden rounded-[2.4rem] bg-ink">
