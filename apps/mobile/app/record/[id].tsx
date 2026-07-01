@@ -229,8 +229,14 @@ export default function Record() {
       }
 
       setUploadPct(null); setPhase('editing'); setStatus('Auto-editing — captions, cuts, vertical…')
-      const job = await pollEditJob(jobId, (label) => { if (label) setStatus(label) }, { attempts: 120, intervalMs: 3000 })
-      if (!job) throw new Error('The edit is taking longer than usual — check your Library shortly.')
+      // The worker's own hard timeout is 35 min (maxJobMs) — a first edit runs
+      // whisper + the Gemini director + b-roll fetch + an up-to-8-min Revideo
+      // premium pass, which can exceed a short client cap. Poll for ~35 min so a
+      // real, still-in-progress render isn't mistaken for a failure. Safe either
+      // way: lastJobId stays set on a timeout, so Retry resumes THIS job rather
+      // than re-uploading/re-charging.
+      const job = await pollEditJob(jobId, (label) => { if (label) setStatus(label) }, { attempts: 700, intervalMs: 3000 })
+      if (!job) throw new Error('This is taking longer than usual. Your video may still be processing — check your Library, or tap Retry to keep waiting.')
       if (job.status === 'failed') { lastJobId.current = null; throw new Error(job.error || 'The edit failed') }
       setVideoUrl(job.result?.output_url ?? null); setStatus(null); setPhase('done')
     } catch (e) {

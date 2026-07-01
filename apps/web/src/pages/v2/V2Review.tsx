@@ -12,7 +12,10 @@ import { RefinePanel } from '../../components/RefinePanel'
 import { SlidersHorizontal, Loader2 } from 'lucide-react'
 import type { SceneTimeline } from '../../lib/timeline'
 
-type Phase = 'rendering' | 'done' | 'failed'
+// 'timeout' is distinct from 'failed': the CLIENT gave up waiting, but the worker
+// never said the job failed — it may well complete moments later. Must never be
+// treated the same as a real server-reported failure (see the render below).
+type Phase = 'rendering' | 'done' | 'failed' | 'timeout'
 
 export default function V2Review() {
   const { id = '' } = useParams()
@@ -109,13 +112,21 @@ export default function V2Review() {
         if (await showFinished()) { setPhase('done') } else { setPhase('failed'); setLabel('No render found for this video.') }
         return
       }
+      // The worker's own hard timeout is 35 min (maxJobMs) inside a 40-min lease
+      // (visibilitySecs) — a first edit runs whisper + the Gemini director + b-roll
+      // fetch + up to an 8-min Revideo premium pass, which can genuinely exceed the
+      // OLD 10-minute client cap (300 attempts x 2s). Poll for ~37 min so a real,
+      // still-in-progress render is never mistaken for a failure.
       const job = await pollEditJob(
         jobId,
         (label, pct) => { if (label) setLabel(label); if (pct) setPct(Math.max(5, Math.min(99, pct))) },
-        { attempts: 300, shouldStop: () => stopped.current },
+        { attempts: 1100, shouldStop: () => stopped.current },
       )
       if (stopped.current) return
-      if (!job) { setPhase('failed'); setLabel('Still rendering — check your Library shortly.'); return }
+      // We gave up — but the worker never said it failed. Treat this as DISTINCT
+      // from a real failure: never offer "re-record", which would abandon a job
+      // that may complete (and charge/render) successfully moments later.
+      if (!job) { setPhase('timeout'); setLabel('This is taking longer than usual. Your video may still be processing.'); return }
       if (job.status === 'failed') { setPhase('failed'); setLabel(job.error || 'The edit failed.'); return }
       const url = job.result?.output_url
       if (url) setVideoUrl(url)
@@ -229,6 +240,18 @@ export default function V2Review() {
                   <p className="text-white/80 font-medium">We couldn't finish the edit</p>
                   <p className="text-xs text-white/50 mt-1">{label}</p>
                   <button onClick={retry} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Re-record & try again</button>
+                </div>
+              </div>
+            ) : phase === 'timeout' ? (
+              // NOT a failure — the worker never said so. Re-recording here would risk
+              // abandoning a job that may still complete (and still charges/renders).
+              // Point at the Library instead, where the finished video will show up.
+              <div className="absolute inset-0 grid place-items-center text-center px-6">
+                <div>
+                  <p className="text-white/80 font-medium">Still working on it</p>
+                  <p className="text-xs text-white/50 mt-1">{label}</p>
+                  <button onClick={() => nav('/dashboard')} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Check my Library</button>
+                  <p className="text-[11px] text-white/40 mt-3">Your raw take is safe to download below either way.</p>
                 </div>
               </div>
             ) : (
