@@ -513,6 +513,17 @@ export async function signEditUrls(paths: string[]): Promise<Record<string, stri
   return out
 }
 
+// Sign a storage path in the private `takes` bucket (the raw recorded/uploaded
+// clip) so it can be downloaded even while the AI edit is still rendering, or if
+// it fails — the creator's footage should never be stranded behind a pending or
+// failed edit. Returns null if the path can't be signed.
+export async function signTakeUrl(path: string): Promise<string | null> {
+  if (!path) return null
+  const { data, error } = await supabase.storage.from('takes').createSignedUrl(path, 60 * 60 * 24)
+  if (error || !data) return null
+  return data.signedUrl
+}
+
 // ---- Dashboard (Phase 7: real stats from data we already own) ------------
 
 export interface DashboardStats {

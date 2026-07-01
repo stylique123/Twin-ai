@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob } from '../../lib/api'
+import { getGeneration, getJob, signEditUrls, signTakeUrl, fetchEdl, reEditWithEdl, pollEditJob } from '../../lib/api'
 import { loadTimeline } from '../../lib/timelineApi'
 import { CAPTION_STYLE_OPTIONS } from '../../lib/types'
 import { RefinePanel } from '../../components/RefinePanel'
@@ -25,6 +25,7 @@ export default function V2Review() {
   const [label, setLabel] = useState('Starting the edit…')
   const [pct, setPct] = useState(5)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [rawUrl, setRawUrl] = useState<string | null>(null) // the raw take — downloadable even while rendering/if it fails
   const [captionSheet, setCaptionSheet] = useState(false)
   const [publishSheet, setPublishSheet] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -38,6 +39,19 @@ export default function V2Review() {
 
   useEffect(() => { loadTimeline(id).then(setTimeline) }, [id])
 
+  // Fetch + sign the RAW take immediately, independent of the edit job's phase —
+  // so the creator's footage is downloadable from the moment this screen loads,
+  // not stranded behind a still-rendering or failed edit.
+  useEffect(() => {
+    ;(async () => {
+      const g = await getGeneration(id)
+      if (!g?.take_path) return
+      setTakePath(g.take_path)
+      const url = await signTakeUrl(g.take_path)
+      if (url) setRawUrl(url)
+    })()
+  }, [id])
+
   // Real status polling: read the worker's live progress, then the finished video.
   useEffect(() => {
     stopped.current = false
@@ -46,7 +60,6 @@ export default function V2Review() {
       // Prefer the generation's stored edit_path (signed); else the job output_url.
       const g = await getGeneration(id)
       if (g) {
-        setTakePath(g.take_path || null)
         if (g.edl_path) {
           setRefineLoading(true)
           try {
@@ -65,6 +78,30 @@ export default function V2Review() {
       }
       return false
     }
+
+    // One-off status check, callable both from the poll loop's own cadence and
+    // from the visibility listener below — so returning to a backgrounded tab
+    // (where browsers throttle setTimeout heavily) doesn't strand the UI on a
+    // stale "rendering" spinner until the throttled timer eventually fires.
+    const checkNow = async () => {
+      if (!jobId || stopped.current) return
+      const job = await getJob(jobId)
+      if (!job || stopped.current) return
+      if (job.status === 'done' || job.status === 'failed') stopped.current = true
+      if (job.status === 'failed') { setPhase('failed'); setLabel(job.error || 'The edit failed.'); return }
+      if (job.status === 'done') {
+        const url = job.result?.output_url
+        if (url) setVideoUrl(url)
+        await showFinished()
+        setPct(100); setPhase('done')
+        return
+      }
+      const p = job.result?.progress
+      if (p?.label) setLabel(p.label)
+      if (typeof p?.pct === 'number') setPct(Math.max(5, Math.min(99, p.pct)))
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') void checkNow() }
+    document.addEventListener('visibilitychange', onVisible)
 
     ;(async () => {
       // No job id (e.g. opened directly) → just try to show an existing render.
@@ -86,7 +123,7 @@ export default function V2Review() {
       setPct(100); setPhase('done')
     })()
 
-    return () => { stopped.current = true }
+    return () => { stopped.current = true; document.removeEventListener('visibilitychange', onVisible) }
   }, [id, jobId])
 
   const retry = () => nav(`/v2/capture/${id}?mode=record`)
@@ -134,6 +171,15 @@ export default function V2Review() {
         <button disabled={!videoUrl} onClick={() => setPublishSheet(true)}
           className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40 hover:bg-emerald-600 active:scale-[0.99] transition-all">Publish</button>
       </div>
+
+      {/* Your raw footage — available the moment this screen loads, regardless of
+          whether the AI edit is still rendering or fails. Never stranded. */}
+      {rawUrl && (
+        <button onClick={() => window.open(rawUrl, '_blank')}
+          className="w-full rounded-2xl border border-white/20 text-cream py-3 text-sm font-medium hover:bg-white/10 transition-all">
+          {phase === 'done' ? 'Download raw video' : 'Download your raw take'}
+        </button>
+      )}
 
       {timeline && (
         <div className="flex gap-2 overflow-x-auto scrollbar-none lg:flex-wrap">
