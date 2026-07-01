@@ -90,6 +90,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [mirror, setMirror] = useState(false)   // flip horizontally for teleprompter glass
   const [countdown, setCountdown] = useState(0)  // 3-2-1 before a scene starts
   const [facing, setFacing] = useState<'user' | 'environment'>('user') // front / back camera
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null) // raw take to review after recording
+  const [camNonce, setCamNonce] = useState(0)    // bump to re-acquire the camera (Re-record)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -104,6 +106,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   // window and re-read; the worker trims+concats these and captions each per scene.
   const segmentsRef = useRef<{ start: number; end: number; line: string }[]>([])
   const sceneStartSecRef = useRef(0)   // current scene's window start (active seconds)
+  const reviewBlobRef = useRef<Blob | null>(null) // the raw recorded take, kept for review
+  const liveRef = useRef(false)        // true ONLY while a scene is actively recording (race guard)
+  const finishRef = useRef<() => void>(() => {}) // latest finishScene, callable from the timer
   const promptScrollRef = useRef<HTMLDivElement>(null)
   const textRef = useRef<HTMLParagraphElement>(null)
 
@@ -117,15 +122,24 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const wpmVal = WPM_PRESETS[timeline.wpm]
   const readCount = recording ? Math.floor((sceneElapsed / 60) * wpmVal) : -1
   const estSec = Math.max(1, Math.round(estimateDurationSec(scene?.dialogue ?? null, timeline.wpm)))
+  // Hard per-scene cap: the script's estimate plus a short grace, clamped to a sane
+  // short-form range. When a read runs past it we auto-stop → the Retake/Next card,
+  // so a scene can never record forever (and the final clip stays short-form length).
+  const sceneLimit = Math.min(Math.max(estSec + 5, 12), 30)
 
-  // Tick a per-scene clock only while actively recording THIS scene.
+  // Tick a per-scene clock only while actively recording THIS scene, and auto-stop
+  // the scene the moment it hits its time cap.
   useEffect(() => {
     if (!recording) { setSceneElapsed(0); return }
     const t0 = performance.now()
     setSceneElapsed(0)
-    const h = window.setInterval(() => setSceneElapsed((performance.now() - t0) / 1000), 100)
+    const h = window.setInterval(() => {
+      const el = (performance.now() - t0) / 1000
+      setSceneElapsed(el)
+      if (el >= sceneLimit) finishRef.current()   // cap reached → close this scene
+    }, 100)
     return () => window.clearInterval(h)
-  }, [recording, i])
+  }, [recording, i, sceneLimit])
 
   // Real teleprompter motion: the whole script GLIDES UPWARD (translateY on the text
   // block) past a fixed read-line, regardless of length — not a word-by-word jump.
@@ -180,7 +194,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       recRef.current = null // a flipped camera needs a fresh recorder bound to the new stream
       streamRef.current?.getTracks().forEach((t) => t.stop())
     }
-  }, [facing])
+  }, [facing, camNonce])
+
+  // Free the raw-take object URL when it changes or on unmount (no blob leak).
+  useEffect(() => () => { if (reviewUrl) URL.revokeObjectURL(reviewUrl) }, [reviewUrl])
 
   const ensureRecorder = () => {
     if (recRef.current || !streamRef.current) return
@@ -213,6 +230,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     // Retake, that's past the flubbed read — so the bad take is dropped.)
     sceneStartSecRef.current = Math.round((activeMsRef.current / 1000) * 1000) / 1000
     segStartRef.current = performance.now()
+    liveRef.current = true
     setRecording(true)
   }
 
@@ -231,30 +249,52 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     setRecording(false)
   }
 
-  const finishScene = async () => {
+  // Close the current scene. On the last scene, stop everything and go to review —
+  // we DON'T auto-upload/edit; the creator sees their raw take first and chooses.
+  // The liveRef guard makes this safe against a manual-stop + auto-stop double fire.
+  const finishScene = () => {
+    if (!liveRef.current) return
+    liveRef.current = false
     closeScene()
     if (!last) { setBetween(true); return }
-    await finishAll()
+    void finalizeRecording()
+  }
+  // keep the timer's auto-stop pointing at the latest closure
+  useEffect(() => { finishRef.current = finishScene })
+
+  // Stop the recorder + CAMERA and capture the raw take. The blob promise is
+  // timeout-guarded and the tracks are stopped right after, so the camera light can
+  // never stay on / "record for an hour" if a MediaRecorder onstop never fires.
+  const finalizeRecording = async () => {
+    const rec = recRef.current
+    const blob: Blob = await new Promise((resolve) => {
+      const make = () => new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || 'video/webm' })
+      if (!rec || rec.state === 'inactive') { resolve(make()); return }
+      const to = window.setTimeout(() => resolve(make()), 4000)
+      rec.onstop = () => { window.clearTimeout(to); resolve(make()) }
+      try { rec.stop() } catch { window.clearTimeout(to); resolve(make()) }
+    })
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    recRef.current = null
+    reviewBlobRef.current = blob
+    setRecording(false)
+    setReviewUrl(URL.createObjectURL(blob))
   }
 
-  const finishAll = async () => {
+  // Review action: hand the raw take to the SAME tested auto-edit path (captions,
+  // cuts, b-roll). Only now does the upload + edit job start.
+  const startAiEdit = async () => {
+    const blob = reviewBlobRef.current
+    if (!blob) return
     setUploading(true)
     try {
-      const rec = recRef.current
-      const blob: Blob = await new Promise((resolve) => {
-        if (!rec || rec.state === 'inactive') { resolve(new Blob(chunksRef.current, { type: 'video/webm' })); return }
-        rec.onstop = () => resolve(new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || 'video/webm' }))
-        try { rec.stop() } catch { resolve(new Blob(chunksRef.current, { type: 'video/webm' })) }
-      })
-      streamRef.current?.getTracks().forEach((t) => t.stop())
       const bounds = boundsRef.current
       const total = bounds.length
       const lines = linesRef.current
       const segments = segmentsRef.current.filter((s) => s.end > s.start)
-      // Timeline-driven: per-scene keep-windows + spoken line → the worker trims+concats
-      // the kept windows (dropping any retaken/flubbed read) and builds captions from
-      // THESE lines per scene. bounds/lines kept for back-compat. Falls back to
-      // whole-clip auto-edit if we somehow have <2 segments.
+      // Per-scene keep-windows + spoken line → the worker trims+concats the kept
+      // windows (dropping flubbed/retaken reads) and captions each per scene.
       const shots = total > 1
         ? { bounds, total, lines, ...(segments.length > 1 ? { segments } : {}) }
         : undefined
@@ -264,6 +304,33 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       setCamError(e instanceof Error ? e.message : 'Could not start the edit')
       setUploading(false)
     }
+  }
+
+  // Review action: download the raw take as-is (no edit).
+  const downloadRaw = () => {
+    if (!reviewUrl) return
+    const a = document.createElement('a')
+    a.href = reviewUrl
+    a.download = `twinai-take.${reviewBlobRef.current?.type.includes('mp4') ? 'mp4' : 'webm'}`
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+
+  // Review action: throw the take away and re-record from scene 1 (re-acquires camera).
+  const reRecord = () => {
+    if (reviewUrl) URL.revokeObjectURL(reviewUrl)
+    reviewBlobRef.current = null
+    chunksRef.current = []
+    boundsRef.current = []
+    linesRef.current = []
+    segmentsRef.current = []
+    activeMsRef.current = 0
+    sceneStartSecRef.current = 0
+    setReviewUrl(null)
+    setBetween(false)
+    setRecording(false)
+    setI(0)
+    setCamError(null)
+    setCamNonce((n) => n + 1)
   }
 
   const continueNext = () => { setBetween(false); setI((v) => v + 1) }
@@ -285,6 +352,34 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
         <div className="text-center">
           <div className="h-10 w-10 mx-auto rounded-full border-2 border-white/20 border-t-white animate-spin" />
           <p className="mt-3 text-sm text-white/70">Uploading your take and starting the edit…</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Review screen — the recorded take plays here FIRST (camera already off), then the
+  // creator picks what to do. We never auto-throw them into an editing spinner; the
+  // edit only starts when they tap AI edit. Same surface-aware shell as the recorder.
+  if (reviewUrl) {
+    return (
+      <div className="min-h-[100dvh] w-full bg-ink text-cream overflow-x-hidden">
+        <div className="mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl lg:flex-row lg:items-center lg:gap-10 lg:px-8">
+          <div className="flex flex-1 flex-col lg:py-6">
+            <div className="px-4 pt-4 text-sm text-white/60 lg:px-0 lg:pt-0">
+              Your take · {scenes.length} scene{scenes.length > 1 ? 's' : ''}
+            </div>
+            <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-black lg:my-0 lg:flex-none lg:h-[82vh] lg:max-h-[82vh] lg:w-auto lg:max-w-none">
+              <video src={reviewUrl} controls autoPlay loop playsInline className="absolute inset-0 h-full w-full object-contain bg-black" />
+            </div>
+          </div>
+          <div className="px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 space-y-3 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
+            <p className="text-sm text-white/70 text-center lg:text-left">Happy with the take? Send it to the AI editor for captions, cuts & b-roll — or keep the raw clip.</p>
+            <button onClick={startAiEdit} className="w-full rounded-2xl bg-cream text-ink font-semibold py-4 hover:bg-white">✨ AI edit — captions, cuts &amp; b-roll</button>
+            <button onClick={downloadRaw} className="w-full rounded-2xl border border-white/20 text-cream py-3 font-medium hover:bg-white/10">Download raw video</button>
+            <button onClick={reRecord} className="w-full rounded-2xl border border-white/20 text-cream py-3 font-medium hover:bg-white/10">Re-record</button>
+            <button onClick={onBack} className="w-full rounded-2xl py-2 text-sm text-white/50 hover:text-white">Save &amp; exit</button>
+            {camError && <p className="text-coral text-xs text-center">{camError}</p>}
+          </div>
         </div>
       </div>
     )
@@ -387,10 +482,15 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
                       ))}
                     </p>
                   </div>
-                  {/* subtle pace readout — no deadline bar; recording isn't time-limited */}
+                  {/* pace readout + a thin timing bar toward the scene's auto-stop cap */}
                   <p className="mt-3 text-center text-xs text-white/45">
-                    {scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {wpmVal} wpm{recording ? ` · ${Math.floor(sceneElapsed)}s` : ` · ~${estSec}s`}
+                    {scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {wpmVal} wpm{recording ? ` · ${Math.floor(sceneElapsed)}s / ${sceneLimit}s` : ` · ~${estSec}s · stops at ${sceneLimit}s`}
                   </p>
+                  {recording && (
+                    <div className="mt-2 mx-auto h-1 w-40 rounded-full bg-white/10 overflow-hidden">
+                      <div className="h-full bg-red-400 transition-[width] duration-100 ease-linear" style={{ width: `${Math.min(100, (sceneElapsed / sceneLimit) * 100)}%` }} />
+                    </div>
+                  )}
                 </div>
               )}
             </div>

@@ -20,7 +20,7 @@ import {
 import { Body, Button, Screen } from '../../src/components/ui'
 import { colors, radius } from '../../src/theme'
 
-type Phase = 'idle' | 'countdown' | 'recording' | 'between' | 'uploading' | 'editing' | 'done' | 'error'
+type Phase = 'idle' | 'countdown' | 'recording' | 'between' | 'review' | 'uploading' | 'editing' | 'done' | 'error'
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 function sceneLabel(t?: Scene['scene_type']) {
@@ -57,6 +57,8 @@ export default function Record() {
   // trims+concats these (dropping flubs + between-scene dead air) and captions each.
   const segmentsRef = useRef<{ start: number; end: number; line: string }[]>([])
   const sceneStartRef = useRef(0) // current scene's window start (recording seconds)
+  const liveRef = useRef(false)   // true ONLY while a scene is actively recording (race guard)
+  const nextSceneRef = useRef<() => void>(() => {}) // latest nextScene, callable from the cap timer
   const nowSec = () => Math.round(((Date.now() - startTs.current) / 1000) * 1000) / 1000
 
   const [cameraReady, setCameraReady] = useState(false)
@@ -64,6 +66,7 @@ export default function Record() {
   const [count, setCount] = useState(3)
   const [status, setStatus] = useState<string | null>(null)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [reviewUri, setReviewUri] = useState<string | null>(null) // raw take shown for review before editing
   const [err, setErr] = useState<string | null>(null)
   const [uploadPct, setUploadPct] = useState<number | null>(null)
   const lastUri = useRef<string | null>(null)   // recorded take, kept so a failed upload can retry without re-recording
@@ -73,8 +76,10 @@ export default function Record() {
   // the source is set when the render completes.
   const player = useVideoPlayer(null, (p) => { p.loop = false })
   useEffect(() => {
-    if (videoUrl) { player.replace(videoUrl); player.play() }
-  }, [videoUrl, player])
+    // Review plays the RAW take; done plays the finished edit. One player, two sources.
+    const src = phase === 'review' ? reviewUri : phase === 'done' ? videoUrl : null
+    if (src) { player.loop = phase === 'review'; player.replace(src); player.play() }
+  }, [phase, reviewUri, videoUrl, player])
 
   // Safety: if the screen unmounts while still recording (the creator navigates
   // away mid-take), stop the camera so it never keeps recording in the background.
@@ -109,6 +114,7 @@ export default function Record() {
       startTs.current = Date.now()
       sceneStartRef.current = 0 // scene 1's window opens at recording start
       recordingPromise.current = cameraRef.current.recordAsync() as Promise<{ uri: string }>
+      liveRef.current = true
       setPhase('recording')
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not start recording'); setPhase('error')
@@ -125,15 +131,30 @@ export default function Record() {
     linesRef.current.push(line)
   }
 
+  // Close the current scene. The liveRef guard makes a manual Stop + the cap timer
+  // firing together safe (only the first one advances).
   const nextScene = () => {
+    if (!liveRef.current) return
+    liveRef.current = false
     closeScene()
     if (last) { void finish(); return }
     setPhase('between')
   }
+  // keep the cap timer pointing at the latest closure
+  useEffect(() => { nextSceneRef.current = nextScene })
+
+  // Auto-stop the scene when it hits its time cap (the script estimate + a short
+  // grace, clamped to short-form length) so a read can never run forever.
+  useEffect(() => {
+    if (phase !== 'recording') return
+    const limit = Math.min(Math.max(Math.round(estimateDurationSec(scene?.dialogue ?? null, wpm)) + 5, 12), 30)
+    const h = setTimeout(() => nextSceneRef.current(), limit * 1000)
+    return () => clearTimeout(h)
+  }, [phase, i, scene, wpm])
 
   // Advance to the next scene — its window opens now, so the time spent reading
   // this card is dropped (it's outside every kept window).
-  const continueNext = () => { sceneStartRef.current = nowSec(); setI((v) => v + 1); setPhase('recording') }
+  const continueNext = () => { sceneStartRef.current = nowSec(); liveRef.current = true; setI((v) => v + 1); setPhase('recording') }
 
   // Retake this scene: discard the read we just closed and re-open the scene from
   // now. The flubbed take + card time fall into the dropped gap before the new window.
@@ -142,21 +163,41 @@ export default function Record() {
     boundsRef.current.pop()
     linesRef.current.pop()
     sceneStartRef.current = nowSec()
+    liveRef.current = true
     setPhase('recording')
   }
 
+  // Last scene done → stop the camera and show the RAW take for review. We don't
+  // auto-upload/edit; the creator sees their clip first and picks what to do next.
   const finish = async () => {
     if (!id) return
     try {
-      setPhase('uploading'); setStatus('Uploading your take…')
       cameraRef.current?.stopRecording()
       const video = await recordingPromise.current
       if (!video?.uri) throw new Error('No recording captured')
       lastUri.current = video.uri
-      await runUpload(video.uri)
+      setReviewUri(video.uri)
+      setPhase('review')
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Something went wrong'); setPhase('error')
     }
+  }
+
+  // Review action: hand the raw take to the auto-editor (the edit starts only now).
+  const startAiEdit = () => { if (lastUri.current) void runUpload(lastUri.current) }
+
+  // Review action: discard the take and re-record from scene 1.
+  const reRecord = () => {
+    boundsRef.current = []
+    linesRef.current = []
+    segmentsRef.current = []
+    sceneStartRef.current = 0
+    lastUri.current = null
+    lastJobId.current = null
+    setReviewUri(null)
+    setErr(null)
+    setI(0)
+    setPhase('idle')
   }
 
   // Upload the recorded take + run the auto-edit. Separated so a flaky-network
@@ -227,6 +268,27 @@ export default function Record() {
         ) : (
           <Body muted>Rendered — find it in your Library.</Body>
         )}
+      </Screen>
+    )
+  }
+
+  if (phase === 'review') {
+    return (
+      <Screen>
+        <Stack.Screen options={{ title: 'Your take' }} />
+        <Body>Happy with it? Send it to the AI editor for captions, cuts &amp; b-roll — or re-record.</Body>
+        {reviewUri ? (
+          <VideoView
+            player={player}
+            style={{ width: '100%', aspectRatio: 9 / 16, borderRadius: radius.card, backgroundColor: '#000' }}
+            contentFit="contain"
+            nativeControls
+            allowsFullscreen
+          />
+        ) : null}
+        <View style={{ height: 12 }} />
+        <Button label="✨ AI edit — captions, cuts & b-roll" onPress={startAiEdit} />
+        <Button variant="ghost" label="Re-record" onPress={reRecord} />
       </Screen>
     )
   }
