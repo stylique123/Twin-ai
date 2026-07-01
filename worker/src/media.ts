@@ -71,6 +71,7 @@ export interface ScrapedPost {
   plays: number
   hashtags: string[]
   url: string
+  cover?: string // best-effort video cover/thumbnail URL, for reading the brand palette
 }
 
 // FREE TikTok profile scrape via yt-dlp. Datacenter IPs are NOT bot-blocked for
@@ -87,11 +88,22 @@ export async function scrapeTikTokPosts(handle: string, limit = 12): Promise<Scr
   const data = JSON.parse(stdout) as { entries?: Record<string, unknown>[] }
   const entries = Array.isArray(data.entries) ? data.entries : []
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+  // Best-effort cover URL — yt-dlp's flat-playlist TikTok extractor often includes
+  // `thumbnails[]`; grab the last (largest) one. Absent on some accounts — that's
+  // fine, the DNA synth just falls back to caption-only color inference.
+  const cover = (e: Record<string, unknown>): string | undefined => {
+    const thumbs = e.thumbnails
+    if (Array.isArray(thumbs) && thumbs.length) {
+      const last = thumbs[thumbs.length - 1] as Record<string, unknown>
+      if (typeof last?.url === 'string') return last.url
+    }
+    return typeof e.thumbnail === 'string' ? e.thumbnail : undefined
+  }
   return entries
     .map((e) => {
       const text = String(e.title || e.description || '').replace(/\s+/g, ' ').trim()
       const hashtags = Array.from(new Set((text.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 6)
-      return { text, likes: num(e.like_count), plays: num(e.view_count), hashtags, url: String(e.url ?? '') }
+      return { text, likes: num(e.like_count), plays: num(e.view_count), hashtags, url: String(e.url ?? ''), cover: cover(e) }
     })
     .filter((p) => p.text.length > 0)
 }
