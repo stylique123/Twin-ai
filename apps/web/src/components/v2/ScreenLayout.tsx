@@ -19,27 +19,30 @@ export default function ScreenLayout({
   children: ReactNode
 }) {
   const nav = useNavigate()
+  // A single-focus task screen (one input, one decision) reads well as a
+  // comfortably wide CENTERED column on desktop — not a multi-pane split, and
+  // not the mobile-width column left tiny on a huge monitor either.
   return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto flex flex-col bg-ink text-cream overflow-x-hidden">
-      <header className="flex items-center gap-3 px-4 pt-4 pb-2">
+    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto flex flex-col bg-ink text-cream overflow-x-hidden lg:max-w-2xl lg:pt-6">
+      <header className="flex items-center gap-3 px-4 pt-4 pb-2 lg:px-0 lg:pt-0 lg:pb-4">
         <button
           onClick={() => (onBack ? onBack() : nav(-1))}
           aria-label="Back"
-          className="shrink-0 h-9 w-9 grid place-items-center rounded-full bg-white/10 border border-white/15 hover:bg-white/20 active:scale-95 transition"
+          className="shrink-0 h-9 w-9 grid place-items-center rounded-full bg-white/10 border border-white/15 hover:bg-white/20 active:scale-95 transition lg:h-10 lg:w-10"
         >
           ←
         </button>
         <div className="min-w-0">
-          <h1 className="text-lg font-bold text-cream truncate">{title}</h1>
-          {subtitle && <p className="text-xs text-sand/70 truncate">{subtitle}</p>}
+          <h1 className="text-lg font-bold text-cream truncate lg:text-2xl">{title}</h1>
+          {subtitle && <p className="text-xs text-sand/70 truncate lg:text-sm">{subtitle}</p>}
         </div>
       </header>
 
-      <main className="flex-1 px-4 pb-28 overflow-y-auto space-y-4">{children}</main>
+      <main className="flex-1 px-4 pb-28 overflow-y-auto space-y-4 lg:px-0 lg:pb-8">{children}</main>
 
       {cta && (
-        <div className="sticky bottom-0 inset-x-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-ink via-ink/95 to-transparent">
-          <div className="max-w-screen-sm mx-auto">{cta}</div>
+        <div className="sticky bottom-0 inset-x-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-ink via-ink/95 to-transparent lg:static lg:bg-none lg:px-0 lg:pb-0">
+          <div className="max-w-screen-sm mx-auto lg:max-w-none">{cta}</div>
         </div>
       )}
     </div>

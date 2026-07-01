@@ -84,6 +84,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [speedSheet, setSpeedSheet] = useState(false)
   const [exitSheet, setExitSheet] = useState(false)
   const [camError, setCamError] = useState<string | null>(null)
+  // Separate from camError on purpose: this is an upload/enqueue failure (e.g. out
+  // of credits), not a camera problem. Mixing the two into one state previously
+  // meant a credits error could render under the "Camera needed to record" heading.
+  const [editError, setEditError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   // Teleprompter feel: font size (S/M/L/XL) + a per-scene timing clock so the script
   // can advance word-by-word in step with the chosen WPM.
@@ -289,6 +293,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const startAiEdit = async () => {
     const blob = reviewBlobRef.current
     if (!blob) return
+    setEditError(null)
     setUploading(true)
     try {
       const bounds = boundsRef.current
@@ -303,7 +308,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots)
       onJob(jobId)
     } catch (e) {
-      setCamError(e instanceof Error ? e.message : 'Could not start the edit')
+      setEditError(e instanceof Error ? e.message : 'Could not start the edit')
       setUploading(false)
     }
   }
@@ -332,6 +337,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     setRecording(false)
     setI(0)
     setCamError(null)
+    setEditError(null)
     setCamNonce((n) => n + 1)
   }
 
@@ -375,12 +381,18 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
             </div>
           </div>
           <div className="px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 space-y-3 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
-            <p className="text-sm text-white/70 text-center lg:text-left">Happy with the take? Send it to the AI editor for captions, cuts & b-roll — or keep the raw clip.</p>
+            {editError ? (
+              <div className="rounded-2xl border border-coral/40 bg-coral/10 p-4 text-center lg:text-left">
+                <p className="text-sm font-semibold text-coral">Couldn't start the edit</p>
+                <p className="text-xs text-white/70 mt-1">{editError}</p>
+              </div>
+            ) : (
+              <p className="text-sm text-white/70 text-center lg:text-left">Happy with the take? Send it to the AI editor for captions, cuts & b-roll — or keep the raw clip.</p>
+            )}
             <button onClick={startAiEdit} className="w-full rounded-2xl bg-cream text-ink font-semibold py-4 hover:bg-white">✨ AI edit — captions, cuts &amp; b-roll</button>
             <button onClick={downloadRaw} className="w-full rounded-2xl border border-white/20 text-cream py-3 font-medium hover:bg-white/10">Download raw video</button>
             <button onClick={reRecord} className="w-full rounded-2xl border border-white/20 text-cream py-3 font-medium hover:bg-white/10">Re-record</button>
             <button onClick={onBack} className="w-full rounded-2xl py-2 text-sm text-white/50 hover:text-white">Save &amp; exit</button>
-            {camError && <p className="text-coral text-xs text-center">{camError}</p>}
           </div>
         </div>
       </div>
@@ -581,16 +593,16 @@ function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => voi
   }
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-ink text-cream flex flex-col overflow-x-hidden">
-      <div className="flex items-center justify-between px-4 pt-4 text-sm text-white/60">
-        <button onClick={onBack} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10">←</button>
+    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-ink text-cream flex flex-col overflow-x-hidden lg:max-w-2xl">
+      <div className="flex items-center justify-between px-4 pt-4 text-sm text-white/60 lg:px-0 lg:pt-6">
+        <button onClick={onBack} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 lg:h-10 lg:w-10">←</button>
         <span>Upload your clip</span>
-        <span className="w-11" />
+        <span className="w-11 lg:w-10" />
       </div>
-      <div className="flex-1 px-6 flex flex-col items-center justify-center text-center gap-4">
+      <div className="flex-1 px-6 flex flex-col items-center justify-center text-center gap-4 lg:px-0">
         <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
         <button onClick={() => inputRef.current?.click()} disabled={busy}
-          className="h-44 w-full rounded-2xl border-2 border-dashed border-white/20 grid place-items-center text-white/60 disabled:opacity-50">
+          className="h-44 w-full rounded-2xl border-2 border-dashed border-white/20 grid place-items-center text-white/60 hover:border-white/40 hover:text-white/80 disabled:opacity-50 lg:h-64">
           {busy ? 'Uploading…' : 'Tap to choose a clip'}
         </button>
         <p className="text-xs text-white/40">We detect scene boundaries automatically and line them up with your plan.</p>

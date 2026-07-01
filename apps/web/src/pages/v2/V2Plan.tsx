@@ -2,6 +2,12 @@
 // plan from the Scene Timeline; the user accepts or overrides any choice in one
 // tap (bottom sheets), then picks how to film. Two equal CTAs: record or upload.
 // Every edit writes straight back to the one timeline. See PRODUCT_VISION §7,§9.
+//
+// Mobile renders through the shared ScreenLayout shell (sticky bottom CTA, single
+// column). Desktop renders its own two-pane layout — a scrollable content column
+// (hook + scenes) and a fixed summary/CTA rail — matching the convention already
+// established in V2Capture/V2Review, not the mobile shell stretched wide. Both
+// trees share the same state/handlers; only the JSX differs per breakpoint.
 import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import ScreenLayout from '../../components/v2/ScreenLayout'
@@ -61,37 +67,77 @@ export default function V2Plan() {
 
   const hookOptions = gen?.blueprint?.hook_options ?? []
 
+  // Shared hook + scene-list content, reused by both the mobile single column and
+  // the desktop scrollable pane.
+  const hookCard = (
+    <Card className="bg-gradient-to-br from-ink2 to-ink text-cream border border-white/10">
+      <div className="text-xs text-sand/60 mb-1">Your hook</div>
+      <p className="text-lg font-bold leading-snug">{timeline.hook}</p>
+      <div className="mt-3 flex items-center justify-between">
+        <RecommendedBadge reason="Opens with a strong first line to stop the scroll." />
+        <ChangeButton onClick={() => setHookSheet(true)} />
+      </div>
+    </Card>
+  )
+  const sceneList = timeline.scenes.map((s) => (
+    <SceneCard key={s.scene_number} scene={s} onChange={() => setEditScene(s)} />
+  ))
+  const recordCta = (
+    <PrimaryButton onClick={() => nav(`/v2/capture/${id}?mode=record`)}>Record</PrimaryButton>
+  )
+  const uploadCta = (
+    <button onClick={() => nav(`/v2/capture/${id}?mode=upload`)}
+      className="w-full rounded-2xl bg-white/10 border border-white/15 text-cream font-semibold py-4 hover:bg-white/20 active:scale-[0.99] transition">
+      Upload a clip
+    </button>
+  )
+
   return (
-    <ScreenLayout
-      title="Your video plan"
-      subtitle={`${timeline.scenes.length} scenes · about ${Math.round(timeline.total_duration_sec)}s`}
-      onBack={() => nav('/v2')}
-      cta={
-        <div className="grid grid-cols-2 gap-2">
-          <PrimaryButton onClick={() => nav(`/v2/capture/${id}?mode=record`)}>Record</PrimaryButton>
-          <button onClick={() => nav(`/v2/capture/${id}?mode=upload`)}
-            className="w-full rounded-2xl bg-white/10 border border-white/15 text-cream font-semibold py-4 hover:bg-white/20 active:scale-[0.99] transition">
-            Upload a clip
-          </button>
-        </div>
-      }
-    >
-      {/* Hero: the hook */}
-      <Card className="bg-gradient-to-br from-ink2 to-ink text-cream border border-white/10">
-        <div className="text-xs text-sand/60 mb-1">Your hook</div>
-        <p className="text-lg font-bold leading-snug">{timeline.hook}</p>
-        <div className="mt-3 flex items-center justify-between">
-          <RecommendedBadge reason="Opens with a strong first line to stop the scroll." />
-          <ChangeButton onClick={() => setHookSheet(true)} />
-        </div>
-      </Card>
+    <>
+      {/* MOBILE — the shared ScreenLayout shell, unchanged. */}
+      <div className="lg:hidden">
+        <ScreenLayout
+          title="Your video plan"
+          subtitle={`${timeline.scenes.length} scenes · about ${Math.round(timeline.total_duration_sec)}s`}
+          onBack={() => nav('/v2')}
+          cta={<div className="grid grid-cols-2 gap-2">{recordCta}{uploadCta}</div>}
+        >
+          {hookCard}
+          <div className="text-sm font-semibold text-sand/70 pt-1">Your scenes</div>
+          {sceneList}
+        </ScreenLayout>
+      </div>
 
-      <div className="text-sm font-semibold text-sand/70 pt-1">Your scenes</div>
-      {timeline.scenes.map((s) => (
-        <SceneCard key={s.scene_number} scene={s} onChange={() => setEditScene(s)} />
-      ))}
+      {/* DESKTOP — a real two-pane studio: a scrollable content column (hook +
+          scenes) and a fixed summary/CTA rail, not the mobile shell stretched wide. */}
+      <div className="hidden min-h-[100dvh] w-full bg-ink text-cream lg:flex lg:flex-col">
+        <div className="flex items-center gap-3 px-8 pt-6 pb-2">
+          <button onClick={() => nav('/v2')} aria-label="Back" className="h-9 w-9 grid place-items-center rounded-full bg-white/10 border border-white/15 hover:bg-white/20 transition">←</button>
+          <div>
+            <h1 className="text-lg font-bold text-cream">Your video plan</h1>
+            <p className="text-xs text-sand/70">{timeline.scenes.length} scenes · about {Math.round(timeline.total_duration_sec)}s</p>
+          </div>
+        </div>
+        <div className="mx-auto flex w-full max-w-5xl flex-1 gap-10 px-8 pb-8 pt-4">
+          <div className="min-w-0 flex-1 space-y-4 overflow-y-auto pb-4">
+            {hookCard}
+            <div className="text-sm font-semibold text-sand/70 pt-1">Your scenes</div>
+            {sceneList}
+          </div>
+          <div className="w-[20rem] shrink-0 space-y-4">
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+              <p className="text-xs text-sand/60 uppercase tracking-wide font-semibold">Ready to shoot</p>
+              <p className="mt-1 text-sm text-white/80">{timeline.scenes.length} scenes · about {Math.round(timeline.total_duration_sec)}s total</p>
+              <div className="mt-4 space-y-2">
+                {recordCta}
+                {uploadCta}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      {/* Hook alternates sheet */}
+      {/* Hook alternates sheet — shared by both trees. */}
       <BottomSheet open={hookSheet} title="Pick your hook" onClose={() => setHookSheet(false)}>
         {[timeline.hook, ...hookOptions.filter((h) => h !== timeline.hook)].slice(0, 4).map((h, i) => (
           <SheetOption key={i} label={h} selected={h === timeline.hook}
@@ -100,7 +146,7 @@ export default function V2Plan() {
         ))}
       </BottomSheet>
 
-      {/* Scene detail / edit sheet */}
+      {/* Scene detail / edit sheet — shared by both trees. */}
       <BottomSheet open={!!editScene} title={`Scene ${editScene?.scene_number ?? ''}`} onClose={() => setEditScene(null)}>
         {editScene && (
           <div className="space-y-3">
@@ -128,6 +174,6 @@ export default function V2Plan() {
           </div>
         )}
       </BottomSheet>
-    </ScreenLayout>
+    </>
   )
 }

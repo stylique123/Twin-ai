@@ -77,17 +77,17 @@ export default function V2Building() {
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
 
   return (
-    <div className="relative min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-gradient-to-b from-ink to-ink2 text-cream overflow-x-hidden">
+    <div className="relative min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-gradient-to-b from-ink to-ink2 text-cream overflow-x-hidden lg:max-w-2xl">
       {/* Skeleton of the Plan screen behind the loader */}
-      <div className="absolute inset-0 opacity-[0.12] p-4 space-y-3 pointer-events-none">
+      <div className="absolute inset-0 opacity-[0.12] p-4 space-y-3 pointer-events-none lg:p-0 lg:pt-24">
         <Skeleton className="h-40 w-full" />
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-20 w-full" />
       </div>
 
-      <div className="relative px-5 pt-10 pb-8">
-        <h1 className="text-xl font-bold">Building your video plan</h1>
+      <div className="relative px-5 pt-10 pb-8 lg:px-0 lg:pt-16">
+        <h1 className="text-xl font-bold lg:text-2xl">Building your video plan</h1>
         <p className="text-sm text-white/60 mt-1">{echo}</p>
 
         <div className="mt-8">
