@@ -84,6 +84,50 @@ export async function applyLogo(inFile: string, logoFile: string): Promise<strin
   }
 }
 
+// Transcribe ONE window of the source video (the recorded seconds for a single
+// scene/shot) and return its words with timestamps offset back onto the FULL
+// timeline. Used (env-gated) so per-scene/per-shot captions get real detected
+// word boundaries instead of an even spread across the window — a long or
+// unevenly-paced line no longer drifts out of sync with the speech. Best-effort:
+// any failure (bad ffmpeg slice, whisper error, no speech detected) returns an
+// empty array so the caller falls back to the even-spread timing.
+async function transcribeWindow(dir: string, videoFile: string, start: number, end: number): Promise<Word[]> {
+  const tag = `${Math.round(start * 1000)}-${Math.round(end * 1000)}`
+  const wav = join(dir, `w-${tag}.wav`)
+  const json = join(dir, `w-${tag}.json`)
+  try {
+    const dur = Math.max(0.2, end - start)
+    await run('ffmpeg', ['-y', '-ss', String(start), '-i', videoFile, '-t', String(dur), '-vn', '-ac', '1', '-ar', '16000', wav], 60_000)
+    await run(
+      'python3',
+      [join(import.meta.dirname, '..', 'whisper_transcribe.py'),
+       '--audio', wav, '--out', json,
+       '--model', env.whisperModel, '--device', env.whisperDevice,
+       '--language', env.whisperLanguage, '--beam-size', '1',
+       '--max-seconds', String(Math.ceil(dur) + 1)],
+      60_000,
+    )
+    const tr = JSON.parse(await readFile(json, 'utf8')) as { words?: Word[] }
+    return (tr.words ?? [])
+      .filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end))
+      .map((w) => ({ w: w.w, start: start + w.start, end: start + w.end }))
+  } catch {
+    return []
+  } finally {
+    await unlink(wav).catch(() => {})
+    await unlink(json).catch(() => {})
+  }
+}
+
+// Even-spread fallback: lay the line's tokens end-to-end across [s0,s1] with a
+// small lead-in, clamped to a sane minimum per-word duration.
+function evenSpreadWords(line: string, s0: number, s1: number): Word[] {
+  const toks = String(line ?? '').split(/\s+/).filter(Boolean)
+  if (!toks.length) return []
+  const per = Math.max(0.12, (s1 - s0 - 0.2) / toks.length)
+  return toks.map((w, k) => ({ w, start: s0 + 0.1 + k * per, end: s0 + 0.1 + (k + 1) * per }))
+}
+
 export interface EditResult {
   outFile: string
   durationSec: number
@@ -696,27 +740,33 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       let cursor = 0
       for (const seg of segs) {
         const segDur = seg.end - seg.start
-        const toks = String(seg.line ?? '').split(/\s+/).filter(Boolean)
-        if (toks.length) {
-          const per = Math.max(0.12, (segDur - 0.2) / toks.length)
-          toks.forEach((w, k) => words.push({ w, start: cursor + 0.1 + k * per, end: cursor + 0.1 + (k + 1) * per }))
-        }
+        const line = String(seg.line ?? '')
+        // EDIT_WINDOW_WHISPER: transcribe THIS window's real audio for exact timing;
+        // fall back to the even spread if it fails or the window has no detected
+        // speech (e.g. a silent beat scene with only on-screen text).
+        const detected = line.trim() && env.editWindowWhisper
+          ? await transcribeWindow(dir, base, cursor, cursor + segDur)
+          : []
+        words.push(...(detected.length ? detected : evenSpreadWords(line, cursor, cursor + segDur)))
         cursor += segDur
       }
       durationSec = cursor
     } else if (captions && opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
       // Per-shot capture: caption each segment from its SCRIPT line, timed to the
-      // window the creator recorded it in. Perfect captions, no transcription guessing.
+      // window the creator recorded it in.
       prog('transcribing', 42, 'Captioning your shots…')
       const sh = opts.shots
       durationSec = sh.total
       const cuts = [0, ...sh.bounds.filter((n) => Number.isFinite(n) && n > 0 && n < sh.total).sort((a, b) => a - b), sh.total]
       for (let i = 0; i < cuts.length - 1; i++) {
-        const toks = String(sh.lines[i] ?? '').split(/\s+/).filter(Boolean)
-        if (!toks.length) continue
+        const line = String(sh.lines[i] ?? '')
         const s0 = cuts[i], s1 = cuts[i + 1]
-        const per = Math.max(0.12, (s1 - s0 - 0.2) / toks.length)
-        toks.forEach((w, k) => words.push({ w, start: s0 + 0.1 + k * per, end: s0 + 0.1 + (k + 1) * per }))
+        // Same env-gated real-timing upgrade as the Retake path above (base ===
+        // takeFile here — this branch never jump-cuts, see the note above).
+        const detected = line.trim() && env.editWindowWhisper
+          ? await transcribeWindow(dir, base, s0, s1)
+          : []
+        words.push(...(detected.length ? detected : evenSpreadWords(line, s0, s1)))
       }
     } else if (captions) {
       prog('transcribing', 42, 'Reading your words…')
