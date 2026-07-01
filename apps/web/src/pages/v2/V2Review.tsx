@@ -123,83 +123,96 @@ export default function V2Review() {
     setParams(new URLSearchParams({ job: newJobId }))
   }
 
-  return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-ink text-cream flex flex-col overflow-x-hidden">
-      <div className="flex items-center justify-between px-4 pt-4">
-        <button onClick={() => nav(`/v2/plan/${id}`)} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10">←</button>
-        <span className="text-sm text-white/70 truncate">Your video</span>
-        <button aria-label="Download" disabled={!videoUrl} onClick={() => videoUrl && window.open(videoUrl, '_blank')} className="h-11 w-11 grid place-items-center rounded-full bg-white/10 disabled:opacity-30">↓</button>
-      </div>
-
-      <div className="px-4 pt-3">
-        <div className="relative aspect-[9/16] w-full max-w-[460px] mx-auto rounded-2xl overflow-hidden bg-ink2 shadow-2xl">
-          {phase === 'done' && videoUrl ? (
-            <video ref={videoRef} src={videoUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline controls />
-          ) : phase === 'failed' ? (
-            <div className="absolute inset-0 grid place-items-center text-center px-6">
-              <div>
-                <p className="text-white/80 font-medium">We couldn't finish the edit</p>
-                <p className="text-xs text-white/50 mt-1">{label}</p>
-                <button onClick={retry} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Re-record & try again</button>
-              </div>
-            </div>
-          ) : (
-            <div className="absolute inset-0 grid place-items-center text-center px-6">
-              <div className="w-full">
-                <Loader2 className="h-8 w-8 mx-auto animate-spin text-coral mb-2" />
-                <p className="mt-3 text-sm text-white/80">{label}</p>
-                <div className="mt-3 mx-auto h-1.5 w-40 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full bg-white transition-all" style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+  // The actions rail — Download/Publish, the caption/fine-tune/navigate toolbar, and
+  // the scene chip strip. Shared content, laid out below the video on phone and in a
+  // fixed side rail on desktop (matching V2Capture's two-pane convention).
+  const actionsRail = (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-2">
+        <button disabled={!videoUrl} onClick={() => videoUrl && window.open(videoUrl, '_blank')}
+          className="rounded-2xl bg-cream text-ink font-semibold py-4 disabled:opacity-40 hover:bg-cream/90 active:scale-[0.99] transition-all">Download</button>
+        <button disabled={!videoUrl} onClick={() => setPublishSheet(true)}
+          className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40 hover:bg-emerald-600 active:scale-[0.99] transition-all">Publish</button>
       </div>
 
       {timeline && (
-        <div className="px-4 pt-3 flex gap-2 overflow-x-auto scrollbar-none">
+        <div className="flex gap-2 overflow-x-auto scrollbar-none lg:flex-wrap">
           {timeline.scenes.map((s) => (
             <div key={s.scene_number} className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/70">Scene {s.scene_number}</div>
           ))}
         </div>
       )}
 
-      <div className="flex-1" />
+      {/* Wired Action Toolbar */}
+      <div className="flex items-center justify-center gap-6 text-sm text-white/60 lg:flex-col lg:items-stretch lg:gap-2 lg:text-left">
+        <button onClick={() => setCaptionSheet(true)} className="hover:text-white transition-colors lg:rounded-xl lg:border lg:border-white/10 lg:px-3 lg:py-2.5">Captions</button>
 
-      <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 space-y-4">
-        <div className="grid grid-cols-2 gap-2">
-          <button disabled={!videoUrl} onClick={() => videoUrl && window.open(videoUrl, '_blank')}
-            className="rounded-2xl bg-cream text-ink font-semibold py-4 disabled:opacity-40 hover:bg-cream/90 active:scale-[0.99] transition-all">Download</button>
-          <button disabled={!videoUrl} onClick={() => setPublishSheet(true)}
-            className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40 hover:bg-emerald-600 active:scale-[0.99] transition-all">Publish</button>
+        <button
+          onClick={() => setRefineOpen(true)}
+          disabled={!takePath || !refineEdl || refineLoading}
+          className="flex items-center gap-1.5 hover:text-white disabled:opacity-30 transition-all lg:rounded-xl lg:border lg:border-white/10 lg:px-3 lg:py-2.5"
+        >
+          <SlidersHorizontal className="h-3.5 w-3.5" /> Fine-Tune
+        </button>
+
+        <button onClick={() => nav('/v2')} className="hover:text-white transition-colors lg:rounded-xl lg:border lg:border-white/10 lg:px-3 lg:py-2.5">Make another</button>
+        <button onClick={() => nav('/dashboard')} className="hover:text-white transition-colors font-medium text-coral lg:rounded-xl lg:border lg:border-coral/30 lg:px-3 lg:py-2.5">Dashboard</button>
+      </div>
+    </div>
+  )
+
+  return (
+    // Surface-aware shell, matching V2Capture: phone = single centered column;
+    // desktop (lg) = a two-pane studio — the video stage on the left, a fixed
+    // actions rail on the right. Not the phone layout stretched wide.
+    <div className="min-h-[100dvh] w-full bg-ink text-cream overflow-x-hidden">
+      <div className="mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl lg:flex-row lg:items-center lg:gap-10 lg:px-8">
+        <div className="flex flex-1 flex-col lg:min-w-0 lg:py-6">
+          <div className="flex items-center justify-between px-4 pt-4 lg:px-0 lg:pt-0">
+            <button onClick={() => nav(`/v2/plan/${id}`)} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 hover:bg-white/20">←</button>
+            <span className="text-sm text-white/70 truncate lg:hidden">Your video</span>
+            <button aria-label="Download" disabled={!videoUrl} onClick={() => videoUrl && window.open(videoUrl, '_blank')} className="h-11 w-11 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 lg:hidden">↓</button>
+          </div>
+
+          <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-ink2 shadow-2xl lg:my-0 lg:flex-none lg:h-[82vh] lg:max-h-[82vh] lg:w-auto lg:max-w-none">
+            {phase === 'done' && videoUrl ? (
+              <video ref={videoRef} src={videoUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline controls />
+            ) : phase === 'failed' ? (
+              <div className="absolute inset-0 grid place-items-center text-center px-6">
+                <div>
+                  <p className="text-white/80 font-medium">We couldn't finish the edit</p>
+                  <p className="text-xs text-white/50 mt-1">{label}</p>
+                  <button onClick={retry} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Re-record & try again</button>
+                </div>
+              </div>
+            ) : (
+              <div className="absolute inset-0 grid place-items-center text-center px-6">
+                <div className="w-full">
+                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-coral mb-2" />
+                  <p className="mt-3 text-sm text-white/80">{label}</p>
+                  <div className="mt-3 mx-auto h-1.5 w-40 rounded-full bg-white/10 overflow-hidden">
+                    <div className="h-full bg-white transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        
-        {/* Wired Action Toolbar */}
-        <div className="flex items-center justify-center gap-6 text-sm text-white/60">
-          <button onClick={() => setCaptionSheet(true)} className="hover:text-white transition-colors">Captions</button>
-          
-          <button 
-            onClick={() => setRefineOpen(true)} 
-            disabled={!takePath || !refineEdl || refineLoading}
-            className="flex items-center gap-1.5 hover:text-white disabled:opacity-30 transition-all"
-          >
-            <SlidersHorizontal className="h-3.5 w-3.5" /> Fine-Tune
-          </button>
-          
-          <button onClick={() => nav('/v2')} className="hover:text-white transition-colors">Make another</button>
-          <button onClick={() => nav('/dashboard')} className="hover:text-white transition-colors font-medium text-coral">Dashboard</button>
+
+        {/* ACTIONS RAIL — below the video on phone, a fixed side panel on desktop */}
+        <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
+          {actionsRail}
         </div>
       </div>
 
       {/* Wired Subtitle Style Sheet */}
       <BottomSheet open={captionSheet} title="Caption style" onClose={() => setCaptionSheet(false)}>
         {CAPTION_STYLE_OPTIONS.map((style) => (
-          <SheetOption 
-            key={style.id} 
-            label={style.label} 
-            selected={refineEdl?.captions?.style === style.id} 
-            onPick={() => applyCaptionStyle(style.id)} 
+          <SheetOption
+            key={style.id}
+            label={style.label}
+            selected={refineEdl?.captions?.style === style.id}
+            onPick={() => applyCaptionStyle(style.id)}
           />
         ))}
       </BottomSheet>
