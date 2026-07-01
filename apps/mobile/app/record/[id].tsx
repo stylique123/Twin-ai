@@ -10,6 +10,7 @@ import {
   getGeneration,
   pollEditJob,
   loadTimeline,
+  sceneTimeCapSec,
   teleprompterScenes,
   WPM_LABEL,
   WPM_PRESETS,
@@ -143,11 +144,11 @@ export default function Record() {
   // keep the cap timer pointing at the latest closure
   useEffect(() => { nextSceneRef.current = nextScene })
 
-  // Auto-stop the scene when it hits its time cap (the script estimate + a short
-  // grace, clamped to short-form length) so a read can never run forever.
+  // Auto-stop the scene when it hits its time cap (shared with web — @twinai/shared)
+  // so a read can never run forever.
   useEffect(() => {
     if (phase !== 'recording') return
-    const limit = Math.min(Math.max(Math.round(estimateDurationSec(scene?.dialogue ?? null, wpm)) + 5, 12), 30)
+    const limit = sceneTimeCapSec(Math.round(estimateDurationSec(scene?.dialogue ?? null, wpm)))
     const h = setTimeout(() => nextSceneRef.current(), limit * 1000)
     return () => clearTimeout(h)
   }, [phase, i, scene, wpm])
