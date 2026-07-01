@@ -227,6 +227,42 @@ export function extractVideoUrls(items: Record<string, unknown>[], max = 5): str
     .map((r) => r.url)
 }
 
+// Pull post thumbnail/cover image URLs (highest reach first) so the DNA synth can
+// READ the creator's real brand palette from their actual imagery (Gemini vision)
+// instead of guessing colors from captions. Covers the IG/YT actor field shapes.
+export function extractImageUrls(items: Record<string, unknown>[], max = 4): string[] {
+  const firstUrl = (v: unknown): string => {
+    if (typeof v === 'string') return v
+    if (Array.isArray(v)) {
+      for (const el of v) {
+        if (typeof el === 'string' && el) return el
+        if (el && typeof el === 'object') {
+          const u = (el as Record<string, unknown>).url ?? (el as Record<string, unknown>).src
+          if (typeof u === 'string' && u) return u
+        }
+      }
+    }
+    return ''
+  }
+  const refs = (items ?? [])
+    .map((it) => ({
+      // IG: displayUrl / images[] / thumbnailSrc · YT: thumbnailUrl / thumbnails[]
+      // · TikTok covers are handled on the worker DNA path.
+      url:
+        pick(it, ['displayUrl', 'thumbnailUrl', 'thumbnailSrc', 'thumbnail', 'videoMeta.coverUrl', 'coverUrl']) ||
+        firstUrl(get(it, 'images')) ||
+        firstUrl(get(it, 'thumbnails')),
+      reach: pickNum(it, ['playCount', 'videoViewCount', 'viewCount', 'views', 'diggCount', 'likesCount', 'stats.playCount']),
+    }))
+    .filter((r) => /^https:\/\//i.test(r.url))
+  const seen = new Set<string>()
+  return refs
+    .sort((a, b) => b.reach - a.reach)
+    .filter((r) => (seen.has(r.url) ? false : (seen.add(r.url), true)))
+    .slice(0, max)
+    .map((r) => r.url)
+}
+
 // The creator's profile bio/nickname is some of the richest voice signal we get —
 // most actors stamp it on every item (TikTok: authorMeta.*, IG: ownerFullName/biography).
 export function extractProfileBio(items: Record<string, unknown>[]): string {
@@ -340,13 +376,18 @@ Hard rules:
 - vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each drawing on a DIFFERENT hook_pattern and using their vocabulary.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
 - If the sample is thin, infer sensibly from what's there rather than refusing. For pov/enemy specifically, prefer a shorter honest list over inventing beliefs the posts do not show.
-- brand_colors = this creator's brand palette as #RRGGBB hex: primary (their dominant brand color), secondary (a supporting color), highlight (the punchy accent best for caption emphasis). Infer it from their niche, aesthetic, vibe and any visual cues in the captions/bio. Return real, distinct, legible hex values (the highlight must read clearly as bright caption text on video). If you truly cannot tell, return an empty object.`
+- brand_colors = this creator's brand palette as #RRGGBB hex: primary (their dominant brand color), secondary (a supporting color), highlight (the punchy accent best for caption emphasis). When sample post images are attached, READ the palette straight from the imagery — the real, recurring colors you actually SEE across their posts (backgrounds, graphics, wardrobe, product, logo), not a guess. Pick the colors that define their look, not incidental ones (skin tones, plain white/black unless that truly IS the brand). With no images, infer from niche, aesthetic and visual cues in the captions/bio. Return real, distinct, legible hex values (the highlight must read clearly as bright caption text on video). If you truly cannot tell, return an empty object.`
+
+// A post image sent to the model as inline base64 so the synth can read the real
+// brand palette from the creator's actual imagery (Gemini vision).
+export interface InlineImage { mimeType: string; data: string }
 
 export async function synthesizeVoice(
   handle: string,
   platform: Platform,
   posts: PostSample[],
   bio = '',
+  images: InlineImage[] = [],
 ): Promise<unknown> {
   const apiKey = Deno.env.get('GEMINI_API_KEY')
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
@@ -366,11 +407,18 @@ export async function synthesizeVoice(
     })
     .join('\n')
 
+  const visionNote = images.length
+    ? `\n\n${images.length} sample post image(s) are attached below. Read brand_colors from the ACTUAL imagery — the real, recurring brand colors you SEE across them.`
+    : ''
   const prompt = `CREATOR: @${handle} on ${platform}
 ${bio ? `PROFILE BIO: ${bio}\n` : ''}RECENT POSTS (caption/text + hashtags + rough reach):
 ${corpus || '(no captions available — infer a sensible starting voice from the handle, bio, and platform)'}
 
-Synthesize this creator's voice profile.`
+Synthesize this creator's voice profile.${visionNote}`
+
+  // Text first, then any post images as inline data (Gemini vision reads the palette).
+  const userParts: Array<Record<string, unknown>> = [{ text: prompt }]
+  for (const img of images) userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
 
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 60_000)
@@ -383,7 +431,7 @@ Synthesize this creator's voice profile.`
         headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: SYSTEM }] },
-          contents: [{ role: 'user', parts: [{ text: prompt }] }],
+          contents: [{ role: 'user', parts: userParts }],
           generationConfig: {
             temperature: 0.7,
             maxOutputTokens: 8192,

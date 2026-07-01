@@ -14,6 +14,7 @@ import {
   cors,
   extractPosts,
   computeStats,
+  extractImageUrls,
   extractProfileBio,
   extractVideoUrls,
   isPrivateProfile,
@@ -21,10 +22,40 @@ import {
   pollApifyRun,
   postsOwnedBy,
   synthesizeVoice,
+  type InlineImage,
   type Platform,
 } from '../_shared/dna.ts'
 
 const MAX_ATTEMPTS = Number(Deno.env.get('DNA_MAX_POLLS') ?? '60')
+
+// Best-effort: fetch a few post thumbnails so the synth can read the real palette
+// from the imagery (Gemini vision). Some CDNs (e.g. Instagram's scontent) can 403 a
+// server IP — we simply skip any that fail and fall back to caption-only inference.
+async function fetchInlineImages(urls: string[], max = 4): Promise<InlineImage[]> {
+  const out: InlineImage[] = []
+  for (const url of urls.slice(0, max)) {
+    try {
+      const ctrl = new AbortController()
+      const t = setTimeout(() => ctrl.abort(), 6000)
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36' },
+      })
+      clearTimeout(t)
+      if (!res.ok) continue
+      const mimeType = res.headers.get('content-type') || 'image/jpeg'
+      if (!mimeType.startsWith('image/')) continue
+      const buf = new Uint8Array(await res.arrayBuffer())
+      if (!buf.byteLength || buf.byteLength > 3_000_000) continue // thumbnails are small; skip huge originals
+      let bin = ''
+      for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i])
+      out.push({ mimeType, data: btoa(bin) })
+    } catch {
+      // skip this image — never let a bad thumbnail fail the whole synthesis
+    }
+  }
+  return out
+}
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -158,17 +189,23 @@ Deno.serve(async (req: Request) => {
       .maybeSingle()
     if (!claim) return json({ status: 'building' })
 
-    const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts, bio)
+    // Read the real brand palette from the creator's actual post imagery (Gemini
+    // vision) instead of guessing from captions. Best-effort — skipped images just
+    // fall back to caption-only color inference.
+    const inlineImages = await fetchInlineImages(extractImageUrls(ownItems, 4))
+    const profile = await synthesizeVoice(voice.handle, voice.platform as Platform, posts, bio, inlineImages)
     const stats = computeStats(ownItems, posts)
 
-    // Auto-fill the brand palette from the inferred colors — but NEVER clobber a
-    // palette the creator set by hand. Only valid #RRGGBB values are kept.
+    // Auto-fill the brand palette from the colors read off the imagery — but NEVER
+    // clobber a palette the creator hand-picked ('manual'). A previously auto-learned
+    // palette (or a legacy one with no source) IS refreshed, so re-scanning fixes an
+    // earlier wrong guess. Only valid #RRGGBB values are kept.
     const hex = (v: unknown) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim()) ? v.trim() : undefined)
     const bc = (profile as { brand_colors?: { primary?: unknown; secondary?: unknown; highlight?: unknown } } | null)?.brand_colors
     const inferred = bc ? Object.fromEntries(Object.entries({ primary: hex(bc.primary), secondary: hex(bc.secondary), highlight: hex(bc.highlight) }).filter(([, v]) => v)) : {}
-    const existingKit = (voice.brand_kit as { palette?: Record<string, string> } | null) ?? null
-    const brandKitPatch = (!existingKit?.palette && Object.keys(inferred).length)
-      ? { brand_kit: { ...existingKit, palette: inferred } }
+    const existingKit = (voice.brand_kit as { palette?: Record<string, string>; palette_source?: string } | null) ?? null
+    const brandKitPatch = (existingKit?.palette_source !== 'manual' && Object.keys(inferred).length)
+      ? { brand_kit: { ...existingKit, palette: inferred, palette_source: 'auto' } }
       : {}
 
     await admin
