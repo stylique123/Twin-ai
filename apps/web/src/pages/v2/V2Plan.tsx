@@ -70,15 +70,15 @@ export default function V2Plan() {
         <div className="grid grid-cols-2 gap-2">
           <PrimaryButton onClick={() => nav(`/v2/capture/${id}?mode=record`)}>Record</PrimaryButton>
           <button onClick={() => nav(`/v2/capture/${id}?mode=upload`)}
-            className="w-full rounded-2xl bg-white border border-stone-300 text-stone-800 font-semibold py-4 active:scale-[0.99] transition">
+            className="w-full rounded-2xl bg-white/10 border border-white/15 text-cream font-semibold py-4 hover:bg-white/20 active:scale-[0.99] transition">
             Upload a clip
           </button>
         </div>
       }
     >
       {/* Hero: the hook */}
-      <Card className="bg-gradient-to-br from-stone-900 to-stone-700 text-white border-none">
-        <div className="text-xs text-white/60 mb-1">Your hook</div>
+      <Card className="bg-gradient-to-br from-ink2 to-ink text-cream border border-white/10">
+        <div className="text-xs text-sand/60 mb-1">Your hook</div>
         <p className="text-lg font-bold leading-snug">{timeline.hook}</p>
         <div className="mt-3 flex items-center justify-between">
           <RecommendedBadge reason="Opens with a strong first line to stop the scroll." />
@@ -86,7 +86,7 @@ export default function V2Plan() {
         </div>
       </Card>
 
-      <div className="text-sm font-semibold text-stone-500 pt-1">Your scenes</div>
+      <div className="text-sm font-semibold text-sand/70 pt-1">Your scenes</div>
       {timeline.scenes.map((s) => (
         <SceneCard key={s.scene_number} scene={s} onChange={() => setEditScene(s)} />
       ))}
@@ -104,18 +104,18 @@ export default function V2Plan() {
       <BottomSheet open={!!editScene} title={`Scene ${editScene?.scene_number ?? ''}`} onClose={() => setEditScene(null)}>
         {editScene && (
           <div className="space-y-3">
-            <label className="block text-xs font-semibold text-stone-500">What you say</label>
+            <label className="block text-xs font-semibold text-sand/70">What you say</label>
             <textarea
               defaultValue={editScene.dialogue ?? ''}
               rows={3}
               id="scene-dialogue"
-              className="w-full rounded-xl border border-stone-200 p-3 text-stone-900 outline-none"
+              className="w-full rounded-xl border border-white/15 bg-white/5 p-3 text-cream outline-none focus:border-teal"
             />
-            <label className="block text-xs font-semibold text-stone-500">Caption on screen</label>
+            <label className="block text-xs font-semibold text-sand/70">Caption on screen</label>
             <input
               defaultValue={editScene.caption_text}
               id="scene-caption"
-              className="w-full rounded-xl border border-stone-200 p-3 text-stone-900 outline-none"
+              className="w-full rounded-xl border border-white/15 bg-white/5 p-3 text-cream outline-none focus:border-teal"
             />
             <PrimaryButton onClick={() => {
               const d = (document.getElementById('scene-dialogue') as HTMLTextAreaElement)?.value ?? ''

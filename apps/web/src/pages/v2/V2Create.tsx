@@ -42,13 +42,13 @@ export default function V2Create() {
           onChange={(e) => setInput(e.target.value)}
           rows={4}
           placeholder="Paste a video link, or type what your video is about…"
-          className="w-full resize-none bg-transparent outline-none text-stone-900 placeholder:text-stone-400"
+          className="w-full resize-none bg-transparent outline-none text-cream placeholder:text-sand/40"
         />
       </Card>
 
       <div className="flex items-center justify-between">
         <RecommendedBadge reason="We'll read it and plan your scenes automatically." />
-        <button onClick={() => setAdvanced((v) => !v)} className="text-sm font-medium text-stone-600">
+        <button onClick={() => setAdvanced((v) => !v)} className="text-sm font-medium text-sand hover:text-cream">
           {advanced ? 'Hide options' : 'Advanced ▸'}
         </button>
       </div>
@@ -68,11 +68,11 @@ export default function V2Create() {
 function Choice({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
   return (
     <div>
-      <div className="text-xs font-semibold text-stone-500 mb-1.5">{label}</div>
+      <div className="text-xs font-semibold text-sand/70 mb-1.5">{label}</div>
       <div className="flex gap-2">
         {options.map(([id, text]) => (
           <button key={id} onClick={() => onChange(id)}
-            className={`flex-1 rounded-xl border py-2 text-sm ${value === id ? 'border-stone-900 bg-stone-50 font-medium' : 'border-stone-200 text-stone-600'}`}>
+            className={`flex-1 rounded-xl border py-2 text-sm ${value === id ? 'border-teal bg-teal/10 text-cream font-medium' : 'border-white/15 text-sand hover:bg-white/5'}`}>
             {text}
           </button>
         ))}

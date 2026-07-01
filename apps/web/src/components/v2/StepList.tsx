@@ -15,12 +15,12 @@ export default function StepList({ steps, activeIndex }: { steps: Step[]; active
           <li key={i} className="flex items-center gap-3">
             <span
               className={`h-6 w-6 grid place-items-center rounded-full text-xs font-bold shrink-0 ${
-                done ? 'bg-emerald-500 text-white' : active ? 'bg-stone-900 text-white' : 'bg-stone-200 text-stone-400'
+                done ? 'bg-emerald-500 text-white' : active ? 'bg-teal text-ink' : 'bg-white/10 text-sand/50'
               }`}
             >
               {done ? '✓' : active ? '' : i + 1}
             </span>
-            <span className={`text-sm ${active ? 'text-stone-900 font-medium' : done ? 'text-stone-500' : 'text-stone-400'}`}>
+            <span className={`text-sm ${active ? 'text-cream font-medium' : done ? 'text-sand/70' : 'text-sand/50'}`}>
               {s.label}
               {active && <span className="inline-block ml-1 animate-pulse">…</span>}
             </span>

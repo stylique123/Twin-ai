@@ -77,7 +77,7 @@ export default function V2Building() {
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
 
   return (
-    <div className="relative min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-gradient-to-b from-stone-900 to-stone-800 text-white overflow-x-hidden">
+    <div className="relative min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-gradient-to-b from-ink to-ink2 text-cream overflow-x-hidden">
       {/* Skeleton of the Plan screen behind the loader */}
       <div className="absolute inset-0 opacity-[0.12] p-4 space-y-3 pointer-events-none">
         <Skeleton className="h-40 w-full" />
@@ -95,12 +95,12 @@ export default function V2Building() {
             <div className="rounded-2xl bg-white/10 p-4">
               <p className="font-medium">We hit a snag</p>
               <p className="text-sm text-white/70 mt-1">{error}</p>
-              <button onClick={() => nav('/v2', { replace: true })} className="mt-3 rounded-xl bg-white text-stone-900 font-semibold px-4 py-2 text-sm">
+              <button onClick={() => nav('/v2', { replace: true })} className="mt-3 rounded-xl bg-cream text-ink font-semibold px-4 py-2 text-sm hover:bg-white">
                 Try a different reference
               </button>
             </div>
           ) : (
-            <StepListDark active={active} />
+            <StepList steps={STEPS} activeIndex={active} />
           )}
         </div>
 
@@ -111,15 +111,6 @@ export default function V2Building() {
           </div>
         )}
       </div>
-    </div>
-  )
-}
-
-// StepList on a dark background.
-function StepListDark({ active }: { active: number }) {
-  return (
-    <div className="[&_*]:!text-white/90">
-      <StepList steps={STEPS} activeIndex={active} />
     </div>
   )
 }

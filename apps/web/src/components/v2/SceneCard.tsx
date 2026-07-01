@@ -16,16 +16,16 @@ export default function SceneCard({ scene, onChange }: { scene: Scene; onChange?
   return (
     <Card>
       <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-xs font-semibold text-stone-500">
+        <span className="text-xs font-semibold text-sand/70">
           Scene {scene.scene_number} · {TYPE_LABEL[scene.scene_type]}
         </span>
-        <span className="text-xs text-stone-400">{scene.duration_sec.toFixed(1)}s</span>
+        <span className="text-xs text-sand/50">{scene.duration_sec.toFixed(1)}s</span>
       </div>
 
       {scene.dialogue ? (
-        <p className="text-stone-900 leading-snug">{scene.dialogue}</p>
+        <p className="text-cream leading-snug">{scene.dialogue}</p>
       ) : (
-        <p className="text-stone-500 italic leading-snug">{scene.broll_instruction || 'Visual moment — no talking'}</p>
+        <p className="text-sand/70 italic leading-snug">{scene.broll_instruction || 'Visual moment — no talking'}</p>
       )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
@@ -35,7 +35,7 @@ export default function SceneCard({ scene, onChange }: { scene: Scene; onChange?
       </div>
 
       {onChange && (
-        <button onClick={onChange} className="mt-3 text-sm font-medium text-stone-700 underline underline-offset-2">
+        <button onClick={onChange} className="mt-3 text-sm font-medium text-sand hover:text-cream underline underline-offset-2">
           Change this scene
         </button>
       )}
@@ -44,5 +44,5 @@ export default function SceneCard({ scene, onChange }: { scene: Scene; onChange?
 }
 
 function Tag({ children }: { children: React.ReactNode }) {
-  return <span className="text-[11px] rounded-full bg-stone-100 text-stone-600 px-2 py-0.5">{children}</span>
+  return <span className="text-[11px] rounded-full bg-white/10 text-sand px-2 py-0.5">{children}</span>
 }
