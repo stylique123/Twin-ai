@@ -1,6 +1,39 @@
 import { db, type Job } from '../db.js'
-import { scrapeTikTokPosts } from '../media.js'
+import { scrapeTikTokPosts, type ScrapedPost } from '../media.js'
 import { synthesizeVoiceFromPosts } from '../voice.js'
+import type { InlineImage } from '../gemini.js'
+
+// Best-effort: fetch a few post cover images so the synth can read the real brand
+// palette from the imagery (Gemini vision), mirroring the edge dna-poll function.
+// Any cover that fails to fetch is skipped — falls back to caption-only inference.
+async function fetchInlineImages(urls: string[], max = 4): Promise<InlineImage[]> {
+  const out: InlineImage[] = []
+  for (const url of urls.slice(0, max)) {
+    try {
+      const res = await fetch(url, {
+        signal: AbortSignal.timeout(6000),
+        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36' },
+      })
+      if (!res.ok) continue
+      const mimeType = res.headers.get('content-type') || 'image/jpeg'
+      if (!mimeType.startsWith('image/')) continue
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (!buf.byteLength || buf.byteLength > 3_000_000) continue
+      out.push({ mimeType, data: buf.toString('base64') })
+    } catch {
+      // skip this image — never let a bad thumbnail fail the whole synthesis
+    }
+  }
+  return out
+}
+
+function topCovers(posts: ScrapedPost[], max = 4): string[] {
+  return [...posts]
+    .sort((a, b) => (b.plays || b.likes) - (a.plays || a.likes))
+    .map((p) => p.cover)
+    .filter((u): u is string => typeof u === 'string' && /^https:\/\//i.test(u))
+    .slice(0, max)
+}
 
 // Handles `scrape_dna` jobs — the FREE TikTok DNA build (yt-dlp scrape + caption
 // synth), replacing a paid Apify run for TikTok. The worker updates the brand_voice
@@ -37,9 +70,14 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     )
   }
 
+  // Read the real brand palette from the creator's actual post covers (Gemini
+  // vision) instead of guessing from captions. Best-effort — a fetch failure just
+  // falls back to caption-only color inference.
+  const inlineImages = await fetchInlineImages(topCovers(posts))
+
   let profile: Record<string, unknown>
   try {
-    profile = await synthesizeVoiceFromPosts(handle, platform, posts)
+    profile = await synthesizeVoiceFromPosts(handle, platform, posts, '', inlineImages)
   } catch (err) {
     console.error('scrape_dna: synth failed', err instanceof Error ? err.message : err)
     return await fail('We could not finish building your voice. Please try again or set it up manually.')
@@ -55,7 +93,20 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     avg_views: n ? Math.round(posts.reduce((a, x) => a + (x.plays || 0), 0) / n) : 0,
     avg_likes: n ? Math.round(posts.reduce((a, x) => a + (x.likes || 0), 0) / n) : 0,
   }
-  await db.from('brand_voices').update({ status: 'ready', profile, stats, error: null }).eq('id', voiceId)
+
+  // Auto-fill the brand palette from the colors read off the imagery — but NEVER
+  // clobber a palette the creator hand-picked ('manual'). Mirrors the edge
+  // dna-poll function so IG/YT and TikTok voices behave identically.
+  const hex = (v: unknown) => (typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim()) ? v.trim() : undefined)
+  const bc = (profile as { brand_colors?: { primary?: unknown; secondary?: unknown; highlight?: unknown } } | null)?.brand_colors
+  const inferred = bc ? Object.fromEntries(Object.entries({ primary: hex(bc.primary), secondary: hex(bc.secondary), highlight: hex(bc.highlight) }).filter(([, v]) => v)) : {}
+  const { data: existingVoice } = await db.from('brand_voices').select('brand_kit').eq('id', voiceId).maybeSingle()
+  const existingKit = (existingVoice?.brand_kit as { palette?: Record<string, string>; palette_source?: string } | null) ?? null
+  const brandKitPatch = (existingKit?.palette_source !== 'manual' && Object.keys(inferred).length)
+    ? { brand_kit: { ...existingKit, palette: inferred, palette_source: 'auto' } }
+    : {}
+
+  await db.from('brand_voices').update({ status: 'ready', profile, stats, error: null, ...brandKitPatch }).eq('id', voiceId)
 
   // Data layer: a voice was built (activation funnel).
   if (ownerId) {

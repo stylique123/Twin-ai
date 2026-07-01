@@ -9,6 +9,10 @@ const num = { type: 'NUMBER' }
 
 export { obj, arr, str, num }
 
+// An image sent inline as base64 so the model can read it (Gemini vision) — e.g.
+// a creator's post thumbnail, for reading their real brand palette from pixels.
+export interface InlineImage { mimeType: string; data: string }
+
 export async function geminiJson(
   system: string,
   prompt: string,
@@ -16,6 +20,7 @@ export async function geminiJson(
   timeoutMs = 60_000,
   thinkingBudget?: number,
   model?: string,
+  images: InlineImage[] = [],
 ): Promise<unknown> {
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
   // Per-call model wins (so cheap mechanical tasks can run on a fast/flash model),
@@ -28,9 +33,11 @@ export async function geminiJson(
   const budget = thinkingBudget ?? Number(process.env.GEMINI_THINKING_BUDGET ?? '2048')
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  const parts: Array<Record<string, unknown>> = [{ text: prompt }]
+  for (const img of images) parts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
   const body = JSON.stringify({
     systemInstruction: { parts: [{ text: system }] },
-    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    contents: [{ role: 'user', parts }],
     generationConfig: {
       temperature: 0.4,
       maxOutputTokens: 16384,

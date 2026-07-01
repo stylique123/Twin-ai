@@ -1,4 +1,4 @@
-import { geminiJson, obj, arr, str } from './gemini.js'
+import { geminiJson, obj, arr, str, type InlineImage } from './gemini.js'
 import type { ScrapedPost } from './media.js'
 
 // Re-synthesize a creator's brand voice from their ACTUAL spoken transcripts
@@ -94,6 +94,9 @@ const postsSchema = obj(
     dos: arr(str),
     donts: arr(str),
     sample_hooks: arr(str),
+    // The creator's brand palette as #RRGGBB hex — mirrors the edge function's
+    // synthesizeVoice schema so TikTok voices get the same brand_kit auto-fill.
+    brand_colors: obj({ primary: str, secondary: str, highlight: str }, []),
   },
   ['summary', 'niche', 'sub_niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'hook_patterns', 'vocabulary', 'recurring_ctas', 'pov', 'enemy', 'dos', 'donts', 'sample_hooks'],
 )
@@ -111,13 +114,15 @@ Hard rules:
 - Be concrete and specific to this creator — no generic "be authentic" filler. Every field should be unmistakably about THIS creator and useless for anyone else.
 - vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each drawing on a DIFFERENT hook_pattern and using their vocabulary.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
-- If the sample is thin, infer sensibly from what's there rather than refusing. For pov/enemy specifically, prefer a shorter honest list over inventing beliefs the posts do not show.`
+- If the sample is thin, infer sensibly from what's there rather than refusing. For pov/enemy specifically, prefer a shorter honest list over inventing beliefs the posts do not show.
+- brand_colors = this creator's brand palette as #RRGGBB hex: primary (their dominant brand color), secondary (a supporting color), highlight (the punchy accent best for caption emphasis). When sample post images are attached, READ the palette straight from the imagery — the real, recurring colors you actually SEE across their posts (backgrounds, graphics, wardrobe, product, logo), not a guess. Pick the colors that define their look, not incidental ones (skin tones, plain white/black unless that truly IS the brand). With no images, infer from niche, aesthetic and visual cues in the captions/bio. Return real, distinct, legible hex values (the highlight must read clearly as bright caption text on video). If you truly cannot tell, return an empty object.`
 
 export async function synthesizeVoiceFromPosts(
   handle: string,
   platform: string,
   posts: ScrapedPost[],
   bio = '',
+  images: InlineImage[] = [],
 ): Promise<Record<string, unknown>> {
   // Rank by reach so the model studies their WINNERS first (mirrors the edge synth).
   const ranked = [...posts].sort((a, b) => (b.plays || b.likes) - (a.plays || a.likes)).slice(0, 25)
@@ -131,13 +136,16 @@ export async function synthesizeVoiceFromPosts(
     })
     .join('\n')
 
+  const visionNote = images.length
+    ? `\n\n${images.length} sample post image(s) are attached below. Read brand_colors from the ACTUAL imagery — the real, recurring brand colors you SEE across them.`
+    : ''
   const prompt = `CREATOR: @${handle} on ${platform}
 ${bio ? `PROFILE BIO: ${bio}\n` : ''}RECENT POSTS (caption/text + hashtags + rough reach):
 ${corpus || '(no captions available — infer a sensible starting voice from the handle, bio, and platform)'}
 
-Synthesize this creator's voice profile.`
+Synthesize this creator's voice profile.${visionNote}`
 
   // DNA-specific thinking budget (A/B-proven lossless), matching the edge function.
   const budget = Number(process.env.DNA_THINKING_BUDGET ?? process.env.GEMINI_THINKING_BUDGET ?? '4096')
-  return (await geminiJson(POSTS_SYSTEM, prompt, postsSchema, 60_000, budget)) as Record<string, unknown>
+  return (await geminiJson(POSTS_SYSTEM, prompt, postsSchema, 60_000, budget, undefined, images)) as Record<string, unknown>
 }
