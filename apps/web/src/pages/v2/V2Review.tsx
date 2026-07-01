@@ -5,14 +5,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob } from '../../lib/api'
+import { getGeneration, getJob, signEditUrls, signTakeUrl, fetchEdl, reEditWithEdl, pollEditJob } from '../../lib/api'
 import { loadTimeline } from '../../lib/timelineApi'
 import { CAPTION_STYLE_OPTIONS } from '../../lib/types'
 import { RefinePanel } from '../../components/RefinePanel'
 import { SlidersHorizontal, Loader2 } from 'lucide-react'
 import type { SceneTimeline } from '../../lib/timeline'
 
-type Phase = 'rendering' | 'done' | 'failed'
+// 'timeout' is distinct from 'failed': the CLIENT gave up waiting, but the worker
+// never said the job failed — it may well complete moments later. Must never be
+// treated the same as a real server-reported failure (see the render below).
+type Phase = 'rendering' | 'done' | 'failed' | 'timeout'
 
 export default function V2Review() {
   const { id = '' } = useParams()
@@ -25,6 +28,7 @@ export default function V2Review() {
   const [label, setLabel] = useState('Starting the edit…')
   const [pct, setPct] = useState(5)
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  const [rawUrl, setRawUrl] = useState<string | null>(null) // the raw take — downloadable even while rendering/if it fails
   const [captionSheet, setCaptionSheet] = useState(false)
   const [publishSheet, setPublishSheet] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
@@ -38,6 +42,19 @@ export default function V2Review() {
 
   useEffect(() => { loadTimeline(id).then(setTimeline) }, [id])
 
+  // Fetch + sign the RAW take immediately, independent of the edit job's phase —
+  // so the creator's footage is downloadable from the moment this screen loads,
+  // not stranded behind a still-rendering or failed edit.
+  useEffect(() => {
+    ;(async () => {
+      const g = await getGeneration(id)
+      if (!g?.take_path) return
+      setTakePath(g.take_path)
+      const url = await signTakeUrl(g.take_path)
+      if (url) setRawUrl(url)
+    })()
+  }, [id])
+
   // Real status polling: read the worker's live progress, then the finished video.
   useEffect(() => {
     stopped.current = false
@@ -46,7 +63,6 @@ export default function V2Review() {
       // Prefer the generation's stored edit_path (signed); else the job output_url.
       const g = await getGeneration(id)
       if (g) {
-        setTakePath(g.take_path || null)
         if (g.edl_path) {
           setRefineLoading(true)
           try {
@@ -66,19 +82,51 @@ export default function V2Review() {
       return false
     }
 
+    // One-off status check, callable both from the poll loop's own cadence and
+    // from the visibility listener below — so returning to a backgrounded tab
+    // (where browsers throttle setTimeout heavily) doesn't strand the UI on a
+    // stale "rendering" spinner until the throttled timer eventually fires.
+    const checkNow = async () => {
+      if (!jobId || stopped.current) return
+      const job = await getJob(jobId)
+      if (!job || stopped.current) return
+      if (job.status === 'done' || job.status === 'failed') stopped.current = true
+      if (job.status === 'failed') { setPhase('failed'); setLabel(job.error || 'The edit failed.'); return }
+      if (job.status === 'done') {
+        const url = job.result?.output_url
+        if (url) setVideoUrl(url)
+        await showFinished()
+        setPct(100); setPhase('done')
+        return
+      }
+      const p = job.result?.progress
+      if (p?.label) setLabel(p.label)
+      if (typeof p?.pct === 'number') setPct(Math.max(5, Math.min(99, p.pct)))
+    }
+    const onVisible = () => { if (document.visibilityState === 'visible') void checkNow() }
+    document.addEventListener('visibilitychange', onVisible)
+
     ;(async () => {
       // No job id (e.g. opened directly) → just try to show an existing render.
       if (!jobId) {
         if (await showFinished()) { setPhase('done') } else { setPhase('failed'); setLabel('No render found for this video.') }
         return
       }
+      // The worker's own hard timeout is 35 min (maxJobMs) inside a 40-min lease
+      // (visibilitySecs) — a first edit runs whisper + the Gemini director + b-roll
+      // fetch + up to an 8-min Revideo premium pass, which can genuinely exceed the
+      // OLD 10-minute client cap (300 attempts x 2s). Poll for ~37 min so a real,
+      // still-in-progress render is never mistaken for a failure.
       const job = await pollEditJob(
         jobId,
         (label, pct) => { if (label) setLabel(label); if (pct) setPct(Math.max(5, Math.min(99, pct))) },
-        { attempts: 300, shouldStop: () => stopped.current },
+        { attempts: 1100, shouldStop: () => stopped.current },
       )
       if (stopped.current) return
-      if (!job) { setPhase('failed'); setLabel('Still rendering — check your Library shortly.'); return }
+      // We gave up — but the worker never said it failed. Treat this as DISTINCT
+      // from a real failure: never offer "re-record", which would abandon a job
+      // that may complete (and charge/render) successfully moments later.
+      if (!job) { setPhase('timeout'); setLabel('This is taking longer than usual. Your video may still be processing.'); return }
       if (job.status === 'failed') { setPhase('failed'); setLabel(job.error || 'The edit failed.'); return }
       const url = job.result?.output_url
       if (url) setVideoUrl(url)
@@ -86,7 +134,7 @@ export default function V2Review() {
       setPct(100); setPhase('done')
     })()
 
-    return () => { stopped.current = true }
+    return () => { stopped.current = true; document.removeEventListener('visibilitychange', onVisible) }
   }, [id, jobId])
 
   const retry = () => nav(`/v2/capture/${id}?mode=record`)
@@ -134,6 +182,15 @@ export default function V2Review() {
         <button disabled={!videoUrl} onClick={() => setPublishSheet(true)}
           className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40 hover:bg-emerald-600 active:scale-[0.99] transition-all">Publish</button>
       </div>
+
+      {/* Your raw footage — available the moment this screen loads, regardless of
+          whether the AI edit is still rendering or fails. Never stranded. */}
+      {rawUrl && (
+        <button onClick={() => window.open(rawUrl, '_blank')}
+          className="w-full rounded-2xl border border-white/20 text-cream py-3 text-sm font-medium hover:bg-white/10 transition-all">
+          {phase === 'done' ? 'Download raw video' : 'Download your raw take'}
+        </button>
+      )}
 
       {timeline && (
         <div className="flex gap-2 overflow-x-auto scrollbar-none lg:flex-wrap">
@@ -183,6 +240,18 @@ export default function V2Review() {
                   <p className="text-white/80 font-medium">We couldn't finish the edit</p>
                   <p className="text-xs text-white/50 mt-1">{label}</p>
                   <button onClick={retry} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Re-record & try again</button>
+                </div>
+              </div>
+            ) : phase === 'timeout' ? (
+              // NOT a failure — the worker never said so. Re-recording here would risk
+              // abandoning a job that may still complete (and still charges/renders).
+              // Point at the Library instead, where the finished video will show up.
+              <div className="absolute inset-0 grid place-items-center text-center px-6">
+                <div>
+                  <p className="text-white/80 font-medium">Still working on it</p>
+                  <p className="text-xs text-white/50 mt-1">{label}</p>
+                  <button onClick={() => nav('/dashboard')} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Check my Library</button>
+                  <p className="text-[11px] text-white/40 mt-3">Your raw take is safe to download below either way.</p>
                 </div>
               </div>
             ) : (
