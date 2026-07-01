@@ -11,7 +11,9 @@
 // Only talking scenes (show_in_teleprompter) are recorded; silent b-roll is added
 // by the editor as cutaways. Takes are preserved in-memory across back/exit.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import type { ComponentType } from 'react'
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Type } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
 import { buildTimeline } from '../../lib/timelineAdapter'
@@ -410,30 +412,64 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
   // The live control deck — record button + size/speed/mirror/camera. On desktop the
   // controls stack into a labelled panel; on phone they wrap into a compact row.
+  const canFlipCamera = !recording && activeMsRef.current === 0
+  const recordLabel = recording ? (last ? 'Stop & finish' : 'Stop & next scene') : countdown > 0 ? `Starting in ${countdown}…` : 'Record this scene'
+  const recordBtnClass = `w-full rounded-2xl py-4 font-semibold disabled:opacity-40 ${recording ? 'bg-red-500 text-white' : 'bg-cream text-ink hover:bg-white'}`
+
   const controlDeck = (
     <div className="space-y-3">
-      <button
-        onClick={() => (recording ? finishScene() : beginScene())}
-        disabled={!!camError || countdown > 0}
-        className={`w-full rounded-2xl py-4 font-semibold disabled:opacity-40 ${recording ? 'bg-red-500 text-white' : 'bg-cream text-ink hover:bg-white'}`}
-      >
-        {recording ? (last ? 'Stop & finish' : 'Stop & next scene') : countdown > 0 ? `Starting in ${countdown}…` : 'Record this scene'}
+      <button onClick={() => (recording ? finishScene() : beginScene())} disabled={!!camError || countdown > 0} className={`${recordBtnClass} lg:hidden`}>
+        {recordLabel}
       </button>
-      {/* Self-explanatory, bordered controls (clear on desktop, not bare text). */}
-      <div className="flex flex-wrap items-center justify-center gap-2 text-sm lg:flex-col lg:items-stretch">
-        <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0 || recording} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 disabled:opacity-30 lg:rounded-xl lg:py-2.5 lg:text-left">← Previous scene</button>
-        <div className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1 lg:justify-between lg:rounded-xl lg:px-3 lg:py-2">
+      {/* MOBILE — a compact wrap of pill buttons, touch-target sized. */}
+      <div className="flex flex-wrap items-center justify-center gap-2 text-sm lg:hidden">
+        <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0 || recording} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 disabled:opacity-30">← Previous scene</button>
+        <div className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1">
           <span className="px-1 text-xs text-white/45">Text size</span>
           <span className="inline-flex gap-1">
             <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
             <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-sm font-bold">A+</button>
           </span>
         </div>
-        <button onClick={() => setSpeedSheet(true)} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 lg:rounded-xl lg:py-2.5 lg:text-left">Speed · {wpmVal} wpm</button>
-        <button onClick={() => setMirror((m) => !m)} className={`rounded-full border px-3 py-1.5 hover:bg-white/10 lg:rounded-xl lg:py-2.5 lg:text-left ${mirror ? 'border-teal text-teal' : 'border-white/15 text-white/85'}`}>Mirror: {mirror ? 'on' : 'off'}</button>
-        {!recording && activeMsRef.current === 0 && (
-          <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 lg:rounded-xl lg:py-2.5 lg:text-left">{facing === 'user' ? 'Front camera' : 'Back camera'} · flip</button>
+        <button onClick={() => setSpeedSheet(true)} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10">Speed · {wpmVal} wpm</button>
+        <button onClick={() => setMirror((m) => !m)} className={`rounded-full border px-3 py-1.5 hover:bg-white/10 ${mirror ? 'border-teal text-teal' : 'border-white/15 text-white/85'}`}>Mirror: {mirror ? 'on' : 'off'}</button>
+        {canFlipCamera && (
+          <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10">{facing === 'user' ? 'Front camera' : 'Back camera'} · flip</button>
         )}
+      </div>
+
+      {/* DESKTOP — a real control panel: primary action, then a grouped settings
+          list (icon + label + control per row), the way a desktop capture tool
+          reads — not the mobile pill row stretched wide. */}
+      <div className="hidden lg:block lg:space-y-4">
+        <button onClick={() => (recording ? finishScene() : beginScene())} disabled={!!camError || countdown > 0} className={recordBtnClass}>
+          {recordLabel}
+        </button>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] divide-y divide-white/10 overflow-hidden">
+          <PanelRow icon={ChevronLeft} label="Previous scene">
+            <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0 || recording} className="text-xs font-medium text-white/70 hover:text-cream disabled:opacity-30 disabled:hover:text-white/70">
+              Scene {i + 1} of {scenes.length}
+            </button>
+          </PanelRow>
+          <PanelRow icon={Type} label="Text size">
+            <div className="inline-flex items-center gap-2">
+              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"><Minus className="h-3 w-3" /></button>
+              <span className="w-4 text-center text-xs tabular-nums text-white/70">{fontIdx + 1}</span>
+              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"><Plus className="h-3 w-3" /></button>
+            </div>
+          </PanelRow>
+          <PanelRow icon={Gauge} label="Speed">
+            <button onClick={() => setSpeedSheet(true)} className="text-xs font-medium text-white/70 hover:text-cream">{WPM_LABEL[timeline.wpm]} · {wpmVal} wpm</button>
+          </PanelRow>
+          <PanelRow icon={FlipHorizontal} label="Mirror">
+            <Toggle on={mirror} onClick={() => setMirror((m) => !m)} />
+          </PanelRow>
+          {canFlipCamera && (
+            <PanelRow icon={SwitchCamera} label="Camera">
+              <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="text-xs font-medium text-white/70 hover:text-cream">{facing === 'user' ? 'Front' : 'Back'}</button>
+            </PanelRow>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -572,4 +608,34 @@ function sceneTypeLabel(t?: Scene['scene_type']) {
     case 'screen_recording': return 'Screen recording'
     default: return 'Scene'
   }
+}
+
+// Desktop settings-panel row: icon + label on the left, a compact control on the
+// right — the layout a real desktop tool uses (Descript/CapCut-style sidebar),
+// not a touch-target pill stretched wide.
+function PanelRow({ icon: Icon, label, children }: { icon: ComponentType<{ className?: string }>; label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors">
+      <span className="flex items-center gap-2.5 text-sm text-white/85">
+        <Icon className="h-4 w-4 text-white/50" />
+        {label}
+      </span>
+      {children}
+    </div>
+  )
+}
+
+// A real switch control (mouse-precise), not a colored-border button — reads
+// unambiguously as on/off at a glance, the way a desktop settings panel would.
+function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      role="switch"
+      aria-checked={on}
+      className={`relative h-5 w-9 rounded-full transition-colors ${on ? 'bg-teal' : 'bg-white/15'}`}
+    >
+      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
+    </button>
+  )
 }
