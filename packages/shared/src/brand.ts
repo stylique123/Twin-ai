@@ -15,13 +15,14 @@ export const BRAND = {
 // Free signup + free remixes always work regardless.
 export const PAYMENTS_LIVE = false
 
-// V2 Creative Studio (5-screen flow driven by the Scene Timeline). Off by default
-// so the existing Studio is 100% unchanged. This is the COMPILE-TIME default; the
-// web app also honors a per-deploy override `VITE_STUDIO_V2=true` (read in App.tsx),
-// so V2 can be enabled on a Vercel preview for QA without shipping it to production.
-// Flip this to true (or set the env var in prod) to route /app → /v2. Additive:
-// V1 and V2 share the same generations + worker.
-export const STUDIO_V2 = false
+// V2 Creative Studio (5-screen flow driven by the Scene Timeline) is now the
+// default entry: /app redirects to /v2. The capture step was already unified
+// across every route (V2Capture is the only recorder — the classic scroll
+// recorder was retired), so this flip only changes which CREATE flow is
+// default. The web app still honors a per-deploy override `VITE_STUDIO_V2`
+// (read in App.tsx) to force either flow on a specific preview. Additive: V1's
+// classic Studio route and V2 share the same generations + worker.
+export const STUDIO_V2 = true
 
 // Master switch: one-click posting (platform OAuth) is "Coming soon" until the
 // platform developer-app keys are set. Until then the Calendar shows a clean
