@@ -24,6 +24,7 @@ import {
   WPM_LABEL,
   teleprompterScenes,
   estimateDurationSec,
+  sceneTimeCapSec,
 } from '../../lib/timeline'
 
 // The single scene-by-scene recorder for the web — served at BOTH the live
@@ -122,10 +123,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const wpmVal = WPM_PRESETS[timeline.wpm]
   const readCount = recording ? Math.floor((sceneElapsed / 60) * wpmVal) : -1
   const estSec = Math.max(1, Math.round(estimateDurationSec(scene?.dialogue ?? null, timeline.wpm)))
-  // Hard per-scene cap: the script's estimate plus a short grace, clamped to a sane
-  // short-form range. When a read runs past it we auto-stop → the Retake/Next card,
-  // so a scene can never record forever (and the final clip stays short-form length).
-  const sceneLimit = Math.min(Math.max(estSec + 5, 12), 30)
+  // Hard per-scene cap (shared with mobile — @twinai/shared): when a read runs past
+  // it we auto-stop → the Retake/Next card, so a scene can never record forever.
+  const sceneLimit = sceneTimeCapSec(estSec)
 
   // Tick a per-scene clock only while actively recording THIS scene, and auto-stop
   // the scene the moment it hits its time cap.
