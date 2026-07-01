@@ -73,6 +73,13 @@ export const env = {
   // Pin the spoken language so faster-whisper never mis-detects an English take
   // as Arabic/Urdu/etc and burns in garbage captions. 'auto' restores detection.
   whisperLanguage: (process.env.WHISPER_LANGUAGE ?? 'en').trim(),
+  // Per-scene/per-shot captions default to spreading the script's words EVENLY
+  // across the recorded window — accurate for a steady pace but drifts on a long
+  // line read unevenly. When enabled, each window is transcribed individually
+  // (real word timestamps) and only falls back to the even spread if that window's
+  // audio has no detected speech. Off by default: it trades one whisper pass per
+  // scene for exact timing — verify render time/quality on the VPS before flipping.
+  editWindowWhisper: (process.env.EDIT_WINDOW_WHISPER ?? 'false').trim() === 'true',
   maxMediaSecs: Number(process.env.WORKER_MAX_MEDIA_SECS ?? '900'), // skip > 15 min by default
   // Hard cap on any single Storage download (raw take, b-roll, music bed). The
   // single worker buffers/streams these to disk; an oversized or corrupt object
