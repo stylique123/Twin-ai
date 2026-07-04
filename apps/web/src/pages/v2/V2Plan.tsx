@@ -15,6 +15,7 @@ import { Card, PrimaryButton, RecommendedBadge, ChangeButton, Skeleton } from '.
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import SceneCard from '../../components/v2/SceneCard'
 import { getGeneration } from '../../lib/api'
+import { buildTimeline } from '../../lib/timelineAdapter'
 import { loadTimeline, patchScene, saveTimeline } from '../../lib/timelineApi'
 import type { SceneTimeline, Scene } from '../../lib/timeline'
 import type { Generation } from '../../lib/types'
@@ -31,7 +32,13 @@ export default function V2Plan() {
     ;(async () => {
       const [g, t] = await Promise.all([getGeneration(id), loadTimeline(id)])
       setGen(g)
-      setTimeline(t)
+      // If the timeline wasn't persisted (e.g. the scene_timeline UPDATE grant
+      // isn't applied yet), synthesize it in memory from the blueprint — the SAME
+      // fallback V2Capture uses — so the Plan renders instead of hanging on the
+      // skeleton forever.
+      setTimeline(
+        t ?? (g ? buildTimeline({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook }) : null),
+      )
     })()
   }, [id])
 
