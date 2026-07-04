@@ -1,0 +1,12 @@
+-- Fix: V2 Scene Timeline saves were rejected by column-level privileges.
+-- 0014 did `revoke update on generations from authenticated` then granted only
+-- (selected_hook, edit_style); 0036 added (approved). 0050 added the
+-- scene_timeline jsonb column but never granted UPDATE on it, so the V2 flow's
+-- saveTimeline()/patchScene()/setWpm() `update({ scene_timeline })` hit a
+-- permission denial (42501) — and because V2 build awaits saveTimeline right
+-- after the (credit-charged) blueprint generation, the whole default flow
+-- surfaced a raw Supabase error and dead-ended after spending a recreation.
+-- The row-level update policy already permits the owner's own row (0001) and
+-- workspace peers (0049 broadened generations UPDATE to workspace_peers()); this
+-- adds only the missing column grant so the Scene Timeline can actually persist.
+grant update (scene_timeline) on public.generations to authenticated;

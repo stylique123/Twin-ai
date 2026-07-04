@@ -15,13 +15,24 @@ export async function loadTimeline(generationId: string): Promise<SceneTimeline 
   return (data.scene_timeline as SceneTimeline) ?? null
 }
 
+// Persist is BEST-EFFORT: the Scene Timeline is a convenience cache, not a
+// correctness dependency. The worker falls back to blueprint heuristics when
+// `scene_timeline` is null, and every V2 screen re-synthesizes the timeline in
+// memory via buildTimeline() when a load returns null — so a persist failure
+// (e.g. the column-level UPDATE grant not yet applied) must NOT crash the flow
+// or, worse, strand the user AFTER a credit was already spent. Degrade to
+// in-memory-only and warn; callers keep the returned/updated timeline in state.
 export async function saveTimeline(t: SceneTimeline): Promise<void> {
   const next = { ...t, total_duration_sec: totalDurationSec(t.scenes) }
-  const { error } = await getClient()
-    .from('generations')
-    .update({ scene_timeline: next })
-    .eq('id', t.generation_id)
-  if (error) throw error
+  try {
+    const { error } = await getClient()
+      .from('generations')
+      .update({ scene_timeline: next })
+      .eq('id', t.generation_id)
+    if (error) console.warn('saveTimeline: could not persist scene_timeline (continuing in-memory):', error.message)
+  } catch (e) {
+    console.warn('saveTimeline: persist threw (continuing in-memory):', e)
+  }
 }
 
 // Patch a single scene by number and re-persist the whole timeline (durations
