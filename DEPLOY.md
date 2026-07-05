@@ -99,8 +99,9 @@ Preview only) so only branch/preview deploys expose it.
 once Root Directory = `apps/web`). Manual alternative: `npm run web:build` from the
 repo root and upload `apps/web/dist/` to any static host.
 
-> The **mobile** app (`apps/mobile`) does **not** deploy to Vercel — it ships to the
-> App Store / Play Store via Expo EAS (see `apps/mobile/README.md`).
+> The web app is the single client surface — it is fully responsive (phone +
+> desktop). There is no separate native app; a former Expo/iOS app was removed to
+> keep one codebase and eliminate cross-surface drift.
 
 ## 6. (Optional) Kill the DNA frontend-poll stall — server-side advance
 Enable `pg_cron` + `pg_net` in Supabase, then schedule a periodic POST to

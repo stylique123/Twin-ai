@@ -2,7 +2,7 @@
   "name": "twinai-monorepo",
   "private": true,
   "version": "1.0.0",
-  "description": "TwinAI monorepo — web (Vercel), mobile (Expo/iOS), and shared code on one headless Supabase + VPS backend.",
+  "description": "TwinAI monorepo — responsive web app (Vercel) + shared code on one headless Supabase + VPS backend. The web app is the single client surface (phone + desktop).",
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -10,7 +10,6 @@
   "scripts": {
     "web": "npm run dev -w @twinai/web",
     "web:build": "npm run build -w @twinai/web",
-    "mobile": "npm run start -w @twinai/mobile",
     "typecheck": "npm run typecheck --workspaces --if-present"
   }
 }
