@@ -392,7 +392,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
             <button onClick={startAiEdit} className="w-full rounded-2xl bg-cream text-ink font-semibold py-4 hover:bg-white">✨ AI edit — captions, cuts &amp; b-roll</button>
             <button onClick={downloadRaw} className="w-full rounded-2xl border border-white/20 text-cream py-3 font-medium hover:bg-white/10">Download raw video</button>
             <button onClick={reRecord} className="w-full rounded-2xl border border-white/20 text-cream py-3 font-medium hover:bg-white/10">Re-record</button>
-            <button onClick={onBack} className="w-full rounded-2xl py-2 text-sm text-white/50 hover:text-white">Save &amp; exit</button>
+            <button onClick={onBack} className="w-full rounded-2xl py-2 text-sm text-white/50 hover:text-white">Discard &amp; exit</button>
           </div>
         </div>
       </div>
@@ -565,9 +565,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
         ))}
       </BottomSheet>
 
-      <BottomSheet open={exitSheet} title="Save and exit?" onClose={() => setExitSheet(false)}>
-        <p className="text-sm text-sand">Your recorded scenes so far are kept on this device until you finish.</p>
-        <button onClick={onBack} className="w-full rounded-2xl bg-cream text-ink font-semibold py-3">Save & exit</button>
+      <BottomSheet open={exitSheet} title="Discard this take?" onClose={() => setExitSheet(false)}>
+        <p className="text-sm text-sand">Leaving now discards the scenes you've recorded — they aren't saved until you finish the take. Your plan and script are safe in your Library.</p>
+        <button onClick={onBack} className="w-full rounded-2xl bg-coral text-white font-semibold py-3">Discard &amp; exit</button>
         <button onClick={() => setExitSheet(false)} className="w-full rounded-2xl border border-white/25 text-cream py-3 font-medium">Keep recording</button>
       </BottomSheet>
     </div>

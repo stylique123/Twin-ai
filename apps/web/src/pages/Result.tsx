@@ -242,10 +242,9 @@ export default function Result() {
     getGeneration(id)
       .then((g) => {
         if (!g) {
-          const fallback = MOCK_GENERATION as any
-          setGen(fallback)
-          setApproved(false)
-          setChosenHook(fallback.selected_hook)
+          // Real id that didn't resolve (deleted, foreign, or RLS-blocked) →
+          // leave gen null so the honest "We couldn't find that script" state
+          // renders. NEVER substitute the demo blueprint for a real id.
           return
         }
         setGen(g)
@@ -259,10 +258,8 @@ export default function Result() {
         if (id && !g?.selected_hook && initial) void updateGenerationChoice(id, { selected_hook: initial })
       })
       .catch(() => {
-        const fallback = MOCK_GENERATION as any
-        setGen(fallback)
-        setApproved(false)
-        setChosenHook(fallback.selected_hook)
+        // Load error (network / RLS) → leave gen null for the not-found state
+        // rather than fabricating the demo blueprint as the user's own script.
       })
       .finally(() => setLoading(false))
   }, [id])
@@ -362,7 +359,7 @@ export default function Result() {
               <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-xs font-semibold">
                 <Video className="h-3.5 w-3.5" /> Record Script
               </Link>
-              <Link to={`/record/${gen.id}?upload=1`} className="btn-ghost py-2 text-xs font-medium">
+              <Link to={`/record/${gen.id}?mode=upload`} className="btn-ghost py-2 text-xs font-medium">
                 <Wand2 className="h-3.5 w-3.5" /> Upload Take
               </Link>
             </div>

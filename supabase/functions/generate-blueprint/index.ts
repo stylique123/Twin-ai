@@ -373,7 +373,9 @@ Deno.serve(async (req: Request) => {
       'DELIVERY = VOICEOVER / NO FACE. The creator does NOT appear on camera. Write every line as voiceover narration, and write each shot DIRECTION as something to SHOW, never a person talking to camera: screen recordings, product/app demos, b-roll, hands / over-the-shoulder, and on-screen text. The hook must land as on-screen text + voiceover. Forbid "talk to camera", "talking head" and "look at lens" directions. Built for founders/B2B who will not film their face.',
   }
   const deliveryRule = DELIVERY_RULE[delivery]
-  if (!reference_url) return json({ error: 'reference_url is required' }, 400)
+  // Either a reference link OR a described idea is required — the "describe an
+  // idea" create path sends reference_note with an empty reference_url.
+  if (!reference_url && !reference_note) return json({ error: 'Add a reference link or describe your idea.' }, 400)
   if (reference_url.length > 2048) return json({ error: 'That reference link is too long.' }, 400)
 
   // Load creator DNA. Prefer the confirmed brand voice (Phase 2 — built from

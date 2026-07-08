@@ -9,7 +9,7 @@ name: Deploy edge functions
 on:
   workflow_dispatch: {}
   push:
-    branches: [main, claude/nice-mccarthy-83efee]
+    branches: [main]
     paths: ['supabase/functions/**', '.github/workflows/deploy-edge.yml']
 
 concurrency:
