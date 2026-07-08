@@ -69,15 +69,26 @@ export default function Onboarding() {
 
 async function finish(refreshProfile: () => Promise<void>, navigate: (to: string) => void) {
   await markOnboarded()
+  setActiveVoiceId(null) // onboarding done — clear the resume key
   await refreshProfile()
   navigate('/app')
 }
 
-// We stash the in-flight voice id between steps via module state (single onboarding
-// session, never concurrent) so the confirm step can load it without prop drilling.
-let activeVoiceId: string | null = null
+// We stash the in-flight voice id between steps. Persist it in sessionStorage too
+// so a refresh mid-scan RESUMES the same brand-voice poll instead of losing it and
+// forcing the user to start over (the scan keeps running server-side regardless).
+const VOICE_KEY = 'twinai_onboarding_voice_id'
+let activeVoiceId: string | null =
+  typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(VOICE_KEY) : null
 let activeProfile: VoiceProfile | null = null
 let activePlatform: Platform = 'tiktok'
+function setActiveVoiceId(id: string | null) {
+  activeVoiceId = id
+  try {
+    if (id) sessionStorage.setItem(VOICE_KEY, id)
+    else sessionStorage.removeItem(VOICE_KEY)
+  } catch { /* sessionStorage unavailable — module var still holds it */ }
+}
 
 // --- Step 1: paste a handle ------------------------------------------------
 function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual: () => void }) {
@@ -92,7 +103,7 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
     setBusy(true)
     try {
       const res = await startDna(handle.trim(), platform)
-      activeVoiceId = res.brand_voice_id
+      setActiveVoiceId(res.brand_voice_id)
       activePlatform = platform
       onBuilding()
     } catch (e) {

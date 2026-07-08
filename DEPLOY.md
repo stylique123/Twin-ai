@@ -9,22 +9,27 @@ For the system shape behind these steps, see **`ARCHITECTURE.md`**.
 Docker installed (`curl -fsSL https://get.docker.com | sh`). Have ready: Supabase
 **project ref**, **service-role key**, **anon key**, **Gemini key**, **Apify token**.
 
-## 1. Database — apply all migrations (0001–0005)
+## 1. Database — apply all migrations
 ```bash
 supabase link --project-ref YOUR_PROJECT_REF
-supabase db push   # RLS, credits, brand voices, admin+rate-limit, job queue, transcripts
+supabase db push   # applies every file in supabase/migrations/ in order:
+                   # RLS, credits, brand voices, admin+rate-limit, job queue,
+                   # transcripts, workspaces/seats, brand kits, column grants, …
 ```
+> Migrations are the one deploy step that is **not** automated — run `supabase db
+> push` yourself whenever new files land in `supabase/migrations/`. (Edge functions
+> and the worker auto-deploy via GitHub Actions on push to `main`; see §2/§3.)
 
-## 2. Edge functions — deploy all four + secrets
-SUPABASE_URL / SERVICE_ROLE / ANON are injected by the platform; set the rest:
+## 2. Edge functions — deploy + secrets
+On push to `main`, `.github/workflows/deploy-edge.yml` deploys **every** function
+in `supabase/functions/` automatically — you normally don't run these by hand. Set
+the secrets once (SUPABASE_URL / SERVICE_ROLE / ANON are injected by the platform):
 ```bash
 supabase secrets set GEMINI_API_KEY=xxx APIFY_TOKEN=xxx
 # optional: GEMINI_MODEL=gemini-3.1-pro  RECREATION_COST=10
 
+# Manual fallback (CI does this for all functions): deploy one by name, e.g.
 supabase functions deploy generate-blueprint
-supabase functions deploy start-dna
-supabase functions deploy dna-poll
-supabase functions deploy ingest-reference
 ```
 
 ## 3. Worker → VPS / Hetzner (makes "Read the actual video" + voice-from-audio actually run)
