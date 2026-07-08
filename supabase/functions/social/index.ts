@@ -249,7 +249,10 @@ Deno.serve(async (req: Request) => {
     if (!conn?.access_token) return json({ error: `Connect your ${ad.label} account first.` }, 400)
 
     // The finished render lives in storage on the generation; sign a short URL.
-    const { data: gen } = await admin.from('generations').select('edit_path').eq('id', post.generation_id).maybeSingle()
+    // Ownership check: the post row is caller-owned, but generation_id is a plain
+    // column — verify the generation is the caller's too, or a crafted post row
+    // could make the service role sign another tenant's video path.
+    const { data: gen } = await admin.from('generations').select('edit_path').eq('id', post.generation_id).eq('user_id', user.id).maybeSingle()
     if (!gen?.edit_path) return json({ error: 'This post has no finished video to publish yet.' }, 400)
     const { data: signed } = await admin.storage.from('edits').createSignedUrl(gen.edit_path, 600)
     if (!signed?.signedUrl) return json({ error: 'Could not read the video file.' }, 500)

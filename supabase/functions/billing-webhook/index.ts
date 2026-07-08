@@ -168,9 +168,22 @@ Deno.serve(async (req: Request) => {
   }
   const { data: sub } = await admin.from('subscriptions').select('plan').eq('user_id', parsed.userId).maybeSingle()
   const verifiedPlan = planFromVariant(parsed.variantId)
+  // Enforce what the comment above promises: the seeded-plan fallback is ONLY for
+  // deployments with no variant→plan mapping configured at all. If a mapping IS
+  // configured and this paid variant matches none of it, granting the seeded plan
+  // would let a user seed 'agency', pay any cheap/foreign variant, and get agency —
+  // so refuse the grant and page ops instead.
+  const variantMapConfigured = ['aspiring', 'professional', 'studio', 'agency'].some(
+    (p) => env2(`LS_VARIANT_${p.toUpperCase()}`) || env2(`STRIPE_PRICE_${p.toUpperCase()}`),
+  )
+  if (!verifiedPlan && variantMapConfigured) {
+    await admin.from('ops_events').insert({ kind: 'billing_plan_unverified', severity: 'critical', user_id: parsed.userId, detail: { variant: parsed.variantId ?? null, seeded: sub?.plan ?? null, reason: 'variant map configured but event variant matched no plan; grant REFUSED' } }).then(() => {}, () => {})
+    await markProcessed(admin, parsed.eventId, 'unmatched variant — grant refused')
+    return json({ ok: true, note: 'unmatched variant — no grant' })
+  }
   const plan = verifiedPlan ?? sub?.plan ?? 'aspiring'
   if (!verifiedPlan) {
-    await admin.from('ops_events').insert({ kind: 'billing_plan_unverified', severity: 'warn', user_id: parsed.userId, detail: { granted: plan, variant: parsed.variantId ?? null, reason: 'no variant→plan match; granted from seeded intent' } }).then(() => {}, () => {})
+    await admin.from('ops_events').insert({ kind: 'billing_plan_unverified', severity: 'warn', user_id: parsed.userId, detail: { granted: plan, variant: parsed.variantId ?? null, reason: 'no variant map configured; granted from seeded intent' } }).then(() => {}, () => {})
   }
 
   if (parsed.active) {

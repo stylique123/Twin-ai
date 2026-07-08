@@ -40,22 +40,33 @@ export default function V2Capture() {
   const nav = useNavigate()
   const inV2Flow = useLocation().pathname.startsWith('/v2')
   const [timeline, setTimeline] = useState<SceneTimeline | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadNonce, setLoadNonce] = useState(0) // bump to retry the load
 
   // Load the persisted Scene Timeline; if there isn't one (e.g. a blueprint made via
   // the classic Studio flow), synthesize it from the blueprint in-memory — the SAME
   // fallback the mobile recorder uses, so every generation is recordable here.
+  // A throw OR an unresolvable generation flips to an error card with Retry —
+  // never the "Loading…" screen forever.
   useEffect(() => {
     let alive = true
+    setLoadFailed(false)
     ;(async () => {
-      let tl = await loadTimeline(id)
-      if (!tl) {
-        const g = await getGeneration(id)
-        if (g) tl = buildTimeline({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook })
+      try {
+        let tl = await loadTimeline(id)
+        if (!tl) {
+          const g = await getGeneration(id)
+          if (g) tl = buildTimeline({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook })
+        }
+        if (!alive) return
+        if (tl) setTimeline(tl)
+        else setLoadFailed(true)
+      } catch {
+        if (alive) setLoadFailed(true)
       }
-      if (alive) setTimeline(tl)
     })()
     return () => { alive = false }
-  }, [id])
+  }, [id, loadNonce])
 
   // Back returns to the blueprint (classic flow) or the V2 plan screen (V2 flow).
   // The finished-video screen (V2Review) is shared by both.
@@ -63,6 +74,20 @@ export default function V2Capture() {
   const onJob = (job: string) => nav(`/v2/review/${id}?job=${job}`)
 
   if (!timeline) {
+    if (loadFailed) {
+      return (
+        <div className="min-h-[100dvh] grid place-items-center bg-ink text-cream px-6">
+          <div className="max-w-sm text-center">
+            <p className="font-semibold">We couldn't load your video plan</p>
+            <p className="mt-1 text-sm text-white/60">Check your connection and try again — your script is safe in your Library.</p>
+            <div className="mt-4 flex justify-center gap-2">
+              <button onClick={() => setLoadNonce((n) => n + 1)} className="rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Retry</button>
+              <button onClick={onBack} className="rounded-xl border border-white/20 px-5 py-2 text-sm text-cream">Back</button>
+            </div>
+          </div>
+        </div>
+      )
+    }
     return <div className="min-h-[100dvh] grid place-items-center bg-ink text-sand">Loading…</div>
   }
   return mode === 'upload'
@@ -342,6 +367,20 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   }
 
   const continueNext = () => { setBetween(false); setI((v) => v + 1) }
+  // Step back one scene. If the scene we're returning to was already committed
+  // (its boundary/window/line are recorded), pop those trailing entries exactly
+  // like retakeScene does — otherwise re-recording it would APPEND a duplicate
+  // window and the scene would appear twice in the final edit.
+  const goPrevScene = () => {
+    if (i === 0 || recording) return
+    if (boundsRef.current.length >= i) {
+      segmentsRef.current.pop()
+      boundsRef.current.pop()
+      linesRef.current.pop()
+    }
+    setBetween(false)
+    setI((v) => v - 1)
+  }
   // Retake the scene we just finished: drop its kept window (the flubbed read stays
   // in the blob but is trimmed out by the worker) and re-open the SAME scene. The
   // next startScene reopens the window past the bad read.
@@ -435,7 +474,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       </button>
       {/* MOBILE — a compact wrap of pill buttons, touch-target sized. */}
       <div className="flex flex-wrap items-center justify-center gap-2 text-sm lg:hidden">
-        <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0 || recording} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 disabled:opacity-30">← Previous scene</button>
+        <button onClick={goPrevScene} disabled={i === 0 || recording} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 disabled:opacity-30">← Previous scene</button>
         <div className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1">
           <span className="px-1 text-xs text-white/45">Text size</span>
           <span className="inline-flex gap-1">
@@ -459,7 +498,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
         </button>
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] divide-y divide-white/10 overflow-hidden">
           <PanelRow icon={ChevronLeft} label="Previous scene">
-            <button onClick={() => i > 0 && setI((v) => v - 1)} disabled={i === 0 || recording} className="text-xs font-medium text-white/70 hover:text-cream disabled:opacity-30 disabled:hover:text-white/70">
+            <button onClick={goPrevScene} disabled={i === 0 || recording} className="text-xs font-medium text-white/70 hover:text-cream disabled:opacity-30 disabled:hover:text-white/70">
               Scene {i + 1} of {scenes.length}
             </button>
           </PanelRow>
