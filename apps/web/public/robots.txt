@@ -1,0 +1,11 @@
+User-agent: *
+Allow: /
+Disallow: /app
+Disallow: /v2
+Disallow: /dashboard
+Disallow: /settings
+Disallow: /billing
+Disallow: /admin
+Disallow: /metrics
+
+Sitemap: https://twinai.studio/sitemap.xml
