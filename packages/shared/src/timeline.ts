@@ -74,8 +74,8 @@ export function estimateDurationSec(dialogue: string | null, wpm: WpmPreset = DE
 
 // Hard per-scene recording cap: the estimate plus a short grace so a natural pace
 // isn't cut off, clamped to a short-form range. Shared by every recorder surface
-// (web + mobile) so a scene can never record indefinitely and the final clip
-// always stays short-form length.
+// so a scene can never record indefinitely and the final clip always stays
+// short-form length.
 export function sceneTimeCapSec(estSec: number): number {
   return Math.min(Math.max(estSec + 5, 12), 30)
 }

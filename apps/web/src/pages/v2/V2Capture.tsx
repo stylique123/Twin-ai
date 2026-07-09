@@ -29,10 +29,9 @@ import {
   sceneTimeCapSec,
 } from '../../lib/timeline'
 
-// The single scene-by-scene recorder for the web — served at BOTH the live
-// `/record/:id` route and the V2 `/v2/capture/:id` route, so web and mobile share
-// one capture flow (mobile's recorder mirrors this exact model). The only per-route
-// difference is where Back returns to.
+// The single scene-by-scene recorder — served at BOTH the live `/record/:id`
+// route and the V2 `/v2/capture/:id` route, so there is one capture flow for the
+// whole app. The only per-route difference is where Back returns to.
 export default function V2Capture() {
   const { id = '' } = useParams()
   const [params] = useSearchParams()
@@ -42,8 +41,8 @@ export default function V2Capture() {
   const [timeline, setTimeline] = useState<SceneTimeline | null>(null)
 
   // Load the persisted Scene Timeline; if there isn't one (e.g. a blueprint made via
-  // the classic Studio flow), synthesize it from the blueprint in-memory — the SAME
-  // fallback the mobile recorder uses, so every generation is recordable here.
+  // the classic Studio flow), synthesize it from the blueprint in-memory so every
+  // generation is recordable here.
   useEffect(() => {
     let alive = true
     ;(async () => {
@@ -129,8 +128,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const wpmVal = WPM_PRESETS[timeline.wpm]
   const readCount = recording ? Math.floor((sceneElapsed / 60) * wpmVal) : -1
   const estSec = Math.max(1, Math.round(estimateDurationSec(scene?.dialogue ?? null, timeline.wpm)))
-  // Hard per-scene cap (shared with mobile — @twinai/shared): when a read runs past
-  // it we auto-stop → the Retake/Next card, so a scene can never record forever.
+  // Hard per-scene cap (sceneTimeCapSec, @twinai/shared): when a read runs past it
+  // we auto-stop → the Retake/Next card, so a scene can never record forever.
   const sceneLimit = sceneTimeCapSec(estSec)
 
   // Tick a per-scene clock only while actively recording THIS scene, and auto-stop

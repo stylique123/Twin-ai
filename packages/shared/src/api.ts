@@ -2,14 +2,14 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { planFor } from './brand'
 import type { BrandVoice, CreatorDNA, EditDecisionList, Generation, Platform, Profile, VoiceProfile } from './types'
 
-// ---- Platform injection ----------------------------------------------------
-// This API layer is shared by web (Vercel) and mobile (Expo). Each app injects
-// its own Supabase client (they persist sessions differently — browser storage
-// vs. AsyncStorage), an app origin (for share links), and a file-upload impl
-// (web uploads a Blob; mobile uploads a file URI) via initApi() at startup.
+// ---- Client injection ------------------------------------------------------
+// The web app is the single client surface. It wires its Supabase client, an
+// app origin (for share links), and a file-upload impl into this layer via
+// initApi() at startup, keeping browser specifics (window, storage, Blob
+// upload) out of the shared code so it stays a pure, testable API surface.
 
-// A recorded take, described platform-neutrally. Web sets `blob`; mobile sets `uri`.
-export interface TakeFile { contentType: string; blob?: unknown; uri?: string; name?: string }
+// A recorded take. The web recorder produces a Blob.
+export interface TakeFile { contentType: string; blob?: unknown; name?: string }
 // onProgress reports upload completion as a 0..1 fraction, or -1 for indeterminate.
 export type UploadTake = (path: string, file: TakeFile, onProgress?: (fraction: number) => void) => Promise<void>
 
@@ -213,7 +213,7 @@ export async function autoEditTake(generationId: string, file: TakeFile, shots?:
   const ext = contentType.includes('mp4') ? 'mp4' : 'webm'
   const take_path = `${uid}/${generationId}-${Date.now()}.${ext}`
 
-  // Upload is platform-specific (web: Blob; mobile: file URI) — injected via initApi.
+  // Upload impl (uploads the recorder's Blob) is injected by the web app via initApi.
   if (!_uploadTake) throw new Error('No uploadTake configured — pass it to initApi().')
   await _uploadTake(take_path, file, onProgress)
 
