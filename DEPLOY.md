@@ -141,10 +141,27 @@ derive from `window.location.origin`), so the cut-over is mostly config. The one
 code change — the hardcoded SEO/OG URLs in `apps/web/index.html` and the
 `robots.txt`/`sitemap.xml` — already points at `https://twinai.studio`.
 
+**WHEN:** do the domain connection *after* the audit-fix PRs are merged to `main`
+and `supabase db push` has run — so the first thing `twinai.studio` ever serves is
+the fixed, production-ready build, never the pre-audit one. DNS can take anywhere
+from a few minutes to a few hours to propagate, so you can start step 1 in parallel
+with the merge; just don't announce the domain until the verify step passes.
+
 Do these in the dashboards (nothing here runs from the Claude sandbox):
-1. **Vercel → Project → Settings → Domains:** add `twinai.studio` (and `www.` if
-   you want it), set `twinai.studio` as the **Primary** domain, and follow the DNS
-   records Vercel shows (A/ALIAS at the apex + CNAME for `www`). HTTPS is automatic.
+1. **Connect the domain in Vercel — Project → Settings → Domains:**
+   1. Click **Add**, type `twinai.studio`, Add. (Add `www.twinai.studio` too if you
+      want it; Vercel will offer to redirect `www` → apex — accept.)
+   2. Set `twinai.studio` as the **Primary** domain (the "⋯" menu → Set as Primary).
+   3. Vercel then shows the exact **DNS records** to create at your registrar (where
+      you bought the domain). It's one of two setups — do whichever Vercel tells you:
+      - **A / apex** — add an `A` record for `@` (the root) pointing at the IP Vercel
+        shows (currently `76.76.21.21`), plus a `CNAME` for `www` → `cname.vercel-dns.com`.
+      - **Nameservers** — or point the domain's nameservers at the two `ns1/ns2.
+        vercel-dns.com` values Vercel lists (simplest; Vercel then manages DNS).
+   4. Back on the Domains page, the status flips from **"Invalid Configuration"** to
+      **"Valid"** once DNS propagates; Vercel auto-issues the HTTPS certificate. No
+      redeploy needed — the current `main` deployment is served on the new domain
+      the moment it goes Valid.
 2. **Supabase → Authentication → URL Configuration:**
    - **Site URL** → `https://twinai.studio`
    - **Redirect URLs** → add `https://twinai.studio/**` (keep the Vercel preview
