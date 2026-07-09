@@ -134,3 +134,29 @@ $$);
 2. Studio → paste a TikTok → tick **"Read the actual video"** → ~1–2 min →
    retention map from the real transcript → ingest + structure confirmed.
 3. `docker logs twinai-worker` shows `claimed` → `done` for `ingest` / `build_voice`.
+
+## 7. Custom domain cut-over (→ https://twinai.studio)
+The app follows whatever origin serves it (auth redirects, share/review links all
+derive from `window.location.origin`), so the cut-over is mostly config. The one
+code change — the hardcoded SEO/OG URLs in `apps/web/index.html` and the
+`robots.txt`/`sitemap.xml` — already points at `https://twinai.studio`.
+
+Do these in the dashboards (nothing here runs from the Claude sandbox):
+1. **Vercel → Project → Settings → Domains:** add `twinai.studio` (and `www.` if
+   you want it), set `twinai.studio` as the **Primary** domain, and follow the DNS
+   records Vercel shows (A/ALIAS at the apex + CNAME for `www`). HTTPS is automatic.
+2. **Supabase → Authentication → URL Configuration:**
+   - **Site URL** → `https://twinai.studio`
+   - **Redirect URLs** → add `https://twinai.studio/**` (keep the Vercel preview
+     URL too if you still QA on previews). Email-confirm + Google OAuth redirects
+     (`/auth`, `/app`) go through this allowlist.
+3. **Supabase → Edge Functions → Secrets:** set `APP_URL=https://twinai.studio`
+   (`social` + `billing` build their success/callback redirects from it).
+4. **OAuth providers** (only the ones you enable): add the new redirect URIs —
+   Google (Supabase auth), and for posting: YouTube/TikTok/Meta developer consoles
+   → `https://<REF>.functions.supabase.co/social?action=callback` stays the same
+   (it's the function URL, not the app domain), but any "authorized origins"
+   fields should include `https://twinai.studio`.
+5. **Verify:** load `https://twinai.studio`, sign up (confirm the email link lands
+   back on the domain), run one full create→record→edit loop, and check
+   `https://twinai.studio/robots.txt` + `/sitemap.xml` resolve.
