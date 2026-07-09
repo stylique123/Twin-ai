@@ -285,13 +285,12 @@ export default function Result() {
         <div>
           <p className="font-heading text-lg text-cream">We couldn’t find that script.</p>
           <p className="mt-2 text-sm text-stone">It may have been removed, or the link is out of date.</p>
-          <Link to="/history" className="btn-gradient mt-6 inline-flex">
-            <ArrowLeft className="h-4 w-4" /> Back to Library
-          </Link>
-          <div className="mt-6 border-t border-white/5 pt-6">
-            <p className="text-xs text-stone mb-2">Local database not configured yet?</p>
-            <Link to="/result/demo" className="btn-ghost py-2.5 text-xs w-full inline-flex justify-center">
-              ⚡ View Interactive Demo Workspace
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:justify-center">
+            <Link to="/history" className="btn-gradient inline-flex">
+              <ArrowLeft className="h-4 w-4" /> Back to Library
+            </Link>
+            <Link to="/app" className="btn-ghost inline-flex justify-center">
+              Make a new video
             </Link>
           </div>
         </div>
