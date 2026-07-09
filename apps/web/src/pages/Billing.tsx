@@ -21,6 +21,10 @@ export default function Billing() {
   const [params] = useSearchParams()
   const navigate = useNavigate()
   const cancelled = params.get('cancel') === '1' || params.get('canceled') === '1'
+  // Only a checkout return carries ?ok=1 (the billing edge fn redirects to
+  // /billing?ok=1). A bare /billing visit must NOT run the fake "Activating your
+  // plan…" → "Payment received" sequence — send those visitors to Settings.
+  const fromCheckout = params.get('ok') === '1'
 
   // Baseline captured once, before the webhook lands.
   const baseline = useRef<{ plan: string; credits: number } | null>(null)
@@ -34,9 +38,15 @@ export default function Billing() {
     !!profile && !!baseline.current &&
     ((profile.plan ?? 'aspiring') !== baseline.current.plan || (profile.credits ?? 0) > baseline.current.credits)
 
+  // Bare visit (no checkout return, no cancel) → redirect to Settings.
   useEffect(() => {
-    if (cancelled) return
-    logEvent('checkout_return', { ok: params.get('ok') === '1' })
+    if (!fromCheckout && !cancelled) navigate('/settings', { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (cancelled || !fromCheckout) return
+    logEvent('checkout_return', { ok: true })
     let stop = false
     const started = Date.now()
     const tick = async () => {

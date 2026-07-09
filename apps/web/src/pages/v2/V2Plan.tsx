@@ -27,20 +27,30 @@ export default function V2Plan() {
   const [timeline, setTimeline] = useState<SceneTimeline | null>(null)
   const [hookSheet, setHookSheet] = useState(false)
   const [editScene, setEditScene] = useState<Scene | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
+  const [loadNonce, setLoadNonce] = useState(0) // bump to retry the load
 
   useEffect(() => {
+    let alive = true
+    setLoadFailed(false)
     ;(async () => {
-      const [g, t] = await Promise.all([getGeneration(id), loadTimeline(id)])
-      setGen(g)
-      // If the timeline wasn't persisted (e.g. the scene_timeline UPDATE grant
-      // isn't applied yet), synthesize it in memory from the blueprint — the SAME
-      // fallback V2Capture uses — so the Plan renders instead of hanging on the
-      // skeleton forever.
-      setTimeline(
-        t ?? (g ? buildTimeline({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook }) : null),
-      )
+      try {
+        const [g, t] = await Promise.all([getGeneration(id), loadTimeline(id)])
+        if (!alive) return
+        setGen(g)
+        // If the timeline wasn't persisted (e.g. the scene_timeline UPDATE grant
+        // isn't applied yet), synthesize it in memory from the blueprint — the SAME
+        // fallback V2Capture uses — so the Plan renders instead of hanging on the
+        // skeleton forever.
+        const tl = t ?? (g ? buildTimeline({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook }) : null)
+        if (tl) setTimeline(tl)
+        else setLoadFailed(true) // generation unresolvable → error card, not eternal skeleton
+      } catch {
+        if (alive) setLoadFailed(true)
+      }
     })()
-  }, [id])
+    return () => { alive = false }
+  }, [id, loadNonce])
 
   const pickHook = async (hook: string) => {
     if (!timeline) return
@@ -63,6 +73,20 @@ export default function V2Plan() {
   }
 
   if (!timeline) {
+    if (loadFailed) {
+      return (
+        <ScreenLayout title="Your video plan" subtitle="Something went wrong" onBack={() => nav('/v2')}>
+          <Card>
+            <p className="font-semibold text-cream">We couldn't load this plan</p>
+            <p className="mt-1 text-sm text-sand/70">Check your connection and try again — your script is safe in your Library.</p>
+            <div className="mt-4 flex gap-2">
+              <PrimaryButton onClick={() => setLoadNonce((n) => n + 1)}>Retry</PrimaryButton>
+              <button onClick={() => nav('/dashboard')} className="w-full rounded-2xl border border-white/20 text-cream py-4 font-semibold hover:bg-white/10">Dashboard</button>
+            </div>
+          </Card>
+        </ScreenLayout>
+      )
+    }
     return (
       <ScreenLayout title="Your video plan" subtitle="Putting it together…">
         <Skeleton className="h-40 w-full" />

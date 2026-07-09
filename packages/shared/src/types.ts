@@ -17,7 +17,7 @@ export interface Profile {
   id: string
   email: string
   display_name: string | null
-  plan: 'free' | 'aspiring' | 'professional' | 'agency'
+  plan: 'free' | 'aspiring' | 'professional' | 'studio' | 'agency'
   account_type: 'creator' | 'agency'
   credits: number
   dna: CreatorDNA | null

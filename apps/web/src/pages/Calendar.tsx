@@ -45,6 +45,7 @@ export default function Calendar() {
   const [conns, setConns] = useState<PlatformConnection[]>([])
   const [connBusy, setConnBusy] = useState<string | null>(null)
   const [connMsg, setConnMsg] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState(false)
   const [publishingId, setPublishingId] = useState<string | null>(null)
   const [params, setParams] = useSearchParams()
 
@@ -54,8 +55,12 @@ export default function Calendar() {
 
   const load = () => {
     if (POSTS_CACHE === null) setLoading(true)
+    setLoadError(false)
     Promise.all([listPosts(), listGenerations().catch(() => [])])
       .then(([p, g]) => { POSTS_CACHE = p; GENS_CACHE = g; setPosts(p); setGens(g) })
+      // A failed listPosts previously escaped as an unhandled rejection and the
+      // month rendered as convincingly "empty" — surface it as an error instead.
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false))
     listConnections().then(setConns).catch(() => {})
   }
@@ -242,6 +247,12 @@ export default function Calendar() {
             <h2 className="font-heading text-lg text-cream">Upcoming</h2>
             {loading ? (
               <div className="mt-4 inline-flex items-center gap-2 text-sand"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+            ) : loadError ? (
+              <div className="glass mt-4 grid place-items-center p-10 text-center">
+                <p className="font-heading">Couldn't load your schedule.</p>
+                <p className="mt-1 text-sm text-stone">Check your connection and try again.</p>
+                <button onClick={load} className="btn-gradient mt-5">Retry</button>
+              </div>
             ) : upcoming.length === 0 ? (
               <div className="glass mt-4 grid place-items-center p-10 text-center">
                 <span className="grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><CalendarDays className="h-5 w-5 text-cream" /></span>
