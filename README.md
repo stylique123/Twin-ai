@@ -27,11 +27,14 @@ This is a fresh, real rebuild: a Vite + React + TypeScript frontend, a Supabase 
 - Atomic credit ledger (spend on generate, auto-refund on failure)
 - Generation history, all under RLS
 
-**Roadmap (honestly not built yet)**
-- Pulling/transcribing the actual reference video (currently the model reasons from the URL + the creator's note)
-- In-app video editing / rendering / export (we hand off a Submagic packet)
-- Direct auto-publish to IG/TikTok/YouTube (we produce a ready-to-paste schedule)
-- Stripe checkout for paid plans
+**Built since this list was first written**
+- Pulling/transcribing the actual reference video — the ingest pipeline + VPS worker fetch and transcribe real TikTok/YouTube/IG references (via Apify + Whisper).
+- In-app auto-edit / rendering / export — the VPS worker cuts, captions, grades, and loudness-normalizes the take into a finished vertical MP4 (ffmpeg, with an optional Revideo premium pass).
+- Checkout rails — the billing edge function + webhook are built; paid plans are gated off behind the `PAYMENTS_LIVE` flag until go-live.
+
+**Roadmap (honestly not built yet / partially)**
+- Direct auto-publish: YouTube one-click upload works via OAuth; TikTok/Instagram connect is wired but publishing is gated on each platform's content-API app review. Until then we produce a ready-to-paste caption + schedule.
+- Flipping `PAYMENTS_LIVE` / `POSTING_LIVE` on for production.
 
 ## Local setup
 

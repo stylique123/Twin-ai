@@ -112,6 +112,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   // meant a credits error could render under the "Camera needed to record" heading.
   const [editError, setEditError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadPct, setUploadPct] = useState<number>(-1) // 0..1, or -1 indeterminate
   // Teleprompter feel: font size (S/M/L/XL) + a per-scene timing clock so the script
   // can advance word-by-word in step with the chosen WPM.
   const FONT_PX = [24, 30, 38, 48]
@@ -317,6 +318,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     const blob = reviewBlobRef.current
     if (!blob) return
     setEditError(null)
+    setUploadPct(-1)
     setUploading(true)
     try {
       const bounds = boundsRef.current
@@ -328,7 +330,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       const shots = total > 1
         ? { bounds, total, lines, ...(segments.length > 1 ? { segments } : {}) }
         : undefined
-      const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots)
+      const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, undefined, (f) => setUploadPct(f))
       onJob(jobId)
     } catch (e) {
       setEditError(e instanceof Error ? e.message : 'Could not start the edit')
@@ -392,11 +394,17 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const pickSpeed = async (wpm: WpmPreset) => { setTimeline(await setWpm(timeline, wpm)); setSpeedSheet(false) }
 
   if (uploading) {
+    const pctLabel = uploadPct >= 0 && uploadPct < 1 ? `Uploading your take… ${Math.round(uploadPct * 100)}%` : 'Uploading your take and starting the edit…'
     return (
-      <div className="min-h-[100dvh] grid place-items-center bg-ink text-cream">
-        <div className="text-center">
+      <div className="min-h-[100dvh] grid place-items-center bg-ink text-cream px-6">
+        <div className="text-center w-full max-w-xs">
           <div className="h-10 w-10 mx-auto rounded-full border-2 border-white/20 border-t-white animate-spin" />
-          <p className="mt-3 text-sm text-white/70">Uploading your take and starting the edit…</p>
+          <p className="mt-3 text-sm text-white/70">{pctLabel}</p>
+          {uploadPct >= 0 && (
+            <div className="mt-3 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
+              <div className="h-full bg-white transition-all" style={{ width: `${Math.max(3, Math.round(uploadPct * 100))}%` }} />
+            </div>
+          )}
         </div>
       </div>
     )
