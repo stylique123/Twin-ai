@@ -59,6 +59,14 @@ function FullScreen({ children }: { children: React.ReactNode }) {
   return <div className="grid min-h-screen place-items-center text-sand">{children}</div>
 }
 
+// Redirect the legacy /app entry point into the V2 flow, PRESERVING the query
+// string so acquisition funnels survive — Gallery's "Remix in my voice" sends
+// /app?ref=<url>, which V2Create reads. A bare <Navigate to="/v2"> would drop it.
+function AppToV2() {
+  const { search } = useLocation()
+  return <Navigate to={`/v2${search}`} replace />
+}
+
 // Smooth cross-fade + lift between routes.
 function Page({ children }: { children: React.ReactNode }) {
   return (
@@ -133,7 +141,7 @@ export default function App() {
             path="/app"
             element={
               (import.meta.env.VITE_STUDIO_V2 === 'true' || STUDIO_V2)
-                ? <Navigate to="/v2" replace />
+                ? <AppToV2 />
                 : <Protected><AppShell><Page><Studio /></Page></AppShell></Protected>
             }
           />

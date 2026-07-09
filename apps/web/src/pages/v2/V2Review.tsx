@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob } from '../../lib/api'
+import { getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob, markPosted } from '../../lib/api'
 import { loadTimeline } from '../../lib/timelineApi'
 import { CAPTION_STYLE_OPTIONS } from '../../lib/types'
 import { RefinePanel } from '../../components/RefinePanel'
@@ -27,8 +27,47 @@ export default function V2Review() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null)
   const [captionSheet, setCaptionSheet] = useState(false)
   const [publishSheet, setPublishSheet] = useState(false)
+  const [publishing, setPublishing] = useState<string | null>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const stopped = useRef(false)
+
+  // Force a real file download from the signed storage URL. Supabase signed URLs
+  // honor a `download` query param (sets Content-Disposition: attachment), which
+  // works cross-origin where the <a download> attribute alone does not.
+  const downloadVideo = () => {
+    if (!videoUrl) return
+    const href = videoUrl + (videoUrl.includes('?') ? '&' : '?') + 'download=twinai-video.mp4'
+    const a = document.createElement('a')
+    a.href = href
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  }
+
+  // Posting isn't automated yet (POSTING_LIVE). The honest "publish" is: copy the
+  // caption, log the post so it shows in the calendar/history, then send the user
+  // to the platform's uploader in a new tab. No dead-end no-op.
+  const publishTo = async (platform: string) => {
+    if (!videoUrl || publishing) return
+    setPublishing(platform)
+    const caption = timeline?.hook ?? ''
+    try {
+      try { await navigator.clipboard?.writeText(caption) } catch { /* clipboard blocked — ignore */ }
+      try { await markPosted({ generationId: id, platform, caption }) } catch { /* best-effort log */ }
+      const UPLOAD_URL: Record<string, string> = {
+        TikTok: 'https://www.tiktok.com/upload',
+        Reels: 'https://www.instagram.com/',
+        'YouTube Shorts': 'https://www.youtube.com/upload',
+        LinkedIn: 'https://www.linkedin.com/feed/',
+      }
+      window.open(UPLOAD_URL[platform] ?? 'https://www.tiktok.com/upload', '_blank', 'noopener')
+    } finally {
+      setPublishing(null)
+      setPublishSheet(false)
+      nav('/calendar')
+    }
+  }
 
   // Refine & EDL sync states
   const [refineOpen, setRefineOpen] = useState(false)
@@ -129,7 +168,7 @@ export default function V2Review() {
   const actionsRail = (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-2">
-        <button disabled={!videoUrl} onClick={() => videoUrl && window.open(videoUrl, '_blank')}
+        <button disabled={!videoUrl} onClick={downloadVideo}
           className="rounded-2xl bg-cream text-ink font-semibold py-4 disabled:opacity-40 hover:bg-cream/90 active:scale-[0.99] transition-all">Download</button>
         <button disabled={!videoUrl} onClick={() => setPublishSheet(true)}
           className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40 hover:bg-emerald-600 active:scale-[0.99] transition-all">Publish</button>
@@ -171,7 +210,7 @@ export default function V2Review() {
           <div className="flex items-center justify-between px-4 pt-4 lg:px-0 lg:pt-0">
             <button onClick={() => nav(`/v2/plan/${id}`)} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 hover:bg-white/20">←</button>
             <span className="text-sm text-white/70 truncate lg:hidden">Your video</span>
-            <button aria-label="Download" disabled={!videoUrl} onClick={() => videoUrl && window.open(videoUrl, '_blank')} className="h-11 w-11 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 lg:hidden">↓</button>
+            <button aria-label="Download" disabled={!videoUrl} onClick={downloadVideo} className="h-11 w-11 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 lg:hidden">↓</button>
           </div>
 
           <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-ink2 shadow-2xl lg:my-0 lg:flex-none lg:h-[82vh] lg:max-h-[82vh] lg:w-auto lg:max-w-none">
@@ -229,8 +268,9 @@ export default function V2Review() {
       />
 
       <BottomSheet open={publishSheet} title="Publish to" onClose={() => setPublishSheet(false)}>
+        <p className="px-1 pb-2 text-xs text-white/60">We'll copy your caption, log the post to your calendar, and open the uploader. One-tap auto-posting is coming soon.</p>
         {['TikTok', 'Reels', 'YouTube Shorts', 'LinkedIn'].map((p) => (
-          <SheetOption key={p} label={p} onPick={() => setPublishSheet(false)} />
+          <SheetOption key={p} label={publishing === p ? `${p} — opening…` : p} onPick={() => publishTo(p)} />
         ))}
       </BottomSheet>
     </div>
