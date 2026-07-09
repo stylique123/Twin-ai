@@ -192,7 +192,7 @@ export default function V2Review() {
 
       {/* Wired Action Toolbar */}
       <div className="flex items-center justify-center gap-6 text-sm text-white/60 lg:flex-col lg:items-stretch lg:gap-2 lg:text-left">
-        <button onClick={() => setCaptionSheet(true)} className="hover:text-white transition-colors lg:rounded-xl lg:border lg:border-white/10 lg:px-3 lg:py-2.5">Captions</button>
+        <button onClick={() => setCaptionSheet(true)} disabled={!takePath || !refineEdl || refineLoading} className="hover:text-white disabled:opacity-30 transition-colors lg:rounded-xl lg:border lg:border-white/10 lg:px-3 lg:py-2.5">Captions</button>
 
         <button
           onClick={() => setRefineOpen(true)}
