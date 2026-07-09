@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob, markPosted } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
 import { loadTimeline } from '../../lib/timelineApi'
 import { CAPTION_STYLE_OPTIONS } from '../../lib/types'
 import { RefinePanel } from '../../components/RefinePanel'
@@ -19,6 +20,11 @@ export default function V2Review() {
   const [params, setParams] = useSearchParams()
   const jobId = params.get('job')
   const nav = useNavigate()
+  const { refreshProfile } = useAuth()
+
+  // A paid edit may have just been charged at enqueue — refresh once so the
+  // remixes-left counter reflects the spend instead of lagging a reload behind.
+  useEffect(() => { void refreshProfile() }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [timeline, setTimeline] = useState<SceneTimeline | null>(null)
   const [phase, setPhase] = useState<Phase>('rendering')
@@ -48,26 +54,28 @@ export default function V2Review() {
   // Posting isn't automated yet (POSTING_LIVE). The honest "publish" is: copy the
   // caption, log the post so it shows in the calendar/history, then send the user
   // to the platform's uploader in a new tab. No dead-end no-op.
-  const publishTo = async (platform: string) => {
+  // NOTE: markPosted stores the platform SLUG (youtube/tiktok/instagram/linkedin),
+  // not the display label, so the logged post matches every other surface's filters.
+  const publishTo = async (p: { label: string; slug: string; url: string }) => {
     if (!videoUrl || publishing) return
-    setPublishing(platform)
+    setPublishing(p.label)
     const caption = timeline?.hook ?? ''
     try {
       try { await navigator.clipboard?.writeText(caption) } catch { /* clipboard blocked — ignore */ }
-      try { await markPosted({ generationId: id, platform, caption }) } catch { /* best-effort log */ }
-      const UPLOAD_URL: Record<string, string> = {
-        TikTok: 'https://www.tiktok.com/upload',
-        Reels: 'https://www.instagram.com/',
-        'YouTube Shorts': 'https://www.youtube.com/upload',
-        LinkedIn: 'https://www.linkedin.com/feed/',
-      }
-      window.open(UPLOAD_URL[platform] ?? 'https://www.tiktok.com/upload', '_blank', 'noopener')
+      try { await markPosted({ generationId: id, platform: p.slug, caption }) } catch { /* best-effort log */ }
+      window.open(p.url, '_blank', 'noopener')
     } finally {
       setPublishing(null)
       setPublishSheet(false)
       nav('/calendar')
     }
   }
+  const PUBLISH_TARGETS = [
+    { label: 'TikTok', slug: 'tiktok', url: 'https://www.tiktok.com/upload' },
+    { label: 'Reels', slug: 'instagram', url: 'https://www.instagram.com/' },
+    { label: 'YouTube Shorts', slug: 'youtube', url: 'https://www.youtube.com/upload' },
+    { label: 'LinkedIn', slug: 'linkedin', url: 'https://www.linkedin.com/feed/' },
+  ]
 
   // Refine & EDL sync states
   const [refineOpen, setRefineOpen] = useState(false)
@@ -269,8 +277,8 @@ export default function V2Review() {
 
       <BottomSheet open={publishSheet} title="Publish to" onClose={() => setPublishSheet(false)}>
         <p className="px-1 pb-2 text-xs text-white/60">We'll copy your caption, log the post to your calendar, and open the uploader. One-tap auto-posting is coming soon.</p>
-        {['TikTok', 'Reels', 'YouTube Shorts', 'LinkedIn'].map((p) => (
-          <SheetOption key={p} label={publishing === p ? `${p} — opening…` : p} onPick={() => publishTo(p)} />
+        {PUBLISH_TARGETS.map((p) => (
+          <SheetOption key={p.slug} label={publishing === p.label ? `${p.label} — opening…` : p.label} onPick={() => publishTo(p)} />
         ))}
       </BottomSheet>
     </div>
