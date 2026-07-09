@@ -42,6 +42,12 @@ export const env = {
   // Revideo render service (premium captions pass). When set, every edit's ffmpeg
   // result is auto-upgraded to the Revideo render. Empty = ffmpeg-only.
   revideoUrl: (process.env.REVIDEO_URL ?? '').trim(),
+  // SAFETY GATE: the premium render OVERWRITES the good ffmpeg result in place, so a
+  // container running stale code (e.g. before the caption word-mapping fix) would
+  // silently ship a caption-less video. Premium overwrite only happens when this is
+  // explicitly 'true' — flip it on ONLY after verifying the rebuilt container renders
+  // captioned output. Default off: REVIDEO_URL alone will NOT overwrite.
+  revideoTrusted: (process.env.REVIDEO_TRUSTED ?? '').trim() === 'true',
   // Hard timeout on the Revideo render call. Must stay well under the job lease
   // (visibilitySecs) so a hung render can't run past it and get the job reclaimed
   // + double-run. 8 min covers a short-form premium render with headroom.

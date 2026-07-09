@@ -322,7 +322,10 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // Revideo service and upgrade the edit IN PLACE. Best-effort — on any failure the
     // ffmpeg result stands (instant always wins, premium is the finisher).
     let finalUrl = url
-    if (env.revideoUrl && baseRevideoFile) {
+    // Premium overwrite is gated on BOTH a configured URL and the explicit trust
+    // flag — so a stale/unverified revideo container can never silently replace the
+    // good captioned ffmpeg render with a caption-less one. See env.revideoTrusted.
+    if (env.revideoUrl && env.revideoTrusted && baseRevideoFile) {
       // Surface the instant result so the UI can play it while premium renders.
       void updateJobProgress(job.id, { phase: 'premium', pct: 88, label: 'Polishing premium captions…', instant_url: url })
       try {

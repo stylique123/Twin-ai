@@ -6,7 +6,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import StepList from '../../components/v2/StepList'
 import { Skeleton, QuietButton } from '../../components/v2/Primitives'
-import { generateBlueprint } from '../../lib/api'
+import { generateBlueprint, ingestReference, getJob } from '../../lib/api'
+import { useAuth } from '../../context/AuthContext'
 import { buildTimeline } from '../../lib/timelineAdapter'
 import { saveTimeline } from '../../lib/timelineApi'
 
@@ -18,6 +19,19 @@ const STEPS = [
   { label: 'Setting up captions and B-roll' },
 ]
 
+// The hosts ingest-reference can actually fetch + transcribe (mirrors its
+// SSRF allow-list). A link to one of these gets truly READ; anything else
+// (or a described idea) falls back to pattern-mode generation.
+const SUPPORTED = ['tiktok.com', 'instagram.com', 'youtube.com', 'youtu.be']
+function isSupportedRef(url: string): boolean {
+  try {
+    const h = new URL(url.trim()).hostname.toLowerCase()
+    return SUPPORTED.some((d) => h === d || h.endsWith('.' + d))
+  } catch {
+    return false
+  }
+}
+
 interface BuildState {
   reference_url?: string
   reference_note?: string
@@ -28,6 +42,7 @@ interface BuildState {
 export default function V2Building() {
   const nav = useNavigate()
   const loc = useLocation()
+  const { refreshProfile } = useAuth()
   const state = (loc.state || {}) as BuildState
   const [active, setActive] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -42,18 +57,50 @@ export default function V2Building() {
     if (started.current) return
     started.current = true
 
-    // Pace the visible steps while the real build runs underneath.
-    const ticker = setInterval(() => setActive((a) => Math.min(a + 1, STEPS.length - 1)), 1400)
+    const refUrl = (state.reference_url || '').trim()
+    const willIngest = !!refUrl && isSupportedRef(refUrl)
+    let ticker: ReturnType<typeof setInterval> | null = null
+    // Advance the visible steps AFTER the reference is read (steps 1..4 track the
+    // blueprint write). During a real ingest we hold on step 0 ("Watching your
+    // reference") — which is now literally true.
+    const startPacing = () => {
+      setActive(willIngest ? 1 : 0)
+      ticker = setInterval(() => setActive((a) => Math.min(a + 1, STEPS.length - 1)), 1400)
+    }
 
     ;(async () => {
       try {
+        // 1) Actually READ the reference video when it's a supported link, so the
+        //    blueprint is built from the real clip (transcript + structure), not a
+        //    blind guess. Unsupported links / described ideas skip straight to write.
+        let transcript_id: string | undefined
+        if (willIngest) {
+          const { jobId, transcriptId } = await ingestReference(refUrl)
+          transcript_id = transcriptId // cache hit → immediate
+          if (!transcript_id) {
+            for (let i = 0; i < 80; i++) {
+              await new Promise((r) => setTimeout(r, 2500))
+              const job = await getJob(jobId)
+              if (!job) continue
+              if (job.status === 'done' && job.result?.transcript_id) { transcript_id = job.result.transcript_id; break }
+              if (job.status === 'failed') throw new Error(job.error || 'We couldn’t read that video. Try another link — you weren’t charged.')
+            }
+            if (!transcript_id) throw new Error('Reading the video is taking longer than usual. Try again in a moment — you weren’t charged.')
+          }
+        }
+
+        startPacing()
         const gen = await generateBlueprint({
-          reference_url: state.reference_url || '',
+          reference_url: refUrl,
           reference_note: state.reference_note || '',
           fidelity: 'balanced',
           tone: state.tone,
           delivery: state.delivery,
+          ...(transcript_id ? { transcript_id } : {}),
         })
+        // A recreation was just spent — refresh so the remixes-left counter is
+        // accurate everywhere (AppShell / Dashboard / Settings), not one behind.
+        void refreshProfile()
         const timeline = buildTimeline({
           generationId: gen.id,
           blueprint: gen.blueprint,
@@ -61,16 +108,16 @@ export default function V2Building() {
           platform: gen.blueprint?.reference_read?.platform,
         })
         await saveTimeline(timeline)
-        clearInterval(ticker)
+        if (ticker) clearInterval(ticker)
         setActive(STEPS.length)
         nav(`/v2/plan/${gen.id}`, { replace: true })
       } catch (e) {
-        clearInterval(ticker)
+        if (ticker) clearInterval(ticker)
         setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
       }
     })()
 
-    return () => clearInterval(ticker)
+    return () => { if (ticker) clearInterval(ticker) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
