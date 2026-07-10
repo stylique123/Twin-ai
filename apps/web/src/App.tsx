@@ -2,7 +2,6 @@ import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useAuth } from './context/AuthContext'
-import { STUDIO_V2 } from './lib/brand'
 import { Nav } from './components/Nav'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -15,7 +14,6 @@ import Auth from './pages/Auth'
 // chunk → slow parse, the "big lag / blank page" on load + login) only ships the
 // page you're actually on.
 const Onboarding = lazy(() => import('./pages/Onboarding'))
-const Studio = lazy(() => import('./pages/Studio'))
 const Result = lazy(() => import('./pages/Result'))
 const History = lazy(() => import('./pages/History'))
 const Gallery = lazy(() => import('./pages/Gallery'))
@@ -92,7 +90,7 @@ export default function App() {
   // the small initial bundle from code-splitting without the per-route blank.
   useEffect(() => {
     const warm = () => {
-      void import('./pages/Dashboard'); void import('./pages/Studio'); void import('./pages/Gallery')
+      void import('./pages/Dashboard'); void import('./pages/v2/V2Create'); void import('./pages/Gallery')
       void import('./pages/v2/V2Capture'); void import('./pages/Result'); void import('./pages/History')
       void import('./pages/Brands'); void import('./pages/Settings'); void import('./pages/Billing')
       void import('./pages/Onboarding'); void import('./pages/Metrics'); void import('./pages/ClientReport')
@@ -137,14 +135,9 @@ export default function App() {
             path="/dashboard"
             element={<Protected><AppShell><Page><Dashboard /></Page></AppShell></Protected>}
           />
-          <Route
-            path="/app"
-            element={
-              (import.meta.env.VITE_STUDIO_V2 === 'true' || STUDIO_V2)
-                ? <AppToV2 />
-                : <Protected><AppShell><Page><Studio /></Page></AppShell></Protected>
-            }
-          />
+          {/* /app is the single entry to the create flow — always the V2 studio
+              (the legacy V1 Studio page was retired; V2 has been the only flow). */}
+          <Route path="/app" element={<AppToV2 />} />
           {/* V2 Creative Studio — full-screen flow (no AppShell nav). */}
           <Route path="/v2" element={<Protected><Page><V2Create /></Page></Protected>} />
           <Route path="/v2/building" element={<Protected><Page><V2Building /></Page></Protected>} />

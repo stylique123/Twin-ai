@@ -654,8 +654,12 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     //    with silence in the same pass. Best-effort: if it fails we fall back to
     //    silence-only cuts (unchanged behavior). Skipped entirely on re-render —
     //    the EDL already carries the (possibly creator-edited) cut decisions.
+    // Only run the filler-detection Whisper pre-pass when its result can actually
+    // be USED — i.e. the plain silence-cut path (no edl, no shots). On the scene
+    // `shots` paths the cut is driven by the recorded windows, so `removeSpans` was
+    // computed and thrown away — one wasted Whisper transcription per V2 edit.
     let removeSpans: [number, number][] = []
-    if (!edl) try {
+    if (!edl && !opts.shots) try {
       const a0 = join(dir, 'a0.wav')
       const t0 = join(dir, 't0.json')
       await run('ffmpeg', ['-y', '-i', takeFile, '-vn', '-ac', '1', '-ar', '16000', a0], 120_000)
@@ -748,6 +752,10 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
           ? await transcribeWindow(dir, base, cursor, cursor + segDur)
           : []
         words.push(...(detected.length ? detected : evenSpreadWords(line, cursor, cursor + segDur)))
+        // Feed the Edit Director real timed scene segments (per-scene line + window)
+        // so it can place b-roll / emphasis on the recorded path too — otherwise
+        // trSegments was empty here and planEdit always returned null (no-op).
+        if (line.trim()) trSegments.push({ start: cursor, end: cursor + segDur, text: line })
         cursor += segDur
       }
       durationSec = cursor
@@ -767,6 +775,8 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
           ? await transcribeWindow(dir, base, s0, s1)
           : []
         words.push(...(detected.length ? detected : evenSpreadWords(line, s0, s1)))
+        // Give the Director real timed segments on the upload/shots path too.
+        if (line.trim()) trSegments.push({ start: s0, end: s1, text: line })
       }
     } else if (captions) {
       prog('transcribing', 42, 'Reading your words…')

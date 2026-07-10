@@ -58,7 +58,17 @@ interface Adapter {
   authorizeUrl: (state: string) => string
   exchange: (code: string) => Promise<{ access_token: string; refresh_token?: string; expires_in?: number }>
   account: (accessToken: string) => Promise<{ id: string; label: string }>
-  publish: (a: { accessToken: string; videoUrl: string; title: string; caption: string }) => Promise<{ external_url: string }>
+  publish: (a: { accessToken: string; accountId: string; videoUrl: string; title: string; caption: string }) => Promise<{ external_url: string }>
+}
+
+// Small helper: poll an async condition up to `tries` times with `delayMs` spacing.
+async function pollUntil<T>(fn: () => Promise<T | null>, tries: number, delayMs: number): Promise<T | null> {
+  for (let i = 0; i < tries; i++) {
+    const v = await fn()
+    if (v !== null) return v
+    await new Promise((r) => setTimeout(r, delayMs))
+  }
+  return null
 }
 
 const REDIRECT = () => `${fnBase()}?action=callback`
@@ -134,8 +144,47 @@ const ADAPTERS: Record<string, Adapter> = {
       if (!r.ok) throw new Error(`TikTok token ${r.status}`)
       return await r.json()
     },
-    account: async () => ({ id: '', label: 'TikTok' }),
-    publish: async () => { throw new Error('TikTok content publishing requires app review; connect is ready, posting unlocks on approval.') },
+    account: async (accessToken) => {
+      try {
+        const r = await fetch('https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name', { headers: { Authorization: `Bearer ${accessToken}` } })
+        if (r.ok) { const j = await r.json(); const u = j?.data?.user; return { id: u?.open_id ?? '', label: u?.display_name ? `TikTok · ${u.display_name}` : 'TikTok' } }
+      } catch { /* label is best-effort */ }
+      return { id: '', label: 'TikTok' }
+    },
+    // TikTok Content Posting API — Direct Post via PULL_FROM_URL. The video's
+    // domain must be verified in the TikTok dev portal, and until the app clears
+    // audit only SELF_ONLY is permitted (set TIKTOK_PRIVACY=PUBLIC_TO_EVERYONE after
+    // approval to go public).
+    publish: async ({ accessToken, videoUrl, title }) => {
+      const privacy = env('TIKTOK_PRIVACY') || 'SELF_ONLY'
+      const init = await fetch('https://open.tiktokapis.com/v2/post/publish/video/init/', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({
+          post_info: { title: title.slice(0, 2200), privacy_level: privacy, disable_comment: false, disable_duet: false, disable_stitch: false },
+          source_info: { source: 'PULL_FROM_URL', video_url: videoUrl },
+        }),
+      })
+      const initJson = await init.json().catch(() => ({}))
+      if (!init.ok || initJson?.error?.code !== 'ok') {
+        throw new Error(`TikTok init: ${initJson?.error?.message || init.status}`)
+      }
+      const publishId = initJson.data?.publish_id
+      // Poll status until the pulled video finishes processing (best-effort, ~60s).
+      await pollUntil(async () => {
+        const s = await fetch('https://open.tiktokapis.com/v2/post/publish/status/fetch/', {
+          method: 'POST', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json; charset=UTF-8' },
+          body: JSON.stringify({ publish_id: publishId }),
+        }).then((r) => r.json()).catch(() => null)
+        const st = s?.data?.status
+        if (st === 'PUBLISH_COMPLETE') return { done: true }
+        if (st === 'FAILED') throw new Error(`TikTok publish failed: ${s?.data?.fail_reason || 'unknown'}`)
+        return null
+      }, 20, 3000)
+      // TikTok doesn't return a canonical post URL synchronously; the video lands on
+      // the connected profile. Link to the profile as the external reference.
+      return { external_url: 'https://www.tiktok.com/' }
+    },
   },
   instagram: {
     label: 'Instagram', needs: ['META_APP_ID', 'META_APP_SECRET'],
@@ -148,10 +197,54 @@ const ADAPTERS: Record<string, Adapter> = {
       const p = new URLSearchParams({ client_id: env('META_APP_ID')!, client_secret: env('META_APP_SECRET')!, redirect_uri: REDIRECT(), code })
       const r = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${p}`)
       if (!r.ok) throw new Error(`Instagram token ${r.status}`)
-      return await r.json()
+      const short = await r.json()
+      // Exchange the short-lived token for a long-lived one (~60 days) so posting
+      // keeps working past the first hour.
+      try {
+        const lp = new URLSearchParams({ grant_type: 'fb_exchange_token', client_id: env('META_APP_ID')!, client_secret: env('META_APP_SECRET')!, fb_exchange_token: short.access_token })
+        const lr = await fetch(`https://graph.facebook.com/v21.0/oauth/access_token?${lp}`)
+        if (lr.ok) { const long = await lr.json(); return { access_token: long.access_token, expires_in: long.expires_in ?? 60 * 24 * 3600 } }
+      } catch { /* fall back to short-lived */ }
+      return short
     },
-    account: async () => ({ id: '', label: 'Instagram' }),
-    publish: async () => { throw new Error('Instagram publishing requires a Business account + app review; connect is ready, posting unlocks on approval.') },
+    // Resolve the connected IG BUSINESS account id via the user's Facebook Page —
+    // this is what publishing targets and gets stored as external_account_id.
+    account: async (accessToken) => {
+      try {
+        const pages = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=instagram_business_account,name&access_token=${accessToken}`).then((r) => r.json())
+        for (const pg of pages?.data ?? []) {
+          const igId = pg?.instagram_business_account?.id
+          if (igId) {
+            let handle = 'Instagram'
+            try { const ig = await fetch(`https://graph.facebook.com/v21.0/${igId}?fields=username&access_token=${accessToken}`).then((r) => r.json()); if (ig?.username) handle = `Instagram · @${ig.username}` } catch { /* label best-effort */ }
+            return { id: igId, label: handle }
+          }
+        }
+      } catch { /* fall through */ }
+      return { id: '', label: 'Instagram' }
+    },
+    // Instagram Reels publish: create a REELS container from the hosted video URL,
+    // poll until Meta finishes ingesting it, then publish the container.
+    publish: async ({ accessToken, accountId, videoUrl, caption }) => {
+      if (!accountId) throw new Error('No Instagram Business account linked. Reconnect Instagram (a Business/Creator account linked to a Facebook Page is required).')
+      const mk = new URLSearchParams({ media_type: 'REELS', video_url: videoUrl, caption: caption.slice(0, 2200), access_token: accessToken })
+      const created = await fetch(`https://graph.facebook.com/v21.0/${accountId}/media?${mk}`, { method: 'POST' }).then((r) => r.json())
+      const creationId = created?.id
+      if (!creationId) throw new Error(`Instagram container: ${created?.error?.message || 'failed'}`)
+      // Ingest can take a while for video; poll status_code until FINISHED (~90s).
+      const ready = await pollUntil(async () => {
+        const s = await fetch(`https://graph.facebook.com/v21.0/${creationId}?fields=status_code&access_token=${accessToken}`).then((r) => r.json()).catch(() => null)
+        if (s?.status_code === 'FINISHED') return { ok: true }
+        if (s?.status_code === 'ERROR') throw new Error('Instagram could not process the video.')
+        return null
+      }, 30, 3000)
+      if (!ready) throw new Error('Instagram is still processing the video — try publishing again shortly.')
+      const pub = await fetch(`https://graph.facebook.com/v21.0/${accountId}/media_publish?creation_id=${creationId}&access_token=${accessToken}`, { method: 'POST' }).then((r) => r.json())
+      if (!pub?.id) throw new Error(`Instagram publish: ${pub?.error?.message || 'failed'}`)
+      let permalink = 'https://www.instagram.com/'
+      try { const m = await fetch(`https://graph.facebook.com/v21.0/${pub.id}?fields=permalink&access_token=${accessToken}`).then((r) => r.json()); if (m?.permalink) permalink = m.permalink } catch { /* best-effort */ }
+      return { external_url: permalink }
+    },
   },
   linkedin: {
     label: 'LinkedIn', needs: ['LINKEDIN_CLIENT_ID', 'LINKEDIN_CLIENT_SECRET'],
@@ -175,14 +268,107 @@ const ADAPTERS: Record<string, Adapter> = {
       } catch { /* fall through to default label */ }
       return { id: '', label: 'LinkedIn' }
     },
-    publish: async () => { throw new Error('LinkedIn video publishing requires app review (w_member_social); connect is ready, posting unlocks on approval.') },
+    // LinkedIn video post: initialize upload → PUT the bytes → finalize → create a
+    // post referencing the video URN. Uses the versioned REST API (w_member_social).
+    publish: async ({ accessToken, accountId, videoUrl, caption }) => {
+      if (!accountId) throw new Error('No LinkedIn member id — reconnect LinkedIn.')
+      const owner = `urn:li:person:${accountId}`
+      const version = env('LINKEDIN_VERSION') || '202401'
+      const h = { Authorization: `Bearer ${accessToken}`, 'LinkedIn-Version': version, 'X-Restli-Protocol-Version': '2.0.0', 'Content-Type': 'application/json' }
+      // Pull the finished video into memory (short-form → a few MB, fine in edge).
+      const vid = await fetch(videoUrl)
+      if (!vid.ok) throw new Error('Could not read the video to upload.')
+      const bytes = new Uint8Array(await vid.arrayBuffer())
+      // 1) initialize
+      const init = await fetch('https://api.linkedin.com/rest/videos?action=initializeUpload', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ initializeUploadRequest: { owner, fileSizeBytes: bytes.byteLength, uploadCaptions: false, uploadThumbnail: false } }),
+      }).then((r) => r.json())
+      const value = init?.value
+      if (!value?.video || !value?.uploadInstructions?.length) throw new Error(`LinkedIn init: ${init?.message || 'failed'}`)
+      // 2) upload each part, collecting ETags
+      const partIds: string[] = []
+      for (const ins of value.uploadInstructions) {
+        const part = bytes.subarray(ins.firstByte, ins.lastByte + 1)
+        const up = await fetch(ins.uploadUrl, { method: 'PUT', headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/octet-stream' }, body: part })
+        if (!up.ok) throw new Error(`LinkedIn upload part ${up.status}`)
+        partIds.push(up.headers.get('etag') || up.headers.get('ETag') || '')
+      }
+      // 3) finalize
+      const fin = await fetch('https://api.linkedin.com/rest/videos?action=finalizeUpload', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({ finalizeUploadRequest: { video: value.video, uploadToken: value.uploadToken ?? '', uploadedPartIds: partIds } }),
+      })
+      if (!fin.ok) throw new Error(`LinkedIn finalize ${fin.status}`)
+      // 4) create the post
+      const post = await fetch('https://api.linkedin.com/rest/posts', {
+        method: 'POST', headers: h,
+        body: JSON.stringify({
+          author: owner,
+          commentary: caption.slice(0, 3000),
+          visibility: 'PUBLIC',
+          distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] },
+          content: { media: { title: caption.slice(0, 100) || 'Video', id: value.video } },
+          lifecycleState: 'PUBLISHED',
+          isReshareDisabledByAuthor: false,
+        }),
+      })
+      if (!(post.status >= 200 && post.status < 300)) throw new Error(`LinkedIn post ${post.status}: ${(await post.text()).slice(0, 150)}`)
+      const urn = post.headers.get('x-restli-id') || post.headers.get('x-linkedin-id') || ''
+      return { external_url: urn ? `https://www.linkedin.com/feed/update/${urn}` : 'https://www.linkedin.com/feed/' }
+    },
   },
+}
+
+// deno-lint-ignore no-explicit-any
+type Db = any
+// Publish ONE post via its owner's connection. Shared by the interactive
+// `publish` action and the cron `publish_due` scan. Signs the render, calls the
+// platform adapter, and records posted/external_url or the failure reason.
+async function publishOne(admin: Db, post: { id: string; owner_id: string; platform: string; generation_id: string; caption?: string | null }): Promise<{ ok: boolean; error?: string; external_url?: string }> {
+  const ad = ADAPTERS[post.platform]
+  if (!ad) return { ok: false, error: 'Unknown platform' }
+  const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', post.owner_id).eq('platform', post.platform).maybeSingle()
+  if (!conn?.access_token) return { ok: false, error: `${ad.label} not connected` }
+  const { data: gen } = await admin.from('generations').select('edit_path').eq('id', post.generation_id).eq('user_id', post.owner_id).maybeSingle()
+  if (!gen?.edit_path) return { ok: false, error: 'No finished video to publish yet' }
+  const { data: signed } = await admin.storage.from('edits').createSignedUrl(gen.edit_path, 3600)
+  if (!signed?.signedUrl) return { ok: false, error: 'Could not read the video file' }
+  try {
+    const res = await ad.publish({ accessToken: conn.access_token, accountId: conn.external_account_id ?? '', videoUrl: signed.signedUrl, title: (post.caption ?? 'New video').slice(0, 90), caption: post.caption ?? '' })
+    await admin.from('posts').update({ status: 'posted', posted_at: new Date().toISOString(), external_url: res.external_url }).eq('id', post.id)
+    return { ok: true, external_url: res.external_url }
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'Publish failed'
+    await admin.from('posts').update({ status: 'failed', error: msg.slice(0, 300) }).eq('id', post.id)
+    return { ok: false, error: msg }
+  }
 }
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const url = new URL(req.url)
   const admin = createClient(env('SUPABASE_URL')!, env('SUPABASE_SERVICE_ROLE_KEY')!)
+
+  // ---- Cron: publish all due scheduled posts (internal, shared-secret auth) ---
+  // Called on a schedule by pg_cron with the x-cron-secret header. Publishes every
+  // post whose scheduled_for has passed. No user JWT — this runs across all owners.
+  if (url.searchParams.get('action') === 'publish_due' || (req.headers.get('x-cron-secret') && (await req.clone().json().catch(() => ({}))).action === 'publish_due') {
+    const secret = env('CRON_SECRET')
+    if (!secret || req.headers.get('x-cron-secret') !== secret) return json({ error: 'Forbidden' }, 403)
+    const { data: due } = await admin
+      .from('posts')
+      .select('id, owner_id, platform, generation_id, caption')
+      .eq('status', 'scheduled')
+      .lte('scheduled_for', new Date().toISOString())
+      .limit(25)
+    let published = 0, failed = 0
+    for (const p of due ?? []) {
+      const r = await publishOne(admin, p)
+      if (r.ok) published++; else failed++
+    }
+    return json({ ok: true, published, failed, scanned: (due ?? []).length })
+  }
 
   // ---- OAuth callback (browser redirect, no JWT) ----------------------------
   if (url.searchParams.get('action') === 'callback') {
@@ -241,29 +427,13 @@ Deno.serve(async (req: Request) => {
   if (action === 'publish') {
     const postId = body.post_id
     if (!postId) return json({ error: 'Missing post_id' }, 400)
-    const { data: post } = await admin.from('posts').select('*').eq('id', postId).eq('owner_id', user.id).maybeSingle()
+    // Ownership: the post row must be the caller's (publishOne re-verifies the
+    // generation belongs to post.owner_id before signing its render).
+    const { data: post } = await admin.from('posts').select('id, owner_id, platform, generation_id, caption').eq('id', postId).eq('owner_id', user.id).maybeSingle()
     if (!post) return json({ error: 'Post not found' }, 404)
-    const ad = ADAPTERS[post.platform]
-    if (!ad) return json({ error: 'Unknown platform' }, 400)
-    const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', user.id).eq('platform', post.platform).maybeSingle()
-    if (!conn?.access_token) return json({ error: `Connect your ${ad.label} account first.` }, 400)
-
-    // The finished render lives in storage on the generation; sign a short URL.
-    // Ownership check: the post row is caller-owned, but generation_id is a plain
-    // column — verify the generation is the caller's too, or a crafted post row
-    // could make the service role sign another tenant's video path.
-    const { data: gen } = await admin.from('generations').select('edit_path').eq('id', post.generation_id).eq('user_id', user.id).maybeSingle()
-    if (!gen?.edit_path) return json({ error: 'This post has no finished video to publish yet.' }, 400)
-    const { data: signed } = await admin.storage.from('edits').createSignedUrl(gen.edit_path, 600)
-    if (!signed?.signedUrl) return json({ error: 'Could not read the video file.' }, 500)
-
-    try {
-      const res = await ad.publish({ accessToken: conn.access_token, videoUrl: signed.signedUrl, title: (post.caption ?? 'New video').slice(0, 90), caption: post.caption ?? '' })
-      await admin.from('posts').update({ status: 'posted', posted_at: new Date().toISOString(), external_url: res.external_url }).eq('id', postId)
-      return json({ ok: true, external_url: res.external_url })
-    } catch (e) {
-      return json({ error: e instanceof Error ? e.message : 'Publish failed.' }, 502)
-    }
+    const r = await publishOne(admin, post)
+    if (!r.ok) return json({ error: r.error ?? 'Publish failed.' }, 502)
+    return json({ ok: true, external_url: r.external_url })
   }
 
   return json({ error: 'Unknown action' }, 400)
