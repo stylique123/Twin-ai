@@ -5,11 +5,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob, markPosted } from '../../lib/api'
+import {
+  getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob, markPosted,
+  listConnections, schedulePost, publishPost, type PlatformConnection,
+} from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { loadTimeline } from '../../lib/timelineApi'
 import { CAPTION_STYLE_OPTIONS } from '../../lib/types'
 import { RefinePanel } from '../../components/RefinePanel'
+import { POSTING_LIVE } from '../../lib/brand'
 import { SlidersHorizontal, Loader2 } from 'lucide-react'
 import type { SceneTimeline } from '../../lib/timeline'
 
@@ -51,23 +55,43 @@ export default function V2Review() {
     a.remove()
   }
 
-  // Posting isn't automated yet (POSTING_LIVE). The honest "publish" is: copy the
-  // caption, log the post so it shows in the calendar/history, then send the user
-  // to the platform's uploader in a new tab. No dead-end no-op.
-  // NOTE: markPosted stores the platform SLUG (youtube/tiktok/instagram/linkedin),
+  // One-tap auto-posting: if the platform is connected (Calendar → Connected
+  // accounts), actually post the finished render via the `social` edge function
+  // (real TikTok/IG/LinkedIn/YouTube adapters). If it isn't connected yet, fall
+  // back to the honest manual path — copy the caption, log the post, open the
+  // platform's uploader — so there's never a dead-end no-op either way.
+  // NOTE: platform is stored as the SLUG (youtube/tiktok/instagram/linkedin),
   // not the display label, so the logged post matches every other surface's filters.
+  const [connections, setConnections] = useState<PlatformConnection[]>([])
+  const [publishError, setPublishError] = useState<string | null>(null)
+  useEffect(() => { if (POSTING_LIVE) void listConnections().then(setConnections).catch(() => {}) }, [])
+  const connectionFor = (slug: string) => connections.find((c) => c.platform === slug && c.status === 'connected')
+
   const publishTo = async (p: { label: string; slug: string; url: string }) => {
     if (!videoUrl || publishing) return
     setPublishing(p.label)
+    setPublishError(null)
     const caption = timeline?.hook ?? ''
+    const conn = connectionFor(p.slug)
     try {
+      if (conn) {
+        const post = await schedulePost({ generationId: id, platform: p.slug, scheduledFor: new Date().toISOString(), caption })
+        const r = await publishPost(post.id)
+        if (!r.ok) { setPublishError(r.error ?? `Couldn't post to ${p.label}.`); return }
+        setPublishSheet(false)
+        nav('/calendar')
+        return
+      }
+      // Not connected — manual path (never a dead end).
       try { await navigator.clipboard?.writeText(caption) } catch { /* clipboard blocked — ignore */ }
       try { await markPosted({ generationId: id, platform: p.slug, caption }) } catch { /* best-effort log */ }
       window.open(p.url, '_blank', 'noopener')
-    } finally {
-      setPublishing(null)
       setPublishSheet(false)
       nav('/calendar')
+    } catch (e) {
+      setPublishError(e instanceof Error ? e.message : `Couldn't post to ${p.label}.`)
+    } finally {
+      setPublishing(null)
     }
   }
   const PUBLISH_TARGETS = [
@@ -276,10 +300,19 @@ export default function V2Review() {
       />
 
       <BottomSheet open={publishSheet} title="Publish to" onClose={() => setPublishSheet(false)}>
-        <p className="px-1 pb-2 text-xs text-white/60">We'll copy your caption, log the post to your calendar, and open the uploader. One-tap auto-posting is coming soon.</p>
-        {PUBLISH_TARGETS.map((p) => (
-          <SheetOption key={p.slug} label={publishing === p.label ? `${p.label} — opening…` : p.label} onPick={() => publishTo(p)} />
-        ))}
+        <p className="px-1 pb-2 text-xs text-white/60">
+          {POSTING_LIVE
+            ? 'Connected accounts post automatically. Anything else copies your caption, logs the post, and opens the uploader.'
+            : "We'll copy your caption, log the post to your calendar, and open the uploader. One-tap auto-posting is coming soon."}
+        </p>
+        {publishError && <p className="px-1 pb-2 text-xs text-coral">{publishError}</p>}
+        {PUBLISH_TARGETS.map((p) => {
+          const connected = POSTING_LIVE && !!connectionFor(p.slug)
+          const label = publishing === p.label
+            ? (connected ? `Posting to ${p.label}…` : `${p.label} — opening…`)
+            : connected ? `${p.label} · Connected — post now` : p.label
+          return <SheetOption key={p.slug} label={label} onPick={() => publishTo(p)} />
+        })}
       </BottomSheet>
     </div>
   )
