@@ -353,9 +353,15 @@ Deno.serve(async (req: Request) => {
   // ---- Cron: publish all due scheduled posts (internal, shared-secret auth) ---
   // Called on a schedule by pg_cron with the x-cron-secret header. Publishes every
   // post whose scheduled_for has passed. No user JWT — this runs across all owners.
-  if (url.searchParams.get('action') === 'publish_due' || (req.headers.get('x-cron-secret') && (await req.clone().json().catch(() => ({}))).action === 'publish_due') {
+  // (Read the body once, up front, so the condition below stays a simple boolean —
+  // a prior version tried to inline the async body-read inside the `if` condition
+  // itself and had a mismatched paren, which silently broke the whole check and
+  // made every cron call fall through to the "not authenticated" 401 path.)
+  const cronHeader = req.headers.get('x-cron-secret')
+  const cronBody = cronHeader ? await req.clone().json().catch(() => ({} as { action?: string })) : null
+  if (url.searchParams.get('action') === 'publish_due' || cronBody?.action === 'publish_due') {
     const secret = env('CRON_SECRET')
-    if (!secret || req.headers.get('x-cron-secret') !== secret) return json({ error: 'Forbidden' }, 403)
+    if (!secret || cronHeader !== secret) return json({ error: 'Forbidden' }, 403)
     const { data: due } = await admin
       .from('posts')
       .select('id, owner_id, platform, generation_id, caption')
