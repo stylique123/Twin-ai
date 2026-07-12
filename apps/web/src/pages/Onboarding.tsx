@@ -340,7 +340,10 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
         niche: vp.niche,
         audience,
         product,
-        goal: goal || 'turn attention into trust',
+        // Never fabricate a goal the creator didn't state — an unset goal stays
+        // empty (Settings shows "+ Add"), and the blueprint applies its own neutral
+        // fallback at write time. Storing a canned goal here made it read as theirs.
+        goal,
         voice: [vp.tone, vp.pacing].filter(Boolean).join(', '),
         platforms: [activePlatform],
         editing_style: vp.hook_style || '',

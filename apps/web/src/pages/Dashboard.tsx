@@ -75,9 +75,10 @@ export default function Dashboard() {
   const hoursSaved = Math.round(totalRemixes * 0.5 + finishedVideos * 1.5)
   const topId = posts.reduce((best, p) => ((p.views ?? 0) > 0 && (p.views ?? 0) > (posts.find((x) => x.id === best)?.views ?? 0) ? p.id : best), '')
 
-  // Greet with their real identity: the display name they set, else their active
-  // brand handle, else the email prefix as a last resort (not "itsabs126").
-  const rawName = (profile?.display_name?.trim() || (brand?.handle ? `@${brand.handle}` : '') || profile?.email?.split('@')[0] || 'creator')
+  // Greet with the ACTIVE BRAND VOICE handle first (@itsabd_63) — that's the
+  // identity the creator cares about — then a set display name, then the email
+  // prefix only as a last resort.
+  const rawName = ((brand?.handle ? `@${brand.handle}` : '') || profile?.display_name?.trim() || profile?.email?.split('@')[0] || 'creator')
   const name = rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
   // "+N this week" deltas per stage, from the rows we already fetched — real
@@ -105,16 +106,13 @@ export default function Dashboard() {
           <p className="mt-4 max-w-md text-base text-stone">
             Everything you've shipped, and what to make next.
           </p>
-          {/* Make it unambiguous WHICH account + brand voice is active — the welcome
-              name alone (display name / email) doesn't say which brand is loaded. */}
-          {(brand?.handle || profile?.email) && (
+          {/* The welcome name is the brand handle; show its platform so it's clear
+              which brand voice is active. No email — that's not the creator identity. */}
+          {brand?.platform && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-              {brand?.handle && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sand">
-                  <Sparkles className="h-3 w-3 text-coral" /> Brand voice: <span className="text-cream">@{brand.handle}</span>{brand.platform ? ` · ${brand.platform}` : ''}
-                </span>
-              )}
-              {profile?.email && <span className="text-stone">Signed in as {profile.email}</span>}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 capitalize text-sand">
+                <Sparkles className="h-3 w-3 text-coral" /> {brand.platform}
+              </span>
             </div>
           )}
           {(isAgency && brand) || streak > 0 || hoursSaved > 0 ? (
