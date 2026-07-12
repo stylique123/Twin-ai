@@ -22,7 +22,12 @@ export default function Auth() {
   const intendedPlan = intendedPlanId && PLANS.some((p) => p.id === intendedPlanId) ? planFor(intendedPlanId) : null
   const isPaidIntent = !!intendedPlan && intendedPlan.id !== 'free'
   const perks = isPaidIntent ? PAID_PERKS : FREE_PERKS
-  const [mode, setMode] = useState<'signin' | 'signup'>(params.get('mode') === 'signin' ? 'signin' : 'signup')
+  // 'forgot' = request a reset email; 'reset' = arrived from that email's link
+  // (we send the link back to /auth?mode=reset), set the new password.
+  type Mode = 'signin' | 'signup' | 'forgot' | 'reset'
+  const [mode, setMode] = useState<Mode>(
+    params.get('mode') === 'reset' ? 'reset' : params.get('mode') === 'signin' ? 'signin' : 'signup',
+  )
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [msg, setMsg] = useState<string | null>(null)
@@ -51,7 +56,19 @@ export default function Auth() {
       if (intendedPlan && intendedPlan.id !== 'free') {
         try { localStorage.setItem(INTENDED_PLAN_KEY, intendedPlan.id) } catch { /* storage unavailable */ }
       }
-      if (mode === 'signup') {
+      if (mode === 'forgot') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/auth?mode=reset`,
+        })
+        if (error) throw error
+        setMsg('Reset link sent — check your inbox and open the link on this device.')
+        setMsgType('success')
+      } else if (mode === 'reset') {
+        // The recovery link signed the user in; set the new password and go.
+        const { error } = await supabase.auth.updateUser({ password })
+        if (error) throw error
+        navigate('/app')
+      } else if (mode === 'signup') {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
@@ -180,54 +197,69 @@ export default function Auth() {
           )}
 
           <h1 className="mt-6 font-display text-3xl">
-            {mode === 'signin' ? 'Welcome back' : isPaidIntent ? `Start on ${intendedPlan!.name}` : 'Start free'}
+            {mode === 'forgot' ? 'Reset your password'
+              : mode === 'reset' ? 'Choose a new password'
+              : mode === 'signin' ? 'Welcome back'
+              : isPaidIntent ? `Start on ${intendedPlan!.name}` : 'Start free'}
           </h1>
           <p className="mt-1.5 text-sm text-sand">
-            {mode === 'signin'
-              ? 'Pick up where you left off.'
+            {mode === 'forgot' ? "Enter your email and we'll send you a reset link."
+              : mode === 'reset' ? 'Set a new password for your account below.'
+              : mode === 'signin' ? 'Pick up where you left off.'
               : isPaidIntent
                 ? `Create your account, then activate ${intendedPlan!.name} — $${intendedPlan!.price}/mo.`
                 : '3 free remixes. No card required.'}
           </p>
 
-          <button
-            type="button"
-            onClick={() => oauth('google')}
-            disabled={busy}
-            className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm font-medium text-cream transition-colors hover:bg-white/[0.07] disabled:opacity-50"
-          >
-            <GoogleIcon className="h-4 w-4" /> Continue with Google
-          </button>
-          <div className="my-5 flex items-center gap-3 text-xs text-stone">
-            <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
-          </div>
+          {(mode === 'signin' || mode === 'signup') && (
+            <>
+              <button
+                type="button"
+                onClick={() => oauth('google')}
+                disabled={busy}
+                className="mt-7 flex w-full items-center justify-center gap-2.5 rounded-xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm font-medium text-cream transition-colors hover:bg-white/[0.07] disabled:opacity-50"
+              >
+                <GoogleIcon className="h-4 w-4" /> Continue with Google
+              </button>
+              <div className="my-5 flex items-center gap-3 text-xs text-stone">
+                <span className="h-px flex-1 bg-white/10" /> or <span className="h-px flex-1 bg-white/10" />
+              </div>
+            </>
+          )}
 
-          <form onSubmit={submit} className="space-y-3">
-            <div>
-              <label className="eyebrow">Email</label>
-              <input
-                className="field mt-1.5"
-                type="email"
-                placeholder="you@brand.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="eyebrow">Password</label>
-              <input
-                className="field mt-1.5"
-                type="password"
-                placeholder="Min 6 characters"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                minLength={6}
-                required
-              />
-            </div>
+          <form onSubmit={submit} className={`space-y-3 ${mode === 'forgot' || mode === 'reset' ? 'mt-7' : ''}`}>
+            {mode !== 'reset' && (
+              <div>
+                <label className="eyebrow">Email</label>
+                <input
+                  className="field mt-1.5"
+                  type="email"
+                  placeholder="you@brand.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
+            )}
+            {mode !== 'forgot' && (
+              <div>
+                <label className="eyebrow">{mode === 'reset' ? 'New password' : 'Password'}</label>
+                <input
+                  className="field mt-1.5"
+                  type="password"
+                  placeholder="Min 6 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  minLength={6}
+                  required
+                />
+              </div>
+            )}
             <button className="btn-gradient w-full" disabled={busy}>
-              {busy ? 'One sec…' : mode === 'signup' ? 'Create account' : 'Sign in'}
+              {busy ? 'One sec…'
+                : mode === 'forgot' ? 'Send reset link'
+                : mode === 'reset' ? 'Save new password'
+                : mode === 'signup' ? 'Create account' : 'Sign in'}
               {!busy && <ArrowRight className="h-4 w-4" />}
             </button>
           </form>
@@ -238,12 +270,24 @@ export default function Auth() {
             </p>
           )}
 
-          <button
-            className="mt-6 text-sm text-stone transition-colors hover:text-cream"
-            onClick={() => setMode(mode === 'signup' ? 'signin' : 'signup')}
-          >
-            {mode === 'signup' ? 'Have an account? Sign in →' : 'New here? Start free →'}
-          </button>
+          <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2">
+            {mode !== 'reset' && (
+              <button
+                className="text-sm text-stone transition-colors hover:text-cream"
+                onClick={() => { setMsg(null); setMode(mode === 'signin' ? 'signup' : 'signin') }}
+              >
+                {mode === 'signup' ? 'Have an account? Sign in →' : mode === 'forgot' ? '← Back to sign in' : 'New here? Start free →'}
+              </button>
+            )}
+            {mode === 'signin' && (
+              <button
+                className="text-sm text-stone transition-colors hover:text-cream"
+                onClick={() => { setMsg(null); setMode('forgot') }}
+              >
+                Forgot password?
+              </button>
+            )}
+          </div>
         </div>
       </motion.div>
     </main>
