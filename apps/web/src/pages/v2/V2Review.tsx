@@ -14,8 +14,19 @@ import { loadTimeline } from '../../lib/timelineApi'
 import { CAPTION_STYLE_OPTIONS } from '../../lib/types'
 import { RefinePanel } from '../../components/RefinePanel'
 import { POSTING_LIVE } from '../../lib/brand'
-import { SlidersHorizontal, Loader2 } from 'lucide-react'
+import { SlidersHorizontal, Loader2, Check, Pencil, Captions, Copy, Share, Download, Lock } from 'lucide-react'
 import type { SceneTimeline } from '../../lib/timeline'
+
+// The processing checklist (mock parity): the worker reports a live stage label +
+// pct; we map pct onto these named steps so the wait reads as visible progress,
+// never a bare spinner. Labels mirror what the pipeline actually does.
+const PROC_STEPS = [
+  { t: 'Analyzing speech', d: 'Detecting words and pauses' },
+  { t: 'Cutting the dead air', d: 'Removing pauses and flubs' },
+  { t: 'Generating captions', d: 'Accurate, synced captions' },
+  { t: 'Adding B-roll & emphasis', d: 'Finding the right moments' },
+  { t: 'Finalizing & rendering', d: 'Bringing everything together' },
+]
 
 type Phase = 'rendering' | 'done' | 'failed'
 
@@ -197,38 +208,92 @@ export default function V2Review() {
   // The actions rail — Download/Publish, the caption/fine-tune/navigate toolbar, and
   // the scene chip strip. Shared content, laid out below the video on phone and in a
   // fixed side rail on desktop (matching V2Capture's two-pane convention).
+  const canRefine = !!takePath && !!refineEdl && !refineLoading
   const actionsRail = (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-2">
-        <button disabled={!videoUrl} onClick={downloadVideo}
-          className="rounded-2xl bg-cream text-ink font-semibold py-4 disabled:opacity-40 hover:bg-cream/90 active:scale-[0.99] transition-all">Download</button>
-        <button disabled={!videoUrl} onClick={() => setPublishSheet(true)}
-          className="rounded-2xl bg-emerald-500 text-white font-semibold py-4 disabled:opacity-40 hover:bg-emerald-600 active:scale-[0.99] transition-all">Publish</button>
-      </div>
-
-      {timeline && (
-        <div className="flex gap-2 overflow-x-auto scrollbar-none lg:flex-wrap">
-          {timeline.scenes.map((s) => (
-            <div key={s.scene_number} className="shrink-0 rounded-lg bg-white/10 px-3 py-2 text-xs text-white/70">Scene {s.scene_number}</div>
-          ))}
-        </div>
-      )}
-
-      {/* Wired Action Toolbar */}
-      <div className="flex items-center justify-center gap-6 text-sm text-white/60 lg:flex-col lg:items-stretch lg:gap-2 lg:text-left">
-        <button onClick={() => setCaptionSheet(true)} disabled={!takePath || !refineEdl || refineLoading} className="hover:text-white disabled:opacity-30 transition-colors lg:rounded-xl lg:border lg:border-white/10 lg:px-3 lg:py-2.5">Captions</button>
-
-        <button
-          onClick={() => setRefineOpen(true)}
-          disabled={!takePath || !refineEdl || refineLoading}
-          className="flex items-center gap-1.5 hover:text-white disabled:opacity-30 transition-all lg:rounded-xl lg:border lg:border-white/10 lg:px-3 lg:py-2.5"
-        >
-          <SlidersHorizontal className="h-3.5 w-3.5" /> Fine-Tune
+      {/* Secondary action tiles (mock parity: Edit / Captions / New) */}
+      <div className="grid grid-cols-3 gap-2">
+        <button onClick={() => setRefineOpen(true)} disabled={!canRefine}
+          className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3.5 text-center transition-colors hover:bg-white/[0.07] disabled:opacity-35">
+          <Pencil className="mx-auto h-4 w-4 text-cream" />
+          <div className="mt-1.5 text-xs font-semibold text-cream">Edit video</div>
+          <div className="text-[10px] text-stone">Make changes</div>
         </button>
-
-        <button onClick={() => nav('/v2')} className="hover:text-white transition-colors lg:rounded-xl lg:border lg:border-white/10 lg:px-3 lg:py-2.5">Make another</button>
-        <button onClick={() => nav('/dashboard')} className="hover:text-white transition-colors font-medium text-coral lg:rounded-xl lg:border lg:border-coral/30 lg:px-3 lg:py-2.5">Dashboard</button>
+        <button onClick={() => setCaptionSheet(true)} disabled={!canRefine}
+          className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3.5 text-center transition-colors hover:bg-white/[0.07] disabled:opacity-35">
+          <Captions className="mx-auto h-4 w-4 text-cream" />
+          <div className="mt-1.5 text-xs font-semibold text-cream">Captions</div>
+          <div className="text-[10px] text-stone">Change style</div>
+        </button>
+        <button onClick={() => nav('/v2')}
+          className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3.5 text-center transition-colors hover:bg-white/[0.07]">
+          <Copy className="mx-auto h-4 w-4 text-cream" />
+          <div className="mt-1.5 text-xs font-semibold text-cream">New video</div>
+          <div className="text-[10px] text-stone">Make another</div>
+        </button>
       </div>
+
+      {/* Primary: share, then download (mock parity) */}
+      <button disabled={!videoUrl} onClick={() => setPublishSheet(true)} className="btn-gradient w-full !py-4 text-base disabled:opacity-40">
+        <Share className="h-4 w-4" /> Export &amp; share
+      </button>
+      <button disabled={!videoUrl} onClick={downloadVideo} className="btn-ghost w-full !py-3.5 disabled:opacity-40">
+        <Download className="h-4 w-4" /> Download to device
+      </button>
+
+      <p className="flex items-center justify-center gap-1.5 text-center text-xs text-stone">
+        <Lock className="h-3 w-3" /> Your video is private. Only you can see it.
+      </p>
+
+      <button onClick={() => nav('/dashboard')} className="w-full text-center text-sm text-stone transition-colors hover:text-cream lg:text-left">
+        ← Back to dashboard
+      </button>
+    </div>
+  )
+
+  // Live checklist during the render: map the worker's real pct onto named steps
+  // so the wait shows visible movement (mock parity), while `label` stays the
+  // worker's actual current stage line.
+  const activeStep = Math.min(PROC_STEPS.length - 1, Math.floor((pct / 100) * PROC_STEPS.length))
+  const processingCard = (
+    <div className="w-full rounded-panel border border-white/10 bg-ink2/70 p-6">
+      <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-signature shadow-glow">
+        <SlidersHorizontal className="h-6 w-6 text-ink" />
+      </div>
+      <h2 className="mt-5 text-center font-display text-2xl">Creating your video</h2>
+      <p className="mt-1 text-center text-sm text-stone">This usually takes 1–2 minutes.</p>
+      <div className="mt-5 flex items-center gap-3">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full rounded-full bg-gradient-to-r from-amber to-coral transition-all" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="text-sm font-semibold text-cream">{pct}%</span>
+      </div>
+      <ul className="mt-6 space-y-4">
+        {PROC_STEPS.map((s, i) => {
+          const state = i < activeStep ? 'done' : i === activeStep ? 'now' : 'todo'
+          return (
+            <li key={s.t} className="flex items-center gap-3">
+              {state === 'done' ? (
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-coral"><Check className="h-4 w-4 text-white" /></span>
+              ) : state === 'now' ? (
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-coral"><Loader2 className="h-3.5 w-3.5 animate-spin text-coral" /></span>
+              ) : (
+                <span className="h-7 w-7 shrink-0 rounded-full border-2 border-dashed border-white/15" />
+              )}
+              <div className="min-w-0 flex-1">
+                <div className={state === 'todo' ? 'text-sm font-medium text-stone' : 'text-sm font-medium text-cream'}>{s.t}</div>
+                <div className="text-xs text-stone">{state === 'now' ? label : s.d}</div>
+              </div>
+              <span className={state === 'done' ? 'text-xs font-medium text-coral' : state === 'now' ? 'text-xs font-medium text-amber' : 'text-xs text-stone'}>
+                {state === 'done' ? 'Completed' : state === 'now' ? 'In progress' : 'Pending'}
+              </span>
+            </li>
+          )
+        })}
+      </ul>
+      <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-xs leading-relaxed text-stone">
+        💡 Good things take a little time. You can leave this screen — we keep working, and the finished video lands in your Library.
+      </p>
     </div>
   )
 
@@ -237,43 +302,50 @@ export default function V2Review() {
     // desktop (lg) = a two-pane studio — the video stage on the left, a fixed
     // actions rail on the right. Not the phone layout stretched wide.
     <div className="min-h-[100dvh] w-full bg-ink text-cream overflow-x-hidden">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl lg:flex-row lg:items-center lg:gap-10 lg:px-8">
+      <div className={`mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl ${phase === 'rendering' ? 'lg:max-w-2xl' : 'lg:flex-row lg:items-center lg:gap-10'} lg:px-8`}>
         <div className="flex flex-1 flex-col lg:min-w-0 lg:py-6">
           <div className="flex items-center justify-between px-4 pt-4 lg:px-0 lg:pt-0">
-            <button onClick={() => nav(`/v2/plan/${id}`)} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 hover:bg-white/20">←</button>
-            <span className="text-sm text-white/70 truncate lg:hidden">Your video</span>
+            <button onClick={() => nav(`/v2/plan/${id}`)} aria-label="Back" className="inline-flex h-11 items-center gap-2 rounded-full bg-white/10 px-4 text-sm hover:bg-white/20">← <span className="hidden sm:inline">Back to studio</span></button>
+            <span className="text-sm text-white/70 truncate">{phase === 'rendering' ? 'Processing your video' : 'Final video'}</span>
             <button aria-label="Download" disabled={!videoUrl} onClick={downloadVideo} className="h-11 w-11 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 lg:hidden">↓</button>
           </div>
 
-          <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-ink2 shadow-2xl lg:my-0 lg:flex-none lg:h-[82vh] lg:max-h-[82vh] lg:w-auto lg:max-w-none">
-            {phase === 'done' && videoUrl ? (
-              <video ref={videoRef} src={videoUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline controls />
-            ) : phase === 'failed' ? (
-              <div className="absolute inset-0 grid place-items-center text-center px-6">
-                <div>
-                  <p className="text-white/80 font-medium">We couldn't finish the edit</p>
-                  <p className="text-xs text-white/50 mt-1">{label}</p>
-                  <button onClick={retry} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Re-record & try again</button>
-                </div>
+          {/* Celebration header once the render lands (mock parity). */}
+          {phase === 'done' && (
+            <div className="px-4 pt-5 text-center lg:px-0">
+              <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-signature shadow-glow">
+                <Check className="h-6 w-6 text-ink" />
               </div>
-            ) : (
-              <div className="absolute inset-0 grid place-items-center text-center px-6">
-                <div className="w-full">
-                  <Loader2 className="h-8 w-8 mx-auto animate-spin text-coral mb-2" />
-                  <p className="mt-3 text-sm text-white/80">{label}</p>
-                  <div className="mt-3 mx-auto h-1.5 w-40 rounded-full bg-white/10 overflow-hidden">
-                    <div className="h-full bg-white transition-all" style={{ width: `${pct}%` }} />
+              <h1 className="mt-3 font-display text-3xl">Your video is <span className="gradient-text">ready!</span></h1>
+              <p className="mt-1 text-sm text-stone">Great job — it's edited, captioned and ready to share.</p>
+            </div>
+          )}
+
+          {phase === 'rendering' ? (
+            <div className="flex flex-1 items-center px-4 py-6 lg:px-0">{processingCard}</div>
+          ) : (
+            <div className="relative mx-auto my-4 w-full max-w-[460px] flex-1 max-h-[72vh] aspect-[9/16] rounded-2xl overflow-hidden bg-ink2 shadow-2xl lg:my-0 lg:mt-4 lg:flex-none lg:h-[74vh] lg:max-h-[74vh] lg:w-auto lg:max-w-none">
+              {phase === 'done' && videoUrl ? (
+                <video ref={videoRef} src={videoUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline controls />
+              ) : (
+                <div className="absolute inset-0 grid place-items-center text-center px-6">
+                  <div>
+                    <p className="text-white/80 font-medium">We couldn't finish the edit</p>
+                    <p className="text-xs text-white/50 mt-1">{label}</p>
+                    <button onClick={retry} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Re-record & try again</button>
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ACTIONS RAIL — below the video on phone, a fixed side panel on desktop */}
-        <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
-          {actionsRail}
-        </div>
+        {phase !== 'rendering' && (
+          <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
+            {actionsRail}
+          </div>
+        )}
       </div>
 
       {/* Wired Subtitle Style Sheet */}
