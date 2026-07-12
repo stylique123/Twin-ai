@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { motion, AnimatePresence, useInView, useMotionValue, useSpring, useTransform } from 'framer-motion'
 import {
   ArrowRight, Check, Plus, Minus, AtSign, Wand2, Captions, Clapperboard, Scissors,
@@ -127,6 +128,13 @@ const FAQ = [
 ]
 
 export default function Landing() {
+  const { session } = useAuth()
+  // A logged-in creator should never be dropped on the marketing page. Google/
+  // email login can land here (e.g. when the redirect URL isn't allow-listed and
+  // Supabase falls back to the Site URL), so bounce straight into the app instead
+  // of making them hunt for "Open studio". /dashboard is Protected, so it re-routes
+  // to onboarding if their brand DNA isn't set up yet.
+  if (session) return <Navigate to="/dashboard" replace />
   return (
     <main className="noise overflow-clip">
       <HeroSection />

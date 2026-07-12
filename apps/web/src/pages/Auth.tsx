@@ -116,8 +116,11 @@ export default function Auth() {
     setBusy(true)
     try {
       const { error } = await supabase.auth.signInWithOAuth({
+        // Land straight in the dashboard (Protected → routes to onboarding if the
+        // brand voice isn't set up). If this URL isn't allow-listed and Supabase
+        // falls back to the Site URL, the Landing page bounces them here anyway.
         provider,
-        options: { redirectTo: `${window.location.origin}/app` },
+        options: { redirectTo: `${window.location.origin}/dashboard` },
       })
       if (error) throw error
       // The browser redirects to the provider; nothing else runs here.
