@@ -23,7 +23,11 @@ const NAV = [
   { to: '/settings',  label: 'Settings',   icon: Settings,        note: 'Account & DNA' },
 ]
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+// `mobileChrome=false` (used by the V2 flow) keeps the desktop sidebar — so the
+// V2 wizard reads as part of the dashboard on a real monitor instead of a lone
+// card floating in empty space — but skips the mobile sticky header, since V2's
+// own full-screen screens already have their own back button + title on phone.
+export function AppShell({ children, mobileChrome = true }: { children: React.ReactNode; mobileChrome?: boolean }) {
   const { profile, signOut } = useAuth()
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
@@ -74,40 +78,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Sticky mobile chrome: header + dropdown in ONE sticky container so the
             menu always opens directly under the header — no safe-area magic number,
-            no sliding-under-the-notch overlap. */}
-        <div className="sticky top-0 z-40 lg:hidden">
-          <header className="flex items-center justify-between border-b border-white/8 bg-ink/80 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
-            <Link to="/app" className="inline-flex items-center gap-2">
-              <LogoMark size={26} />
-              <span className="font-bold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
-            </Link>
-            <div className="flex items-center gap-2">
-              <NotificationBell />
-              <button className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 active:bg-white/10" onClick={() => setOpen((v) => !v)} aria-label="Menu">
-                {open ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
-              </button>
-            </div>
-          </header>
-          <AnimatePresence>
-            {open && (
-              <motion.nav initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }} className="overflow-hidden border-b border-white/8 bg-ink/95 backdrop-blur-xl">
-                <div className="space-y-1 p-3">
-                  {/* Agencies switch the active client from here on a phone. */}
-                  <BrandSwitcher />
-                  {navItems.map((n) => (
-                    <Link key={n.to} to={n.to} onClick={() => setOpen(false)} className={cn('flex items-center gap-3 rounded-xl px-3 py-3 text-sm', isActive(n.to) ? 'bg-white/[0.06] text-cream' : 'text-sand')}>
-                      <n.icon className="h-[18px] w-[18px]" /> {n.label}
-                      <span className="ml-auto text-xs text-stone">{n.note}</span>
-                    </Link>
-                  ))}
-                  <button onClick={doSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-stone">
-                    <LogOut className="h-[18px] w-[18px]" /> Sign out
-                  </button>
-                </div>
-              </motion.nav>
-            )}
-          </AnimatePresence>
-        </div>
+            no sliding-under-the-notch overlap. Skipped when the page brings its own
+            full-screen mobile header (the V2 flow). */}
+        {mobileChrome && (
+          <div className="sticky top-0 z-40 lg:hidden">
+            <header className="flex items-center justify-between border-b border-white/8 bg-ink/80 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
+              <Link to="/app" className="inline-flex items-center gap-2">
+                <LogoMark size={26} />
+                <span className="font-bold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
+              </Link>
+              <div className="flex items-center gap-2">
+                <NotificationBell />
+                <button className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5 active:bg-white/10" onClick={() => setOpen((v) => !v)} aria-label="Menu">
+                  {open ? <X className="h-[18px] w-[18px]" /> : <Menu className="h-[18px] w-[18px]" />}
+                </button>
+              </div>
+            </header>
+            <AnimatePresence>
+              {open && (
+                <motion.nav initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }} className="overflow-hidden border-b border-white/8 bg-ink/95 backdrop-blur-xl">
+                  <div className="space-y-1 p-3">
+                    {/* Agencies switch the active client from here on a phone. */}
+                    <BrandSwitcher />
+                    {navItems.map((n) => (
+                      <Link key={n.to} to={n.to} onClick={() => setOpen(false)} className={cn('flex items-center gap-3 rounded-xl px-3 py-3 text-sm', isActive(n.to) ? 'bg-white/[0.06] text-cream' : 'text-sand')}>
+                        <n.icon className="h-[18px] w-[18px]" /> {n.label}
+                        <span className="ml-auto text-xs text-stone">{n.note}</span>
+                      </Link>
+                    ))}
+                    <button onClick={doSignOut} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-stone">
+                      <LogOut className="h-[18px] w-[18px]" /> Sign out
+                    </button>
+                  </div>
+                </motion.nav>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
         <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>

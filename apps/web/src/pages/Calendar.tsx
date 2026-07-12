@@ -162,7 +162,7 @@ export default function Calendar() {
               <p className="eyebrow !text-sand">Connected accounts</p>
               <span className="text-[11px] text-stone">{POSTING_LIVE ? 'Connect an account to post in one click.' : 'One-click posting is coming soon.'}</span>
             </div>
-            <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
               {ALL_PLATFORMS.map((p) => {
                 const c = connOf(p)
                 const busy = connBusy === p

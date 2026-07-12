@@ -118,7 +118,7 @@ export default function Auth() {
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.7, ease: EASE }}
-        className="relative grid w-full max-w-4xl overflow-hidden rounded-panel border border-white/10 bg-ink2/80 backdrop-blur-xl md:grid-cols-2"
+        className="relative grid grid-cols-1 w-full max-w-4xl overflow-hidden rounded-panel border border-white/10 bg-ink2/80 backdrop-blur-xl md:grid-cols-2"
       >
         {/* Left, brand panel — a real creator reel runs behind it (dimmed under a
             scrim) so the sign-up screen feels like the product, not a plain form. */}

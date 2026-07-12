@@ -8,6 +8,11 @@
 
 html {
   scroll-behavior: smooth;
+  /* iOS Safari ignores overflow-x on <body> alone: any element poking past the
+     right edge makes the whole page pannable sideways, so words/boxes look
+     sliced at the screen edge and the page "wiggles". Clipping at the root is
+     the only cut that WebKit actually honors. */
+  overflow-x: clip;
 }
 html,
 body,
@@ -22,7 +27,12 @@ body {
   font-family: 'Geist', 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
-  overflow-x: hidden;
+  overflow-x: clip;
+  /* Stop a horizontal drag on any in-page content (e.g. the scene-chip strips,
+     the horizontally-scrolling format chips) from being misread as the
+     browser's edge swipe-back/forward gesture — that's what reads as the page
+     "shaking"/jumping sideways on a phone mid-scroll. */
+  overscroll-behavior-x: none;
 }
 
 /* Custom scrollbar — premium, subtle. */

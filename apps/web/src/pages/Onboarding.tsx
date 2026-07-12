@@ -387,7 +387,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
         </Labeled>
         {/* Captured here so the DNA is complete from day one (the scan can't read
             these). Optional — empty is fine, the creator can fill them in Settings. */}
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Labeled label="Who you're talking to">
             <input className="field" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. busy founders, 25-40" />
           </Labeled>
@@ -398,7 +398,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
         <Labeled label="Your goal">
           <input className="field" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. grow to 50k, drive signups, build trust" />
         </Labeled>
-        <div className="grid gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Labeled label="Tone">
             <input className="field" value={vp.tone} onChange={(e) => setField('tone', e.target.value)} />
           </Labeled>

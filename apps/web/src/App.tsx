@@ -138,21 +138,25 @@ export default function App() {
           {/* /app is the single entry to the create flow — always the V2 studio
               (the legacy V1 Studio page was retired; V2 has been the only flow). */}
           <Route path="/app" element={<AppToV2 />} />
-          {/* V2 Creative Studio — full-screen flow (no AppShell nav). */}
-          <Route path="/v2" element={<Protected><Page><V2Create /></Page></Protected>} />
-          <Route path="/v2/building" element={<Protected><Page><V2Building /></Page></Protected>} />
-          <Route path="/v2/plan/:id" element={<Protected><Page><V2Plan /></Page></Protected>} />
-          <Route path="/v2/capture/:id" element={<Protected><Page><V2Capture /></Page></Protected>} />
-          <Route path="/v2/review/:id" element={<Protected><Page><V2Review /></Page></Protected>} />
+          {/* V2 Creative Studio — full-screen wizard on phone (no mobile chrome,
+              each screen has its own back button); on desktop it sits inside the
+              same sidebar dashboard as every other screen, not floating alone in
+              a wide empty window. */}
+          <Route path="/v2" element={<Protected><AppShell mobileChrome={false}><Page><V2Create /></Page></AppShell></Protected>} />
+          <Route path="/v2/building" element={<Protected><AppShell mobileChrome={false}><Page><V2Building /></Page></AppShell></Protected>} />
+          <Route path="/v2/plan/:id" element={<Protected><AppShell mobileChrome={false}><Page><V2Plan /></Page></AppShell></Protected>} />
+          <Route path="/v2/capture/:id" element={<Protected><AppShell mobileChrome={false}><Page><V2Capture /></Page></AppShell></Protected>} />
+          <Route path="/v2/review/:id" element={<Protected><AppShell mobileChrome={false}><Page><V2Review /></Page></AppShell></Protected>} />
           <Route
             path="/result/:id"
             element={<Protected><AppShell><Page><Result /></Page></AppShell></Protected>}
           />
           {/* The live recorder is the SAME scene-by-scene flow as mobile + the V2
-              route (full-screen, no AppShell). V1's scroll recorder is retired. */}
+              route (full-screen on phone, in the dashboard shell on desktop).
+              V1's scroll recorder is retired. */}
           <Route
             path="/record/:id"
-            element={<Protected><Page><V2Capture /></Page></Protected>}
+            element={<Protected><AppShell mobileChrome={false}><Page><V2Capture /></Page></AppShell></Protected>}
           />
           <Route
             path="/brands"

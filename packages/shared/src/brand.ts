@@ -24,10 +24,13 @@ export const PAYMENTS_LIVE = false
 // classic Studio route and V2 share the same generations + worker.
 export const STUDIO_V2 = true
 
-// Master switch: one-click posting (platform OAuth) is "Coming soon" until the
-// platform developer-app keys are set. Until then the Calendar shows a clean
-// "Coming soon" instead of dev-level "needs developer app keys" messages.
-export const POSTING_LIVE = false
+// Master switch: one-click posting (platform OAuth). The adapters (TikTok/
+// Instagram/LinkedIn/YouTube), the `social` edge function's connect/publish
+// flow, and the `publish_due` cron are built and verified — flip this on so
+// Calendar's Connect buttons go live. Any platform whose developer-app keys
+// aren't set yet in Supabase still degrades gracefully to "coming soon" for
+// that platform only (`ad.configured()` in supabase/functions/social).
+export const POSTING_LIVE = true
 
 export interface PlanTier {
   id: 'free' | 'aspiring' | 'professional' | 'studio' | 'agency'

@@ -145,7 +145,7 @@ export default function Dashboard() {
           <StatCard icon={Send} glow="teal" label="Published" value={poVal} loading={loading} />
         </Stagger>
         <Reveal delay={0.1}>
-          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New script" desc="Paste a reference and get a shootable script in seconds." primary />
             <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Find your next hit" desc="See what's winning in your niche, remix any of it in one tap." />
             <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every script you've ever made, searchable." />
@@ -168,7 +168,7 @@ export default function Dashboard() {
           </Reveal>
         )}
         <InviteCard />
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
+        <div className="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-[1.35fr_0.65fr]">
           <Reveal>
             <div className="glass relative h-full overflow-hidden p-6">
               <div className="relative flex items-center justify-between">
