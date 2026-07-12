@@ -13,11 +13,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
-import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Type } from 'lucide-react'
+import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Type, Sparkles, RotateCcw, Wand2, Zap, Waves, Mountain } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
 import { buildTimeline } from '../../lib/timelineAdapter'
-import { autoEditTake, pickRecorderMime, getGeneration } from '../../lib/api'
+import { autoEditTake, pickRecorderMime, getGeneration, updateGenerationChoice } from '../../lib/api'
 import {
   type SceneTimeline,
   type Scene,
@@ -113,6 +113,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [editError, setEditError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadPct, setUploadPct] = useState<number>(-1) // 0..1, or -1 indeterminate
+  // Review-screen edit-style picker (mock parity). The choice is REAL: the worker
+  // reads generations.edit_style (punchy → high-energy cuts, clean/cinematic →
+  // calm pacing), so we persist it right before enqueueing the edit.
+  const [styleOpen, setStyleOpen] = useState(false)
+  const [editStyle, setEditStyle] = useState<'punchy' | 'clean' | 'cinematic'>('punchy')
   // Teleprompter feel: font size (S/M/L/XL) + a per-scene timing clock so the script
   // can advance word-by-word in step with the chosen WPM.
   const FONT_PX = [24, 30, 38, 48]
@@ -412,32 +417,100 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
   // Review screen — the recorded take plays here FIRST (camera already off), then the
   // creator picks what to do. We never auto-throw them into an editing spinner; the
-  // edit only starts when they tap AI edit. Same surface-aware shell as the recorder.
+  // edit only starts when they confirm an edit style (mock parity: Review your
+  // recording → Auto edit → Choose edit style → Continue).
   if (reviewUrl) {
+    const EDIT_STYLES = [
+      { id: 'punchy' as const, label: 'Punchy', popular: true, note: 'Fast-paced, high-energy edits. Great for social media.', icon: Zap, tint: 'from-coral/30 to-coral/5 text-coral' },
+      { id: 'clean' as const, label: 'Clean', popular: false, note: 'Clean cuts, natural pacing, and a professional look.', icon: Waves, tint: 'from-teal/25 to-teal/5 text-teal' },
+      { id: 'cinematic' as const, label: 'Cinematic', popular: false, note: 'Story-driven edits with smooth pacing and mood.', icon: Mountain, tint: 'from-amber/25 to-amber/5 text-amber' },
+    ]
+    const confirmEdit = async () => {
+      // Persist the pick (worker reads it), then enqueue — best-effort persist,
+      // the edit itself must never be blocked by the choice write.
+      try { await updateGenerationChoice(genId, { edit_style: editStyle }) } catch { /* optimistic */ }
+      void startAiEdit()
+    }
     return (
       <div className="min-h-[100dvh] w-full bg-ink text-cream overflow-x-hidden">
-        <div className="mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl lg:flex-row lg:items-center lg:gap-10 lg:px-8">
-          <div className="flex flex-1 flex-col lg:py-6">
-            <div className="px-4 pt-4 text-sm text-white/60 lg:px-0 lg:pt-0">
-              Your take · {scenes.length} scene{scenes.length > 1 ? 's' : ''}
+        <div className="mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl lg:flex-row lg:items-start lg:gap-10 lg:px-8 lg:py-8">
+          <div className="flex flex-1 flex-col">
+            <div className="flex items-center justify-between px-4 pt-4 lg:px-0 lg:pt-0">
+              <button onClick={onBack} className="inline-flex h-10 items-center gap-2 rounded-full bg-white/10 px-4 text-sm hover:bg-white/20">← <span className="hidden sm:inline">Back to studio</span></button>
+              <div className="text-center">
+                <div className="font-semibold text-cream">Review your recording</div>
+                <div className="text-xs text-stone">How did it go?</div>
+              </div>
+              <span className="w-10" />
             </div>
-            <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-black lg:my-0 lg:flex-none lg:h-[82vh] lg:max-h-[82vh] lg:w-auto lg:max-w-none">
+            <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[62vh] aspect-[9/16] rounded-2xl overflow-hidden bg-black lg:my-4 lg:flex-none lg:h-[74vh] lg:max-h-[74vh] lg:w-auto lg:max-w-none">
               <video src={reviewUrl} controls autoPlay loop playsInline className="absolute inset-0 h-full w-full object-contain bg-black" />
             </div>
           </div>
-          <div className="px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 space-y-3 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
+
+          <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 space-y-3 lg:w-[22rem] lg:shrink-0 lg:px-0 lg:pt-14">
             {editError ? (
-              <div className="rounded-2xl border border-coral/40 bg-coral/10 p-4 text-center lg:text-left">
+              <div className="rounded-2xl border border-coral/40 bg-coral/10 p-4">
                 <p className="text-sm font-semibold text-coral">Couldn't start the edit</p>
                 <p className="text-xs text-white/70 mt-1">{editError}</p>
               </div>
             ) : (
-              <p className="text-sm text-white/70 text-center lg:text-left">Happy with the take? Send it to the AI editor for captions, cuts & b-roll — or keep the raw clip.</p>
+              <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-coral/40 bg-coral/10"><Sparkles className="h-4 w-4 text-coral" /></span>
+                <div>
+                  <p className="text-sm font-semibold text-cream">Your recording looks good.</p>
+                  <p className="text-xs text-stone">Ready to turn this into a high-performing video.</p>
+                </div>
+              </div>
             )}
-            <button onClick={startAiEdit} className="w-full rounded-2xl bg-cream text-ink font-semibold py-4 hover:bg-white">✨ AI edit — captions, cuts &amp; b-roll</button>
-            <button onClick={downloadRaw} className="w-full rounded-2xl border border-white/20 text-cream py-3 font-medium hover:bg-white/10">Download raw video</button>
-            <button onClick={reRecord} className="w-full rounded-2xl border border-white/20 text-cream py-3 font-medium hover:bg-white/10">Re-record</button>
-            <button onClick={onBack} className="w-full rounded-2xl py-2 text-sm text-white/50 hover:text-white">Discard &amp; exit</button>
+
+            {!styleOpen ? (
+              <>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={reRecord} className="rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-4 text-center hover:bg-white/[0.08]">
+                    <RotateCcw className="mx-auto h-4 w-4 text-cream" />
+                    <div className="mt-1 text-sm font-semibold text-cream">Record again</div>
+                    <div className="text-[11px] text-stone">Try a new take</div>
+                  </button>
+                  <button onClick={() => setStyleOpen(true)} className="btn-gradient !rounded-2xl !px-3 !py-4 text-center !block">
+                    <Wand2 className="mx-auto h-4 w-4" />
+                    <div className="mt-1 text-sm font-semibold">Auto edit</div>
+                    <div className="text-[11px] opacity-80">Continue to edit style</div>
+                  </button>
+                </div>
+                <button onClick={downloadRaw} className="w-full rounded-2xl border border-white/15 py-3 text-sm font-medium text-cream hover:bg-white/10">Download raw video</button>
+                <button onClick={onBack} className="w-full py-2 text-sm text-white/50 hover:text-white">Save &amp; exit — edit later</button>
+              </>
+            ) : (
+              <div className="rounded-panel border border-white/10 bg-ink2/80 p-4">
+                <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20 lg:hidden" />
+                <h3 className="text-center font-display text-xl">Choose edit style</h3>
+                <p className="mt-0.5 text-center text-xs text-stone">This decides how we cut and pace your video.</p>
+                <div className="mt-4 space-y-2.5">
+                  {EDIT_STYLES.map((s) => {
+                    const active = editStyle === s.id
+                    return (
+                      <button key={s.id} onClick={() => setEditStyle(s.id)}
+                        className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition-colors ${active ? 'border-coral/60 bg-coral/[0.06]' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}>
+                        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${s.tint}`}><s.icon className="h-5 w-5" /></span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2 text-sm font-semibold text-cream">
+                            {s.label}
+                            {s.popular && <span className="rounded-full bg-coral/15 px-2 py-0.5 text-[10px] font-bold text-coral">Popular</span>}
+                          </span>
+                          <span className="mt-0.5 block text-xs leading-snug text-stone">{s.note}</span>
+                        </span>
+                        <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${active ? 'border-coral' : 'border-white/25'}`}>
+                          {active && <span className="h-2.5 w-2.5 rounded-full bg-coral" />}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                <button onClick={confirmEdit} className="btn-gradient mt-4 w-full !py-3.5">Continue</button>
+                <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11px] text-stone">🔒 You can change this later with Edit video.</p>
+              </div>
+            )}
           </div>
         </div>
       </div>

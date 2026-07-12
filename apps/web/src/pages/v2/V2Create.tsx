@@ -6,7 +6,7 @@
 // floating in a wide window. Both submit into the same V2 flow. PRODUCT_VISION §7.
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Link2, Wand2, Sparkles, Target, Shuffle, Feather, Wind, Activity, Flame, Video, Mic, Check } from 'lucide-react'
+import { Link2, Wand2, Sparkles, Target, Shuffle, Feather, Wind, Activity, Flame, Check } from 'lucide-react'
 import ScreenLayout from '../../components/v2/ScreenLayout'
 import { PrimaryButton, Card, RecommendedBadge } from '../../components/v2/Primitives'
 import { useAuth } from '../../context/AuthContext'
@@ -15,7 +15,6 @@ import { cn } from '../../lib/cn'
 
 type Fidelity = 'close' | 'balanced' | 'loose'
 type Tone = 'understated' | 'balanced' | 'punchy'
-type Delivery = 'on_camera' | 'voiceover'
 
 const FIDELITY = [
   { id: 'close', label: 'Close', note: 'Stay tight to the reference structure.', icon: Target },
@@ -27,11 +26,6 @@ const TONE = [
   { id: 'understated', label: 'Understated', note: 'Calm, credible, no hype.', icon: Wind },
   { id: 'balanced', label: 'Balanced', note: 'Natural energy, your default.', icon: Activity },
   { id: 'punchy', label: 'Punchy', note: 'High-energy, bold hooks.', icon: Flame },
-] as const
-
-const DELIVERY = [
-  { id: 'on_camera', label: 'On camera', note: 'You appear and deliver to camera.', icon: Video },
-  { id: 'voiceover', label: 'Voiceover / no face', note: 'Voiceover over demos & b-roll.', icon: Mic },
 ] as const
 
 const YOU_GET = [
@@ -66,7 +60,6 @@ export default function V2Create() {
   const [advanced, setAdvanced] = useState(false)
   const [fidelity, setFidelity] = useState<Fidelity>('balanced')
   const [tone, setTone] = useState<Tone>('balanced') // recommended default
-  const [delivery, setDelivery] = useState<Delivery>('on_camera')
   const remixesLeft = videosFromCredits(profile?.credits ?? 0)
 
   const go = () => {
@@ -78,7 +71,6 @@ export default function V2Create() {
         reference_note: looksUrl ? '' : input.trim(),
         fidelity,
         tone,
-        delivery,
       },
     })
   }
@@ -114,8 +106,6 @@ export default function V2Create() {
             <Card className="space-y-4">
               <Choice label="How it should sound" value={tone} onChange={(v) => setTone(v as Tone)}
                 options={[['understated', 'Calm'], ['balanced', 'Natural'], ['punchy', 'Punchy']]} />
-              <Choice label="On camera?" value={delivery} onChange={(v) => setDelivery(v as Delivery)}
-                options={[['on_camera', 'I appear'], ['voiceover', 'Voiceover only']]} />
             </Card>
           )}
         </ScreenLayout>
@@ -148,7 +138,6 @@ export default function V2Create() {
 
               <OptionRow label="How close to the reference" options={FIDELITY} value={fidelity} onPick={(v) => setFidelity(v as Fidelity)} />
               <OptionRow label="How it should sound" options={TONE} value={tone} onPick={(v) => setTone(v as Tone)} />
-              <OptionRow label="Delivery" options={DELIVERY} value={delivery} onPick={(v) => setDelivery(v as Delivery)} />
             </div>
 
             {/* Right: what you get + the one CTA */}

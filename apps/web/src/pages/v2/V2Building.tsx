@@ -37,7 +37,6 @@ interface BuildState {
   reference_note?: string
   fidelity?: 'close' | 'balanced' | 'loose'
   tone?: 'understated' | 'balanced' | 'punchy'
-  delivery?: 'on_camera' | 'voiceover'
 }
 
 export default function V2Building() {
@@ -96,7 +95,6 @@ export default function V2Building() {
           reference_note: state.reference_note || '',
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
-          delivery: state.delivery,
           ...(transcript_id ? { transcript_id } : {}),
         })
         // A recreation was just spent — refresh so the remixes-left counter is

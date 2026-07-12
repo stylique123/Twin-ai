@@ -74,6 +74,13 @@ export default function Dashboard() {
   const rawName = (profile?.display_name?.trim() || (brand?.handle ? `@${brand.handle}` : '') || profile?.email?.split('@')[0] || 'creator')
   const name = rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
+  // "+N this week" deltas for the stat tiles (mock parity), from the rows we
+  // already fetched — real counts, not decorations.
+  const weekAgo = Date.now() - 7 * 24 * 3600 * 1000
+  const wkScripts = gens.filter((g) => +new Date(g.created_at) > weekAgo).length
+  const wkEdits = gens.filter((g) => g.edit_path && +new Date(g.created_at) > weekAgo).length
+  const wkPosts = posts.filter((p) => p.status === 'posted' && p.posted_at && +new Date(p.posted_at) > weekAgo).length
+
   return (
     <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-70" />
@@ -140,15 +147,16 @@ export default function Dashboard() {
         {/* Remixes-left moved to Settings → Usage (it's a billing detail, not an
             achievement). These three are what they've shipped. */}
         <Stagger className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4" gap={0.07}>
-          <StatCard icon={FileText} glow="amber" label="Scripts" value={bpVal} loading={loading} />
-          <StatCard icon={Clapperboard} glow="coral" label="Videos edited" value={edVal} loading={loading} />
-          <StatCard icon={Send} glow="teal" label="Published" value={poVal} loading={loading} />
+          <StatCard icon={FileText} glow="amber" label="Scripts" value={bpVal} loading={loading} week={wkScripts} />
+          <StatCard icon={Clapperboard} glow="coral" label="Videos edited" value={edVal} loading={loading} week={wkEdits} />
+          <StatCard icon={Send} glow="teal" label="Published" value={poVal} loading={loading} week={wkPosts} />
         </Stagger>
         <Reveal delay={0.1}>
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New script" desc="Paste a reference and get a shootable script in seconds." primary />
-            <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Find your next hit" desc="See what's winning in your niche, remix any of it in one tap." />
-            <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="Your library" desc="Every script you've ever made, searchable." />
+            <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Find a format" desc="See what's winning in your niche, remix it in one tap." />
+            <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="My videos" desc="Everything you've made, in one place." />
+            <ActionCard to="/calendar" icon={Clock} iconGlow="from-coral/35 to-coral/10" iconColor="text-coral" title="Schedule a post" desc="Plan your content calendar and post on time." />
           </div>
         </Reveal>
         {formatInsight && (
@@ -236,7 +244,7 @@ const glowMap = { amber: 'from-amber/[0.12] via-amber/[0.06] to-transparent shad
 const iconBgMap = { amber: 'bg-amber/15', coral: 'bg-coral/15', teal: 'bg-teal/15' } as const
 const iconColorMap = { amber: 'text-amber', coral: 'text-coral', teal: 'text-teal' } as const
 
-function StatCard({ icon: Icon, glow, label, value, loading }: { icon: React.ComponentType<{ className?: string }>; glow: keyof typeof glowMap; label: string; value: number | undefined; loading: boolean }) {
+function StatCard({ icon: Icon, glow, label, value, loading, week }: { icon: React.ComponentType<{ className?: string }>; glow: keyof typeof glowMap; label: string; value: number | undefined; loading: boolean; week?: number }) {
   return (
     <RevealItem>
       <motion.div whileHover={{ y: -4, scale: 1.015 }} transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }} className="h-full">
@@ -249,6 +257,9 @@ function StatCard({ icon: Icon, glow, label, value, loading }: { icon: React.Com
             {loading || value === undefined ? <span className="text-stone/50">…</span> : <Counter to={value} />}
           </div>
           <div className="mt-1.5 text-xs font-medium tracking-wide text-stone">{label}</div>
+          {!loading && !!week && week > 0 && (
+            <div className={cn('mt-1 text-[11px] font-semibold', iconColorMap[glow])}>+{week} this week</div>
+          )}
         </div>
       </motion.div>
     </RevealItem>

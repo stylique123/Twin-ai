@@ -1,40 +1,60 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Wand2, ArrowUpRight, FileText, Clapperboard, Loader2, Play, Video } from 'lucide-react'
-import { listGenerations, signEditUrls } from '../lib/api'
+import { Wand2, FileText, Clapperboard, Loader2, Play, Video, Plus, Pencil, Share, Eye, CalendarDays } from 'lucide-react'
+import { listGenerations, signEditUrls, listPosts } from '../lib/api'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
+import { cn } from '../lib/cn'
 
-type Filter = 'all' | 'scripts' | 'videos'
+// "My videos" (mock parity): one card per creation, grouped by day, with an
+// HONEST status derived from real data — Draft (script only), Ready (finished
+// render exists), Published (a posted post row references it). There is no
+// "Processing" filter because job state isn't stored on the generation row;
+// an in-flight edit shows live progress on its own screen instead.
+type Filter = 'all' | 'draft' | 'ready' | 'published'
+type Status = 'draft' | 'ready' | 'published'
+
+const STATUS_SKIN: Record<Status, { label: string; cls: string }> = {
+  draft: { label: 'Draft', cls: 'border-white/15 bg-white/[0.06] text-sand' },
+  ready: { label: 'Ready', cls: 'border-coral/40 bg-coral/10 text-coral' },
+  published: { label: 'Published', cls: 'border-teal/40 bg-teal/10 text-teal' },
+}
 
 // Stale-while-revalidate caches across remounts: re-opening the library paints
-// instantly from the last load (the "takes too long to open" fix) while a fresh
-// fetch revalidates in the background. Only the first-ever open shows a spinner.
+// instantly from the last load while a fresh fetch revalidates in the background.
 let GENERATIONS_CACHE: Generation[] | null = null
 let URLS_CACHE: Record<string, string> = {}
+let PUBLISHED_CACHE: Set<string> | null = null
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso)
+  const today = new Date()
+  const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+  const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString()
+  if (sameDay(d, today)) return 'Today'
+  if (sameDay(d, yesterday)) return 'Yesterday'
+  return d.toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' })
+}
 
 export default function History() {
   const [items, setItems] = useState<Generation[]>(GENERATIONS_CACHE ?? [])
   const [loading, setLoading] = useState(GENERATIONS_CACHE === null)
   const [error, setError] = useState(false)
   const [urls, setUrls] = useState<Record<string, string>>(URLS_CACHE)
+  const [published, setPublished] = useState<Set<string>>(PUBLISHED_CACHE ?? new Set())
   const [filter, setFilter] = useState<Filter>('all')
 
   // Pulled out so the error state can offer a real retry. A failed fetch must NOT
   // fall through to the empty state — a network blip would otherwise look exactly
   // like "you have no work yet" and scare a returning creator.
   const load = () => {
-    // Revalidate quietly when we already have cached items on screen; only show
-    // the full-page spinner on a true cold open.
     if (GENERATIONS_CACHE === null) setLoading(true)
     setError(false)
     listGenerations()
       .then(async (gens) => {
         GENERATIONS_CACHE = gens
         setItems(gens)
-        // Sign covers + renders so finished work shows in the library.
         const paths = gens.flatMap((g) => [g.thumb_path, g.edit_path].filter(Boolean) as string[])
         if (paths.length) {
           const signed = await signEditUrls(paths).catch(() => ({}))
@@ -44,67 +64,81 @@ export default function History() {
       })
       .catch(() => { if (GENERATIONS_CACHE === null) setError(true) })
       .finally(() => setLoading(false))
+    // Published = a posted post row references the generation (best-effort).
+    listPosts()
+      .then((posts) => {
+        PUBLISHED_CACHE = new Set(posts.filter((p) => p.status === 'posted' && p.generation_id).map((p) => p.generation_id as string))
+        setPublished(PUBLISHED_CACHE)
+      })
+      .catch(() => {})
   }
 
   useEffect(() => { load() }, [])
 
-  const editedCount = items.filter((g) => g.edit_path).length
-  const displayed = items.filter((g) =>
-    filter === 'scripts' ? !g.edit_path : filter === 'videos' ? !!g.edit_path : true,
-  )
+  const statusOf = (g: Generation): Status =>
+    published.has(g.id) ? 'published' : g.edit_path ? 'ready' : 'draft'
+
+  const counts = useMemo(() => {
+    const c = { all: items.length, draft: 0, ready: 0, published: 0 }
+    for (const g of items) c[statusOf(g)]++
+    return c
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, published])
+
+  const displayed = items.filter((g) => filter === 'all' || statusOf(g) === filter)
+
+  // Group by day, newest first (listGenerations is already newest-first).
+  const groups = useMemo(() => {
+    const out: { label: string; items: Generation[] }[] = []
+    for (const g of displayed) {
+      const label = dayLabel(g.created_at)
+      const last = out[out.length - 1]
+      if (last && last.label === label) last.items.push(g)
+      else out.push({ label, items: [g] })
+    }
+    return out
+  }, [displayed])
+
+  const CHIPS: [Filter, string][] = [
+    ['all', 'All'],
+    ['draft', `Drafts${counts.draft ? ` (${counts.draft})` : ''}`],
+    ['ready', `Ready${counts.ready ? ` (${counts.ready})` : ''}`],
+    ['published', `Published${counts.published ? ` (${counts.published})` : ''}`],
+  ]
 
   return (
     <main className="relative min-h-screen overflow-clip">
       <Aurora className="opacity-60" />
-      <div className="relative mx-auto max-w-5xl px-5 py-12 lg:py-16">
+      <div className="relative mx-auto max-w-5xl px-5 py-10 lg:py-16">
         <Reveal>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="eyebrow">Your library</p>
-              <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">Scripts &amp; edits</h1>
-              <p className="mt-2 max-w-md text-sm text-stone">
-                Each item is one creation — a shootable script. Once you record and auto-edit it, the finished video lives on the same card.
-              </p>
+              <h1 className="font-display text-4xl tracking-tight sm:text-5xl">My videos</h1>
+              <p className="mt-2 text-sm text-stone">All your created videos in one place.</p>
             </div>
             <Link to="/app" className="btn-gradient">
-              <Wand2 className="h-4 w-4" /> New remix
+              <Plus className="h-4 w-4" /> New video
             </Link>
           </div>
         </Reveal>
 
-        {/* Stat strip — no recreation counter here; that lives on the Dashboard. */}
+        {/* Status filter chips (mock parity). */}
         <Reveal delay={0.06}>
-          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Stat icon={Clapperboard} label="Scripts" value={loading ? '…' : String(items.length)} />
-            <Stat icon={Video} label="Videos" value={loading ? '…' : String(editedCount)} />
+          <div className="mt-6 flex flex-wrap gap-2">
+            {CHIPS.map(([key, label]) => (
+              <button
+                key={key}
+                onClick={() => setFilter(key)}
+                className={cn(
+                  'rounded-full border px-4 py-2 text-sm font-medium transition-colors',
+                  filter === key ? 'border-coral/60 bg-coral/10 text-cream' : 'border-white/10 bg-white/[0.03] text-stone hover:text-cream',
+                )}
+              >
+                {label}
+              </button>
+            ))}
           </div>
         </Reveal>
-
-        {/* Type filter: see everything, only un-recorded scripts, or only finished videos. */}
-        {!loading && items.length > 0 && (
-          <Reveal delay={0.1}>
-            <div className="mt-6 flex flex-wrap gap-2">
-              {([
-                ['all', `All (${items.length})`],
-                ['scripts', `Scripts only (${items.length - editedCount})`],
-                ['videos', `Videos (${editedCount})`],
-              ] as [Filter, string][]).map(([key, label]) => (
-                <button
-                  key={key}
-                  onClick={() => setFilter(key)}
-                  className={
-                    'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ' +
-                    (filter === key
-                      ? 'border-teal/50 bg-teal/15 text-cream'
-                      : 'border-white/10 bg-white/5 text-stone hover:text-cream')
-                  }
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </Reveal>
-        )}
 
         {loading ? (
           <div className="mt-12 grid place-items-center text-sand">
@@ -116,7 +150,7 @@ export default function History() {
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-coral/15">
                 <Video className="h-6 w-6 text-coral" />
               </span>
-              <p className="mt-4 font-heading text-lg">Couldn't load your library.</p>
+              <p className="mt-4 font-heading text-lg">Couldn't load your videos.</p>
               <p className="mt-1 text-sm text-stone">This is usually a brief connection hiccup — your work is safe.</p>
               <button onClick={load} className="btn-gradient mt-6">Try again</button>
             </div>
@@ -127,103 +161,90 @@ export default function History() {
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-signature-soft">
                 <Wand2 className="h-6 w-6 text-cream" />
               </span>
-              <p className="mt-4 font-heading text-lg">No scripts yet.</p>
+              <p className="mt-4 font-heading text-lg">No videos yet.</p>
               <p className="mt-1 text-sm text-stone">Paste a reference link and get your first one in ~30 seconds.</p>
               <Link to="/app" className="btn-gradient mt-6">Make your first one</Link>
             </div>
           </Reveal>
         ) : displayed.length === 0 ? (
           <div className="glass mt-10 grid place-items-center p-12 text-center text-sand">
-            {filter === 'videos'
-              ? 'No finished videos yet. Record and auto-edit a script and it shows up here.'
-              : 'Nothing un-recorded here — every script is already edited. Switch to “All”.'}
+            Nothing here yet — switch to “All” to see everything.
           </div>
         ) : (
-          <Stagger immediate className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2" gap={0.06}>
-            {displayed.map((g) => {
-              const cover = g.thumb_path ? urls[g.thumb_path] : undefined
-              const render = g.edit_path ? urls[g.edit_path] : undefined
-              // Title is the actual hook the creator is shooting — not the internal
-              // format label (e.g. "RAPID FIRE"), which now shows as a small tag.
-              const title = g.selected_hook || g.blueprint?.hook_options?.[0] || 'Untitled script'
-              const formatTag = g.blueprint?.reference_read?.format_label
-              return (
-                <RevealItem key={g.id}>
-                  <div className="glass glass-hover group flex h-full flex-col overflow-hidden">
-                    <Link to={`/result/${g.id}`} className="block">
-                      {/* Cover: the finished render's cover frame, or a branded fallback. */}
-                      <div className="relative aspect-video overflow-hidden bg-gradient-to-br from-coral/20 via-ink2 to-ink">
-                        {cover ? (
-                          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
-                        ) : (
-                          <div className="absolute inset-0 grid place-items-center">
-                            <Clapperboard className="h-7 w-7 text-amber/70" />
-                          </div>
-                        )}
-                        {g.edit_path ? (
-                          <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-teal/30 bg-ink/75 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-teal backdrop-blur-sm">
-                            <Video className="h-3 w-3" /> Edited
-                          </span>
-                        ) : (
-                          <span className="absolute left-3 top-3 inline-flex items-center gap-1 rounded-full border border-amber/30 bg-ink/75 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber backdrop-blur-sm">
-                            <FileText className="h-3 w-3" /> Script
-                          </span>
-                        )}
-                      </div>
-                    </Link>
-                    <div className="flex flex-1 flex-col p-5">
-                      <div className="flex items-start justify-between gap-3">
-                        <Link to={`/result/${g.id}`} className="min-w-0">
-                          <h3 className="line-clamp-2 font-heading text-lg leading-snug">
-                            {title}
-                          </h3>
-                        </Link>
-                        <ArrowUpRight className="h-5 w-5 shrink-0 text-stone transition-colors group-hover:text-cream" />
-                      </div>
-                      <div className="mt-3 flex flex-1 items-end justify-between gap-2 text-xs text-stone">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="chip">{g.blueprint?.reference_read?.platform ?? 'video'}</span>
-                          {formatTag && <span className="chip">{formatTag}</span>}
-                          <span>{new Date(g.created_at).toLocaleDateString()}</span>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1.5">
-                          {/* Always-visible way to open the script / blueprint. */}
-                          <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 font-medium text-sand transition-colors hover:text-cream">
-                            <FileText className="h-3 w-3" /> Open script
+          <div className="mt-8 space-y-8">
+            {groups.map((group) => (
+              <section key={group.label}>
+                <h2 className="text-sm font-semibold text-stone">{group.label}</h2>
+                <Stagger immediate className="mt-3 space-y-3" gap={0.04}>
+                  {group.items.map((g) => {
+                    const status = statusOf(g)
+                    const skin = STATUS_SKIN[status]
+                    const cover = g.thumb_path ? urls[g.thumb_path] : undefined
+                    const title = g.selected_hook || g.blueprint?.hook_options?.[0] || 'Untitled video'
+                    const when = new Date(g.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                    return (
+                      <RevealItem key={g.id}>
+                        <div className="glass glass-hover flex gap-4 p-3.5 sm:p-4">
+                          {/* Thumbnail */}
+                          <Link to={status === 'draft' ? `/result/${g.id}` : `/v2/review/${g.id}`} className="relative block h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-coral/20 via-ink2 to-ink sm:h-28 sm:w-44">
+                            {cover ? (
+                              <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+                            ) : (
+                              <div className="absolute inset-0 grid place-items-center"><Clapperboard className="h-6 w-6 text-amber/70" /></div>
+                            )}
+                            {status !== 'draft' && (
+                              <span className="absolute inset-0 grid place-items-center">
+                                <span className="grid h-9 w-9 place-items-center rounded-full bg-ink/60 ring-1 ring-white/25 backdrop-blur-sm"><Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" /></span>
+                              </span>
+                            )}
                           </Link>
-                          {render ? (
-                            <a href={render} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-lg border border-teal/30 bg-teal/10 px-2.5 py-1 font-medium text-teal transition-colors hover:bg-teal/20">
-                              <Play className="h-3 w-3 fill-teal" /> Watch
-                            </a>
-                          ) : (
-                            <Link to={`/record/${g.id}`} className="inline-flex items-center gap-1 rounded-lg border border-amber/30 bg-amber/10 px-2.5 py-1 font-medium text-amber transition-colors hover:bg-amber/20">
-                              <Video className="h-3 w-3" /> Record
-                            </Link>
-                          )}
+
+                          {/* Body */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Link to={`/result/${g.id}`} className="min-w-0">
+                                <h3 className="line-clamp-2 font-heading text-base leading-snug sm:text-lg">{title}</h3>
+                              </Link>
+                              <span className={cn('shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold', skin.cls)}>{skin.label}</span>
+                            </div>
+                            <p className="mt-1 flex items-center gap-1.5 text-xs text-stone">
+                              <CalendarDays className="h-3 w-3" /> {when}
+                            </p>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {status === 'draft' ? (
+                                <>
+                                  <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.05] px-3.5 py-1.5 text-xs font-semibold text-cream hover:bg-white/10">
+                                    <Pencil className="h-3 w-3" /> Edit
+                                  </Link>
+                                  <Link to={`/record/${g.id}`} className="btn-gradient !rounded-xl !px-3.5 !py-1.5 text-xs">
+                                    <Video className="h-3 w-3" /> Record
+                                  </Link>
+                                </>
+                              ) : (
+                                <>
+                                  <Link to={`/v2/review/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.05] px-3.5 py-1.5 text-xs font-semibold text-cream hover:bg-white/10">
+                                    <Eye className="h-3 w-3" /> View
+                                  </Link>
+                                  <Link to={`/v2/review/${g.id}`} className="btn-gradient !rounded-xl !px-3.5 !py-1.5 text-xs">
+                                    <Share className="h-3 w-3" /> {status === 'published' ? 'Share again' : 'Export'}
+                                  </Link>
+                                  <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs font-medium text-stone hover:text-cream">
+                                    <FileText className="h-3 w-3" /> Script
+                                  </Link>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                </RevealItem>
-              )
-            })}
-          </Stagger>
+                      </RevealItem>
+                    )
+                  })}
+                </Stagger>
+              </section>
+            ))}
+          </div>
         )}
       </div>
     </main>
-  )
-}
-
-function Stat({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
-  return (
-    <motion.div whileHover={{ y: -3 }} className="glass flex items-center gap-3 p-4">
-      <span className="grid h-10 w-10 place-items-center rounded-xl bg-white/5">
-        <Icon className="h-5 w-5 text-teal" />
-      </span>
-      <div>
-        <div className="text-xs uppercase tracking-wider text-stone">{label}</div>
-        <div className="font-display text-xl">{value}</div>
-      </div>
-    </motion.div>
   )
 }

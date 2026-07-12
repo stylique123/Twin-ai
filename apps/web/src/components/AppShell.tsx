@@ -23,6 +23,16 @@ const NAV = [
   { to: '/settings',  label: 'Settings',   icon: Settings,        note: 'Account & DNA' },
 ]
 
+// Phone bottom tab bar: the five primary destinations (mock parity). Settings,
+// Workspaces and sign-out stay in the hamburger sheet.
+const TABS = [
+  { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/app',       label: 'Studio',    icon: Wand2 },
+  { to: '/gallery',   label: 'Gallery',   icon: LayoutGrid },
+  { to: '/history',   label: 'Library',   icon: LibraryBig },
+  { to: '/calendar',  label: 'Calendar',  icon: CalendarDays },
+]
+
 // `mobileChrome=false` (used by the V2 flow) keeps the desktop sidebar — so the
 // V2 wizard reads as part of the dashboard on a real monitor instead of a lone
 // card floating in empty space — but skips the mobile sticky header, since V2's
@@ -118,7 +128,27 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
             </AnimatePresence>
           </div>
         }
-        <main className="min-w-0 flex-1">{children}</main>
+        {/* Room for the fixed bottom tab bar on phones (none on lg, where the
+            sidebar takes over; none on the V2 wizard, which brings its own CTA bar). */}
+        <main className={cn('min-w-0 flex-1', mobileChrome && 'pb-[calc(4.25rem+env(safe-area-inset-bottom))] lg:pb-0')}>{children}</main>
+
+        {/* PHONE bottom tab bar — the app's primary mobile navigation (the
+            hamburger stays for secondary items: Settings, Workspaces, sign out). */}
+        {mobileChrome && (
+          <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-ink/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl lg:hidden">
+            <div className="mx-auto grid max-w-md grid-cols-5">
+              {TABS.map((t) => {
+                const active = isActive(t.to)
+                return (
+                  <Link key={t.to} to={t.to} className="flex flex-col items-center gap-1 py-2.5">
+                    <t.icon className={cn('h-[20px] w-[20px]', active ? 'text-coral' : 'text-stone')} />
+                    <span className={cn('text-[10px] font-medium', active ? 'text-coral' : 'text-stone')}>{t.label}</span>
+                  </Link>
+                )
+              })}
+            </div>
+          </nav>
+        )}
       </div>
     </div>
   )
