@@ -53,6 +53,29 @@ function stripDashes<T>(value: T): T {
   return value
 }
 
+// Guarantee the FIRST script beat is a real spoken hook, never a template token.
+// Thinking models sometimes emit the hook slot as "[Hook Option 1]" or "[Insert
+// selected hook from above]" (inconsistent formats), and that bracket placeholder
+// then leaks into the teleprompter / scene card / caption as a broken string.
+// Replace any bracket-only or hook-reference placeholder in the opening line with
+// the recommended hook so nothing downstream ever has to substitute a token.
+function normalizeHookLine<T>(bp: T): T {
+  try {
+    const b = bp as unknown as { hook_options?: unknown; script?: Array<{ line?: unknown }> }
+    const hooks = Array.isArray(b.hook_options) ? (b.hook_options as unknown[]).filter((h): h is string => typeof h === 'string' && !!h.trim()) : []
+    const first = Array.isArray(b.script) ? b.script[0] : undefined
+    if (first && hooks.length) {
+      const l = typeof first.line === 'string' ? first.line.trim() : ''
+      const placeholder =
+        l === '' ||
+        /^\[[^\]]*\]$/.test(l) || // a whole line that is just [ ... ]
+        /\b(hook option\s*\d*|selected hook|insert (the )?hook|your hook (above|here)|hook from above)\b/i.test(l)
+      if (placeholder) first.line = hooks[0]
+    }
+  } catch { /* never fail a generation on a cosmetic normalize */ }
+  return bp
+}
+
 // Gemini responseSchema (OpenAPI subset: uppercase types, no additionalProperties).
 // Guarantees the shape the frontend renders.
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -171,6 +194,7 @@ HOOKS (the single most important field):
 SCRIPT & HOOK INTEGRATION:
 - Script beats must be realistic, full spoken paragraphs (typically 2 to 4 sentences per beat, not just single short lines), telling the full story for each section (Hook, Setup, Re-hook, CTA). Keep them highly conversational, engaging, and ready for teleprompter reading.
 - Make the script beats modular and cohesive. Ensure the transition between the Hook options and Scene 2 (Setup) is grammatically correct and logically seamless for ANY of the 5 hook options. Scene 2 must not repeat or assume specific words from Hook Option 1, but rather flow naturally from any selected hook.
+- THE FIRST SCRIPT BEAT (the Hook section) MUST contain the actual spoken words of your #1 recommended hook (hook_options[0]), written out in full. NEVER output a placeholder, a bracketed token (e.g. "[Hook Option 1]", "[Insert selected hook from above]"), or a reference like "your hook here" in any script line. Every `line` must be real, speakable words a creator can read off a teleprompter.
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
 - action_posing: specify the creator's physical actions, hand gestures, body language, facial expressions, and positioning (e.g., "Hold product at eye level, point finger, maintain intense eye contact with lens", "Lean forward slightly with a knowing smile, hands open to suggest accessibility").
@@ -536,7 +560,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include at least one b-roll or insert shot and the cover frame shot, so the editor is never guessing.`
 
     const raw = await callModel(apiKey, SYSTEM, userPrompt)
-    const blueprint = stripDashes(JSON.parse(raw))
+    const blueprint = normalizeHookLine(stripDashes(JSON.parse(raw)))
 
     const { data: gen, error: insErr } = await admin
       .from('generations')
