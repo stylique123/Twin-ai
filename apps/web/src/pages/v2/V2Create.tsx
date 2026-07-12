@@ -6,11 +6,12 @@
 // floating in a wide window. Both submit into the same V2 flow. PRODUCT_VISION §7.
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Link2, Wand2, Sparkles, Target, Shuffle, Feather, Wind, Activity, Flame, Check } from 'lucide-react'
+import { Link2, Wand2, Target, Shuffle, Feather, Wind, Activity, Flame, SlidersHorizontal, ChevronDown } from 'lucide-react'
 import ScreenLayout from '../../components/v2/ScreenLayout'
 import { PrimaryButton, Card, RecommendedBadge } from '../../components/v2/Primitives'
 import { useAuth } from '../../context/AuthContext'
 import { videosFromCredits } from '../../lib/brand'
+import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
 
 type Fidelity = 'close' | 'balanced' | 'loose'
@@ -27,14 +28,6 @@ const TONE = [
   { id: 'balanced', label: 'Balanced', note: 'Natural energy, your default.', icon: Activity },
   { id: 'punchy', label: 'Punchy', note: 'High-energy, bold hooks.', icon: Flame },
 ] as const
-
-const YOU_GET = [
-  'A script in YOUR voice, from the real video',
-  'Hook options + scene-by-scene shot plan',
-  'Teleprompter recording, scene by scene',
-  'Auto-edit: cuts, captions, vertical render',
-  'Caption, hashtags and one-tap publishing',
-]
 
 // Pull a starting reference from the acquisition funnels: Gallery's "Remix in my
 // voice" passes `?ref=<url>`, and the landing hero stashes a link in the
@@ -83,7 +76,7 @@ export default function V2Create() {
           title="Make a video"
           subtitle="Paste a link, describe an idea, or upload a clip"
           onBack={() => nav('/dashboard')}
-          cta={<PrimaryButton onClick={go} disabled={!input.trim()}>Make my video →</PrimaryButton>}
+          cta={<PrimaryButton onClick={go} disabled={!input.trim()}>Remix →</PrimaryButton>}
         >
           <Card>
             <textarea
@@ -104,6 +97,8 @@ export default function V2Create() {
 
           {advanced && (
             <Card className="space-y-4">
+              <Choice label="How close to the reference" value={fidelity} onChange={(v) => setFidelity(v as Fidelity)}
+                options={[['close', 'Close'], ['balanced', 'Balanced'], ['loose', 'Loose']]} />
               <Choice label="How it should sound" value={tone} onChange={(v) => setTone(v as Tone)}
                 options={[['understated', 'Calm'], ['balanced', 'Natural'], ['punchy', 'Punchy']]} />
             </Card>
@@ -111,57 +106,70 @@ export default function V2Create() {
         </ScreenLayout>
       </div>
 
-      {/* ── DESKTOP — the full studio page (the classic layout) ───────── */}
-      <div className="hidden min-h-[100dvh] bg-ink text-cream lg:block">
-        <div className="mx-auto max-w-5xl px-8 py-12">
+      {/* ── DESKTOP — one focused column on the brand canvas: input → advanced
+          settings (collapsed) → Remix. Both knobs are REAL: fidelity + tone ride
+          the request into generate-blueprint, where each maps to a hard prompt
+          rule — switching them changes the script you get back. ───────────── */}
+      <div className="relative hidden min-h-[100dvh] overflow-clip text-cream lg:block">
+        <Aurora className="opacity-80" />
+        <div className="pointer-events-none absolute inset-0" aria-hidden>
+          <div className="absolute left-1/3 top-1/4 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[160px]" />
+          <div className="absolute right-0 bottom-0 h-[20rem] w-[20rem] rounded-full bg-teal/10 blur-[140px]" />
+        </div>
+        <div className="relative mx-auto max-w-3xl px-8 py-14">
           <p className="eyebrow">Studio</p>
           <h1 className="mt-3 font-display text-4xl tracking-tight">Make a video</h1>
           <p className="mt-2 max-w-xl text-sm text-stone">
             Paste a reference you wish you'd made — we read the real clip and rebuild it in your voice. Or just describe an idea.
           </p>
 
-          <div className="mt-8 grid grid-cols-1 items-start gap-8 xl:grid-cols-[1fr_20rem]">
-            {/* Left: input + the full option set, all visible */}
-            <div className="space-y-6">
-              <div className="glass gradient-border p-5">
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-stone">
-                  <Link2 className="h-3.5 w-3.5 text-amber" /> Reference link or idea
-                </div>
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  rows={3}
-                  placeholder="https://www.tiktok.com/@creator/video/…   — or type what your video is about"
-                  className="mt-3 w-full resize-none bg-transparent text-lg outline-none text-cream placeholder:text-sand/35"
-                />
+          {/* The reference box — the page's one hero input. */}
+          <div className="glass gradient-border mt-8 p-6 transition-shadow focus-within:shadow-[0_0_60px_-18px_rgba(255,91,123,.45)]">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sand">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-signature-soft"><Link2 className="h-3.5 w-3.5 text-cream" /></span>
+                Reference link or idea
               </div>
+              <span className="text-[11px] text-stone">TikTok · Reels · Shorts · or plain words</span>
+            </div>
+            <textarea
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              rows={3}
+              autoFocus
+              placeholder={'Paste the link of the video you wish you\'d made…\nor describe your idea in a sentence.'}
+              className="mt-4 w-full resize-none bg-transparent text-xl leading-relaxed outline-none text-cream placeholder:text-sand/35"
+            />
+            <div className="mt-2 border-t border-white/8 pt-3 text-xs text-stone">
+              We read the actual video — transcript and structure — before writing a word. Described ideas skip straight to writing.
+            </div>
+          </div>
 
+          {/* Advanced settings — collapsed; the defaults are the recommended path. */}
+          <button
+            onClick={() => setAdvanced((v) => !v)}
+            className="mt-6 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-sand transition-colors hover:border-white/20 hover:text-cream"
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" /> Advanced settings
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', advanced && 'rotate-180')} />
+          </button>
+          {advanced && (
+            <div className="mt-4 space-y-6 rounded-panel border border-white/8 bg-ink2/50 p-5 backdrop-blur-sm">
               <OptionRow label="How close to the reference" options={FIDELITY} value={fidelity} onPick={(v) => setFidelity(v as Fidelity)} />
               <OptionRow label="How it should sound" options={TONE} value={tone} onPick={(v) => setTone(v as Tone)} />
+              <p className="text-xs leading-relaxed text-stone">
+                These steer the writing for real: <span className="text-sand">closeness</span> decides how tightly the script mirrors the reference's structure, and{' '}
+                <span className="text-sand">sound</span> sets the energy of the hooks and lines. Change them and you'll get a different script.
+              </p>
             </div>
+          )}
 
-            {/* Right: what you get + the one CTA */}
-            <aside className="space-y-4">
-              <div className="glass p-5">
-                <div className="flex items-center gap-2 text-sm font-semibold text-cream">
-                  <Sparkles className="h-4 w-4 text-amber" /> What you'll get
-                </div>
-                <ul className="mt-3 space-y-2.5">
-                  {YOU_GET.map((t) => (
-                    <li key={t} className="flex gap-2.5 text-sm leading-snug text-sand">
-                      <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-teal/15">
-                        <Check className="h-3 w-3 text-teal" />
-                      </span>
-                      {t}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <button onClick={go} disabled={!input.trim()} className="btn-gradient w-full !py-4 text-base">
-                <Wand2 className="h-4 w-4" /> Make my video
-              </button>
-              <p className="text-center text-xs text-stone">{remixesLeft} remixes left · we read the real video before writing a word</p>
-            </aside>
+          {/* The one CTA — at the bottom, after the choices. */}
+          <div className="mt-8">
+            <button onClick={go} disabled={!input.trim()} className="btn-gradient w-full !py-4 text-base">
+              <Wand2 className="h-4 w-4" /> Remix
+            </button>
+            <p className="mt-2.5 text-center text-xs text-stone">{remixesLeft} remixes left · you're only charged when a script is written</p>
           </div>
         </div>
       </div>
