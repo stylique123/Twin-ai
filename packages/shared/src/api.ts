@@ -750,9 +750,11 @@ export async function getBrandStats(brandVoiceId: string): Promise<BrandStats | 
   return data as BrandStats | null
 }
 
-export async function startDna(handle: string, platform: Platform): Promise<StartDnaResult> {
+// `refresh` re-scans the caller's OWN existing voice (fresh stats + sharper
+// profile) without hitting the "you already have a voice" wall or the cache.
+export async function startDna(handle: string, platform: Platform, refresh = false): Promise<StartDnaResult> {
   const { data, error } = await supabase.functions.invoke('start-dna', {
-    body: { handle, platform, make_default: true },
+    body: { handle, platform, make_default: true, refresh },
   })
   if (error) throw new Error(await readInvokeError(error))
   return data as StartDnaResult

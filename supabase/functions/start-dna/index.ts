@@ -34,12 +34,20 @@ Deno.serve(async (req: Request) => {
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
-  let body: { handle?: string; platform?: string; make_default?: boolean }
+  let body: { handle?: string; platform?: string; make_default?: boolean; refresh?: boolean }
   try {
     body = await req.json()
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
+  // A REFRESH re-scans the creator's OWN existing voice to pull fresh stats + a
+  // sharpened profile. It must SUPPORT, never hinder: it may re-scan a voice that
+  // is already 'ready' (no "you already have a voice" wall) and it reads live data
+  // instead of the cache. The existing profile stays intact throughout, so the
+  // voice remains usable while the refresh runs, and a failed refresh leaves the
+  // current voice exactly as it was (dna-poll/worker won't downgrade a voice that
+  // still has a usable profile).
+  const isRefresh = body.refresh === true
 
   const handle = normalizeHandle(body.handle ?? '')
   if (!handle) return json({ error: 'A handle is required.' }, 400)
@@ -80,11 +88,15 @@ Deno.serve(async (req: Request) => {
 
   let voiceId: string
   if (sameHandle) {
-    if (sameHandle.status === 'ready') {
+    if (sameHandle.status === 'ready' && !isRefresh) {
       // Already have a working voice for this exact handle — nothing to rebuild.
+      // (An explicit refresh is allowed through below to re-scan it.)
       return json({ error: `You already have a voice for @${handle} on ${platform}.`, brand_voice_id: sameHandle.id }, 409)
     }
-    // Retry of a failed/stuck scan: reuse the row so it doesn't consume a new slot.
+    // Retry of a failed/stuck scan, OR an explicit refresh of a ready voice: reuse
+    // the row so it never consumes a new brand-voice slot. The profile is left in
+    // place (only status/error are touched), so the current voice keeps working
+    // while the re-scan runs and a failed re-scan can restore it untouched.
     await admin
       .from('brand_voices')
       .update({ status: 'building', error: null, is_default: makeDefault })
@@ -125,8 +137,10 @@ Deno.serve(async (req: Request) => {
   // with zero quality change (same posts, same profile). Tunable via DNA_CACHE_DAYS.
   // Read from `dna_cache` (service-role only), NOT brand_voices.profile, which is
   // user-writable and could be tampered to poison every later scanner (see 0017).
+  // A refresh deliberately skips the cache — the whole point is fresh stats + a
+  // re-read of the latest posts, not a recent snapshot.
   const cacheDays = Number(Deno.env.get('DNA_CACHE_DAYS') ?? '7')
-  if (cacheDays > 0) {
+  if (cacheDays > 0 && !isRefresh) {
     const cutoff = new Date(Date.now() - cacheDays * 86_400_000).toISOString()
     const { data: cached } = await admin
       .from('dna_cache')

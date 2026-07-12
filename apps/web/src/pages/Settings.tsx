@@ -130,16 +130,19 @@ export default function Settings() {
       const voices = await listBrandVoices()
       const v = voices.find((x) => x.is_default) ?? voices[0]
       if (!v?.handle) { setRefreshMsg('No handle on file yet — add one in onboarding first.'); return }
-      const started = await startDna(v.handle, v.platform)
+      // refresh:true → re-scan the existing voice in place. Your current voice
+      // stays live and usable the whole time; a hiccup never breaks it.
+      const started = await startDna(v.handle, v.platform, true)
       const id = started.brand_voice_id ?? v.id
       // Poll until the scan finishes (or we give up after ~90s).
       for (let i = 0; i < 30; i++) {
         await new Promise((r) => setTimeout(r, 3000))
         const res = await pollDna(id)
         if (res.status === 'ready') { setRefreshMsg('Voice & stats refreshed — your dashboard is up to date.'); await refreshProfile(); return }
-        if (res.status === 'failed') { setRefreshMsg(res.error || 'Couldn\'t refresh — please try again shortly.'); return }
+        // A failed re-scan keeps your current voice intact — say so, don't alarm.
+        if (res.status === 'failed') { setRefreshMsg('Couldn\'t pull fresh data just now — your current voice is unchanged and still working. Try again in a bit.'); return }
       }
-      setRefreshMsg('Still working in the background — check your dashboard in a minute.')
+      setRefreshMsg('Still working in the background — your current voice keeps working; check your dashboard in a minute.')
     } catch (e) {
       setRefreshMsg(e instanceof Error ? e.message : 'Couldn\'t refresh your voice. Try again.')
     } finally {
