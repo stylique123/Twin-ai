@@ -78,10 +78,13 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Sticky mobile chrome: header + dropdown in ONE sticky container so the
             menu always opens directly under the header — no safe-area magic number,
-            no sliding-under-the-notch overlap. Skipped when the page brings its own
-            full-screen mobile header (the V2 flow). */}
-        {mobileChrome && (
-          <div className="sticky top-0 z-40 lg:hidden">
+            no sliding-under-the-notch overlap. When the page brings its own
+            full-screen PHONE header (the V2 flow, mobileChrome=false), we still
+            show this bar on md..lg windows — otherwise a half-width desktop
+            window (below the lg sidebar breakpoint) would have NO navigation at
+            all, just the bare wizard. */}
+        {
+          <div className={cn('sticky top-0 z-40 lg:hidden', !mobileChrome && 'hidden md:block')}>
             <header className="flex items-center justify-between border-b border-white/8 bg-ink/80 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
               <Link to="/app" className="inline-flex items-center gap-2">
                 <LogoMark size={26} />
@@ -114,7 +117,7 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
               )}
             </AnimatePresence>
           </div>
-        )}
+        }
         <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>

@@ -57,6 +57,19 @@ function FullScreen({ children }: { children: React.ReactNode }) {
   return <div className="grid min-h-screen place-items-center text-sand">{children}</div>
 }
 
+// Branded route-chunk fallback: a spinner + wordmark instead of faint text on a
+// black page — a slow chunk load must never read as a dead black screen.
+function BootScreen() {
+  return (
+    <div className="grid min-h-screen place-items-center">
+      <div className="flex flex-col items-center gap-4">
+        <span className="h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-amber" />
+        <span className="text-sm font-semibold tracking-tight text-cream">Twin<span className="text-amber">AI</span></span>
+      </div>
+    </div>
+  )
+}
+
 // Redirect the legacy /app entry point into the V2 flow, PRESERVING the query
 // string so acquisition funnels survive — Gallery's "Remix in my voice" sends
 // /app?ref=<url>, which V2Create reads. A bare <Navigate to="/v2"> would drop it.
@@ -103,6 +116,10 @@ export default function App() {
 
   const inApp =
     location.pathname.startsWith('/app') ||
+    // /v2 shares the app key: without it, the dashboard→studio hop was TWO rapid
+    // key changes (/app redirect → /v2) inside AnimatePresence mode="wait", which
+    // can interrupt the exit animation and strand the screen black until a refresh.
+    location.pathname.startsWith('/v2') ||
     location.pathname.startsWith('/dashboard') ||
     location.pathname.startsWith('/history') ||
     location.pathname.startsWith('/calendar') ||
@@ -118,7 +135,7 @@ export default function App() {
       {/* Marketing chrome only on the landing page, never over /auth, /onboarding, or the app. */}
       {location.pathname === '/' && <Nav />}
       <ErrorBoundary resetKey={location.pathname}>
-      <Suspense fallback={<FullScreen>Loading…</FullScreen>}>
+      <Suspense fallback={<BootScreen />}>
       <AnimatePresence mode="wait">
         <Routes location={location} key={inApp ? 'app' : location.pathname}>
           <Route path="/" element={<Page><Landing /></Page>} />
