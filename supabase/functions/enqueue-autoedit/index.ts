@@ -1,8 +1,9 @@
 // Supabase Edge Function: enqueue-autoedit
-// Enqueues an auto-edit job for a recorded take. The FIRST edit of a blueprint
-// is free (bundled with the blueprint the user already paid for); each REMAKE
-// costs one recreation and is charged atomically here, server-side, before the
-// job is queued. A `variation` index lets remakes look different.
+// Enqueues an auto-edit job for a recorded take. Recording + editing a blueprint
+// is FREE — the one recreation was charged at blueprint generation, and that one
+// credit covers the whole loop (record, re-record, edit, restyle, refine). The
+// only paid path is a bare upload with no blueprint anchor (guarded below).
+// A `variation` index lets remakes look different.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -88,32 +89,17 @@ Deno.serve(async (req: Request) => {
     if (!gen) return json({ error: 'Blueprint not found' }, 404)
   }
 
-  // Decide free-vs-paid SERVER-SIDE — never trust a client 'remake' flag for
-  // billing. Free edits are plan-scoped:
-  //   FREE plan  → exactly ONE free finished video, ever (the "1 free loop").
-  //                Their other blueprints are scripts-only; any edit charges.
-  //   PAID plans → the FIRST edit of EACH blueprint is free (bundled with the
-  //                recreation paid at generation); further edits/remakes charge.
-  // Either way a user can never mint unlimited free videos from one recreation.
-  const { data: prof } = await admin.from('profiles').select('plan').eq('id', user.id).maybeSingle()
-  const isFree = (prof?.plan ?? 'free') === 'free'
-  let charge = true
-  if (isRefine) {
-    charge = false // refines are free corrections of an existing edit
-  } else if (generationId || isFree) {
-    let q = admin
-      .from('jobs')
-      .select('id', { count: 'exact', head: true })
-      .eq('owner_id', user.id)
-      .eq('type', 'autoedit')
-      .in('status', ['queued', 'running', 'done'])
-    // Free plan counts ALL their edits (one freebie total); paid counts only this
-    // blueprint's edits (one freebie per blueprint).
-    if (!isFree && generationId) q = q.eq('payload->>generation_id', generationId)
-    const { count } = await q
-    charge = (count ?? 0) > 0
-  }
-  // No blueprint to anchor a freebie to on a paid plan (bare upload) → always charge.
+  // BILLING MODEL: one recreation = one FULL loop. The credit is charged exactly
+  // once, at blueprint generation (generate-blueprint). Recording and editing that
+  // blueprint — re-records, restyles, refines, as many attempts as it takes — are
+  // FREE, so a creator can perfect their video without burning another recreation.
+  // (This is the "1 remix = 1 complete script→video loop" model.)
+  //
+  // The ONLY paid path here is a bare upload with NO blueprint to anchor it (a raw
+  // clip that never cost a recreation). The product flow always sends a
+  // generation_id, so real users never hit this — it only stops the raw-upload API
+  // from being used to mint unlimited free videos without ever paying for a script.
+  const charge = !generationId && !isRefine
 
   if (charge) {
     const { error: spendErr } = await admin.rpc('spend_credits', {
