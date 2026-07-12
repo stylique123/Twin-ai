@@ -10,6 +10,7 @@ import { Link2, Wand2, Target, Shuffle, Feather, Wind, Activity, Flame, SlidersH
 import ScreenLayout from '../../components/v2/ScreenLayout'
 import { PrimaryButton, Card, RecommendedBadge } from '../../components/v2/Primitives'
 import { useAuth } from '../../context/AuthContext'
+import { listGenerations } from '../../lib/api'
 import { videosFromCredits } from '../../lib/brand'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -53,30 +54,65 @@ export default function V2Create() {
   const [advanced, setAdvanced] = useState(false)
   const [fidelity, setFidelity] = useState<Fidelity>('balanced')
   const [tone, setTone] = useState<Tone>('balanced') // recommended default
+  const [checking, setChecking] = useState(false)
+  // A generation that already used this exact link — surfaced so we can offer to
+  // open it instead of silently spending another remix on a duplicate.
+  const [dup, setDup] = useState<{ id: string } | null>(null)
   const remixesLeft = videosFromCredits(profile?.credits ?? 0)
 
-  const go = () => {
-    if (!input.trim()) return
-    const looksUrl = /^https?:\/\//i.test(input.trim())
+  const proceed = () => {
+    const t = input.trim()
+    const looksUrl = /^https?:\/\//i.test(t)
     nav('/v2/building', {
-      state: {
-        reference_url: looksUrl ? input.trim() : '',
-        reference_note: looksUrl ? '' : input.trim(),
-        fidelity,
-        tone,
-      },
+      state: { reference_url: looksUrl ? t : '', reference_note: looksUrl ? '' : t, fidelity, tone },
     })
+  }
+
+  const go = async () => {
+    const t = input.trim()
+    if (!t) return
+    // Only links can be duplicates (a described idea is always fresh). Look for a
+    // prior generation off the SAME link and, if found, ask before charging again.
+    if (/^https?:\/\//i.test(t)) {
+      setChecking(true)
+      try {
+        const norm = (u: string) => u.trim().replace(/[/?#]+$/, '').toLowerCase()
+        const gens = await listGenerations()
+        const existing = gens.find((g) => g.reference_url && norm(g.reference_url) === norm(t))
+        if (existing) { setDup({ id: existing.id }); setChecking(false); return }
+      } catch { /* never block a remix on a failed lookup */ }
+      setChecking(false)
+    }
+    proceed()
   }
 
   return (
     <>
+      {/* Duplicate-link guard: you already remixed this exact link — open it or
+          spend a remix on a fresh version, but never a silent double-charge. */}
+      {dup && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-ink/75 p-5 backdrop-blur-sm">
+          <div className="glass gradient-border w-full max-w-md p-6 text-center">
+            <h2 className="font-display text-2xl tracking-tight">You already remixed this link</h2>
+            <p className="mt-2 text-sm leading-relaxed text-stone">
+              Open the remix you already made, or spend one remix to generate a fresh version with new hooks?
+            </p>
+            <div className="mt-6 space-y-2.5">
+              <button onClick={() => nav(`/result/${dup.id}`)} className="btn-gradient w-full">Open my remix</button>
+              <button onClick={() => { setDup(null); proceed() }} className="btn-ghost w-full">Make a new version</button>
+              <button onClick={() => setDup(null)} className="w-full py-2 text-sm text-stone transition-colors hover:text-cream">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── PHONE — the single-focus wizard, unchanged ─────────────────── */}
       <div className="lg:hidden">
         <ScreenLayout
           title="Make a video"
           subtitle="Paste a link, describe an idea, or upload a clip"
           onBack={() => nav('/dashboard')}
-          cta={<PrimaryButton onClick={go} disabled={!input.trim()}>Remix →</PrimaryButton>}
+          cta={<PrimaryButton onClick={go} disabled={!input.trim() || checking}>{checking ? 'Checking…' : 'Remix →'}</PrimaryButton>}
         >
           <Card>
             <textarea
@@ -160,8 +196,8 @@ export default function V2Create() {
 
           {/* The one CTA — centered, after the choices. */}
           <div className="mx-auto mt-8 max-w-xl">
-            <button onClick={go} disabled={!input.trim()} className="btn-gradient w-full !py-4 text-base">
-              <Wand2 className="h-4 w-4" /> Remix
+            <button onClick={go} disabled={!input.trim() || checking} className="btn-gradient w-full !py-4 text-base">
+              <Wand2 className="h-4 w-4" /> {checking ? 'Checking…' : 'Remix'}
             </button>
             <p className="mt-2.5 text-center text-xs text-stone">{remixesLeft} remixes left · you're only charged when a script is written</p>
           </div>

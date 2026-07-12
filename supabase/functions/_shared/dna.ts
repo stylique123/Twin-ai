@@ -375,12 +375,55 @@ Hard rules:
 - Be concrete and specific to this creator — no generic "be authentic" filler. Every field should be unmistakably about THIS creator and useless for anyone else.
 - vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each drawing on a DIFFERENT hook_pattern and using their vocabulary.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
-- If the sample is thin, infer sensibly from what's there rather than refusing. For pov/enemy specifically, prefer a shorter honest list over inventing beliefs the posts do not show.
+- COMPLETENESS IS MANDATORY. This profile is the ONLY thing we use to write every future script in this creator's voice, so it must be COMPLETE — never return an empty array or a blank/"unspecified"/"n/a" string for any field. Fill EVERY field: give at least 3 hook_patterns, at least 2 pov beliefs, a concrete enemy, and a specific audience, audience_pain, dream_outcome, offer and sub_niche. When the captions are thin, INFER each of these honestly from the niche, bio, hashtags, vocabulary and what similar creators in this exact space do — a confident, specific inference is far more useful than a blank. The only thing you may not invent is a false factual claim or a stance the content actively contradicts; a plausible on-niche stance is expected, not optional.
 - brand_colors = this creator's brand palette as #RRGGBB hex: primary (their dominant brand color), secondary (a supporting color), highlight (the punchy accent best for caption emphasis). When sample post images are attached, READ the palette straight from the imagery — the real, recurring colors you actually SEE across their posts (backgrounds, graphics, wardrobe, product, logo), not a guess. Pick the colors that define their look, not incidental ones (skin tones, plain white/black unless that truly IS the brand). With no images, infer from niche, aesthetic and visual cues in the captions/bio. Return real, distinct, legible hex values (the highlight must read clearly as bright caption text on video). If you truly cannot tell, return an empty object.`
 
 // A post image sent to the model as inline base64 so the synth can read the real
 // brand palette from the creator's actual imagery (Gemini vision).
 export interface InlineImage { mimeType: string; data: string }
+
+// Deterministic safety net so a synthesized profile is NEVER thin — the model is
+// told completeness is mandatory, but this guarantees the fields that most decide
+// "does the script sound like them" are always populated, so the FIRST generation
+// is on-voice and a refresh is essentially never needed. Only ever derives from
+// signal the creator actually gave (their own hooks, their niche); it never
+// fabricates a belief. pov/enemy stay the model's job (prompt-enforced).
+export function enrichVoiceProfile(raw: unknown, handle: string, platform: Platform): unknown {
+  if (!raw || typeof raw !== 'object') return raw
+  const p = raw as Record<string, unknown>
+  const asArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => (x as string).trim()) : [])
+  const asStr = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+
+  const niche = asStr(p.niche)
+  const subNiche = asStr(p.sub_niche) || niche
+  const vocab = asArr(p.vocabulary)
+  const sampleHooks = asArr(p.sample_hooks)
+
+  // hook_patterns: a creator's real hooks ARE their opener moves — derive named
+  // patterns from the hooks they wrote when the model didn't list any.
+  let hookPatterns = asArr(p.hook_patterns)
+  if (hookPatterns.length < 2 && sampleHooks.length) {
+    const derived = sampleHooks.map((h) => `Their own opener — "${h}"`)
+    hookPatterns = Array.from(new Set([...hookPatterns, ...derived])).slice(0, 5)
+  }
+
+  // audience / sub_niche must never be blank — fall back to the niche.
+  const audience = asStr(p.audience) || (niche ? `people into ${niche}` : `@${handle}'s audience on ${platform}`)
+
+  return {
+    ...p,
+    sub_niche: subNiche,
+    audience,
+    vocabulary: vocab,
+    hook_patterns: hookPatterns,
+    // Ensure every list field is at least an array so downstream .join() is safe.
+    pov: asArr(p.pov),
+    recurring_ctas: asArr(p.recurring_ctas),
+    dos: asArr(p.dos),
+    donts: asArr(p.donts),
+    sample_hooks: sampleHooks,
+  }
+}
 
 export async function synthesizeVoice(
   handle: string,
@@ -454,7 +497,7 @@ Synthesize this creator's voice profile.${visionNote}`
     const data = await res.json()
     const text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('')
     if (!text) throw new Error('Empty response from model')
-    return JSON.parse(text)
+    return enrichVoiceProfile(JSON.parse(text), handle, platform)
   } finally {
     clearTimeout(timer)
   }

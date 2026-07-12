@@ -114,8 +114,36 @@ Hard rules:
 - Be concrete and specific to this creator — no generic "be authentic" filler. Every field should be unmistakably about THIS creator and useless for anyone else.
 - vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each drawing on a DIFFERENT hook_pattern and using their vocabulary.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
-- If the sample is thin, infer sensibly from what's there rather than refusing. For pov/enemy specifically, prefer a shorter honest list over inventing beliefs the posts do not show.
+- COMPLETENESS IS MANDATORY. This profile is the ONLY thing we use to write every future script in this creator's voice, so it must be COMPLETE — never return an empty array or a blank/"unspecified"/"n/a" string for any field. Fill EVERY field: give at least 3 hook_patterns, at least 2 pov beliefs, a concrete enemy, and a specific audience, audience_pain, dream_outcome, offer and sub_niche. When the captions are thin, INFER each of these honestly from the niche, bio, hashtags, vocabulary and what similar creators in this exact space do — a confident, specific inference is far more useful than a blank. The only thing you may not invent is a false factual claim or a stance the content actively contradicts; a plausible on-niche stance is expected, not optional.
 - brand_colors = this creator's brand palette as #RRGGBB hex: primary (their dominant brand color), secondary (a supporting color), highlight (the punchy accent best for caption emphasis). When sample post images are attached, READ the palette straight from the imagery — the real, recurring colors you actually SEE across their posts (backgrounds, graphics, wardrobe, product, logo), not a guess. Pick the colors that define their look, not incidental ones (skin tones, plain white/black unless that truly IS the brand). With no images, infer from niche, aesthetic and visual cues in the captions/bio. Return real, distinct, legible hex values (the highlight must read clearly as bright caption text on video). If you truly cannot tell, return an empty object.`
+
+// Deterministic safety net (mirrors the edge _shared/dna.ts) so a synthesized
+// profile is NEVER thin: derive hook_patterns from the creator's own hooks and
+// fall back audience/sub_niche to the niche, guaranteeing the FIRST generation is
+// on-voice. Only derives from signal the creator actually gave; never fabricates.
+function enrichVoiceProfile(raw: Record<string, unknown>, handle: string, platform: string): Record<string, unknown> {
+  if (!raw || typeof raw !== 'object') return raw
+  const asArr = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === 'string' && x.trim()).map((x) => (x as string).trim()) : [])
+  const asStr = (v: unknown): string => (typeof v === 'string' ? v.trim() : '')
+  const niche = asStr(raw.niche)
+  const sampleHooks = asArr(raw.sample_hooks)
+  let hookPatterns = asArr(raw.hook_patterns)
+  if (hookPatterns.length < 2 && sampleHooks.length) {
+    hookPatterns = Array.from(new Set([...hookPatterns, ...sampleHooks.map((h) => `Their own opener — "${h}"`)])).slice(0, 5)
+  }
+  return {
+    ...raw,
+    sub_niche: asStr(raw.sub_niche) || niche,
+    audience: asStr(raw.audience) || (niche ? `people into ${niche}` : `@${handle}'s audience on ${platform}`),
+    vocabulary: asArr(raw.vocabulary),
+    hook_patterns: hookPatterns,
+    pov: asArr(raw.pov),
+    recurring_ctas: asArr(raw.recurring_ctas),
+    dos: asArr(raw.dos),
+    donts: asArr(raw.donts),
+    sample_hooks: sampleHooks,
+  }
+}
 
 export async function synthesizeVoiceFromPosts(
   handle: string,
@@ -147,5 +175,6 @@ Synthesize this creator's voice profile.${visionNote}`
 
   // DNA-specific thinking budget (A/B-proven lossless), matching the edge function.
   const budget = Number(process.env.DNA_THINKING_BUDGET ?? process.env.GEMINI_THINKING_BUDGET ?? '4096')
-  return (await geminiJson(POSTS_SYSTEM, prompt, postsSchema, 60_000, budget, undefined, images)) as Record<string, unknown>
+  const profile = (await geminiJson(POSTS_SYSTEM, prompt, postsSchema, 60_000, budget, undefined, images)) as Record<string, unknown>
+  return enrichVoiceProfile(profile, handle, platform)
 }
