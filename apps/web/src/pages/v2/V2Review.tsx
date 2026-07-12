@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import {
-  getGeneration, signEditUrls, fetchEdl, reEditWithEdl, pollEditJob, markPosted,
+  getGeneration, signEditUrls, signTakeUrl, getJob, fetchEdl, reEditWithEdl, pollEditJob, markPosted,
   listConnections, schedulePost, publishPost, type PlatformConnection,
 } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
@@ -120,9 +120,16 @@ export default function V2Review() {
   const [refineOpen, setRefineOpen] = useState(false)
   const [refineEdl, setRefineEdl] = useState<any>(null)
   const [takePath, setTakePath] = useState<string | null>(null)
+  const [takeUrl, setTakeUrl] = useState<string | null>(null)
   const [refineLoading, setRefineLoading] = useState(false)
 
   useEffect(() => { loadTimeline(id).then(setTimeline) }, [id])
+
+  // Fetch the raw take path up front (independent of the edit job) so the creator
+  // can download their original footage the WHOLE time — while it's rendering, or
+  // if the edit fails — instead of it being stranded behind a pending/broken edit.
+  useEffect(() => { getGeneration(id).then((g) => { if (g?.take_path) setTakePath(g.take_path) }).catch(() => {}) }, [id])
+  useEffect(() => { if (takePath) signTakeUrl(takePath).then(setTakeUrl).catch(() => {}) }, [takePath])
 
   // Real status polling: read the worker's live progress, then the finished video.
   useEffect(() => {
@@ -152,6 +159,19 @@ export default function V2Review() {
       return false
     }
 
+    // Browsers throttle setTimeout in a backgrounded/inactive tab, so the poll
+    // loop can stall for minutes even after the render finished — the reported
+    // "10-minute stall that cleared the instant I refocused the tab". Re-check the
+    // job immediately on refocus so a finished render appears at once.
+    const onVisible = async () => {
+      if (document.visibilityState !== 'visible' || stopped.current || !jobId) return
+      const job = await getJob(jobId).catch(() => null)
+      if (!job || stopped.current) return
+      if (job.status === 'failed') { stopped.current = true; setPhase('failed'); setLabel(job.error || 'The edit failed.'); return }
+      if (job.status === 'done' && (await showFinished())) { stopped.current = true; setPct(100); setPhase('done') }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
     ;(async () => {
       // No job id (e.g. opened directly) → just try to show an existing render.
       if (!jobId) {
@@ -176,7 +196,7 @@ export default function V2Review() {
       else { setPhase('failed'); setLabel('The edit finished but the video did not come through. Check your library in a moment.') }
     })()
 
-    return () => { stopped.current = true }
+    return () => { stopped.current = true; document.removeEventListener('visibilitychange', onVisible) }
   }, [id, jobId])
 
   const retry = () => nav(`/v2/capture/${id}?mode=record`)
@@ -352,6 +372,16 @@ export default function V2Review() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Raw take is downloadable in EVERY non-done phase (rendering / timeout /
+              failed) so the original footage is never stranded behind the edit. */}
+          {takeUrl && phase !== 'done' && (
+            <div className="px-4 pb-3 text-center lg:px-0">
+              <a href={takeUrl} download className="inline-flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white">
+                <Download className="h-3.5 w-3.5" /> Download your raw take
+              </a>
             </div>
           )}
         </div>
