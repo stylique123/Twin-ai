@@ -13,8 +13,11 @@ const LINKS = [
   { href: '/#pricing', label: 'Pricing' },
 ]
 
-// Floating "bubble" navigation, a centered glass pill that lifts off the page,
-// kreate.ai-style. The dashboard has its own AppShell; app links never leak here.
+// Navigation. On md+ it's the floating "bubble" pill lifted off the page,
+// kreate.ai-style. On phones a floating pill reads as broken — page content
+// visibly scrolls around/behind its rounded corners and the gaps beside it —
+// so mobile gets a normal edge-to-edge solid bar that content scrolls UNDER.
+// The dashboard has its own AppShell; app links never leak here.
 export function Nav() {
   const { session } = useAuth()
   const { pathname } = useLocation()
@@ -27,9 +30,9 @@ export function Nav() {
       initial={{ y: -28, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.6, ease: EASE }}
-      className="pointer-events-none fixed inset-x-0 top-3 z-50 px-4 sm:top-5"
+      className="pointer-events-none fixed inset-x-0 top-0 z-50 md:top-5 md:px-4"
     >
-      <div className="pointer-events-auto mx-auto flex max-w-3xl items-center justify-between gap-2 rounded-full border border-white/10 bg-ink2/70 py-2 pl-2.5 pr-2.5 shadow-[0_8px_40px_-12px_rgba(0,0,0,.7)] backdrop-blur-xl">
+      <div className="pointer-events-auto mx-auto flex max-w-3xl items-center justify-between gap-2 border-b border-white/10 bg-ink/90 py-2 pl-4 pr-3 pt-[max(0.5rem,env(safe-area-inset-top))] backdrop-blur-xl md:rounded-full md:border md:bg-ink2/70 md:pl-2.5 md:pr-2.5 md:pt-2 md:shadow-[0_8px_40px_-12px_rgba(0,0,0,.7)]">
         {/* Brand */}
         <Link to="/" className="flex items-center gap-2 rounded-full px-2 py-1 transition-opacity hover:opacity-90">
           <LogoMark size={26} />
@@ -85,7 +88,7 @@ export function Nav() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ duration: 0.25, ease: EASE }}
-            className="pointer-events-auto mx-auto mt-2 max-w-3xl overflow-hidden rounded-3xl border border-white/10 bg-ink2/95 p-3 backdrop-blur-xl md:hidden"
+            className="pointer-events-auto mx-auto max-w-3xl overflow-hidden border-b border-white/10 bg-ink/95 p-3 backdrop-blur-xl md:hidden"
           >
             <div className="flex flex-col gap-1 text-sm">
               {LINKS.map((l) => (

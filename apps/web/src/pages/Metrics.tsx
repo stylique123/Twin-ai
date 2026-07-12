@@ -206,7 +206,7 @@ export default function Metrics() {
                 </div>
 
                 {/* Headline proof: do creators come back for a 2nd video? */}
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div className="rounded-xl border border-teal/25 bg-teal/[0.05] p-4 text-center">
                     <div className="font-display text-3xl text-cream">{secondRate}%</div>
                     <div className="mt-1 text-xs font-medium text-stone">Make a 2nd+ video</div>

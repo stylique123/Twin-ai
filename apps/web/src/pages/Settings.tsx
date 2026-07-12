@@ -242,7 +242,7 @@ export default function Settings() {
               <div className="font-display text-2xl text-cream">{plan.name}</div>
               <div className="mt-1 text-sm text-stone">{plan.price ? `$${plan.price}/mo` : 'Free'} · {left} remix{left === 1 ? '' : 'es'} left</div>
             </div>
-            <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+            <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
               {plan.features.map((f) => (
                 <li key={f} className="flex items-start gap-2 text-sm text-sand"><Check className="mt-0.5 h-4 w-4 shrink-0 text-teal" /> {f}</li>
               ))}
@@ -284,7 +284,7 @@ export default function Settings() {
               <p className="eyebrow !text-sand">Add-ons</p>
             </div>
             <p className="mt-2 text-sm text-stone">Top up your plan as you grow — no need to switch tiers.</p>
-            <div className="mt-4 grid gap-2.5 sm:grid-cols-3">
+            <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
               {ADD_ONS.map((a) => (
                 <div key={a.id} className="flex flex-col rounded-card border border-white/8 bg-white/[0.02] p-4">
                   <div className="font-heading text-sm text-cream">{a.name}</div>
@@ -494,7 +494,7 @@ export default function Settings() {
             <button onClick={() => setUpgradeOpen(false)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
             <h2 className="font-display text-2xl tracking-tight sm:text-3xl">Choose your plan</h2>
             <p className="mt-1 text-sm text-stone">Upgrade, downgrade, or switch any time. You keep credits you've already been granted.</p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {PLANS.filter((p) => !p.hidden).map((p) => {
                 const current = p.id === plan.id
                 const isUp = p.price > plan.price

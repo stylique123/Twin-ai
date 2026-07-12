@@ -201,7 +201,7 @@ function HeroSection() {
 
       {/* Nav hint */}
       <div className="relative z-10 mx-auto max-w-content px-5 pb-20 pt-28 sm:pt-32 lg:pt-36">
-        <div className="grid items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-12">
+        <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-[1.15fr_0.85fr] lg:gap-12">
           <div>
             <motion.p
               initial={{ opacity: 0, y: 12 }}
@@ -215,7 +215,7 @@ function HeroSection() {
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.07 }}
-              className="font-display text-left text-[2.9rem] leading-[1.0] -tracking-[0.02em] sm:text-[4.8rem] sm:leading-[0.98] lg:text-[6.2rem]"
+              className="font-display text-left text-[2.35rem] leading-[1.02] -tracking-[0.02em] sm:text-[4.8rem] sm:leading-[0.98] lg:text-[6.2rem]"
             >
               Steal the format.<br /><span className="gradient-text">Keep your voice.</span>
             </motion.h1>
@@ -224,12 +224,14 @@ function HeroSection() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.7, ease: EASE, delay: 0.14 }}
-              className="mt-6 max-w-xl text-lg leading-relaxed text-sand"
+              className="mt-5 max-w-xl text-base leading-relaxed text-sand sm:mt-6 sm:text-lg"
             >
+              {/* Phones get the short pitch; the full feature run-on only where
+                  there's room to read it (sm+). Same message, less wall-of-words. */}
               Paste any video you wish you'd made. TwinAI rebuilds it in your voice, fully edits it, and
-              posts it — <span className="text-cream">script, teleprompter, real editing, render, caption,
-              hashtags and one-tap posting, all without leaving the app.</span> The video that took a pro a
-              full day takes you minutes.
+              posts it<span className="hidden sm:inline"> — <span className="text-cream">script, teleprompter, real editing, render, caption,
+              hashtags and one-tap posting, all without leaving the app</span></span>.{' '}
+              The video that took a pro a full day takes you minutes.
             </motion.p>
 
             <motion.div
@@ -474,7 +476,7 @@ function PasteDemoSection() {
     <section className="mx-auto max-w-content px-5 py-16 sm:py-20">
       <Reveal className="mx-auto max-w-2xl text-center">
         <p className="eyebrow">How it starts</p>
-        <h2 className="mt-3 font-display text-3xl leading-tight text-balance sm:text-4xl">
+        <h2 className="mt-3 font-display text-3xl leading-tight sm:text-4xl">
           Drop a link. Get your first remix.
         </h2>
         <p className="mx-auto mt-3 max-w-lg text-sand">
@@ -516,7 +518,7 @@ function PasteMicroDemo() {
     'CTA: follow for part 2',
   ]
   return (
-    <div className="mx-auto mt-9 grid max-w-2xl items-stretch gap-3 text-left sm:grid-cols-[1fr_auto_1.1fr] sm:items-center">
+    <div className="mx-auto mt-9 grid grid-cols-1 max-w-2xl items-stretch gap-3 text-left sm:grid-cols-[1fr_auto_1.1fr] sm:items-center">
       <div className="rounded-card border border-white/10 bg-ink2/70 p-4">
         <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-stone">
           <span className="flex h-4 w-4 items-center justify-center rounded-full bg-coral/20"><Play className="h-2 w-2 text-coral" /></span> Reference pasted
@@ -573,10 +575,10 @@ function PainSection() {
           <div className="absolute inset-0 bg-gradient-to-b from-ink via-ink/85 to-ink" />
         </>
       )}
-      <div className="relative mx-auto max-w-content px-5 py-20 sm:py-28">
+      <div className="relative mx-auto max-w-content px-5 py-14 sm:py-28">
       <Reveal className="text-center">
         <p className="eyebrow">Sound familiar?</p>
-        <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+        <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
           You don't have a motivation problem.{' '}
           {/* Continuous gradient shimmer pulls the eye straight to the turn. */}
           <motion.span
@@ -592,7 +594,7 @@ function PainSection() {
           Every creator hits the same three walls. TwinAI tears down all three.
         </p>
       </Reveal>
-      <Stagger className="mt-14 grid gap-5 md:grid-cols-3" gap={0.08}>
+      <Stagger className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3" gap={0.08}>
         {PAIN.map((p) => (
           <RevealItem key={p.n}>
             <div className="group relative h-full overflow-hidden rounded-panel border border-white/8 bg-ink2/60 p-7 transition-all duration-300 hover:border-white/16 hover:bg-ink2/80 hover:-translate-y-1">
@@ -629,7 +631,7 @@ function HowItWorksSection() {
       <div className="mx-auto max-w-content px-5">
         <Reveal className="text-center">
           <p className="eyebrow">One link in · a posted video out</p>
-          <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+          <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
             The entire workflow, in one place.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-sand">
@@ -656,7 +658,7 @@ function BenefitsSection() {
 
   return (
     <section ref={ref} className="mx-auto max-w-content px-5 py-12 sm:py-16">
-      <Stagger className="grid gap-5 sm:grid-cols-3" gap={0.08}>
+      <Stagger className="grid grid-cols-1 gap-5 sm:grid-cols-3" gap={0.08}>
         {BENEFITS.map((b) => (
           <RevealItem key={b.label}>
             <div className="relative overflow-hidden rounded-panel border border-white/8 bg-ink2/60 p-8 text-center hover:border-white/14 transition-colors">
@@ -681,14 +683,14 @@ function BenefitsSection() {
 
 function FeaturesSection() {
   return (
-    <section id="features" className="mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
+    <section id="features" className="mx-auto max-w-content scroll-mt-24 px-5 py-14 sm:py-28">
       <Reveal className="text-center">
         <p className="eyebrow">What you get</p>
-        <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+        <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
           Every tool the loop needs. Nothing it doesn't.
         </h2>
       </Reveal>
-      <Stagger className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
+      <Stagger className="mt-14 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3" gap={0.06}>
         {FEATURES.map((f) => (
           <RevealItem key={f.t}>
             <div className={cn(
@@ -724,15 +726,17 @@ const SHOWCASE_CARDS = [
 ]
 function GalleryShowcase() {
   return (
-    <section id="gallery" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
-      <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
+    <section id="gallery" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-14 sm:py-28">
+      <div className="grid grid-cols-1 items-center gap-12 lg:grid-cols-2 lg:gap-16">
         <Reveal>
           <p className="eyebrow">No link in mind? Start here.</p>
-          <h2 className="mt-3 font-display text-4xl leading-tight text-balance sm:text-5xl">
+          <h2 className="mt-3 font-display text-3xl leading-tight sm:text-5xl">
             Stop hunting for ideas. <span className="gradient-text">We've got you covered.</span>
           </h2>
-          <p className="mt-5 max-w-xl text-lg leading-relaxed text-sand">
-            You don't need to find the next thing to make. TwinAI already <span className="text-cream">understands your brand</span> and keeps a live gallery of what's <span className="text-cream">actually working in your niche</span>, scored for you. Open it, pick the one you like, and it's a script in your voice. That's the whole search, gone.
+          <p className="mt-4 max-w-xl text-base leading-relaxed text-sand sm:mt-5 sm:text-lg">
+            TwinAI already <span className="text-cream">understands your brand</span> and keeps a live gallery of what's{' '}
+            <span className="text-cream">actually working in your niche</span>, scored for you. Pick one, and it's a script in your voice.
+            <span className="hidden sm:inline"> That's the whole search, gone.</span>
           </p>
           <ul className="mt-6 space-y-3.5">
             {[
@@ -763,7 +767,9 @@ function GalleryShowcase() {
                 <span key={f.name} className="chip shrink-0"><f.icon className="h-3.5 w-3.5 text-amber" /> {f.name}</span>
               ))}
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {/* Two compact cards side-by-side even on phones — one giant full-width
+                4:5 poster per screen is the "endless scroll" feeling. */}
+            <div className="mt-4 grid grid-cols-2 gap-3">
               {SHOWCASE_CARDS.map((c) => (
                 <div key={c.title} className="group overflow-hidden rounded-card border border-white/8 bg-ink2/60 transition-all duration-300 hover:-translate-y-1 hover:border-white/16 hover:shadow-glass">
                   <div className={cn('relative grid aspect-[4/5] place-items-center overflow-hidden bg-gradient-to-br to-ink', c.tint)}>
@@ -796,14 +802,14 @@ function GalleryShowcase() {
 
 function AgencySection() {
   return (
-    <section id="agencies" className="mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
+    <section id="agencies" className="mx-auto max-w-content scroll-mt-24 px-5 py-14 sm:py-28">
       <Reveal>
         <div className="overflow-hidden rounded-panel border border-white/8 bg-ink2/60 lg:grid lg:grid-cols-2">
-          <div className="p-10 lg:p-14">
+          <div className="p-6 sm:p-10 lg:p-14">
             <div className="inline-flex items-center gap-2 rounded-full border border-amber/20 bg-amber/10 px-3 py-1 text-xs font-bold text-amber">
               <Building2 className="h-3.5 w-3.5" /> Agencies &amp; studios
             </div>
-            <h2 className="mt-5 font-display text-4xl leading-tight text-balance sm:text-5xl">
+            <h2 className="mt-5 font-display text-3xl leading-tight sm:text-5xl">
               Manage 15 brands. Ship daily. Stay consistent.
             </h2>
             <p className="mt-4 text-sand">
@@ -873,10 +879,10 @@ function ValueStack() {
     { icon: Send, t: 'A caption pack tuned per platform', s: 'On-brand copy and hashtags, ready to paste and post.', who: 'Copywriter', price: '$25' },
   ]
   return (
-    <section className="mx-auto max-w-content px-5 py-20 sm:py-28">
+    <section className="mx-auto max-w-content px-5 py-14 sm:py-28">
       <Reveal className="text-center">
         <p className="eyebrow">What one link gets you</p>
-        <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+        <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
           One link in. A finished, on-brand video out, <span className="gradient-text">end to end.</span>
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-sand">Five jobs you'd normally hire a team for — strategist, writer, producer, editor, copywriter — all done from a single paste, in minutes.</p>
@@ -904,7 +910,7 @@ function ValueStack() {
         </Stagger>
 
         {/* Total bar — the anchor everything above adds up to, against your price. */}
-        <div className="grid gap-px bg-white/8 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-px bg-white/8 sm:grid-cols-2">
           <div className="bg-ink2 p-5 text-center sm:text-left">
             <div className="text-[11px] uppercase tracking-wider text-stone">Hire it all out</div>
             <div className="mt-1 font-display text-3xl text-sand line-through decoration-coral/60">$490<span className="text-lg">/video</span></div>
@@ -929,15 +935,15 @@ function ValueStack() {
 
 function PricingSection() {
   return (
-    <section id="pricing" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-20 sm:py-28">
+    <section id="pricing" className="relative mx-auto max-w-content scroll-mt-24 px-5 py-14 sm:py-28">
       <Reveal className="text-center">
         <p className="eyebrow">Pricing</p>
-        <h2 className="mt-3 font-display text-4xl text-balance sm:text-5xl">
+        <h2 className="mt-3 font-display text-3xl sm:text-5xl">
           Start free. Scale when it's working.
         </h2>
       </Reveal>
 
-      <Stagger className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
+      <Stagger className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
         {PLANS.filter((p) => !p.hidden).map((p) => {
           const featured = p.id === 'professional'
           return (
@@ -1004,14 +1010,14 @@ function TestimonialsSection() {
     <section className="mx-auto max-w-content px-5 py-12 sm:py-16">
       <Reveal className="text-center">
         <p className="eyebrow">Who it's for</p>
-        <h2 className="mx-auto mt-3 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+        <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
           Made for the way you already create.
         </h2>
         <p className="mx-auto mt-3 max-w-md text-xs text-stone">
           We don't fake reviews. Here's the job it does. Try it free and judge the output yourself.
         </p>
       </Reveal>
-      <Stagger className="mt-14 grid gap-5 md:grid-cols-3" gap={0.08}>
+      <Stagger className="mt-14 grid grid-cols-1 gap-5 md:grid-cols-3" gap={0.08}>
         {USE_CASES.map((u) => (
           <RevealItem key={u.tag}>
             <div className="group relative h-full overflow-hidden rounded-panel border border-white/8 bg-ink2/60 p-7 transition-all duration-300 hover:border-white/16 hover:-translate-y-1">
@@ -1036,7 +1042,7 @@ function FAQSection() {
     <section id="faq" className="mx-auto max-w-3xl scroll-mt-24 px-5 py-20">
       <Reveal className="text-center">
         <p className="eyebrow">The honest answers</p>
-        <h2 className="mt-3 font-display text-4xl text-balance sm:text-5xl">
+        <h2 className="mt-3 font-display text-3xl sm:text-5xl">
           No hype. Just how it works.
         </h2>
       </Reveal>
@@ -1060,7 +1066,7 @@ function ReferralSection() {
           <div className="pointer-events-none absolute -bottom-10 -left-10 h-40 w-40 rounded-full bg-teal/15 blur-[70px]" />
           <div className="relative">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-white/12 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-amber"><Repeat className="h-3.5 w-3.5" /> Referrals</span>
-            <h2 className="mx-auto mt-4 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+            <h2 className="mx-auto mt-4 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
               Love it? Your friends get you free remixes.
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-sand">
@@ -1082,19 +1088,20 @@ function ReferralSection() {
 function CTASection() {
   return (
     <section className="mx-auto max-w-content px-5 pb-28">
-      <Reveal className="relative overflow-hidden rounded-panel border border-white/10 px-6 py-24 text-center">
+      <Reveal className="relative overflow-hidden rounded-panel border border-white/10 px-5 py-14 text-center sm:px-6 sm:py-24">
         {/* Dramatic gradient bg */}
         <div className="absolute inset-0 bg-gradient-to-br from-amber/10 via-coral/8 to-teal/10" />
         <Aurora />
         <div className="relative z-10">
           <p className="eyebrow">Ready?</p>
-          <h2 className="mx-auto mt-4 max-w-2xl font-display text-4xl leading-tight text-balance sm:text-5xl">
+          <h2 className="mx-auto mt-4 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
             Your next viral video is already in your saved folder.
           </h2>
-          <p className="mx-auto mt-4 max-w-lg text-sand">
-            You've watched it ten times. Stop wishing you'd made it. Paste it, edit it, post it — tonight, from one app. No link in mind? Start from what's already working in your niche.
+          <p className="mx-auto mt-4 max-w-lg text-sm text-sand sm:text-base">
+            You've watched it ten times. Stop wishing you'd made it. Paste it, edit it, post it — tonight, from one app.
+            <span className="hidden sm:inline"> No link in mind? Start from what's already working in your niche.</span>
           </p>
-          <div className="mt-10 flex flex-wrap justify-center gap-3">
+          <div className="mt-8 flex flex-wrap justify-center gap-3 sm:mt-10">
             <Link to="/auth?mode=signup" className="btn-gradient group text-base px-8 py-4">
               Claim your 3 free remixes
               <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
@@ -1135,7 +1142,7 @@ function LoopSequence() {
   const step = LOOP[active]
 
   return (
-    <div ref={ref} className="mt-14 grid items-center gap-10 lg:grid-cols-2">
+    <div ref={ref} className="mt-14 grid grid-cols-1 items-center gap-10 lg:grid-cols-2">
       {/* Steps */}
       <div className="order-2 lg:order-1">
         <div className="relative space-y-2">
@@ -1367,7 +1374,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 function Footer() {
   return (
     <footer className="border-t border-white/8 bg-ink2/40">
-      <div className="mx-auto grid max-w-content gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mx-auto grid grid-cols-1 max-w-content gap-10 px-5 py-14 sm:grid-cols-2 lg:grid-cols-4">
         <div className="sm:col-span-2">
           <Logo />
           <p className="mt-3 max-w-sm text-sm text-sand">

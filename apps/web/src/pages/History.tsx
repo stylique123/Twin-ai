@@ -74,7 +74,7 @@ export default function History() {
 
         {/* Stat strip — no recreation counter here; that lives on the Dashboard. */}
         <Reveal delay={0.06}>
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Stat icon={Clapperboard} label="Scripts" value={loading ? '…' : String(items.length)} />
             <Stat icon={Video} label="Videos" value={loading ? '…' : String(editedCount)} />
           </div>
@@ -139,7 +139,7 @@ export default function History() {
               : 'Nothing un-recorded here — every script is already edited. Switch to “All”.'}
           </div>
         ) : (
-          <Stagger immediate className="mt-10 grid gap-4 sm:grid-cols-2" gap={0.06}>
+          <Stagger immediate className="mt-10 grid grid-cols-1 gap-4 sm:grid-cols-2" gap={0.06}>
             {displayed.map((g) => {
               const cover = g.thumb_path ? urls[g.thumb_path] : undefined
               const render = g.edit_path ? urls[g.edit_path] : undefined
