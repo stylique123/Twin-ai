@@ -124,7 +124,12 @@ export default function V2Building() {
         await saveTimeline(timeline)
         if (ticker) clearInterval(ticker)
         setActive(STEPS.length)
-        nav(`/v2/plan/${gen.id}`, { replace: true })
+        // Land on the RICH result screen (hook angles, strategy, retention map,
+        // teleprompter) — the exact page the Library opens — so a fresh remix and
+        // a saved video look identical. Its "Record Script" feeds the same V2
+        // capture flow, so this merges the old rich plan with the new pipeline
+        // (instead of the bare "/v2/plan" screen the remix used to drop into).
+        nav(`/result/${gen.id}`, { replace: true })
       } catch (e) {
         if (ticker) clearInterval(ticker)
         setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
