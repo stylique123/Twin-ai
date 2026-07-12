@@ -55,6 +55,7 @@ export default function Dashboard() {
   }, [selectedBrand])
 
   const brand = voices.find((v) => v.is_default) ?? voices[0] ?? null
+  const isAgency = profile?.plan === 'agency'
   const scoped = !!(selectedBrand && brandStats)
   const bpVal = scoped ? brandStats!.blueprints : stats?.blueprints
   const edVal = scoped ? brandStats!.edits : stats?.edits
@@ -96,14 +97,17 @@ export default function Dashboard() {
           <p className="mt-4 max-w-md text-base text-stone">
             Everything you've shipped, and what to make next.
           </p>
-          {(brand || streak > 0 || hoursSaved > 0) && (
+          {(isAgency && brand) || streak > 0 || hoursSaved > 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {hoursSaved > 0 && (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/30 bg-teal/10 px-3 py-1.5 text-xs font-semibold text-teal">
                   <Clock className="h-3.5 w-3.5" /> ~{hoursSaved}h saved
                 </span>
               )}
-              {brand && (
+              {/* "Working as / Switch" is an AGENCY concept (one voice per client).
+                  A solo/free creator has a single voice — showing a brand switcher
+                  there is noise, so this chip is agency-only. */}
+              {isAgency && brand && (
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-sand">
                   <Sparkles className="h-3.5 w-3.5 text-amber" /> Working as <span className="font-semibold text-cream">@{brand.handle}</span>
                   <Link to="/brands" className="text-amber transition-colors hover:text-cream">Switch →</Link>
@@ -115,7 +119,7 @@ export default function Dashboard() {
                 </span>
               )}
             </div>
-          )}
+          ) : null}
           {/* Real "little things about you" from the handle scan: followers, videos
               read, and average reach/likes for the active brand. */}
           {brand?.stats && (brand.stats.followers > 0 || brand.stats.videos > 0) && (
@@ -133,7 +137,7 @@ export default function Dashboard() {
             <button onClick={load} className="btn-gradient shrink-0 self-start text-sm sm:self-auto">Try again</button>
           </div>
         )}
-        {voices.length > 1 && (
+        {isAgency && voices.length > 1 && (
           <Reveal>
             <div className="mt-8 flex flex-wrap items-center gap-2">
               <span className="text-xs text-stone">View:</span>
