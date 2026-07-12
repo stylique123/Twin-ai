@@ -57,17 +57,22 @@ export default function Dashboard() {
   const brand = voices.find((v) => v.is_default) ?? voices[0] ?? null
   const isAgency = profile?.plan === 'agency'
   const scoped = !!(selectedBrand && brandStats)
-  const bpVal = scoped ? brandStats!.blueprints : stats?.blueprints
-  const edVal = scoped ? brandStats!.edits : stats?.edits
-  const poVal = scoped ? brandStats!.posts : stats?.posts
+  // Stage tiles — mutually exclusive, derived from the generation lifecycle (same
+  // source as the Library chips). draft = script only; ready = finished video;
+  // published = posted. drafts + ready + published = total remixes.
+  const draftsVal = scoped ? brandStats!.drafts : stats?.drafts
+  const readyVal = scoped ? brandStats!.ready : stats?.ready
+  const publishedVal = scoped ? brandStats!.published : stats?.published
   const streak = postingStreak(posts)
   // The learning loop (panel: analytics that actually TEACHES): tie each post's
   // self-reported views back to the FORMAT it was built from, and surface the
   // format that's winning for this creator. Available to everyone (not paywalled).
   const formatInsight = useMemo(() => computeFormatInsight(posts, gens), [posts, gens])
-  // Creator-facing value: hours saved (30 min/blueprint + 90 min/edit) and the
-  // top-performing post by their self-reported views.
-  const hoursSaved = stats ? Math.round(((stats.blueprints ?? 0) * 0.5 + (stats.edits ?? 0) * 1.5)) : 0
+  // Creator-facing value: hours saved (~30 min per script written + ~90 min per
+  // finished video) and the top-performing post by their self-reported views.
+  const totalRemixes = stats ? stats.drafts + stats.ready + stats.published : 0
+  const finishedVideos = stats ? stats.ready + stats.published : 0
+  const hoursSaved = Math.round(totalRemixes * 0.5 + finishedVideos * 1.5)
   const topId = posts.reduce((best, p) => ((p.views ?? 0) > 0 && (p.views ?? 0) > (posts.find((x) => x.id === best)?.views ?? 0) ? p.id : best), '')
 
   // Greet with their real identity: the display name they set, else their active
@@ -75,12 +80,15 @@ export default function Dashboard() {
   const rawName = (profile?.display_name?.trim() || (brand?.handle ? `@${brand.handle}` : '') || profile?.email?.split('@')[0] || 'creator')
   const name = rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
-  // "+N this week" deltas for the stat tiles (mock parity), from the rows we
-  // already fetched — real counts, not decorations.
+  // "+N this week" deltas per stage, from the rows we already fetched — real
+  // counts, not decorations. A generation with a finished video counts toward
+  // Ready (not Drafts); a posted one toward Published.
   const weekAgo = Date.now() - 7 * 24 * 3600 * 1000
-  const wkScripts = gens.filter((g) => +new Date(g.created_at) > weekAgo).length
-  const wkEdits = gens.filter((g) => g.edit_path && +new Date(g.created_at) > weekAgo).length
-  const wkPosts = posts.filter((p) => p.status === 'posted' && p.posted_at && +new Date(p.posted_at) > weekAgo).length
+  const publishedIds = new Set(posts.filter((p) => p.status === 'posted' && p.generation_id).map((p) => p.generation_id))
+  const newThisWeek = gens.filter((g) => +new Date(g.created_at) > weekAgo)
+  const wkDrafts = newThisWeek.filter((g) => !g.edit_path && !publishedIds.has(g.id)).length
+  const wkReady = newThisWeek.filter((g) => g.edit_path && !publishedIds.has(g.id)).length
+  const wkPublished = posts.filter((p) => p.status === 'posted' && p.posted_at && +new Date(p.posted_at) > weekAgo).length
 
   return (
     <main className="relative min-h-screen overflow-clip">
@@ -151,15 +159,15 @@ export default function Dashboard() {
         {/* Remixes-left moved to Settings → Usage (it's a billing detail, not an
             achievement). These three are what they've shipped. */}
         <Stagger className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4" gap={0.07}>
-          <StatCard icon={FileText} glow="amber" label="Scripts" value={bpVal} loading={loading} week={wkScripts} />
-          <StatCard icon={Clapperboard} glow="coral" label="Videos edited" value={edVal} loading={loading} week={wkEdits} />
-          <StatCard icon={Send} glow="teal" label="Published" value={poVal} loading={loading} week={wkPosts} />
+          <StatCard icon={FileText} glow="amber" label="Drafts" value={draftsVal} loading={loading} week={wkDrafts} />
+          <StatCard icon={Clapperboard} glow="coral" label="Ready" value={readyVal} loading={loading} week={wkReady} />
+          <StatCard icon={Send} glow="teal" label="Published" value={publishedVal} loading={loading} week={wkPublished} />
         </Stagger>
         <Reveal delay={0.1}>
           <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <ActionCard to="/app" icon={Wand2} iconGlow="from-amber/40 to-coral/30" iconColor="text-amber" title="New script" desc="Paste a reference and get a shootable script in seconds." primary />
             <ActionCard to="/gallery" icon={LayoutGrid} iconGlow="from-teal/40 to-teal/10" iconColor="text-teal" title="Find a format" desc="See what's winning in your niche, remix it in one tap." />
-            <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="My videos" desc="Everything you've made, in one place." />
+            <ActionCard to="/history" icon={FileText} iconGlow="from-stone/40 to-stone/10" iconColor="text-cream" title="My remixes" desc="Every remix — drafts, ready, and published." />
             <ActionCard to="/calendar" icon={Clock} iconGlow="from-coral/35 to-coral/10" iconColor="text-coral" title="Schedule a post" desc="Plan your content calendar and post on time." />
           </div>
         </Reveal>

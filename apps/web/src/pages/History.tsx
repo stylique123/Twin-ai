@@ -113,8 +113,8 @@ export default function History() {
         <Reveal>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h1 className="font-display text-4xl tracking-tight sm:text-5xl">My videos</h1>
-              <p className="mt-2 text-sm text-stone">All your created videos in one place.</p>
+              <h1 className="font-display text-4xl tracking-tight sm:text-5xl">My remixes</h1>
+              <p className="mt-2 text-sm text-stone">Every remix you've made — drafts, ready to post, and published — in one place.</p>
             </div>
             <Link to="/app" className="btn-gradient">
               <Plus className="h-4 w-4" /> New video
@@ -161,7 +161,7 @@ export default function History() {
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-signature-soft">
                 <Wand2 className="h-6 w-6 text-cream" />
               </span>
-              <p className="mt-4 font-heading text-lg">No videos yet.</p>
+              <p className="mt-4 font-heading text-lg">No remixes yet.</p>
               <p className="mt-1 text-sm text-stone">Paste a reference link and get your first one in ~30 seconds.</p>
               <Link to="/app" className="btn-gradient mt-6">Make your first one</Link>
             </div>
