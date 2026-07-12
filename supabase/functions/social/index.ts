@@ -57,6 +57,10 @@ interface Adapter {
   configured: () => boolean
   authorizeUrl: (state: string) => string
   exchange: (code: string) => Promise<{ access_token: string; refresh_token?: string; expires_in?: number }>
+  // Optional: swap an expired access token for a fresh one using the stored refresh
+  // token. Only platforms with short-lived tokens (YouTube ~1h) need it; others may
+  // omit it and simply require a reconnect when the token dies.
+  refresh?: (refreshToken: string) => Promise<{ access_token: string; expires_at?: string }>
   account: (accessToken: string) => Promise<{ id: string; label: string }>
   publish: (a: { accessToken: string; accountId: string; videoUrl: string; title: string; caption: string }) => Promise<{ external_url: string }>
 }
@@ -102,6 +106,19 @@ const ADAPTERS: Record<string, Adapter> = {
       })
       if (!r.ok) throw new Error(`YouTube token ${r.status}: ${(await r.text()).slice(0, 160)}`)
       return await r.json()
+    },
+    refresh: async (refreshToken) => {
+      const r = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          client_id: env('YOUTUBE_CLIENT_ID')!, client_secret: env('YOUTUBE_CLIENT_SECRET')!,
+          refresh_token: refreshToken, grant_type: 'refresh_token',
+        }),
+      })
+      if (!r.ok) throw new Error(`YouTube refresh ${r.status}: ${(await r.text()).slice(0, 160)}`)
+      const j = await r.json()
+      return { access_token: j.access_token, expires_at: j.expires_in ? new Date(Date.now() + j.expires_in * 1000).toISOString() : undefined }
     },
     account: async (accessToken) => {
       const r = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', { headers: { Authorization: `Bearer ${accessToken}` } })
@@ -325,23 +342,55 @@ type Db = any
 // Publish ONE post via its owner's connection. Shared by the interactive
 // `publish` action and the cron `publish_due` scan. Signs the render, calls the
 // platform adapter, and records posted/external_url or the failure reason.
-async function publishOne(admin: Db, post: { id: string; owner_id: string; platform: string; generation_id: string; caption?: string | null }): Promise<{ ok: boolean; error?: string; external_url?: string }> {
+async function publishOne(admin: Db, post: { id: string; owner_id: string; platform: string; generation_id: string; caption?: string | null }): Promise<{ ok: boolean; error?: string; external_url?: string; skipped?: boolean }> {
   const ad = ADAPTERS[post.platform]
   if (!ad) return { ok: false, error: 'Unknown platform' }
+  // ATOMIC CLAIM — flip scheduled → posting and only proceed if THIS call won the
+  // update. Two runners (a cron-tick overlap while a slow upload is in flight, a
+  // double-click, or a retry) can no longer publish the same post twice: the
+  // second one claims nothing and returns skipped.
+  // Claim from 'scheduled' (cron/first publish) OR 'failed' (an explicit retry) —
+  // but never from 'posting'/'posted', so a duplicate trigger is a no-op.
+  const { data: claimed } = await admin
+    .from('posts').update({ status: 'posting' })
+    .eq('id', post.id).in('status', ['scheduled', 'failed'])
+    .select('id').maybeSingle()
+  if (!claimed) return { ok: false, error: 'Already being published', skipped: true }
+
+  const failPost = async (msg: string) => {
+    await admin.from('posts').update({ status: 'failed', error: msg.slice(0, 300) }).eq('id', post.id)
+    return { ok: false, error: msg }
+  }
   const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', post.owner_id).eq('platform', post.platform).maybeSingle()
-  if (!conn?.access_token) return { ok: false, error: `${ad.label} not connected` }
+  if (!conn?.access_token) return await failPost(`${ad.label} not connected`)
   const { data: gen } = await admin.from('generations').select('edit_path').eq('id', post.generation_id).eq('user_id', post.owner_id).maybeSingle()
-  if (!gen?.edit_path) return { ok: false, error: 'No finished video to publish yet' }
+  if (!gen?.edit_path) return await failPost('No finished video to publish yet')
   const { data: signed } = await admin.storage.from('edits').createSignedUrl(gen.edit_path, 3600)
-  if (!signed?.signedUrl) return { ok: false, error: 'Could not read the video file' }
+  if (!signed?.signedUrl) return await failPost('Could not read the video file')
   try {
-    const res = await ad.publish({ accessToken: conn.access_token, accountId: conn.external_account_id ?? '', videoUrl: signed.signedUrl, title: (post.caption ?? 'New video').slice(0, 90), caption: post.caption ?? '' })
+    // Refresh a short-lived (YouTube) token before publishing so a next-day post
+    // doesn't 401. Best-effort: on refresh failure we keep the old token and let
+    // the publish surface the auth error (which flags the connection expired below).
+    let accessToken = conn.access_token as string
+    const expired = conn.token_expires_at && new Date(conn.token_expires_at as string) <= new Date()
+    if (expired && conn.refresh_token && ad.refresh) {
+      try {
+        const fresh = await ad.refresh(conn.refresh_token as string)
+        accessToken = fresh.access_token
+        await admin.from('platform_connections').update({ access_token: fresh.access_token, ...(fresh.expires_at ? { token_expires_at: fresh.expires_at } : {}), status: 'connected' }).eq('id', conn.id)
+      } catch { /* fall through with the stale token */ }
+    }
+    const res = await ad.publish({ accessToken, accountId: conn.external_account_id ?? '', videoUrl: signed.signedUrl, title: (post.caption ?? 'New video').slice(0, 90), caption: post.caption ?? '' })
     await admin.from('posts').update({ status: 'posted', posted_at: new Date().toISOString(), external_url: res.external_url }).eq('id', post.id)
     return { ok: true, external_url: res.external_url }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Publish failed'
-    await admin.from('posts').update({ status: 'failed', error: msg.slice(0, 300) }).eq('id', post.id)
-    return { ok: false, error: msg }
+    // An auth/expiry failure means the stored token is dead — flag the connection
+    // so the UI stops showing "Connected · post now" and prompts a reconnect.
+    if (/\b401\b|unauthor|expired|invalid[_ ]?(grant|token)|token has been expired/i.test(msg)) {
+      await admin.from('platform_connections').update({ status: 'expired' }).eq('owner_id', post.owner_id).eq('platform', post.platform)
+    }
+    return await failPost(msg)
   }
 }
 
@@ -368,12 +417,12 @@ Deno.serve(async (req: Request) => {
       .eq('status', 'scheduled')
       .lte('scheduled_for', new Date().toISOString())
       .limit(25)
-    let published = 0, failed = 0
+    let published = 0, failed = 0, skipped = 0
     for (const p of due ?? []) {
       const r = await publishOne(admin, p)
-      if (r.ok) published++; else failed++
+      if (r.ok) published++; else if (r.skipped) skipped++; else failed++
     }
-    return json({ ok: true, published, failed, scanned: (due ?? []).length })
+    return json({ ok: true, published, failed, skipped, scanned: (due ?? []).length })
   }
 
   // ---- OAuth callback (browser redirect, no JWT) ----------------------------

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   CalendarDays, Plus, Check, Trash2, ChevronLeft, ChevronRight, Loader2, X,
-  Clapperboard, Video, Send, Clock, Link2,
+  Clapperboard, Video, Send, Clock, Link2, AlertTriangle, RefreshCw,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
@@ -95,8 +95,15 @@ export default function Calendar() {
     setPublishingId(postId); setConnMsg(null)
     try {
       const r = await publishPost(postId)
-      if (r.ok) { setConnMsg('Posted ✓'); POSTS_CACHE = null; load() }
-      else setConnMsg(r.error ?? 'Could not post.')
+      if (r.ok) {
+        // Be honest about TikTok: until the app clears TikTok's audit, posts land
+        // as SELF_ONLY (visible only to the creator), so don't imply it's public.
+        const plat = posts.find((x) => x.id === postId)?.platform
+        setConnMsg(plat === 'tiktok'
+          ? 'Posted to TikTok — visible only to you until your TikTok app is approved for public posting.'
+          : 'Posted ✓')
+        POSTS_CACHE = null; load()
+      } else setConnMsg(r.error ?? 'Could not post.')
     } catch (e) { setConnMsg(e instanceof Error ? e.message : 'Could not post.') }
     finally { setPublishingId(null) }
   }
@@ -117,6 +124,13 @@ export default function Calendar() {
     () => posts
       .filter((p) => p.status === 'scheduled' && p.scheduled_for)
       .sort((a, b) => +new Date(a.scheduled_for!) - +new Date(b.scheduled_for!)),
+    [posts],
+  )
+  // Failed posts must be VISIBLE and retryable — previously they dropped out of
+  // every list (only 'scheduled' was shown) so a creator never learned a post
+  // didn't go out. Surface them with the reason + a Retry.
+  const failedPosts = useMemo(
+    () => posts.filter((p) => p.status === 'failed'),
     [posts],
   )
 
@@ -286,6 +300,38 @@ export default function Calendar() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* Failed posts — surfaced (not silently dropped) with the reason + Retry. */}
+            {failedPosts.length > 0 && (
+              <div className="mt-6">
+                <p className="eyebrow !text-coral">Needs attention</p>
+                <div className="mt-2.5 space-y-2.5">
+                  {failedPosts.map((p) => {
+                    const g = gens.find((x) => x.id === p.generation_id)
+                    return (
+                      <div key={p.id} className="glass flex items-center gap-3 border border-coral/25 p-3.5">
+                        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-coral/10"><AlertTriangle className="h-5 w-5 text-coral" /></span>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-medium text-cream">{g ? genTitle(g) : (p.caption ?? 'Post')}</div>
+                          <div className="mt-0.5 flex items-center gap-2 text-xs">
+                            <span className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold', PLATFORM_SKIN[p.platform] ?? 'bg-white/10 text-sand')}>{cap(p.platform)}</span>
+                            <span className="truncate text-coral/90">{p.error || 'Publishing failed.'}</span>
+                          </div>
+                        </div>
+                        {POSTING_LIVE && connOf(p.platform) ? (
+                          <button onClick={() => postNow(p.id)} disabled={publishingId !== null} title="Try publishing again" className="btn-gradient text-xs disabled:opacity-60">
+                            {publishingId === p.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Retry
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-stone">Reconnect {cap(p.platform)} to retry</span>
+                        )}
+                        <button onClick={async () => { await deletePost(p.id); refresh() }} title="Remove" className="grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-coral"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             )}
           </section>
