@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus, Users, Copy, Link2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
+import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
 import { CAPTION_STYLE_OPTIONS, CAPTION_COLOR_OPTIONS } from '../lib/types'
@@ -29,9 +29,6 @@ export default function Settings() {
   const plan = PLANS.find((p) => p.id === profile?.plan) ?? PLANS[0]
   const left = videosFromCredits(profile?.credits ?? 0)
 
-  const [name, setName] = useState(profile?.display_name ?? '')
-  const [savingName, setSavingName] = useState(false)
-  const [nameSaved, setNameSaved] = useState(false)
 
   const [dna, setDna] = useState<CreatorDNA>({ ...EMPTY_DNA, ...(profile?.dna ?? {}) })
   const [savingDna, setSavingDna] = useState(false)
@@ -181,15 +178,6 @@ export default function Settings() {
   }
   const higherPlans = PLANS.filter((p) => p.price > plan.price)
 
-  const saveName = async () => {
-    setSavingName(true); setErr(null)
-    try {
-      await updateDisplayName(name)
-      await refreshProfile()
-      setNameSaved(true); setTimeout(() => setNameSaved(false), 1800)
-    } catch { setErr('Could not save your name. Try again.') } finally { setSavingName(false) }
-  }
-
   const saveDna = async () => {
     setSavingDna(true); setErr(null)
     try {
@@ -228,14 +216,13 @@ export default function Settings() {
                 <input className="field" value={profile?.email ?? ''} disabled />
               </div>
               <div>
-                <label className="eyebrow mb-1.5 block">Display name</label>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input className="field" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" />
-                  <button onClick={saveName} disabled={savingName} className="btn-gradient shrink-0 text-sm">
-                    {savingName ? <Loader2 className="h-4 w-4 animate-spin" /> : nameSaved ? <Check className="h-4 w-4" /> : null}
-                    {nameSaved ? 'Saved' : 'Save'}
-                  </button>
-                </div>
+                <label className="eyebrow mb-1.5 block">Brand voice handle</label>
+                <input
+                  className="field"
+                  value={activeVoice?.handle ? `@${activeVoice.handle}${activeVoice.platform ? ` · ${activeVoice.platform}` : ''}` : 'Not set yet'}
+                  disabled
+                />
+                <p className="mt-1.5 text-[11px] text-stone">The account your voice was built from. Change it by scanning a new handle in “Refresh voice &amp; stats” below.</p>
               </div>
             </div>
           </section>
