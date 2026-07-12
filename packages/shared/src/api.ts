@@ -509,30 +509,33 @@ export async function signEditUrls(paths: string[]): Promise<Record<string, stri
 
 // ---- Dashboard (Phase 7: real stats from data we already own) ------------
 
+// ONE lifecycle, derived from the generation (the "remix") — never from the jobs
+// table (which outlives its generation and drifts). Stages are mutually exclusive
+// so drafts + ready + published = your total remixes, and every screen (Dashboard
+// tiles + Library filter chips) reads them identically:
+//   draft     = a script with no finished video yet ("left in the middle")
+//   ready     = a finished video, not posted yet ("full loop done")
+//   published = a finished video that's been posted
 export interface DashboardStats {
-  blueprints: number
-  edits: number
-  posts: number
+  drafts: number
+  ready: number
+  published: number
   recreationsLeft: number
 }
 
 export async function getDashboardStats(creditsLeft: number): Promise<DashboardStats> {
-  const { data: auth } = await supabase.auth.getUser()
-  const uid = auth.user?.id
-  const head = { count: 'exact' as const, head: true }
-  const [bp, ed, po] = await Promise.all([
-    supabase.from('generations').select('id', head),
-    uid
-      ? supabase.from('jobs').select('id', head).eq('type', 'autoedit').eq('status', 'done').eq('owner_id', uid)
-      : Promise.resolve({ count: 0 } as { count: number }),
-    supabase.from('posts').select('id', head).eq('status', 'posted'),
+  const [{ data: gens }, { data: posts }] = await Promise.all([
+    supabase.from('generations').select('id, edit_path'),
+    supabase.from('posts').select('generation_id').eq('status', 'posted'),
   ])
-  return {
-    blueprints: (bp as { count: number | null }).count ?? 0,
-    edits: (ed as { count: number | null }).count ?? 0,
-    posts: (po as { count: number | null }).count ?? 0, // 0 until posts table exists
-    recreationsLeft: Math.floor(creditsLeft / 10),
+  const publishedIds = new Set(((posts ?? []) as { generation_id: string | null }[]).map((p) => p.generation_id).filter(Boolean))
+  let drafts = 0, ready = 0, published = 0
+  for (const g of (gens ?? []) as { id: string; edit_path: string | null }[]) {
+    if (publishedIds.has(g.id)) published++
+    else if (g.edit_path) ready++
+    else drafts++
   }
+  return { drafts, ready, published, recreationsLeft: Math.floor(creditsLeft / 10) }
 }
 
 // ---- Posts (Phase 7: publish tracking) -----------------------------------
@@ -739,7 +742,7 @@ export async function startCheckout(plan: string): Promise<CheckoutResult> {
   return data as CheckoutResult
 }
 
-export interface BrandStats { blueprints: number; edits: number; posts: number }
+export interface BrandStats { drafts: number; ready: number; published: number }
 // Per-client stats scoped to one brand voice (agency view). Owner-checked server-side.
 export async function getBrandStats(brandVoiceId: string): Promise<BrandStats | null> {
   const { data, error } = await supabase.rpc('brand_stats', { p_brand: brandVoiceId })
