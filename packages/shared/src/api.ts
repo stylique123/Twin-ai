@@ -545,10 +545,12 @@ export interface Post {
   generation_id: string | null
   platform: string
   caption: string | null
-  status: 'scheduled' | 'posted'
+  // 'posting' is a transient claim state (during publish); 'failed' carries `error`.
+  status: 'scheduled' | 'posted' | 'failed' | 'posting'
   scheduled_for: string | null
   posted_at: string | null
   external_url: string | null
+  error: string | null
   views: number | null
   likes: number | null
   created_at: string
@@ -557,7 +559,7 @@ export interface Post {
 export async function listPosts(): Promise<Post[]> {
   const { data, error } = await supabase
     .from('posts')
-    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, views, likes, created_at')
+    .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, error, views, likes, created_at')
     .order('created_at', { ascending: false })
     .limit(100)
   if (error) return [] // table may not be migrated yet, fail soft
