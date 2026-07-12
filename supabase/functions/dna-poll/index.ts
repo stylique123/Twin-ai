@@ -28,31 +28,67 @@ import {
 
 const MAX_ATTEMPTS = Number(Deno.env.get('DNA_MAX_POLLS') ?? '60')
 
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36'
+
+// Instagram/Facebook image CDNs sign their URLs to the IP that scraped them, so a
+// direct fetch from THIS server IP gets a 403 — that's why IG palettes came back
+// empty. Apify's residential proxy is the same egress that already reached IG to do
+// the scrape, so re-fetching the thumbnail THROUGH it gets an IP the CDN accepts.
+const IG_CDN = /(cdninstagram|fbcdn|scontent)/i
+
+// A proxied HTTP client bound to the Apify residential proxy, or null when the proxy
+// isn't configured (APIFY_PROXY_PASSWORD unset) or the edge runtime lacks
+// Deno.createHttpClient. Callers fall back to a direct fetch / the honest empty path.
+function apifyProxyClient(): { fetch: typeof fetch } | null {
+  const pw = Deno.env.get('APIFY_PROXY_PASSWORD')
+  // deno-lint-ignore no-explicit-any
+  const create = (Deno as any).createHttpClient
+  if (!pw || typeof create !== 'function') return null
+  try {
+    const client = create({
+      proxy: { url: 'http://proxy.apify.com:8000', basicAuth: { username: 'groups-RESIDENTIAL', password: pw } },
+    })
+    // deno-lint-ignore no-explicit-any
+    return { fetch: ((url: string, init?: RequestInit) => fetch(url, { ...(init ?? {}), client } as any)) as typeof fetch }
+  } catch {
+    return null
+  }
+}
+
+// Download one thumbnail → base64 InlineImage, or null on any failure. `doFetch`
+// lets the caller supply either a plain or proxied fetch.
+async function fetchOneImage(url: string, doFetch: typeof fetch): Promise<InlineImage | null> {
+  try {
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), 6000)
+    const res = await doFetch(url, { signal: ctrl.signal, headers: { 'User-Agent': UA } })
+    clearTimeout(t)
+    if (!res.ok) return null
+    const mimeType = res.headers.get('content-type') || 'image/jpeg'
+    if (!mimeType.startsWith('image/')) return null
+    const buf = new Uint8Array(await res.arrayBuffer())
+    if (!buf.byteLength || buf.byteLength > 3_000_000) return null // thumbnails are small; skip huge originals
+    let bin = ''
+    for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i])
+    return { mimeType, data: btoa(bin) }
+  } catch {
+    return null // never let a bad thumbnail fail the whole synthesis
+  }
+}
+
 // Best-effort: fetch a few post thumbnails so the synth can read the real palette
-// from the imagery (Gemini vision). Some CDNs (e.g. Instagram's scontent) can 403 a
-// server IP — we simply skip any that fail and fall back to caption-only inference.
+// from the imagery (Gemini vision). Direct fetch first; for IG/FB CDN URLs that a
+// server IP can't read, retry THROUGH the Apify residential proxy (same egress that
+// scraped the account). Anything still unreadable is simply skipped — the caller
+// then records the palette as "not captured" and prompts the creator in Settings.
 async function fetchInlineImages(urls: string[], max = 4): Promise<InlineImage[]> {
   const out: InlineImage[] = []
+  const proxy = apifyProxyClient()
   for (const url of urls.slice(0, max)) {
-    try {
-      const ctrl = new AbortController()
-      const t = setTimeout(() => ctrl.abort(), 6000)
-      const res = await fetch(url, {
-        signal: ctrl.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36' },
-      })
-      clearTimeout(t)
-      if (!res.ok) continue
-      const mimeType = res.headers.get('content-type') || 'image/jpeg'
-      if (!mimeType.startsWith('image/')) continue
-      const buf = new Uint8Array(await res.arrayBuffer())
-      if (!buf.byteLength || buf.byteLength > 3_000_000) continue // thumbnails are small; skip huge originals
-      let bin = ''
-      for (let i = 0; i < buf.length; i++) bin += String.fromCharCode(buf[i])
-      out.push({ mimeType, data: btoa(bin) })
-    } catch {
-      // skip this image — never let a bad thumbnail fail the whole synthesis
-    }
+    let img = await fetchOneImage(url, fetch)
+    // Retry via the residential proxy for the IG/FB CDNs that block direct server fetches.
+    if (!img && proxy && IG_CDN.test(url)) img = await fetchOneImage(url, proxy.fetch)
+    if (img) out.push(img)
   }
   return out
 }
@@ -231,9 +267,21 @@ Deno.serve(async (req: Request) => {
     const bc = (profile as { brand_colors?: { primary?: unknown; secondary?: unknown; highlight?: unknown } } | null)?.brand_colors
     const inferred = bc ? Object.fromEntries(Object.entries({ primary: hex(bc.primary), secondary: hex(bc.secondary), highlight: hex(bc.highlight) }).filter(([, v]) => v)) : {}
     const existingKit = (voice.brand_kit as { palette?: Record<string, string>; palette_source?: string } | null) ?? null
-    const brandKitPatch = (existingKit?.palette_source !== 'manual' && Object.keys(inferred).length)
-      ? { brand_kit: { ...existingKit, palette: inferred, palette_source: 'auto' } }
-      : {}
+    const hadPalette = !!(existingKit?.palette && Object.values(existingKit.palette).some((v) => typeof v === 'string' && v))
+    // Honest palette write:
+    //  • manual → never touch (the creator's hand-picked colors are sacred)
+    //  • read real colors this scan → store them as 'auto'
+    //  • read nothing AND had nothing before → flag 'pending' so Settings can say
+    //    "we couldn't read your colors — set them here" (never fabricate a default)
+    //  • read nothing but already had colors → leave the prior palette alone
+    let brandKitPatch: { brand_kit?: Record<string, unknown> } = {}
+    if (existingKit?.palette_source !== 'manual') {
+      if (Object.keys(inferred).length) {
+        brandKitPatch = { brand_kit: { ...existingKit, palette: inferred, palette_source: 'auto' } }
+      } else if (!hadPalette) {
+        brandKitPatch = { brand_kit: { ...existingKit, palette_source: 'pending' } }
+      }
+    }
 
     await admin
       .from('brand_voices')

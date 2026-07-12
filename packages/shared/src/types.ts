@@ -55,8 +55,10 @@ export interface BrandKit {
   palette?: { primary?: string; secondary?: string; highlight?: string }
   // How `palette` was set. 'manual' = the creator hand-picked it (sacred — a re-scan
   // never overwrites it); 'auto' = learned from their DNA imagery, so a fresh scan
-  // may refresh it with better data. Absent on legacy rows → treated as 'auto'.
-  palette_source?: 'auto' | 'manual'
+  // may refresh it with better data; 'pending' = a scan tried but couldn't read any
+  // colors (e.g. Instagram blocked the images) — the UI prompts the creator to set
+  // them by hand instead of showing a fake palette. Absent on legacy rows → 'auto'.
+  palette_source?: 'auto' | 'manual' | 'pending'
   logo_path?: string | null
 }
 
