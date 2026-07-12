@@ -1,9 +1,9 @@
 // Supabase Edge Function: enqueue-autoedit
-// Enqueues an auto-edit job for a recorded take. Recording + editing a blueprint
-// is FREE — the one recreation was charged at blueprint generation, and that one
-// credit covers the whole loop (record, re-record, edit, restyle, refine). The
-// only paid path is a bare upload with no blueprint anchor (guarded below).
-// A `variation` index lets remakes look different.
+// Enqueues an auto-edit job for a recorded take. Every edit MUST anchor to a
+// blueprint (generation) the caller owns — that generation already paid the one
+// recreation, so recording + editing (record, re-record, edit, restyle, refine)
+// is FREE, and no orphan edit jobs can exist to drift the stats. A `variation`
+// index lets remakes look different.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
 
@@ -14,8 +14,6 @@ const cors = {
 }
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } })
-
-const REMAKE_COST = Number(Deno.env.get('EDIT_REMAKE_COST') ?? '10') // 1 recreation
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -32,9 +30,8 @@ Deno.serve(async (req: Request) => {
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
-  // Abuse cap: each enqueue runs worker compute, and the first edit per take is
-  // free, so bound enqueues per user per minute (the remake path is also credit
-  // gated below).
+  // Abuse cap: each enqueue runs worker compute and editing is free, so bound
+  // enqueues per user per minute.
   const { data: allowed } = await admin.rpc('check_rate_limit', {
     p_user: user.id,
     p_action: 'autoedit',
@@ -70,50 +67,32 @@ Deno.serve(async (req: Request) => {
   const shots = baseValid
     ? { bounds: (sb!.bounds as number[]).slice(0, 50), total: sb!.total as number, lines: (sb!.lines as unknown[]).slice(0, 60).map((s) => String(s).slice(0, 400)), ...(segments.length > 1 ? { segments } : {}) }
     : (segments.length > 1 ? { bounds: [], total: segments.length, lines: segments.map((s) => s.line), segments } : null)
-  // A REFINE carries the creator's edited EDL — they're correcting a video they
-  // already paid to make, so it re-renders FREE (rate-limited above, not billed).
+  // A REFINE carries the creator's edited EDL — a correction to a video they
+  // already made (free, rate-limited above, not billed).
   const refineEdl = body.edl && typeof body.edl === 'object' ? body.edl : null
-  const isRefine = refineEdl !== null
   if (!takePath) return json({ error: 'take_path is required' }, 400)
   // The take must live in the caller's own storage folder.
   if (!takePath.startsWith(`${user.id}/`)) return json({ error: 'take_path outside your folder' }, 403)
 
-  // If a generation is referenced, it must belong to the caller.
-  if (generationId) {
-    const { data: gen } = await admin
-      .from('generations')
-      .select('id')
-      .eq('id', generationId)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    if (!gen) return json({ error: 'Blueprint not found' }, 404)
-  }
+  // Every edit MUST anchor to a blueprint the caller owns. This keeps the jobs
+  // table in lockstep with generations — no orphan edit jobs, so the Dashboard
+  // (which counts finished remixes) can never drift from the Library again. The
+  // DB constraint `autoedit_requires_generation` enforces the same rule as a
+  // backstop, so an ownerless edit job is impossible at every layer.
+  if (!generationId) return json({ error: 'generation_id is required' }, 400)
+  const { data: gen } = await admin
+    .from('generations')
+    .select('id')
+    .eq('id', generationId)
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (!gen) return json({ error: 'Blueprint not found' }, 404)
 
-  // BILLING MODEL: one recreation = one FULL loop. The credit is charged exactly
-  // once, at blueprint generation (generate-blueprint). Recording and editing that
-  // blueprint — re-records, restyles, refines, as many attempts as it takes — are
-  // FREE, so a creator can perfect their video without burning another recreation.
-  // (This is the "1 remix = 1 complete script→video loop" model.)
-  //
-  // The ONLY paid path here is a bare upload with NO blueprint to anchor it (a raw
-  // clip that never cost a recreation). The product flow always sends a
-  // generation_id, so real users never hit this — it only stops the raw-upload API
-  // from being used to mint unlimited free videos without ever paying for a script.
-  const charge = !generationId && !isRefine
-
-  if (charge) {
-    const { error: spendErr } = await admin.rpc('spend_credits', {
-      p_user: user.id,
-      p_amount: REMAKE_COST,
-      p_reason: 'edit_extra',
-    })
-    if (spendErr) {
-      if (String(spendErr.message).includes('INSUFFICIENT_CREDITS')) {
-        return json({ error: 'You are out of recreations — top up for another edit.' }, 402)
-      }
-      return json({ error: 'Could not reserve a recreation' }, 500)
-    }
-  }
+  // BILLING: one recreation = one FULL loop, charged once at blueprint generation
+  // (generate-blueprint). Recording and editing that blueprint — re-records,
+  // restyles, refines, as many attempts as it takes — is FREE, because every edit
+  // is anchored to a generation that already paid for it (required above). Nothing
+  // is charged here.
 
   const { data: job, error } = await admin
     .from('jobs')
@@ -121,22 +100,11 @@ Deno.serve(async (req: Request) => {
       owner_id: user.id,
       type: 'autoedit',
       status: 'queued',
-      // Stamp the billing outcome so a dead-lettered job refunds the exact charged
-      // amount, exactly once, via the trg_refund_failed_autoedit trigger (#4).
-      payload: { generation_id: generationId || null, take_path: takePath, variation, charged: charge, cost: REMAKE_COST, ...(refineEdl ? { edl: refineEdl } : {}), ...(shots ? { shots } : {}) },
+      payload: { generation_id: generationId, take_path: takePath, variation, charged: false, cost: 0, ...(refineEdl ? { edl: refineEdl } : {}), ...(shots ? { shots } : {}) },
     })
     .select('id')
     .single()
-  if (error) {
-    // Best-effort refund if the enqueue failed after charging.
-    if (charge) {
-      await admin.rpc('refund_credits', { p_user: user.id, p_amount: REMAKE_COST, p_reason: 'edit_extra_refund' }).then(
-        () => {},
-        () => {},
-      )
-    }
-    return json({ error: 'Could not queue the edit' }, 500)
-  }
+  if (error) return json({ error: 'Could not queue the edit' }, 500)
 
-  return json({ job_id: job.id, charged: charge })
+  return json({ job_id: job.id, charged: false })
 })
