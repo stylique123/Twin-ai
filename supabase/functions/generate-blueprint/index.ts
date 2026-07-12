@@ -364,19 +364,25 @@ Deno.serve(async (req: Request) => {
   if (!reference_url && !reference_note) return json({ error: 'Add a reference link or describe your idea.' }, 400)
   if (reference_url.length > 2048) return json({ error: 'That reference link is too long.' }, 400)
 
-  // Load creator DNA. Prefer the confirmed brand voice (Phase 2 — built from
-  // their real handle); fall back to the manual onboarding quiz (Phase 1).
+  // Load creator DNA. Prefer the confirmed brand voice (built from their real
+  // handle); fall back to any onboarding-quiz DNA seeded on the profile.
   const { data: profile } = await admin
     .from('profiles')
     .select('dna, credits')
     .eq('id', ownerId)
     .single()
+  // The voice's usable content lives in `profile` — that's the source of truth,
+  // NOT the scan-job `status`. A voice can carry a fully-built profile yet have
+  // status='failed'/'building' (e.g. a later "Refresh voice & stats" that hit an
+  // Apify hiccup downgraded the status but left the good profile intact). Gating
+  // on status='ready' here is what produced the "import your brand DNA" snag while
+  // Settings clearly showed the DNA. Load the default voice regardless of status
+  // and let the profile-content check below decide if it's usable.
   const { data: voice } = await admin
     .from('brand_voices')
     .select('id, handle, platform, profile, brand_kit')
     .eq('owner_id', ownerId)
     .eq('is_default', true)
-    .eq('status', 'ready')
     .maybeSingle()
 
   const dna = profile?.dna ?? {}
@@ -451,10 +457,35 @@ Deno.serve(async (req: Request) => {
     // posts, blog) more than a sparse video scan. If they pasted writing samples,
     // they're the single strongest voice signal — feed them verbatim (bounded).
     const voiceSamples = String((vp as { voice_samples?: string } | null)?.voice_samples ?? dna.voice_samples ?? '').trim().slice(0, 3000)
+    // WRITE-TIME ENRICHMENT. Even a thin scan must still write IN-VOICE, so we
+    // never feed the model "(none captured)" for the fields that decide whether a
+    // script sounds like THIS creator. A creator's real hooks ARE their opener
+    // moves, so when hook_patterns wasn't captured we derive them from the hooks
+    // they actually wrote; audience falls back to their niche; and pov/enemy/pain/
+    // dream become explicit INFER instructions instead of a blank. This makes the
+    // FIRST generation on-voice without needing a refresh.
+    const sampleHooks = (vp?.sample_hooks ?? []) as string[]
+    let hookPatterns = (vp?.hook_patterns ?? []) as string[]
+    if (!hookPatterns.length && sampleHooks.length) {
+      hookPatterns = sampleHooks.map((h) => `Their own opener move — "${h}"`)
+    }
+    const audienceResolved = (audience && audience !== 'unspecified')
+      ? audience
+      : (niche !== 'unspecified' ? `people into ${niche}${subNiche ? `, specifically ${subNiche}` : ''}` : 'unspecified')
+    const povList = (vp?.pov ?? []) as string[]
+    const povLine = povList.length
+      ? povList.join(' | ')
+      : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
+    const enemyLine = vp?.enemy
+      ? vp.enemy
+      : 'NONE STORED. Infer the conventional wisdom, bad habit or villain this creator would push against, from their niche and tone.'
+    const hookPatternsLine = hookPatterns.length
+      ? hookPatterns.join(' | ')
+      : 'NONE STORED. Build 5 DISTINCT opener moves that fit this niche and voice (contrarian claim, number drop, confession, direct callout, curiosity gap) and write one hook from each.'
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
 - Specific angle (what their audience searches for): ${subNiche}` : ''}
-- Audience: ${audience}
+- Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
 - Product or offer the CTA should point at: ${offer}
@@ -463,12 +494,12 @@ Deno.serve(async (req: Request) => {
 - Editing style: ${editing}${vp ? `
 - Pacing: ${vp.pacing ?? 'fast'}
 - Hook formula: ${vp.hook_style ?? ''}
-- Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${(vp.hook_patterns ?? []).join(' | ') || '(none captured)'}
-- Hooks they ACTUALLY wrote (real winners — study the phrasing, do not copy verbatim): ${(vp.sample_hooks ?? []).join(' / ') || '(none captured)'}
+- Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${hookPatternsLine}
+- Hooks they ACTUALLY wrote (real winners — study the phrasing, do not copy verbatim): ${sampleHooks.join(' / ') || '(none captured)'}
 - Signature vocabulary: ${(vp.vocabulary ?? []).join(', ')}
 - Recurring CTAs: ${(vp.recurring_ctas ?? []).join(', ')}
-- Point of view (beliefs they repeat — the script should carry their stance): ${(vp.pov ?? []).join(' | ') || '(none captured)'}
-- Enemy (the bad advice / villain they push against): ${vp.enemy ?? '(none captured)'}
+- Point of view (beliefs they repeat — the script should carry their stance): ${povLine}
+- Enemy (the bad advice / villain they push against): ${enemyLine}
 - Do: ${(vp.dos ?? []).join('; ')}
 - Don't: ${(vp.donts ?? []).join('; ')}
 - Voice summary: ${vp.summary ?? ''}` : ''}${voiceSamples ? `

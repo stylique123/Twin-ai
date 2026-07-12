@@ -108,7 +108,17 @@ Deno.serve(async (req: Request) => {
 
   // Already settled — nothing to advance.
   if (voice.status === 'ready') return json({ status: 'ready', profile: voice.profile })
-  if (voice.status === 'failed') return json({ status: 'failed', error: voice.error })
+  if (voice.status === 'failed') {
+    // Self-heal legacy drift: a voice that carries a fully-built profile but was
+    // stamped 'failed' by an earlier failed refresh is actually usable — repair it
+    // so the creator can remix instead of being told to re-import DNA they have.
+    const vpf = voice.profile as { niche?: unknown; tone?: unknown; summary?: unknown } | null
+    if (vpf && (vpf.niche || vpf.tone || vpf.summary)) {
+      await admin.from('brand_voices').update({ status: 'ready', error: null }).eq('id', voiceId)
+      return json({ status: 'ready', profile: voice.profile })
+    }
+    return json({ status: 'failed', error: voice.error })
+  }
 
   // One lookup for whichever DNA job exists: Apify `build_dna` (Instagram/YouTube)
   // or worker `scrape_dna` (TikTok). Avoids a second round-trip on the TikTok path.
@@ -122,7 +132,18 @@ Deno.serve(async (req: Request) => {
     .limit(1)
     .maybeSingle()
 
+  // A voice is USABLE the moment it has real profile content — niche/tone/summary.
+  // If a *refresh* of an already-built voice fails, we must NOT downgrade it to
+  // 'failed' (that's what broke remixing while the DNA still showed in Settings).
+  // Keep the existing voice ready; the refresh simply didn't add anything.
+  const vp0 = voice.profile as { niche?: unknown; tone?: unknown; summary?: unknown } | null
+  const hasUsableProfile = !!(vp0 && (vp0.niche || vp0.tone || vp0.summary))
+
   if (!job) {
+    if (hasUsableProfile) {
+      await admin.from('brand_voices').update({ status: 'ready', error: null }).eq('id', voiceId)
+      return json({ status: 'ready', profile: voice.profile }, 200)
+    }
     await admin.from('brand_voices').update({ status: 'failed', error: 'Lost the scan job.' }).eq('id', voiceId)
     return json({ status: 'failed', error: 'Lost the scan job.' }, 200)
   }
@@ -133,12 +154,18 @@ Deno.serve(async (req: Request) => {
 
   const fail = async (msg: string) => {
     await admin.from('jobs').update({ status: 'failed', error: msg }).eq('id', job.id)
+    // Preserve a previously-built voice: a failed refresh keeps the good profile
+    // ready rather than bricking the creator's ability to remix.
+    if (hasUsableProfile) {
+      await admin.from('brand_voices').update({ status: 'ready', error: null }).eq('id', voiceId)
+      return json({ status: 'ready', profile: voice.profile })
+    }
     await admin.from('brand_voices').update({ status: 'failed', error: msg }).eq('id', voiceId)
     return json({ status: 'failed', error: msg })
   }
 
   if (job.attempts >= MAX_ATTEMPTS) {
-    return await fail('Scan took too long. You can set up your voice manually.')
+    return await fail('Scan took too long. Head back and try again — a public account with recent posts reads fastest.')
   }
 
   try {
@@ -157,7 +184,7 @@ Deno.serve(async (req: Request) => {
     if (isPrivateProfile(allItems)) {
       return await fail(
         `@${voice.handle} is private, so we can't read its posts — and we won't build a voice from ` +
-          `anyone else's. Make it public for a moment, pick a public account, or set up your voice manually.`,
+          `anyone else's. Make it public for a moment, or pick a public account to build from.`,
       )
     }
     // Backstop on every platform: only ever synthesize from posts the requested
@@ -170,7 +197,7 @@ Deno.serve(async (req: Request) => {
     if (posts.length === 0) {
       return await fail(
         `We couldn't read any public posts from @${voice.handle}. If that account is private or empty, ` +
-          `make it public for a moment, try a different public account, or set up your voice manually — ` +
+          `make it public for a moment or try a different public account — ` +
           `we won't guess a voice we can't actually see.`,
       )
     }

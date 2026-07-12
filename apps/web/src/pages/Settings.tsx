@@ -130,16 +130,19 @@ export default function Settings() {
       const voices = await listBrandVoices()
       const v = voices.find((x) => x.is_default) ?? voices[0]
       if (!v?.handle) { setRefreshMsg('No handle on file yet — add one in onboarding first.'); return }
-      const started = await startDna(v.handle, v.platform)
+      // refresh:true → re-scan the existing voice in place. Your current voice
+      // stays live and usable the whole time; a hiccup never breaks it.
+      const started = await startDna(v.handle, v.platform, true)
       const id = started.brand_voice_id ?? v.id
       // Poll until the scan finishes (or we give up after ~90s).
       for (let i = 0; i < 30; i++) {
         await new Promise((r) => setTimeout(r, 3000))
         const res = await pollDna(id)
         if (res.status === 'ready') { setRefreshMsg('Voice & stats refreshed — your dashboard is up to date.'); await refreshProfile(); return }
-        if (res.status === 'failed') { setRefreshMsg(res.error || 'Couldn\'t refresh — please try again shortly.'); return }
+        // A failed re-scan keeps your current voice intact — say so, don't alarm.
+        if (res.status === 'failed') { setRefreshMsg('Couldn\'t pull fresh data just now — your current voice is unchanged and still working. Try again in a bit.'); return }
       }
-      setRefreshMsg('Still working in the background — check your dashboard in a minute.')
+      setRefreshMsg('Still working in the background — your current voice keeps working; check your dashboard in a minute.')
     } catch (e) {
       setRefreshMsg(e instanceof Error ? e.message : 'Couldn\'t refresh your voice. Try again.')
     } finally {
@@ -344,20 +347,41 @@ export default function Settings() {
                 <div>
                   <label className="eyebrow mb-2 block">Your brand colors <span className="font-normal normal-case text-stone">— your real palette, in hex</span></label>
                   <div className="flex flex-wrap gap-5">
-                    {([['highlight', 'Caption highlight'], ['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => (
-                      <label key={key} className="flex flex-col items-center gap-1.5 text-[11px] text-stone">
-                        <input
-                          key={brandKit.palette?.[key] ?? `d-${key}`}
-                          type="color"
-                          defaultValue={brandKit.palette?.[key] ?? '#65E5D8'}
-                          onBlur={(e) => { if (e.target.value !== brandKit.palette?.[key]) saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value }, palette_source: 'manual' }) }}
-                          className="h-10 w-10 cursor-pointer rounded-lg border border-white/15 bg-transparent p-0"
-                        />
-                        {label}
-                      </label>
-                    ))}
+                    {([['highlight', 'Caption highlight'], ['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => {
+                      // Only show a swatch for a colour the creator has ACTUALLY set
+                      // (scanned or hand-picked). Never fabricate a default hex — an
+                      // unset colour showed a fake teal that looked like "a colour I
+                      // don't have". Unset renders an empty "＋ Set" chip instead.
+                      const set = brandKit.palette?.[key]
+                      return (
+                        <div key={key} className="flex flex-col items-center gap-1.5 text-[11px] text-stone">
+                          {set ? (
+                            <label className="cursor-pointer">
+                              <input
+                                key={set}
+                                type="color"
+                                defaultValue={set}
+                                onBlur={(e) => { if (e.target.value !== set) saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value }, palette_source: 'manual' }) }}
+                                className="h-10 w-10 cursor-pointer rounded-lg border border-white/15 bg-transparent p-0"
+                              />
+                            </label>
+                          ) : (
+                            <label className="grid h-10 w-10 cursor-pointer place-items-center rounded-lg border border-dashed border-white/20 text-stone transition-colors hover:border-white/40 hover:text-cream">
+                              <Plus className="h-4 w-4" />
+                              <input
+                                type="color"
+                                defaultValue="#65E5D8"
+                                onChange={(e) => saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value }, palette_source: 'manual' })}
+                                className="sr-only"
+                              />
+                            </label>
+                          )}
+                          {label}
+                        </div>
+                      )
+                    })}
                   </div>
-                  <p className="mt-1.5 text-[11px] text-stone">Caption highlight overrides the preset above in every render. Primary/secondary steer the background &amp; wardrobe suggestions in your blueprints.</p>
+                  <p className="mt-1.5 text-[11px] text-stone">Not set yet? Tap ＋ to add a colour, or hit “Refresh voice &amp; stats” to read them from your posts. Caption highlight overrides the preset above in every render; primary/secondary steer background &amp; wardrobe suggestions in your blueprints.</p>
                 </div>
                 <div>
                   <label className="eyebrow mb-2 block">Logo <span className="font-normal normal-case text-stone">— burned into the top-right of every export</span></label>

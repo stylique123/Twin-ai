@@ -4,20 +4,23 @@
 // Plan screen the instant the timeline is ready. See PRODUCT_VISION §13.
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import StepList from '../../components/v2/StepList'
-import { Skeleton, QuietButton } from '../../components/v2/Primitives'
+import { Sparkles, Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
+import { Aurora } from '../../components/Aurora'
 import { buildTimeline } from '../../lib/timelineAdapter'
 import { saveTimeline } from '../../lib/timelineApi'
 
 const STEPS = [
-  { label: 'Watching your reference' },
-  { label: 'Finding the strongest hook' },
-  { label: 'Writing your script' },
-  { label: 'Planning your shots' },
-  { label: 'Setting up captions and B-roll' },
+  { label: 'Watching your reference', icon: Eye },
+  { label: 'Finding the strongest hook', icon: Wand2 },
+  { label: 'Writing your script', icon: FileText },
+  { label: 'Planning your shots', icon: Clapperboard },
+  { label: 'Setting up captions & B-roll', icon: Captions },
 ]
+// Target progress % per active step, so the bar always shows forward motion and
+// the last (long) model call never looks frozen. Index 5 = finished → 100.
+const STEP_PCT = [12, 34, 58, 80, 94, 100]
 
 // The hosts ingest-reference can actually fetch + transcribe (mirrors its
 // SSRF allow-list). A link to one of these gets truly READ; anything else
@@ -45,8 +48,20 @@ export default function V2Building() {
   const { refreshProfile } = useAuth()
   const state = (loc.state || {}) as BuildState
   const [active, setActive] = useState(0)
+  const [pct, setPct] = useState(6)
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
+
+  // Ease the % bar toward the current step's target so it always creeps forward
+  // (never a dead bar), and snaps to 100 the instant the plan is ready.
+  useEffect(() => {
+    if (error) return
+    const target = STEP_PCT[Math.min(active, STEP_PCT.length - 1)]
+    const id = setInterval(() => {
+      setPct((p) => (p >= target ? p : Math.min(target, p + Math.max(0.4, (target - p) * 0.08))))
+    }, 90)
+    return () => clearInterval(id)
+  }, [active, error])
 
   useEffect(() => {
     // No input (e.g. refresh) → go back to Create.
@@ -109,7 +124,12 @@ export default function V2Building() {
         await saveTimeline(timeline)
         if (ticker) clearInterval(ticker)
         setActive(STEPS.length)
-        nav(`/v2/plan/${gen.id}`, { replace: true })
+        // Land on the RICH result screen (hook angles, strategy, retention map,
+        // teleprompter) — the exact page the Library opens — so a fresh remix and
+        // a saved video look identical. Its "Record Script" feeds the same V2
+        // capture flow, so this merges the old rich plan with the new pipeline
+        // (instead of the bare "/v2/plan" screen the remix used to drop into).
+        nav(`/result/${gen.id}`, { replace: true })
       } catch (e) {
         if (ticker) clearInterval(ticker)
         setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
@@ -121,39 +141,75 @@ export default function V2Building() {
   }, [])
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
+  const shownPct = Math.round(pct)
 
   return (
-    <div className="relative min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-gradient-to-b from-ink to-ink2 text-cream overflow-x-hidden lg:max-w-2xl">
-      {/* Skeleton of the Plan screen behind the loader */}
-      <div className="absolute inset-0 opacity-[0.12] p-4 space-y-3 pointer-events-none lg:p-0 lg:pt-24">
-        <Skeleton className="h-40 w-full" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-20 w-full" />
-        <Skeleton className="h-20 w-full" />
+    // Full brand canvas, vertically centered — one composed card, no stranded
+    // column or dead space. Matches the "Creating your video" render screen.
+    <div className="relative grid min-h-[100dvh] w-full place-items-center overflow-clip bg-ink px-5 py-10 text-cream">
+      <Aurora className="opacity-70" />
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div className="absolute left-1/2 top-1/3 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[150px]" />
+        <div className="absolute right-1/4 bottom-1/4 h-[18rem] w-[18rem] rounded-full bg-teal/10 blur-[130px]" />
       </div>
 
-      <div className="relative px-5 pt-10 pb-8 lg:px-0 lg:pt-16">
-        <h1 className="text-xl font-bold lg:text-2xl">Building your video plan</h1>
-        <p className="text-sm text-white/60 mt-1">{echo}</p>
-
-        <div className="mt-8">
-          {error ? (
-            <div className="rounded-2xl bg-white/10 p-4">
-              <p className="font-medium">We hit a snag</p>
-              <p className="text-sm text-white/70 mt-1">{error}</p>
-              <button onClick={() => nav('/v2', { replace: true })} className="mt-3 rounded-xl bg-cream text-ink font-semibold px-4 py-2 text-sm hover:bg-white">
-                Try a different reference
-              </button>
+      <div className="relative w-full max-w-md">
+        {error ? (
+          <div className="glass gradient-border p-7 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-coral/15"><Sparkles className="h-5 w-5 text-coral" /></span>
+            <h2 className="mt-4 font-display text-2xl">We hit a snag</h2>
+            <p className="mt-2 text-sm leading-relaxed text-stone">{error}</p>
+            <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
+          </div>
+        ) : (
+          <div className="glass gradient-border p-6 sm:p-8">
+            {/* Signature icon + gentle pulse */}
+            <div className="relative mx-auto h-14 w-14">
+              <span className="absolute inset-0 animate-ping rounded-2xl bg-signature opacity-30" />
+              <span className="relative grid h-14 w-14 place-items-center rounded-2xl bg-signature shadow-glow">
+                <Sparkles className="h-6 w-6 text-ink" />
+              </span>
             </div>
-          ) : (
-            <StepList steps={STEPS} activeIndex={active} />
-          )}
-        </div>
 
-        <p className="text-xs text-white/50 mt-8">Usually 30–60 seconds. We keep working even if you leave.</p>
-        {!error && (
-          <div className="mt-6">
-            <QuietButton onClick={() => nav('/v2', { replace: true })}>Cancel</QuietButton>
+            <h1 className="mt-5 text-center font-display text-2xl tracking-tight">Building your video plan</h1>
+            <p className="mt-1 text-center text-sm text-stone">{echo}</p>
+
+            {/* Live progress */}
+            <div className="mt-6 flex items-center gap-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal transition-[width] duration-200 ease-out" style={{ width: `${shownPct}%` }} />
+              </div>
+              <span className="w-10 text-right text-sm font-semibold tabular-nums text-cream">{shownPct}%</span>
+            </div>
+
+            {/* Steps — done / active / pending */}
+            <ul className="mt-6 space-y-3.5">
+              {STEPS.map((s, i) => {
+                const done = i < active
+                const isActive = i === active
+                return (
+                  <li key={i} className="flex items-center gap-3">
+                    {done ? (
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-coral"><Check className="h-4 w-4 text-white" /></span>
+                    ) : isActive ? (
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-coral"><Loader2 className="h-3.5 w-3.5 animate-spin text-coral" /></span>
+                    ) : (
+                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-dashed border-white/15 text-[11px] font-bold text-stone">{i + 1}</span>
+                    )}
+                    <span className={done ? 'text-sm text-sand' : isActive ? 'text-sm font-medium text-cream' : 'text-sm text-stone'}>{s.label}</span>
+                    {isActive && <span className="ml-auto text-[11px] font-medium text-amber">Working…</span>}
+                    {done && <span className="ml-auto text-[11px] font-medium text-coral">Done</span>}
+                  </li>
+                )
+              })}
+            </ul>
+
+            <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-xs leading-relaxed text-stone">
+              Usually 30–60 seconds — you can leave this screen, we keep working and it lands in your library.
+            </p>
+            <button onClick={() => nav('/v2', { replace: true })} className="mt-3 block w-full text-center text-sm text-stone transition-colors hover:text-cream">
+              Cancel
+            </button>
           </div>
         )}
       </div>

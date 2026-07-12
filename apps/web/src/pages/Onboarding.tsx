@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, PenLine, RotateCcw } from 'lucide-react'
+import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { markOnboarded, pollDna, saveDNA, saveVoiceProfile, startDna } from '../lib/api'
-import type { CreatorDNA, Platform, VoiceProfile } from '../lib/types'
+import type { Platform, VoiceProfile } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
@@ -20,7 +20,10 @@ const PLACEHOLDER: Record<Platform, string> = {
   other: '@yourhandle',
 }
 
-type Mode = 'handle' | 'building' | 'confirm' | 'manual'
+// Brand DNA is MANDATORY at signup and the only way to get it is to scan a real
+// handle — there is no manual quiz and no "do it later" skip. A new creator must
+// build their voice from their posts before they can enter the studio.
+type Mode = 'handle' | 'building' | 'confirm'
 
 export default function Onboarding() {
   const { session, refreshProfile } = useAuth()
@@ -47,18 +50,11 @@ export default function Onboarding() {
               exit={{ opacity: 0, x: -24 }}
               transition={{ duration: 0.35, ease: EASE }}
             >
-              {mode === 'handle' && (
-                <HandleStep onBuilding={() => setMode('building')} onManual={() => setMode('manual')} />
-              )}
+              {mode === 'handle' && <HandleStep onBuilding={() => setMode('building')} />}
               {mode === 'building' && (
-                <BuildingStep
-                  onReady={() => setMode('confirm')}
-                  onManual={() => setMode('manual')}
-                  onBack={() => setMode('handle')}
-                />
+                <BuildingStep onReady={() => setMode('confirm')} onBack={() => setMode('handle')} />
               )}
               {mode === 'confirm' && <ConfirmStep onDone={() => finish(refreshProfile, navigate)} />}
-              {mode === 'manual' && <ManualQuiz onBack={() => setMode('handle')} />}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -91,7 +87,7 @@ function setActiveVoiceId(id: string | null) {
 }
 
 // --- Step 1: paste a handle ------------------------------------------------
-function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual: () => void }) {
+function HandleStep({ onBuilding }: { onBuilding: () => void }) {
   const [handle, setHandle] = useState('')
   const [platform, setPlatform] = useState<Platform>('tiktok')
   const [busy, setBusy] = useState(false)
@@ -163,11 +159,8 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
         )}
       </AnimatePresence>
 
-      <div className="mt-8 flex items-center justify-between gap-3">
-        <button className="btn-ghost" onClick={onManual} disabled={busy}>
-          <PenLine className="h-4 w-4" /> Set it up manually
-        </button>
-        <button className="btn-gradient" onClick={go} disabled={busy}>
+      <div className="mt-8">
+        <button className="btn-gradient w-full !py-3.5" onClick={go} disabled={busy}>
           {busy ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" /> Starting…
@@ -178,6 +171,9 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
             </>
           )}
         </button>
+        <p className="mt-3 text-center text-xs text-stone">
+          Use any public account — it can be yours or a creator you sound like. We only read public posts.
+        </p>
       </div>
     </>
   )
@@ -186,7 +182,7 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
 // --- Step 2: live progress while the scan runs -----------------------------
 const SCAN_STAGES = ['Fetching your posts', 'Reading captions & hooks', 'Synthesizing your voice']
 
-function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onManual: () => void; onBack: () => void }) {
+function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => void }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -200,7 +196,7 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
 
   useEffect(() => {
     if (!activeVoiceId) {
-      setErr('Lost the scan, please set up manually.')
+      setErr('We lost track of that scan. Head back and try your handle again.')
       return
     }
     let stopped = false
@@ -221,14 +217,14 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
           setErr(res.error ?? 'The scan could not finish.')
         } else if (Date.now() - startedAt > MAX_WAIT_MS) {
           if (timer.current) clearInterval(timer.current)
-          setErr('This is taking longer than usual. Set up your voice manually and you can re-scan any time.')
+          setErr('This is taking longer than usual. Head back and try again — a public account reads fastest.')
         }
       } catch (e) {
         // Transient, keep polling; surface only if it persists past the cap.
         console.warn('dna poll', e)
         if (Date.now() - startedAt > MAX_WAIT_MS && !stopped) {
           if (timer.current) clearInterval(timer.current)
-          setErr('We couldn’t reach the scanner. Set up your voice manually instead.')
+          setErr('We couldn’t reach the scanner. Head back and try again in a moment.')
         }
       }
     }
@@ -290,27 +286,22 @@ function BuildingStep({ onReady, onManual, onBack }: { onReady: () => void; onMa
         <div className="mt-6 space-y-2">
           <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
           <p className="text-sm text-sand">
-            No problem — your account can stay private. Just tell us about you instead and you’ll be in the studio in 90 seconds.
+            Tip: pick a <span className="text-cream">public</span> account with a handful of recent posts — that reads fastest and most accurately.
           </p>
         </div>
       )}
 
-      {/* Always-visible escapes so the user is never trapped on the spinner. On
-          an error we promote the manual path to the primary action. */}
+      {/* On an error, promote "Try again" to the primary action. There is no
+          manual/skip path — building the voice from a real handle is required. */}
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
         <button className="btn-ghost" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
-        <div className="flex flex-wrap gap-2">
-          {err && (
-            <button className="btn-ghost" onClick={onBack}>
-              <RotateCcw className="h-4 w-4" /> Try again
-            </button>
-          )}
-          <button className={cn('btn-ghost', err && 'btn-gradient')} onClick={onManual}>
-            <PenLine className="h-4 w-4" /> {err ? 'Tell us about you instead' : 'Set it up manually'}
+        {err && (
+          <button className="btn-gradient" onClick={onBack}>
+            <RotateCcw className="h-4 w-4" /> Try a different handle
           </button>
-        </div>
+        )}
       </div>
     </>
   )
@@ -329,7 +320,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
     return (
       <>
         <p className="eyebrow">Almost there</p>
-        <p className="mt-4 text-sand">We couldn’t load your voice. Please set it up manually.</p>
+        <p className="mt-4 text-sand">We couldn’t load your voice. Head back and scan your handle again.</p>
       </>
     )
   }
@@ -489,145 +480,5 @@ function ChipList({ label, items, onChange }: { label: string; items: string[]; 
         />
       </div>
     </div>
-  )
-}
-
-// --- Fallback: the original manual quiz ------------------------------------
-function ManualQuiz({ onBack }: { onBack: () => void }) {
-  const { refreshProfile } = useAuth()
-  const navigate = useNavigate()
-  const [step, setStep] = useState(0)
-  const [busy, setBusy] = useState(false)
-  const [dna, setDna] = useState<CreatorDNA>({
-    niche: '',
-    audience: '',
-    product: '',
-    goal: 'turn attention into trust',
-    voice: 'direct, warm, a little punchy',
-    platforms: ['tiktok'],
-    editing_style: 'fast jump cuts, burned-in captions',
-  })
-
-  const steps = [
-    {
-      label: 'Your niche',
-      field: (
-        <input
-          className="field"
-          placeholder="e.g. fitness for busy founders"
-          value={dna.niche}
-          onChange={(e) => setDna({ ...dna, niche: e.target.value })}
-        />
-      ),
-    },
-    {
-      label: 'Who you’re talking to',
-      field: (
-        <input
-          className="field"
-          placeholder="e.g. early-stage founders, 25-40"
-          value={dna.audience}
-          onChange={(e) => setDna({ ...dna, audience: e.target.value })}
-        />
-      ),
-    },
-    {
-      label: 'What you’re selling / building',
-      field: (
-        <input
-          className="field"
-          placeholder="e.g. a coaching program, an app, my personal brand"
-          value={dna.product}
-          onChange={(e) => setDna({ ...dna, product: e.target.value })}
-        />
-      ),
-    },
-    {
-      label: 'How you sound (your voice)',
-      field: (
-        <input
-          className="field"
-          placeholder="e.g. blunt and funny / calm and expert"
-          value={dna.voice}
-          onChange={(e) => setDna({ ...dna, voice: e.target.value })}
-        />
-      ),
-    },
-    {
-      label: 'Where you post',
-      field: (
-        <div className="flex flex-wrap gap-2">
-          {PLATFORMS.map((p) => {
-            const on = dna.platforms.includes(p)
-            return (
-              <button
-                key={p}
-                type="button"
-                onClick={() =>
-                  setDna({
-                    ...dna,
-                    platforms: on ? dna.platforms.filter((x) => x !== p) : [...dna.platforms, p],
-                  })
-                }
-                className={cn('chip capitalize transition-all duration-200', on && 'border-coral/60 bg-coral/10 text-cream')}
-              >
-                {p}
-              </button>
-            )
-          })}
-        </div>
-      ),
-    },
-  ]
-
-  const last = step === steps.length - 1
-  const next = async () => {
-    if (!last) return setStep(step + 1)
-    setBusy(true)
-    try {
-      await saveDNA(dna)
-      await refreshProfile()
-      navigate('/app')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <>
-      <p className="eyebrow">Set up your voice manually · 90 seconds</p>
-      <p className="mt-2 text-sm text-stone">No scan needed — your account can stay private. A few quick answers and we’ll write in your voice.</p>
-      <div className="mt-4 flex gap-1.5">
-        {steps.map((_, i) => (
-          <motion.div
-            key={i}
-            className={cn('h-1 flex-1 rounded-full', i <= step ? 'bg-signature' : 'bg-white/10')}
-            initial={false}
-            animate={{ opacity: i <= step ? 1 : 0.6 }}
-          />
-        ))}
-      </div>
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={step}
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.3, ease: EASE }}
-        >
-          <h1 className="mt-6 font-display text-2xl">{steps[step].label}</h1>
-          <div className="mt-4">{steps[step].field}</div>
-        </motion.div>
-      </AnimatePresence>
-      <div className="mt-8 flex justify-between">
-        <button className="btn-ghost" onClick={() => (step === 0 ? onBack() : setStep(step - 1))}>
-          <ArrowLeft className="h-4 w-4" /> Back
-        </button>
-        <button className="btn-gradient" onClick={next} disabled={busy}>
-          {busy ? 'Saving…' : last ? 'Enter the studio' : 'Next'}
-          {!busy && <ArrowRight className="h-4 w-4" />}
-        </button>
-      </div>
-    </>
   )
 }

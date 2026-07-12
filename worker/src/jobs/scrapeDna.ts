@@ -47,7 +47,17 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   const ownerId = String(p.owner_id ?? '')
   if (!voiceId || !handle) throw new Error('scrape_dna needs brand_voice_id and handle')
 
+  // A failed (re)scan must not brick an already-built voice. If the row already
+  // carries a usable profile (niche/tone/summary), keep it ready — the creator's
+  // existing DNA stands, they just didn't get a fresh scan. Only mark 'failed'
+  // when there's nothing to fall back to (a first scan that produced no voice).
   const fail = async (msg: string) => {
+    const { data: cur } = await db.from('brand_voices').select('profile').eq('id', voiceId).maybeSingle()
+    const vp = cur?.profile as { niche?: unknown; tone?: unknown; summary?: unknown } | null
+    if (vp && (vp.niche || vp.tone || vp.summary)) {
+      await db.from('brand_voices').update({ status: 'ready', error: null }).eq('id', voiceId)
+      return { ok: false, reason: msg, kept_existing: true }
+    }
     await db.from('brand_voices').update({ status: 'failed', error: msg }).eq('id', voiceId)
     return { ok: false, reason: msg }
   }
