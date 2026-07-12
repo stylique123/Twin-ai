@@ -89,9 +89,15 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
     const overlap = lw.filter((w) => hookWords.has(w)).length
     return overlap >= Math.min(4, Math.ceil(lw.length * 0.6))
   }
+  // A bracket-only token ("[Hook Option 1]", "[Insert selected hook…]") is a
+  // broken placeholder, never real dialogue — drop it so it can't reach the
+  // teleprompter or the worker's caption pass.
+  const isPlaceholder = (l: string) =>
+    /^\[[^\]]*\]$/.test(l) || /\b(hook option\s*\d*|selected hook|insert (the )?hook|your hook (above|here)|hook from above)\b/i.test(l)
   const body = (blueprint.script ?? []).filter((s) => {
     const l = (s.line || '').trim()
     if (!l) return false
+    if (isPlaceholder(l)) return false
     if (/hook|opener/i.test(s.section || '')) return false
     return !looksLikeHook(l)
   })

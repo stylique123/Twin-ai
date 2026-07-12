@@ -325,14 +325,24 @@ export default function Result() {
   } as Generation['blueprint']
   const cap = b.caption_packet ?? b.submagic_packet ?? { caption_style: '', pacing: '', emphasis: '', export: '' }
 
+  // A script line that is just a bracket token ("[Hook Option 1]", "[Insert
+  // selected hook from above]") is a broken placeholder that must never render as
+  // real dialogue. Server-side normalization now prevents new ones; this repairs
+  // any already stored: swap the opening hook beat for the chosen/best hook, and
+  // blank any stray placeholder elsewhere rather than showing the raw token.
+  const isPlaceholder = (l: string) => {
+    const t = l.trim()
+    return t === '' || /^\[[^\]]*\]$/.test(t) || /\b(hook option\s*\d*|selected hook|insert (the )?hook|your hook (above|here)|hook from above)\b/i.test(t)
+  }
+  const hookText = chosenHook || b.hook_options[0] || ''
   const updatedScript = b.script.map((s, i) => {
-    if (i === 0 && chosenHook) {
+    if (i === 0 && hookText) {
+      if (isPlaceholder(s.line)) return { ...s, line: hookText }
       const sentences = s.line.split(/(?<=[.!?])\s+/)
-      if (sentences.length > 1) {
-        return { ...s, line: `${chosenHook.trim()} ${sentences.slice(1).join(' ')}` }
-      }
-      return { ...s, line: chosenHook }
+      if (sentences.length > 1) return { ...s, line: `${hookText.trim()} ${sentences.slice(1).join(' ')}` }
+      return { ...s, line: hookText }
     }
+    if (isPlaceholder(s.line)) return { ...s, line: hookText || s.line }
     return s
   })
 
