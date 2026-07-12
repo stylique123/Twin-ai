@@ -364,19 +364,25 @@ Deno.serve(async (req: Request) => {
   if (!reference_url && !reference_note) return json({ error: 'Add a reference link or describe your idea.' }, 400)
   if (reference_url.length > 2048) return json({ error: 'That reference link is too long.' }, 400)
 
-  // Load creator DNA. Prefer the confirmed brand voice (Phase 2 — built from
-  // their real handle); fall back to the manual onboarding quiz (Phase 1).
+  // Load creator DNA. Prefer the confirmed brand voice (built from their real
+  // handle); fall back to any onboarding-quiz DNA seeded on the profile.
   const { data: profile } = await admin
     .from('profiles')
     .select('dna, credits')
     .eq('id', ownerId)
     .single()
+  // The voice's usable content lives in `profile` — that's the source of truth,
+  // NOT the scan-job `status`. A voice can carry a fully-built profile yet have
+  // status='failed'/'building' (e.g. a later "Refresh voice & stats" that hit an
+  // Apify hiccup downgraded the status but left the good profile intact). Gating
+  // on status='ready' here is what produced the "import your brand DNA" snag while
+  // Settings clearly showed the DNA. Load the default voice regardless of status
+  // and let the profile-content check below decide if it's usable.
   const { data: voice } = await admin
     .from('brand_voices')
     .select('id, handle, platform, profile, brand_kit')
     .eq('owner_id', ownerId)
     .eq('is_default', true)
-    .eq('status', 'ready')
     .maybeSingle()
 
   const dna = profile?.dna ?? {}

@@ -344,20 +344,41 @@ export default function Settings() {
                 <div>
                   <label className="eyebrow mb-2 block">Your brand colors <span className="font-normal normal-case text-stone">— your real palette, in hex</span></label>
                   <div className="flex flex-wrap gap-5">
-                    {([['highlight', 'Caption highlight'], ['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => (
-                      <label key={key} className="flex flex-col items-center gap-1.5 text-[11px] text-stone">
-                        <input
-                          key={brandKit.palette?.[key] ?? `d-${key}`}
-                          type="color"
-                          defaultValue={brandKit.palette?.[key] ?? '#65E5D8'}
-                          onBlur={(e) => { if (e.target.value !== brandKit.palette?.[key]) saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value }, palette_source: 'manual' }) }}
-                          className="h-10 w-10 cursor-pointer rounded-lg border border-white/15 bg-transparent p-0"
-                        />
-                        {label}
-                      </label>
-                    ))}
+                    {([['highlight', 'Caption highlight'], ['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => {
+                      // Only show a swatch for a colour the creator has ACTUALLY set
+                      // (scanned or hand-picked). Never fabricate a default hex — an
+                      // unset colour showed a fake teal that looked like "a colour I
+                      // don't have". Unset renders an empty "＋ Set" chip instead.
+                      const set = brandKit.palette?.[key]
+                      return (
+                        <div key={key} className="flex flex-col items-center gap-1.5 text-[11px] text-stone">
+                          {set ? (
+                            <label className="cursor-pointer">
+                              <input
+                                key={set}
+                                type="color"
+                                defaultValue={set}
+                                onBlur={(e) => { if (e.target.value !== set) saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value }, palette_source: 'manual' }) }}
+                                className="h-10 w-10 cursor-pointer rounded-lg border border-white/15 bg-transparent p-0"
+                              />
+                            </label>
+                          ) : (
+                            <label className="grid h-10 w-10 cursor-pointer place-items-center rounded-lg border border-dashed border-white/20 text-stone transition-colors hover:border-white/40 hover:text-cream">
+                              <Plus className="h-4 w-4" />
+                              <input
+                                type="color"
+                                defaultValue="#65E5D8"
+                                onChange={(e) => saveKit({ ...brandKit, palette: { ...brandKit.palette, [key]: e.target.value }, palette_source: 'manual' })}
+                                className="sr-only"
+                              />
+                            </label>
+                          )}
+                          {label}
+                        </div>
+                      )
+                    })}
                   </div>
-                  <p className="mt-1.5 text-[11px] text-stone">Caption highlight overrides the preset above in every render. Primary/secondary steer the background &amp; wardrobe suggestions in your blueprints.</p>
+                  <p className="mt-1.5 text-[11px] text-stone">Not set yet? Tap ＋ to add a colour, or hit “Refresh voice &amp; stats” to read them from your posts. Caption highlight overrides the preset above in every render; primary/secondary steer background &amp; wardrobe suggestions in your blueprints.</p>
                 </div>
                 <div>
                   <label className="eyebrow mb-2 block">Logo <span className="font-normal normal-case text-stone">— burned into the top-right of every export</span></label>

@@ -781,9 +781,12 @@ export async function listBrandVoices(): Promise<BrandVoice[]> {
   return (data ?? []) as BrandVoice[]
 }
 
-// Persist user edits from the confirm card (the editable chips).
+// Persist user edits from the confirm card (the editable chips). Confirming a
+// profile also marks the voice READY: a voice the creator has reviewed and saved
+// is usable by definition, so it must never be left in a 'building'/'failed' scan
+// state that would later block remixing (the "import your brand DNA" snag).
 export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promise<void> {
-  const { error } = await supabase.from('brand_voices').update({ profile }).eq('id', id)
+  const { error } = await supabase.from('brand_voices').update({ profile, status: 'ready', error: null }).eq('id', id)
   if (error) throw error
 }
 
