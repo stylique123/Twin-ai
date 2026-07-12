@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus, Users, Copy, Link2 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { updateDisplayName, saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
@@ -55,12 +55,22 @@ export default function Settings() {
   // set" for everything ("I can't see my own brand DNA"). Load it and surface it.
   const [voiceProfile, setVoiceProfile] = useState<VoiceProfile | null>(null)
   const [defaultVoiceId, setDefaultVoiceId] = useState<string | null>(null)
+  // The default brand voice actually loaded — so we can SHOW which brand is active
+  // (@handle · platform), not just render its DNA anonymously.
+  const [activeVoice, setActiveVoice] = useState<Awaited<ReturnType<typeof listBrandVoices>>[number] | null>(null)
+  // Distinguish "still loading" and "load failed" from "genuinely no voice". The
+  // old code swallowed errors (.catch(()=>{})) with no loading state, so a transient
+  // fetch hiccup rendered the whole DNA as empty "+ Add" fields — looking broken.
+  const [voiceLoading, setVoiceLoading] = useState(true)
+  const [voiceErr, setVoiceErr] = useState(false)
   const [brandKit, setBrandKit] = useState<BrandKit>({})
   const [kitSaved, setKitSaved] = useState(false)
-  useEffect(() => {
+  const loadVoice = useCallback(() => {
+    setVoiceErr(false); setVoiceLoading(true)
     listBrandVoices()
       .then((vs) => {
-        const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready') ?? vs[0]
+        const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready') ?? vs[0] ?? null
+        setActiveVoice(def)
         if (def?.id) setDefaultVoiceId(def.id)
         if (def?.brand_kit) setBrandKit(def.brand_kit)
         if (def?.profile) {
@@ -78,8 +88,10 @@ export default function Settings() {
           }))
         }
       })
-      .catch(() => {})
+      .catch(() => setVoiceErr(true)) // surface + offer retry — never a silent empty DNA
+      .finally(() => setVoiceLoading(false))
   }, [])
+  useEffect(() => { loadVoice() }, [loadVoice])
   const saveKit = async (next: BrandKit) => {
     setBrandKit(next)
     if (!defaultVoiceId) return
@@ -412,7 +424,12 @@ export default function Settings() {
             <div className="flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
                 <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/5"><ShieldCheck className="h-4 w-4 text-coral" /></span>
-                <p className="eyebrow !text-sand">Creator DNA</p>
+                <div>
+                  <p className="eyebrow !text-sand">Creator DNA</p>
+                  {activeVoice?.handle && (
+                    <p className="mt-0.5 text-xs text-stone">Active brand: <span className="text-sand">@{activeVoice.handle}</span>{activeVoice.platform ? ` · ${activeVoice.platform}` : ''}</p>
+                  )}
+                </div>
               </div>
               {!editingDna && (
                 <div className="flex items-center gap-2">
@@ -427,6 +444,15 @@ export default function Settings() {
             {refreshMsg && <p className="mt-2 rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-sand">{refreshMsg}</p>}
 
             {!editingDna ? (
+              voiceLoading ? (
+                <div className="mt-5 flex items-center gap-2 text-sm text-sand"><Loader2 className="h-4 w-4 animate-spin" /> Loading your brand DNA…</div>
+              ) : voiceErr ? (
+                <div className="mt-5 rounded-card border border-coral/20 bg-coral/[0.05] p-4">
+                  <p className="text-sm text-cream">Couldn't load your brand DNA.</p>
+                  <p className="mt-1 text-xs text-stone">This is usually a brief connection hiccup — your DNA is safe, nothing was lost.</p>
+                  <button onClick={loadVoice} className="btn-ghost mt-3 text-sm"><RefreshCw className="h-3.5 w-3.5" /> Try again</button>
+                </div>
+              ) : (
               /* Read-only view — what we already know about you. */
               <div className="mt-5 space-y-3">
                 {voiceProfile?.summary && (
@@ -462,6 +488,7 @@ export default function Settings() {
                   </div>
                 )}
               </div>
+              )
             ) : (
               /* Edit form. */
               <div className="mt-5 space-y-4">
