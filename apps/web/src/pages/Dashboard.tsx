@@ -105,6 +105,18 @@ export default function Dashboard() {
           <p className="mt-4 max-w-md text-base text-stone">
             Everything you've shipped, and what to make next.
           </p>
+          {/* Make it unambiguous WHICH account + brand voice is active — the welcome
+              name alone (display name / email) doesn't say which brand is loaded. */}
+          {(brand?.handle || profile?.email) && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              {brand?.handle && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-sand">
+                  <Sparkles className="h-3 w-3 text-coral" /> Brand voice: <span className="text-cream">@{brand.handle}</span>{brand.platform ? ` · ${brand.platform}` : ''}
+                </span>
+              )}
+              {profile?.email && <span className="text-stone">Signed in as {profile.email}</span>}
+            </div>
+          )}
           {(isAgency && brand) || streak > 0 || hoursSaved > 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-2">
               {hoursSaved > 0 && (

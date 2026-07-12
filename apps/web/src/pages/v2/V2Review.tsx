@@ -28,7 +28,11 @@ const PROC_STEPS = [
   { t: 'Finalizing & rendering', d: 'Bringing everything together' },
 ]
 
-type Phase = 'rendering' | 'done' | 'failed'
+// 'timeout' is DISTINCT from 'failed': the client stopped polling but the worker
+// (whose max render time is longer than our poll window) is very likely still
+// working and the video will land in the Library. We must not tell the creator it
+// failed or invite them to re-record a job that's still succeeding.
+type Phase = 'rendering' | 'done' | 'failed' | 'timeout'
 
 export default function V2Review() {
   const { id = '' } = useParams()
@@ -160,12 +164,16 @@ export default function V2Review() {
         { attempts: 300, shouldStop: () => stopped.current },
       )
       if (stopped.current) return
-      if (!job) { setPhase('failed'); setLabel('Still rendering — check your Library shortly.'); return }
+      // Poll window elapsed but no terminal state — it's still rendering, not failed.
+      if (!job) { setPhase('timeout'); setLabel("This one is taking longer than usual. We'll keep rendering it and it'll appear in your library — you don't need to wait here."); return }
       if (job.status === 'failed') { setPhase('failed'); setLabel(job.error || 'The edit failed.'); return }
       const url = job.result?.output_url
       if (url) setVideoUrl(url)
-      await showFinished()
-      setPct(100); setPhase('done')
+      const finished = (await showFinished()) || !!url
+      setPct(100)
+      // Only call it done when a real video actually resolved; otherwise be honest.
+      if (finished) { setPhase('done') }
+      else { setPhase('failed'); setLabel('The edit finished but the video did not come through. Check your library in a moment.') }
     })()
 
     return () => { stopped.current = true }
@@ -327,6 +335,14 @@ export default function V2Review() {
             <div className="relative mx-auto my-4 w-full max-w-[460px] flex-1 max-h-[72vh] aspect-[9/16] rounded-2xl overflow-hidden bg-ink2 shadow-2xl lg:my-0 lg:mt-4 lg:flex-none lg:h-[74vh] lg:max-h-[74vh] lg:w-auto lg:max-w-none">
               {phase === 'done' && videoUrl ? (
                 <video ref={videoRef} src={videoUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline controls />
+              ) : phase === 'timeout' ? (
+                <div className="absolute inset-0 grid place-items-center text-center px-6">
+                  <div>
+                    <p className="text-white/80 font-medium">Still rendering…</p>
+                    <p className="text-xs text-white/50 mt-1">{label}</p>
+                    <button onClick={() => nav('/history')} className="mt-4 rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Go to my remixes</button>
+                  </div>
+                </div>
               ) : (
                 <div className="absolute inset-0 grid place-items-center text-center px-6">
                   <div>
@@ -340,8 +356,8 @@ export default function V2Review() {
           )}
         </div>
 
-        {/* ACTIONS RAIL — below the video on phone, a fixed side panel on desktop */}
-        {phase !== 'rendering' && (
+        {/* ACTIONS RAIL — only over a real finished video (never timeout/failed). */}
+        {phase === 'done' && (
           <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-4 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
             {actionsRail}
           </div>

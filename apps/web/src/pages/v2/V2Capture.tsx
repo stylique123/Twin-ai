@@ -133,6 +133,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const streamRef = useRef<MediaStream | null>(null)
   const recRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  // Set if the MediaRecorder itself errors mid-take (codec hiccup, disk pressure,
+  // backgrounded tab) — so a truncated/empty take is caught instead of silently
+  // shipped. Cleared on a fresh re-record.
+  const recErrRef = useRef<string | null>(null)
   const activeMsRef = useRef(0)        // cumulative ACTIVE (un-paused) recording time
   const segStartRef = useRef(0)        // perf.now() when current active segment began
   const boundsRef = useRef<number[]>([]) // cumulative seconds at each scene boundary
@@ -238,6 +242,15 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     if (recRef.current || !streamRef.current) return
     const rec = new MediaRecorder(streamRef.current, { mimeType: pickRecorderMime() || undefined })
     rec.ondataavailable = (ev) => { if (ev.data && ev.data.size) chunksRef.current.push(ev.data) }
+    // A recorder that dies mid-session otherwise just stops emitting chunks with
+    // zero signal — the creator would lose a good take silently. Capture it so
+    // review/upload can refuse and prompt a re-record.
+    rec.onerror = (ev) => {
+      recErrRef.current =
+        (ev as unknown as { error?: { message?: string } })?.error?.message ||
+        'The recorder stopped unexpectedly.'
+      liveRef.current = false
+    }
     recRef.current = rec
   }
 
@@ -319,9 +332,23 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
   // Review action: hand the raw take to the SAME tested auto-edit path (captions,
   // cuts, b-roll). Only now does the upload + edit job start.
+  // A real few-second webm/mp4 take is tens of KB minimum; anything under this is
+  // an empty/failed recording (no chunks, a recorder error, a 0-byte blob). Refuse
+  // it BEFORE upload so it can't burn the worker's whole retry cycle and come back
+  // as an opaque "the edit failed".
+  const MIN_TAKE_BYTES = 2048
+
   const startAiEdit = async () => {
     const blob = reviewBlobRef.current
     if (!blob) return
+    if (recErrRef.current) {
+      setEditError(`${recErrRef.current} Please re-record this take.`)
+      return
+    }
+    if (blob.size < MIN_TAKE_BYTES) {
+      setEditError('That recording came through empty — nothing was captured. Please re-record.')
+      return
+    }
     setEditError(null)
     setUploadPct(-1)
     setUploading(true)
@@ -356,6 +383,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const reRecord = () => {
     if (reviewUrl) URL.revokeObjectURL(reviewUrl)
     reviewBlobRef.current = null
+    recErrRef.current = null
     chunksRef.current = []
     boundsRef.current = []
     linesRef.current = []
