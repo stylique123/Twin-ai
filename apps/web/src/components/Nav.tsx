@@ -7,7 +7,6 @@ import { useAuth } from '../context/AuthContext'
 import { EASE } from './motion'
 
 const LINKS = [
-  { href: '/#features', label: 'What you get' },
   { href: '/#loop', label: 'How it works' },
   { href: '/#agencies', label: 'Agency' },
   { href: '/#pricing', label: 'Pricing' },
@@ -70,14 +69,26 @@ export function Nav() {
           )}
         </div>
 
-        {/* Mobile toggle */}
-        <button
-          className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-cream md:hidden"
-          onClick={() => setOpen((v) => !v)}
-          aria-label="Menu"
-        >
-          {open ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
-        </button>
+        {/* Mobile: the primary CTA lives IN the bar (not buried in the menu),
+            so a phone visitor always sees the one action that matters. */}
+        <div className="flex items-center gap-2 md:hidden">
+          {session ? (
+            <Link to="/app" className="btn-gradient !rounded-full !px-4 !py-2 text-sm">
+              Open studio
+            </Link>
+          ) : (
+            <Link to="/auth?mode=signup" className="btn-gradient !rounded-full !px-4 !py-2 text-sm">
+              Start free
+            </Link>
+          )}
+          <button
+            className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/5 text-cream"
+            onClick={() => setOpen((v) => !v)}
+            aria-label="Menu"
+          >
+            {open ? <X className="h-4.5 w-4.5" /> : <Menu className="h-4.5 w-4.5" />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile sheet */}

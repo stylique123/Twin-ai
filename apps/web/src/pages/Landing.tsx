@@ -273,7 +273,9 @@ function HeroVisualNew() {
       transition={{ duration: 0.9, ease: EASE, delay: 0.2 }}
       className="relative flex justify-center lg:justify-end"
     >
-      <div className="relative my-4 sm:my-8">
+      {/* mx-auto belt-and-braces: keeps the device dead-centre on phones even
+          where a flex parent mis-measures (older WebKit); lg keeps the right-align. */}
+      <div className="relative mx-auto my-4 sm:my-8 lg:mx-0">
         {/* Reference card, top left. Hidden on the narrowest screens so it never
             overlaps the device; floats out only where there's room. */}
         <motion.div
