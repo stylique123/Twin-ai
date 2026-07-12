@@ -32,6 +32,10 @@ const TABS = [
   { to: '/history',   label: 'Library',   icon: LibraryBig },
   { to: '/calendar',  label: 'Calendar',  icon: CalendarDays },
 ]
+// The bottom tab bar already covers these on phones, so the hamburger sheet must
+// NOT repeat them — it only holds the SECONDARY items (Settings, Workspaces) + sign
+// out. Duplicating them made the phone nav look broken.
+const TAB_PATHS = new Set(TABS.map((t) => t.to))
 
 // `mobileChrome=false` (used by the V2 flow) keeps the desktop sidebar — so the
 // V2 wizard reads as part of the dashboard on a real monitor instead of a lone
@@ -42,7 +46,13 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
   const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   // Engagement depth: log a page_view per route (best-effort, never blocks).
-  useEffect(() => { void logEvent('page_view', { path: pathname }) }, [pathname])
+  // Also reset scroll to the top on every route change — a phone left scrolled
+  // down and then tapping a tab used to open the new page mid-scroll; it should
+  // always open at the start.
+  useEffect(() => {
+    void logEvent('page_view', { path: pathname })
+    window.scrollTo(0, 0)
+  }, [pathname])
   const left = videosFromCredits(profile?.credits ?? 0)
   // Hide agency-only items (Workspaces) from solo/aspiring/pro plans.
   const navItems = NAV.filter((n) => !n.agencyOnly || profile?.plan === 'agency')
@@ -112,8 +122,10 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
                 <motion.nav initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.25, ease: EASE }} className="overflow-hidden border-b border-white/8 bg-ink/95 backdrop-blur-xl">
                   <div className="space-y-1 p-3">
                     {/* Agencies switch the active client from here on a phone. */}
-                    <BrandSwitcher />
-                    {navItems.map((n) => (
+                    {profile?.plan === 'agency' && <BrandSwitcher />}
+                    {/* ONLY the secondary items — the five primary destinations live
+                        in the bottom tab bar and must not be repeated here. */}
+                    {navItems.filter((n) => !TAB_PATHS.has(n.to)).map((n) => (
                       <Link key={n.to} to={n.to} onClick={() => setOpen(false)} className={cn('flex items-center gap-3 rounded-xl px-3 py-3 text-sm', isActive(n.to) ? 'bg-white/[0.06] text-cream' : 'text-sand')}>
                         <n.icon className="h-[18px] w-[18px]" /> {n.label}
                         <span className="ml-auto text-xs text-stone">{n.note}</span>

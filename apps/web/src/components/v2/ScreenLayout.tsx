@@ -4,6 +4,7 @@
 // one primary action per screen. See docs/PRODUCT_VISION.md §16.
 import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { Aurora } from '../Aurora'
 
 export default function ScreenLayout({
   title,
@@ -23,8 +24,15 @@ export default function ScreenLayout({
   // comfortably wide CENTERED column on desktop — not a multi-pane split, and
   // not the mobile-width column left tiny on a huge monitor either.
   return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto flex flex-col bg-ink text-cream overflow-x-hidden lg:max-w-2xl lg:pt-6">
-      <header className="flex items-center gap-3 px-4 pt-4 pb-2 lg:px-0 lg:pt-0 lg:pb-4">
+    <div className="relative min-h-[100dvh] w-full max-w-screen-sm mx-auto flex flex-col bg-ink text-cream overflow-x-hidden lg:max-w-2xl lg:pt-6">
+      {/* Brand canvas so the phone screens aren't a flat black slab — matches the
+          desktop studio's colored aurora + ambient glows. */}
+      <Aurora className="opacity-70" />
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div className="absolute left-1/2 top-12 h-64 w-64 -translate-x-1/2 rounded-full bg-coral/10 blur-[120px]" />
+        <div className="absolute right-0 bottom-24 h-56 w-56 rounded-full bg-teal/10 blur-[110px]" />
+      </div>
+      <header className="relative flex items-center gap-3 px-4 pt-4 pb-2 lg:px-0 lg:pt-0 lg:pb-4">
         <button
           onClick={() => (onBack ? onBack() : nav(-1))}
           aria-label="Back"
@@ -38,10 +46,10 @@ export default function ScreenLayout({
         </div>
       </header>
 
-      <main className="flex-1 px-4 pb-28 overflow-y-auto space-y-4 lg:px-0 lg:pb-8">{children}</main>
+      <main className="relative flex-1 px-4 pb-28 overflow-y-auto space-y-4 lg:px-0 lg:pb-8">{children}</main>
 
       {cta && (
-        <div className="sticky bottom-0 inset-x-0 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-ink via-ink/95 to-transparent lg:static lg:bg-none lg:px-0 lg:pb-0">
+        <div className="sticky bottom-0 inset-x-0 z-10 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-ink via-ink/95 to-transparent lg:static lg:bg-none lg:px-0 lg:pb-0">
           <div className="max-w-screen-sm mx-auto lg:max-w-none">{cta}</div>
         </div>
       )}
