@@ -120,12 +120,21 @@ async function transcribeWindow(dir: string, videoFile: string, start: number, e
 }
 
 // Even-spread fallback: lay the line's tokens end-to-end across [s0,s1] with a
-// small lead-in, clamped to a sane minimum per-word duration.
+// small lead-in, clamped to a READABLE minimum per-word duration. The old 0.12s
+// floor (~8 words/sec) flashed captions too fast and adjacent words butted up with
+// no visible gap so they read as overlapping. Floor is now 0.30s/word (~3/sec, a
+// comfortable karaoke pace), each word ends a hair early (GAP) for a clean fade
+// between words, and there's a small lead-in before the first word. No upper
+// bound, so a roomy scene paces slower than the floor naturally.
 function evenSpreadWords(line: string, s0: number, s1: number): Word[] {
   const toks = String(line ?? '').split(/\s+/).filter(Boolean)
   if (!toks.length) return []
-  const per = Math.max(0.12, (s1 - s0 - 0.2) / toks.length)
-  return toks.map((w, k) => ({ w, start: s0 + 0.1 + k * per, end: s0 + 0.1 + (k + 1) * per }))
+  const LEAD = 0.15, GAP = 0.05, MIN = 0.30
+  const per = Math.max(MIN, (s1 - s0 - LEAD) / toks.length)
+  return toks.map((w, k) => {
+    const start = s0 + LEAD + k * per
+    return { w, start, end: start + Math.max(0.12, per - GAP) }
+  })
 }
 
 export interface EditResult {

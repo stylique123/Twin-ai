@@ -507,6 +507,16 @@ export async function signEditUrls(paths: string[]): Promise<Record<string, stri
   return out
 }
 
+// Sign a raw take in the private 'takes' bucket (mirrors signEditUrls for 'edits')
+// so the review screen can always offer the original footage for download — even
+// while the edit is still rendering or if it failed, so a take is never stranded.
+export async function signTakeUrl(path: string): Promise<string | null> {
+  if (!path) return null
+  const { data, error } = await supabase.storage.from('takes').createSignedUrl(path, 60 * 60 * 24)
+  if (error || !data?.signedUrl) return null
+  return data.signedUrl
+}
+
 // ---- Dashboard (Phase 7: real stats from data we already own) ------------
 
 // ONE lifecycle, derived from the generation (the "remix") — never from the jobs
