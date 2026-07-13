@@ -570,6 +570,15 @@ Deno.serve(async (req: Request) => {
     const hookPatternsLine = hookPatterns.length
       ? hookPatterns.join(' | ')
       : 'NONE STORED. Build 5 DISTINCT opener moves that fit this niche and voice (contrarian claim, number drop, confession, direct callout, curiosity gap) and write one hook from each.'
+    // The creator's PLAYBOOK — their real video formats + packaging patterns. Newer
+    // scans capture these; when a profile predates them, infer from the niche so the
+    // concept adapts one of THEIR archetypes and packaging matches their look.
+    const formatsList = (vp?.formats ?? []) as string[]
+    const formatsLine = formatsList.length
+      ? formatsList.join(' | ')
+      : 'NONE STORED. Infer 2-3 video formats this creator plausibly makes from their niche and hooks, and adapt ONE of them to the reference.'
+    const titleStyleLine = (vp as { title_style?: string } | null)?.title_style || 'NONE STORED. Infer their likely title formula from their niche and hook style.'
+    const thumbStyleLine = (vp as { thumbnail_style?: string } | null)?.thumbnail_style || 'NONE STORED. Infer a thumbnail style that fits their niche and brand.'
     const creatorDna = `CREATOR DNA${vp ? ` (learned from @${voice!.handle} on ${voice!.platform})` : ''}
 - Niche: ${niche}${subNiche ? `
 - Specific angle (what their audience searches for): ${subNiche}` : ''}
@@ -583,6 +592,9 @@ Deno.serve(async (req: Request) => {
 - Pacing: ${vp.pacing ?? 'fast'}
 - Hook formula: ${vp.hook_style ?? ''}
 - Hook patterns (distinct opener moves — use a DIFFERENT one per hook): ${hookPatternsLine}
+- Their video FORMATS (their real playbook — adapt ONE of these to the reference for the concept.premise): ${formatsLine}
+- Their TITLE style (follow this shape for the packaging.titles): ${titleStyleLine}
+- Their THUMBNAIL style (follow this for the packaging.thumbnail): ${thumbStyleLine}
 - Hooks they ACTUALLY wrote (real winners — study the phrasing, do not copy verbatim): ${sampleHooks.join(' / ') || '(none captured)'}
 - Signature vocabulary: ${(vp.vocabulary ?? []).join(', ')}
 - Recurring CTAs: ${(vp.recurring_ctas ?? []).join(', ')}
@@ -616,8 +628,8 @@ Deno.serve(async (req: Request) => {
 ${referenceBlock}
 
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
-- concept: FIRST nail the actual video premise adapted to the creator's world, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
-- packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, built from the creator's angle, vocabulary and brand colors. Every hook and script beat must pay off that exact promise.
+- concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
+- packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, FOLLOWING the creator's title style and thumbnail style from CREATOR DNA and using their brand colors. Every hook and script beat must pay off that exact promise.
 - ${fidelityRule}
 - ${toneRule}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.

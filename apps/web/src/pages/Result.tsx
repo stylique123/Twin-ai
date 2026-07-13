@@ -409,6 +409,48 @@ export default function Result() {
             </div>
           </motion.div>
 
+          {/* Concept + packaging — the video idea and the title/thumbnail that earn
+              the click, shown before the script in EVERY blueprint view (parity with
+              the V2 plan). Full width so it renders on both mobile and desktop. */}
+          {(b.concept?.premise || (b.packaging?.titles?.length ?? 0) > 0) && (
+            <div className="mt-8 grid gap-4 lg:grid-cols-2">
+              {b.concept?.premise && (
+                <div className="rounded-card border border-teal/25 bg-teal/[0.06] p-5">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-teal">Your concept</div>
+                  <p className="text-base font-semibold leading-snug text-cream">{b.concept.premise}</p>
+                  {b.concept.your_scale && <p className="mt-2 text-sm text-sand/85"><span className="text-stone">Pull it off solo: </span>{b.concept.your_scale}</p>}
+                  {b.concept.translations?.length ? (
+                    <div className="mt-3 space-y-1.5">
+                      {b.concept.translations.map((t, i) => (
+                        <div key={i} className="text-sm leading-snug"><span className="text-stone">{t.theirs}</span><span className="text-teal"> → </span><span className="text-cream">{t.yours}</span></div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+              {(b.packaging?.titles?.length ?? 0) > 0 && (
+                <div className="rounded-card border border-amber/25 bg-amber/[0.06] p-5">
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber">Title &amp; thumbnail</div>
+                  <p className="text-[11px] text-stone">Recommended title</p>
+                  <p className="text-base font-bold leading-snug text-cream">{b.packaging!.titles[0]}</p>
+                  {b.packaging!.titles.length > 1 && (
+                    <div className="mt-2 space-y-1">{b.packaging!.titles.slice(1).map((t, i) => <p key={i} className="text-sm text-sand/80">{t}</p>)}</div>
+                  )}
+                  {b.packaging!.thumbnail && (
+                    <div className="mt-3 space-y-1 rounded-lg border border-white/10 bg-white/[0.03] p-3 text-sm">
+                      <p className="text-[11px] uppercase tracking-wide text-stone">Thumbnail to shoot</p>
+                      <p className="text-cream"><span className="text-stone">Big text: </span>“{b.packaging!.thumbnail.text_overlay}”</p>
+                      <p className="text-sand/85"><span className="text-stone">Shot: </span>{b.packaging!.thumbnail.concept}</p>
+                      <p className="text-sand/85"><span className="text-stone">Face: </span>{b.packaging!.thumbnail.expression}</p>
+                      <p className="text-sand/85"><span className="text-stone">Framing: </span>{b.packaging!.thumbnail.composition}</p>
+                      <p className="text-sand/85"><span className="text-stone">Colours: </span>{b.packaging!.thumbnail.colors}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* iOS-Style Segmented Control for Mobile Navigation */}
           <div className="mt-8 block lg:hidden">
             <div className="grid grid-cols-4 gap-1 rounded-xl bg-ink3 p-1 border border-white/5 shadow-inner">
