@@ -93,6 +93,20 @@ export interface Blueprint {
     why_it_works: string[]
     retention_map: { beat: string; goal: string; tactic?: string }[]
   }
+  // PACKAGING — the title + thumbnail that earn the click, decided FIRST because
+  // most short-form videos are won or lost on the title and first-frame thumbnail
+  // before a word is heard. Optional so blueprints generated before this existed
+  // still render (the Plan screen just hides the card when it's absent).
+  packaging?: {
+    titles: string[] // 3-5 scroll-stopping titles/headlines, best first
+    thumbnail: {
+      concept: string // one line: the single clear visual idea
+      text_overlay: string // the 2-4 BIG words burned on the thumbnail
+      expression: string // the creator's exact face/expression
+      composition: string // subject placement, framing, props (phone-shootable)
+      colors: string // colour treatment (uses the brand palette when set)
+    }
+  }
   b_roll_stats?: {
     original_b_roll_count: string
     suggested_b_roll_count: string
