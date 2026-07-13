@@ -31,6 +31,12 @@ export interface VoiceProfile {
   summary: string
   niche: string
   sub_niche?: string
+  // The scan infers these from the posts/bio/niche; they were produced by the DNA
+  // synthesis all along but weren't typed, so onboarding couldn't prefill them.
+  audience?: string
+  audience_pain?: string
+  dream_outcome?: string
+  offer?: string
   tone: string
   pacing: string
   hook_style: string

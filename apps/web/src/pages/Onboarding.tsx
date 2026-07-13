@@ -315,9 +315,12 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
 // --- Step 3: confirm / edit the voice in one tap ---------------------------
 function ConfirmStep({ onDone }: { onDone: () => void }) {
   const [vp, setVp] = useState<VoiceProfile | null>(activeProfile)
-  const [audience, setAudience] = useState('')
-  const [product, setProduct] = useState('')
-  const [goal, setGoal] = useState('')
+  // Prefill "who you're talking to / what you sell / your goal" from what the scan
+  // ALREADY inferred (audience / offer / dream_outcome) instead of leaving them
+  // blank — the DNA extracts these, so they shouldn't show empty. All stay editable.
+  const [audience, setAudience] = useState(activeProfile?.audience ?? '')
+  const [product, setProduct] = useState(activeProfile?.offer ?? '')
+  const [goal, setGoal] = useState(activeProfile?.dream_outcome ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
