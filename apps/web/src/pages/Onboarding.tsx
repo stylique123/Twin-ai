@@ -98,7 +98,12 @@ function HandleStep({ onBuilding }: { onBuilding: () => void }) {
     if (!handle.trim()) return setErr('Paste your handle or profile link first.')
     setBusy(true)
     try {
-      const res = await startDna(handle.trim(), platform)
+      // `replace: true` — onboarding is a SINGLE voice slot. If the creator already
+      // started a scan (e.g. picked the wrong platform, tapped Back within a second),
+      // this repoints that same slot to the new handle/platform instead of creating a
+      // second voice or hitting the "you already have a voice" / brand-limit wall. So
+      // Back → choose again → Build always works, and no orphan voices pile up.
+      const res = await startDna(handle.trim(), platform, false, true)
       setActiveVoiceId(res.brand_voice_id)
       activePlatform = platform
       onBuilding()
