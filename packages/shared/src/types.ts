@@ -93,6 +93,14 @@ export interface Blueprint {
     why_it_works: string[]
     retention_map: { beat: string; goal: string; tactic?: string }[]
   }
+  // CONCEPT & ADAPTATION — the actual video idea for THIS creator, plus an honest
+  // translation of the reference's production scale down to what one person with a
+  // phone can shoot. Optional (older blueprints predate it).
+  concept?: {
+    premise: string // the core shootable video idea, 1-2 sentences, in their world
+    your_scale: string // how one person with a phone gets the SAME effect
+    translations: { theirs: string; yours: string }[] // ref element → achievable version
+  }
   // PACKAGING — the title + thumbnail that earn the click, decided FIRST because
   // most short-form videos are won or lost on the title and first-frame thumbnail
   // before a word is heard. Optional so blueprints generated before this existed

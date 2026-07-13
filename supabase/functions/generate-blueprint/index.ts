@@ -97,6 +97,14 @@ const blueprintSchema = obj(
       },
       ['platform', 'format_label', 'why_it_works', 'retention_map'],
     ),
+    concept: obj(
+      {
+        premise: str,
+        your_scale: str,
+        translations: arr(obj({ theirs: str, yours: str }, ['theirs', 'yours'])),
+      },
+      ['premise', 'your_scale', 'translations'],
+    ),
     packaging: obj(
       {
         titles: arr(str),
@@ -158,6 +166,7 @@ const blueprintSchema = obj(
   },
   [
     'reference_read',
+    'concept',
     'packaging',
     'b_roll_stats',
     'hook_options',
@@ -194,6 +203,11 @@ VIRAL METHODOLOGY (apply to every field):
   2. Pattern interrupt: an unexpected visual, claim, or motion that breaks the feed's rhythm.
   3. Self-relevance: name the exact viewer ("if you do X") so they feel it is about them.
   4. Emotional arousal: provoke surprise, tension, desire, or mild outrage. High-arousal emotion drives shares.
+
+CONCEPT & ADAPTATION (decide the actual VIDEO first, then translate it to what the creator can really shoot):
+- premise: the core shootable idea for THIS video in 1 to 2 sentences, set in the creator's real world and niche, echoing the reference's WINNING mechanism (its stakes, its transformation, its payoff), not merely its format. Make it a concrete video someone would actually click, never a vague topic.
+- your_scale: the reference may be a huge production. State plainly and honestly how ONE person with a phone achieves the SAME effect at their scale. Never assume a team, a budget, locations, cast, or gear the creator does not have. The goal is to reproduce the reference's psychology simply.
+- translations: 2 to 4 pairs mapping a big element of the reference (theirs) to the achievable version (yours) that keeps the same effect, e.g. theirs "flies ten strangers to an island", yours "one visible personal challenge with a countdown timer on screen". Be specific and honest, never aspirational filler.
 
 PACKAGING (title + thumbnail, decide this FIRST): most short-form videos are won or lost on the title and the first-frame thumbnail BEFORE a single word is heard, so package the video before you write it. Build the packaging from the creator's real angle, vocabulary and the reference's proven title SHAPE.
 - titles: 5 scroll-stopping video titles, best first, each a SPECIFIC promise (not a topic). Use the creator's signature vocabulary and a different angle each. A title a random creator in this niche could reuse is a failure. No clickbait lies, no "you won't believe".
@@ -602,7 +616,8 @@ Deno.serve(async (req: Request) => {
 ${referenceBlock}
 
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
-- packaging: FIRST decide the title + thumbnail (the package that earns the click), built from the creator's angle, vocabulary and brand colors. Every hook and script beat must pay off that exact promise.
+- concept: FIRST nail the actual video premise adapted to the creator's world, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
+- packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, built from the creator's angle, vocabulary and brand colors. Every hook and script beat must pay off that exact promise.
 - ${fidelityRule}
 - ${toneRule}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.
