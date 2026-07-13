@@ -233,18 +233,19 @@ PRODUCTION SPRINT: compress filming, B-roll, caption/edit, and review into about
 FINAL CHECK (do this before returning): reread every hook and every script line against the CREATOR DNA — their vocabulary, hook patterns, point of view and enemy. If any line could belong to a generic creator in this niche, rewrite it until it is unmistakably this creator's. Confirm there are zero em or en dashes anywhere.`
 
 // --- Provider boundary: swap this one function to change LLMs -------------
-async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
-  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
-  // Bounded thinking by default: unbounded dynamic thinking was the single biggest
-  // cost driver of this call (~70%). 8192 is ample for a structured blueprint and
-  // keeps COGS predictable. Override via GEMINI_THINKING_BUDGET (0 = unbounded).
-  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '8192')
+// ONE model call with a hard timeout. Returns the JSON text or throws (timeout /
+// non-2xx / empty). Kept small so callModel can run it across an attempt ladder.
+async function callOnce(
+  apiKey: string,
+  system: string,
+  prompt: string,
+  model: string,
+  thinkBudget: number,
+  timeoutMs: number,
+): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
-
-  // Hard timeout so a hung model call can't leave credits spent-but-not-refunded.
-  // Gemini 3.x is a thinking model — give it real wall-clock headroom.
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 55_000)
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -255,23 +256,19 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
         systemInstruction: { parts: [{ text: system }] },
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         generationConfig: {
-          // Thinking model: budget must cover reasoning tokens + the large
-          // structured blueprint, or the JSON comes back truncated/empty.
-          // 0.8 (not 0.9): the #1 requirement is voice fidelity across every
-          // field; hook VARIETY now comes from the explicit "different angle per
-          // hook_pattern" instruction, not raw randomness that drifts off-voice.
+          // 0.8 (not 0.9): the #1 requirement is voice fidelity across every field;
+          // hook VARIETY comes from the explicit "different angle per hook_pattern"
+          // instruction, not raw randomness that drifts off-voice.
           temperature: 0.8,
           maxOutputTokens: 32768,
           responseMimeType: 'application/json',
           responseSchema: blueprintSchema,
-          // Speed lever: cap reasoning tokens so the thinking model doesn't
-          // over-deliberate. Off (dynamic thinking) unless GEMINI_THINKING_BUDGET
-          // is set, so this is a zero-risk default we can tune via a secret.
+          // Cap reasoning tokens so a thinking model doesn't over-deliberate past
+          // the wall-clock. 0 = unbounded/dynamic.
           ...(thinkBudget > 0 ? { thinkingConfig: { thinkingBudget: thinkBudget } } : {}),
         },
       }),
     })
-
     if (!res.ok) {
       const detail = await res.text()
       throw new Error(`Gemini ${res.status}: ${detail.slice(0, 300)}`)
@@ -284,6 +281,41 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
   } finally {
     clearTimeout(timer)
   }
+}
+
+// A blueprint must NOT fail just because one model call was slow or the provider
+// was briefly overloaded — that's a paying creator staring at "We hit a snag".
+// So we run an attempt ladder: the primary (quality) config first, then a FAST
+// fallback — a lighter reasoning budget on a quicker model — that reliably returns
+// inside the edge wall-clock. A good-enough blueprint always beats an error.
+async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
+  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
+  // Bounded thinking by default (unbounded dynamic thinking was ~70% of this call's
+  // cost + latency). Override via GEMINI_THINKING_BUDGET (0 = unbounded).
+  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '8192')
+  // The fast fallback model. Defaults to Gemini 2.5 Flash — same API key, much
+  // faster, rarely times out. Override with GEMINI_FALLBACK_MODEL.
+  const fallbackModel = Deno.env.get('GEMINI_FALLBACK_MODEL') ?? 'gemini-2.5-flash'
+
+  const attempts: Array<{ model: string; thinkBudget: number; timeoutMs: number }> = [
+    { model, thinkBudget, timeoutMs: 45_000 },
+    // Fallback: quicker model + light reasoning, so it lands well within the edge
+    // wall-clock even when the primary is slow/overloaded.
+    { model: fallbackModel, thinkBudget: Math.min(thinkBudget, 2048), timeoutMs: 38_000 },
+  ]
+
+  let lastErr: unknown
+  for (let i = 0; i < attempts.length; i++) {
+    const a = attempts[i]
+    try {
+      return await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs)
+    } catch (e) {
+      lastErr = e
+      console.error(`generate-blueprint: model attempt ${i + 1}/${attempts.length} (${a.model}) failed:`, e instanceof Error ? e.message : e)
+      // fall through to the next, faster attempt
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Model call failed')
 }
 // -------------------------------------------------------------------------
 
