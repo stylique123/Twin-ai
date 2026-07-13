@@ -178,6 +178,10 @@ export interface Generation {
   // (storage paths in the private `edits` bucket; sign to display/play).
   edit_path?: string | null
   thumb_path?: string | null
+  // On-demand AI cover image rendered from the packaging brief (private `edits`
+  // bucket path; sign to display). Only set when the creator taps "Generate
+  // thumbnail" — never auto-generated, so it costs nothing unless asked for.
+  ai_thumb_path?: string | null
   // Set by the worker so Refine can re-open this exact edit anywhere: the raw
   // take (the re-render source) + its Edit Decision List path.
   take_path?: string | null
