@@ -14,7 +14,7 @@ import ScreenLayout from '../../components/v2/ScreenLayout'
 import { Card, PrimaryButton, RecommendedBadge, ChangeButton, Skeleton } from '../../components/v2/Primitives'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import SceneCard from '../../components/v2/SceneCard'
-import { getGeneration } from '../../lib/api'
+import { getGeneration, generateThumbnail, signEditUrls } from '../../lib/api'
 import { buildTimeline } from '../../lib/timelineAdapter'
 import { loadTimeline, patchScene, saveTimeline } from '../../lib/timelineApi'
 import type { SceneTimeline, Scene } from '../../lib/timeline'
@@ -29,6 +29,33 @@ export default function V2Plan() {
   const [editScene, setEditScene] = useState<Scene | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [loadNonce, setLoadNonce] = useState(0) // bump to retry the load
+  // On-demand AI thumbnail: signed URL to show, plus busy/error for the tap.
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+  const [thumbBusy, setThumbBusy] = useState(false)
+  const [thumbErr, setThumbErr] = useState<string | null>(null)
+
+  // If this generation already has a rendered thumbnail, sign + show it (free —
+  // no regeneration). Runs whenever the generation loads/changes.
+  useEffect(() => {
+    const p = gen?.ai_thumb_path
+    if (!p) { setThumbUrl(null); return }
+    let alive = true
+    signEditUrls([p]).then((m) => { if (alive) setThumbUrl(m[p] ?? null) }).catch(() => {})
+    return () => { alive = false }
+  }, [gen?.ai_thumb_path])
+
+  const genThumb = async () => {
+    setThumbErr(null)
+    setThumbBusy(true)
+    try {
+      const r = await generateThumbnail(id)
+      setThumbUrl(r.url)
+    } catch (e) {
+      setThumbErr(e instanceof Error ? e.message : 'Could not generate the thumbnail.')
+    } finally {
+      setThumbBusy(false)
+    }
+  }
 
   useEffect(() => {
     let alive = true
@@ -149,6 +176,18 @@ export default function V2Plan() {
           <p className="text-sand/85"><span className="text-sand/60">Colours: </span>{pkg.thumbnail.colors}</p>
         </div>
       )}
+      {/* On-demand AI render of the thumbnail. Costs nothing until tapped. */}
+      <div className="mt-3">
+        {thumbUrl && <img src={thumbUrl} alt="AI-generated thumbnail" className="mb-2 w-full rounded-xl border border-white/10" />}
+        <button
+          onClick={genThumb}
+          disabled={thumbBusy}
+          className="w-full rounded-xl border border-white/15 bg-white/10 py-2.5 text-sm font-semibold text-cream transition hover:bg-white/20 disabled:opacity-60"
+        >
+          {thumbBusy ? 'Rendering your thumbnail…' : thumbUrl ? 'Regenerate thumbnail' : 'Generate thumbnail image'}
+        </button>
+        {thumbErr && <p className="mt-1 text-xs text-coral">{thumbErr}</p>}
+      </div>
     </Card>
   ) : null
 

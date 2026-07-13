@@ -517,6 +517,16 @@ export async function signTakeUrl(path: string): Promise<string | null> {
   return data.signedUrl
 }
 
+// On-demand: render an AI cover image from this generation's packaging brief.
+// Server-side (paid image model), rate-limited, and only ever called on a tap —
+// so it costs nothing unless the creator asks. Returns a signed URL to display
+// plus the stored path (persisted on the generation so it re-shows for free).
+export async function generateThumbnail(generationId: string): Promise<{ url: string; path: string }> {
+  const { data, error } = await supabase.functions.invoke('generate-thumbnail', { body: { generation_id: generationId } })
+  if (error) throw new Error(await readInvokeError(error))
+  return data as { url: string; path: string }
+}
+
 // ---- Dashboard (Phase 7: real stats from data we already own) ------------
 
 // ONE lifecycle, derived from the generation (the "remix") — never from the jobs
