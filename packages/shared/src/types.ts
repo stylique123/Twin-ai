@@ -41,6 +41,12 @@ export interface VoiceProfile {
   pacing: string
   hook_style: string
   hook_patterns?: string[]
+  // The creator's PLAYBOOK beyond their words: the recurring video FORMATS/archetypes
+  // they make, and how they package (title + thumbnail). Captured on newer scans so
+  // the blueprint can adapt one of THEIR real formats instead of a generic one.
+  formats?: string[]
+  title_style?: string
+  thumbnail_style?: string
   pov?: string[]
   enemy?: string
   vocabulary: string[]

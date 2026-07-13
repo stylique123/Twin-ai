@@ -424,6 +424,7 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
         </Labeled>
         <ChipList label="Your point of view" items={vp.pov ?? []} onChange={(v) => setList('pov', v)} />
         <ChipList label="Hook patterns" items={vp.hook_patterns ?? []} onChange={(v) => setList('hook_patterns', v)} />
+        <ChipList label="Your video formats" items={vp.formats ?? []} onChange={(v) => setList('formats', v)} />
         <p className="text-xs text-stone">We’ll sharpen this from how you actually talk on camera within a few minutes — your spoken voice is the strongest signal.</p>
       </div>
 

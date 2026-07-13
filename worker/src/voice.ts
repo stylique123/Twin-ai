@@ -94,11 +94,14 @@ const postsSchema = obj(
     dos: arr(str),
     donts: arr(str),
     sample_hooks: arr(str),
+    formats: arr(str), // 3-5 recurring VIDEO archetypes/formats this creator makes
+    title_style: str, // their title formula
+    thumbnail_style: str, // their thumbnail conventions
     // The creator's brand palette as #RRGGBB hex — mirrors the edge function's
     // synthesizeVoice schema so TikTok voices get the same brand_kit auto-fill.
     brand_colors: obj({ primary: str, secondary: str, highlight: str }, []),
   },
-  ['summary', 'niche', 'sub_niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'hook_patterns', 'vocabulary', 'recurring_ctas', 'pov', 'enemy', 'dos', 'donts', 'sample_hooks'],
+  ['summary', 'niche', 'sub_niche', 'audience', 'audience_pain', 'dream_outcome', 'offer', 'tone', 'pacing', 'hook_style', 'hook_patterns', 'formats', 'title_style', 'thumbnail_style', 'vocabulary', 'recurring_ctas', 'pov', 'enemy', 'dos', 'donts', 'sample_hooks'],
 )
 
 const POSTS_SYSTEM = `You are TwinAI's Brand-DNA engine. From a creator's recent posts you infer how THEY sound, so we can later write new scripts in their exact voice.
@@ -115,6 +118,7 @@ Hard rules:
 - vocabulary = 4-8 actual words/phrases they lean on, lifted from their real captions. sample_hooks = 3 fresh hooks written the way THEY would write one, each drawing on a DIFFERENT hook_pattern and using their vocabulary.
 - dos/donts = practical guardrails for staying on-voice. Keep every string short.
 - COMPLETENESS IS MANDATORY. This profile is the ONLY thing we use to write every future script in this creator's voice, so it must be COMPLETE — never return an empty array or a blank/"unspecified"/"n/a" string for any field. Fill EVERY field: give at least 3 hook_patterns, at least 2 pov beliefs, a concrete enemy, and a specific audience, audience_pain, dream_outcome, offer and sub_niche. When the captions are thin, INFER each of these honestly from the niche, bio, hashtags, vocabulary and what similar creators in this exact space do — a confident, specific inference is far more useful than a blank. The only thing you may not invent is a false factual claim or a stance the content actively contradicts; a plausible on-niche stance is expected, not optional.
+- formats = the 3 to 5 recurring VIDEO archetypes this creator actually makes (their playbook), named concretely (e.g. "before/after transformation", "myth-busting listicle", "reaction teardown"). title_style = their title/caption FORMULA in one line. thumbnail_style = their thumbnail conventions in one line (composition, big text, expression, colors). These let us adapt ONE of their real formats and match their packaging, not a generic one.
 - brand_colors = this creator's brand palette as #RRGGBB hex: primary (their dominant brand color), secondary (a supporting color), highlight (the punchy accent best for caption emphasis). When sample post images are attached, READ the palette straight from the imagery — the real, recurring colors you actually SEE across their posts (backgrounds, graphics, wardrobe, product, logo), not a guess. Pick the colors that define their look, not incidental ones (skin tones, plain white/black unless that truly IS the brand). With no images, infer from niche, aesthetic and visual cues in the captions/bio. Return real, distinct, legible hex values (the highlight must read clearly as bright caption text on video). If you truly cannot tell, return an empty object.`
 
 // Deterministic safety net (mirrors the edge _shared/dna.ts) so a synthesized
@@ -142,6 +146,7 @@ function enrichVoiceProfile(raw: Record<string, unknown>, handle: string, platfo
     dos: asArr(raw.dos),
     donts: asArr(raw.donts),
     sample_hooks: sampleHooks,
+    formats: asArr(raw.formats),
   }
 }
 
