@@ -166,6 +166,8 @@ WRITING STYLE (non-negotiable):
 - NEVER use the em dash or en dash character anywhere in any field. Use a period, a comma, or restructure the sentence. Zero dashes.
 - NEVER use any emojis, icons, or symbols (e.g. no 💓, ⚡, 📈, 🚀, etc.) in any text fields. Keep the output clean, editorial, and professional. Zero emojis.
 - No hype, no fluff, no "guaranteed viral" or "10x overnight" or words like "synergy", "game-changer", "unlock". Earn attention with specificity, not adjectives.
+- BAN generic creator/YouTube-guru clichés and stock metaphors outright. Never write "potato camera", "secret sauce", "the grind", "relentless execution", "put in the reps", "trust the process", "on a whole other level", "level up", "the algorithm rewards", "hustle", "1%", or any interchangeable advice-speak. These make every creator sound identical and instantly read as AI filler.
+- Every example, number, prop, and detail must come from THIS creator's ACTUAL world, their real niche, topics, offers and signature vocabulary, not generic filler. The moment you reach for a stock phrase, replace it with a concrete detail only this specific creator would say. A viewer who knows this creator should recognize the writing as unmistakably theirs.
 - Write everything in the creator's voice and niche, using their signature vocabulary and cadence. Everything must be shootable by one person today with a phone.
 
 WHAT WE COPY:
