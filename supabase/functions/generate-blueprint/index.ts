@@ -97,6 +97,16 @@ const blueprintSchema = obj(
       },
       ['platform', 'format_label', 'why_it_works', 'retention_map'],
     ),
+    packaging: obj(
+      {
+        titles: arr(str),
+        thumbnail: obj(
+          { concept: str, text_overlay: str, expression: str, composition: str, colors: str },
+          ['concept', 'text_overlay', 'expression', 'composition', 'colors'],
+        ),
+      },
+      ['titles', 'thumbnail'],
+    ),
     b_roll_stats: obj(
       {
         original_b_roll_count: str,
@@ -148,6 +158,7 @@ const blueprintSchema = obj(
   },
   [
     'reference_read',
+    'packaging',
     'b_roll_stats',
     'hook_options',
     'script',
@@ -183,6 +194,11 @@ VIRAL METHODOLOGY (apply to every field):
   2. Pattern interrupt: an unexpected visual, claim, or motion that breaks the feed's rhythm.
   3. Self-relevance: name the exact viewer ("if you do X") so they feel it is about them.
   4. Emotional arousal: provoke surprise, tension, desire, or mild outrage. High-arousal emotion drives shares.
+
+PACKAGING (title + thumbnail, decide this FIRST): most short-form videos are won or lost on the title and the first-frame thumbnail BEFORE a single word is heard, so package the video before you write it. Build the packaging from the creator's real angle, vocabulary and the reference's proven title SHAPE.
+- titles: 5 scroll-stopping video titles, best first, each a SPECIFIC promise (not a topic). Use the creator's signature vocabulary and a different angle each. A title a random creator in this niche could reuse is a failure. No clickbait lies, no "you won't believe".
+- thumbnail: the frame that earns the tap. Give: concept (the single clear visual idea in one line), text_overlay (the 2 to 4 BIG words burned on the thumbnail, readable at a glance, never a full sentence), expression (the creator's exact face that fits the promise), composition (subject placement, framing and any prop, shootable on a phone), and colors (the treatment; if brand colors are supplied in CREATOR DNA, use them for the text and background so it is on-brand).
+- The title and thumbnail must promise the SAME thing the hook and script pay off. Package first, then the script delivers on it.
 
 HOOKS (the single most important field):
 - Derive hooks from the CREATOR'S OWN DNA and best-performing patterns supplied below (their hook_style, signature vocabulary, recurring angles), fused with the reference's proven hook SHAPE. Hooks must sound like this creator on their best day, not generic copywriting.
@@ -586,6 +602,7 @@ Deno.serve(async (req: Request) => {
 ${referenceBlock}
 
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
+- packaging: FIRST decide the title + thumbnail (the package that earns the click), built from the creator's angle, vocabulary and brand colors. Every hook and script beat must pay off that exact promise.
 - ${fidelityRule}
 - ${toneRule}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.

@@ -98,6 +98,35 @@ export default function V2Plan() {
 
   const hookOptions = gen?.blueprint?.hook_options ?? []
 
+  // PACKAGING — the title + thumbnail that earn the click, shown FIRST because
+  // that's the order real creators work in (package, then produce). Hidden for
+  // older blueprints generated before packaging existed.
+  const pkg = gen?.blueprint?.packaging
+  const packagingCard = pkg?.titles?.length ? (
+    <Card className="border border-amber/25 bg-amber/[0.06]">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-amber">Title &amp; thumbnail · your package</div>
+      <p className="text-[11px] text-sand/60">Recommended title</p>
+      <p className="text-lg font-bold leading-snug text-cream">{pkg.titles[0]}</p>
+      {pkg.titles.length > 1 && (
+        <div className="mt-2 space-y-1">
+          {pkg.titles.slice(1).map((t, i) => (
+            <p key={i} className="text-sm text-sand/80">{t}</p>
+          ))}
+        </div>
+      )}
+      {pkg.thumbnail && (
+        <div className="mt-4 space-y-1.5 rounded-xl border border-white/10 bg-white/[0.03] p-3 text-sm">
+          <p className="text-[11px] uppercase tracking-wide text-sand/60">Thumbnail to shoot</p>
+          <p className="text-cream"><span className="text-sand/60">Big text: </span>“{pkg.thumbnail.text_overlay}”</p>
+          <p className="text-sand/85"><span className="text-sand/60">Shot: </span>{pkg.thumbnail.concept}</p>
+          <p className="text-sand/85"><span className="text-sand/60">Your face: </span>{pkg.thumbnail.expression}</p>
+          <p className="text-sand/85"><span className="text-sand/60">Framing: </span>{pkg.thumbnail.composition}</p>
+          <p className="text-sand/85"><span className="text-sand/60">Colours: </span>{pkg.thumbnail.colors}</p>
+        </div>
+      )}
+    </Card>
+  ) : null
+
   // Shared hook + scene-list content, reused by both the mobile single column and
   // the desktop scrollable pane.
   const hookCard = (
@@ -133,6 +162,7 @@ export default function V2Plan() {
           onBack={() => nav('/v2')}
           cta={<div className="grid grid-cols-2 gap-2">{recordCta}{uploadCta}</div>}
         >
+          {packagingCard}
           {hookCard}
           <div className="text-sm font-semibold text-sand/70 pt-1">Your scenes</div>
           {sceneList}
@@ -151,6 +181,7 @@ export default function V2Plan() {
         </div>
         <div className="mx-auto flex w-full max-w-5xl flex-1 gap-10 px-8 pb-8 pt-4">
           <div className="min-w-0 flex-1 space-y-4 overflow-y-auto pb-4">
+            {packagingCard}
             {hookCard}
             <div className="text-sm font-semibold text-sand/70 pt-1">Your scenes</div>
             {sceneList}
