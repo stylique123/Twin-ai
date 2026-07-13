@@ -98,7 +98,12 @@ function HandleStep({ onBuilding }: { onBuilding: () => void }) {
     if (!handle.trim()) return setErr('Paste your handle or profile link first.')
     setBusy(true)
     try {
-      const res = await startDna(handle.trim(), platform)
+      // `replace: true` — onboarding is a SINGLE voice slot. If the creator already
+      // started a scan (e.g. picked the wrong platform, tapped Back within a second),
+      // this repoints that same slot to the new handle/platform instead of creating a
+      // second voice or hitting the "you already have a voice" / brand-limit wall. So
+      // Back → choose again → Build always works, and no orphan voices pile up.
+      const res = await startDna(handle.trim(), platform, false, true)
       setActiveVoiceId(res.brand_voice_id)
       activePlatform = platform
       onBuilding()
@@ -310,8 +315,13 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
 // --- Step 3: confirm / edit the voice in one tap ---------------------------
 function ConfirmStep({ onDone }: { onDone: () => void }) {
   const [vp, setVp] = useState<VoiceProfile | null>(activeProfile)
-  const [audience, setAudience] = useState('')
-  const [product, setProduct] = useState('')
+  // Prefill "who you're talking to" and "what you sell" from what the scan ACTUALLY
+  // inferred (audience / offer) — the DNA extracts these, so they shouldn't show
+  // empty. "Your goal" is deliberately NOT prefilled: a creator's business goal
+  // isn't something we can read from their posts, so we leave it blank and let them
+  // state it rather than fill it with a guess. All stay editable.
+  const [audience, setAudience] = useState(activeProfile?.audience ?? '')
+  const [product, setProduct] = useState(activeProfile?.offer ?? '')
   const [goal, setGoal] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)

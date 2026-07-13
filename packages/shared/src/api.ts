@@ -764,9 +764,12 @@ export async function getBrandStats(brandVoiceId: string): Promise<BrandStats | 
 
 // `refresh` re-scans the caller's OWN existing voice (fresh stats + sharper
 // profile) without hitting the "you already have a voice" wall or the cache.
-export async function startDna(handle: string, platform: Platform, refresh = false): Promise<StartDnaResult> {
+// `replace` (onboarding only) repoints the user's single voice slot to a NEW
+// handle/platform — so backing out of a scan and retrying never traps them on
+// the one-voice limit or the "you already have a voice" wall.
+export async function startDna(handle: string, platform: Platform, refresh = false, replace = false): Promise<StartDnaResult> {
   const { data, error } = await supabase.functions.invoke('start-dna', {
-    body: { handle, platform, make_default: true, refresh },
+    body: { handle, platform, make_default: true, refresh, replace },
   })
   if (error) throw new Error(await readInvokeError(error))
   return data as StartDnaResult

@@ -34,7 +34,7 @@ Deno.serve(async (req: Request) => {
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
-  let body: { handle?: string; platform?: string; make_default?: boolean; refresh?: boolean }
+  let body: { handle?: string; platform?: string; make_default?: boolean; refresh?: boolean; replace?: boolean }
   try {
     body = await req.json()
   } catch {
@@ -48,6 +48,12 @@ Deno.serve(async (req: Request) => {
   // current voice exactly as it was (dna-poll/worker won't downgrade a voice that
   // still has a usable profile).
   const isRefresh = body.refresh === true
+  // A REPLACE (onboarding only) repoints the creator's SINGLE voice slot to a new
+  // handle/platform. When someone starts a scan, then taps Back (often within a
+  // second, or after picking the wrong platform) and re-picks, we must not create a
+  // second voice or wall them behind "you already have a voice" / the brand limit —
+  // we reuse their one slot. Guarded to the classic onboarding case (≤1 voice).
+  const isReplace = body.replace === true
 
   const handle = normalizeHandle(body.handle ?? '')
   if (!handle) return json({ error: 'A handle is required.' }, 400)
@@ -80,17 +86,18 @@ Deno.serve(async (req: Request) => {
   // Independent reads — run them concurrently instead of one-after-another.
   const [{ data: profile }, { data: existing }] = await Promise.all([
     admin.from('profiles').select('plan').eq('id', user.id).single(),
-    admin.from('brand_voices').select('id, handle, platform, status').eq('owner_id', user.id),
+    admin.from('brand_voices').select('id, handle, platform, status, is_default').eq('owner_id', user.id),
   ])
   const limit = BRAND_LIMIT[profile?.plan ?? 'free'] ?? 1
   const sameHandle = (existing ?? []).find((v) => v.handle === handle && v.platform === platform)
   const activeCount = (existing ?? []).filter((v) => v.status !== 'failed').length
+  const defaultVoice = (existing ?? []).find((v) => v.is_default) ?? (existing ?? [])[0]
 
   let voiceId: string
   if (sameHandle) {
-    if (sameHandle.status === 'ready' && !isRefresh) {
+    if (sameHandle.status === 'ready' && !isRefresh && !isReplace) {
       // Already have a working voice for this exact handle — nothing to rebuild.
-      // (An explicit refresh is allowed through below to re-scan it.)
+      // (An explicit refresh/replace is allowed through below to re-scan it.)
       return json({ error: `You already have a voice for @${handle} on ${platform}.`, brand_voice_id: sameHandle.id }, 409)
     }
     // Retry of a failed/stuck scan, OR an explicit refresh of a ready voice: reuse
@@ -102,6 +109,19 @@ Deno.serve(async (req: Request) => {
       .update({ status: 'building', error: null, is_default: makeDefault })
       .eq('id', sameHandle.id)
     voiceId = sameHandle.id
+  } else if (isReplace && defaultVoice && (existing ?? []).length <= 1) {
+    // Onboarding redo: the creator abandoned a scan (wrong platform, or Back within
+    // a second) and is now scanning a DIFFERENT handle. Repoint their single slot to
+    // the new handle/platform and start clean — clearing the abandoned profile/stats/
+    // kit so the old (wrong) handle can never linger as their voice, and never
+    // tripping the brand-voice limit. Old scan jobs are dropped so dna-poll can't
+    // resurrect the stale run.
+    await admin.from('jobs').delete().eq('owner_id', user.id).contains('payload', { brand_voice_id: defaultVoice.id })
+    await admin
+      .from('brand_voices')
+      .update({ handle, platform, label: `@${handle}`, status: 'building', error: null, is_default: makeDefault, profile: null, stats: null, brand_kit: null })
+      .eq('id', defaultVoice.id)
+    voiceId = defaultVoice.id
   } else {
     if (activeCount >= limit) {
       return json(

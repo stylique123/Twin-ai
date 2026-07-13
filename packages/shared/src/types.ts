@@ -31,6 +31,12 @@ export interface VoiceProfile {
   summary: string
   niche: string
   sub_niche?: string
+  // The scan infers these from the posts/bio/niche; they were produced by the DNA
+  // synthesis all along but weren't typed, so onboarding couldn't prefill them.
+  audience?: string
+  audience_pain?: string
+  dream_outcome?: string
+  offer?: string
   tone: string
   pacing: string
   hook_style: string
@@ -55,8 +61,10 @@ export interface BrandKit {
   palette?: { primary?: string; secondary?: string; highlight?: string }
   // How `palette` was set. 'manual' = the creator hand-picked it (sacred — a re-scan
   // never overwrites it); 'auto' = learned from their DNA imagery, so a fresh scan
-  // may refresh it with better data. Absent on legacy rows → treated as 'auto'.
-  palette_source?: 'auto' | 'manual'
+  // may refresh it with better data; 'pending' = a scan tried but couldn't read any
+  // colors (e.g. Instagram blocked the images) — the UI prompts the creator to set
+  // them by hand instead of showing a fake palette. Absent on legacy rows → 'auto'.
+  palette_source?: 'auto' | 'manual' | 'pending'
   logo_path?: string | null
 }
 

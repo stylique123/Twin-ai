@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus, Users, Copy, Link2 } from 'lucide-react'
+import { User, Sparkles, Check, Loader2, LogOut, ArrowUpRight, ShieldCheck, Pencil, CreditCard, X, RefreshCw, Plus, Users, Copy, Link2, Info } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
@@ -345,6 +345,16 @@ export default function Settings() {
                 </div>
                 <div>
                   <label className="eyebrow mb-2 block">Your brand colors <span className="font-normal normal-case text-stone">— your real palette, in hex</span></label>
+                  {/* Honest fallback: the scan tried to read the palette from the
+                      creator's posts but couldn't (e.g. Instagram blocks the images).
+                      We say so plainly and invite them to set the colours here, rather
+                      than showing a fabricated default. */}
+                  {brandKit.palette_source === 'pending' && (
+                    <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber/25 bg-amber/[0.06] px-3 py-2.5 text-[12px] text-sand">
+                      <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber" />
+                      <span>We couldn’t read your brand colours from your posts automatically — Instagram often blocks that. No problem: set them by hand below, or upload your logo, and they’ll be used everywhere.</span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-5">
                     {([['highlight', 'Caption highlight'], ['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => {
                       // Only show a swatch for a colour the creator has ACTUALLY set

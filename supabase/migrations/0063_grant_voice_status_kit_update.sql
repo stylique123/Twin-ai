@@ -1,0 +1,12 @@
+-- The onboarding "This is me, enter the studio" save (saveVoiceProfile) writes
+-- profile + status + error, and the Settings brand-kit / manual-palette save writes
+-- brand_kit. But `authenticated` only had column-level UPDATE grants for
+-- is_default / label / profile, so Postgres rejected those updates with
+-- "permission denied for column status" — surfaced to the user as
+-- "Could not save your voice" (and silent brand-kit save failures in Settings).
+--
+-- Grant the columns the client legitimately updates on its OWN rows. The
+-- owner-only UPDATE RLS policy still confines every write to the caller's rows,
+-- and generate-blueprint gates on profile CONTENT (niche/tone/summary), not on a
+-- client-set status, so a client flipping status can't fabricate a usable voice.
+grant update (status, error, brand_kit) on public.brand_voices to authenticated;
