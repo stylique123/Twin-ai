@@ -98,6 +98,31 @@ export default function V2Plan() {
 
   const hookOptions = gen?.blueprint?.hook_options ?? []
 
+  // CONCEPT — the actual video idea + how to pull it off at the creator's real
+  // scale. Shown first: concept, then package, then produce. Hidden for older
+  // blueprints made before concept existed.
+  const concept = gen?.blueprint?.concept
+  const conceptCard = concept?.premise ? (
+    <Card className="border border-teal/25 bg-teal/[0.06]">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-teal">Your concept</div>
+      <p className="text-base font-semibold leading-snug text-cream">{concept.premise}</p>
+      {concept.your_scale && (
+        <p className="mt-2 text-sm text-sand/85"><span className="text-sand/60">Pull it off solo: </span>{concept.your_scale}</p>
+      )}
+      {concept.translations?.length ? (
+        <div className="mt-3 space-y-1.5">
+          {concept.translations.map((t, i) => (
+            <div key={i} className="text-sm leading-snug">
+              <span className="text-sand/60">{t.theirs}</span>
+              <span className="text-teal"> → </span>
+              <span className="text-cream">{t.yours}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </Card>
+  ) : null
+
   // PACKAGING — the title + thumbnail that earn the click, shown FIRST because
   // that's the order real creators work in (package, then produce). Hidden for
   // older blueprints generated before packaging existed.
@@ -162,6 +187,7 @@ export default function V2Plan() {
           onBack={() => nav('/v2')}
           cta={<div className="grid grid-cols-2 gap-2">{recordCta}{uploadCta}</div>}
         >
+          {conceptCard}
           {packagingCard}
           {hookCard}
           <div className="text-sm font-semibold text-sand/70 pt-1">Your scenes</div>
@@ -181,6 +207,7 @@ export default function V2Plan() {
         </div>
         <div className="mx-auto flex w-full max-w-5xl flex-1 gap-10 px-8 pb-8 pt-4">
           <div className="min-w-0 flex-1 space-y-4 overflow-y-auto pb-4">
+            {conceptCard}
             {packagingCard}
             {hookCard}
             <div className="text-sm font-semibold text-sand/70 pt-1">Your scenes</div>
