@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, getJob, logEvent } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, getJob, logEvent, generateThumbnail, signEditUrls } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import type { Generation, EditDecisionList } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -184,6 +184,24 @@ export default function Result() {
   const [approved, setApproved] = useState(false)
   const [mobileTab, setMobileTab] = useState<'script' | 'strategy' | 'spec' | 'publish'>('script')
   const [activeTab, setActiveTab] = useState<'strategy' | 'spec' | 'publish'>('strategy')
+  // On-demand AI thumbnail (parity with the V2 plan): signed URL + busy/error.
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null)
+  const [thumbBusy, setThumbBusy] = useState(false)
+  const [thumbErr, setThumbErr] = useState<string | null>(null)
+  useEffect(() => {
+    const p = gen?.ai_thumb_path
+    if (!p) { setThumbUrl(null); return }
+    let live = true
+    signEditUrls([p]).then((m) => { if (live) setThumbUrl(m[p] ?? null) }).catch(() => {})
+    return () => { live = false }
+  }, [gen?.ai_thumb_path])
+  const genThumb = async () => {
+    if (!gen) return
+    setThumbErr(null); setThumbBusy(true)
+    try { const r = await generateThumbnail(gen.id); setThumbUrl(r.url) }
+    catch (e) { setThumbErr(e instanceof Error ? e.message : 'Could not generate the thumbnail.') }
+    finally { setThumbBusy(false) }
+  }
   // Agency approval workflow: agencies mark a blueprint client-approved before it's
   // recorded/posted. Soft status (no hard block) so solo creators are unaffected.
   const isAgency = profile?.plan === 'agency'
@@ -446,6 +464,15 @@ export default function Result() {
                       <p className="text-sand/85"><span className="text-stone">Colours: </span>{b.packaging!.thumbnail.colors}</p>
                     </div>
                   )}
+                  {/* On-demand AI render — costs nothing until tapped. */}
+                  <div className="mt-3">
+                    {thumbUrl && <img src={thumbUrl} alt="AI-generated thumbnail" className="mb-2 w-full rounded-xl border border-white/10" />}
+                    <button onClick={genThumb} disabled={thumbBusy}
+                      className="w-full rounded-xl border border-white/15 bg-white/10 py-2.5 text-sm font-semibold text-cream transition hover:bg-white/20 disabled:opacity-60">
+                      {thumbBusy ? 'Rendering your thumbnail…' : thumbUrl ? 'Regenerate thumbnail' : 'Generate thumbnail image'}
+                    </button>
+                    {thumbErr && <p className="mt-1 text-xs text-coral">{thumbErr}</p>}
+                  </div>
                 </div>
               )}
             </div>
