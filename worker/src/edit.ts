@@ -348,6 +348,24 @@ const CAP_STYLES: Record<string, string> = {
 }
 export const CAPTION_STYLES = Object.keys(CAP_STYLES)
 
+// Map an arbitrary caption/editing signal (a brand-kit id, the blueprint's
+// caption_packet.caption_style, or the creator's DNA editing_style prose) to a
+// REAL render preset. Free text like "big bold Anton, 2 words per screen" used to
+// silently fall through to bold-pop; this makes the creator's editing signature
+// actually pick the caption look. Returns undefined when there is no usable signal
+// so callers can fall back in priority order.
+export function normalizeCaptionStyle(raw?: string): string | undefined {
+  if (!raw) return undefined
+  if (CAP_STYLES[raw]) return raw // already a valid preset id
+  const t = raw.toLowerCase()
+  if (/karaoke|word.?by.?word|per.?word|one word at a time|highlight each/.test(t)) return 'karaoke-word'
+  if (/box|background behind|rounded box|bg behind|subtitle bar/.test(t)) return 'boxed'
+  if (/\btop\b|upper third|near the top|top.?third/.test(t)) return 'top'
+  if (/clean|minimal|simple|subtle|understated|lower.?third|light(er)? weight/.test(t)) return 'clean-lower'
+  if (/bold|pop|punch|impact|big|thick|hormozi|anton|loud|high.?energy/.test(t)) return 'bold-pop'
+  return undefined
+}
+
 // Single-layer captions: 3-word groups, the active word pops (color + animated
 // scale), optional emoji. One Dialogue per word window so exactly ONE caption
 // shows at a time (no overlap). `style` picks the preset; `variation` the color.
@@ -824,7 +842,14 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     // Priority: a per-video Refine choice (edl) > the workspace brand kit > the
     // Director's AI pick > default. So a brand kit themes every new edit, but the
     // creator can still override one video in Refine.
-    const captionStyle = edl?.captions.style ?? opts.captionStyle ?? plan?.caption_style ?? 'bold-pop'
+    // Normalize every source to a REAL preset so a free-text signal (blueprint
+    // caption_packet / DNA editing_style) actually themes the captions instead of
+    // silently collapsing to bold-pop. Priority: Refine choice > brand kit / DNA
+    // signal (opts) > the blueprint's plan > default.
+    const captionStyle = (edl?.captions.style && CAP_STYLES[edl.captions.style] ? edl.captions.style : undefined)
+      ?? normalizeCaptionStyle(opts.captionStyle)
+      ?? normalizeCaptionStyle(plan?.caption_style)
+      ?? 'bold-pop'
     // Caption fallback — speech detection found NO or only SPARSE words (silent take,
     // music, b-roll, noisy/garbled audio, unsupported language). Fewer than ~0.7
     // words/sec is not real continuous speech, so burn the creator's SCRIPT as captions

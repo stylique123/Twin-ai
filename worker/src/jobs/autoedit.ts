@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import { db, updateJobProgress, type Job } from '../db.js'
 import { env } from '../env.js'
-import { autoEdit, applyWatermark, applyLogo } from '../edit.js'
+import { autoEdit, applyWatermark, applyLogo, normalizeCaptionStyle } from '../edit.js'
 import type { EditDecisionList } from '../edl.js'
 import { downloadObject, uploadObject, signObject } from '../storage.js'
 import { isSceneTimeline } from '../timeline.js'
@@ -154,9 +154,14 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
         // Pull the workspace brand kit + voice once: the kit themes the caption
         // style/color on new edits; the voice pacing tunes the energy default.
         let pacing = ''
+        let editingStyle = ''
+        // The blueprint's caption spec (caption_packet, or the legacy submagic_packet).
+        const capPacket = ((bp?.caption_packet ?? bp?.submagic_packet) as { caption_style?: string; pacing?: string } | undefined) ?? undefined
         if (gen?.brand_voice_id) {
           const { data: bv } = await db.from('brand_voices').select('profile, brand_kit').eq('id', gen.brand_voice_id).maybeSingle()
-          pacing = (bv?.profile as { pacing?: string } | null)?.pacing ?? ''
+          const vprof = bv?.profile as { pacing?: string; editing_style?: string } | null
+          pacing = vprof?.pacing ?? ''
+          editingStyle = vprof?.editing_style ?? ''
           const kit = bv?.brand_kit as { caption_style?: string; color?: number; palette?: { highlight?: string }; logo_path?: string } | null
           if (kit?.caption_style) brandStyle = kit.caption_style
           if (typeof kit?.color === 'number' && !Number.isFinite(payload.variation as number)) brandColor = kit.color
@@ -164,11 +169,16 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           if (kit?.palette?.highlight && !Number.isFinite(payload.variation as number)) brandHighlightHex = kit.palette.highlight
           if (kit?.logo_path) brandLogoPath = kit.logo_path
         }
+        // Phase 4 — editing signature: when the creator hasn't hand-picked a caption
+        // style in their brand kit, derive it from their DNA editing_style + the
+        // blueprint's caption_packet, so the render matches how THEY edit. A manual
+        // kit choice (set above) always wins; this only fills the gap.
+        if (!brandStyle) brandStyle = normalizeCaptionStyle(capPacket?.caption_style) ?? normalizeCaptionStyle(editingStyle)
         // Edit style the creator picked takes priority over the DNA-derived energy.
         const style = (gen?.edit_style as string | undefined) ?? ''
         if (style === 'punchy') energy = 'high'
         else if (style === 'clean' || style === 'cinematic') energy = 'calm'
-        else if (/fast|quick|rapid|punch|energetic|aggressive|hype|high.?energy|snappy|no dead air/i.test(`${pacing} ${fmt}`)) {
+        else if (/fast|quick|rapid|punch|energetic|aggressive|hype|high.?energy|snappy|no dead air/i.test(`${pacing} ${fmt} ${editingStyle} ${capPacket?.pacing ?? ''}`)) {
           energy = 'high'
         }
       } catch {
