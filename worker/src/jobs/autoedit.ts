@@ -386,8 +386,10 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // Per-job cost signal: wall-time + the output length, so blended $/video and
     // margin can be tracked per cohort. Best-effort — never affects the render.
     const renderMs = Date.now() - t0
-    await db.from('ops_events')
-      .insert({ kind: 'render_cost', severity: 'info', user_id: job.owner_id, detail: { generation_id: payload.generation_id ?? null, render_ms: renderMs, output_sec: durationSec, watermarked: applyWm } })
+    // Telemetry, not an alert: one row PER RENDER was drowning the genuine
+    // error/critical rows in ops_events. analytics_events is the volume table.
+    await db.from('analytics_events')
+      .insert({ user_id: job.owner_id, event: 'render_cost', props: { generation_id: payload.generation_id ?? null, render_ms: renderMs, output_sec: durationSec, watermarked: applyWm } })
       .then(() => {}, () => {})
 
     return { output_path: outputPath, output_url: finalUrl, duration_sec: durationSec, words, jump_cut: jumpCut, broll, thumb_url: thumbUrl, edl_path: edlPath }

@@ -94,17 +94,34 @@ Deno.serve(async (req: Request) => {
   // is anchored to a generation that already paid for it (required above). Nothing
   // is charged here.
 
-  const { data: job, error } = await admin
+  // "Priority render" is a paid-plan promise (Studio/Agency) — make it real:
+  // claim_job orders by priority desc, so these jobs jump the FIFO line.
+  // Team seats inherit the WORKSPACE owner's plan. Fail-open to normal priority.
+  let priority = 0
+  try {
+    const { data: m } = await admin.from('workspace_members').select('owner_id').eq('member_id', user.id).maybeSingle()
+    const planOwner = m?.owner_id ?? user.id
+    const { data: prof } = await admin.from('profiles').select('plan').eq('id', planOwner).maybeSingle()
+    if (prof?.plan === 'studio' || prof?.plan === 'agency') priority = 1
+  } catch { /* normal priority */ }
+
+  const jobRow = {
+    owner_id: user.id,
+    type: 'autoedit',
+    status: 'queued',
+    payload: { generation_id: generationId, take_path: takePath, variation, charged: false, cost: 0, ...(refineEdl ? { edl: refineEdl } : {}), ...(shots ? { shots } : {}) },
+  }
+  let { data: job, error } = await admin
     .from('jobs')
-    .insert({
-      owner_id: user.id,
-      type: 'autoedit',
-      status: 'queued',
-      payload: { generation_id: generationId, take_path: takePath, variation, charged: false, cost: 0, ...(refineEdl ? { edl: refineEdl } : {}), ...(shots ? { shots } : {}) },
-    })
+    .insert({ ...jobRow, priority })
     .select('id')
     .single()
-  if (error) return json({ error: 'Could not queue the edit' }, 500)
+  if (error) {
+    // Deploy-order safety: if the 0066 `priority` column hasn't been applied yet,
+    // fall back to a normal-priority insert rather than failing the creator's edit.
+    ;({ data: job, error } = await admin.from('jobs').insert(jobRow).select('id').single())
+  }
+  if (error || !job) return json({ error: 'Could not queue the edit' }, 500)
 
   return json({ job_id: job.id, charged: false })
 })
