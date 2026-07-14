@@ -5,7 +5,7 @@ import { deriveStructure } from '../structure.js'
 // Normalized cache key for a reference URL: host (minus www) + path, plus the
 // YouTube ?v= id (which lives in the query). Drops other query/hash noise so the
 // same video pasted by different users hits the cache. Must match ingest-reference.
-export function urlKey(raw: string): string {
+function urlKey(raw: string): string {
   try {
     const u = new URL(raw)
     const host = u.hostname.toLowerCase().replace(/^www\./, '')

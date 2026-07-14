@@ -1,12 +1,30 @@
-name: VPS one-flow diagnostic
+name: VPS diagnostic (read-only)
 on: { workflow_dispatch: {} }
 env: { VPS_HOST: 138.201.119.239 }
 jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
+      # READ-ONLY health snapshot of the worker box. This workflow must never
+      # mutate the container or its env — deploy-worker.yml is the single source
+      # of truth for how the container is created. (An earlier version of this
+      # file ran a base64-obfuscated script that recreated the container with
+      # different resource limits — reviewable plain text only from now on.)
       - env: { VPS_SSH_KEY: "${{ secrets.VPS_SSH_KEY }}" }
         run: |
           mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" "echo c2V0ICtlCmdyZXAgLXEgInNjcmFwZV9kbmEiIC9vcHQvdHdpbmFpLXdvcmtlci5lbnYgfHwgc2VkIC1pICdzL15XT1JLRVJfSk9CX1RZUEVTPS4qL1dPUktFUl9KT0JfVFlQRVM9aW5nZXN0LHRyYW5zY3JpYmUsYnVpbGRfdm9pY2UsYXV0b2VkaXQsc2NyYXBlX2RuYS8nIC9vcHQvdHdpbmFpLXdvcmtlci5lbnYKZWNobyAiZW52IGxpbmU6ICQoZ3JlcCBXT1JLRVJfSk9CX1RZUEVTIC9vcHQvdHdpbmFpLXdvcmtlci5lbnYpIgpkb2NrZXIgcm0gLWYgdHdpbmFpLXdvcmtlciA+L2Rldi9udWxsIDI+JjEKZG9ja2VyIHJ1biAtZCAtLW5hbWUgdHdpbmFpLXdvcmtlciAtLXJlc3RhcnQgdW5sZXNzLXN0b3BwZWQgLS1jcHVzIDEuNSAtLW1lbW9yeSA0ZyAtLWVudi1maWxlIC9vcHQvdHdpbmFpLXdvcmtlci5lbnYgdHdpbmFpLXdvcmtlciA+L2Rldi9udWxsCnNsZWVwIDUKZWNobyAiY29udGFpbmVyIHR5cGVzOiBbJChkb2NrZXIgZXhlYyB0d2luYWktd29ya2VyIHByaW50ZW52IFdPUktFUl9KT0JfVFlQRVMpXSIKZG9ja2VyIGxvZ3MgLS10YWlsIDYgdHdpbmFpLXdvcmtlciAyPiYxCmVjaG8gIj09IGRvbmUgPT0i | base64 -d | bash -s"
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" bash -s <<'DIAG'
+          set +e
+          echo "== containers =="
+          docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+          echo "== worker env (job types) =="
+          docker exec twinai-worker printenv WORKER_JOB_TYPES 2>/dev/null || echo "(worker not running)"
+          echo "== worker logs (last 30) =="
+          docker logs --tail 30 twinai-worker 2>&1
+          echo "== disk =="
+          df -h / /tmp 2>/dev/null | tail -n +1
+          echo "== tmp leftovers =="
+          ls -lh /tmp/twinai-* 2>/dev/null | head -20 || echo "(none)"
+          echo "== done =="
+          DIAG

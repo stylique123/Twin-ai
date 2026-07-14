@@ -12,7 +12,7 @@
 // by the editor as cutaways. Takes are preserved in-memory across back/exit.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
-import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Type, Sparkles, RotateCcw, Wand2, Zap, Waves, Mountain } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
@@ -37,7 +37,6 @@ export default function V2Capture() {
   const [params] = useSearchParams()
   const mode = params.get('mode') === 'upload' ? 'upload' : 'record'
   const nav = useNavigate()
-  const inV2Flow = useLocation().pathname.startsWith('/v2')
   const [timeline, setTimeline] = useState<SceneTimeline | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [loadNonce, setLoadNonce] = useState(0) // bump to retry the load
@@ -66,9 +65,8 @@ export default function V2Capture() {
     return () => { alive = false }
   }, [id, loadNonce])
 
-  // Back returns to the blueprint (classic flow) or the V2 plan screen (V2 flow).
-  // The finished-video screen (V2Review) is shared by both.
-  const onBack = () => nav(inV2Flow ? `/v2/plan/${id}` : `/result/${id}`)
+  // Back always returns to the plan (Result) — the single plan screen for the flow.
+  const onBack = () => nav(`/result/${id}`)
   const onJob = (job: string) => nav(`/v2/review/${id}?job=${job}`)
 
   if (!timeline) {
@@ -362,7 +360,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       const shots = total > 1
         ? { bounds, total, lines, ...(segments.length > 1 ? { segments } : {}) }
         : undefined
-      const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, undefined, (f) => setUploadPct(f))
+      const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, (f) => setUploadPct(f))
       onJob(jobId)
     } catch (e) {
       setEditError(e instanceof Error ? e.message : 'Could not start the edit')

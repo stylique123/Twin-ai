@@ -333,7 +333,7 @@ export default function V2Review() {
       <div className={`mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl ${phase === 'rendering' ? 'lg:max-w-2xl' : 'lg:flex-row lg:items-center lg:gap-10'} lg:px-8`}>
         <div className="flex flex-1 flex-col lg:min-w-0 lg:py-6">
           <div className="flex items-center justify-between px-4 pt-4 lg:px-0 lg:pt-0">
-            <button onClick={() => nav(`/v2/plan/${id}`)} aria-label="Back" className="inline-flex h-11 items-center gap-2 rounded-full bg-white/10 px-4 text-sm hover:bg-white/20">← <span className="hidden sm:inline">Back to studio</span></button>
+            <button onClick={() => nav(`/result/${id}`)} aria-label="Back" className="inline-flex h-11 items-center gap-2 rounded-full bg-white/10 px-4 text-sm hover:bg-white/20">← <span className="hidden sm:inline">Back to studio</span></button>
             <span className="text-sm text-white/70 truncate">{phase === 'rendering' ? 'Processing your video' : 'Final video'}</span>
             <button aria-label="Download" disabled={!videoUrl} onClick={downloadVideo} className="h-11 w-11 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 lg:hidden">↓</button>
           </div>

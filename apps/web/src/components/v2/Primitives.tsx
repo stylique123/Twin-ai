@@ -49,17 +49,7 @@ export function RecommendedBadge({ reason }: { reason?: string }) {
 }
 
 // One-tap "change this" affordance next to any recommendation.
-export function ChangeButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button onClick={onClick} className="text-sm font-medium text-sand rounded-full border border-white/15 px-3 py-1 hover:bg-white/10 active:scale-95 transition">
-      Change
-    </button>
-  )
-}
 
-export function Skeleton({ className = '' }: { className?: string }) {
-  return <div className={`animate-pulse rounded-xl bg-white/10 ${className}`} />
-}
 
 export function SectionTitle({ children }: { children: ReactNode }) {
   return <h2 className="text-sm font-semibold text-sand/70 uppercase tracking-wide">{children}</h2>

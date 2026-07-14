@@ -83,6 +83,7 @@ export default function V2Building() {
       ticker = setInterval(() => setActive((a) => Math.min(a + 1, STEPS.length - 1)), 1400)
     }
 
+    let alive = true
     ;(async () => {
       try {
         // 1) Actually READ the reference video when it's a supported link, so the
@@ -95,6 +96,7 @@ export default function V2Building() {
           if (!transcript_id) {
             for (let i = 0; i < 80; i++) {
               await new Promise((r) => setTimeout(r, 2500))
+              if (!alive) return // left the screen — stop polling + spending
               const job = await getJob(jobId)
               if (!job) continue
               if (job.status === 'done' && job.result?.transcript_id) { transcript_id = job.result.transcript_id; break }
@@ -104,6 +106,7 @@ export default function V2Building() {
           }
         }
 
+        if (!alive) return
         startPacing()
         const gen = await generateBlueprint({
           reference_url: refUrl,
@@ -122,6 +125,7 @@ export default function V2Building() {
           platform: gen.blueprint?.reference_read?.platform,
         })
         await saveTimeline(timeline)
+        if (!alive) return
         if (ticker) clearInterval(ticker)
         setActive(STEPS.length)
         // Land on the RICH result screen (hook angles, strategy, retention map,
@@ -132,11 +136,11 @@ export default function V2Building() {
         nav(`/result/${gen.id}`, { replace: true })
       } catch (e) {
         if (ticker) clearInterval(ticker)
-        setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
+        if (alive) setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
       }
     })()
 
-    return () => { if (ticker) clearInterval(ticker) }
+    return () => { alive = false; if (ticker) clearInterval(ticker) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

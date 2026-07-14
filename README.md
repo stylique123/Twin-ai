@@ -2,9 +2,9 @@
 
 **Remix any viral video in seconds.** TwinAI turns any proven reference (Reel, TikTok, Short, YouTube) into a personalized, *shootable* blueprint — hook, script, shot list, captions, edit plan, and a publish schedule — in the creator's own voice. Reference-based creation, not a clipper. We copy structure, never content.
 
-This is a fresh, real rebuild: a Vite + React + TypeScript frontend, a Supabase backend (Postgres + Auth + RLS), and a Claude-powered edge function that does the actual AI generation server-side.
+This is a fresh, real rebuild: a Vite + React + TypeScript frontend, a Supabase backend (Postgres + Auth + RLS), and Gemini-powered edge functions that do the actual AI generation server-side.
 
-> Rebuilt after the original source was lost. The earlier deploy was a frontend-only mock with no real backend/AI; this version replaces the faked generation with a real Claude call, real auth, and real persistence.
+> Rebuilt after the original source was lost. The earlier deploy was a frontend-only mock with no real backend/AI; this version replaces the faked generation with real Gemini calls, real auth, and real persistence.
 
 ## Stack
 
@@ -12,7 +12,7 @@ This is a fresh, real rebuild: a Vite + React + TypeScript frontend, a Supabase 
 |---|---|
 | Frontend | Vite, React 18, TypeScript, Tailwind, React Router |
 | Auth + DB | Supabase (Postgres, Row Level Security, Auth) |
-| AI | Google Gemini (`gemini-3.1-pro`) via a Supabase Edge Function — provider isolated to one function, swappable |
+| AI | Google Gemini (`gemini-3.1-pro-preview`) via Supabase Edge Functions — provider isolated server-side, swappable |
 
 > **System shape:** see **[`ARCHITECTURE.md`](ARCHITECTURE.md)** — the authoritative
 > end-to-end design (Vercel SPA → Supabase data plane → Edge Functions → `jobs` queue
@@ -40,8 +40,8 @@ This is a fresh, real rebuild: a Vite + React + TypeScript frontend, a Supabase 
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
-npm run dev
+cp apps/web/.env.example apps/web/.env.local   # fill in VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY
+npm run web
 ```
 
 ## Backend setup (Supabase)
@@ -56,7 +56,7 @@ npm run dev
    ```bash
    supabase functions deploy generate-blueprint
    supabase secrets set GEMINI_API_KEY=...
-   # optional: supabase secrets set GEMINI_MODEL=gemini-2.0-flash
+   # optional: supabase secrets set GEMINI_MODEL=gemini-3.1-pro-preview
    ```
 4. Put the project URL + anon key into `.env.local` (frontend) — the function reads `SUPABASE_*` and `GEMINI_API_KEY` from its own secrets.
 
@@ -67,14 +67,16 @@ Vercel: import the repo, framework = Vite. Set `VITE_SUPABASE_URL` and `VITE_SUP
 ## Project layout
 
 ```
-src/
-  lib/        supabase client, brand tokens, types, API layer
+apps/web/src/
+  lib/        shims re-exporting @twinai/shared (supabase client, API layer, brand, timeline)
   context/    auth provider
-  components/  Nav, Logo, GradientBar
-  pages/      Landing, Auth, Onboarding, Studio, Result, History
+  components/ Nav, AppShell, RefinePanel, v2 primitives, …
+  pages/      Landing, Auth, Onboarding, Dashboard, Result, History, Gallery, v2/ (Create → Building → Capture → Review)
+packages/shared/   @twinai/shared — types, brand tokens, API layer, scene timeline
 supabase/
-  migrations/ 0001_init.sql   (profiles, generations, credit ledger, RLS, spend_credits RPC)
-  functions/  generate-blueprint  (Claude call, server-side)
+  migrations/ 0001 → 0065  (profiles, generations, jobs, RLS, RPCs, buckets)
+  functions/  15 edge functions (generate-blueprint, start-dna, dna-poll, enqueue-autoedit, social, …)
+worker/       VPS auto-edit pipeline (ffmpeg + whisper + Gemini director)
 ```
 
 ## Brand

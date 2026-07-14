@@ -346,7 +346,6 @@ const CAP_STYLES: Record<string, string> = {
   // extra-large thick-outline word-by-word pop
   'karaoke-word': 'Style: Cap, Anton, 112, &HFFFFFF&, &H00000000&, &H64000000&, 0, 0, 1, 6, 2, 2, 80, 80, 580, 1',
 }
-export const CAPTION_STYLES = Object.keys(CAP_STYLES)
 
 // Map an arbitrary caption/editing signal (a brand-kit id, the blueprint's
 // caption_packet.caption_style, or the creator's DNA editing_style prose) to a
@@ -456,7 +455,7 @@ async function probeDuration(file: string): Promise<number> {
 // opportunistically and never removes content words.
 const FILLERS = new Set(['um', 'umm', 'ummm', 'uh', 'uhh', 'uhhh', 'uhm', 'uhmm', 'er', 'err', 'erm', 'ah', 'ahh', 'eh', 'ehh', 'hmm', 'hmmm', 'mm', 'mmm'])
 const normWord = (w: string) => w.toLowerCase().replace(/[^a-z']/g, '')
-export function fillerSpans(words: Word[]): [number, number][] {
+function fillerSpans(words: Word[]): [number, number][] {
   const spans: [number, number][] = []
   for (let i = 0; i < words.length; i++) {
     const w = normWord(words[i].w)
@@ -526,14 +525,15 @@ async function vadSilence(base: string, duration: number): Promise<{ starts: num
   }
 }
 
-// Jump-cuts: find silent gaps (plus any extraRemove word spans from fillerSpans),
-// keep the spoken segments with a small margin, and concat them back together.
-// Silence is detected by Silero-VAD (speech-aware) when available, falling back
-// to ffmpeg silencedetect (amplitude threshold). Returns true if it tightened the clip.
-async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'calm' = 'calm', extraRemove: [number, number][] = []): Promise<{ applied: boolean; segments: EdlSegment[] }> {
-  const NOCUT = { applied: false, segments: [] as EdlSegment[] }
+// Silence-cut DECISIONS only: find silent gaps (plus any extraRemove word spans
+// from fillerSpans), and return the kept windows as EDL segments — or null when
+// there is nothing worth cutting. Silence is detected by Silero-VAD (speech-aware)
+// when available, falling back to ffmpeg silencedetect (amplitude threshold).
+// Split from the render so the scene-bounds path can cut too and REMAP its
+// per-scene caption windows onto the cut timeline (cut + remap = no desync).
+async function computeSilenceKeep(base: string, energy: 'high' | 'calm' = 'calm', extraRemove: [number, number][] = []): Promise<EdlSegment[] | null> {
   const duration = await probeDuration(base)
-  if (duration < 3) return NOCUT // too short to bother
+  if (duration < 3) return null // too short to bother
 
   const starts: number[] = []
   const ends: number[] = []
@@ -561,7 +561,7 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
     for (const m of stderr.matchAll(/silence_start:\s*([0-9.]+)/g)) starts.push(parseFloat(m[1]))
     for (const m of stderr.matchAll(/silence_end:\s*([0-9.]+)/g)) ends.push(parseFloat(m[1]))
   }
-  if (!starts.length && !extraRemove.length) return NOCUT
+  if (!starts.length && !extraRemove.length) return null
 
   // Remove set = silence intervals (shrunk by a 0.15s margin so we never clip
   // speech) PLUS any filler/stammer word spans passed in.
@@ -577,7 +577,7 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
     const ce = Math.min(duration, e)
     if (ce - cs > 0.05) sil.push([cs, ce])
   }
-  if (!sil.length) return NOCUT
+  if (!sil.length) return null
 
   // Sort + merge overlapping remove intervals (silence and fillers can overlap).
   sil.sort((a, b) => a[0] - b[0])
@@ -599,9 +599,9 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
   // Drop sub-0.2s slivers that would create a 3-frame stutter cut.
   const segs = keep.filter(([s, e]) => e - s >= 0.2)
   // Nothing meaningful to cut, or pathological segmentation.
-  if (segs.length < 2 || segs.length > 200) return NOCUT
+  if (segs.length < 2 || segs.length > 200) return null
   const kept = segs.reduce((a, [s, e]) => a + (e - s), 0)
-  if (kept >= duration - 0.4) return NOCUT // <0.4s removed — not worth a re-encode
+  if (kept >= duration - 0.4) return null // <0.4s removed — not worth a re-encode
 
   // The kept windows ARE the cut decisions; carry the per-segment zoom punch on
   // 'high' energy, then render. renderCutSegments is shared with the manual
@@ -622,6 +622,14 @@ async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'c
     if (punch) lastZoom = at
     return { start: s, end: e, zoom: punch }
   })
+  return segments
+}
+
+// Detect + render in one step (the plain no-shots path).
+async function jumpCutSilence(base: string, outFile: string, energy: 'high' | 'calm' = 'calm', extraRemove: [number, number][] = []): Promise<{ applied: boolean; segments: EdlSegment[] }> {
+  const NOCUT = { applied: false, segments: [] as EdlSegment[] }
+  const segments = await computeSilenceKeep(base, energy, extraRemove)
+  if (!segments) return NOCUT
   const ok = await renderCutSegments(base, outFile, segments)
   return ok ? { applied: true, segments } : NOCUT
 }
@@ -733,13 +741,21 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
         try { jumpCut = await renderCutSegments(takeFile, cut, segs); if (jumpCut) cutSegments = segs } catch { jumpCut = false }
       }
     } else if (opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
-      // V2 Scene-Timeline capture: the take was recorded scene-by-scene (the
-      // recorder paused between scenes), so the inter-scene dead air is already
-      // gone and `shots.bounds` ARE the real scene boundaries. Do NOT silence-cut
-      // here — that re-fragments the scenes into extra cuts (the "5 scenes -> 8
-      // cuts" bug) AND desyncs the per-scene captions (which are timed against the
-      // FULL take below). Keep the take whole so the edit follows the script.
-      jumpCut = false
+      // V2 Scene-Timeline capture: the recorder pauses BETWEEN scenes, so the
+      // inter-scene dead air is already gone — but pauses/dead air WITHIN a scene
+      // are still in the take, and skipping the cut here was the "the editor
+      // doesn't even edit" complaint. Cut the in-scene silence too, and REMAP the
+      // scene bounds onto the cut timeline in the caption step below so the
+      // per-scene captions stay in sync (the old desync bug came from cutting
+      // WITHOUT remapping, so we simply never cut). Fail-open: any failure keeps
+      // the take whole, exactly the old behavior.
+      try {
+        const segs = await computeSilenceKeep(takeFile, opts.energy ?? 'calm', [])
+        if (segs) {
+          jumpCut = await renderCutSegments(takeFile, cut, segs)
+          if (jumpCut) cutSegments = segs
+        }
+      } catch { jumpCut = false }
     } else {
       try {
         const jc = await jumpCutSilence(takeFile, cut, opts.energy ?? 'calm', removeSpans)
@@ -788,16 +804,33 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       durationSec = cursor
     } else if (captions && opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
       // Per-shot capture: caption each segment from its SCRIPT line, timed to the
-      // window the creator recorded it in.
+      // window the creator recorded it in. When the silence-cut above fired, the
+      // base is the CUT file — remap each recorded-timeline bound onto the cut
+      // timeline (cumulative kept time before it) so captions track the speech.
       prog('transcribing', 42, 'Captioning your shots…')
       const sh = opts.shots
-      durationSec = sh.total
-      const cuts = [0, ...sh.bounds.filter((n) => Number.isFinite(n) && n > 0 && n < sh.total).sort((a, b) => a - b), sh.total]
+      const remap = (t: number): number => {
+        if (!jumpCut || !cutSegments.length) return t
+        let acc = 0
+        for (const k of cutSegments) {
+          if (t <= k.start) return acc
+          if (t < k.end) return acc + (t - k.start)
+          acc += k.end - k.start
+        }
+        return acc
+      }
+      const rawCuts = [0, ...sh.bounds.filter((n) => Number.isFinite(n) && n > 0 && n < sh.total).sort((a, b) => a - b), sh.total]
+      const cuts = rawCuts.map(remap)
+      durationSec = jumpCut && cutSegments.length
+        ? cutSegments.reduce((a, k) => a + (k.end - k.start), 0)
+        : sh.total
       for (let i = 0; i < cuts.length - 1; i++) {
         const line = String(sh.lines[i] ?? '')
         const s0 = cuts[i], s1 = cuts[i + 1]
-        // Same env-gated real-timing upgrade as the Retake path above (base ===
-        // takeFile here — this branch never jump-cuts, see the note above).
+        // A scene swallowed whole by the cut (all silence) has no window left.
+        if (s1 - s0 < 0.2) continue
+        // Env-gated real-timing upgrade, same as the Retake path above. `base` is
+        // the cut file when the silence-cut fired, so windows line up either way.
         const detected = line.trim() && env.editWindowWhisper
           ? await transcribeWindow(dir, base, s0, s1)
           : []
@@ -1087,6 +1120,9 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       durationSec,
       plan: plan ?? undefined,
       captionStyle,
+      // Honest capability flags: the Refine panel hides the b-roll/music toggles
+      // when this deployment can't actually do them (no key/bed configured).
+      features: { broll: !!env.pexelsKey, music: !!env.musicBedUrl },
     })
 
     return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile, edl: outEdl, baseRevideoFile }

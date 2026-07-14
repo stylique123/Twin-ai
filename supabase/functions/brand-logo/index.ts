@@ -43,6 +43,6 @@ Deno.serve(async (req: Request) => {
   const ext = ct === 'image/jpeg' ? 'jpg' : 'png'
   const path = `${user.id}/brandkit/logo-${Date.now()}.${ext}`
   const up = await admin.storage.from('edits').upload(path, bytes, { contentType: ct, upsert: true })
-  if (up.error) return json({ error: up.error.message }, 500)
+  if (up.error) { console.error('brand-logo: upload failed', up.error); return json({ error: 'Could not save the logo. Please try again.' }, 500) }
   return json({ path })
 })

@@ -64,6 +64,7 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
   let thumbRender: string | null = null
   let wmFile: string | null = null
   let logoOut: string | null = null
+  let revideoBase: string | null = null
   try {
     await downloadObject('takes', takePath, localTake)
 
@@ -107,6 +108,9 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     // Smart decision: read the user's brand-DNA pacing + the reference's format
     // and auto-pick the edit energy (high → jump-zoom punches; calm → clean cuts).
     let energy: 'high' | 'calm' = 'calm'
+    // True when the creator explicitly picked an edit style (punchy/clean/cinematic)
+    // — an explicit choice must never be flipped by remake variation parity.
+    let energyExplicit = false
     let brollText = ''
     let coverText = ''
     let scriptText = ''
@@ -164,9 +168,12 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
           editingStyle = vprof?.editing_style ?? ''
           const kit = bv?.brand_kit as { caption_style?: string; color?: number; palette?: { highlight?: string }; logo_path?: string } | null
           if (kit?.caption_style) brandStyle = kit.caption_style
-          if (typeof kit?.color === 'number' && !Number.isFinite(payload.variation as number)) brandColor = kit.color
+          // Brand kit colors, unconditionally. (The old `!Number.isFinite(payload.variation)`
+          // gate was dead code — the edge fn ALWAYS sends a finite variation, so a
+          // workspace's chosen brand color literally never reached the render.)
+          if (typeof kit?.color === 'number') brandColor = kit.color
           // A real brand-highlight hex overrides the preset color in the caption render.
-          if (kit?.palette?.highlight && !Number.isFinite(payload.variation as number)) brandHighlightHex = kit.palette.highlight
+          if (kit?.palette?.highlight) brandHighlightHex = kit.palette.highlight
           if (kit?.logo_path) brandLogoPath = kit.logo_path
         }
         // Phase 4 — editing signature: when the creator hasn't hand-picked a caption
@@ -176,8 +183,8 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
         if (!brandStyle) brandStyle = normalizeCaptionStyle(capPacket?.caption_style) ?? normalizeCaptionStyle(editingStyle)
         // Edit style the creator picked takes priority over the DNA-derived energy.
         const style = (gen?.edit_style as string | undefined) ?? ''
-        if (style === 'punchy') energy = 'high'
-        else if (style === 'clean' || style === 'cinematic') energy = 'calm'
+        if (style === 'punchy') { energy = 'high'; energyExplicit = true }
+        else if (style === 'clean' || style === 'cinematic') { energy = 'calm'; energyExplicit = true }
         else if (/fast|quick|rapid|punch|energetic|aggressive|hype|high.?energy|snappy|no dead air/i.test(`${pacing} ${fmt} ${editingStyle} ${capPacket?.pacing ?? ''}`)) {
           energy = 'high'
         }
@@ -186,9 +193,11 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       }
     }
 
-    // Remakes pass a variation index; else fall back to the brand-kit color, else 0.
-    const variation = Number.isFinite(payload.variation as number) ? Number(payload.variation) : (brandColor ?? 0)
-    if (variation % 2 === 1) energy = energy === 'high' ? 'calm' : 'high'
+    // Remakes pass a variation index (the edge fn always sends one; 0 = first edit).
+    const variation = Number.isFinite(payload.variation as number) ? Number(payload.variation) : 0
+    // Odd remakes flip the energy so each variation FEELS different — but never
+    // silently invert an energy the creator explicitly chose via edit_style.
+    if (variation % 2 === 1 && !energyExplicit) energy = energy === 'high' ? 'calm' : 'high'
 
     // Manual re-render: when the Refine panel sends an edited EDL, render straight
     // from it (no re-detect / re-transcribe) so the creator's tweaks are applied.
@@ -235,7 +244,9 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     const { outFile, durationSec, words, jumpCut, broll, thumbFile, edl, baseRevideoFile } = await autoEdit(localTake, {
       captions: payload.skip_captions !== true,
       energy,
-      variation,
+      // Caption highlight color: the brand kit's picked color themes the first
+      // edit; remakes (variation > 0) rotate the palette so each looks fresh.
+      variation: variation === 0 ? (brandColor ?? 0) : variation,
       captionStyle: brandStyle,
       highlightHex: brandHighlightHex,
       brollText,
@@ -245,11 +256,15 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
       edl: editedEdl,
       // Skip the premium pass when watermarking so the burned-in mark stands (the
       // separate Revideo service wouldn't carry it). Watermarked = free, non-first export.
-      produceRevideoBase: !!env.revideoUrl && isFirstEdit && !applyWm,
+      // Requires BOTH the URL and the trust flag — without revideoTrusted the premium
+      // overwrite below never runs, so producing the base was a full extra ffmpeg
+      // encode thrown away on every first edit (pure wasted COGS + a temp-file leak).
+      produceRevideoBase: !!env.revideoUrl && env.revideoTrusted && isFirstEdit && !applyWm,
       onProgress: (phase, pct, label) => { void updateJobProgress(job.id, { phase, pct, label }) },
     })
     renderFile = outFile
     thumbRender = thumbFile ?? null
+    revideoBase = baseRevideoFile ?? null
     console.log(`[autoedit ${job.id}] coverText_len=${coverText.length} thumb=${thumbRender ? 'yes' : 'no'} broll=${broll} wm=${applyWm}`)
 
     // Burn the watermark as an isolated pass (fail-safe: returns the clean file on error).
@@ -382,5 +397,8 @@ export async function handleAutoEdit(job: Job): Promise<Record<string, unknown>>
     if (wmFile) await rm(wmFile, { force: true }).catch(() => {})
     if (logoOut) await rm(logoOut, { force: true }).catch(() => {})
     if (thumbRender) await rm(thumbRender, { force: true }).catch(() => {})
+    // The Revideo base lives outside `dir` (tmpdir) — without this it leaked one
+    // full-size MP4 per premium-eligible edit until the VPS disk filled up.
+    if (revideoBase) await rm(revideoBase, { force: true }).catch(() => {})
   }
 }

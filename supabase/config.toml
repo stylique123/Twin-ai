@@ -40,3 +40,16 @@ verify_jwt = false
 [functions.review]
 verify_jwt = false
 
+# Explicit for auditability — these default to verify_jwt = true anyway, and each
+# also checks getUser() internally. Declared so the gateway posture is visible.
+[functions.admin-metrics]
+verify_jwt = true
+
+[functions.brand-logo]
+verify_jwt = true
+
+[functions.referral]
+verify_jwt = true
+
+[functions.generate-thumbnail]
+verify_jwt = true

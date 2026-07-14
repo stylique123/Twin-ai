@@ -284,7 +284,10 @@ export function RefinePanel({
                     </div>
                   </div>
 
-                  {/* Music */}
+                  {/* Music — hidden when the render service says it has no music bed
+                      configured (edl.features.music === false): a toggle that silently
+                      no-ops is worse than no toggle. Old EDLs (no features field) keep it. */}
+                  {edl.features?.music !== false && (
                   <div className="space-y-2">
                     <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sand">
                       <Music className="h-3.5 w-3.5 text-coral" /> Music Bed
@@ -297,9 +300,11 @@ export function RefinePanel({
                       {edl.music ? 'Enabled' : 'Muted'}
                     </button>
                   </div>
+                  )}
                 </div>
 
-                {/* B-Roll panel */}
+                {/* B-Roll panel — same honesty rule as Music above. */}
+                {edl.features?.broll !== false && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sand">
@@ -352,6 +357,7 @@ export function RefinePanel({
                     </div>
                   )}
                 </div>
+                )}
 
                 <button onClick={apply} disabled={applying || !takePath || !changed} className="btn-gradient w-full py-3 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50">
                   {applying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />} Apply &amp; re-render (free)

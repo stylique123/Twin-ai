@@ -452,7 +452,8 @@ Deno.serve(async (req: Request) => {
       }, { onConflict: 'owner_id,platform' })
       return back(`connected=${parsed.platform}`)
     } catch (e) {
-      return Response.redirect(`${appUrl()}/calendar?connect_error=${encodeURIComponent(String(e).slice(0, 80))}`, 302)
+      console.error('social: oauth callback failed', e)
+      return Response.redirect(`${appUrl()}/calendar?connect_error=connect_failed`, 302)
     }
   }
 
