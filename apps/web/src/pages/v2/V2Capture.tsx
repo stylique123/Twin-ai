@@ -13,11 +13,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Type, Sparkles, RotateCcw, Wand2, Zap, Waves, Mountain } from 'lucide-react'
+import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Type, Sparkles, RotateCcw, Wand2, Zap, Waves, Mountain, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
 import { buildTimeline } from '../../lib/timelineAdapter'
 import { autoEditTake, pickRecorderMime, getGeneration, updateGenerationChoice } from '../../lib/api'
+import { cn } from '../../lib/cn'
 import {
   type SceneTimeline,
   type Scene,
@@ -764,39 +765,90 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   )
 }
 
+function fmtBytes(n: number): string {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`
+  if (n >= 1e6) return `${Math.round(n / 1e6)} MB`
+  return `${Math.round(n / 1e3)} KB`
+}
+
 function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => void; onJob: (jobId: string) => void }) {
   const [busy, setBusy] = useState(false)
+  const [pct, setPct] = useState(-1)        // 0..1 upload progress, -1 = not started/indeterminate
+  const [file, setFile] = useState<File | null>(null)
+  const [drag, setDrag] = useState(false)
   const [err, setErr] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const cancelRef = useRef(false)
 
-  const onFile = async (file: File | undefined) => {
-    if (!file) return
-    setBusy(true); setErr(null)
+  const onFile = async (f: File | undefined) => {
+    if (!f || busy) return
+    if (!f.type.startsWith('video/')) { setErr('That’s not a video file — pick an MP4 or MOV.'); return }
+    setFile(f); setBusy(true); setErr(null); setPct(0); cancelRef.current = false
     try {
       // No shots → the worker runs PySceneDetect on the clip and maps segments.
-      const { jobId } = await autoEditTake(genId, { blob: file, contentType: file.type || 'video/webm' })
+      // The progress callback drives the real % bar so a big upload never looks
+      // frozen (the "it took 5 minutes with no feedback" complaint).
+      const { jobId } = await autoEditTake(genId, { blob: f, contentType: f.type || 'video/mp4' }, undefined, (p) => setPct(p))
+      if (cancelRef.current) return
       onJob(jobId)
     } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Upload failed')
-      setBusy(false)
+      if (!cancelRef.current) { setErr(e instanceof Error ? e.message : 'Upload failed — try again.'); setBusy(false) }
     }
   }
 
+  const uploading = busy
+  const showPct = pct >= 0 && pct < 1
   return (
-    <div className="min-h-[100dvh] w-full max-w-screen-sm mx-auto bg-ink text-cream flex flex-col overflow-x-hidden lg:max-w-2xl">
-      <div className="flex items-center justify-between px-4 pt-4 text-sm text-white/60 lg:px-0 lg:pt-6">
-        <button onClick={onBack} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 lg:h-10 lg:w-10">←</button>
-        <span>Upload your clip</span>
-        <span className="w-11 lg:w-10" />
+    <div className="min-h-[100dvh] w-full bg-ink text-cream flex flex-col overflow-x-hidden">
+      <div className="mx-auto flex w-full max-w-lg items-center justify-between px-4 pt-4 text-sm text-white/60 lg:pt-6">
+        <button onClick={onBack} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 transition-colors hover:bg-white/20">←</button>
+        <span className="font-medium text-cream">Upload your clip</span>
+        <span className="w-11" />
       </div>
-      <div className="flex-1 px-6 flex flex-col items-center justify-center text-center gap-4 lg:px-0">
-        <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
-        <button onClick={() => inputRef.current?.click()} disabled={busy}
-          className="h-44 w-full rounded-2xl border-2 border-dashed border-white/20 grid place-items-center text-white/60 hover:border-white/40 hover:text-white/80 disabled:opacity-50 lg:h-64">
-          {busy ? 'Uploading…' : 'Tap to choose a clip'}
-        </button>
-        <p className="text-xs text-white/40">We detect scene boundaries automatically and line them up with your plan.</p>
-        {err && <p className="text-xs text-red-400">{err}</p>}
+
+      {/* One centered, compact card — not a dashed box stranded in a black void. */}
+      <div className="flex-1 grid place-items-center px-5 pb-16">
+        <div className="w-full max-w-md">
+          <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+
+          {!uploading ? (
+            <button
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => { e.preventDefault(); setDrag(true) }}
+              onDragLeave={() => setDrag(false)}
+              onDrop={(e) => { e.preventDefault(); setDrag(false); onFile(e.dataTransfer.files?.[0]) }}
+              className={cn(
+                'group w-full rounded-3xl border p-8 text-center transition-all',
+                drag ? 'border-coral/60 bg-coral/[0.06]' : 'border-white/12 bg-white/[0.03] hover:border-coral/40 hover:bg-white/[0.05]',
+              )}
+            >
+              <span className={cn('mx-auto grid h-16 w-16 place-items-center rounded-2xl transition-transform group-hover:scale-105',
+                drag ? 'bg-coral/20' : 'bg-signature-soft')}>
+                <UploadCloud className={cn('h-7 w-7', drag ? 'text-coral' : 'text-cream')} />
+              </span>
+              <p className="mt-5 font-display text-xl">Drop a clip, or tap to browse</p>
+              <p className="mt-1.5 text-sm text-stone">MP4 or MOV · we detect the scenes and line them up with your plan.</p>
+            </button>
+          ) : (
+            <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-6">
+              <div className="flex items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-signature-soft"><Film className="h-5 w-5 text-cream" /></span>
+                <div className="min-w-0 flex-1 text-left">
+                  <p className="truncate text-sm font-semibold text-cream">{file?.name ?? 'Your clip'}</p>
+                  <p className="text-xs text-stone">{file ? fmtBytes(file.size) : ''}{showPct ? ` · ${Math.round(pct * 100)}%` : ' · finishing up…'}</p>
+                </div>
+                <button onClick={() => { cancelRef.current = true; setBusy(false); setPct(-1); setFile(null) }} aria-label="Cancel upload" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/10 hover:bg-white/20"><X className="h-4 w-4" /></button>
+              </div>
+              <div className="mt-5 h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div className={cn('h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal transition-[width] duration-200 ease-out', !showPct && 'animate-pulse')}
+                  style={{ width: showPct ? `${Math.max(4, Math.round(pct * 100))}%` : '100%' }} />
+              </div>
+              <p className="mt-3 text-center text-xs text-stone">{showPct ? 'Uploading your clip…' : 'Upload complete — starting your edit…'}</p>
+            </div>
+          )}
+
+          {err && <p className="mt-4 text-center text-sm text-coral">{err}</p>}
+        </div>
       </div>
     </div>
   )
