@@ -15,7 +15,12 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, logEvent, generateThumbnail, signEditUrls, pollEditJob } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, logEvent, generateThumbnail, signEditUrls, pollEditJob, listPosts } from '../lib/api'
+
+// Stale-while-revalidate cache so reopening a plan is INSTANT instead of showing a
+// full-screen "Loading your script…" every time (the plan page had no cache; the
+// Library does). Keyed by generation id; module-scoped so it survives route changes.
+const GEN_CACHE: Record<string, Generation> = {}
 import { useAuth } from '../context/AuthContext'
 import type { Generation, EditDecisionList } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -178,8 +183,10 @@ const MOCK_GENERATION = {
 export default function Result() {
   const { id } = useParams()
   const { profile } = useAuth()
-  const [gen, setGen] = useState<Generation | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [gen, setGen] = useState<Generation | null>(() => (id ? GEN_CACHE[id] ?? null : null))
+  // Only block on the full-screen loader when we have NOTHING cached to show.
+  const [loading, setLoading] = useState(() => !(id && GEN_CACHE[id]))
+  const [posted, setPosted] = useState(false)
   const [chosenHook, setChosenHook] = useState('')
   const [approved, setApproved] = useState(false)
   const [mobileTab, setMobileTab] = useState<'script' | 'strategy' | 'spec' | 'publish'>('script')
@@ -279,6 +286,11 @@ export default function Result() {
       setLoading(false)
       return
     }
+    // Know whether this video's already been posted, to swap the header CTA
+    // (Post now ↔ Posted). Best-effort — never blocks the page.
+    listPosts().then((posts) => {
+      if (alive.current) setPosted(posts.some((p) => p.generation_id === id && p.status === 'posted'))
+    }).catch(() => {})
     getGeneration(id)
       .then((g) => {
         if (!g) {
@@ -287,6 +299,7 @@ export default function Result() {
           // renders. NEVER substitute the demo blueprint for a real id.
           return
         }
+        GEN_CACHE[id] = g
         setGen(g)
         setApproved(!!g?.approved)
         // Default the shooting hook to the saved choice, else the recommended (1st).
@@ -309,6 +322,11 @@ export default function Result() {
   const pickHook = (h: string) => {
     setChosenHook(h)
     if (id) void updateGenerationChoice(id, { selected_hook: h })
+  }
+  // "Post now" → reveal the posting options (the "Where to post" tab on both layouts).
+  const goPost = () => {
+    setActiveTab('publish'); setMobileTab('publish')
+    setTimeout(() => document.getElementById('post-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60)
   }
 
   if (loading)
@@ -400,18 +418,24 @@ export default function Result() {
             </Link>
             
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              {gen.edit_path && gen.take_path && (
-                <button onClick={openRefine} className="btn-ghost py-2 text-xs font-medium">
-                  <SlidersHorizontal className="h-3.5 w-3.5" /> Refine Edit
-                </button>
-              )}
-              {/* Once a video EXISTS (edit_path set), WATCH is the primary action and
-                  record/upload demote to "re-record" — gated on edit_path, NOT the
-                  async signed URL, so a slow/flaky sign never hides a finished video. */}
+              {/* Once the video is DONE, the only actions are edit it and post it — no
+                  "Watch" (it's right there) and no "Re-record" (the edit is final). */}
               {gen.edit_path ? (
                 <>
-                  <a href="#your-video" className="btn-gradient py-2 text-xs font-semibold"><Video className="h-3.5 w-3.5" /> Watch video</a>
-                  <Link to={`/record/${gen.id}`} className="btn-ghost py-2 text-xs font-medium"><Video className="h-3.5 w-3.5" /> Re-record</Link>
+                  {gen.take_path && (
+                    <button onClick={openRefine} className="btn-ghost py-2 text-xs font-medium">
+                      <SlidersHorizontal className="h-3.5 w-3.5" /> Edit your video
+                    </button>
+                  )}
+                  {posted ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-xs font-semibold text-teal">
+                      <Check className="h-3.5 w-3.5" /> Posted
+                    </span>
+                  ) : (
+                    <button onClick={goPost} className="btn-gradient py-2 text-xs font-semibold">
+                      <Send className="h-3.5 w-3.5" /> Post now
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
@@ -484,15 +508,19 @@ export default function Result() {
                         className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10"><Download className="h-3.5 w-3.5" /> Download</a>
                     )}
                   </div>
-                  {thumbUrl ? (
-                    <div className="overflow-hidden rounded-2xl border border-white/10">
-                      <img src={thumbUrl} alt="AI-generated cover" className="w-full" />
-                    </div>
-                  ) : (
-                    <div className="grid aspect-[3/4] w-full place-items-center rounded-2xl border border-dashed border-white/15 bg-black/30 px-4 text-center text-xs text-stone">
-                      A ready-to-post cover image for this video.
-                    </div>
-                  )}
+                  {/* Same 9:16 frame as the video so the two cards read as one set. */}
+                  <div className="aspect-[9/16] w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
+                    {thumbUrl ? (
+                      <img src={thumbUrl} alt="AI-generated cover" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="grid h-full w-full place-items-center bg-ink3/40 px-5 text-center">
+                        <div>
+                          <Quote className="mx-auto h-6 w-6 text-stone/60" />
+                          <p className="mt-2 text-xs text-stone">A ready-to-post cover image for this video.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <button onClick={genThumb} disabled={thumbBusy}
                     className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 py-2.5 text-sm font-semibold text-cream transition hover:bg-white/20 disabled:opacity-60">
                     {thumbBusy ? 'Making your cover…' : thumbUrl ? 'Regenerate' : 'Generate cover image'}
@@ -780,7 +808,7 @@ export default function Result() {
           </div>
 
           {/* Right Column: Tabbed Inspector Panel (5 cols) */}
-          <div className="col-span-5 space-y-6 sticky top-6">
+          <div id="post-section" className="col-span-5 space-y-6 sticky top-6 scroll-mt-6">
             
             {/* Tab Swapper */}
             <div className="rounded-xl bg-ink3 p-1 border border-white/5 shadow-inner flex">
