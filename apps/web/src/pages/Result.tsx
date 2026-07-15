@@ -5,7 +5,7 @@ import {
   ArrowLeft, Copy, Check, Quote, FileText, Clapperboard,
   Wand2, Send, Loader2, Video, ExternalLink,
   SlidersHorizontal, Play, BadgeCheck, Link2, MessageSquare, Users,
-  TrendingUp, User,
+  TrendingUp, User, Download,
 } from 'lucide-react'
 
 // Phase-0 guided publishing: deep-link straight into each platform's uploader.
@@ -195,6 +195,23 @@ export default function Result() {
     signEditUrls([p]).then((m) => { if (live) setThumbUrl(m[p] ?? null) }).catch(() => {})
     return () => { live = false }
   }, [gen?.ai_thumb_path])
+  // The FINISHED video (once recorded + edited) — sign its path so it plays right
+  // here on the plan/Library screen, instead of the screen only ever offering
+  // "Record / Upload" as if nothing had been made yet.
+  const [videoUrl, setVideoUrl] = useState<string | null>(null)
+  useEffect(() => {
+    const p = gen?.edit_path
+    if (!p) { setVideoUrl(null); return }
+    let live = true
+    signEditUrls([p]).then((m) => { if (live) setVideoUrl(m[p] ?? null) }).catch(() => {})
+    return () => { live = false }
+  }, [gen?.edit_path])
+  const downloadVideo = () => {
+    if (!videoUrl) return
+    const href = videoUrl + (videoUrl.includes('?') ? '&' : '?') + 'download=twinai-video.mp4'
+    const a = document.createElement('a'); a.href = href; a.rel = 'noopener'
+    document.body.appendChild(a); a.click(); a.remove()
+  }
   const genThumb = async () => {
     if (!gen) return
     setThumbErr(null); setThumbBusy(true)
@@ -381,12 +398,19 @@ export default function Result() {
                   <SlidersHorizontal className="h-3.5 w-3.5" /> Refine Edit
                 </button>
               )}
-              <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-xs font-semibold">
-                <Video className="h-3.5 w-3.5" /> Record Script
-              </Link>
-              <Link to={`/record/${gen.id}?mode=upload`} className="btn-ghost py-2 text-xs font-medium">
-                <Wand2 className="h-3.5 w-3.5" /> Upload Take
-              </Link>
+              {/* Once a video exists, WATCH is the primary action and record/upload
+                  demote to "re-record" — the screen shows the finished video below. */}
+              {videoUrl ? (
+                <>
+                  <a href="#your-video" className="btn-gradient py-2 text-xs font-semibold"><Video className="h-3.5 w-3.5" /> Watch video</a>
+                  <Link to={`/record/${gen.id}`} className="btn-ghost py-2 text-xs font-medium"><Video className="h-3.5 w-3.5" /> Re-record</Link>
+                </>
+              ) : (
+                <>
+                  <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-xs font-semibold"><Video className="h-3.5 w-3.5" /> Record Script</Link>
+                  <Link to={`/record/${gen.id}?mode=upload`} className="btn-ghost py-2 text-xs font-medium"><Wand2 className="h-3.5 w-3.5" /> Upload Take</Link>
+                </>
+              )}
             </div>
           </div>
 
@@ -425,6 +449,20 @@ export default function Result() {
             </div>
           </motion.div>
 
+          {/* FINISHED VIDEO — plays right here once the edit exists, so the plan /
+              Library actually shows what was made (not just "Record / Upload"). */}
+          {videoUrl && (
+            <div id="your-video" className="mt-8 scroll-mt-24 rounded-card border border-teal/25 bg-ink2/70 p-4 backdrop-blur-sm sm:p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-cream"><span className="h-2 w-2 rounded-full bg-teal" /> Your video</div>
+                <button onClick={downloadVideo} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10"><Download className="h-3.5 w-3.5" /> Download</button>
+              </div>
+              <div className="mx-auto aspect-[9/16] w-full max-w-[300px] overflow-hidden rounded-2xl bg-black">
+                <video src={videoUrl} controls playsInline className="h-full w-full object-contain" poster={thumbUrl ?? undefined} />
+              </div>
+            </div>
+          )}
+
           {/* Concept + packaging — the video idea and the title/thumbnail that earn
               the click, shown before the script in EVERY blueprint view (parity with
               the V2 plan). Full width so it renders on both mobile and desktop. */}
@@ -461,14 +499,23 @@ export default function Result() {
                       <p className="text-sand/85"><span className="text-stone">Colours: </span>{b.packaging!.thumbnail.colors}</p>
                     </div>
                   )}
-                  {/* On-demand AI render — costs nothing until tapped. */}
-                  <div className="mt-3">
-                    {thumbUrl && <img src={thumbUrl} alt="AI-generated thumbnail" className="mb-2 w-full rounded-xl border border-white/10" />}
+                  {/* On-demand AI render — costs nothing until tapped. Saved to the
+                      plan, shown here, and downloadable. */}
+                  <div className="mt-auto pt-3">
+                    {thumbUrl && (
+                      <div className="relative mb-2 overflow-hidden rounded-xl border border-white/10">
+                        <img src={thumbUrl} alt="AI-generated thumbnail" className="w-full" />
+                        <a href={thumbUrl + (thumbUrl.includes('?') ? '&' : '?') + 'download=twinai-thumbnail.png'}
+                          className="absolute right-2 top-2 inline-flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-xs font-medium text-white backdrop-blur hover:bg-black/80">
+                          <Download className="h-3.5 w-3.5" /> Download
+                        </a>
+                      </div>
+                    )}
                     <button onClick={genThumb} disabled={thumbBusy}
                       className="w-full rounded-xl border border-white/15 bg-white/10 py-2.5 text-sm font-semibold text-cream transition hover:bg-white/20 disabled:opacity-60">
                       {thumbBusy ? 'Rendering your thumbnail…' : thumbUrl ? 'Regenerate thumbnail' : 'Generate thumbnail image'}
                     </button>
-                    {thumbErr && <p className="mt-1 text-xs text-coral">{thumbErr}</p>}
+                    {thumbErr && <p className="mt-1 text-xs text-coral">{thumbErr}. The image engine is occasionally busy — tap again.</p>}
                   </div>
                 </div>
               )}

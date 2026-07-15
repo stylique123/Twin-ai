@@ -56,11 +56,13 @@ export default function BottomSheet({
 
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden="true" />
-      <div ref={panelRef} tabIndex={-1} className="relative w-full max-w-screen-sm bg-ink2 border border-white/10 rounded-t-3xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[80dvh] overflow-y-auto animate-[slideUp_.2s_ease] outline-none">
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20" />
-        <h3 className="text-base font-bold text-cream mb-3">{title}</h3>
+    // Phone: a bottom sheet. Desktop (sm+): a proper CENTERED modal — a bottom
+    // sheet stuck to the top of a wide screen read as a broken phone dialog.
+    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} aria-hidden="true" />
+      <div ref={panelRef} tabIndex={-1} className="relative w-full max-w-screen-sm rounded-t-3xl border border-white/10 bg-ink2 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[80dvh] overflow-y-auto shadow-2xl outline-none animate-[slideUp_.2s_ease] sm:max-w-md sm:rounded-3xl sm:p-6 sm:pb-6 sm:animate-[fadeIn_.15s_ease]">
+        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20 sm:hidden" />
+        <h3 className="mb-3 text-base font-bold text-cream sm:text-lg">{title}</h3>
         <div className="space-y-2">{children}</div>
       </div>
     </div>

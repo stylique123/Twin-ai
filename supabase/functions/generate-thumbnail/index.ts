@@ -77,33 +77,47 @@ CRITICAL: do NOT include any human face, person, portrait, hands, or body — NO
 No borders, no watermark, no UI chrome, no fake play button.`
 
   const model = Deno.env.get('GEMINI_IMAGE_MODEL') ?? 'gemini-2.5-flash-image'
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 55_000)
+  // The image model intermittently returns empty / overloads / hits a safety no-op.
+  // Retry a couple of times before giving up so a transient blip doesn't read as a
+  // hard failure to the creator (the "could not render, try again" complaint).
+  const attemptOnce = async (): Promise<{ b64: string; mime: string }> => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 40_000)
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        signal: ctrl.signal,
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } }),
+      })
+      if (!res.ok) throw new Error(`Image model ${res.status}: ${(await res.text()).slice(0, 300)}`)
+      const data = await res.json()
+      const parts = data?.candidates?.[0]?.content?.parts ?? []
+      // deno-lint-ignore no-explicit-any
+      const imgPart = parts.find((p: any) => p?.inlineData?.data)
+      if (!imgPart) throw new Error('No image returned by the model')
+      return { b64: imgPart.inlineData.data, mime: imgPart.inlineData.mimeType || 'image/png' }
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
   let b64 = ''
   let mime = 'image/png'
-  try {
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-      method: 'POST',
-      signal: ctrl.signal,
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-      body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { responseModalities: ['IMAGE'] } }),
-    })
-    if (!res.ok) {
-      const detail = await res.text()
-      throw new Error(`Image model ${res.status}: ${detail.slice(0, 300)}`)
+  let lastErr: unknown
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await attemptOnce()
+      b64 = r.b64; mime = r.mime
+      break
+    } catch (err) {
+      lastErr = err
+      console.error(`generate-thumbnail: attempt ${attempt + 1}/3 failed`, err instanceof Error ? err.message : err)
     }
-    const data = await res.json()
-    const parts = data?.candidates?.[0]?.content?.parts ?? []
-    // deno-lint-ignore no-explicit-any
-    const imgPart = parts.find((p: any) => p?.inlineData?.data)
-    if (!imgPart) throw new Error('No image returned by the model')
-    b64 = imgPart.inlineData.data
-    mime = imgPart.inlineData.mimeType || 'image/png'
-  } catch (err) {
-    console.error('generate-thumbnail: model call failed', err)
-    return json({ error: 'Could not render the thumbnail right now. Please try again.' }, 502)
-  } finally {
-    clearTimeout(timer)
+  }
+  if (!b64) {
+    console.error('generate-thumbnail: all attempts failed', lastErr)
+    return json({ error: 'The image engine is busy right now. Please tap again in a moment.' }, 502)
   }
 
   // base64 -> bytes
