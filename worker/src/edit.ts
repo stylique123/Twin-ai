@@ -208,8 +208,12 @@ function wrapText(s: string, width: number, maxLines: number): string {
   return lines.slice(0, maxLines).join('\n')
 }
 
-// Highlight-color palette (BGR). Remakes rotate through it so each looks fresh.
-const POP_PALETTE = ['&H23A6F5&' /*amber*/, '&H70E4D5&' /*teal*/, '&H6B6BFF&' /*coral*/, '&H00E5FF&' /*gold*/]
+// Highlight-color palette in ASS &HBBGGRR& byte order. MUST match the UI swatches in
+// CAPTION_COLOR_OPTIONS (@twinai/shared) exactly, or the rendered caption color won't
+// be the one the creator picked — the old teal (&H70E4D5& = #D5E470) rendered
+// lime-green instead of the swatch's #65E5D8. Amber #F5A623 · Teal #65E5D8 ·
+// Coral #FF5B7B · Gold #FFD400.
+const POP_PALETTE = ['&H23A6F5&' /*#F5A623 amber*/, '&HD8E565&' /*#65E5D8 teal*/, '&H7B5BFF&' /*#FF5B7B coral*/, '&H00D4FF&' /*#FFD400 gold*/]
 
 // Convert a #RRGGBB brand hex to the ASS &HBBGGRR& byte order. Returns null if the
 // hex is missing/malformed so callers fall back to the preset palette.

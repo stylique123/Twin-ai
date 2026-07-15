@@ -203,14 +203,18 @@ export default function Result() {
   const [thumbBusy, setThumbBusy] = useState(false)
   const [thumbErr, setThumbErr] = useState<string | null>(null)
   useEffect(() => {
-    const p = gen?.ai_thumb_path
+    // Prefer the on-demand AI cover; otherwise fall back to the frame+hook cover the
+    // worker BURNS on every edit (thumb_path). That means the poster is never blank
+    // once the video exists — and the burned frame includes the creator's face, which
+    // the AI cover deliberately omits (better for talking-head videos).
+    const p = gen?.ai_thumb_path ?? gen?.thumb_path
     // Don't force-null when the path is absent — that would wipe a thumbnail we just
-    // generated this session if a lagged gen refetch briefly returns ai_thumb_path=null.
+    // generated this session if a lagged gen refetch briefly returns the paths null.
     if (!p) return
     let live = true
     signEditUrls([p]).then((m) => { if (live && m[p]) setThumbUrl(m[p]) }).catch(() => {})
     return () => { live = false }
-  }, [gen?.ai_thumb_path])
+  }, [gen?.ai_thumb_path, gen?.thumb_path])
   // The FINISHED video (once recorded + edited) — sign its path so it plays right
   // here on the plan/Library screen, instead of the screen only ever offering
   // "Record / Upload" as if nothing had been made yet.
@@ -571,7 +575,7 @@ export default function Result() {
                   {/* Same 9:16 frame as the video so the two cards read as one set. */}
                   <div className="aspect-[9/16] w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
                     {thumbUrl ? (
-                      <img src={thumbUrl} alt="AI-generated cover" className="h-full w-full object-cover" />
+                      <img src={thumbUrl} alt="Video cover" className="h-full w-full object-cover" />
                     ) : (
                       <div className="grid h-full w-full place-items-center bg-ink3/40 px-5 text-center">
                         <div>
@@ -583,7 +587,7 @@ export default function Result() {
                   </div>
                   <button onClick={genThumb} disabled={thumbBusy}
                     className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 py-2.5 text-sm font-semibold text-cream transition hover:bg-white/20 disabled:opacity-60">
-                    {thumbBusy ? 'Making your cover…' : thumbUrl ? 'Regenerate' : 'Generate cover image'}
+                    {thumbBusy ? 'Making your cover…' : gen?.ai_thumb_path ? 'Regenerate' : 'Generate AI cover'}
                   </button>
                   {thumbErr && <p className="mt-1 text-xs text-coral">{thumbErr}. The image engine is occasionally busy — tap again.</p>}
                 </div>

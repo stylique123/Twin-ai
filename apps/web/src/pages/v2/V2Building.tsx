@@ -16,7 +16,9 @@ const STEPS = [
   { label: 'Finding the strongest hook', icon: Wand2 },
   { label: 'Writing your script', icon: FileText },
   { label: 'Planning your shots', icon: Clapperboard },
-  { label: 'Setting up captions & B-roll', icon: Captions },
+  // Honest: this build produces the caption packet + title/cover, not b-roll (b-roll
+  // is an edit-time, env-gated feature that isn't on by default).
+  { label: 'Writing your captions & title', icon: Captions },
 ]
 // Target progress % per active step, so the bar always shows forward motion and
 // the last (long) model call never looks frozen. Index 5 = finished → 100.

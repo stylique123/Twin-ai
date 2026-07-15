@@ -197,7 +197,7 @@ export function RefinePanel({
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sand">
-                      <Zap className="h-3.5 w-3.5 text-amber" /> Editing style
+                      <Zap className="h-3.5 w-3.5 text-amber" /> Zoom energy
                     </p>
                     <div className="flex gap-2">
                       {(['calm', 'high'] as const).map((en) => (
@@ -206,10 +206,14 @@ export function RefinePanel({
                             'flex-1 rounded-xl border py-2.5 text-xs font-semibold transition-all',
                             edl.energy === en ? 'border-coral bg-coral/10 text-cream' : 'border-white/10 bg-white/5 text-stone'
                           )}>
-                          {en === 'high' ? 'Snappy' : 'Relaxed'}
+                          {en === 'high' ? 'Punchy' : 'Still'}
                         </button>
                       ))}
                     </div>
+                    {/* Honest label: this drives punch-in ZOOMS on strong moments, not cut
+                        density (silence cuts are automatic either way). Named for what it
+                        actually does so it isn't a control that under-delivers. */}
+                    <p className="text-[10px] leading-snug text-stone">Punchy adds punch-in zooms on your strongest moments. Still keeps the frame steady.</p>
                   </div>
 
                   {/* Music — hidden when the render service has no music bed configured
