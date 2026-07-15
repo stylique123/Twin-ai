@@ -662,40 +662,40 @@ export default function Result() {
                                  : 'border-white/5 bg-ink2/40 text-sand'
 
                   return (
-                    <div key={i} className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-4 shadow-glass backdrop-blur-md">
-                      <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-3">
-                        <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider', tagColor)}>
+                    <div key={i} className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-5 shadow-glass backdrop-blur-md">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={cn('rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide', tagColor)}>
                           {plainSection(s.section, i)}
                         </span>
-                        <span className="text-xs font-mono text-stone">Scene {i + 1}</span>
+                        <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
                       </div>
-                      
-                      {/* Dialogue line */}
-                      <div className="font-display text-base leading-relaxed text-cream pl-3 border-l border-white/10">
+
+                      {/* Dialogue line — the hero of the card */}
+                      <p className="font-display text-lg leading-relaxed text-cream">
                         “{s.line}”
-                      </div>
-                      
-                      {/* Scene Parameters list (integrated design instead of sheet grids) */}
-                      <div className="pt-5 mt-4 border-t border-white/[0.04] space-y-4 text-xs text-sand">
+                      </p>
+
+                      {/* Scene guidance — quiet, aligned inset */}
+                      <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
                         <div className="flex items-start gap-3">
                           <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Where to film</span>
-                            <span className="text-sand/90 leading-relaxed">{s.background || 'Visual context matching scene.'}</span>
+                          <div className="min-w-0">
+                            <span className="mb-0.5 block text-[11px] font-medium text-stone">Where to film</span>
+                            <span className="text-sm leading-relaxed text-sand">{s.background || 'Visual context matching scene.'}</span>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
                           <User className="h-4 w-4 text-coral shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">How to stand & move</span>
-                            <span className="text-sand/90 leading-relaxed">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
+                          <div className="min-w-0">
+                            <span className="mb-0.5 block text-[11px] font-medium text-stone">How to stand & move</span>
+                            <span className="text-sm leading-relaxed text-sand">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
                           <SlidersHorizontal className="h-4 w-4 text-teal shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Camera moves & cuts</span>
-                            <span className="text-sand/90 leading-relaxed">{s.cuts_info || 'Cut pacing instructions.'}</span>
+                          <div className="min-w-0">
+                            <span className="mb-0.5 block text-[11px] font-medium text-stone">Camera moves & cuts</span>
+                            <span className="text-sm leading-relaxed text-sand">{s.cuts_info || 'Cut pacing instructions.'}</span>
                           </div>
                         </div>
                       </div>
@@ -1033,39 +1033,39 @@ export default function Result() {
 
                     return (
                       <div key={i} className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-4 shadow-glass backdrop-blur-md">
-                        <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-3">
-                          <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider', tagColor)}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className={cn('rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide', tagColor)}>
                             {plainSection(s.section, i)}
                           </span>
-                          <span className="text-xs font-mono text-stone">Scene {i + 1}</span>
-                        </div>
-                        
-                        {/* Dialogue line */}
-                        <div className="font-display text-base leading-relaxed text-cream pl-3 border-l border-white/10">
-                          “{s.line}”
+                          <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
                         </div>
 
-                        {/* Scene Parameters Integrated List */}
-                        <div className="pt-4 mt-3 border-t border-white/[0.04] space-y-4 text-xs text-sand">
+                        {/* Dialogue line — the hero of the card */}
+                        <p className="font-display text-lg leading-relaxed text-cream">
+                          “{s.line}”
+                        </p>
+
+                        {/* Scene guidance — quiet, aligned inset */}
+                        <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
                           <div className="flex items-start gap-3">
                             <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />
-                            <div>
-                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Where to film</span>
-                              <span className="text-sand/90 leading-relaxed">{s.background || 'Visual context matching scene.'}</span>
+                            <div className="min-w-0">
+                              <span className="mb-0.5 block text-[11px] font-medium text-stone">Where to film</span>
+                              <span className="text-sm leading-relaxed text-sand">{s.background || 'Visual context matching scene.'}</span>
                             </div>
                           </div>
                           <div className="flex items-start gap-3">
                             <User className="h-4 w-4 text-coral shrink-0 mt-0.5" />
-                            <div>
-                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">How to stand & move</span>
-                              <span className="text-sand/90 leading-relaxed">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
+                            <div className="min-w-0">
+                              <span className="mb-0.5 block text-[11px] font-medium text-stone">How to stand & move</span>
+                              <span className="text-sm leading-relaxed text-sand">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
                             </div>
                           </div>
                           <div className="flex items-start gap-3">
                             <SlidersHorizontal className="h-4 w-4 text-teal shrink-0 mt-0.5" />
-                            <div>
-                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Camera moves & cuts</span>
-                              <span className="text-sand/90 leading-relaxed">{s.cuts_info || 'Cut pacing instructions.'}</span>
+                            <div className="min-w-0">
+                              <span className="mb-0.5 block text-[11px] font-medium text-stone">Camera moves & cuts</span>
+                              <span className="text-sm leading-relaxed text-sand">{s.cuts_info || 'Cut pacing instructions.'}</span>
                             </div>
                           </div>
                         </div>
