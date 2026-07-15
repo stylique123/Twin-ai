@@ -23,7 +23,22 @@ env:
   VPS_HOST: 138.201.119.239
 
 jobs:
+  # Gate: never ship a worker that doesn't compile (main has no other guard —
+  # pr-checks runs on PRs, but a direct push to main would skip it).
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Typecheck worker
+        working-directory: worker
+        run: |
+          npm ci
+          npx tsc --noEmit
+
   deploy:
+    needs: check
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to VPS over SSH
@@ -49,12 +64,23 @@ jobs:
             # One flow: ensure the worker can reach the Revideo premium-render service.
             # 172.17.0.1 is the docker bridge gateway -> the host, where revideo publishes :4500.
             grep -q '^REVIDEO_URL=' /opt/twinai-worker.env || echo 'REVIDEO_URL=http://172.17.0.1:4500' >> /opt/twinai-worker.env
+            # Keep the last-good image so a boot-crashing build can roll back
+            # instead of leaving NOTHING running (the old rm-then-run had no net).
+            docker tag twinai-worker twinai-worker:prev 2>/dev/null || true
             docker build -t twinai-worker worker/
             docker rm -f twinai-worker 2>/dev/null || true
             docker run -d --name twinai-worker --restart unless-stopped \
               --env-file /opt/twinai-worker.env twinai-worker
+            sleep 8
+            if ! docker ps --filter name=twinai-worker --filter status=running -q | grep -q .; then
+              echo "::error::new worker image crashed on boot — rolling back to previous image"
+              docker logs --tail 30 twinai-worker || true
+              docker rm -f twinai-worker 2>/dev/null || true
+              docker run -d --name twinai-worker --restart unless-stopped \
+                --env-file /opt/twinai-worker.env twinai-worker:prev
+              exit 1
+            fi
             docker image prune -f >/dev/null 2>&1 || true
-            sleep 3
             echo "deployed: $(git rev-parse --short HEAD)"
             echo "revideo health: $(curl -s --max-time 5 http://127.0.0.1:4500/health || echo UNREACHABLE)"
             docker logs --tail 3 twinai-worker

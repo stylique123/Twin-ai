@@ -26,7 +26,7 @@ in `supabase/functions/` automatically — you normally don't run these by hand.
 the secrets once (SUPABASE_URL / SERVICE_ROLE / ANON are injected by the platform):
 ```bash
 supabase secrets set GEMINI_API_KEY=xxx APIFY_TOKEN=xxx
-# optional: GEMINI_MODEL=gemini-3.1-pro  RECREATION_COST=10
+# optional: GEMINI_MODEL=gemini-3.1-pro-preview  RECREATION_COST=10
 
 # Manual fallback (CI does this for all functions): deploy one by name, e.g.
 supabase functions deploy generate-blueprint
@@ -45,9 +45,19 @@ sudo nano /opt/twinai-worker.env
 #   SUPABASE_SERVICE_ROLE_KEY=xxx
 #   GEMINI_API_KEY=xxx
 #   APIFY_TOKEN=xxx            # YouTube + Instagram transcripts (yt-dlp is bot-blocked there)
-#   WORKER_JOB_TYPES=ingest,transcribe,build_voice,autoedit,scrape_dna
-#   WHISPER_MODEL=small        # drop to base/tiny on a small box
+#   WORKER_JOB_TYPES=ingest,build_voice,autoedit,scrape_dna
+#   WHISPER_MODEL=base         # drop to tiny on a small box
 #   WORKER_MAX_MEDIA_SECS=900
+#
+# Editor value-add toggles (ALL optional; unset = that enrichment is OFF and the
+# Refine panel hides its switch). This is where "the editor just cuts + captions"
+# becomes "cuts + captions + b-roll + music + emoji + premium captions":
+#   PEXELS_API_KEY=xxx         # b-roll cutaways (free key: pexels.com/api)
+#   MUSIC_BED_URL=https://…    # music bed MP3 → ducked bed + beat-synced b-roll
+#   EDIT_EMOJI=true            # Twemoji overlays on caption moments
+#   EDIT_WINDOW_WHISPER=true   # real per-scene caption timing (extra whisper cost)
+#   REVIDEO_TRUSTED=true       # let the premium (Revideo) pass replace the render
+#                              # (REVIDEO_URL is auto-set by deploy-worker.yml)
 
 # Deploy / update (pulls main, builds, restarts):
 sudo bash worker/deploy-vps.sh
@@ -94,11 +104,8 @@ The web app now lives in **`apps/web`** (npm workspace) and depends on the
 VITE_SUPABASE_URL=https://YOUR_REF.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-public-key
 ```
-Optional feature flag — **`VITE_STUDIO_V2=true`** routes `/app` into the new
-5-screen V2 Creative Studio flow (`/v2`). Leave it unset (default) and `/app` serves
-the current V1 Studio unchanged. To QA V2 without touching production, set it as a
-**Preview-scoped** env var in Vercel (Project → Settings → Environment Variables →
-Preview only) so only branch/preview deploys expose it.
+(There is no `VITE_STUDIO_V2` flag anymore — the V2 studio IS the only flow;
+`/app` always redirects to `/v2`.)
 
 `apps/web/vercel.json` rewrites all routes → `index.html` for the SPA (only applies
 once Root Directory = `apps/web`). Manual alternative: `npm run web:build` from the

@@ -15,15 +15,6 @@ export const BRAND = {
 // Free signup + free remixes always work regardless.
 export const PAYMENTS_LIVE = false
 
-// V2 Creative Studio (5-screen flow driven by the Scene Timeline) is now the
-// default entry: /app redirects to /v2. The capture step was already unified
-// across every route (V2Capture is the only recorder — the classic scroll
-// recorder was retired), so this flip only changes which CREATE flow is
-// default. The web app still honors a per-deploy override `VITE_STUDIO_V2`
-// (read in App.tsx) to force either flow on a specific preview. Additive: V1's
-// classic Studio route and V2 share the same generations + worker.
-export const STUDIO_V2 = true
-
 // Master switch: one-click posting (platform OAuth). The adapters (TikTok/
 // Instagram/LinkedIn/YouTube), the `social` edge function's connect/publish
 // flow, and the `publish_due` cron are built and verified — flip this on so
@@ -178,14 +169,6 @@ export const planFor = (id: string | null | undefined): PlanTier =>
 // show users. This is the ONLY credit-derived number that reaches the UI.
 export const videosFromCredits = (credits: number) => Math.floor(credits / VIDEO_COST)
 
-// Internal per-action metering, used server-side for cost accounting only.
-// Never surfaced in the UI.
-export const CREDIT_COST = {
-  referenceAnalysis: 2,
-  blueprintGeneration: 4,
-  render: 4,
-  schedulePost: 2,
-} as const
-
-// Cost (internal) charged for one recreation.
-export const BLUEPRINT_COST = VIDEO_COST
+// NOTE: the real per-recreation cost is env-driven SERVER-SIDE (RECREATION_COST
+// in generate-blueprint). VIDEO_COST above only drives the client-side
+// "videos left" display — keep the two in sync when changing either.

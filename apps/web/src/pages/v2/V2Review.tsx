@@ -97,10 +97,12 @@ export default function V2Review() {
         nav('/calendar')
         return
       }
-      // Not connected — manual path (never a dead end).
+      // Not connected — manual path (never a dead end). Open the uploader FIRST,
+      // synchronously in the tap gesture: after an await, Safari/Chrome treat
+      // window.open as a popup and block it (the share dead-end bug).
+      window.open(p.url, '_blank', 'noopener')
       try { await navigator.clipboard?.writeText(caption) } catch { /* clipboard blocked — ignore */ }
       try { await markPosted({ generationId: id, platform: p.slug, caption }) } catch { /* best-effort log */ }
-      window.open(p.url, '_blank', 'noopener')
       setPublishSheet(false)
       nav('/calendar')
     } catch (e) {
@@ -333,7 +335,7 @@ export default function V2Review() {
       <div className={`mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl ${phase === 'rendering' ? 'lg:max-w-2xl' : 'lg:flex-row lg:items-center lg:gap-10'} lg:px-8`}>
         <div className="flex flex-1 flex-col lg:min-w-0 lg:py-6">
           <div className="flex items-center justify-between px-4 pt-4 lg:px-0 lg:pt-0">
-            <button onClick={() => nav(`/v2/plan/${id}`)} aria-label="Back" className="inline-flex h-11 items-center gap-2 rounded-full bg-white/10 px-4 text-sm hover:bg-white/20">← <span className="hidden sm:inline">Back to studio</span></button>
+            <button onClick={() => nav(`/result/${id}`)} aria-label="Back" className="inline-flex h-11 items-center gap-2 rounded-full bg-white/10 px-4 text-sm hover:bg-white/20">← <span className="hidden sm:inline">Back to studio</span></button>
             <span className="text-sm text-white/70 truncate">{phase === 'rendering' ? 'Processing your video' : 'Final video'}</span>
             <button aria-label="Download" disabled={!videoUrl} onClick={downloadVideo} className="h-11 w-11 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 lg:hidden">↓</button>
           </div>
@@ -354,7 +356,9 @@ export default function V2Review() {
           ) : (
             <div className="relative mx-auto my-4 w-full max-w-[460px] flex-1 max-h-[72vh] aspect-[9/16] rounded-2xl overflow-hidden bg-ink2 shadow-2xl lg:my-0 lg:mt-4 lg:flex-none lg:h-[74vh] lg:max-h-[74vh] lg:w-auto lg:max-w-none">
               {phase === 'done' && videoUrl ? (
-                <video ref={videoRef} src={videoUrl} className="h-full w-full object-cover" autoPlay muted loop playsInline controls />
+                // object-contain: never crop a render that isn't exactly 9:16 (matches
+                // the capture review player).
+                <video ref={videoRef} src={videoUrl} className="h-full w-full object-contain bg-black" autoPlay muted loop playsInline controls />
               ) : phase === 'timeout' ? (
                 <div className="absolute inset-0 grid place-items-center text-center px-6">
                   <div>
@@ -379,7 +383,7 @@ export default function V2Review() {
               failed) so the original footage is never stranded behind the edit. */}
           {takeUrl && phase !== 'done' && (
             <div className="px-4 pb-3 text-center lg:px-0">
-              <a href={takeUrl} download className="inline-flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white">
+              <a href={takeUrl + (takeUrl.includes('?') ? '&' : '?') + 'download=twinai-take.mp4'} className="inline-flex items-center gap-1.5 text-xs text-white/60 transition-colors hover:text-white">
                 <Download className="h-3.5 w-3.5" /> Download your raw take
               </a>
             </div>

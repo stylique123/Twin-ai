@@ -58,6 +58,10 @@ export interface EditDecisionList {
   // transitions, caption style). Carried so the timeline + Revideo renderer can
   // use the rich plan even though today's ffmpeg path applies a subset.
   plan?: EditPlan
+  // What the render deployment can actually do (b-roll needs PEXELS_API_KEY, music
+  // needs MUSIC_BED_URL). The Refine panel reads this to HIDE toggles that would
+  // silently no-op — honest UI over fake switches. Absent on old EDLs (pre-flag).
+  features?: { broll: boolean; music: boolean }
 }
 
 export function buildEdl(parts: {
@@ -71,6 +75,7 @@ export function buildEdl(parts: {
   durationSec: number
   plan?: EditPlan
   captionStyle?: string
+  features?: { broll: boolean; music: boolean }
 }): EditDecisionList {
   return {
     version: 1,
@@ -86,5 +91,6 @@ export function buildEdl(parts: {
     durationSec: parts.durationSec,
     createdAt: new Date().toISOString(),
     plan: parts.plan,
+    features: parts.features,
   }
 }

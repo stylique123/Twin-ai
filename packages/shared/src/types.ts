@@ -210,6 +210,10 @@ export interface EditDecisionList {
   durationSec: number
   createdAt: string
   plan?: unknown
+  // What the render deployment can actually do (b-roll needs a Pexels key, music
+  // needs a bed URL). Refine HIDES toggles that are explicitly false so the UI
+  // never offers a switch that silently no-ops. Absent on older EDLs.
+  features?: { broll: boolean; music: boolean }
 }
 
 // The creator-facing caption styles + highlight colors offered in Refine.

@@ -134,16 +134,6 @@ export async function saveDNA(dna: CreatorDNA): Promise<void> {
   if (error) throw error
 }
 
-export async function updateDisplayName(name: string): Promise<void> {
-  const { data: auth } = await supabase.auth.getUser()
-  if (!auth.user) throw new Error('Not signed in')
-  const { error } = await supabase
-    .from('profiles')
-    .update({ display_name: name.trim() || null })
-    .eq('id', auth.user.id)
-  if (error) throw error
-}
-
 // ---- Platform admin (super-admin / support) -----------------------------
 
 // ---- Blueprint generation (real AI via edge function) -------------------
@@ -201,7 +191,7 @@ export interface TakeShots {
   segments?: { start: number; end: number; line: string }[]
 }
 
-export async function autoEditTake(generationId: string, file: TakeFile, shots?: TakeShots, aspect?: '9:16' | '1:1', onProgress?: (fraction: number) => void): Promise<{ jobId: string; takePath: string }> {
+export async function autoEditTake(generationId: string, file: TakeFile, shots?: TakeShots, onProgress?: (fraction: number) => void): Promise<{ jobId: string; takePath: string }> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
   const uid = auth.user.id
@@ -214,32 +204,10 @@ export async function autoEditTake(generationId: string, file: TakeFile, shots?:
   await _uploadTake(take_path, file, onProgress)
 
   const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
-    body: { generation_id: generationId, take_path, aspect, ...(shots ? { shots } : {}) },
+    body: { generation_id: generationId, take_path, ...(shots ? { shots } : {}) },
   })
   if (error) throw new Error(await readInvokeError(error))
   return { jobId: (data as { job_id: string }).job_id, takePath: take_path }
-}
-
-// A REMAKE re-edits the same take with a fresh look, costs one recreation,
-// charged server-side by the enqueue-autoedit function.
-export async function remakeEdit(generationId: string, takePath: string, variation: number): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
-    body: { generation_id: generationId, take_path: takePath, remake: true, variation },
-  })
-  if (error) {
-    let msg = (error as { message?: string }).message ?? 'Could not start the remake'
-    const ctx = (error as { context?: Response }).context
-    if (ctx?.json) {
-      try {
-        const b = await ctx.json()
-        if (b?.error) msg = b.error
-      } catch {
-        /* keep msg */
-      }
-    }
-    throw new Error(msg)
-  }
-  return (data as { job_id: string }).job_id
 }
 
 // Download the EDL JSON for a finished edit (from its signed edits-bucket path),
@@ -388,42 +356,6 @@ export async function acceptWorkspaceInvite(token: string): Promise<{ ok: boolea
   const { data, error } = await supabase.rpc('accept_workspace_invite', { p_token: token })
   if (error) return { ok: false, error: error.message }
   return (data ?? { ok: false }) as { ok: boolean; error?: string }
-}
-
-// ---- Reusable reference templates ------------------------------------------
-export interface ReferenceTemplate {
-  id: string
-  name: string
-  reference_url: string
-  note: string | null
-  fidelity: string | null
-  tone: string | null
-  created_at: string
-}
-export async function listTemplates(): Promise<ReferenceTemplate[]> {
-  const { data, error } = await supabase
-    .from('templates')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (error || !data) return []
-  return data as ReferenceTemplate[]
-}
-export async function saveTemplate(t: {
-  name: string
-  reference_url: string
-  note?: string
-  fidelity?: string
-  tone?: string
-}): Promise<ReferenceTemplate | null> {
-  const { data: auth } = await supabase.auth.getUser()
-  const owner_id = auth.user?.id
-  if (!owner_id) return null
-  const { data, error } = await supabase.from('templates').insert({ owner_id, ...t }).select().single()
-  if (error || !data) return null
-  return data as ReferenceTemplate
-}
-export async function deleteTemplate(id: string): Promise<void> {
-  await supabase.from('templates').delete().eq('id', id)
 }
 
 // ---- In-app notifications (video ready, client approval decisions) ---------

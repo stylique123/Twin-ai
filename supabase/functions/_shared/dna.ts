@@ -468,42 +468,56 @@ Synthesize this creator's voice profile.${visionNote}`
   const userParts: Array<Record<string, unknown>> = [{ text: prompt }]
   for (const img of images) userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } })
 
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 60_000)
-  try {
-    const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
-      {
-        method: 'POST',
-        signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM }] },
-          contents: [{ role: 'user', parts: userParts }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 8192,
-            responseMimeType: 'application/json',
-            responseSchema: voiceProfileSchema,
-            // Speed: cap reasoning so the DNA build doesn't over-deliberate. Uses a
-            // DNA-SPECIFIC budget (falls back to the shared one) so the blueprint can
-            // stay full while DNA is capped — A/B-proven to keep identical quality.
-            ...((Number(Deno.env.get('DNA_THINKING_BUDGET') ?? Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0') > 0)
-              ? { thinkingConfig: { thinkingBudget: Number(Deno.env.get('DNA_THINKING_BUDGET') ?? Deno.env.get('GEMINI_THINKING_BUDGET')) } }
-              : {}),
-          },
-        }),
-      },
-    )
-    if (!res.ok) {
-      const detail = await res.text()
-      throw new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`)
+  const attempt = async (useModel: string, timeoutMs: number): Promise<unknown> => {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+    try {
+      const res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${useModel}:generateContent`,
+        {
+          method: 'POST',
+          signal: ctrl.signal,
+          headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM }] },
+            contents: [{ role: 'user', parts: userParts }],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 8192,
+              responseMimeType: 'application/json',
+              responseSchema: voiceProfileSchema,
+              // Speed: cap reasoning so the DNA build doesn't over-deliberate. Uses a
+              // DNA-SPECIFIC budget (falls back to the shared one) so the blueprint can
+              // stay full while DNA is capped — A/B-proven to keep identical quality.
+              ...((Number(Deno.env.get('DNA_THINKING_BUDGET') ?? Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0') > 0)
+                ? { thinkingConfig: { thinkingBudget: Number(Deno.env.get('DNA_THINKING_BUDGET') ?? Deno.env.get('GEMINI_THINKING_BUDGET')) } }
+                : {}),
+            },
+          }),
+        },
+      )
+      if (!res.ok) {
+        const detail = await res.text()
+        throw new Error(`Gemini ${res.status}: ${detail.slice(0, 200)}`)
+      }
+      const data = await res.json()
+      const text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('')
+      if (!text) throw new Error('Empty response from model')
+      return enrichVoiceProfile(JSON.parse(text), handle, platform)
+    } finally {
+      clearTimeout(timer)
     }
-    const data = await res.json()
-    const text = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('')
-    if (!text) throw new Error('Empty response from model')
-    return enrichVoiceProfile(JSON.parse(text), handle, platform)
-  } finally {
-    clearTimeout(timer)
+  }
+
+  // Attempt ladder — same resilience blueprints already have. The primary model is
+  // a *preview* alias that Google can sunset on their schedule; without a fallback,
+  // the day it 404s EVERY onboarding DNA synth fails and no new user can enter.
+  try {
+    return await attempt(model, 60_000)
+  } catch (err) {
+    const fb = Deno.env.get('GEMINI_FALLBACK_MODEL') ?? 'gemini-2.5-flash'
+    if (!fb || fb === model) throw err
+    console.error(`synthesizeVoice: ${model} failed (${err instanceof Error ? err.message : err}); retrying with ${fb}`)
+    return await attempt(fb, 45_000)
   }
 }

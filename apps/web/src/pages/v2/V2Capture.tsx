@@ -12,7 +12,7 @@
 // by the editor as cutaways. Takes are preserved in-memory across back/exit.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
-import { useNavigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Type, Sparkles, RotateCcw, Wand2, Zap, Waves, Mountain } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
@@ -37,7 +37,6 @@ export default function V2Capture() {
   const [params] = useSearchParams()
   const mode = params.get('mode') === 'upload' ? 'upload' : 'record'
   const nav = useNavigate()
-  const inV2Flow = useLocation().pathname.startsWith('/v2')
   const [timeline, setTimeline] = useState<SceneTimeline | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [loadNonce, setLoadNonce] = useState(0) // bump to retry the load
@@ -66,9 +65,8 @@ export default function V2Capture() {
     return () => { alive = false }
   }, [id, loadNonce])
 
-  // Back returns to the blueprint (classic flow) or the V2 plan screen (V2 flow).
-  // The finished-video screen (V2Review) is shared by both.
-  const onBack = () => nav(inV2Flow ? `/v2/plan/${id}` : `/result/${id}`)
+  // Back always returns to the plan (Result) — the single plan screen for the flow.
+  const onBack = () => nav(`/result/${id}`)
   const onJob = (job: string) => nav(`/v2/review/${id}?job=${job}`)
 
   if (!timeline) {
@@ -106,6 +104,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [between, setBetween] = useState(false)
   const [speedSheet, setSpeedSheet] = useState(false)
   const [exitSheet, setExitSheet] = useState(false)
+  // Mirror into a ref so the recording timer can read it without re-subscribing.
+  useEffect(() => { exitSheetRef.current = exitSheet }, [exitSheet])
   const [camError, setCamError] = useState<string | null>(null)
   // Separate from camError on purpose: this is an upload/enqueue failure (e.g. out
   // of credits), not a camera problem. Mixing the two into one state previously
@@ -148,6 +148,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const sceneStartSecRef = useRef(0)   // current scene's window start (active seconds)
   const reviewBlobRef = useRef<Blob | null>(null) // the raw recorded take, kept for review
   const liveRef = useRef(false)        // true ONLY while a scene is actively recording (race guard)
+  const confirmBusyRef = useRef(false) // double-tap guard on the review Continue (double-charge bug)
+  const uploadCancelRef = useRef(false) // creator cancelled the upload — ignore its result
+  const wakeLockRef = useRef<{ release?: () => Promise<void> } | null>(null) // keep the screen awake mid-take
+  const exitSheetRef = useRef(false)   // freeze the auto-advance while "Discard this take?" is open
   const finishRef = useRef<() => void>(() => {}) // latest finishScene, callable from the timer
   const promptScrollRef = useRef<HTMLDivElement>(null)
   const textRef = useRef<HTMLParagraphElement>(null)
@@ -175,7 +179,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     const h = window.setInterval(() => {
       const el = (performance.now() - t0) / 1000
       setSceneElapsed(el)
-      if (el >= sceneLimit) finishRef.current()   // cap reached → close this scene
+      // Cap reached → close this scene. Except while the exit sheet is open —
+      // auto-advancing BEHIND a "Discard this take?" modal is disorienting.
+      if (el >= sceneLimit && !exitSheetRef.current) finishRef.current()
     }, 100)
     return () => window.clearInterval(h)
   }, [recording, i, sceneLimit])
@@ -232,6 +238,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       try { recRef.current?.state !== 'inactive' && recRef.current?.stop() } catch { /* */ }
       recRef.current = null // a flipped camera needs a fresh recorder bound to the new stream
       streamRef.current?.getTracks().forEach((t) => t.stop())
+      // Never leave the screen pinned awake after the recorder is gone.
+      void wakeLockRef.current?.release?.().catch(() => {})
+      wakeLockRef.current = null
     }
   }, [facing, camNonce])
 
@@ -269,6 +278,14 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
   const startScene = () => {
     if (camError) return
+    // Keep the screen awake for the whole take — a phone auto-locking mid-read
+    // suspends the camera/recorder and silently kills the recording. Best-effort.
+    if (!wakeLockRef.current) {
+      try {
+        void (navigator as unknown as { wakeLock?: { request: (t: string) => Promise<{ release?: () => Promise<void> }> } })
+          .wakeLock?.request('screen').then((l) => { wakeLockRef.current = l }).catch(() => {})
+      } catch { /* unsupported browser — fine */ }
+    }
     ensureRecorder()
     const rec = recRef.current
     if (!rec) return
@@ -314,6 +331,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   // timeout-guarded and the tracks are stopped right after, so the camera light can
   // never stay on / "record for an hour" if a MediaRecorder onstop never fires.
   const finalizeRecording = async () => {
+    void wakeLockRef.current?.release?.().catch(() => {})
+    wakeLockRef.current = null
     const rec = recRef.current
     const blob: Blob = await new Promise((resolve) => {
       const make = () => new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || 'video/webm' })
@@ -351,6 +370,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     }
     setEditError(null)
     setUploadPct(-1)
+    uploadCancelRef.current = false
     setUploading(true)
     try {
       const bounds = boundsRef.current
@@ -362,10 +382,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       const shots = total > 1
         ? { bounds, total, lines, ...(segments.length > 1 ? { segments } : {}) }
         : undefined
-      const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, undefined, (f) => setUploadPct(f))
+      const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, (f) => setUploadPct(f))
+      if (uploadCancelRef.current) return // creator backed out — take is still in memory on the review screen
       onJob(jobId)
     } catch (e) {
-      setEditError(e instanceof Error ? e.message : 'Could not start the edit')
+      if (!uploadCancelRef.current) setEditError(e instanceof Error ? e.message : 'Could not start the edit')
       setUploading(false)
     }
   }
@@ -438,6 +459,13 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
               <div className="h-full bg-white transition-all" style={{ width: `${Math.max(3, Math.round(uploadPct * 100))}%` }} />
             </div>
           )}
+          {/* Escape hatch: a stalled upload must never trap the creator on a spinner
+              (refreshing would destroy the in-memory take). Cancel returns to the
+              review screen with the recording intact. */}
+          <button
+            onClick={() => { uploadCancelRef.current = true; setUploading(false) }}
+            className="mt-5 text-xs text-white/50 hover:text-white"
+          >Cancel and go back to my recording</button>
         </div>
       </div>
     )
@@ -454,10 +482,18 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       { id: 'cinematic' as const, label: 'Cinematic', popular: false, note: 'Story-driven edits with smooth pacing and mood.', icon: Mountain, tint: 'from-amber/25 to-amber/5 text-amber' },
     ]
     const confirmEdit = async () => {
-      // Persist the pick (worker reads it), then enqueue — best-effort persist,
-      // the edit itself must never be blocked by the choice write.
-      try { await updateGenerationChoice(genId, { edit_style: editStyle }) } catch { /* optimistic */ }
-      void startAiEdit()
+      // Double-tap guard: two rapid taps here used to fire TWO uploads + TWO paid
+      // enqueues (the persist await below opened a re-entry window).
+      if (confirmBusyRef.current || uploading) return
+      confirmBusyRef.current = true
+      try {
+        // Persist the pick (worker reads it), then enqueue — best-effort persist,
+        // the edit itself must never be blocked by the choice write.
+        try { await updateGenerationChoice(genId, { edit_style: editStyle }) } catch { /* optimistic */ }
+        await startAiEdit()
+      } finally {
+        confirmBusyRef.current = false
+      }
     }
     return (
       <div className="min-h-[100dvh] w-full bg-ink text-cream overflow-x-hidden">
@@ -507,7 +543,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
                   </button>
                 </div>
                 <button onClick={downloadRaw} className="w-full rounded-2xl border border-white/15 py-3 text-sm font-medium text-cream hover:bg-white/10">Download raw video</button>
-                <button onClick={onBack} className="w-full py-2 text-sm text-white/50 hover:text-white">Save &amp; exit — edit later</button>
+                {/* Honest exit: the take lives only in this tab's memory — leaving discards
+                    it. The old label promised "edit later", which was never true. */}
+                <button onClick={onBack} className="w-full py-2 text-sm text-white/50 hover:text-white">Exit without saving this take</button>
               </>
             ) : (
               <div className="rounded-panel border border-white/10 bg-ink2/80 p-4">
@@ -581,18 +619,20 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       </button>
       {/* MOBILE — a compact wrap of pill buttons, touch-target sized. */}
       <div className="flex flex-wrap items-center justify-center gap-2 text-sm lg:hidden">
-        <button onClick={goPrevScene} disabled={i === 0 || recording} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10 disabled:opacity-30">← Previous scene</button>
-        <div className="inline-flex items-center gap-1 rounded-full border border-white/15 px-2 py-1">
+        {/* 44px touch targets; size/speed/mirror lock while recording — changing them
+            mid-take restarted the prompter glide and snapped the script to the top. */}
+        <button onClick={goPrevScene} disabled={i === 0 || recording} className="min-h-11 rounded-full border border-white/15 px-4 py-2.5 text-white/85 hover:bg-white/10 disabled:opacity-30">← Previous scene</button>
+        <div className="inline-flex min-h-11 items-center gap-1 rounded-full border border-white/15 px-2 py-1">
           <span className="px-1 text-xs text-white/45">Text size</span>
           <span className="inline-flex gap-1">
-            <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
-            <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-sm font-bold">A+</button>
+            <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0 || recording} aria-label="Smaller text" className="h-10 w-10 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
+            <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1 || recording} aria-label="Larger text" className="h-10 w-10 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-sm font-bold">A+</button>
           </span>
         </div>
-        <button onClick={() => setSpeedSheet(true)} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10">Speed · {wpmVal} wpm</button>
-        <button onClick={() => setMirror((m) => !m)} className={`rounded-full border px-3 py-1.5 hover:bg-white/10 ${mirror ? 'border-teal text-teal' : 'border-white/15 text-white/85'}`}>Mirror: {mirror ? 'on' : 'off'}</button>
+        <button onClick={() => setSpeedSheet(true)} disabled={recording} className="min-h-11 rounded-full border border-white/15 px-4 py-2.5 text-white/85 hover:bg-white/10 disabled:opacity-30">Speed · {wpmVal} wpm</button>
+        <button onClick={() => setMirror((m) => !m)} disabled={recording} className={`min-h-11 rounded-full border px-4 py-2.5 hover:bg-white/10 disabled:opacity-30 ${mirror ? 'border-teal text-teal' : 'border-white/15 text-white/85'}`}>Mirror: {mirror ? 'on' : 'off'}</button>
         {canFlipCamera && (
-          <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="rounded-full border border-white/15 px-3 py-1.5 text-white/85 hover:bg-white/10">{facing === 'user' ? 'Front camera' : 'Back camera'} · flip</button>
+          <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="min-h-11 rounded-full border border-white/15 px-4 py-2.5 text-white/85 hover:bg-white/10">{facing === 'user' ? 'Front camera' : 'Back camera'} · flip</button>
         )}
       </div>
 
@@ -611,16 +651,16 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
           </PanelRow>
           <PanelRow icon={Type} label="Text size">
             <div className="inline-flex items-center gap-2">
-              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"><Minus className="h-3 w-3" /></button>
+              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0 || recording} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"><Minus className="h-3 w-3" /></button>
               <span className="w-4 text-center text-xs tabular-nums text-white/70">{fontIdx + 1}</span>
-              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"><Plus className="h-3 w-3" /></button>
+              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1 || recording} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"><Plus className="h-3 w-3" /></button>
             </div>
           </PanelRow>
           <PanelRow icon={Gauge} label="Speed">
-            <button onClick={() => setSpeedSheet(true)} className="text-xs font-medium text-white/70 hover:text-cream">{WPM_LABEL[timeline.wpm]} · {wpmVal} wpm</button>
+            <button onClick={() => setSpeedSheet(true)} disabled={recording} className="text-xs font-medium text-white/70 hover:text-cream disabled:opacity-30">{WPM_LABEL[timeline.wpm]} · {wpmVal} wpm</button>
           </PanelRow>
           <PanelRow icon={FlipHorizontal} label="Mirror">
-            <Toggle on={mirror} onClick={() => setMirror((m) => !m)} />
+            <Toggle on={mirror} onClick={() => { if (!recording) setMirror((m) => !m) }} />
           </PanelRow>
           {canFlipCamera && (
             <PanelRow icon={SwitchCamera} label="Camera">

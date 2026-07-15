@@ -297,15 +297,34 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
       )}
 
       {/* On an error, promote "Try again" to the primary action. There is no
-          manual/skip path — building the voice from a real handle is required. */}
+          skip during a HEALTHY scan — building the voice from a real handle is
+          required. But when the scan itself FAILS (private/thin account, scraper
+          outage), a hard wall would block every affected signup from ever entering
+          the product — so failure (and only failure) unlocks a manual path: the
+          creator describes their voice in the same confirm form, which saves as a
+          real, editable profile. Nothing is fabricated; every field is theirs. */}
       <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
         <button className="btn-ghost" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" /> Back
         </button>
         {err && (
-          <button className="btn-gradient" onClick={onBack}>
-            <RotateCcw className="h-4 w-4" /> Try a different handle
-          </button>
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              className="btn-ghost"
+              onClick={() => {
+                activeProfile = {
+                  summary: '', niche: '', tone: '', pacing: '', hook_style: '',
+                  vocabulary: [], recurring_ctas: [], dos: [], donts: [], sample_hooks: [],
+                }
+                onReady()
+              }}
+            >
+              Describe your voice manually instead
+            </button>
+            <button className="btn-gradient" onClick={onBack}>
+              <RotateCcw className="h-4 w-4" /> Try a different handle
+            </button>
+          </div>
         )}
       </div>
     </>

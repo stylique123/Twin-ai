@@ -19,7 +19,7 @@ const ALLOWED_HOSTS = [
   'cdninstagram.com', 'fbcdn.net',
 ]
 
-export function assertAllowedUrl(raw: string): URL {
+function assertAllowedUrl(raw: string): URL {
   let u: URL
   try {
     u = new URL(raw)

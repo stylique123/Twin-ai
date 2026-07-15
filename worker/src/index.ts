@@ -79,6 +79,12 @@ async function main() {
   process.exit(0)
 }
 
+// Safety net for the many fire-and-forget best-effort writes: a floating promise
+// that slips through must never take the whole worker down mid-render.
+process.on('unhandledRejection', (err) => {
+  log('error', 'unhandled rejection', { error: err instanceof Error ? err.message : String(err) })
+})
+
 main().catch((err) => {
   log('error', 'fatal', { error: err instanceof Error ? err.message : String(err) })
   process.exit(1)

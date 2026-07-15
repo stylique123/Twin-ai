@@ -26,10 +26,10 @@ const Calendar = lazy(() => import('./pages/Calendar'))
 const ClientReport = lazy(() => import('./pages/ClientReport'))
 const ReviewApproval = lazy(() => import('./pages/ReviewApproval'))
 const JoinWorkspace = lazy(() => import('./pages/JoinWorkspace'))
-// V2 Creative Studio (5-screen flow, behind the STUDIO_V2 flag).
+// The creative studio: Create → Building → Result (the plan) → Capture → Review.
+// This is the ONLY flow (the classic V1 studio + scroll recorder were retired).
 const V2Create = lazy(() => import('./pages/v2/V2Create'))
 const V2Building = lazy(() => import('./pages/v2/V2Building'))
-const V2Plan = lazy(() => import('./pages/v2/V2Plan'))
 const V2Capture = lazy(() => import('./pages/v2/V2Capture'))
 const V2Review = lazy(() => import('./pages/v2/V2Review'))
 
@@ -78,6 +78,12 @@ function AppToV2() {
   return <Navigate to={`/v2${search}`} replace />
 }
 
+// Redirect a legacy /v2/plan/:id or /v2/capture/:id deep link to its live home.
+function RedirectWithId({ to }: { to: 'result' | 'record' }) {
+  const { id } = useParams()
+  return <Navigate to={`/${to}/${id ?? ''}`} replace />
+}
+
 // Smooth cross-fade + lift between routes.
 function Page({ children }: { children: React.ReactNode }) {
   return (
@@ -107,7 +113,7 @@ export default function App() {
       void import('./pages/v2/V2Capture'); void import('./pages/Result'); void import('./pages/History')
       void import('./pages/Brands'); void import('./pages/Settings'); void import('./pages/Billing')
       void import('./pages/Onboarding'); void import('./pages/Metrics'); void import('./pages/ClientReport')
-      void import('./pages/Calendar')
+      void import('./pages/Calendar'); void import('./pages/v2/V2Building'); void import('./pages/v2/V2Review')
     }
     const w = window as unknown as { requestIdleCallback?: (cb: () => void) => void }
     if (w.requestIdleCallback) w.requestIdleCallback(warm)
@@ -128,7 +134,8 @@ export default function App() {
     location.pathname.startsWith('/record') ||
     location.pathname.startsWith('/result') ||
     location.pathname.startsWith('/billing') ||
-    location.pathname.startsWith('/settings')
+    location.pathname.startsWith('/settings') ||
+    location.pathname.startsWith('/metrics')
 
   return (
     <div className="min-h-screen">
@@ -161,8 +168,10 @@ export default function App() {
               a wide empty window. */}
           <Route path="/v2" element={<Protected><AppShell mobileChrome={false}><Page><V2Create /></Page></AppShell></Protected>} />
           <Route path="/v2/building" element={<Protected><AppShell mobileChrome={false}><Page><V2Building /></Page></AppShell></Protected>} />
-          <Route path="/v2/plan/:id" element={<Protected><AppShell mobileChrome={false}><Page><V2Plan /></Page></AppShell></Protected>} />
-          <Route path="/v2/capture/:id" element={<Protected><AppShell mobileChrome={false}><Page><V2Capture /></Page></AppShell></Protected>} />
+          {/* Legacy deep links: the standalone plan/capture screens were folded into
+              Result (/result/:id) and the recorder (/record/:id). Redirect, don't 404. */}
+          <Route path="/v2/plan/:id" element={<RedirectWithId to="result" />} />
+          <Route path="/v2/capture/:id" element={<RedirectWithId to="record" />} />
           <Route path="/v2/review/:id" element={<Protected><AppShell mobileChrome={false}><Page><V2Review /></Page></AppShell></Protected>} />
           <Route
             path="/result/:id"

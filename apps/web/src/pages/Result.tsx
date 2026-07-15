@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, getJob, logEvent, generateThumbnail, signEditUrls } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, logEvent, generateThumbnail, signEditUrls, pollEditJob } from '../lib/api'
 import { useAuth } from '../context/AuthContext'
 import type { Generation, EditDecisionList } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -231,26 +231,24 @@ export default function Result() {
   }
   const onRefineApplied = async (jobId: string) => {
     setRefineStatus('Re-rendering your edit…')
-    for (let i = 0; i < 200; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      if (!alive.current) return // navigated away — stop polling, don't setState
-      const job = await getJob(jobId)
-      if (!job) continue
-      if (job.status === 'done' && job.result?.output_url) {
-        setRefineStatus(''); setRefineUrl(job.result.output_url)
-        getGeneration(id!).then((g) => g && alive.current && setGen(g)).catch(() => {})
-        return
-      }
-      if (job.status === 'failed') { setRefineStatus('Refine failed — try again.'); return }
-      const p = job.result?.progress
-      if (p?.label) setRefineStatus(p.label)
+    // Shared terminal-poll loop (same one V2Review uses) instead of a hand-rolled copy.
+    const job = await pollEditJob(jobId, (label) => { if (label) setRefineStatus(label) }, { shouldStop: () => !alive.current })
+    if (!alive.current) return // navigated away — don't setState
+    if (job?.status === 'done' && job.result?.output_url) {
+      setRefineStatus(''); setRefineUrl(job.result.output_url)
+      getGeneration(id!).then((g) => g && alive.current && setGen(g)).catch(() => {})
+    } else if (job?.status === 'failed') {
+      setRefineStatus('Refine failed — try again.')
+    } else {
+      setRefineStatus('Still rendering — check your Library shortly.')
     }
-    if (alive.current) setRefineStatus('Still rendering — check your Library shortly.')
   }
 
   useEffect(() => {
     if (!id) return
-    if (id === 'demo') {
+    // Demo mock is a DEV-only convenience — production users always get real data
+    // (or a real error), never a fabricated blueprint.
+    if (import.meta.env.DEV && id === 'demo') {
       setGen(MOCK_GENERATION as any)
       setApproved(false)
       setChosenHook(MOCK_GENERATION.selected_hook)

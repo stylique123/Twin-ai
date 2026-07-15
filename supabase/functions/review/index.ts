@@ -133,6 +133,7 @@ Deno.serve(async (req: Request) => {
 
     return json({ error: 'method not allowed' }, 405)
   } catch (e) {
-    return json({ error: e instanceof Error ? e.message : 'error' }, 500)
+    console.error('review: unhandled', e)
+    return json({ error: 'Something went wrong. Please try again.' }, 500)
   }
 })

@@ -1,0 +1,33 @@
+name: PR checks
+# The safety net that was missing: nothing used to compile-check a PR, so a TS
+# error in packages/shared or worker/ could merge to main and auto-deploy broken.
+# Every deploy workflow triggers on push-to-main; this one gates the merge.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  web-and-shared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+      - name: Typecheck all workspaces
+        run: npm run typecheck
+      - name: Build web
+        run: npm run web:build
+
+  worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Typecheck worker
+        working-directory: worker
+        run: |
+          npm ci
+          npx tsc --noEmit

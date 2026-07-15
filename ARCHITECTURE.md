@@ -97,7 +97,7 @@ The `jobs` table is the seam between them.
   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. See `.env.production`.
 
 ### 4.2 Data plane — Supabase (Postgres + Auth + RLS)
-- **Schema:** 50 migrations in `supabase/migrations/` (`0001_init.sql` → `0050_…`).
+- **Schema:** migrations in `supabase/migrations/` (`0001_init.sql` → `0065_create_storage_buckets.sql`).
   Core objects:
   - `profiles` — creator identity, `plan`, `credits`, `dna`, `onboarded`. Column
     lockdown: clients may only update `dna`/`display_name`/`onboarded`; `credits`/
@@ -264,7 +264,7 @@ Full step-by-step runbook + smoke test: **`DEPLOY.md`**.
 ```
 src/            frontend (Vercel)  — pages/, components/, lib/, context/
 supabase/
-  migrations/   schema, RLS, RPCs (0001 → 0050)
+  migrations/   schema, RLS, RPCs, buckets (0001 → 0065)
   functions/    edge functions (the secure synchronous API)
 worker/         VPS job-queue worker (Node/TS + Python + ffmpeg)
 revideo/        timeline-driven video renderer

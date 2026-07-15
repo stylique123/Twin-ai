@@ -516,7 +516,9 @@ Deno.serve(async (req: Request) => {
   })
   if (spendErr) {
     if (String(spendErr.message).includes('INSUFFICIENT_CREDITS')) {
-      return json({ error: 'Not enough credits — top up to continue.' }, 402)
+      // HONEST copy: paid top-ups aren't live yet, so never tell a user to "top
+      // up" against a Coming-soon wall. Point at the loop that actually works.
+      return json({ error: "You're out of remixes. Invite a creator from your Dashboard to earn more — paid top-ups are coming soon." }, 402)
     }
     return json({ error: 'Could not reserve credits' }, 500)
   }
