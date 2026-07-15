@@ -107,9 +107,15 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key
 (There is no `VITE_STUDIO_V2` flag anymore — the V2 studio IS the only flow;
 `/app` always redirects to `/v2`.)
 
-`apps/web/vercel.json` rewrites all routes → `index.html` for the SPA (only applies
-once Root Directory = `apps/web`). Manual alternative: `npm run web:build` from the
-repo root and upload `apps/web/dist/` to any static host.
+> ⚠️ **DO NOT DELETE the root `vercel.json`.** Despite the "Root Directory =
+> `apps/web`" note above, the live Vercel project builds from the **repo root** and
+> relies on the root `vercel.json` (`buildCommand` / `outputDirectory` /
+> `rewrites`). Removing it takes production down — it was already restored once in
+> #91 ("restore production — root vercel.json for the monorepo SPA") and taken down
+> again by deleting it in #149. It is load-bearing; leave it in place.
+
+`apps/web/vercel.json` also carries the SPA rewrite. Manual alternative: `npm run
+web:build` from the repo root and upload `apps/web/dist/` to any static host.
 
 > The web app is the single client surface — it is fully responsive (phone +
 > desktop). There is no separate native app; a former Expo/iOS app was removed to
