@@ -588,23 +588,42 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   // The between-scene "Next up" card — shown in the control rail (right on desktop,
   // below the camera on phone). Pure UI over data already in `next`.
   const nextCard = (
-    <div className="text-left space-y-3 rounded-2xl border border-white/10 bg-white/[0.04] p-5">
-      <div className="text-emerald-400 text-base font-semibold text-center">Scene {i + 1} complete ✓</div>
+    // Strong, opaque card so it reads clearly OVER the live camera (the old near-
+    // transparent panel was unreadable). A full "how to set up the next scene" brief.
+    <div className="max-h-[82vh] space-y-4 overflow-y-auto rounded-3xl border border-white/15 bg-black/75 p-6 text-left shadow-2xl backdrop-blur-xl">
       <div className="text-center">
-        <div className="text-white font-semibold">Next · Scene {i + 2} of {scenes.length} — {sceneTypeLabel(next?.scene_type)}</div>
-        <div className="text-white/40 text-xs mt-0.5">about {Math.round(estimateDurationSec(next?.dialogue ?? null, timeline.wpm))}s</div>
+        <div className="text-sm font-semibold text-emerald-400">Scene {i + 1} complete ✓</div>
+        <div className="mt-1 font-display text-xl text-white">Next · Scene {i + 2} of {scenes.length}</div>
+        <div className="mt-0.5 text-xs text-white/50">{sceneTypeLabel(next?.scene_type)} · about {Math.round(estimateDurationSec(next?.dialogue ?? null, timeline.wpm))}s</div>
       </div>
-      <div className="space-y-1.5 text-sm text-white/90">
-        {next?.camera_framing && <p><span className="text-emerald-400 text-xs font-semibold">Positioning  </span>{next.camera_framing}</p>}
-        {next?.background && <p><span className="text-emerald-400 text-xs font-semibold">Background  </span>{next.background}</p>}
-        {next?.purpose && <p><span className="text-emerald-400 text-xs font-semibold">This scene  </span>{next.purpose}</p>}
-        {next?.movement && <p><span className="text-emerald-400 text-xs font-semibold">Movement  </span>{next.movement}</p>}
+
+      {/* What they'll actually say next — so they can prep the delivery. */}
+      {next?.dialogue && (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3.5">
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/45">You'll say</div>
+          <p className="text-[15px] leading-snug text-white">“{next.dialogue.length > 160 ? next.dialogue.slice(0, 160) + '…' : next.dialogue}”</p>
+        </div>
+      )}
+
+      {/* How to set up the shot — positioning, background, framing, movement. */}
+      <div className="space-y-2.5 text-sm">
+        {next?.camera_framing && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">How to sit / frame</div><p className="text-white/90">{next.camera_framing}</p></div>}
+        {next?.background && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Background</div><p className="text-white/90">{next.background}</p></div>}
+        {next?.purpose && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What this scene does</div><p className="text-white/90">{next.purpose}</p></div>}
+        {next?.movement && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Movement</div><p className="text-white/90">{next.movement}</p></div>}
       </div>
+
+      {/* Switch camera between scenes (front / back) — the take is paused here. */}
+      <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))}
+        className="flex w-full items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10">
+        <SwitchCamera className="h-4 w-4" /> Use {facing === 'user' ? 'back' : 'front'} camera
+      </button>
+
       <div className="flex gap-2 pt-1">
-        <button onClick={retakeScene} className="flex-1 rounded-2xl bg-white/10 border border-white/30 text-white font-semibold py-3 hover:bg-white/20">Retake scene</button>
-        <button onClick={continueNext} className="flex-1 rounded-2xl bg-cream text-ink font-semibold py-3 hover:bg-white">Next scene</button>
+        <button onClick={retakeScene} className="flex-1 rounded-2xl border border-white/25 bg-white/10 py-3 font-semibold text-white hover:bg-white/20">Retake scene</button>
+        <button onClick={continueNext} className="flex-1 rounded-2xl bg-cream py-3 font-semibold text-ink hover:bg-white">Next scene</button>
       </div>
-      <p className="text-white/40 text-[11px] text-center">Flubbed it? Retake re-reads the scene you just finished.</p>
+      <p className="text-center text-[11px] text-white/40">Flubbed it? Retake re-reads the scene you just finished.</p>
     </div>
   )
 
