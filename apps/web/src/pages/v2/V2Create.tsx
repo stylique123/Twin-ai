@@ -110,7 +110,7 @@ export default function V2Create() {
       <div className="lg:hidden">
         <ScreenLayout
           title="Make a video"
-          subtitle="Paste a link, describe an idea, or upload a clip"
+          subtitle="Paste a reference — we rebuild it in your voice."
           onBack={() => nav('/dashboard')}
           cta={<PrimaryButton onClick={go} disabled={!input.trim() || checking}>{checking ? 'Checking…' : 'Remix →'}</PrimaryButton>}
         >
@@ -118,8 +118,8 @@ export default function V2Create() {
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              rows={4}
-              placeholder="Paste a video link, or type what your video is about…"
+              rows={3}
+              placeholder="Paste a video link…"
               className="w-full resize-none bg-transparent outline-none text-cream placeholder:text-sand/40"
             />
           </Card>
@@ -155,36 +155,39 @@ export default function V2Create() {
         <div className="relative mx-auto w-full max-w-2xl text-center">
           <p className="eyebrow">Studio</p>
           <h1 className="mt-3 font-display text-5xl tracking-tight">Make a video</h1>
-          <p className="mx-auto mt-3 max-w-lg text-[15px] leading-relaxed text-stone">
-            Paste a reference you wish you'd made and we rebuild it in your voice — or just describe an idea.
+          <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-stone">
+            Paste a reference you wish you'd made — we rebuild it in your voice.
           </p>
 
-          {/* The reference box — one compact hero input, centered on the canvas. */}
-          <div className="glass gradient-border mx-auto mt-9 max-w-xl p-5 text-left transition-shadow focus-within:shadow-[0_0_60px_-18px_rgba(255,91,123,.45)]">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sand">
-              <span className="grid h-7 w-7 place-items-center rounded-lg bg-signature-soft"><Link2 className="h-3.5 w-3.5 text-cream" /></span>
-              Reference link or idea
+          {/* The reference box — a compact, refined hero input on the canvas. Tighter
+              than a full-width panel so it reads as a single precise field, with a
+              soft coral bloom on focus. */}
+          <div className="glass gradient-border mx-auto mt-8 max-w-md rounded-2xl p-4 text-left transition-shadow focus-within:shadow-[0_0_48px_-16px_rgba(255,91,123,.5)]">
+            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-sand/80">
+              <span className="grid h-6 w-6 place-items-center rounded-md bg-signature-soft"><Link2 className="h-3 w-3 text-cream" /></span>
+              Reference link
             </div>
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              rows={3}
+              rows={2}
               autoFocus
-              placeholder={'Paste a video link…\nor describe your idea in a sentence.'}
-              className="mt-3 w-full resize-none bg-transparent text-lg leading-relaxed outline-none text-cream placeholder:text-sand/35"
+              placeholder="Paste a video link…"
+              className="mt-2.5 w-full resize-none bg-transparent text-base leading-relaxed outline-none text-cream placeholder:text-sand/35"
             />
           </div>
 
-          {/* Advanced settings — collapsed; the defaults are the recommended path. */}
+          {/* Advanced settings — a larger, more tactile toggle: the icon warms to
+              coral on hover so it reads as interactive, not just a label. */}
           <button
             onClick={() => setAdvanced((v) => !v)}
-            className="mx-auto mt-5 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-sand transition-colors hover:border-white/20 hover:text-cream"
+            className="group mx-auto mt-6 inline-flex items-center gap-2.5 rounded-full border border-white/12 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-sand transition-all hover:border-coral/30 hover:bg-white/[0.06] hover:text-cream"
           >
-            <SlidersHorizontal className="h-3.5 w-3.5" /> Advanced settings
-            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', advanced && 'rotate-180')} />
+            <SlidersHorizontal className="h-4 w-4 text-stone transition-colors group-hover:text-coral" /> Advanced settings
+            <ChevronDown className={cn('h-4 w-4 text-stone transition-transform', advanced && 'rotate-180')} />
           </button>
           {advanced && (
-            <div className="mx-auto mt-4 max-w-xl space-y-6 rounded-panel border border-white/8 bg-ink2/50 p-5 text-left backdrop-blur-sm">
+            <div className="mx-auto mt-4 max-w-md space-y-6 rounded-panel border border-white/8 bg-ink2/50 p-5 text-left backdrop-blur-sm">
               <OptionRow label="How close to the reference" options={FIDELITY} value={fidelity} onPick={(v) => setFidelity(v as Fidelity)} />
               <OptionRow label="How it should sound" options={TONE} value={tone} onPick={(v) => setTone(v as Tone)} />
               <p className="text-xs leading-relaxed text-stone">
@@ -194,8 +197,9 @@ export default function V2Create() {
             </div>
           )}
 
-          {/* The one CTA — centered, after the choices. */}
-          <div className="mx-auto mt-8 max-w-xl">
+          {/* The one CTA — centered, matched to the input width so the column reads
+              as one tight, intentional stack. */}
+          <div className="mx-auto mt-7 max-w-md">
             <button onClick={go} disabled={!input.trim() || checking} className="btn-gradient w-full !py-4 text-base">
               <Wand2 className="h-4 w-4" /> {checking ? 'Checking…' : 'Remix'}
             </button>
