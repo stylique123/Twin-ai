@@ -66,4 +66,12 @@ RUN python3 -c "from faster_whisper import WhisperModel; [WhisperModel(m, device
 RUN python3 -c "import torchaudio; torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H.get_model()" || true
 
 ENV NODE_ENV=production
+
+# Liveness: the worker touches /tmp/worker-alive every loop. Mark the container
+# unhealthy if that file is missing or older than 90s (a wedged, not-crashed worker
+# — which `--restart unless-stopped` alone can't catch). Visible via `docker ps` /
+# vps-diag; pair with an autoheal watcher to auto-restart on unhealthy.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD test "$(( $(date +%s) - $(stat -c %Y /tmp/worker-alive 2>/dev/null || echo 0) ))" -lt 90 || exit 1
+
 CMD ["node", "--enable-source-maps", "dist/index.js"]
