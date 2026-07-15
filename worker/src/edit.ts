@@ -748,6 +748,22 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       // full-length segment means "no cut" → render the original take untouched.
       const segs = edl.segments.filter((s) => s.end > s.start)
       const full = segs.length <= 1 && (!segs[0] || (segs[0].start <= 0.05 && segs[0].end >= (edl.durationSec - 0.05)))
+      // Re-derive the zoom "punch" from the creator's Editing style (energy) so that
+      // toggling Relaxed/Snappy in Refine ACTUALLY changes the re-render. It used to be
+      // recorded but never applied here (segments kept their old zoom flags), so the
+      // control was dead. Calm = no punches; Snappy = a rhythmic punch on longer
+      // segments, same ~1.6s cadence as a fresh edit.
+      {
+        const en = edl.energy ?? 'calm'
+        let ft = 0
+        let lastZoom = -1.6
+        for (const s of segs) {
+          const len = s.end - s.start
+          s.zoom = en === 'high' && len >= 0.8 && ft - lastZoom >= 1.6
+          if (s.zoom) lastZoom = ft
+          ft += len
+        }
+      }
       if (segs.length && !full) {
         try { jumpCut = await renderCutSegments(takeFile, cut, segs); if (jumpCut) cutSegments = segs } catch { jumpCut = false }
       }
