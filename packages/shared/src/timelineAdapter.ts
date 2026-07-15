@@ -26,12 +26,21 @@ function captionFromLine(line: string): string {
   return head.replace(/[.,;:!?]+$/, '')
 }
 
-function framingFor(i: number, blueprint: Blueprint): { camera_framing: string; background: string; movement: string } {
+function framingFor(
+  i: number,
+  blueprint: Blueprint,
+  seg?: { background?: string; action_posing?: string; direction?: string },
+): { camera_framing: string; background: string; movement: string } {
   const shot = blueprint.shot_list?.[i]
   return {
     camera_framing: shot?.framing?.trim() || 'Chest-up shot',
-    background: shot?.notes?.trim() || 'Clean, well-lit background',
-    movement: 'Look at camera, natural energy',
+    // Prefer the per-beat SCRIPT background (the real "setting, props, lighting" the
+    // model is prompted to write) over the shot-list note, which is often generic or
+    // an expression cue — that mismatch was the "Background says an expression" bug.
+    background: seg?.background?.trim() || shot?.notes?.trim() || 'Clean, well-lit background',
+    // Movement/expression comes from the beat's action_posing (gestures + face), not a
+    // fixed default, so the card actually guides how to perform the scene.
+    movement: seg?.action_posing?.trim() || 'Look at camera, natural energy',
   }
 }
 
@@ -66,7 +75,7 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
     purpose: 'Open with the hook so people keep watching',
     dialogue: hook,
     duration_sec: estimateDurationSec(hook, wpm),
-    ...framingFor(0, blueprint),
+    ...framingFor(0, blueprint, blueprint.script?.[0]),
     caption_text: pushCaption(captionFromLine(hook), 1),
     broll_instruction: null,
     cut_point: true,
@@ -113,7 +122,7 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
       purpose: seg.section?.trim() || 'Deliver the next point',
       dialogue: line,
       duration_sec: estimateDurationSec(line, wpm),
-      ...framingFor(i + 1, blueprint),
+      ...framingFor(i + 1, blueprint, seg),
       caption_text: pushCaption(captionFromLine(line), n),
       broll_instruction: isBroll && brollNote ? `Show this while talking: ${brollNote}` : null,
       cut_point: true,

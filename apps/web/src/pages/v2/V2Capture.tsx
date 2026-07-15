@@ -598,27 +598,34 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const nextCard = (
     // Strong, opaque card so it reads clearly OVER the live camera (the old near-
     // transparent panel was unreadable). A full "how to set up the next scene" brief.
-    <div className="max-h-[82vh] space-y-4 overflow-y-auto rounded-3xl border border-white/15 bg-black/75 p-6 text-left shadow-2xl backdrop-blur-xl">
+    <div className="max-h-[82vh] space-y-4 overflow-y-auto rounded-3xl border border-white/15 bg-black/55 p-6 text-left shadow-2xl backdrop-blur-2xl">
       <div className="text-center">
         <div className="text-sm font-semibold text-emerald-400">Scene {i + 1} complete ✓</div>
         <div className="mt-1 font-display text-xl text-white">Next · Scene {i + 2} of {scenes.length}</div>
         <div className="mt-0.5 text-xs text-white/50">{sceneTypeLabel(next?.scene_type)} · about {Math.round(estimateDurationSec(next?.dialogue ?? null, timeline.wpm))}s</div>
+        {/* Reassure the creator the camera did NOT turn off — it's just paused between
+            scenes (the recorder pauses, the camera stream stays live). */}
+        <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/70">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" /> Camera on · paused between scenes
+        </div>
       </div>
 
       {/* What they'll actually say next — so they can prep the delivery. */}
       {next?.dialogue && (
         <div className="rounded-2xl border border-white/10 bg-white/[0.06] p-3.5">
-          <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/45">You'll say</div>
-          <p className="text-[15px] leading-snug text-white">“{next.dialogue.length > 160 ? next.dialogue.slice(0, 160) + '…' : next.dialogue}”</p>
+          <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-white/45">Your line — say this</div>
+          <p className="text-[15px] leading-snug text-white">“{next.dialogue.length > 200 ? next.dialogue.slice(0, 200) + '…' : next.dialogue}”</p>
         </div>
       )}
 
-      {/* How to set up the shot — positioning, background, framing, movement. */}
-      <div className="space-y-2.5 text-sm">
-        {next?.camera_framing && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">How to sit / frame</div><p className="text-white/90">{next.camera_framing}</p></div>}
-        {next?.background && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Background</div><p className="text-white/90">{next.background}</p></div>}
-        {next?.purpose && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What this scene does</div><p className="text-white/90">{next.purpose}</p></div>}
-        {next?.movement && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Movement</div><p className="text-white/90">{next.movement}</p></div>}
+      {/* A proper "set up your next scene" guide — where to be, what's around you,
+          how to frame, and what to do while you talk. */}
+      <div className="space-y-3 text-sm">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-white/45">Set up your shot 👇</div>
+        {next?.background && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Where to be / background</div><p className="text-white/90">{next.background}</p></div>}
+        {next?.camera_framing && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">How to sit &amp; frame yourself</div><p className="text-white/90">{next.camera_framing}</p></div>}
+        {next?.movement && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What to do while you talk</div><p className="text-white/90">{next.movement}</p></div>}
+        {next?.purpose && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Why this scene matters</div><p className="text-white/90">{next.purpose}</p></div>}
       </div>
 
       {/* Switch camera between scenes (front / back) — the take is paused here. */}
