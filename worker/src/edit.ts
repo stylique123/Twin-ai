@@ -129,11 +129,16 @@ async function transcribeWindow(dir: string, videoFile: string, start: number, e
 function evenSpreadWords(line: string, s0: number, s1: number): Word[] {
   const toks = String(line ?? '').split(/\s+/).filter(Boolean)
   if (!toks.length) return []
-  const LEAD = 0.15, GAP = 0.05, MIN = 0.30
-  const per = Math.max(MIN, (s1 - s0 - LEAD) / toks.length)
+  const LEAD = 0.15, GAP = 0.05, MIN = 0.30, FLOOR = 0.14
+  const span = Math.max(0.2, s1 - s0 - LEAD)
+  // Words must FIT the window (span / count). Aim for a comfortable ~0.30s/word,
+  // but if the line is too long to fit at that pace, compress down (to a FLOOR) so
+  // the words never overrun s1 into the next scene — that overrun was the
+  // "overlapping / muffled captions" (two scenes' captions on screen at once).
+  const step = Math.max(FLOOR, Math.min(MIN, span / toks.length))
   return toks.map((w, k) => {
-    const start = s0 + LEAD + k * per
-    return { w, start, end: start + Math.max(0.12, per - GAP) }
+    const start = s0 + LEAD + k * step
+    return { w, start, end: Math.min(s1, start + Math.max(0.12, step - GAP)) }
   })
 }
 
@@ -911,10 +916,13 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       if (edl.broll) {
         try { broll = await fetchBroll([edl.broll.query], dir, edl.broll.query) } catch { broll = null }
       }
-    } else if (plan && plan.broll.length) {
-      // Director-grounded b-roll: a literal query tied to what's actually said.
+    } else if (env.editBroll && plan && plan.broll.length) {
+      // AUTO b-roll (opt-in via EDIT_BROLL) — Director-grounded: a literal query
+      // tied to what's actually said. OFF by default: dropping stock footage over a
+      // personal talking-head read looks out of place (the creator can still ADD
+      // b-roll deliberately in Refine, which goes through the `edl.broll` path above).
       try { broll = await fetchBroll([plan.broll[0].query], dir, plan.broll[0].reason || plan.broll[0].query) } catch { broll = null }
-    } else if (words.length && durationSec > 6) {
+    } else if (env.editBroll && words.length && durationSec > 6) {
       try {
         // Fallback (no Director plan): keywords from the blueprint, else transcript.
         const kwSource = opts.brollText && opts.brollText.trim() ? opts.brollText : words.map((w) => w.w).join(' ')
