@@ -942,8 +942,25 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     const GRADE = 'eq=contrast=1.06:saturation=1.12:brightness=0.012,unsharp=5:5:0.45:3:3:0.0'
     const fill = `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,${GRADE}`
     const subs = captions && words.length ? `,subtitles=${assRel}` : ''
+
+    // END THE VIDEO WHEN THE CONTENT ENDS. The silence-cut removes gaps BETWEEN
+    // speech, but a trailing tail after the last word — reaching to stop recording,
+    // a trailed-off "...um", room tone that isn't pure silence — often survives and
+    // leaves the clip playing on after the read is done, with captions appearing to
+    // "keep running even when the video ends" (the exact complaint). So cap the
+    // render just after the last spoken word. Only when we have real word timings
+    // (speech or per-scene script, NOT the sparse whole-clip script fallback where
+    // we can't know where the read actually ends) and the tail is clearly dead
+    // (> 0.6s), so we never clip a real ending. TAIL leaves a natural breath.
+    const TAIL = 0.5
+    const lastWordEnd = words.length ? words.reduce((m, w) => (Number.isFinite(w.end) && w.end > m ? w.end : m), 0) : 0
+    const contentEnd = lastWordEnd > 0 ? Math.min(durationSec, lastWordEnd + TAIL) : durationSec
+    const trimTail = captionSource !== 'script' && lastWordEnd > 0 && durationSec > 0 && contentEnd < durationSec - 0.6
+    const tailArgs = trimTail ? ['-t', contentEnd.toFixed(3)] : []
+    if (trimTail) console.log(`[autoedit] trimming ${(durationSec - contentEnd).toFixed(1)}s dead tail — content ends at ${contentEnd.toFixed(1)}s of ${durationSec.toFixed(1)}s`)
+
     const enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', 'out.mp4']
+      '-c:a', 'aac', '-b:a', '128k', '-ar', '48000', '-movflags', '+faststart', ...tailArgs, 'out.mp4']
 
     // Optional ducked MUSIC BED (env MUSIC_BED_URL): the connective tissue that
     // makes cut clips feel like ONE coherent video. It plays under the whole
