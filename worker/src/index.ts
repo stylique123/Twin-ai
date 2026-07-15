@@ -4,12 +4,24 @@
 // done/fail (with retry + backoff) back to the queue. Stateless and
 // horizontally scalable: run N replicas, they won't collide.
 
-import { db, claimJob, completeJob, failJob } from './db.js'
+import { writeFileSync } from 'node:fs'
+import { db, claimJob, completeJob, failJob, heartbeat } from './db.js'
 import { handlers } from './jobs/index.js'
 import { env } from './env.js'
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+// Liveness: touch a local file every loop (for the Docker HEALTHCHECK — catches a
+// wedged, not-crashed worker) and write a DB heartbeat at most every 15s (for
+// system_health + the worker-down alert). Both are best-effort and never block work.
+const HEARTBEAT_FILE = '/tmp/worker-alive'
+let lastDbBeat = 0
+async function beat(): Promise<void> {
+  const now = Date.now()
+  try { writeFileSync(HEARTBEAT_FILE, String(now)) } catch { /* fs read-only — ignore */ }
+  if (now - lastDbBeat > 15_000) { lastDbBeat = now; await heartbeat() }
+}
 
 function log(level: string, msg: string, extra: Record<string, unknown> = {}) {
   console.log(JSON.stringify({ t: new Date().toISOString(), level, msg, worker: env.workerId, ...extra }))
@@ -68,6 +80,7 @@ async function main() {
 
   while (running) {
     try {
+      await beat() // record liveness before each claim attempt
       const didWork = await tick()
       if (!didWork) await sleep(env.pollMs) // idle backoff when the queue is empty
     } catch (err) {

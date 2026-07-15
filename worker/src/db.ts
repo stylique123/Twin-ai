@@ -48,6 +48,15 @@ export async function updateJobProgress(id: string, progress: { phase: string; p
   try { await db.from('jobs').update({ result: { progress } }).eq('id', id).eq('status', 'running').eq('locked_by', env.workerId) } catch (e) { console.warn(`[job ${id}] progress write failed:`, e) /* never block the render on a progress write */ }
 }
 
+// Liveness heartbeat: record that this worker is alive so a dead/wedged worker is
+// visible (system_health + the check-worker-liveness cron alert). Best-effort — a
+// failed heartbeat must never affect job processing.
+export async function heartbeat(): Promise<void> {
+  try {
+    await db.from('worker_heartbeat').upsert({ worker_id: env.workerId, last_seen_at: new Date().toISOString() })
+  } catch { /* best-effort; the Docker HEALTHCHECK file still reflects local liveness */ }
+}
+
 export async function failJob(id: string, message: string, backoffSecs = 30): Promise<void> {
   const { data, error } = await db.rpc('fail_job', { p_id: id, p_error: message.slice(0, 500), p_backoff_secs: backoffSecs, p_worker: env.workerId })
   if (error) throw error
