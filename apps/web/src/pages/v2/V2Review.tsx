@@ -252,25 +252,31 @@ export default function V2Review() {
   const canRefine = !!takePath && !!refineEdl && !refineLoading
   const actionsRail = (
     <div className="space-y-4">
-      {/* Secondary action tiles (mock parity: Edit / Captions / New) */}
-      <div className="grid grid-cols-3 gap-2">
-        <button onClick={() => setRefineOpen(true)} disabled={!canRefine}
-          className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3.5 text-center transition-colors hover:bg-white/[0.07] disabled:opacity-35">
-          <Pencil className="mx-auto h-4 w-4 text-cream" />
-          <div className="mt-1.5 text-xs font-semibold text-cream">Edit video</div>
-          <div className="text-[10px] text-stone">Make changes</div>
-        </button>
+      {/* PRIMARY editing step — the finished video is done, so "Edit your video" is
+          the clear next action: it opens the simplified editing options (fix captions,
+          look, music, remove a moment). Prominent, not a small tile. */}
+      <button onClick={() => setRefineOpen(true)} disabled={!canRefine}
+        className="w-full rounded-2xl border border-coral/40 bg-coral/10 p-4 text-left transition-colors hover:bg-coral/[0.16] disabled:opacity-35">
+        <div className="flex items-center gap-3">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-coral/20"><Pencil className="h-4 w-4 text-coral" /></span>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-cream">Edit your video</div>
+            <div className="text-[11px] text-stone">Fix captions, change the look, music &amp; more — free</div>
+          </div>
+        </div>
+      </button>
+
+      {/* Quick style + start another, secondary */}
+      <div className="grid grid-cols-2 gap-2">
         <button onClick={() => setCaptionSheet(true)} disabled={!canRefine}
-          className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3.5 text-center transition-colors hover:bg-white/[0.07] disabled:opacity-35">
+          className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3 text-center transition-colors hover:bg-white/[0.07] disabled:opacity-35">
           <Captions className="mx-auto h-4 w-4 text-cream" />
-          <div className="mt-1.5 text-xs font-semibold text-cream">Captions</div>
-          <div className="text-[10px] text-stone">Change style</div>
+          <div className="mt-1 text-xs font-semibold text-cream">Caption style</div>
         </button>
         <button onClick={() => nav('/v2')}
-          className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3.5 text-center transition-colors hover:bg-white/[0.07]">
+          className="rounded-2xl border border-white/10 bg-white/[0.04] px-2 py-3 text-center transition-colors hover:bg-white/[0.07]">
           <Copy className="mx-auto h-4 w-4 text-cream" />
-          <div className="mt-1.5 text-xs font-semibold text-cream">New video</div>
-          <div className="text-[10px] text-stone">Make another</div>
+          <div className="mt-1 text-xs font-semibold text-cream">New video</div>
         </button>
       </div>
 

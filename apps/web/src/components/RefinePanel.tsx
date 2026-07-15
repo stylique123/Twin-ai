@@ -259,17 +259,19 @@ export function RefinePanel({
                       onClick={() => setAdvanced((v) => !v)}
                       className="flex w-full items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wider text-stone hover:text-cream"
                     >
-                      <span>Advanced — cuts, zooms &amp; cutaways</span>
+                      <span>Advanced — remove moments &amp; cutaways</span>
                       <ChevronDown className={cn('h-4 w-4 transition-transform', advanced && 'rotate-180')} />
                     </button>
 
                     {advanced && (
                       <div className="space-y-5 border-t border-white/5 px-4 pb-4 pt-4">
-                        {/* Cuts & zooms — labelled by the WORDS in each cut, not raw seconds. */}
+                        {/* Remove a moment — labelled by the WORDS in each cut, not raw
+                            seconds. (Zoom punch is driven by "Editing style" above, so
+                            there's no dead per-segment zoom toggle here.) */}
                         {hasSegments && (
                           <div className="space-y-2">
                             <p className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-sand">
-                              <Clapperboard className="h-3.5 w-3.5 text-coral" /> Cuts &amp; zoom effects
+                              <Clapperboard className="h-3.5 w-3.5 text-coral" /> Remove a moment
                             </p>
                             <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                               {edl.segments.map((seg, idx) => (
@@ -278,26 +280,14 @@ export function RefinePanel({
                                     <p className="truncate text-cream">{segmentLabel(seg.start, seg.end)}</p>
                                     <p className="font-mono text-[10px] text-stone">{s1(seg.start).toFixed(1)}s – {s1(seg.end).toFixed(1)}s</p>
                                   </div>
-                                  <div className="flex shrink-0 items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={() => setEdl((prev) => prev ? { ...prev, segments: prev.segments.map((s, i) => i === idx ? { ...s, zoom: !s.zoom } : s) } : prev)}
-                                      className={cn(
-                                        'rounded px-2 py-1 text-[10px] font-semibold transition-all border',
-                                        seg.zoom ? 'bg-amber/15 border-amber text-amber' : 'bg-white/5 border-white/10 text-stone'
-                                      )}
-                                    >
-                                      🔍 Zoom {seg.zoom ? 'On' : 'Off'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setEdl((prev) => prev ? { ...prev, segments: prev.segments.filter((_, i) => i !== idx) } : prev)}
-                                      className="p-1 text-stone transition-colors hover:text-coral"
-                                      title="Remove this moment"
-                                    >
-                                      <X className="h-3.5 w-3.5" />
-                                    </button>
-                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setEdl((prev) => prev ? { ...prev, segments: prev.segments.filter((_, i) => i !== idx) } : prev)}
+                                    className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-[10px] font-semibold text-stone transition-colors hover:border-coral/40 hover:text-coral"
+                                    title="Remove this moment"
+                                  >
+                                    <X className="h-3.5 w-3.5" /> Remove
+                                  </button>
                                 </div>
                               ))}
                             </div>
