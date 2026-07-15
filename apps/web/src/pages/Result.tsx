@@ -510,9 +510,9 @@ export default function Result() {
             <div className="mt-6 grid items-start gap-3 lg:grid-cols-2">
               {b.concept?.premise && (
                 <div className="flex flex-col rounded-card border border-teal/25 bg-teal/[0.06] p-4">
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal">Your concept</div>
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal">Your video idea</div>
                   <p className="text-sm font-semibold leading-snug text-cream">{b.concept.premise}</p>
-                  {b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Pull it off solo: </span>{b.concept.your_scale}</p>}
+                  {b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Film it solo: </span>{b.concept.your_scale}</p>}
                   {b.concept.translations?.length ? (
                     <div className="mt-2 space-y-1">
                       {b.concept.translations.map((t, i) => (
@@ -524,18 +524,18 @@ export default function Result() {
               )}
               {(b.packaging?.titles?.length ?? 0) > 0 && (
                 <div className="flex flex-col rounded-card border border-amber/25 bg-amber/[0.06] p-4">
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber">Title &amp; thumbnail</div>
-                  <p className="text-[10px] uppercase tracking-wide text-stone">Recommended title</p>
+                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber">Title &amp; cover image</div>
+                  <p className="text-[10px] uppercase tracking-wide text-stone">Suggested title</p>
                   <p className="text-sm font-bold leading-snug text-cream">{b.packaging!.titles[0]}</p>
                   {b.packaging!.titles.length > 1 && (
                     <div className="mt-1.5 space-y-0.5">{b.packaging!.titles.slice(1).map((t, i) => <p key={i} className="text-xs text-sand/80">{t}</p>)}</div>
                   )}
                   {b.packaging!.thumbnail && (
                     <div className="mt-2 space-y-0.5 rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-xs">
-                      <p className="text-[10px] uppercase tracking-wide text-stone">Thumbnail to shoot</p>
-                      <p className="text-cream"><span className="text-stone">Big text: </span>“{b.packaging!.thumbnail.text_overlay}”</p>
-                      <p className="text-sand/85"><span className="text-stone">Shot: </span>{b.packaging!.thumbnail.concept}</p>
-                      <p className="text-sand/85"><span className="text-stone">Framing: </span>{b.packaging!.thumbnail.composition}</p>
+                      <p className="text-[10px] uppercase tracking-wide text-stone">Cover photo to take</p>
+                      <p className="text-cream"><span className="text-stone">Big words: </span>“{b.packaging!.thumbnail.text_overlay}”</p>
+                      <p className="text-sand/85"><span className="text-stone">The photo: </span>{b.packaging!.thumbnail.concept}</p>
+                      <p className="text-sand/85"><span className="text-stone">How to frame it: </span>{b.packaging!.thumbnail.composition}</p>
                       <p className="text-sand/85"><span className="text-stone">Colours: </span>{b.packaging!.thumbnail.colors}</p>
                       <p className="pt-1 text-[10px] text-stone">Generate the cover image at the top ↑</p>
                     </div>
@@ -561,7 +561,7 @@ export default function Result() {
                         : 'text-stone hover:text-sand'
                     )}
                   >
-                    {tab === 'spec' ? 'Specs' : tab === 'publish' ? 'Share' : tab}
+                    {tab === 'script' ? 'Script' : tab === 'strategy' ? 'Why it works' : tab === 'spec' ? 'Film & edit' : 'Post it'}
                   </button>
                 )
               })}
@@ -583,9 +583,9 @@ export default function Result() {
             <div className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-4 shadow-glass backdrop-blur-md">
               <div className="flex items-center gap-2">
                 <Quote className="h-4.5 w-4.5 text-amber" />
-                <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Select Hook Angle</span>
+                <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Pick your opening line</span>
               </div>
-              <p className="text-xs text-stone">Select a hook angle to dynamically update the teleprompter script.</p>
+              <p className="text-xs text-stone">Pick an opening line — it updates your script below.</p>
               <div className="grid grid-cols-1 gap-3">
                 {b.hook_options.map((h, i) => {
                   const isChosen = h === chosenHook
@@ -637,7 +637,7 @@ export default function Result() {
                     <div key={i} className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-4 shadow-glass backdrop-blur-md">
                       <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-3">
                         <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider', tagColor)}>
-                          {s.section || `Beat ${i + 1}`}
+                          {plainSection(s.section, i)}
                         </span>
                         <span className="text-xs font-mono text-stone">Scene {i + 1}</span>
                       </div>
@@ -652,21 +652,21 @@ export default function Result() {
                         <div className="flex items-start gap-3">
                           <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />
                           <div>
-                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Visual Scene & Background</span>
+                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Where to film</span>
                             <span className="text-sand/90 leading-relaxed">{s.background || 'Visual context matching scene.'}</span>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
                           <User className="h-4 w-4 text-coral shrink-0 mt-0.5" />
                           <div>
-                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Body & Stance</span>
+                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">How to stand & move</span>
                             <span className="text-sand/90 leading-relaxed">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
                           </div>
                         </div>
                         <div className="flex items-start gap-3">
                           <SlidersHorizontal className="h-4 w-4 text-teal shrink-0 mt-0.5" />
                           <div>
-                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Camera Pacing & Cuts</span>
+                            <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Camera moves & cuts</span>
                             <span className="text-sand/90 leading-relaxed">{s.cuts_info || 'Cut pacing instructions.'}</span>
                           </div>
                         </div>
@@ -680,7 +680,7 @@ export default function Result() {
             {/* Shot List */}
             <div className="space-y-4">
               <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
-                <Clapperboard className="h-4 w-4 text-stone" /> Shot List & Assets
+                <Clapperboard className="h-4 w-4 text-stone" /> Shots & extra clips
               </h2>
               <div className="grid grid-cols-1 gap-4">
                 {b.shot_list.map((s, i) => {
@@ -724,15 +724,15 @@ export default function Result() {
                             )}>
                               {isBroll ? (
                                 <>
-                                  <Video className="h-2.5 w-2.5" /> B-Roll Overlay
+                                  <Video className="h-2.5 w-2.5" /> Extra clip
                                 </>
                               ) : isTalkingHead ? (
                                 <>
-                                  <User className="h-2.5 w-2.5" /> Talking Head
+                                  <User className="h-2.5 w-2.5" /> You talking
                                 </>
                               ) : (
                                 <>
-                                  <Quote className="h-2.5 w-2.5" /> Cover Thumbnail
+                                  <Quote className="h-2.5 w-2.5" /> Cover shot
                                 </>
                               )}
                             </span>
@@ -745,7 +745,7 @@ export default function Result() {
                                 ? "border-amber/20 bg-amber/5 text-amber"
                                 : "border-stone/20 bg-stone/5 text-stone"
                             )}>
-                              {isReplicate ? 'Replicate Original' : 'Stock Footage'}
+                              {isReplicate ? 'Copy theirs' : 'Stock clip'}
                             </span>
                           )}
                         </div>
@@ -756,7 +756,7 @@ export default function Result() {
                         {/* B-Roll Visual Description */}
                         {isBroll && s.b_roll_visual && (
                           <div className="bg-ink3/30 border border-white/5 rounded-lg p-2.5 mt-2">
-                            <span className="text-[9px] font-bold text-cream uppercase tracking-wider block mb-0.5">Overlay Asset Detail</span>
+                            <span className="text-[9px] font-bold text-cream uppercase tracking-wider block mb-0.5">On-screen text & graphics</span>
                             <span className="text-xs text-sand/85 leading-relaxed">{s.b_roll_visual}</span>
                           </div>
                         )}
@@ -765,7 +765,7 @@ export default function Result() {
                       {/* Spoken Dialog Overlay (if B-roll has spoken words, or if it's Talking Head) */}
                       {s.spoken_text && s.spoken_text.trim() !== '' && (
                         <div className="border-t border-white/[0.04] pt-3 mt-3">
-                          <span className="text-[9px] font-bold text-stone uppercase tracking-wider block mb-1">Spoken Voiceover / Line</span>
+                          <span className="text-[9px] font-bold text-stone uppercase tracking-wider block mb-1">What to say</span>
                           <p className="text-xs italic text-sand pl-2 border-l border-teal/30 leading-relaxed">
                             “{s.spoken_text}”
                           </p>
@@ -797,7 +797,7 @@ export default function Result() {
                         : 'text-stone hover:text-sand'
                     )}
                   >
-                    {tab === 'strategy' ? 'Strategy' : tab === 'spec' ? 'Specs' : 'Share'}
+                    {tab === 'strategy' ? 'Why it works' : tab === 'spec' ? 'Film & edit' : 'Post it'}
                   </button>
                 )
               })}
@@ -816,7 +816,7 @@ export default function Result() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <TrendingUp className="h-4 w-4 text-stone" />
-                      <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why this works</h3>
+                      <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why it works</h3>
                     </div>
                     <ul className="space-y-3">
                       {b.reference_read.why_it_works.map((w, i) => (
@@ -829,7 +829,7 @@ export default function Result() {
 
                   {/* Retention Map Visual Timeline */}
                   <div className="border-t border-white/[0.04] pt-6 space-y-4">
-                    <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Estimated Retention map</h3>
+                    <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Where people keep watching</h3>
                     <div className="relative pl-6 space-y-6">
                       {/* Vertical line connecting steps */}
                       <div className="absolute left-[9px] top-2 bottom-2 w-px border-l border-dashed border-white/10" />
@@ -861,28 +861,28 @@ export default function Result() {
                   <div className="space-y-4">
                     <div className="flex items-center gap-2">
                       <SlidersHorizontal className="h-4 w-4 text-stone" />
-                      <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Editing specifications</h3>
+                      <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Editing settings</h3>
                     </div>
                     <div className="grid gap-2.5 grid-cols-2">
                       <Spec label="Captions" value={cap.caption_style} />
-                      <Spec label="Pacing" value={cap.pacing} />
-                      <Spec label="Emphasis" value={cap.emphasis} />
-                      <Spec label="Export" value={cap.export} />
+                      <Spec label="Speed" value={cap.pacing} />
+                      <Spec label="Highlights" value={cap.emphasis} />
+                      <Spec label="Save" value={cap.export} />
                     </div>
                   </div>
 
                   {b.b_roll_stats && (
                     <div className="border-t border-white/[0.04] pt-6 space-y-3">
                       <h4 className="text-xs text-stone font-heading uppercase tracking-wider flex items-center gap-1.5">
-                        <Video className="h-3.5 w-3.5" /> B-Roll Stats
+                        <Video className="h-3.5 w-3.5" /> Extra clips
                       </h4>
                       <div className="grid gap-2.5 grid-cols-2">
                         <div className="bg-ink3/40 border border-white/5 rounded-xl p-3 flex flex-col justify-between">
-                          <span className="text-[10px] text-stone font-heading uppercase tracking-wider">Original Video B-Rolls</span>
+                          <span className="text-[10px] text-stone font-heading uppercase tracking-wider">Extra clips in their video</span>
                           <span className="text-xl font-bold font-heading text-sand mt-1">{b.b_roll_stats.original_b_roll_count}</span>
                         </div>
                         <div className="bg-ink3/40 border border-white/5 rounded-xl p-3 flex flex-col justify-between">
-                          <span className="text-[10px] text-stone font-heading uppercase tracking-wider">Suggested Recreation B-Rolls</span>
+                          <span className="text-[10px] text-stone font-heading uppercase tracking-wider">Extra clips to film yourself</span>
                           <span className="text-xl font-bold font-heading text-teal mt-1">{b.b_roll_stats.suggested_b_roll_count}</span>
                         </div>
                       </div>
@@ -902,7 +902,7 @@ export default function Result() {
 
                   {/* Production Sprint Timeline */}
                   <div className="border-t border-white/[0.04] pt-6 space-y-4">
-                    <h4 className="text-xs text-stone font-heading uppercase tracking-wider">Production Sprint</h4>
+                    <h4 className="text-xs text-stone font-heading uppercase tracking-wider">Filming schedule</h4>
                     <div className="relative pl-6 space-y-5">
                       <div className="absolute left-[9px] top-2 bottom-2 w-px border-l border-dashed border-white/10" />
                       {b.production_sprint.map((p, i) => (
@@ -930,7 +930,7 @@ export default function Result() {
                 >
                   <div className="flex items-center gap-2">
                     <Send className="h-4 w-4 text-stone" />
-                    <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Distribution Plan</h3>
+                    <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Where to post</h3>
                   </div>
                   <div className="space-y-4">
                     {b.publish_plan.map((p, i) => (
@@ -953,9 +953,9 @@ export default function Result() {
               <div className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-4 shadow-glass backdrop-blur-md">
                 <div className="flex items-center gap-2">
                   <Quote className="h-4.5 w-4.5 text-amber" />
-                  <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Select Hook Angle</span>
+                  <span className="font-heading text-xs font-semibold text-cream tracking-wide uppercase">Pick your opening line</span>
                 </div>
-                <p className="text-xs text-stone">Select a hook angle to dynamically update the teleprompter script.</p>
+                <p className="text-xs text-stone">Pick an opening line — it updates your script below.</p>
                 <div className="grid grid-cols-1 gap-3">
                   {b.hook_options.map((h, i) => {
                     const isChosen = h === chosenHook
@@ -1007,7 +1007,7 @@ export default function Result() {
                       <div key={i} className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-4 shadow-glass backdrop-blur-md">
                         <div className="flex items-center justify-between gap-2 border-b border-white/5 pb-3">
                           <span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wider', tagColor)}>
-                            {s.section || `Beat ${i + 1}`}
+                            {plainSection(s.section, i)}
                           </span>
                           <span className="text-xs font-mono text-stone">Scene {i + 1}</span>
                         </div>
@@ -1022,21 +1022,21 @@ export default function Result() {
                           <div className="flex items-start gap-3">
                             <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />
                             <div>
-                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Visual Scene & Background</span>
+                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Where to film</span>
                               <span className="text-sand/90 leading-relaxed">{s.background || 'Visual context matching scene.'}</span>
                             </div>
                           </div>
                           <div className="flex items-start gap-3">
                             <User className="h-4 w-4 text-coral shrink-0 mt-0.5" />
                             <div>
-                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Body & Stance</span>
+                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">How to stand & move</span>
                               <span className="text-sand/90 leading-relaxed">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
                             </div>
                           </div>
                           <div className="flex items-start gap-3">
                             <SlidersHorizontal className="h-4 w-4 text-teal shrink-0 mt-0.5" />
                             <div>
-                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Camera Pacing & Cuts</span>
+                              <span className="font-semibold text-cream uppercase tracking-wider text-[10px] block mb-0.5">Camera moves & cuts</span>
                               <span className="text-sand/90 leading-relaxed">{s.cuts_info || 'Cut pacing instructions.'}</span>
                             </div>
                           </div>
@@ -1050,7 +1050,7 @@ export default function Result() {
               {/* Shot List */}
               <div className="space-y-4">
                 <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
-                  <Clapperboard className="h-4 w-4 text-stone" /> Shot List & Assets
+                  <Clapperboard className="h-4 w-4 text-stone" /> Shots & extra clips
                 </h2>
                 <div className="grid grid-cols-1 gap-4">
                   {b.shot_list.map((s, i) => {
@@ -1092,15 +1092,15 @@ export default function Result() {
                               )}>
                                 {isBroll ? (
                                   <>
-                                    <Video className="h-2.5 w-2.5" /> B-Roll Overlay
+                                    <Video className="h-2.5 w-2.5" /> Extra clip
                                   </>
                                 ) : isTalkingHead ? (
                                   <>
-                                    <User className="h-2.5 w-2.5" /> Talking Head
+                                    <User className="h-2.5 w-2.5" /> You talking
                                   </>
                                 ) : (
                                   <>
-                                    <Quote className="h-2.5 w-2.5" /> Cover Thumbnail
+                                    <Quote className="h-2.5 w-2.5" /> Cover shot
                                   </>
                                 )}
                               </span>
@@ -1113,7 +1113,7 @@ export default function Result() {
                                   ? "border-amber/20 bg-amber/5 text-amber"
                                   : "border-stone/20 bg-stone/5 text-stone"
                               )}>
-                                {isReplicate ? 'Replicate Original' : 'Stock Footage'}
+                                {isReplicate ? 'Copy theirs' : 'Stock clip'}
                               </span>
                             )}
                           </div>
@@ -1122,7 +1122,7 @@ export default function Result() {
 
                           {isBroll && s.b_roll_visual && (
                             <div className="bg-ink3/30 border border-white/5 rounded-lg p-2.5 mt-2">
-                              <span className="text-[9px] font-bold text-cream uppercase tracking-wider block mb-0.5">Overlay Asset Detail</span>
+                              <span className="text-[9px] font-bold text-cream uppercase tracking-wider block mb-0.5">On-screen text & graphics</span>
                               <span className="text-xs text-sand/85 leading-relaxed">{s.b_roll_visual}</span>
                             </div>
                           )}
@@ -1130,7 +1130,7 @@ export default function Result() {
 
                         {s.spoken_text && s.spoken_text.trim() !== '' && (
                           <div className="border-t border-white/[0.04] pt-3 mt-3">
-                            <span className="text-[9px] font-bold text-stone uppercase tracking-wider block mb-1">Spoken Voiceover / Line</span>
+                            <span className="text-[9px] font-bold text-stone uppercase tracking-wider block mb-1">What to say</span>
                             <p className="text-xs italic text-sand pl-2 border-l border-teal/30 leading-relaxed">
                               “{s.spoken_text}”
                             </p>
@@ -1149,7 +1149,7 @@ export default function Result() {
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <TrendingUp className="h-4 w-4 text-stone" />
-                  <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why this works</h3>
+                  <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Why it works</h3>
                 </div>
                 <ul className="space-y-2.5">
                   {b.reference_read.why_it_works.map((w, i) => (
@@ -1161,7 +1161,7 @@ export default function Result() {
               </div>
 
               <div className="border-t border-white/5 pt-4 space-y-3">
-                <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Estimated Retention map</h3>
+                <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Where people keep watching</h3>
                 <div className="relative pl-6 space-y-5">
                   <div className="absolute left-[9px] top-2 bottom-2 w-px border-l border-dashed border-white/10" />
                   {b.reference_read.retention_map.map((r, i) => (
@@ -1184,13 +1184,13 @@ export default function Result() {
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <SlidersHorizontal className="h-4 w-4 text-stone" />
-                  <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Editing specifications</h3>
+                  <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Editing settings</h3>
                 </div>
                 <div className="grid gap-2.5 grid-cols-2">
                   <Spec label="Captions" value={cap.caption_style} />
-                  <Spec label="Pacing" value={cap.pacing} />
-                  <Spec label="Emphasis" value={cap.emphasis} />
-                  <Spec label="Export" value={cap.export} />
+                  <Spec label="Speed" value={cap.pacing} />
+                  <Spec label="Highlights" value={cap.emphasis} />
+                  <Spec label="Save" value={cap.export} />
                 </div>
               </div>
               
@@ -1206,7 +1206,7 @@ export default function Result() {
               </div>
 
               <div className="border-t border-white/5 pt-4 space-y-3">
-                <h4 className="text-xs text-stone font-heading uppercase tracking-wider">Production Sprint</h4>
+                <h4 className="text-xs text-stone font-heading uppercase tracking-wider">Filming schedule</h4>
                 <div className="relative pl-6 space-y-5">
                   <div className="absolute left-[9px] top-2 bottom-2 w-px border-l border-dashed border-white/10" />
                   {b.production_sprint.map((p, i) => (
@@ -1229,7 +1229,7 @@ export default function Result() {
               <div className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-4 shadow-glass backdrop-blur-md">
                 <div className="flex items-center gap-2">
                   <Send className="h-4 w-4 text-stone" />
-                  <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Distribution Plan</h3>
+                  <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Where to post</h3>
                 </div>
                 <div className="space-y-4">
                   {b.publish_plan.map((p, i) => (
@@ -1374,6 +1374,19 @@ function PublishRow({
       )}
     </div>
   )
+}
+
+// Translate the AI's script-section names (Hook / Setup / Re-hook / CTA) into plain
+// words a first-timer reads once and gets. Unknown sections pass through.
+function plainSection(section: string | undefined, i: number): string {
+  const s = (section ?? '').toLowerCase()
+  if (s.includes('re-hook') || s.includes('rehook')) return 'Grab them again'
+  if (s.includes('hook')) return 'Opening line'
+  if (s.includes('cta') || s.includes('call to action')) return 'Ask them to act'
+  if (s.includes('setup')) return 'Set it up'
+  if (s.includes('body') || s.includes('middle')) return 'Main point'
+  if (s.includes('outro') || s.includes('close') || s.includes('end')) return 'Wrap up'
+  return section || `Part ${i + 1}`
 }
 
 function Spec({ label, value }: { label: string; value: string }) {
