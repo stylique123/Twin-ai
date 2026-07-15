@@ -204,7 +204,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     let raf = 0
     const start = performance.now()
     const tick = (now: number) => {
-      const readY = box.clientHeight * 0.5         // read-line at the middle — text starts lower
+      const readY = box.clientHeight * 0.6         // read-line a touch below middle — text starts lower, sits in a comfortable eye-line
       if (!recording) { p.style.transform = `translateY(${readY}px)${mir}`; return }
       const travel = Math.max(p.offsetHeight + readY, box.clientHeight * 0.9) // always a visible glide
       const prog = Math.min(1, (now - start) / 1000 / estSec)
@@ -709,7 +709,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
                       {words.map((w, idx) => (
                         <span
                           key={idx}
-                          className={!recording ? 'text-cream' : idx < readCount ? 'text-cream/40' : idx === readCount ? 'text-teal' : 'text-cream'}
+                          // ONE colour. No green/teal per-word highlight (the read-line
+                          // + upward glide already show where you are). Already-read
+                          // words dim slightly — same white, just lower opacity — so
+                          // your eye tracks forward without a distracting colour change.
+                          className={recording && idx < readCount ? 'text-white/40' : 'text-white'}
                         >
                           {w}{' '}
                         </span>
