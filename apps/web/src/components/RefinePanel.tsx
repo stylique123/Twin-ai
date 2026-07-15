@@ -9,6 +9,49 @@ import { cn } from '../lib/cn'
 // that read as a bug to every user on the panel).
 const s1 = (n: number) => (Number.isFinite(n) ? Math.round(n * 10) / 10 : 0)
 
+type Word = { w: string; start: number; end: number }
+// One editable caption phrase: its original words + its fixed time window. Editing the
+// text NEVER touches other lines — the whole point of the per-line rebuild.
+type CapLine = { start: number; end: number; original: Word[]; text: string }
+
+// Group the flat word list into readable phrases (~5 words, break on sentence/clause
+// punctuation) — the same phrasing the burned captions use, so a "line" here matches
+// what the viewer sees on screen.
+function groupWords(words: Word[]): CapLine[] {
+  const lines: CapLine[] = []
+  let cur: Word[] = []
+  const flush = () => {
+    if (!cur.length) return
+    lines.push({ start: cur[0].start, end: cur[cur.length - 1].end, original: cur, text: cur.map((w) => w.w).join(' ') })
+    cur = []
+  }
+  for (const w of words) {
+    cur.push(w)
+    if (cur.length >= 5 || /[.!?,;:]$/.test(w.w)) flush()
+  }
+  flush()
+  return lines
+}
+
+// Flatten edited lines back to timed words. An UNCHANGED line keeps its exact original
+// per-word timings; only a line whose text actually changed is re-timed — and it is
+// spread ONLY across its own [start,end] window, so a typo fix can never shift the rest
+// of the video's captions (the drift bug).
+function flattenLines(lines: CapLine[]): Word[] {
+  const out: Word[] = []
+  for (const ln of lines) {
+    const toks = ln.text.trim().split(/\s+/).filter(Boolean)
+    const orig = ln.original.map((w) => w.w)
+    const unchanged = toks.length === orig.length && toks.every((t, i) => t === orig[i])
+    if (unchanged) { out.push(...ln.original); continue }
+    if (!toks.length) continue // emptied line → drop its words
+    const span = Math.max(0.3, ln.end - ln.start)
+    const per = span / toks.length
+    toks.forEach((t, i) => out.push({ w: t, start: ln.start + i * per, end: ln.start + (i + 1) * per }))
+  }
+  return out
+}
+
 export function RefinePanel({
   open,
   edl: initialEdl,
@@ -33,10 +76,27 @@ export function RefinePanel({
   // controls scared non-technical creators and read as "an editor I can't use". They
   // live under Advanced now; the default view is just the friendly cosmetic choices.
   const [advanced, setAdvanced] = useState(false)
+  // Caption phrases, edited per-line. Rebuilt only when a NEW edit loads (initialEdl),
+  // so each line's input keeps a stable identity while the creator types.
+  const [capLines, setCapLines] = useState<CapLine[]>([])
 
-  useEffect(() => { setEdl(initialEdl) }, [initialEdl])
+  useEffect(() => {
+    setEdl(initialEdl)
+    setCapLines(groupWords((initialEdl?.captions?.words ?? []) as Word[]))
+  }, [initialEdl])
 
   const changed = JSON.stringify(edl) !== JSON.stringify(initialEdl)
+
+  // Commit one line's text edit: update that line only, reflow just its window, and
+  // push the rebuilt (locally-retimed) word list into the EDL.
+  const commitLine = (idx: number, text: string) => {
+    setCapLines((prev) => {
+      const next = prev.map((ln, i) => (i === idx ? { ...ln, text } : ln))
+      const words = flattenLines(next)
+      setEdl((e) => (e ? { ...e, captions: { ...e.captions, words } } : e))
+      return next
+    })
+  }
 
   const setCapStyle = (style: string) => setEdl((e) => e ? { ...e, captions: { ...e.captions, style } } : e)
   const setCapColor = (v: number) => setEdl((e) => e ? { ...e, variation: v, captions: { ...e.captions, variation: v } } : e)
@@ -44,26 +104,6 @@ export function RefinePanel({
   const setEnergy = (en: 'high' | 'calm') => setEdl((e) => e ? { ...e, energy: en } : e)
   const setBrollKeep = (keep: boolean) => setEdl((e) => e ? { ...e, broll: keep ? (e.broll ?? { query: '', start: 1.5, end: 4.5 }) : null } : e)
   const setBrollQuery = (q: string) => setEdl((e) => e && e.broll ? { ...e, broll: { ...e.broll, query: q } } : e)
-
-  // Quick caption text editor — edits the words; timings are kept from the original
-  // where possible so a small typo fix doesn't blow up sync.
-  const getWordsString = () => edl?.captions?.words?.map((w) => w.w).join(' ') || ''
-  const handleUpdateWordsText = (text: string) => {
-    const parts = text.trim().split(/\s+/)
-    setEdl((e) => {
-      if (!e) return e
-      const oldWords = e.captions?.words || []
-      const newWords = parts.map((w, idx) => {
-        const old = oldWords[idx]
-        return {
-          w,
-          start: old ? old.start : idx * 0.4,
-          end: old ? old.end : (idx + 1) * 0.4,
-        }
-      })
-      return { ...e, captions: { ...e.captions, words: newWords } }
-    })
-  }
 
   // Label a cut by the WORDS spoken in it (recognition), not "Segment 3: 12.4–15.8s"
   // (recall against timecodes) — the #1 fix the panel review asked for on cuts.
@@ -190,20 +230,26 @@ export function RefinePanel({
                   )}
                 </div>
 
-                {/* ---- FIX CAPTION WORDS ---- */}
-                <div className="space-y-2">
-                  <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sand">
-                    <Type className="h-3.5 w-3.5 text-amber" /> Fix caption words
-                  </p>
-                  <textarea
-                    rows={3}
-                    defaultValue={getWordsString()}
-                    onBlur={(e) => handleUpdateWordsText(e.target.value)}
-                    placeholder="Fix any words the AI misheard…"
-                    className="field text-sm leading-relaxed"
-                  />
-                  <p className="text-[10px] text-stone">Edits save when you tap outside the box.</p>
-                </div>
+                {/* ---- FIX CAPTIONS (per phrase — fixing one line never re-times the rest) ---- */}
+                {capLines.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sand">
+                      <Type className="h-3.5 w-3.5 text-amber" /> Fix captions
+                    </p>
+                    <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                      {capLines.map((ln, idx) => (
+                        <input
+                          key={idx}
+                          defaultValue={ln.text}
+                          onBlur={(e) => commitLine(idx, e.target.value)}
+                          aria-label={`Caption phrase ${idx + 1}`}
+                          className="field text-sm h-10"
+                        />
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-stone">Each line is one caption. Fixing a word only re-times that line — the rest stay put. Saves when you tap outside.</p>
+                  </div>
+                )}
 
                 {/* ---- ADVANCED (cuts / zoom / cutaways) ---- */}
                 {(hasSegments || showBroll) && (
