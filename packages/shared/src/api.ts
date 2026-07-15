@@ -652,8 +652,10 @@ async function readInvokeError(error: unknown): Promise<string> {
 export interface StartDnaResult {
   brand_voice_id: string
   job_id: string | null
-  // 'ready' is returned on a DNA cache hit (start-dna returns it directly); 'building' otherwise.
-  status: 'building' | 'ready'
+  // 'ready' is returned on a DNA cache hit (start-dna returns it directly);
+  // 'manual' when the creator opted to describe their voice by hand (no scan);
+  // 'building' otherwise.
+  status: 'building' | 'ready' | 'manual'
 }
 
 // ---- Referrals -----------------------------------------------------------
@@ -712,6 +714,18 @@ export async function getBrandStats(brandVoiceId: string): Promise<BrandStats | 
 export async function startDna(handle: string, platform: Platform, refresh = false, replace = false): Promise<StartDnaResult> {
   const { data, error } = await supabase.functions.invoke('start-dna', {
     body: { handle, platform, make_default: true, refresh, replace },
+  })
+  if (error) throw new Error(await readInvokeError(error))
+  return data as StartDnaResult
+}
+
+// Create an empty voice slot the creator fills in by hand (the "describe your
+// voice" path) — no scan, no worker, no Apify. Used so a creator with no big
+// social account (or when the scan is down) can still get a real, editable voice
+// and enter the studio. The confirm form then saves the profile + marks it ready.
+export async function startManualVoice(platform: Platform, handle = ''): Promise<StartDnaResult> {
+  const { data, error } = await supabase.functions.invoke('start-dna', {
+    body: { handle, platform, make_default: true, manual: true },
   })
   if (error) throw new Error(await readInvokeError(error))
   return data as StartDnaResult
