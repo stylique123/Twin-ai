@@ -309,10 +309,33 @@ async function callOnce(
     const cand = data?.candidates?.[0]
     const text = cand?.content?.parts?.map((p: { text?: string }) => p.text ?? '').join('')
     if (!text) throw new Error(`Empty response (finishReason=${cand?.finishReason ?? 'none'})`)
+    // A MAX_TOKENS finish returns NON-EMPTY but truncated JSON — JSON.parse would then
+    // throw far downstream and read as a hard "we hit a snag". Detect it here so the
+    // ladder's next (faster) attempt runs instead.
+    if (cand?.finishReason === 'MAX_TOKENS') throw new Error('Response truncated (finishReason=MAX_TOKENS)')
     return text
   } finally {
     clearTimeout(timer)
   }
+}
+
+// Gemini's responseSchema `required` is ADVISORY, not strict: gemini-2.5-flash with
+// thinking off routinely emits valid JSON that SILENTLY OMITS the two reasoning-first
+// objects — `concept` and `packaging`. A blueprint missing them still parses, so
+// without this check we persist a partial plan: no "Your concept" card, no title
+// suggestions, and generate-thumbnail 400s ("no thumbnail brief"). So verify the
+// model actually returned them before accepting the attempt.
+function blueprintComplete(bp: unknown): boolean {
+  const b = bp as {
+    concept?: { premise?: string }
+    packaging?: { titles?: unknown[]; thumbnail?: { concept?: string; text_overlay?: string; composition?: string } }
+  } | null
+  if (!b || typeof b !== 'object') return false
+  const hasConcept = !!b.concept?.premise?.trim()
+  const t = b.packaging?.thumbnail
+  const hasPackaging = Array.isArray(b.packaging?.titles) && (b.packaging!.titles!.length > 0)
+    && !!(t?.concept || t?.text_overlay || t?.composition)
+  return hasConcept && hasPackaging
 }
 
 // A blueprint must NOT fail just because one model call was slow or the provider
@@ -345,15 +368,30 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
   ]
 
   let lastErr: unknown
+  let lastParseable: string | null = null // valid JSON, but missing concept/packaging
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i]
     try {
-      return await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs)
+      const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs)
+      let parsed: unknown
+      try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
+      if (blueprintComplete(parsed)) return text // complete → accept
+      // Parseable but Flash dropped concept/packaging. Keep it as a last resort and
+      // try the next attempt for a COMPLETE one (the retry usually recovers them).
+      lastParseable = text
+      console.warn(`generate-blueprint: attempt ${i + 1}/${attempts.length} (${a.model}) returned an incomplete blueprint (missing concept/packaging) — retrying`)
     } catch (e) {
       lastErr = e
       console.error(`generate-blueprint: model attempt ${i + 1}/${attempts.length} (${a.model}) failed:`, e instanceof Error ? e.message : e)
       // fall through to the next, faster attempt
     }
+  }
+  // No attempt returned a COMPLETE blueprint. Prefer a parseable (partial) one over a
+  // hard failure so the creator still gets the script/hooks — the plan screen prompts
+  // them to regenerate for the title/thumbnail. Only truly fail if nothing parsed.
+  if (lastParseable) {
+    console.warn('generate-blueprint: all attempts incomplete — shipping the best parseable blueprint')
+    return lastParseable
   }
   throw lastErr instanceof Error ? lastErr : new Error('Model call failed')
 }

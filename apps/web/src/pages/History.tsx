@@ -55,7 +55,7 @@ export default function History() {
       .then(async (gens) => {
         GENERATIONS_CACHE = gens
         setItems(gens)
-        const paths = gens.flatMap((g) => [g.thumb_path, g.edit_path].filter(Boolean) as string[])
+        const paths = gens.flatMap((g) => [g.thumb_path, g.ai_thumb_path, g.edit_path].filter(Boolean) as string[])
         if (paths.length) {
           const signed = await signEditUrls(paths).catch(() => ({}))
           URLS_CACHE = { ...URLS_CACHE, ...signed }
@@ -179,7 +179,7 @@ export default function History() {
                   {group.items.map((g) => {
                     const status = statusOf(g)
                     const skin = STATUS_SKIN[status]
-                    const cover = g.thumb_path ? urls[g.thumb_path] : undefined
+                    const cover = (g.thumb_path && urls[g.thumb_path]) || (g.ai_thumb_path && urls[g.ai_thumb_path]) || undefined
                     const title = g.selected_hook || g.blueprint?.hook_options?.[0] || 'Untitled video'
                     const when = new Date(g.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
                     return (

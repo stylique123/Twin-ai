@@ -406,14 +406,18 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
   if (cur.length) lines.push(cur)
 
   const events: string[] = []
+  let g = 0 // flat index across ALL words (not just within the current group)
   for (const line of lines) {
     for (let i = 0; i < line.length; i++) {
       const start = line[i].start
-      // Clamp the caption's display end so it never hangs on screen during a
-      // pause before the next word (the lagging-caption bug). It tracks speech:
-      // show until the next word, but no longer than ~0.2s past this word's end.
-      const nextStart = i + 1 < line.length ? line[i + 1].start : line[i].end + 0.2
+      // Display until the NEXT word starts — using the FLAT word order, so it also
+      // caps across GROUP boundaries. Capped ~0.2s past this word's end. This is what
+      // guarantees only ONE caption on screen: previously the last word of a group
+      // hung until end+0.2 while the next group's first Dialogue had already started,
+      // stacking two phrases (the "double / overlapping captions" bug).
+      const nextStart = g + 1 < words.length ? words[g + 1].start : line[i].end + 0.2
       const end = Math.min(nextStart, line[i].end + 0.2)
+      g++
       if (end <= start) continue
       const text = line
         .map((w, j) =>
@@ -669,7 +673,12 @@ async function renderCutSegments(base: string, outFile: string, segments: EdlSeg
     parts.push(`[0:a]atrim=${s.toFixed(3)}:${e.toFixed(3)},asetpts=PTS-STARTPTS${fade}[a${i}]`)
   })
   const concatIn = segments.map((_, i) => `[v${i}][a${i}]`).join('')
-  const filter = `${parts.join(';')};${concatIn}concat=n=${segments.length}:v=1:a=1[v][a]`
+  // aresample=async=1 keeps the concatenated AUDIO locked to the video timeline. Each
+  // video trim snaps to whole frames (±1/fps per seam) while atrim is sample-accurate,
+  // so across 30-60 silence cuts the audio otherwise drifts tens of ms → ~1s behind
+  // the picture (the "muffled / mistimed / not coherent" feel). async=1 stretches the
+  // audio imperceptibly to stay in sync.
+  const filter = `${parts.join(';')};${concatIn}concat=n=${segments.length}:v=1:a=1[v][araw];[araw]aresample=async=1[a]`
   await run(
     'ffmpeg',
     ['-y', '-i', base, '-filter_complex', filter, '-map', '[v]', '-map', '[a]',
@@ -677,7 +686,11 @@ async function renderCutSegments(base: string, outFile: string, segments: EdlSeg
      // encode is the only meaningful compression — kills the double-compression
      // mush that made cut clips look soft.
      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '16', '-c:a', 'aac', outFile],
-    Math.max(240_000, (duration || 30) * 3000),
+    // Cap the timeout UNDER the job lease (visibilitySecs 2400s / maxJobMs 2100s): the
+    // old duration*3 gave a 15-min take a 2700s budget — longer than the lease — so a
+    // slow cut could run past it and a peer worker would reclaim + double-run the job
+    // (duplicate render, wasted COGS). 1.8M ms (1800s) stays safely under the backstop.
+    Math.max(240_000, Math.min((duration || 30) * 2000, 1_800_000)),
   )
   return (await fileSize(outFile)) > 1024
 }
@@ -784,6 +797,11 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     let durationSec = 0
     let trSegments: { start: number; end: number; text: string }[] = []
     let trLanguage = 'en'
+    // True only when EVERY caption word came from REAL transcription (whisper / EDL),
+    // not the synthetic even-spread. The trailing-tail trim keys off the last word's
+    // time, so it must NOT trim when that time is a guess (even-spread packs words at
+    // the window start, which would chop an intentional final hold).
+    let realTiming = true
     if (edl) {
       words = (edl.captions.words ?? []).filter((w) => w.w && Number.isFinite(w.start) && Number.isFinite(w.end))
       durationSec = edl.durationSec ?? 0
@@ -805,6 +823,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
         const detected = line.trim() && env.editWindowWhisper
           ? await transcribeWindow(dir, base, cursor, cursor + segDur)
           : []
+        if (!detected.length && line.trim()) realTiming = false // even-spread fallback used
         words.push(...(detected.length ? detected : evenSpreadWords(line, cursor, cursor + segDur)))
         // Feed the Edit Director real timed scene segments (per-scene line + window)
         // so it can place b-roll / emphasis on the recorded path too — otherwise
@@ -813,8 +832,14 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
         cursor += segDur
       }
       durationSec = cursor
-    } else if (captions && opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1) {
+    } else if (captions && opts.shots && Array.isArray(opts.shots.bounds) && opts.shots.bounds.length && opts.shots.total > 1
+               && !(opts.shots.segments && opts.shots.segments.length > 1)) {
       // Per-shot capture: caption each segment from its SCRIPT line, timed to the
+      // window the creator recorded it in. NOTE the guard: if `segments` (a retake)
+      // were sent but the trim above failed (jumpCut false), we do NOT fall here — the
+      // base is then the WHOLE take (flubs included), and bounds-remapping assumes the
+      // flubs were dropped, so captions would mis-align. Fall through to plain
+      // transcription instead, which captions whatever is actually in the video.
       // window the creator recorded it in. When the silence-cut above fired, the
       // base is the CUT file — remap each recorded-timeline bound onto the cut
       // timeline (cumulative kept time before it) so captions track the speech.
@@ -845,6 +870,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
         const detected = line.trim() && env.editWindowWhisper
           ? await transcribeWindow(dir, base, s0, s1)
           : []
+        if (!detected.length && line.trim()) realTiming = false // even-spread fallback used
         words.push(...(detected.length ? detected : evenSpreadWords(line, s0, s1)))
         // Give the Director real timed segments on the upload/shots path too.
         if (line.trim()) trSegments.push({ start: s0, end: s1, text: line })
@@ -955,8 +981,12 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     const TAIL = 0.5
     const lastWordEnd = words.length ? words.reduce((m, w) => (Number.isFinite(w.end) && w.end > m ? w.end : m), 0) : 0
     const contentEnd = lastWordEnd > 0 ? Math.min(durationSec, lastWordEnd + TAIL) : durationSec
-    const trimTail = captionSource !== 'script' && lastWordEnd > 0 && durationSec > 0 && contentEnd < durationSec - 0.6
+    const trimTail = realTiming && captionSource !== 'script' && lastWordEnd > 0 && durationSec > 0 && contentEnd < durationSec - 0.6
     const tailArgs = trimTail ? ['-t', contentEnd.toFixed(3)] : []
+    // The effective end of the rendered clip: overlays (b-roll) must be clamped to
+    // THIS, not durationSec, or a trimmed render would schedule a cutaway past its own
+    // end (it would silently never appear).
+    const renderEnd = trimTail ? contentEnd : durationSec
     if (trimTail) console.log(`[autoedit] trimming ${(durationSec - contentEnd).toFixed(1)}s dead tail — content ends at ${contentEnd.toFixed(1)}s of ${durationSec.toFixed(1)}s`)
 
     const enc = ['-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p',
@@ -991,7 +1021,11 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       const snapped = await snapToBeat(bedFile, brollStart)
       brollStart = Math.max(1.2, Math.min(snapped, Math.max(1.2, durationSec - 3)))
     }
-    const brollEnd = edl?.broll ? edl.broll.end : brollStart + 2.2
+    let brollEnd = edl?.broll ? edl.broll.end : brollStart + 2.2
+    // Clamp the cutaway to the (possibly trimmed) render end. If it would start at or
+    // past the end, drop it — an overlay scheduled beyond the output never shows.
+    if (broll && brollStart >= renderEnd - 0.4) broll = null
+    else brollEnd = Math.min(brollEnd, renderEnd)
 
     // Color emoji overlays (best-effort): fetch a Twemoji PNG per emoji moment so
     // captions get the modern emoji punctuation. Any miss is just skipped.

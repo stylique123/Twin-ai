@@ -190,9 +190,11 @@ export default function Result() {
   const [thumbErr, setThumbErr] = useState<string | null>(null)
   useEffect(() => {
     const p = gen?.ai_thumb_path
-    if (!p) { setThumbUrl(null); return }
+    // Don't force-null when the path is absent — that would wipe a thumbnail we just
+    // generated this session if a lagged gen refetch briefly returns ai_thumb_path=null.
+    if (!p) return
     let live = true
-    signEditUrls([p]).then((m) => { if (live) setThumbUrl(m[p] ?? null) }).catch(() => {})
+    signEditUrls([p]).then((m) => { if (live && m[p]) setThumbUrl(m[p]) }).catch(() => {})
     return () => { live = false }
   }, [gen?.ai_thumb_path])
   // The FINISHED video (once recorded + edited) — sign its path so it plays right
@@ -215,7 +217,12 @@ export default function Result() {
   const genThumb = async () => {
     if (!gen) return
     setThumbErr(null); setThumbBusy(true)
-    try { const r = await generateThumbnail(gen.id); setThumbUrl(r.url) }
+    try {
+      const r = await generateThumbnail(gen.id)
+      setThumbUrl(r.url)
+      // Persist the new path into local gen so it survives refetches + shows in Library.
+      setGen((prev) => (prev ? { ...prev, ai_thumb_path: r.path } : prev))
+    }
     catch (e) { setThumbErr(e instanceof Error ? e.message : 'Could not generate the thumbnail.') }
     finally { setThumbBusy(false) }
   }
@@ -398,9 +405,10 @@ export default function Result() {
                   <SlidersHorizontal className="h-3.5 w-3.5" /> Refine Edit
                 </button>
               )}
-              {/* Once a video exists, WATCH is the primary action and record/upload
-                  demote to "re-record" — the screen shows the finished video below. */}
-              {videoUrl ? (
+              {/* Once a video EXISTS (edit_path set), WATCH is the primary action and
+                  record/upload demote to "re-record" — gated on edit_path, NOT the
+                  async signed URL, so a slow/flaky sign never hides a finished video. */}
+              {gen.edit_path ? (
                 <>
                   <a href="#your-video" className="btn-gradient py-2 text-xs font-semibold"><Video className="h-3.5 w-3.5" /> Watch video</a>
                   <Link to={`/record/${gen.id}`} className="btn-ghost py-2 text-xs font-medium"><Video className="h-3.5 w-3.5" /> Re-record</Link>
@@ -451,14 +459,16 @@ export default function Result() {
 
           {/* FINISHED VIDEO — plays right here once the edit exists, so the plan /
               Library actually shows what was made (not just "Record / Upload"). */}
-          {videoUrl && (
+          {gen.edit_path && (
             <div id="your-video" className="mt-8 w-full max-w-[340px] scroll-mt-24 rounded-card border border-teal/25 bg-ink2/70 p-3 backdrop-blur-sm">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-cream"><span className="h-2 w-2 rounded-full bg-teal" /> Your video</div>
-                <button onClick={downloadVideo} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10"><Download className="h-3.5 w-3.5" /> Download</button>
+                {videoUrl && <button onClick={downloadVideo} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10"><Download className="h-3.5 w-3.5" /> Download</button>}
               </div>
-              <div className="aspect-[9/16] w-full overflow-hidden rounded-2xl bg-black">
-                <video src={videoUrl} controls playsInline className="h-full w-full object-contain" poster={thumbUrl ?? undefined} />
+              <div className="flex aspect-[9/16] w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
+                {videoUrl
+                  ? <video src={videoUrl} controls playsInline className="h-full w-full object-contain" poster={thumbUrl ?? undefined} />
+                  : <Loader2 className="h-6 w-6 animate-spin text-white/40" />}
               </div>
             </div>
           )}

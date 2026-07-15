@@ -375,14 +375,22 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     uploadCancelRef.current = false
     setUploading(true)
     try {
-      const bounds = boundsRef.current
-      const total = bounds.length
+      // boundsRef holds each scene's cumulative END second, e.g. [5, 11, 18]. The
+      // worker's bounds path expects `total` = the clip DURATION (seconds) and `bounds`
+      // = INTERIOR cuts only (it re-appends the end itself) — the same convention as
+      // the upload path's scene_detect.py. Sending total = scene COUNT (the old bug)
+      // made the worker's `bounds.filter(n < total)` drop every real boundary, so all
+      // but the first scene lost its caption. Fix the units at the source.
+      const rawBounds = boundsRef.current
+      const sceneCount = rawBounds.length
+      const totalSec = rawBounds[rawBounds.length - 1] ?? 0
+      const interiorBounds = rawBounds.slice(0, -1)
       const lines = linesRef.current
       const segments = segmentsRef.current.filter((s) => s.end > s.start)
       // Per-scene keep-windows + spoken line → the worker trims+concats the kept
       // windows (dropping flubbed/retaken reads) and captions each per scene.
-      const shots = total > 1
-        ? { bounds, total, lines, ...(segments.length > 1 ? { segments } : {}) }
+      const shots = sceneCount > 1
+        ? { bounds: interiorBounds, total: totalSec, lines, ...(segments.length > 1 ? { segments } : {}) }
         : undefined
       const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, (f) => setUploadPct(f))
       if (uploadCancelRef.current) return // creator backed out — take is still in memory on the review screen
