@@ -34,12 +34,17 @@ Deno.serve(async (req: Request) => {
   } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
-  let body: { handle?: string; platform?: string; make_default?: boolean; refresh?: boolean; replace?: boolean }
+  let body: { handle?: string; platform?: string; make_default?: boolean; refresh?: boolean; replace?: boolean; manual?: boolean }
   try {
     body = await req.json()
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
+  // A MANUAL setup skips the scrape entirely: the creator describes their own
+  // voice in the confirm form (which saves a real, editable profile and marks the
+  // row ready). This is the "no big account / scan is down" escape so a first run
+  // can never dead-end. No Apify, no worker, no rate-limit needed.
+  const isManual = body.manual === true
   // A REFRESH re-scans the creator's OWN existing voice to pull fresh stats + a
   // sharpened profile. It must SUPPORT, never hinder: it may re-scan a voice that
   // is already 'ready' (no "you already have a voice" wall) and it reads live data
@@ -55,7 +60,9 @@ Deno.serve(async (req: Request) => {
   // we reuse their one slot. Guarded to the classic onboarding case (≤1 voice).
   const isReplace = body.replace === true
 
-  const handle = normalizeHandle(body.handle ?? '')
+  // Manual setups don't require a handle (the creator may have no account to scan);
+  // fall back to a stable label so the row/reuse logic still works.
+  const handle = normalizeHandle(body.handle ?? '') || (isManual ? 'my-voice' : '')
   if (!handle) return json({ error: 'A handle is required.' }, 400)
   if (handle.length > 60) return json({ error: 'That handle looks too long.' }, 400)
 
@@ -66,18 +73,21 @@ Deno.serve(async (req: Request) => {
 
   // Each scan starts a paid Apify run, and a user can scan ANY handle (by design).
   // Cap scans per user/hour so the feature can't be scripted to burn our scraper
-  // budget (the "extra cost / API attack" the security panel flagged).
-  const { data: allowed } = await admin.rpc('check_rate_limit', {
-    p_user: user.id,
-    p_action: 'dna_build',
-    p_max: 8,
-    p_window_secs: 3600,
-  })
-  if (allowed === false) {
-    return json(
-      { error: "You've started several voice scans recently — give it a few minutes." },
-      429,
-    )
+  // budget (the "extra cost / API attack" the security panel flagged). Manual
+  // setups spend nothing, so they skip the limit.
+  if (!isManual) {
+    const { data: allowed } = await admin.rpc('check_rate_limit', {
+      p_user: user.id,
+      p_action: 'dna_build',
+      p_max: 8,
+      p_window_secs: 3600,
+    })
+    if (allowed === false) {
+      return json(
+        { error: "You've started several voice scans recently — give it a few minutes." },
+        429,
+      )
+    }
   }
 
   // Enforce the plan's brand-voice cap. Failed scans do NOT count (a failure must
@@ -149,6 +159,13 @@ Deno.serve(async (req: Request) => {
       return json({ error: 'Could not start. Please try again.' }, 500)
     }
     voiceId = voice.id
+  }
+
+  // MANUAL: no scrape. The row exists (status 'building'); the creator fills the
+  // confirm form, which saves their profile and flips it to ready. Return now so
+  // the client jumps straight to that form — the first run can never hang here.
+  if (isManual) {
+    return json({ brand_voice_id: voiceId, job_id: null, status: 'manual' })
   }
 
   // HANDLE CACHE: a creator's public voice is identical no matter who scans it, so

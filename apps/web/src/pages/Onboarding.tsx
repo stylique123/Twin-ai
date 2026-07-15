@@ -3,7 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { markOnboarded, pollDna, saveDNA, saveVoiceProfile, startDna } from '../lib/api'
+import { markOnboarded, pollDna, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, VoiceProfile } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { EASE } from '../components/motion'
@@ -20,10 +20,20 @@ const PLACEHOLDER: Record<Platform, string> = {
   other: '@yourhandle',
 }
 
-// Brand DNA is MANDATORY at signup and the only way to get it is to scan a real
-// handle — there is no manual quiz and no "do it later" skip. A new creator must
-// build their voice from their posts before they can enter the studio.
+// Brand DNA is MANDATORY at signup, but a creator can reach it two ways: scan a
+// real handle (the fast, one-tap path), OR describe their voice by hand. Both end
+// at the same editable confirm form and produce a real voice — so a first run can
+// never dead-end (no big account, or a scan outage, still gets you in).
 type Mode = 'handle' | 'building' | 'confirm'
+
+// A blank, editable voice profile — the starting point for the manual path and the
+// scan-failed fallback. Shared so both use the exact same shape.
+function emptyVoiceProfile(): VoiceProfile {
+  return {
+    summary: '', niche: '', tone: '', pacing: '', hook_style: '',
+    vocabulary: [], recurring_ctas: [], dos: [], donts: [], sample_hooks: [],
+  }
+}
 
 export default function Onboarding() {
   const { session, refreshProfile } = useAuth()
@@ -50,7 +60,9 @@ export default function Onboarding() {
               exit={{ opacity: 0, x: -24 }}
               transition={{ duration: 0.35, ease: EASE }}
             >
-              {mode === 'handle' && <HandleStep onBuilding={() => setMode('building')} />}
+              {mode === 'handle' && (
+                <HandleStep onBuilding={() => setMode('building')} onManual={() => setMode('confirm')} />
+              )}
               {mode === 'building' && (
                 <BuildingStep onReady={() => setMode('confirm')} onBack={() => setMode('handle')} />
               )}
@@ -77,7 +89,10 @@ const VOICE_KEY = 'twinai_onboarding_voice_id'
 let activeVoiceId: string | null =
   typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(VOICE_KEY) : null
 let activeProfile: VoiceProfile | null = null
-let activePlatform: Platform = 'tiktok'
+// Default to Instagram: IG/YT build the voice server-side (Apify + dna-poll synth)
+// with no dependency on the VPS worker, so the scan completes reliably. TikTok is
+// still selectable but is worker-dependent, so it's no longer the default.
+let activePlatform: Platform = 'instagram'
 function setActiveVoiceId(id: string | null) {
   activeVoiceId = id
   try {
@@ -87,10 +102,11 @@ function setActiveVoiceId(id: string | null) {
 }
 
 // --- Step 1: paste a handle ------------------------------------------------
-function HandleStep({ onBuilding }: { onBuilding: () => void }) {
+function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual: () => void }) {
   const [handle, setHandle] = useState('')
-  const [platform, setPlatform] = useState<Platform>('tiktok')
+  const [platform, setPlatform] = useState<Platform>('instagram')
   const [busy, setBusy] = useState(false)
+  const [manualBusy, setManualBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   const go = async () => {
@@ -111,6 +127,25 @@ function HandleStep({ onBuilding }: { onBuilding: () => void }) {
       setErr(e instanceof Error ? e.message : 'Could not start the scan.')
     } finally {
       setBusy(false)
+    }
+  }
+
+  // Manual path: create an empty voice slot (no scan) and jump straight to the
+  // editable confirm form. For creators with no scannable account — or if they'd
+  // just rather type it — so the first run never requires a working scan.
+  const goManual = async () => {
+    setErr(null)
+    setManualBusy(true)
+    try {
+      const res = await startManualVoice(platform, handle.trim())
+      setActiveVoiceId(res.brand_voice_id)
+      activePlatform = platform
+      activeProfile = emptyVoiceProfile()
+      onManual()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Could not set up a manual voice.')
+    } finally {
+      setManualBusy(false)
     }
   }
 
@@ -165,7 +200,7 @@ function HandleStep({ onBuilding }: { onBuilding: () => void }) {
       </AnimatePresence>
 
       <div className="mt-8">
-        <button className="btn-gradient w-full !py-3.5" onClick={go} disabled={busy}>
+        <button className="btn-gradient w-full !py-3.5" onClick={go} disabled={busy || manualBusy}>
           {busy ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" /> Starting…
@@ -179,6 +214,16 @@ function HandleStep({ onBuilding }: { onBuilding: () => void }) {
         <p className="mt-3 text-center text-xs text-stone">
           Use any public account — it can be yours or a creator you sound like. We only read public posts.
         </p>
+        {/* Escape hatch: no account to scan, or the scan is down? Describe your
+            voice by hand instead — same editable form, a real voice, no dead-end. */}
+        <button
+          type="button"
+          className="mt-4 w-full text-center text-sm text-sand underline-offset-4 hover:text-cream hover:underline disabled:opacity-60"
+          onClick={goManual}
+          disabled={busy || manualBusy}
+        >
+          {manualBusy ? 'Setting up…' : 'No account to scan? Set up my voice myself'}
+        </button>
       </div>
     </>
   )
@@ -309,20 +354,19 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
         </button>
         {err && (
           <div className="flex flex-wrap items-center gap-3">
+            <button className="btn-ghost" onClick={onBack}>
+              <RotateCcw className="h-4 w-4" /> Try a different handle
+            </button>
+            {/* Manual is the PRIMARY recovery: a scan failure (private/thin account,
+                scraper outage) must never wall a signup out of the product. */}
             <button
-              className="btn-ghost"
+              className="btn-gradient"
               onClick={() => {
-                activeProfile = {
-                  summary: '', niche: '', tone: '', pacing: '', hook_style: '',
-                  vocabulary: [], recurring_ctas: [], dos: [], donts: [], sample_hooks: [],
-                }
+                activeProfile = emptyVoiceProfile()
                 onReady()
               }}
             >
-              Describe your voice manually instead
-            </button>
-            <button className="btn-gradient" onClick={onBack}>
-              <RotateCcw className="h-4 w-4" /> Try a different handle
+              Describe your voice myself <ArrowRight className="h-4 w-4" />
             </button>
           </div>
         )}
