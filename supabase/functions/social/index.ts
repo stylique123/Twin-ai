@@ -32,23 +32,16 @@ const env = (k: string) => Deno.env.get(k)
 const fnBase = () => `${env('SUPABASE_URL')}/functions/v1/social`
 const appUrl = () => (env('APP_URL') ?? '').replace(/\/+$/, '')
 
-// --- signed state (platform + user, HMAC over the service role key) ----------
-async function hmac(msg: string): Promise<string> {
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(env('SUPABASE_SERVICE_ROLE_KEY')!), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
-  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(msg))
-  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-async function signState(platform: string, userId: string): Promise<string> {
-  const body = `${platform}:${userId}:${Date.now()}`
-  return `${btoa(body)}.${await hmac(body)}`
-}
-async function readState(state: string): Promise<{ platform: string; userId: string } | null> {
-  const [b64, sig] = state.split('.')
-  if (!b64 || !sig) return null
-  const body = atob(b64)
-  if ((await hmac(body)) !== sig) return null
-  const [platform, userId] = body.split(':')
-  return { platform, userId }
+// --- OAuth `state`: a random, single-use, short-TTL nonce stored server-side -----
+// The state carries NO identity — it's an opaque unguessable token. The callback
+// looks the nonce up, atomically consumes it, and derives owner_id/platform from the
+// stored row, so a replayed or attacker-planted state can't bind tokens to another
+// account (the connection-fixation fix). Nonces expire after NONCE_TTL_MS.
+const NONCE_TTL_MS = 10 * 60 * 1000
+function newNonce(): string {
+  const b = new Uint8Array(32)
+  crypto.getRandomValues(b)
+  return [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
 }
 
 interface Adapter {
@@ -432,16 +425,24 @@ Deno.serve(async (req: Request) => {
       const code = url.searchParams.get('code')
       const st = url.searchParams.get('state')
       if (!code || !st) return back('connect_error=missing')
-      const parsed = await readState(st)
-      if (!parsed) return back('connect_error=state')
-      const ad = ADAPTERS[parsed.platform]
+      // Atomically CONSUME the nonce (delete-returning): a replay finds no row, and
+      // owner_id/platform come from the stored row, never from the redirect.
+      const { data: nonce } = await admin
+        .from('oauth_nonce')
+        .delete()
+        .eq('nonce', st)
+        .select('owner_id, platform, created_at')
+        .maybeSingle()
+      if (!nonce) return back('connect_error=state')
+      if (Date.now() - new Date(nonce.created_at).getTime() > NONCE_TTL_MS) return back('connect_error=expired')
+      const ad = ADAPTERS[nonce.platform]
       if (!ad || !ad.configured()) return back('connect_error=unconfigured')
       const tok = await ad.exchange(code)
       let acc = { id: '', label: ad.label }
       try { acc = await ad.account(tok.access_token) } catch { /* label is best-effort */ }
       await admin.from('platform_connections').upsert({
-        owner_id: parsed.userId,
-        platform: parsed.platform,
+        owner_id: nonce.owner_id,
+        platform: nonce.platform,
         account_label: acc.label,
         external_account_id: acc.id || null,
         access_token: tok.access_token,
@@ -450,7 +451,7 @@ Deno.serve(async (req: Request) => {
         status: 'connected',
         updated_at: new Date().toISOString(),
       }, { onConflict: 'owner_id,platform' })
-      return back(`connected=${parsed.platform}`)
+      return back(`connected=${nonce.platform}`)
     } catch (e) {
       console.error('social: oauth callback failed', e)
       return Response.redirect(`${appUrl()}/calendar?connect_error=connect_failed`, 302)
@@ -471,7 +472,12 @@ Deno.serve(async (req: Request) => {
     const ad = ADAPTERS[platform]
     if (!ad) return json({ error: 'Unknown platform' }, 400)
     if (!ad.configured()) return json({ unconfigured: true, platform, needs: ad.needs })
-    const state = await signState(platform, user.id)
+    // Mint a single-use nonce bound to THIS authenticated user; the callback consumes
+    // it and trusts the stored owner_id, never the redirect. Best-effort GC of old
+    // nonces keeps the table from growing.
+    const state = newNonce()
+    await admin.from('oauth_nonce').insert({ nonce: state, owner_id: user.id, platform })
+    void admin.from('oauth_nonce').delete().lt('created_at', new Date(Date.now() - NONCE_TTL_MS).toISOString())
     return json({ url: ad.authorizeUrl(state) })
   }
 

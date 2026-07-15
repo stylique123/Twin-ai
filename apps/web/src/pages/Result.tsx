@@ -1020,6 +1020,7 @@ export default function Result() {
                     <Send className="h-4 w-4 text-stone" />
                     <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Where to post</h3>
                   </div>
+                  <p className="text-xs text-stone">Post it yourself — we open the app and copy your caption. Tap “Mark as posted” once it’s live to keep your library in sync.</p>
                   <div className="space-y-4">
                     {b.publish_plan.map((p, i) => (
                       <PublishRow key={i} generationId={gen.id} platform={p.platform} caption={p.caption} hashtags={p.hashtags} bestTime={p.best_time} />
@@ -1319,6 +1320,7 @@ export default function Result() {
                   <Send className="h-4 w-4 text-stone" />
                   <h3 className="font-heading text-xs font-semibold uppercase tracking-wider text-cream">Where to post</h3>
                 </div>
+                <p className="text-xs text-stone">Post it yourself — we open the app and copy your caption. Tap “Mark as posted” once it’s live to keep your library in sync.</p>
                 <div className="space-y-4">
                   {b.publish_plan.map((p, i) => (
                     <PublishRow key={i} generationId={gen.id} platform={p.platform} caption={p.caption} hashtags={p.hashtags} bestTime={p.best_time} />
