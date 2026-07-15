@@ -51,6 +51,19 @@ export default function V2Building() {
   const [pct, setPct] = useState(6)
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
+  // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
+  // Calendar…) keeps the build running in the background, but Cancel truly stops
+  // it (and never spends a credit).
+  const cancelled = useRef(false)
+
+  // While a build is in flight, warn before a tab close / refresh (that WOULD lose
+  // the in-flight work). In-app navigation is safe — the build keeps running.
+  useEffect(() => {
+    if (error) return
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [error])
 
   // Ease the % bar toward the current step's target so it always creeps forward
   // (never a dead bar), and snaps to 100 the instant the plan is ready.
@@ -78,35 +91,45 @@ export default function V2Building() {
     // Advance the visible steps AFTER the reference is read (steps 1..4 track the
     // blueprint write). During a real ingest we hold on step 0 ("Watching your
     // reference") — which is now literally true.
+    let alive = true
     const startPacing = () => {
+      // Guard against a post-unmount start leaking an interval that never clears.
+      if (!alive || cancelled.current) return
       setActive(willIngest ? 1 : 0)
-      ticker = setInterval(() => setActive((a) => Math.min(a + 1, STEPS.length - 1)), 1400)
+      ticker = setInterval(() => { if (alive) setActive((a) => Math.min(a + 1, STEPS.length - 1)) }, 1400)
     }
 
-    let alive = true
     ;(async () => {
       try {
-        // 1) Actually READ the reference video when it's a supported link, so the
-        //    blueprint is built from the real clip (transcript + structure), not a
-        //    blind guess. Unsupported links / described ideas skip straight to write.
+        // 1) READING the reference is BEST-EFFORT. A supported link gets truly read
+        //    (transcript + structure) for the most tailored script — but if the read
+        //    fails, the video is private/unreadable, or the worker is briefly backed
+        //    up, we DON'T hard-fail: we build the plan from the reference + the
+        //    creator's DNA (pattern mode). A slightly-less-tailored script always
+        //    beats "We hit a snag". The wait is also capped so a slow read never
+        //    strands the creator for minutes.
         let transcript_id: string | undefined
         if (willIngest) {
-          const { jobId, transcriptId } = await ingestReference(refUrl)
-          transcript_id = transcriptId // cache hit → immediate
-          if (!transcript_id) {
-            for (let i = 0; i < 80; i++) {
-              await new Promise((r) => setTimeout(r, 2500))
-              if (!alive) return // left the screen — stop polling + spending
-              const job = await getJob(jobId)
-              if (!job) continue
-              if (job.status === 'done' && job.result?.transcript_id) { transcript_id = job.result.transcript_id; break }
-              if (job.status === 'failed') throw new Error(job.error || 'We couldn’t read that video. Try another link — you weren’t charged.')
+          try {
+            const { jobId, transcriptId } = await ingestReference(refUrl)
+            transcript_id = transcriptId // cache hit → immediate
+            if (!transcript_id) {
+              for (let i = 0; i < 30; i++) { // ~75s ceiling, then proceed anyway
+                await new Promise((r) => setTimeout(r, 2500))
+                if (cancelled.current) return // explicit Cancel → stop, no spend
+                const job = await getJob(jobId)
+                if (!job) continue
+                if (job.status === 'done' && job.result?.transcript_id) { transcript_id = job.result.transcript_id; break }
+                if (job.status === 'failed') break // unreadable → fall through to pattern mode
+              }
             }
-            if (!transcript_id) throw new Error('Reading the video is taking longer than usual. Try again in a moment — you weren’t charged.')
+          } catch (e) {
+            // Ingest itself errored — log and build from the reference without it.
+            console.warn('[build] reference read failed; using pattern mode', e)
           }
         }
 
-        if (!alive) return
+        if (cancelled.current) return // Cancel pressed during the read → no spend
         startPacing()
         const gen = await generateBlueprint({
           reference_url: refUrl,
@@ -125,21 +148,18 @@ export default function V2Building() {
           platform: gen.blueprint?.reference_read?.platform,
         })
         await saveTimeline(timeline)
-        if (!alive) return
         if (ticker) clearInterval(ticker)
-        setActive(STEPS.length)
-        // Land on the RICH result screen (hook angles, strategy, retention map,
-        // teleprompter) — the exact page the Library opens — so a fresh remix and
-        // a saved video look identical. Its "Record Script" feeds the same V2
-        // capture flow, so this merges the old rich plan with the new pipeline
-        // (instead of the bare "/v2/plan" screen the remix used to drop into).
-        nav(`/result/${gen.id}`, { replace: true })
+        // The blueprint is saved server-side regardless of navigation, so it's
+        // already in the Library. Only route the user there if they're still here.
+        if (alive) { setActive(STEPS.length); nav(`/result/${gen.id}`, { replace: true }) }
       } catch (e) {
         if (ticker) clearInterval(ticker)
         if (alive) setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
       }
     })()
 
+    // Unmount (in-app nav): the build keeps running so it lands in the Library —
+    // we only stop the visual ticker. Explicit Cancel is what actually aborts it.
     return () => { alive = false; if (ticker) clearInterval(ticker) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -209,9 +229,9 @@ export default function V2Building() {
             </ul>
 
             <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-xs leading-relaxed text-stone">
-              Usually 30–60 seconds — you can leave this screen, we keep working and it lands in your library.
+              Usually 30–60 seconds. Leave anytime — we keep building and it lands in your Library.
             </p>
-            <button onClick={() => nav('/v2', { replace: true })} className="mt-3 block w-full text-center text-sm text-stone transition-colors hover:text-cream">
+            <button onClick={() => { cancelled.current = true; nav('/v2', { replace: true }) }} className="mt-3 block w-full text-center text-sm text-stone transition-colors hover:text-cream">
               Cancel
             </button>
           </div>
