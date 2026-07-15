@@ -11,14 +11,14 @@
 // Only talking scenes (show_in_teleprompter) are recorded; silent b-roll is added
 // by the editor as cutaways. Takes are preserved in-memory across back/exit.
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ComponentType } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Type, Sparkles, RotateCcw, Wand2, Zap, Waves, Mountain, UploadCloud, Film, X } from 'lucide-react'
+import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, Wand2, Zap, Waves, Mountain, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
 import { buildTimeline } from '../../lib/timelineAdapter'
 import { autoEditTake, pickRecorderMime, getGeneration, updateGenerationChoice } from '../../lib/api'
 import { cn } from '../../lib/cn'
+import { Aurora } from '../../components/Aurora'
 import {
   type SceneTimeline,
   type Scene,
@@ -201,20 +201,21 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   useEffect(() => {
     const p = textRef.current, box = promptScrollRef.current
     if (!p || !box) return
-    const mir = mirror ? ' scaleX(-1)' : ''
+    // Text is never mirrored (it must stay readable). Mirror flips the CAMERA
+    // preview instead (see the <video> transform) — the natural "selfie mirror".
     let raf = 0
     const start = performance.now()
     const tick = (now: number) => {
       const readY = box.clientHeight * 0.6         // read-line a touch below middle — text starts lower, sits in a comfortable eye-line
-      if (!recording) { p.style.transform = `translateY(${readY}px)${mir}`; return }
+      if (!recording) { p.style.transform = `translateY(${readY}px)`; return }
       const travel = Math.max(p.offsetHeight + readY, box.clientHeight * 0.9) // always a visible glide
       const prog = Math.min(1, (now - start) / 1000 / estSec)
-      p.style.transform = `translateY(${readY - prog * travel}px)${mir}`
+      p.style.transform = `translateY(${readY - prog * travel}px)`
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [recording, i, estSec, mirror, fontIdx])
+  }, [recording, i, estSec, fontIdx])
 
   // Acquire the camera (front or back); re-acquire when the creator flips it. Flipping
   // is only offered before recording starts (see the Flip control), so tearing down
@@ -607,145 +608,115 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     </div>
   )
 
-  // The live control deck — record button + size/speed/mirror/camera. On desktop the
-  // controls stack into a labelled panel; on phone they wrap into a compact row.
+  // Full-bleed teleprompter: the camera fills the whole screen and the script
+  // glides OVER it, with slim floating bars top + bottom — the professional
+  // teleprompter look, identical on phone and desktop (desktop just scales up).
   const canFlipCamera = !recording && activeMsRef.current === 0
-  const recordLabel = recording ? (last ? 'Stop & finish' : 'Stop & next scene') : countdown > 0 ? `Starting in ${countdown}…` : 'Record this scene'
-  const recordBtnClass = `w-full rounded-2xl py-4 font-semibold disabled:opacity-40 ${recording ? 'bg-red-500 text-white' : 'bg-cream text-ink hover:bg-white'}`
-
-  const controlDeck = (
-    <div className="space-y-3">
-      <button onClick={() => (recording ? finishScene() : beginScene())} disabled={!!camError || countdown > 0} className={`${recordBtnClass} lg:hidden`}>
-        {recordLabel}
-      </button>
-      {/* MOBILE — a compact wrap of pill buttons, touch-target sized. */}
-      <div className="flex flex-wrap items-center justify-center gap-2 text-sm lg:hidden">
-        {/* 44px touch targets; size/speed/mirror lock while recording — changing them
-            mid-take restarted the prompter glide and snapped the script to the top. */}
-        <button onClick={goPrevScene} disabled={i === 0 || recording} className="min-h-11 rounded-full border border-white/15 px-4 py-2.5 text-white/85 hover:bg-white/10 disabled:opacity-30">← Previous scene</button>
-        <div className="inline-flex min-h-11 items-center gap-1 rounded-full border border-white/15 px-2 py-1">
-          <span className="px-1 text-xs text-white/45">Text size</span>
-          <span className="inline-flex gap-1">
-            <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0 || recording} aria-label="Smaller text" className="h-10 w-10 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-xs font-bold">A−</button>
-            <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1 || recording} aria-label="Larger text" className="h-10 w-10 grid place-items-center rounded-full bg-white/10 disabled:opacity-30 text-sm font-bold">A+</button>
-          </span>
-        </div>
-        <button onClick={() => setSpeedSheet(true)} disabled={recording} className="min-h-11 rounded-full border border-white/15 px-4 py-2.5 text-white/85 hover:bg-white/10 disabled:opacity-30">Speed · {wpmVal} wpm</button>
-        <button onClick={() => setMirror((m) => !m)} disabled={recording} className={`min-h-11 rounded-full border px-4 py-2.5 hover:bg-white/10 disabled:opacity-30 ${mirror ? 'border-teal text-teal' : 'border-white/15 text-white/85'}`}>Mirror: {mirror ? 'on' : 'off'}</button>
-        {canFlipCamera && (
-          <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="min-h-11 rounded-full border border-white/15 px-4 py-2.5 text-white/85 hover:bg-white/10">{facing === 'user' ? 'Front camera' : 'Back camera'} · flip</button>
-        )}
-      </div>
-
-      {/* DESKTOP — a real control panel: primary action, then a grouped settings
-          list (icon + label + control per row), the way a desktop capture tool
-          reads — not the mobile pill row stretched wide. */}
-      <div className="hidden lg:block lg:space-y-4">
-        <button onClick={() => (recording ? finishScene() : beginScene())} disabled={!!camError || countdown > 0} className={recordBtnClass}>
-          {recordLabel}
-        </button>
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] divide-y divide-white/10 overflow-hidden">
-          <PanelRow icon={ChevronLeft} label="Previous scene">
-            <button onClick={goPrevScene} disabled={i === 0 || recording} className="text-xs font-medium text-white/70 hover:text-cream disabled:opacity-30 disabled:hover:text-white/70">
-              Scene {i + 1} of {scenes.length}
-            </button>
-          </PanelRow>
-          <PanelRow icon={Type} label="Text size">
-            <div className="inline-flex items-center gap-2">
-              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0 || recording} aria-label="Smaller text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"><Minus className="h-3 w-3" /></button>
-              <span className="w-4 text-center text-xs tabular-nums text-white/70">{fontIdx + 1}</span>
-              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1 || recording} aria-label="Larger text" className="h-6 w-6 grid place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:hover:bg-white/10"><Plus className="h-3 w-3" /></button>
-            </div>
-          </PanelRow>
-          <PanelRow icon={Gauge} label="Speed">
-            <button onClick={() => setSpeedSheet(true)} disabled={recording} className="text-xs font-medium text-white/70 hover:text-cream disabled:opacity-30">{WPM_LABEL[timeline.wpm]} · {wpmVal} wpm</button>
-          </PanelRow>
-          <PanelRow icon={FlipHorizontal} label="Mirror">
-            <Toggle on={mirror} onClick={() => { if (!recording) setMirror((m) => !m) }} />
-          </PanelRow>
-          {canFlipCamera && (
-            <PanelRow icon={SwitchCamera} label="Camera">
-              <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} className="text-xs font-medium text-white/70 hover:text-cream">{facing === 'user' ? 'Front' : 'Back'}</button>
-            </PanelRow>
-          )}
-        </div>
-      </div>
-    </div>
-  )
+  const clock = (s: number) => `${Math.floor(s / 60)}:${String(Math.max(0, Math.floor(s % 60))).padStart(2, '0')}`
+  const remaining = Math.max(0, sceneLimit - sceneElapsed)
 
   return (
-    // Surface-aware shell: phone = single centered column; desktop (lg) = a two-pane
-    // studio — a tall camera stage on the left, a fixed control rail on the right.
-    // This is NOT the phone layout stretched wide; each surface gets its own grid.
-    <div className="min-h-[100dvh] w-full bg-ink text-cream overflow-x-hidden">
-      <div className="mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-5xl lg:flex-row lg:items-center lg:gap-10 lg:px-8">
-        {/* MAIN STAGE — header + live camera with the teleprompter on the glass */}
-        <div className="flex flex-1 flex-col lg:min-w-0 lg:py-6">
-          <div className="flex items-center justify-between px-4 pt-4 text-sm text-white/60 lg:px-0 lg:pt-0">
-            <span>Scene {i + 1} of {scenes.length} · {sceneTypeLabel(scene?.scene_type)}</span>
-            <button onClick={() => setExitSheet(true)} aria-label="Exit" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 hover:bg-white/20">✕</button>
-          </div>
+    <>
+      <div className="fixed inset-0 overflow-hidden bg-black text-white select-none">
+        {/* Full-bleed camera. Mirror flips the PREVIEW (natural selfie), not the text. */}
+        <video ref={videoRef} playsInline muted
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ transform: mirror ? 'scaleX(-1)' : undefined }} />
+        {/* Legibility scrim — darker at top + bottom so the bars and script read over any footage. */}
+        <div aria-hidden className="absolute inset-0 bg-gradient-to-b from-black/55 via-black/10 to-black/70" />
 
-          {/* live camera preview behind the prompter text — a clean 9:16 frame that fills
-              available height on phone and becomes a viewport-tall portrait on desktop. */}
-          <div className="relative mx-auto my-3 w-full max-w-[460px] flex-1 max-h-[78vh] aspect-[9/16] rounded-2xl overflow-hidden bg-black lg:my-0 lg:flex-none lg:h-[82vh] lg:max-h-[82vh] lg:w-auto lg:max-w-none">
-            <video ref={videoRef} playsInline muted className="absolute inset-0 h-full w-full object-cover opacity-60" />
-            <div className="absolute inset-0 flex flex-col justify-center px-6">
-              {camError ? (
-                <div className="text-center text-white/80">
-                  <p className="font-medium">Camera needed to record</p>
-                  <p className="text-xs text-white/50 mt-1">{camError}</p>
-                </div>
-              ) : between ? (
-                <div className="text-center text-white/85">
-                  <div className="text-emerald-400 text-lg font-semibold">Scene {i + 1} complete ✓</div>
-                  <p className="text-xs text-white/50 mt-1">Review the next scene{' '}<span className="lg:hidden">below</span><span className="hidden lg:inline">on the right</span>, then continue.</p>
-                </div>
-              ) : (
-                <div className="w-full">
-                  {/* read-line teleprompter: the script glides UP past a fixed line, with
-                      a soft fade top + bottom. The transform is driven by the effect above. */}
-                  <div ref={promptScrollRef} className="relative mx-auto max-w-[36rem] h-[44vh] overflow-hidden px-2 [mask-image:linear-gradient(to_bottom,transparent,#000_16%,#000_84%,transparent)]">
-                    <p ref={textRef} className="absolute inset-x-0 top-0 text-center font-semibold leading-[1.5] drop-shadow will-change-transform" style={{ fontSize: FONT_PX[fontIdx] }}>
-                      {words.map((w, idx) => (
-                        <span
-                          key={idx}
-                          // ONE colour. No green/teal per-word highlight (the read-line
-                          // + upward glide already show where you are). Already-read
-                          // words dim slightly — same white, just lower opacity — so
-                          // your eye tracks forward without a distracting colour change.
-                          className={recording && idx < readCount ? 'text-white/40' : 'text-white'}
-                        >
-                          {w}{' '}
-                        </span>
-                      ))}
-                    </p>
-                  </div>
-                  {/* pace readout + a thin timing bar toward the scene's auto-stop cap */}
-                  <p className="mt-3 text-center text-xs text-white/45">
-                    {scene?.camera_framing} · {WPM_LABEL[timeline.wpm]} {wpmVal} wpm{recording ? ` · ${Math.floor(sceneElapsed)}s / ${sceneLimit}s` : ` · ~${estSec}s · stops at ${sceneLimit}s`}
-                  </p>
-                  {recording && (
-                    <div className="mt-2 mx-auto h-1 w-40 rounded-full bg-white/10 overflow-hidden">
-                      <div className="h-full bg-red-400 transition-[width] duration-100 ease-linear" style={{ width: `${Math.min(100, (sceneElapsed / sceneLimit) * 100)}%` }} />
-                    </div>
-                  )}
-                </div>
-              )}
+        {/* TOP BAR — exit · scene/timer · flip */}
+        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-between gap-3 px-4 pt-[max(0.6rem,env(safe-area-inset-top))] pb-3">
+          <button onClick={() => setExitSheet(true)} aria-label="Exit" className="grid h-10 w-10 place-items-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/60">
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2 rounded-full bg-black/40 px-3.5 py-1.5 text-[13px] tabular-nums backdrop-blur-md">
+            {recording && <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />}
+            <span className="font-semibold">Scene {i + 1}/{scenes.length}</span>
+            <span className="text-white/30">·</span>
+            {recording
+              ? <><span className="text-white/80">{clock(sceneElapsed)}</span><span className="text-red-300">-{clock(remaining)}</span></>
+              : <span className="text-white/60">{sceneTypeLabel(scene?.scene_type)}</span>}
+          </div>
+          {canFlipCamera ? (
+            <button onClick={() => setFacing((f) => (f === 'user' ? 'environment' : 'user'))} aria-label="Flip camera" className="grid h-10 w-10 place-items-center rounded-full bg-black/40 backdrop-blur-md transition-colors hover:bg-black/60">
+              <SwitchCamera className="h-5 w-5" />
+            </button>
+          ) : <span className="h-10 w-10" />}
+        </div>
+
+        {/* CENTER — camera error / between-scene card / the scrolling script */}
+        {camError ? (
+          <div className="absolute inset-0 z-10 grid place-items-center px-8 text-center">
+            <div>
+              <p className="font-semibold">Camera needed to record</p>
+              <p className="mt-1 text-sm text-white/60">{camError}</p>
             </div>
-            {recording && <div className="absolute top-3 left-3 flex items-center gap-1.5 text-xs"><span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />REC</div>}
-            {countdown > 0 && (
-              <div className="absolute inset-0 grid place-items-center bg-black/50 backdrop-blur-sm">
-                <span className="text-7xl font-display font-bold text-cream tabular-nums">{countdown}</span>
+          </div>
+        ) : between ? (
+          <div className="absolute inset-0 z-10 grid place-items-center px-4">
+            <div className="w-full max-w-md">{nextCard}</div>
+          </div>
+        ) : (
+          <div className="absolute inset-0 z-10 flex items-center px-5 sm:px-10">
+            {/* the script glides UP past a fixed read-line, soft-faded top + bottom */}
+            <div ref={promptScrollRef} className="relative mx-auto h-[54vh] w-full max-w-3xl overflow-hidden [mask-image:linear-gradient(to_bottom,transparent,#000_14%,#000_86%,transparent)]">
+              <p ref={textRef} className="absolute inset-x-0 top-0 text-center font-bold leading-[1.3] [text-shadow:0_2px_20px_rgba(0,0,0,0.65)] will-change-transform" style={{ fontSize: FONT_PX[fontIdx] }}>
+                {words.map((w, idx) => (
+                  <span key={idx} className={recording && idx < readCount ? 'text-white/35' : 'text-white'}>{w}{' '}</span>
+                ))}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* COUNTDOWN */}
+        {countdown > 0 && (
+          <div className="absolute inset-0 z-30 grid place-items-center bg-black/50 backdrop-blur-sm">
+            <span className="font-display text-8xl font-bold tabular-nums">{countdown}</span>
+          </div>
+        )}
+
+        {/* BOTTOM BAR — one floating control pill (hidden on the between-scene beat, which has its own buttons) */}
+        {!between && (
+          <div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+            {recording && (
+              <div className="mx-auto mb-2 h-1 w-full max-w-2xl overflow-hidden rounded-full bg-white/15">
+                <div className="h-full bg-red-400 transition-[width] duration-100 ease-linear" style={{ width: `${Math.min(100, (sceneElapsed / sceneLimit) * 100)}%` }} />
               </div>
             )}
-          </div>
-        </div>
+            <div className="mx-auto flex w-full max-w-2xl items-center gap-1.5 rounded-2xl bg-black/55 p-2 backdrop-blur-xl">
+              <button onClick={goPrevScene} disabled={i === 0 || recording} aria-label="Previous scene" className="grid h-11 w-11 shrink-0 place-items-center rounded-xl text-white/85 transition-colors hover:bg-white/10 disabled:opacity-30">
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button onClick={() => setFontIdx((v) => Math.max(0, v - 1))} disabled={fontIdx === 0 || recording} aria-label="Smaller text" className="grid h-11 w-9 shrink-0 place-items-center rounded-xl text-white/85 transition-colors hover:bg-white/10 disabled:opacity-30">
+                <Minus className="h-4 w-4" />
+              </button>
+              <button onClick={() => setFontIdx((v) => Math.min(FONT_PX.length - 1, v + 1))} disabled={fontIdx === FONT_PX.length - 1 || recording} aria-label="Larger text" className="grid h-11 w-9 shrink-0 place-items-center rounded-xl text-white/85 transition-colors hover:bg-white/10 disabled:opacity-30">
+                <Plus className="h-4 w-4" />
+              </button>
 
-        {/* CONTROL RAIL — below the camera on phone, a fixed side panel on desktop */}
-        <div className="px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 lg:w-[20rem] lg:shrink-0 lg:px-0 lg:py-6">
-          {between ? nextCard : controlDeck}
-        </div>
+              {/* the primary record / stop button — centered, prominent */}
+              <button onClick={() => (recording ? finishScene() : beginScene())} disabled={!!camError || countdown > 0}
+                className={cn('mx-auto flex h-12 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors disabled:opacity-40',
+                  recording ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-white text-ink hover:bg-white/90')}>
+                {recording
+                  ? <><span className="h-3 w-3 rounded-[3px] bg-white" /><span className="truncate">{last ? 'Stop & finish' : 'Stop & next'}</span></>
+                  : countdown > 0 ? 'Starting…' : <><span className="h-3 w-3 rounded-full bg-red-500" />Record</>}
+              </button>
+
+              <button onClick={() => setSpeedSheet(true)} disabled={recording} aria-label="Teleprompter speed" className="flex h-11 shrink-0 items-center gap-1 rounded-xl px-2.5 text-white/85 transition-colors hover:bg-white/10 disabled:opacity-30">
+                <Gauge className="h-4 w-4" /><span className="text-sm tabular-nums">{wpmVal}</span>
+              </button>
+              <button onClick={() => { if (!recording) setMirror((m) => !m) }} disabled={recording} aria-label="Mirror preview" className={cn('grid h-11 w-11 shrink-0 place-items-center rounded-xl transition-colors hover:bg-white/10 disabled:opacity-30', mirror ? 'text-teal' : 'text-white/85')}>
+                <FlipHorizontal className="h-5 w-5" />
+              </button>
+            </div>
+            {!recording && scene?.camera_framing && (
+              <p className="mx-auto mt-2 max-w-2xl truncate text-center text-[11px] text-white/50">{scene.camera_framing} · ~{estSec}s</p>
+            )}
+          </div>
+        )}
       </div>
 
       <BottomSheet open={speedSheet} title="Teleprompter speed" onClose={() => setSpeedSheet(false)}>
@@ -761,7 +732,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
         <button onClick={onBack} className="w-full rounded-2xl bg-coral text-white font-semibold py-3">Discard &amp; exit</button>
         <button onClick={() => setExitSheet(false)} className="w-full rounded-2xl border border-white/25 text-cream py-3 font-medium">Keep recording</button>
       </BottomSheet>
-    </div>
+    </>
   )
 }
 
@@ -799,16 +770,24 @@ function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => voi
   const uploading = busy
   const showPct = pct >= 0 && pct < 1
   return (
-    <div className="min-h-[100dvh] w-full bg-ink text-cream flex flex-col overflow-x-hidden">
-      <div className="mx-auto flex w-full max-w-lg items-center justify-between px-4 pt-4 text-sm text-white/60 lg:pt-6">
+    <div className="relative min-h-[100dvh] w-full overflow-hidden bg-ink text-cream flex flex-col">
+      {/* Ambient depth so the screen isn't a dead black void — matches the Create /
+          Building screens' signature glow. */}
+      <Aurora className="opacity-70" />
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute left-1/2 top-1/3 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[150px]" />
+        <div className="absolute right-1/4 bottom-1/4 h-[18rem] w-[18rem] rounded-full bg-teal/10 blur-[130px]" />
+      </div>
+
+      <div className="relative mx-auto flex w-full max-w-xl items-center justify-between px-4 pt-4 text-sm text-white/60 lg:pt-6">
         <button onClick={onBack} aria-label="Back" className="h-11 w-11 grid place-items-center rounded-full bg-white/10 transition-colors hover:bg-white/20">←</button>
         <span className="font-medium text-cream">Upload your clip</span>
         <span className="w-11" />
       </div>
 
-      {/* One centered, compact card — not a dashed box stranded in a black void. */}
-      <div className="flex-1 grid place-items-center px-5 pb-16">
-        <div className="w-full max-w-md">
+      {/* One centered card with real presence — not a small box stranded in black. */}
+      <div className="relative flex-1 grid place-items-center px-5 pb-16">
+        <div className="w-full max-w-xl">
           <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
 
           {!uploading ? (
@@ -818,16 +797,16 @@ function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => voi
               onDragLeave={() => setDrag(false)}
               onDrop={(e) => { e.preventDefault(); setDrag(false); onFile(e.dataTransfer.files?.[0]) }}
               className={cn(
-                'group w-full rounded-3xl border p-8 text-center transition-all',
-                drag ? 'border-coral/60 bg-coral/[0.06]' : 'border-white/12 bg-white/[0.03] hover:border-coral/40 hover:bg-white/[0.05]',
+                'group flex w-full flex-col items-center justify-center rounded-3xl border px-8 py-16 text-center backdrop-blur-sm transition-all',
+                drag ? 'border-coral/60 bg-coral/[0.08]' : 'border-white/12 bg-white/[0.04] hover:border-coral/40 hover:bg-white/[0.06]',
               )}
             >
-              <span className={cn('mx-auto grid h-16 w-16 place-items-center rounded-2xl transition-transform group-hover:scale-105',
-                drag ? 'bg-coral/20' : 'bg-signature-soft')}>
-                <UploadCloud className={cn('h-7 w-7', drag ? 'text-coral' : 'text-cream')} />
+              <span className={cn('grid h-20 w-20 place-items-center rounded-3xl shadow-glow transition-transform group-hover:scale-105',
+                drag ? 'bg-coral/25' : 'bg-signature')}>
+                <UploadCloud className={cn('h-9 w-9', drag ? 'text-coral' : 'text-ink')} />
               </span>
-              <p className="mt-5 font-display text-xl">Drop a clip, or tap to browse</p>
-              <p className="mt-1.5 text-sm text-stone">MP4 or MOV · we detect the scenes and line them up with your plan.</p>
+              <p className="mt-6 font-display text-2xl">Drop a clip, or tap to browse</p>
+              <p className="mt-2 max-w-sm text-sm text-stone">MP4 or MOV · we detect the scenes and line them up with your plan.</p>
             </button>
           ) : (
             <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-6">
@@ -864,32 +843,3 @@ function sceneTypeLabel(t?: Scene['scene_type']) {
   }
 }
 
-// Desktop settings-panel row: icon + label on the left, a compact control on the
-// right — the layout a real desktop tool uses (Descript/CapCut-style sidebar),
-// not a touch-target pill stretched wide.
-function PanelRow({ icon: Icon, label, children }: { icon: ComponentType<{ className?: string }>; label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-white/[0.03] transition-colors">
-      <span className="flex items-center gap-2.5 text-sm text-white/85">
-        <Icon className="h-4 w-4 text-white/50" />
-        {label}
-      </span>
-      {children}
-    </div>
-  )
-}
-
-// A real switch control (mouse-precise), not a colored-border button — reads
-// unambiguously as on/off at a glance, the way a desktop settings panel would.
-function Toggle({ on, onClick }: { on: boolean; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      role="switch"
-      aria-checked={on}
-      className={`relative h-5 w-9 rounded-full transition-colors ${on ? 'bg-teal' : 'bg-white/15'}`}
-    >
-      <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />
-    </button>
-  )
-}

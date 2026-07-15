@@ -70,10 +70,10 @@ Deno.serve(async (req: Request) => {
 
   const prompt = `Create a vertical 9:16 mobile short-form video COVER/thumbnail image, high-contrast and scroll-stopping, photographic and professional.
 Visual concept: ${thumb.concept || 'a bold cover frame for a short video'}.
-Framing and composition: ${thumb.composition || 'creator centered, medium close-up, clean background'}.
-The person on camera should show this expression: ${thumb.expression || 'confident, engaging'}.
+Scene and composition: ${thumb.composition || 'a clean, striking scene with one clear focal object'} — build it from the SUBJECT, OBJECTS, PRODUCT and SETTING of the concept.
 Add large, bold, easily readable on-image text that says exactly: "${thumb.text_overlay || ''}". Keep the text short, high-contrast, and legible at thumbnail size; do not misspell it.
 Color treatment: ${thumb.colors || 'punchy and vibrant'}${paletteHex ? `. Use these brand colors for the text and accents: ${paletteHex}` : ''}.
+CRITICAL: do NOT include any human face, person, portrait, hands, or body — NO people at all. We do not have the creator's likeness, so any fabricated face would misrepresent them. Use only objects, product, environment, graphic shapes, and bold typography.
 No borders, no watermark, no UI chrome, no fake play button.`
 
   const model = Deno.env.get('GEMINI_IMAGE_MODEL') ?? 'gemini-2.5-flash-image'
