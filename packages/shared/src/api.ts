@@ -191,23 +191,36 @@ export interface TakeShots {
   segments?: { start: number; end: number; line: string }[]
 }
 
-export async function autoEditTake(generationId: string, file: TakeFile, shots?: TakeShots, onProgress?: (fraction: number) => void): Promise<{ jobId: string; takePath: string }> {
+// Upload a recorded take to the `takes` bucket and return its storage path. Split
+// out of autoEditTake so a take can be persisted the instant recording finishes
+// (autosave) and the edit enqueued later from the SAME path — no re-upload, and the
+// bytes are safe on the server even if the tab is refreshed before the edit starts.
+export async function uploadTakeToBucket(generationId: string, file: TakeFile, onProgress?: (fraction: number) => void): Promise<string> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
   const uid = auth.user.id
   const contentType = file.contentType || 'video/webm'
   const ext = contentType.includes('mp4') ? 'mp4' : 'webm'
   const take_path = `${uid}/${generationId}-${Date.now()}.${ext}`
-
   // Upload impl (uploads the recorder's Blob) is injected by the web app via initApi.
   if (!_uploadTake) throw new Error('No uploadTake configured — pass it to initApi().')
   await _uploadTake(take_path, file, onProgress)
+  return take_path
+}
 
+// Enqueue the auto-edit for a take that is ALREADY uploaded (by uploadTakeToBucket
+// or a resumed autosave). The edge fn decides free-vs-paid server-side.
+export async function autoEditFromPath(generationId: string, takePath: string, shots?: TakeShots): Promise<{ jobId: string; takePath: string }> {
   const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
-    body: { generation_id: generationId, take_path, ...(shots ? { shots } : {}) },
+    body: { generation_id: generationId, take_path: takePath, ...(shots ? { shots } : {}) },
   })
   if (error) throw new Error(await readInvokeError(error))
-  return { jobId: (data as { job_id: string }).job_id, takePath: take_path }
+  return { jobId: (data as { job_id: string }).job_id, takePath }
+}
+
+export async function autoEditTake(generationId: string, file: TakeFile, shots?: TakeShots, onProgress?: (fraction: number) => void): Promise<{ jobId: string; takePath: string }> {
+  const take_path = await uploadTakeToBucket(generationId, file, onProgress)
+  return autoEditFromPath(generationId, take_path, shots)
 }
 
 // Download the EDL JSON for a finished edit (from its signed edits-bucket path),
