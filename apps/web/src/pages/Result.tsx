@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Quote, FileText, Clapperboard,
@@ -15,7 +15,8 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, logEvent, generateThumbnail, signEditUrls, pollEditJob, listPosts } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, logEvent, generateThumbnail, signEditUrls, pollEditJob, listPosts, autoEditFromPath } from '../lib/api'
+import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 
 // Stale-while-revalidate cache so reopening a plan is INSTANT instead of showing a
 // full-screen "Loading your script…" every time (the plan page had no cache; the
@@ -182,11 +183,17 @@ const MOCK_GENERATION = {
 
 export default function Result() {
   const { id } = useParams()
+  const navigate = useNavigate()
   const { profile } = useAuth()
   const [gen, setGen] = useState<Generation | null>(() => (id ? GEN_CACHE[id] ?? null : null))
   // Only block on the full-screen loader when we have NOTHING cached to show.
   const [loading, setLoading] = useState(() => !(id && GEN_CACHE[id]))
   const [posted, setPosted] = useState(false)
+  // A recording that was autosaved (uploaded to the takes bucket) but whose edit was
+  // never confirmed — offer to resume it so an accidental refresh can't lose it.
+  const [resumeTake, setResumeTake] = useState<SavedTake | null>(null)
+  const [resuming, setResuming] = useState(false)
+  const [resumeErr, setResumeErr] = useState<string | null>(null)
   const [chosenHook, setChosenHook] = useState('')
   const [approved, setApproved] = useState(false)
   const [mobileTab, setMobileTab] = useState<'script' | 'strategy' | 'spec' | 'publish'>('script')
@@ -317,6 +324,34 @@ export default function Result() {
       .finally(() => setLoading(false))
   }, [id])
 
+  // Offer to resume an autosaved recording whose edit was never confirmed. If the
+  // video is already finished (edit_path set), the take was consumed — drop the
+  // pointer instead of offering a stale resume.
+  useEffect(() => {
+    if (!id) return
+    const t = readTakePointer(id)
+    if (!t) { setResumeTake(null); return }
+    if (gen?.edit_path) { clearTakePointer(id); setResumeTake(null) }
+    else setResumeTake(t)
+  }, [id, gen?.edit_path])
+
+  // Resume: enqueue the auto-edit from the already-uploaded take (no re-record, no
+  // re-upload) and go to the edit progress screen.
+  const resumeEdit = async () => {
+    if (!id || !resumeTake || resuming) return
+    setResuming(true); setResumeErr(null)
+    try {
+      const { jobId } = await autoEditFromPath(id, resumeTake.takePath, resumeTake.shots)
+      clearTakePointer(id)
+      setResumeTake(null)
+      navigate(`/v2/review/${id}?job=${jobId}`)
+    } catch (e) {
+      setResumeErr(e instanceof Error ? e.message : 'Could not resume — please try again.')
+      setResuming(false)
+    }
+  }
+  const dismissResume = () => { if (id) clearTakePointer(id); setResumeTake(null) }
+
   // Pick which hook to shoot: persist it so the teleprompter, cover and b-roll all
   // use THIS hook. Optimistic — the UI updates immediately.
   const pickHook = (h: string) => {
@@ -408,6 +443,31 @@ export default function Result() {
     <main className="relative min-h-screen overflow-clip bg-ink text-sand pb-20">
       {/* Aurora Glow */}
       <Aurora className="opacity-45 pointer-events-none" />
+
+      {/* Resume an autosaved recording whose edit was never confirmed — so an
+          accidental refresh / phone lock never loses a finished take. */}
+      {resumeTake && !gen.edit_path && (
+        <div className="relative mx-auto max-w-7xl px-6 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-coral/30 bg-coral/[0.08] p-4">
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-coral/15">
+                <Video className="h-4 w-4 text-coral" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-cream">Your recording is saved</p>
+                <p className="text-xs text-stone">Pick up where you left off — turn it into your video.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={dismissResume} className="btn-ghost py-2 text-xs" disabled={resuming}>Discard</button>
+              <button onClick={resumeEdit} className="btn-gradient py-2 text-xs font-semibold" disabled={resuming}>
+                {resuming ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Resuming…</> : <><Play className="h-3.5 w-3.5" /> Resume my video</>}
+              </button>
+            </div>
+          </div>
+          {resumeErr && <p className="mt-2 rounded-lg bg-coral/10 px-3 py-2 text-xs text-coral">{resumeErr}</p>}
+        </div>
+      )}
 
       {/* Hero Header */}
       <section className="relative border-b border-white/5 bg-ink2/30 backdrop-blur-sm">

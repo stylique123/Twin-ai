@@ -16,7 +16,8 @@ import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
 import { buildTimeline } from '../../lib/timelineAdapter'
-import { autoEditTake, pickRecorderMime, getGeneration, updateGenerationChoice } from '../../lib/api'
+import { autoEditTake, autoEditFromPath, uploadTakeToBucket, pickRecorderMime, getGeneration, updateGenerationChoice, type TakeShots } from '../../lib/api'
+import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
 import {
@@ -107,6 +108,22 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const [exitSheet, setExitSheet] = useState(false)
   // Mirror into a ref so the recording timer can read it without re-subscribing.
   useEffect(() => { exitSheetRef.current = exitSheet }, [exitSheet])
+
+  // Guard against losing a recording to an accidental refresh / tab close / phone
+  // lock: warn (native "Leave site?" prompt) whenever a take is being recorded or
+  // reviewed but hasn't been handed to the edit yet. (A finished take is also
+  // autosaved server-side so it can be resumed, but the warning still prevents the
+  // surprise.) beforeunload only fires on real browser unloads, not SPA navigation.
+  const dirtyRef = useRef(false)
+  useEffect(() => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!dirtyRef.current) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [])
   const [camError, setCamError] = useState<string | null>(null)
   // Separate from camError on purpose: this is an upload/enqueue failure (e.g. out
   // of credits), not a camera problem. Mixing the two into one state previously
@@ -148,6 +165,13 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const segmentsRef = useRef<{ start: number; end: number; line: string }[]>([])
   const sceneStartSecRef = useRef(0)   // current scene's window start (active seconds)
   const reviewBlobRef = useRef<Blob | null>(null) // the raw recorded take, kept for review
+  // Autosave: the `takes`-bucket path the finished take was uploaded to the instant
+  // recording ended, so a refresh before the edit is confirmed doesn't lose it and
+  // startAiEdit can enqueue from this path with NO re-upload.
+  const savedTakePathRef = useRef<string | null>(null)
+  // Set once the edit is enqueued, so a slow autosave that resolves afterwards can't
+  // re-write a resume pointer for a take that's already being edited.
+  const editStartedRef = useRef(false)
   const liveRef = useRef(false)        // true ONLY while a scene is actively recording (race guard)
   const confirmBusyRef = useRef(false) // double-tap guard on the review Continue (double-charge bug)
   const uploadCancelRef = useRef(false) // creator cancelled the upload — ignore its result
@@ -186,6 +210,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     }, 100)
     return () => window.clearInterval(h)
   }, [recording, i, sceneLimit])
+
+  // A take is "dirty" (worth warning about on unload) while recording, or while a
+  // finished take is being reviewed but hasn't been sent to the edit yet.
+  useEffect(() => { dirtyRef.current = recording || !!reviewUrl }, [recording, reviewUrl])
 
   // Real teleprompter motion: the whole script GLIDES UPWARD (translateY on the text
   // block) past a fixed read-line, regardless of length — not a word-by-word jump.
@@ -349,6 +377,39 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     reviewBlobRef.current = blob
     setRecording(false)
     setReviewUrl(URL.createObjectURL(blob))
+    // Autosave the take server-side immediately (best-effort, non-blocking): upload
+    // the bytes to the `takes` bucket and stash a local pointer so a refresh / phone
+    // lock before the creator confirms the edit can RESUME instead of losing it. A
+    // real recorder error or an empty blob is not worth persisting.
+    if (!recErrRef.current && blob.size >= MIN_TAKE_BYTES) {
+      const contentType = blob.type || 'video/webm'
+      const shots = buildShots()
+      uploadTakeToBucket(genId, { blob, contentType })
+        .then((takePath) => {
+          savedTakePathRef.current = takePath
+          // If the edit already started while this upload was in flight, don't write a
+          // resume pointer for a take that's already being edited.
+          if (!editStartedRef.current) saveTakePointer(genId, { takePath, contentType, shots })
+        })
+        .catch(() => { /* best-effort — the beforeunload guard still protects */ })
+    }
+  }
+
+  // The per-scene shots contract, built from the recorded bounds/lines/windows.
+  // Shared by autosave and startAiEdit so a resumed edit gets identical scene sync.
+  const buildShots = (): TakeShots | undefined => {
+    // boundsRef holds each scene's cumulative END second, e.g. [5, 11, 18]. The worker
+    // expects `total` = clip DURATION and `bounds` = INTERIOR cuts only (it re-appends
+    // the end itself). segments are explicit keep-windows (drop flubbed/retaken reads).
+    const rawBounds = boundsRef.current
+    const sceneCount = rawBounds.length
+    const totalSec = rawBounds[rawBounds.length - 1] ?? 0
+    const interiorBounds = rawBounds.slice(0, -1)
+    const lines = linesRef.current
+    const segments = segmentsRef.current.filter((s) => s.end > s.start)
+    return sceneCount > 1
+      ? { bounds: interiorBounds, total: totalSec, lines, ...(segments.length > 1 ? { segments } : {}) }
+      : undefined
   }
 
   // Review action: hand the raw take to the SAME tested auto-edit path (captions,
@@ -371,29 +432,25 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
       return
     }
     setEditError(null)
-    setUploadPct(-1)
     uploadCancelRef.current = false
+    editStartedRef.current = true
     setUploading(true)
     try {
-      // boundsRef holds each scene's cumulative END second, e.g. [5, 11, 18]. The
-      // worker's bounds path expects `total` = the clip DURATION (seconds) and `bounds`
-      // = INTERIOR cuts only (it re-appends the end itself) — the same convention as
-      // the upload path's scene_detect.py. Sending total = scene COUNT (the old bug)
-      // made the worker's `bounds.filter(n < total)` drop every real boundary, so all
-      // but the first scene lost its caption. Fix the units at the source.
-      const rawBounds = boundsRef.current
-      const sceneCount = rawBounds.length
-      const totalSec = rawBounds[rawBounds.length - 1] ?? 0
-      const interiorBounds = rawBounds.slice(0, -1)
-      const lines = linesRef.current
-      const segments = segmentsRef.current.filter((s) => s.end > s.start)
       // Per-scene keep-windows + spoken line → the worker trims+concats the kept
       // windows (dropping flubbed/retaken reads) and captions each per scene.
-      const shots = sceneCount > 1
-        ? { bounds: interiorBounds, total: totalSec, lines, ...(segments.length > 1 ? { segments } : {}) }
-        : undefined
-      const { jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, (f) => setUploadPct(f))
+      const shots = buildShots()
+      // If autosave already uploaded this take, enqueue from that path — no second
+      // upload of the same bytes. Otherwise upload now (autosave failed / not done).
+      let jobId: string
+      if (savedTakePathRef.current) {
+        setUploadPct(-1)
+        ;({ jobId } = await autoEditFromPath(genId, savedTakePathRef.current, shots))
+      } else {
+        setUploadPct(-1)
+        ;({ jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, (f) => setUploadPct(f)))
+      }
       if (uploadCancelRef.current) return // creator backed out — take is still in memory on the review screen
+      clearTakePointer(genId) // consumed — the edit job owns the take now
       onJob(jobId)
     } catch (e) {
       if (!uploadCancelRef.current) setEditError(e instanceof Error ? e.message : 'Could not start the edit')
@@ -413,6 +470,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   // Review action: throw the take away and re-record from scene 1 (re-acquires camera).
   const reRecord = () => {
     if (reviewUrl) URL.revokeObjectURL(reviewUrl)
+    // The previous take is being thrown away — drop its autosave pointer so Resume
+    // never offers a discarded recording. (The orphaned bucket object is harmless.)
+    clearTakePointer(genId)
+    savedTakePathRef.current = null
+    editStartedRef.current = false
     reviewBlobRef.current = null
     recErrRef.current = null
     chunksRef.current = []
@@ -473,7 +535,16 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
               (refreshing would destroy the in-memory take). Cancel returns to the
               review screen with the recording intact. */}
           <button
-            onClick={() => { uploadCancelRef.current = true; setUploading(false) }}
+            onClick={() => {
+              uploadCancelRef.current = true
+              setUploading(false)
+              // Back to review, take not consumed — restore the resume pointer so a
+              // refresh here still recovers it.
+              editStartedRef.current = false
+              if (savedTakePathRef.current) {
+                saveTakePointer(genId, { takePath: savedTakePathRef.current, contentType: reviewBlobRef.current?.type || 'video/webm', shots: buildShots() })
+              }
+            }}
             className="mt-5 text-xs text-white/50 hover:text-white"
           >Cancel and go back to my recording</button>
         </div>
