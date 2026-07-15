@@ -168,6 +168,15 @@ export default function V2Building() {
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
   const shownPct = Math.round(pct)
+  // Only a supported host is actually watched/transcribed; a described idea or an
+  // unsupported link is used as a guide (pattern mode). Keep the first step honest so
+  // it never claims to "watch" something it can't read.
+  const willRead = !!state.reference_url && isSupportedRef(state.reference_url)
+  const stepLabel = (i: number, base: string) =>
+    i !== 0 ? base : willRead ? 'Watching your reference' : state.reference_url ? 'Using your reference as a guide' : 'Working from your idea'
+  // A voice-not-ready failure has a specific fix (set up your brand voice), not just
+  // "try a different reference".
+  const isVoiceIssue = /voice/i.test(error ?? '')
 
   return (
     // Full brand canvas, vertically centered — one composed card, no stranded
@@ -185,7 +194,14 @@ export default function V2Building() {
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-coral/15"><Sparkles className="h-5 w-5 text-coral" /></span>
             <h2 className="mt-4 font-display text-2xl">We hit a snag</h2>
             <p className="mt-2 text-sm leading-relaxed text-stone">{error}</p>
-            <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
+            {isVoiceIssue ? (
+              <>
+                <button onClick={() => nav('/brands')} className="btn-gradient mt-6 w-full">Set up your brand voice</button>
+                <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Try a different reference</button>
+              </>
+            ) : (
+              <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
+            )}
           </div>
         ) : (
           <div className="glass gradient-border p-6 sm:p-8">
@@ -222,7 +238,7 @@ export default function V2Building() {
                     ) : (
                       <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-dashed border-white/15 text-[11px] font-bold text-stone">{i + 1}</span>
                     )}
-                    <span className={done ? 'text-sm text-sand' : isActive ? 'text-sm font-medium text-cream' : 'text-sm text-stone'}>{s.label}</span>
+                    <span className={done ? 'text-sm text-sand' : isActive ? 'text-sm font-medium text-cream' : 'text-sm text-stone'}>{stepLabel(i, s.label)}</span>
                     {isActive && <span className="ml-auto text-[11px] font-medium text-amber">Working…</span>}
                     {done && <span className="ml-auto text-[11px] font-medium text-coral">Done</span>}
                   </li>

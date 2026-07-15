@@ -528,7 +528,7 @@ export default function Result() {
               <span className="chip text-xs">
                 <ExternalLink className="h-3.5 w-3.5 text-stone" /> {b.reference_read.platform}
               </span>
-              <span className="chip text-xs">Fidelity · {gen.fidelity}</span>
+              <span className="chip text-xs">{gen.fidelity === 'close' ? 'Close to the reference' : gen.fidelity === 'loose' ? 'Loosely inspired' : 'Balanced remix'}</span>
               {isAgency && (
                 <button
                   onClick={toggleApproved}
