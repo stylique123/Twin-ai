@@ -452,12 +452,12 @@ export default function Result() {
           {/* FINISHED VIDEO — plays right here once the edit exists, so the plan /
               Library actually shows what was made (not just "Record / Upload"). */}
           {videoUrl && (
-            <div id="your-video" className="mt-8 scroll-mt-24 rounded-card border border-teal/25 bg-ink2/70 p-4 backdrop-blur-sm sm:p-5">
+            <div id="your-video" className="mt-8 w-full max-w-[340px] scroll-mt-24 rounded-card border border-teal/25 bg-ink2/70 p-3 backdrop-blur-sm">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-cream"><span className="h-2 w-2 rounded-full bg-teal" /> Your video</div>
                 <button onClick={downloadVideo} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10"><Download className="h-3.5 w-3.5" /> Download</button>
               </div>
-              <div className="mx-auto aspect-[9/16] w-full max-w-[300px] overflow-hidden rounded-2xl bg-black">
+              <div className="aspect-[9/16] w-full overflow-hidden rounded-2xl bg-black">
                 <video src={videoUrl} controls playsInline className="h-full w-full object-contain" poster={thumbUrl ?? undefined} />
               </div>
             </div>
