@@ -951,6 +951,14 @@ function PricingSection() {
         <h2 className="mt-3 font-display text-3xl sm:text-5xl">
           Start free. Scale when it's working.
         </h2>
+        {/* Honest framing while checkout is off: every plan is free in beta and no
+            card is taken. The prices below are what each plan WILL cost once billing
+            opens — shown so the value is clear, not because anyone is charged today. */}
+        {!PAYMENTS_LIVE && (
+          <p className="mx-auto mt-5 inline-flex max-w-xl items-center justify-center gap-2 rounded-full border border-teal/30 bg-teal/10 px-4 py-2 text-sm font-semibold text-teal">
+            Free while in beta — every plan, no card. Prices show what they'll cost when billing opens.
+          </p>
+        )}
       </Reveal>
 
       <Stagger className="mt-14 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" gap={0.05}>
