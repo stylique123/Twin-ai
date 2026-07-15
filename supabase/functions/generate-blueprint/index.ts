@@ -321,24 +321,27 @@ async function callOnce(
 // fallback — a lighter reasoning budget on a quicker model — that reliably returns
 // inside the edge wall-clock. A good-enough blueprint always beats an error.
 async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
-  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-3.1-pro-preview'
-  // Bounded thinking (unbounded dynamic thinking was ~70% of this call's cost +
-  // latency). Trimmed from 8192 → 4096: A/B showed the extra reasoning barely
-  // moved script quality but roughly doubled the slowest phase. Override via
-  // GEMINI_THINKING_BUDGET (0 = unbounded, raise it if you want max quality).
-  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '4096')
-  // The fast fallback model. Defaults to Gemini 2.5 Flash — same API key, much
-  // faster, rarely times out. Override with GEMINI_FALLBACK_MODEL.
+  // The default MUST be a model that reliably returns a FULL blueprint inside the
+  // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
+  // on BOTH attempts (edge logs showed repeated 500s at ~70-91s → "We hit a snag"
+  // for a paying creator, credit spent then refunded). Gemini 2.5 Flash returns
+  // the same structured blueprint in ~20-45s. Operators can still trial the pro
+  // model with GEMINI_MODEL once they've confirmed it returns in time.
+  const model = Deno.env.get('GEMINI_MODEL') ?? 'gemini-2.5-flash'
+  // Thinking OFF by default = fastest + most reliable. Raise GEMINI_THINKING_BUDGET
+  // for more deliberation ONLY if your chosen model still returns within the
+  // timeouts below.
+  const thinkBudget = Number(Deno.env.get('GEMINI_THINKING_BUDGET') ?? '0')
+  // The fallback model — same API key, reliable. Override with GEMINI_FALLBACK_MODEL.
   const fallbackModel = Deno.env.get('GEMINI_FALLBACK_MODEL') ?? 'gemini-2.5-flash'
 
   const attempts: Array<{ model: string; thinkBudget: number; timeoutMs: number }> = [
-    // Tighter primary timeout (45s → 32s): if the pro model is slow/overloaded,
-    // fail over to the fast model SOONER instead of making the creator wait out
-    // the full window — the #1 "it's taking too long / it got stuck" complaint.
-    { model, thinkBudget, timeoutMs: 32_000 },
-    // Fallback: quicker model + light reasoning, so it lands well within the edge
-    // wall-clock even when the primary is slow/overloaded.
-    { model: fallbackModel, thinkBudget: Math.min(thinkBudget, 2048), timeoutMs: 32_000 },
+    // Generous timeouts so the model actually FINISHES — the previous 32-45s
+    // cutoffs were killing the call mid-generation (that was the real bug). Sized
+    // so primary + fallback (75+55 = 130s) stays under the edge wall-clock limit
+    // even with the surrounding auth/credit/DB work.
+    { model, thinkBudget, timeoutMs: 75_000 },
+    { model: fallbackModel, thinkBudget: 0, timeoutMs: 55_000 },
   ]
 
   let lastErr: unknown
