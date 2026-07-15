@@ -1096,9 +1096,15 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
     // Fallback render that can never fail on a complex filtergraph.
     const plain = ['-y', '-i', base, '-vf', `${fill}${subs}`, '-af', `${DN}${LN}`, ...enc]
     prog('rendering', 80, 'Rendering your video…')
+    // The plain fallback renders ONLY base+captions+audio — it drops the music bed,
+    // b-roll and emoji overlays. Track it so the EDL below records what ACTUALLY
+    // shipped (else the persisted EDL + Revideo premium pass would believe features
+    // are present that the viewer never saw).
+    let renderedPlain = false
     try {
       await run('ffmpeg', fullArgs, Math.max(240_000, env.maxMediaSecs * 2000), dir)
     } catch {
+      renderedPlain = true
       await run('ffmpeg', plain, Math.max(240_000, env.maxMediaSecs * 2000), dir)
     }
 
@@ -1179,9 +1185,11 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       variation: capVariation,
       segments: cutSegments.length ? cutSegments : [{ start: 0, end: durationSec || 0 }],
       words,
-      emoji: emojiPlan,
-      broll: broll ? { query: broll.query, start: brollStart, end: brollEnd } : null,
-      music: !!bedFile,
+      // On the plain fallback the overlays were dropped — record them as absent so the
+      // EDL + Revideo premium pass match what actually rendered.
+      emoji: renderedPlain ? [] : emojiPlan,
+      broll: (!renderedPlain && broll) ? { query: broll.query, start: brollStart, end: brollEnd } : null,
+      music: !renderedPlain && !!bedFile,
       durationSec,
       plan: plan ?? undefined,
       captionStyle,
@@ -1190,7 +1198,7 @@ export async function autoEdit(takeFile: string, opts: EditOptions = {}): Promis
       features: { broll: !!env.pexelsKey, music: !!env.musicBedUrl },
     })
 
-    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !!broll, thumbFile, edl: outEdl, baseRevideoFile }
+    return { outFile: keep, durationSec, words: words.length, jumpCut, broll: !renderedPlain && !!broll, thumbFile, edl: outEdl, baseRevideoFile }
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {})
   }

@@ -174,6 +174,15 @@ export default function V2Review() {
     }
     document.addEventListener('visibilitychange', onVisible)
 
+    // Synthetic "creep": the worker spends its first seconds downloading the take +
+    // loading models before it emits any real pct, so the bar would otherwise sit
+    // frozen at 5% and read as stuck. Nudge it up slowly (capped at 90%) so there's
+    // always visible motion; real progress overrides via Math.max above.
+    const creep = setInterval(() => {
+      if (stopped.current) return
+      setPct((prev) => (prev < 90 ? prev + Math.max(0.4, (90 - prev) * 0.03) : prev))
+    }, 1400)
+
     ;(async () => {
       // No job id (e.g. opened directly) → just try to show an existing render.
       if (!jobId) {
@@ -182,7 +191,9 @@ export default function V2Review() {
       }
       const job = await pollEditJob(
         jobId,
-        (label, pct) => { if (label) setLabel(label); if (pct) setPct(Math.max(5, Math.min(99, pct))) },
+        // Never let real progress jump BACKWARD (the worker's first pct can be < a
+        // synthetic value); take the max with what's already shown.
+        (label, pct) => { if (label) setLabel(label); if (pct) setPct((prev) => Math.max(prev, Math.min(99, pct))) },
         { attempts: 300, shouldStop: () => stopped.current },
       )
       if (stopped.current) return
@@ -198,7 +209,7 @@ export default function V2Review() {
       else { setPhase('failed'); setLabel('The edit finished but the video did not come through. Check your library in a moment.') }
     })()
 
-    return () => { stopped.current = true; document.removeEventListener('visibilitychange', onVisible) }
+    return () => { stopped.current = true; clearInterval(creep); document.removeEventListener('visibilitychange', onVisible) }
   }, [id, jobId])
 
   const retry = () => nav(`/v2/capture/${id}?mode=record`)
