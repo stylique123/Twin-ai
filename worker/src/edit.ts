@@ -513,15 +513,20 @@ async function vadSilence(base: string, duration: number): Promise<{ starts: num
       .filter((x) => Array.isArray(x) && x.length === 2 && Number.isFinite(x[0]) && Number.isFinite(x[1]) && x[1] > x[0])
       .sort((a, b) => a[0] - b[0])
     if (!sp.length) return null // no speech detected → let silencedetect decide
-    // Silence = the gaps the speech leaves, only counting pauses >= 0.35s.
+    // Silence = the gaps the speech leaves, only counting pauses >= MIN_PAUSE.
+    // 0.5s (not 0.35s): a natural sentence/breath pause is ~0.3-0.5s, so cutting at
+    // 0.35 machine-guns the edit — every comma becomes a jump cut and the video reads
+    // choppy/incoherent (the "dead space cut and overlaps, not coherent" complaint).
+    // At 0.5s only genuine dead air is removed and the read keeps its rhythm.
+    const MIN_PAUSE = 0.5
     const starts: number[] = []
     const ends: number[] = []
     let cursor = 0
     for (const [s, e] of sp) {
-      if (s - cursor >= 0.35) { starts.push(cursor); ends.push(s) }
+      if (s - cursor >= MIN_PAUSE) { starts.push(cursor); ends.push(s) }
       cursor = Math.max(cursor, e)
     }
-    if (duration - cursor >= 0.35) { starts.push(cursor); ends.push(duration) }
+    if (duration - cursor >= MIN_PAUSE) { starts.push(cursor); ends.push(duration) }
     return { starts, ends }
   } catch {
     return null
@@ -557,10 +562,11 @@ async function computeSilenceKeep(base: string, energy: 'high' | 'calm' = 'calm'
       const mm = vd.match(/mean_volume:\s*(-?[0-9.]+)\s*dB/)
       if (mm) noiseDb = Math.max(-45, Math.min(-28, parseFloat(mm[1]) - 8))
     } catch { /* keep -30 */ }
-    // Detect silence quieter than the adaptive threshold for >= 0.35s.
+    // Detect silence quieter than the adaptive threshold for >= 0.5s (see MIN_PAUSE
+    // above: 0.35 turns every breath into a jump cut; 0.5 cuts only real dead air).
     const { stderr } = await run(
       'ffmpeg',
-      ['-i', base, '-af', `silencedetect=noise=${noiseDb.toFixed(1)}dB:d=0.35`, '-f', 'null', '-'],
+      ['-i', base, '-af', `silencedetect=noise=${noiseDb.toFixed(1)}dB:d=0.5`, '-f', 'null', '-'],
       Math.max(120_000, duration * 2000),
     )
     for (const m of stderr.matchAll(/silence_start:\s*([0-9.]+)/g)) starts.push(parseFloat(m[1]))
