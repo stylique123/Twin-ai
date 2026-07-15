@@ -34,8 +34,12 @@ export const env = {
   // unaffected; this only gates the keyword-regex fallback. Set EDIT_EMOJI=true to
   // restore it.
   editEmoji: (process.env.EDIT_EMOJI ?? 'false').trim() === 'true',
-  // Optional: free Pexels API key enables keyword-matched b-roll cutaways.
+  // Optional: free Pexels API key enables b-roll cutaways.
   pexelsKey: (process.env.PEXELS_API_KEY ?? '').trim(),
+  // AUTO b-roll is OFF by default: dropping random stock footage over a personal
+  // talking-head read looks out of place. A creator can still ADD b-roll per video
+  // in Refine (that path is unaffected). Set EDIT_BROLL=true to auto-insert again.
+  editBroll: (process.env.EDIT_BROLL ?? 'false').trim() === 'true',
   // Optional: URL of a royalty-free music bed (mp3) mixed + ducked under the VO.
   // The single biggest lever for making cut clips feel like one coherent video.
   musicBedUrl: (process.env.MUSIC_BED_URL ?? '').trim(),
@@ -83,9 +87,12 @@ export const env = {
   // across the recorded window — accurate for a steady pace but drifts on a long
   // line read unevenly. When enabled, each window is transcribed individually
   // (real word timestamps) and only falls back to the even spread if that window's
-  // audio has no detected speech. Off by default: it trades one whisper pass per
-  // scene for exact timing — verify render time/quality on the VPS before flipping.
-  editWindowWhisper: (process.env.EDIT_WINDOW_WHISPER ?? 'false').trim() === 'true',
+  // audio has no detected speech. Now ON by default: even-spread captions drift
+  // off the real speech (the "muffled / mistimed captions" complaint) whenever a
+  // creator ad-libs or pauses. Real per-window transcription keeps captions locked
+  // to what was actually said. Set EDIT_WINDOW_WHISPER=false to revert to the
+  // cheaper even-spread if render time becomes a problem.
+  editWindowWhisper: (process.env.EDIT_WINDOW_WHISPER ?? 'true').trim() === 'true',
   maxMediaSecs: Number(process.env.WORKER_MAX_MEDIA_SECS ?? '900'), // skip > 15 min by default
   // Hard cap on any single Storage download (raw take, b-roll, music bed). The
   // single worker buffers/streams these to disk; an oversized or corrupt object
