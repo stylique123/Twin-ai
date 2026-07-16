@@ -18,14 +18,17 @@ import { cn } from '../lib/cn'
 // specific clips: an abstract liquid-light loop behind the hero + pain sections,
 // and four different vertical creator reels so the device mocks + showcase show
 // REAL, varied footage instead of one clip on repeat.
-const HF = 'https://d8j0ntlcm91z4.cloudfront.net/user_3A4BLQYlkqlIIcq5F4BohQmaHaz/'
-const HERO_VIDEO_SRC = HF + 'hf_20260614_061422_7b59d7ac-3dc6-4376-9baa-bc3cad8bccb0.mp4' // the original brand hero clip (hero + pain bg)
-const HERO_PHONE_VIDEO = HF + 'hf_20260623_023132_98fe4f69-1b34-415e-8d5a-9627cec28c29.mp4' // founder talking-head, 9:16
+// Self-hosted in apps/web/public/media so the footage always loads — the old
+// external CDN links expired (403) and left the phones empty. The hero bg + phone
+// share ONE light clip (loads once, cached); the heavier creator clip only loads
+// when the playbook scrolls into view.
+const HERO_VIDEO_SRC = '/media/hero-talkinghead.mp4'      // brand talking-head (hero + pain bg)
+const HERO_PHONE_VIDEO = '/media/hero-talkinghead.mp4'    // behind the hero teleprompter, 9:16
 const REEL = {
-  founder: HF + 'hf_20260623_023132_98fe4f69-1b34-415e-8d5a-9627cec28c29.mp4',
-  beauty:  HF + 'hf_20260623_023134_b4da463a-9a9b-45b7-ac53-7b7f30d4cf77.mp4',
-  food:    HF + 'hf_20260623_023138_bc9b8790-daeb-44e5-9521-85f9bfa85a7d.mp4',
-  fitness: HF + 'hf_20260623_023153_2e6a4b56-e474-439d-9e13-0c5b373425d8.mp4',
+  founder: '/media/hero-talkinghead.mp4',
+  beauty:  '/media/reel-creator.mp4',
+  food:    '/media/reel-creator.mp4',
+  fitness: '/media/hero-talkinghead.mp4',
 }
 
 
