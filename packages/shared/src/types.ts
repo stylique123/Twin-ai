@@ -24,6 +24,9 @@ export interface Profile {
   onboarded: boolean
   created_at: string
   referral_code?: string | null
+  // Set the first time the product tour opens — account-level, so the tour shows
+  // exactly once per USER, not once per browser.
+  tour_seen_at?: string | null
 }
 
 // Phase 2, Brand-DNA learned from a creator's handle. The voice we write in.
