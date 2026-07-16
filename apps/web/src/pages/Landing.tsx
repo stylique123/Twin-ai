@@ -22,7 +22,6 @@ import { cn } from '../lib/cn'
 // external CDN links expired (403) and left the phones empty. The hero bg + phone
 // share ONE light clip (loads once, cached); the heavier creator clip only loads
 // when the playbook scrolls into view.
-const HERO_VIDEO_SRC = '/media/hero-talkinghead.mp4'      // brand talking-head (hero + pain bg)
 const HERO_PHONE_VIDEO = '/media/hero-talkinghead.mp4'    // behind the hero teleprompter, 9:16
 const REEL = {
   founder: '/media/hero-talkinghead.mp4',
@@ -181,19 +180,9 @@ function HeroSection() {
       className="relative min-h-screen overflow-hidden"
       onMouseMove={handleMouseMove}
     >
-      {/* Video bg or aurora fallback */}
-      {HERO_VIDEO_SRC ? (
-        <>
-          <video
-            autoPlay muted loop playsInline
-            className="absolute inset-0 h-full w-full object-cover opacity-30"
-            src={HERO_VIDEO_SRC}
-          />
-          <div className="absolute inset-0 bg-gradient-to-b from-ink/50 via-ink/70 to-ink" />
-        </>
-      ) : (
-        <Aurora />
-      )}
+      {/* Brand-color aurora backdrop — our palette (coral · teal · amber), not a
+          video. Keeps the hero unmistakably ours and always renders instantly. */}
+      <Aurora />
 
       {/* Mouse-tracking interactive glow */}
       <motion.div
@@ -579,15 +568,12 @@ function PasteMicroDemo() {
 function PainSection() {
   return (
     <section className="relative overflow-hidden">
-      {/* Live video backdrop — the same footage from the hero, dimmed almost to a
-          texture, so the "system problem" beat breathes instead of sitting on flat
-          ink. A heavy scrim keeps the copy crisp. */}
-      {HERO_VIDEO_SRC && (
-        <>
-          <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover opacity-[0.08]" src={HERO_VIDEO_SRC} />
-          <div className="absolute inset-0 bg-gradient-to-b from-ink via-ink/85 to-ink" />
-        </>
-      )}
+      {/* Soft brand-color blooms — our palette gives the "system problem" beat
+          room to breathe instead of sitting on flat ink. No video. */}
+      <div className="pointer-events-none absolute inset-0" aria-hidden>
+        <div className="absolute left-1/4 top-0 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[150px]" />
+        <div className="absolute bottom-0 right-0 h-[22rem] w-[22rem] rounded-full bg-teal/10 blur-[140px]" />
+      </div>
       <div className="relative mx-auto max-w-content px-5 py-14 sm:py-28">
       <Reveal className="text-center">
         <p className="eyebrow">Sound familiar?</p>
