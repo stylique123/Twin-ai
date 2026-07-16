@@ -644,11 +644,17 @@ export default function Result() {
                       </div>
                     )}
                   </div>
-                  <button onClick={genThumb} disabled={thumbBusy}
-                    className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 py-2.5 text-sm font-semibold text-cream transition hover:bg-white/20 disabled:opacity-60">
-                    {thumbBusy ? 'Making your cover…' : gen?.ai_thumb_path ? 'Regenerate' : 'Generate AI cover'}
-                  </button>
-                  {thumbErr && <p className="mt-1 text-xs text-coral">{thumbErr}. The image engine is occasionally busy — tap again.</p>}
+                  {/* No Regenerate: once a cover exists it stays. The button only
+                      appears to make the FIRST AI cover. */}
+                  {!gen?.ai_thumb_path && (
+                    <>
+                      <button onClick={genThumb} disabled={thumbBusy}
+                        className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 py-2.5 text-sm font-semibold text-cream transition hover:bg-white/20 disabled:opacity-60">
+                        {thumbBusy ? 'Making your cover…' : 'Generate AI cover'}
+                      </button>
+                      {thumbErr && <p className="mt-1 text-xs text-coral">{thumbErr}. The image engine is occasionally busy — tap again.</p>}
+                    </>
+                  )}
                 </div>
               )}
             </div>
