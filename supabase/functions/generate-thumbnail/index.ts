@@ -126,7 +126,12 @@ No borders, no watermark, no UI chrome, no fake play button.`
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
 
   const ext = mime.includes('jpeg') || mime.includes('jpg') ? 'jpg' : 'png'
-  const path = `ai-thumb/${user.id}/${generationId}-${Date.now()}.${ext}`
+  // The `edits` read policy allows a user to sign objects whose FIRST path folder is
+  // their workspace id: (storage.foldername(name))[1] IN workspace_peers(). So the
+  // user id MUST lead the path — otherwise the creator can't sign their own cover on
+  // reload (the edge fn signs once with the service role, but the client can't).
+  // `${user.id}/ai-thumb/…` keeps covers grouped yet inside the owner's folder.
+  const path = `${user.id}/ai-thumb/${generationId}-${Date.now()}.${ext}`
   const { error: upErr } = await admin.storage.from('edits').upload(path, bytes, { contentType: mime, upsert: true })
   if (upErr) {
     console.error('generate-thumbnail: upload failed', upErr)

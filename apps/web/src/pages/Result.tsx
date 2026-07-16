@@ -239,8 +239,11 @@ export default function Result() {
     try {
       const r = await generateThumbnail(gen.id)
       setThumbUrl(r.url)
-      // Persist the new path into local gen so it survives refetches + shows in Library.
+      // Persist the new path into local gen AND the module cache so the cover
+      // survives an in-app navigation away and back (the cache is what a remount
+      // reads first) — not just the next server refetch.
       setGen((prev) => (prev ? { ...prev, ai_thumb_path: r.path } : prev))
+      if (id) GEN_CACHE[id] = { ...(GEN_CACHE[id] ?? gen), ai_thumb_path: r.path }
     }
     catch (e) { setThumbErr(e instanceof Error ? e.message : 'Could not generate the thumbnail.') }
     finally { setThumbBusy(false) }
