@@ -126,6 +126,9 @@ Micro:
 **Connects to:** consumes the Phase 1 script; outputs to Phase 6. **Acceptance:** open camera, script scrolls as you talk, recording lands in Storage.
 
 ### Phase 6 — Auto-edit / render
+
+> **OBSOLETE:** this phase's pipeline was built, shipped, and later **removed** for
+> a ground-up rebuild — see `docs/ai-editor-rebuild-status.md`.
 **Macro:** raw take → polished captioned vertical short.
 Micro:
 1. Worker `render`: auto-editor strips silence/jump-cuts → WhisperX word timestamps → **Revideo** burns animated captions + hook overlay + (optional) B-roll → output MP4 to Storage.

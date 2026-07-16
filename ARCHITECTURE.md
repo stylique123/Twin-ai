@@ -11,13 +11,17 @@
 
 TwinAI turns any proven viral video (Reel / TikTok / Short / YouTube) into a
 personalized, **shootable** blueprint in the creator's own voice — hook,
-scene-by-scene script, captions, an auto-edited vertical video, and a publish
-schedule. It copies **structure, never content**.
+scene-by-scene script, captions, a recorded take, and a publish schedule. It
+copies **structure, never content**.
+
+> **AI editor status:** the original auto-edit pipeline has been **removed** and a
+> new one-click editor is being rebuilt — see `docs/ai-editor-rebuild-status.md`.
+> Recording, upload and finished-video playback still work; nothing edits a take yet.
 
 The product is one loop:
 
 ```
-learn your voice → find a reference → blueprint → record → auto-edit → publish → analytics
+learn your voice → find a reference → blueprint → record → (AI edit: being rebuilt) → publish → analytics
 ```
 
 ---
@@ -55,19 +59,19 @@ The `jobs` table is the seam between them.
         │  (anon key, RLS-guarded)     │           │  ┌──────────────────────────────┐ │
         └───────┬──────────────┬───────┘           │  │ worker  (job-queue drainer)  │ │
                 │ direct        │ privileged        │  │  ingest/transcribe/build_    │ │
-                │ reads/writes  │ calls             │  │  voice/autoedit/scrape_dna   │ │
+                │ reads/writes  │ calls             │  │  voice/scrape_dna            │ │
                 ▼               ▼                   │  │  Node/TS + Python + ffmpeg   │ │
    ┌───────────────────────────────────────────┐  │  └──────────────────────────────┘ │
    │                 SUPABASE                   │  │  ┌──────────┐ ┌──────────┐         │
-   │  Postgres + Auth + Row-Level Security      │◀─┼──│ revideo  │ │discovery │ ...     │
-   │  ┌──────────────┐   ┌────────────────────┐ │  │  │(renderer)│ │(daily cron)        │
-   │  │ tables + RLS │   │  Edge Functions    │ │  │  └──────────┘ └──────────┘         │
+   │  Postgres + Auth + Row-Level Security      │◀─┼──│discovery │                     │
+   │  ┌──────────────┐   ┌────────────────────┐ │  │  │(daily cron)                     │
+   │  │ tables + RLS │   │  Edge Functions    │ │  │  └──────────┘                      │
    │  │ profiles     │   │  generate-blueprint│ │  │  ┌──────────────────────────────┐ │
    │  │ brand_voices │   │  ingest-reference  │ │  │  │ postiz (publish + analytics) │ │
    │  │ generations  │◀──│  start-dna/dna-poll│ │  │  └──────────────────────────────┘ │
-   │  │ jobs (queue) │   │  enqueue-autoedit  │ │  └────────────────┬──────────────────┘
-   │  │ transcripts  │   │  billing/-webhook  │ │     service-role   │ claim_job /
-   │  │ credit_events│   │  review/social/... │ │     key (poll)     │ complete/fail
+   │  │ jobs (queue) │   │  billing/-webhook  │ │  └────────────────┬──────────────────┘
+   │  │ transcripts  │   │  review/social/... │ │     service-role   │ claim_job /
+   │  │ credit_events│   │  ...               │ │     key (poll)     │ complete/fail
    │  │ gallery_items│   └─────────┬──────────┘ │◀───────────────────┘
    │  └──────────────┘             │ secrets    │
    └───────────────────────────────┼────────────┘
@@ -104,7 +108,8 @@ The `jobs` table is the seam between them.
     `plan` are service-role-only. A trigger (`handle_new_user`) auto-creates a
     profile on signup with starter credits.
   - `brand_voices` — the creator-DNA voice models (`status: building → ready`).
-  - `generations` — blueprints + takes/EDL + approval status + thumbnails.
+  - `generations` — blueprints + takes + approval status + thumbnails. (Old-editor
+    columns `edit_style`/`edl_path` remain in the schema as deprecated no-ops.)
   - `jobs` — the async work queue (see §5).
   - `transcripts` — worker output (text + word timings; **raw media discarded**).
   - `credit_events` — append-only audit of every spend/refund.
@@ -126,7 +131,6 @@ and **enqueues jobs** for heavy work. In `supabase/functions/`:
 | `generate-blueprint` | Calls Gemini with DNA + transcript → Scene Timeline; spends a credit |
 | `ingest-reference` | Validates a reference URL, enqueues `transcribe`/`ingest` |
 | `start-dna` / `dna-poll` | Kick off + advance a creator-DNA scan |
-| `enqueue-autoedit` | Queues an `autoedit` job from a recorded timeline |
 | `billing` / `billing-webhook` | Stripe checkout + webhook |
 | `review` / `social` / `brand-logo` / `referral` | Approval flow, publishing glue, assets, referrals |
 | `admin` / `admin-metrics` | Ops + system-health panels |
@@ -138,12 +142,12 @@ and **enqueues jobs** for heavy work. In `supabase/functions/`:
   JSON logs; **hard per-job timeout** kept under the lease so a hung child frees the
   worker instead of wedging it.
 - **Handlers (`worker/src/jobs/index.ts`):**
-  `ingest` & `transcribe` → `transcribe.ts` (yt-dlp audio-only + faster-whisper);
-  `build_voice` → `voice.ts` (voice-from-audio DNA); `autoedit` → `autoedit.ts`
-  (ffmpeg edit pipeline); `scrape_dna` → `scrapeDna.ts`.
-- **Python helpers:** `whisper_transcribe.py`, `vad.py` (Silero VAD jump-cuts),
-  `scene_detect.py` (PySceneDetect), `beats.py` (librosa beat-sync), `clip_rank.py`
-  (CLIP semantic b-roll), `youtube_transcript.py`.
+  `ingest` → `transcribe.ts` (yt-dlp audio-only + faster-whisper);
+  `build_voice` → `voice.ts` (voice-from-audio DNA); `scrape_dna` → `scrapeDna.ts`.
+  (`autoedit` was removed with the old AI editor; the rebuilt editor registers its
+  own job type here.)
+- **Python helpers:** `whisper_transcribe.py`, `youtube_transcript.py`. ffmpeg and
+  faster-whisper stay in the image — the rebuilt editor reuses them.
 - **Stateless & horizontally scalable:** run N containers with distinct
   `WORKER_ID` (auto-derived from hostname). They share one Postgres queue;
   `SKIP LOCKED` prevents collisions. See `worker/SCALING.md`.
@@ -154,7 +158,6 @@ and **enqueues jobs** for heavy work. In `supabase/functions/`:
   unless-stopped`, CPU/mem capped, pulls `main`). Secrets in `/opt/twinai-worker.env`.
 
 ### 4.5 Satellite services (VPS / Docker)
-- **`revideo/`** — timeline-driven video renderer (`server.ts` + `render.ts`).
 - **`discovery/`** — daily cron finding fresh viral references per niche
   (`discovery/deploy-vps.sh` installs it; reuses the worker container's secrets).
 - **`postiz/`** — self-hosted publishing + analytics (docker-compose + Caddy).
@@ -198,14 +201,15 @@ The seam between the synchronous and asynchronous planes. Defined in
    `transcribe` (real audio → `transcripts`) → `generate-blueprint` calls Gemini with
    DNA + transcript → one master **Scene Timeline** persisted to `generations`;
    `spend_credits` debits atomically and auto-refunds on failure.
-3. **Record → auto-edit** — the V2 flow records scene-by-scene against the timeline →
-   `enqueue-autoedit` → worker `autoedit` (VAD jump-cuts, scene detect, forced-aligned
-   captions, beat-synced b-roll, vertical reframe, music) → render via `revideo`.
+3. **Record → take saved** — the V2 flow records scene-by-scene against the timeline;
+   the finished take autosaves to the private `takes` bucket. **AI editing is being
+   rebuilt** (`docs/ai-editor-rebuild-status.md`); the new one-click editor will pick
+   the take up from this seam and write `generations.edit_path`/`thumb_path`.
 4. **Publish + analytics** — hand off to Postiz → publish + pull metrics → dashboard.
 
 **The Scene Timeline is the single in-app source of truth** (`docs/PRODUCT_VISION.md`
-§8): script, teleprompter, editor cuts, captions, b-roll, and publish copy all read
-from one scene object, so scene counts / hooks / captions can never disagree.
+§8): script, teleprompter and publish copy all read from one scene object, so scene
+counts / hooks / captions can never disagree.
 
 ---
 
@@ -253,7 +257,7 @@ the authoritative lists.
 | Database + RLS + RPCs | Supabase | `supabase db push` |
 | Edge functions | Supabase | `supabase functions deploy <name>` + `supabase secrets set …` |
 | Worker | VPS / Hetzner | `worker/deploy-vps.sh` (Docker) |
-| Renderer / discovery / postiz | VPS / Hetzner | `revideo/`, `discovery/deploy-vps.sh`, `postiz/` |
+| Discovery / postiz | VPS / Hetzner | `discovery/deploy-vps.sh`, `postiz/` |
 
 Full step-by-step runbook + smoke test: **`DEPLOY.md`**.
 
@@ -267,7 +271,6 @@ supabase/
   migrations/   schema, RLS, RPCs, buckets (0001 → 0065)
   functions/    edge functions (the secure synchronous API)
 worker/         VPS job-queue worker (Node/TS + Python + ffmpeg)
-revideo/        timeline-driven video renderer
 discovery/      daily viral-reference discovery cron
 postiz/         self-hosted publishing + analytics
 DESIGN.md             visual system

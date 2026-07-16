@@ -9,6 +9,10 @@ engine and the gallery should each be strong enough to stand on their own — an
 eventually be exposed so others can build on TwinAI.
 
 ## A. Auto-editor — make it CapCut-grade (worker / Hetzner)
+
+> **SUPERSEDED:** the old auto-edit pipeline has been removed and a new one-click
+> editor is being rebuilt from scratch — see `docs/ai-editor-rebuild-status.md`.
+> This section is kept as feature inspiration for the rebuild only.
 Current (live): jump-cuts (silence/dead-air removal) + single-layer word-pop
 captions + vertical 1080×1920 + loudness.
 
