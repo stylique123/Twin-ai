@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Quote, FileText, Clapperboard,
   Wand2, Send, Loader2, Video, ExternalLink,
-  SlidersHorizontal, Play, BadgeCheck, Link2, MessageSquare, Users,
+  SlidersHorizontal, BadgeCheck, Link2, MessageSquare, Users,
   TrendingUp, User, Download,
 } from 'lucide-react'
 
@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, fetchEdl, logEvent, generateThumbnail, signEditUrls, pollEditJob, listPosts, autoEditFromPath } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, pollEditJob, listPosts, autoEditFromPath } from '../lib/api'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 
 // Stale-while-revalidate cache so reopening a plan is INSTANT instead of showing a
@@ -23,9 +23,8 @@ import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedT
 // Library does). Keyed by generation id; module-scoped so it survives route changes.
 const GEN_CACHE: Record<string, Generation> = {}
 import { useAuth } from '../context/AuthContext'
-import type { Generation, EditDecisionList } from '../lib/types'
+import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
-import { RefinePanel } from '../components/RefinePanel'
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
 
@@ -262,34 +261,6 @@ export default function Result() {
   // the user navigates away mid-render.
   const alive = useRef(true)
   useEffect(() => () => { alive.current = false }, [])
-  // Refine-from-Result: re-edit a finished video right from its blueprint page.
-  const [refineOpen, setRefineOpen] = useState(false)
-  const [refineEdl, setRefineEdl] = useState<EditDecisionList | null>(null)
-  const [refineLoading, setRefineLoading] = useState(false)
-  const [refineStatus, setRefineStatus] = useState('')
-  const [refineUrl, setRefineUrl] = useState<string | null>(null)
-
-  const openRefine = async () => {
-    setRefineOpen(true); setRefineUrl(null)
-    if (!gen?.edl_path) { setRefineEdl(null); return }
-    setRefineLoading(true)
-    try { setRefineEdl(await fetchEdl(gen.edl_path)) } catch { setRefineEdl(null) } finally { setRefineLoading(false) }
-  }
-  const onRefineApplied = async (jobId: string) => {
-    setRefineStatus('Re-rendering your edit…')
-    // Shared terminal-poll loop (the same edit-job poller used across the flow).
-    const job = await pollEditJob(jobId, (label) => { if (label) setRefineStatus(label) }, { shouldStop: () => !alive.current })
-    if (!alive.current) return // navigated away — don't setState
-    if (job?.status === 'done' && job.result?.output_url) {
-      setRefineStatus(''); setRefineUrl(job.result.output_url)
-      getGeneration(id!).then((g) => g && alive.current && setGen(g)).catch(() => {})
-    } else if (job?.status === 'failed') {
-      setRefineStatus('Refine failed — try again.')
-    } else {
-      setRefineStatus('Still rendering — check your Library shortly.')
-    }
-  }
-
   // Inline edit-render progress. This is what used to be the separate "Your video is
   // ready!" screen (V2Review): the auto-edit job runs and we show live progress
   // RIGHT HERE, then the finished video appears in the media row below — script,
@@ -382,24 +353,38 @@ export default function Result() {
     else setResumeTake(t)
   }, [id, gen?.edit_path])
 
-  // Resume: enqueue the auto-edit from the already-uploaded take (no re-record, no
+  // The recorded-but-not-edited take, from either source: the generation row
+  // (durable, any device) or the local saved-take pointer (same browser). This is
+  // what the header's "Edit my video" turns into the finished video.
+  const takeForEdit = !gen?.edit_path ? (gen?.take_path ?? resumeTake?.takePath ?? null) : null
+
+  // Edit: enqueue the auto-edit from the already-uploaded take (no re-record, no
   // re-upload). Stay on THIS page and surface the live render progress inline via
   // the `?job=` param — no separate review screen to bounce to.
   const resumeEdit = async () => {
-    if (!id || !resumeTake || resuming) return
+    if (!id || !takeForEdit || resuming) return
     setResuming(true); setResumeErr(null)
     try {
-      const { jobId } = await autoEditFromPath(id, resumeTake.takePath, resumeTake.shots)
+      const { jobId } = await autoEditFromPath(id, takeForEdit, resumeTake?.shots)
       clearTakePointer(id)
       setResumeTake(null)
       setResuming(false)
       setSearchParams({ job: jobId }, { replace: true })
     } catch (e) {
-      setResumeErr(e instanceof Error ? e.message : 'Could not resume — please try again.')
+      setResumeErr(e instanceof Error ? e.message : 'Could not start the edit — please try again.')
       setResuming(false)
     }
   }
-  const dismissResume = () => { if (id) clearTakePointer(id); setResumeTake(null) }
+
+  // Sign the raw take so it PLAYS on this page while it's still unedited — the
+  // recording shouldn't be invisible just because the edit hasn't run yet.
+  const [rawTakeUrl, setRawTakeUrl] = useState<string | null>(null)
+  useEffect(() => {
+    if (!takeForEdit) { setRawTakeUrl(null); return }
+    let live = true
+    signTakeUrl(takeForEdit).then((u) => { if (live) setRawTakeUrl(u) }).catch(() => {})
+    return () => { live = false }
+  }, [takeForEdit])
 
   // Pick which hook to shoot: persist it so the teleprompter, cover and b-roll all
   // use THIS hook. Optimistic — the UI updates immediately.
@@ -493,31 +478,6 @@ export default function Result() {
       {/* Aurora Glow */}
       <Aurora className="opacity-45 pointer-events-none" />
 
-      {/* Resume an autosaved recording whose edit was never confirmed — so an
-          accidental refresh / phone lock never loses a finished take. */}
-      {resumeTake && !gen.edit_path && (
-        <div className="relative mx-auto max-w-7xl px-6 pt-4">
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-card border border-coral/30 bg-coral/[0.08] p-4">
-            <div className="flex items-center gap-3">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-coral/15">
-                <Video className="h-4 w-4 text-coral" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-cream">Your recording is saved</p>
-                <p className="text-xs text-stone">Pick up where you left off — turn it into your video.</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={dismissResume} className="btn-ghost py-2 text-xs" disabled={resuming}>Discard</button>
-              <button onClick={resumeEdit} className="btn-gradient py-2 text-xs font-semibold" disabled={resuming}>
-                {resuming ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Resuming…</> : <><Play className="h-3.5 w-3.5" /> Resume my video</>}
-              </button>
-            </div>
-          </div>
-          {resumeErr && <p className="mt-2 rounded-lg bg-coral/10 px-3 py-2 text-xs text-coral">{resumeErr}</p>}
-        </div>
-      )}
-
       {/* Hero Header */}
       <section className="relative border-b border-white/5 bg-ink2/30 backdrop-blur-sm">
         <div className="relative mx-auto max-w-7xl px-6 pb-10 pt-12">
@@ -527,25 +487,27 @@ export default function Result() {
             </Link>
             
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
-              {/* Once the video is DONE, the only actions are edit it and post it — no
-                  "Watch" (it's right there) and no "Re-record" (the edit is final). */}
+              {/* ONE clear action per stage, never mixed:
+                  1. edited & final  → Post now (or the Posted chip). Nothing else.
+                  2. edit rendering  → no CTA here; the progress card below is the state.
+                  3. recorded, not edited → Edit my video (finish it from the saved take).
+                  4. nothing recorded → Record Script / Upload Take. */}
               {gen.edit_path ? (
-                <>
-                  {gen.take_path && (
-                    <button onClick={openRefine} className="btn-ghost py-2 text-xs font-medium">
-                      <SlidersHorizontal className="h-3.5 w-3.5" /> Edit your video
-                    </button>
-                  )}
-                  {posted ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-xs font-semibold text-teal">
-                      <Check className="h-3.5 w-3.5" /> Posted
-                    </span>
-                  ) : (
-                    <button onClick={goPost} className="btn-gradient py-2 text-xs font-semibold">
-                      <Send className="h-3.5 w-3.5" /> Post now
-                    </button>
-                  )}
-                </>
+                posted ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-xs font-semibold text-teal">
+                    <Check className="h-3.5 w-3.5" /> Posted
+                  </span>
+                ) : (
+                  <button onClick={goPost} className="btn-gradient py-2 text-xs font-semibold">
+                    <Send className="h-3.5 w-3.5" /> Post now
+                  </button>
+                )
+              ) : renderPhase === 'rendering' ? null : takeForEdit ? (
+                <button onClick={resumeEdit} disabled={resuming} className="btn-gradient py-2 text-xs font-semibold">
+                  {resuming
+                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</>
+                    : <><SlidersHorizontal className="h-3.5 w-3.5" /> Edit my video</>}
+                </button>
               ) : (
                 <>
                   <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-xs font-semibold"><Video className="h-3.5 w-3.5" /> Record Script</Link>
@@ -554,6 +516,7 @@ export default function Result() {
               )}
             </div>
           </div>
+          {resumeErr && <p className="mt-2 rounded-lg bg-coral/10 px-3 py-2 text-xs text-coral">{resumeErr}</p>}
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -626,8 +589,26 @@ export default function Result() {
           {/* MEDIA ROW — the finished video and its AI cover image, side by side, each
               hugging its own frame. The cover lives HERE (not inside the Title card) so
               generating one never balloons the concept/title cards. */}
-          {(gen.edit_path || b.packaging?.thumbnail) && (
+          {(gen.edit_path || takeForEdit || b.packaging?.thumbnail) && (
             <div className="mt-8 flex flex-wrap items-start gap-4">
+              {/* Recorded but NOT edited yet — show the raw take right here so the
+                  recording is never invisible. "Edit my video" above finishes it. */}
+              {takeForEdit && renderPhase !== 'rendering' && (
+                <div className="w-full max-w-[280px] rounded-card border border-coral/25 bg-ink2/70 p-3 backdrop-blur-sm">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-cream"><span className="h-2 w-2 rounded-full bg-coral" /> Your recording</div>
+                    <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone">Not edited yet</span>
+                  </div>
+                  <div className="flex aspect-[9/16] w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
+                    {rawTakeUrl
+                      ? <video src={rawTakeUrl} controls playsInline className="h-full w-full object-contain" />
+                      : <Loader2 className="h-6 w-6 animate-spin text-white/40" />}
+                  </div>
+                  <button onClick={resumeEdit} disabled={resuming} className="btn-gradient mt-2 w-full !py-2.5 text-sm font-semibold">
+                    {resuming ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</> : <><SlidersHorizontal className="h-3.5 w-3.5" /> Edit my video</>}
+                  </button>
+                </div>
+              )}
               {gen.edit_path && (
                 <div id="your-video" className="w-full max-w-[280px] scroll-mt-24 rounded-card border border-teal/25 bg-ink2/70 p-3 backdrop-blur-sm">
                   <div className="mb-3 flex items-center justify-between gap-3">
@@ -1415,33 +1396,6 @@ export default function Result() {
 
       </div>
 
-      {/* Refine re-render status / watch-the-update banner */}
-      {(refineStatus || refineUrl) && (
-        <div className="fixed inset-x-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 mx-auto flex max-w-md items-center gap-3 rounded-card border border-white/10 bg-ink2/95 px-4 py-3 shadow-lift backdrop-blur-xl">
-          {refineUrl ? (
-            <>
-              <Check className="h-5 w-5 shrink-0 text-teal" />
-              <span className="flex-1 text-sm text-cream">Your refined video is ready.</span>
-              <a href={refineUrl} target="_blank" rel="noopener noreferrer" className="btn-gradient py-1.5 text-xs"><Play className="h-3.5 w-3.5 fill-current" /> Watch</a>
-            </>
-          ) : (
-            <>
-              <Loader2 className="h-5 w-5 shrink-0 animate-spin text-coral" />
-              <span className="flex-1 text-sm text-sand">{refineStatus}</span>
-            </>
-          )}
-        </div>
-      )}
-
-      <RefinePanel
-        open={refineOpen}
-        edl={refineEdl}
-        loading={refineLoading}
-        generationId={gen.id}
-        takePath={gen.take_path ?? null}
-        onClose={() => setRefineOpen(false)}
-        onApplied={onRefineApplied}
-      />
     </main>
   )
 }
