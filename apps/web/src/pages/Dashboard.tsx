@@ -89,8 +89,7 @@ export default function Dashboard() {
   // flashed the email ("abd63…") for a beat before the handle arrived. While the
   // voices are still loading we show no name rather than the wrong one.
   const rawName = (brand?.handle ? `@${brand.handle}` : '')
-    || profile?.display_name?.trim()
-    || (loading ? '' : (profile?.email?.split('@')[0] || 'creator'))
+    || (loading ? '' : (profile?.display_name?.trim() || profile?.email?.split('@')[0] || 'creator'))
   const name = !rawName ? '' : rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
   // "+N this week" deltas per stage, from the rows we already fetched — real

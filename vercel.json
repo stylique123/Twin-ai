@@ -3,5 +3,17 @@
   "installCommand": "npm install",
   "buildCommand": "npm run build -w @twinai/web",
   "outputDirectory": "apps/web/dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
+  "headers": [
+    {
+      "comment": "Never cache the HTML shell — it points at the current fingerprinted JS. Without this, a browser/CDN kept serving an OLD index.html (whose old chunks still exist on Vercel, so nothing 404s and the stale-chunk auto-reload never fires), leaving users on stale code after every deploy.",
+      "source": "/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+    },
+    {
+      "comment": "Fingerprinted build assets are immutable — safe to cache forever. This rule is LAST so it wins over the catch-all for /assets/*.",
+      "source": "/assets/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
 }
