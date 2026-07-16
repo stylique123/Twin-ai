@@ -4,7 +4,7 @@ import { writeFile, readFile, unlink } from 'node:fs/promises'
 import { env } from './env.js'
 
 // Minimal Supabase Storage client for the worker (service role → bypasses RLS).
-// Used by the auto-editor: pull the user's raw take, push the finished render.
+// Storage helpers: pull a user's raw take / reference media, push job outputs.
 const base = `${env.supabaseUrl}/storage/v1`
 const auth = { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}` }
 

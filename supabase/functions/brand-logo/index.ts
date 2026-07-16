@@ -2,7 +2,7 @@
 // Uploads a brand-kit logo to the `edits` bucket (which allows PNG/JPEG) on the
 // caller's behalf — the client has no insert policy on that bucket, so a tiny
 // service-role hop does the write, then the client saves the returned path into
-// brand_voices.brand_kit. The auto-edit worker reads it back to burn it in.
+// brand_voices.brand_kit. The rebuilt editor will read it back for renders.
 //
 //   POST { image_base64, content_type } -> { path }
 

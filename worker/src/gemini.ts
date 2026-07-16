@@ -24,7 +24,7 @@ export async function geminiJson(
 ): Promise<unknown> {
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
   // Per-call model wins (so cheap mechanical tasks can run on a fast/flash model),
-  // else the configured default. Routing structure + edit-director to a flash model
+  // else the configured default. Routing structure extraction to a flash model
   // is a large COGS cut with no quality loss on these schema-constrained tasks.
   const m = model ?? process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview'
   // SPEED: cap the thinking model's reasoning. Unbounded thinking is the biggest
@@ -48,7 +48,7 @@ export async function geminiJson(
   })
   try {
     // Retry transient rate-limit / server errors with backoff so a spike doesn't
-    // hard-fail DNA/director jobs.
+    // hard-fail DNA/structure jobs.
     let res: Response | null = null
     for (let attempt = 0; attempt < 3; attempt++) {
       res = await fetch(

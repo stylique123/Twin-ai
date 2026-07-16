@@ -48,8 +48,9 @@ prefer a few well-provisioned hosts over many tiny ones.
 | `WORKER_VISIBILITY_SECS` | 2400 | Lease; must exceed your longest job. |
 | `WORKER_MAX_JOB_MS` | 2100000 | Hard per-job timeout; keep < lease. |
 | `WORKER_POLL_MS` | 3000 | Idle poll cadence. |
-| `WORKER_JOB_TYPES` | ingest,build_voice,autoedit,scrape_dna | Split types across pools if you want dedicated render vs scrape workers. |
+| `WORKER_JOB_TYPES` | ingest,build_voice,scrape_dna | Split types across pools if you want dedicated pools per job type. |
 
-**Tip:** dedicate a pool to `autoedit` (CPU-heavy renders) and another to
-`ingest,scrape_dna,build_voice` (network-bound) by setting `WORKER_JOB_TYPES` per
-pool — so a burst of renders never starves quick scrape jobs.
+**Tip:** when the rebuilt editor lands its (CPU-heavy) render job type, dedicate a
+pool to it and another to `ingest,scrape_dna,build_voice` (network-bound) by
+setting `WORKER_JOB_TYPES` per pool — so a burst of renders never starves quick
+scrape jobs.

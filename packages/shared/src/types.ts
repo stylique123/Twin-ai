@@ -59,11 +59,11 @@ export interface VoiceProfile {
   sample_hooks: string[]
 }
 
-// Per-workspace brand kit: default caption style + highlight color (indexes into
-// CAPTION_STYLE_OPTIONS / CAPTION_COLOR_OPTIONS), plus an optional logo for burn-in.
-// `palette` holds the creator's REAL brand colors as hex (#RRGGBB) — set manually or
-// learned from their DNA. When `palette.highlight` is set it overrides the preset
-// `color` index in the render; primary/secondary feed the blueprint's look guidance.
+// Per-workspace brand kit: the creator's REAL brand colors as hex (#RRGGBB) — set
+// manually or learned from their DNA — plus an optional logo. primary/secondary
+// feed the blueprint's look guidance; the rebuilt editor will consume the kit for
+// renders. caption_style/color/palette.highlight are legacy old-editor fields kept
+// optional so stored kits still parse.
 export interface BrandKit {
   caption_style?: string
   color?: number
@@ -175,20 +175,20 @@ export interface Generation {
   blueprint: Blueprint
   transcript_id?: string | null
   // Creator's choices that drive the back half of the loop.
-  selected_hook?: string | null // which of the 5 hooks to shoot (teleprompter + cover + b-roll)
-  edit_style?: string | null // desired auto-edit look: punchy | clean | cinematic
-  // Set once the auto-edit worker finishes: the rendered MP4 and cover JPEG
-  // (storage paths in the private `edits` bucket; sign to display/play).
+  selected_hook?: string | null // which of the 5 hooks to shoot (teleprompter + cover)
+  edit_style?: string | null // LEGACY (old editor) — kept so stored rows still parse
+  // The finished video MP4 + its cover JPEG (storage paths in the private `edits`
+  // bucket; sign to display/play). Written by the old editor historically; the
+  // rebuilt editor re-populates the same seam.
   edit_path?: string | null
   thumb_path?: string | null
   // On-demand AI cover image rendered from the packaging brief (private `edits`
   // bucket path; sign to display). Only set when the creator taps "Generate
   // thumbnail" — never auto-generated, so it costs nothing unless asked for.
   ai_thumb_path?: string | null
-  // Set by the worker so Refine can re-open this exact edit anywhere: the raw
-  // take (the re-render source) + its Edit Decision List path.
+  // The raw recorded take in the private `takes` bucket (recording durability).
   take_path?: string | null
-  edl_path?: string | null
+  edl_path?: string | null // LEGACY (old editor's Edit Decision List)
   approved?: boolean // agency: marked client-approved before record/post
   // Client approval link (agency → client, login-free /review/:token).
   review_status?: 'none' | 'pending' | 'approved' | 'changes'
@@ -196,41 +196,3 @@ export interface Generation {
   created_at: string
 }
 
-// Edit Decision List (mirror of the worker's edl.ts) — the structured record the
-// auto-edit emits and the Refine panel edits. Only the fields the UI touches are
-// strongly typed; the rest pass through untouched on re-render.
-export interface EditDecisionList {
-  version: number
-  energy: 'high' | 'calm'
-  variation: number // caption highlight COLOR index
-  segments: { start: number; end: number; zoom?: boolean }[]
-  captions: { style: string; variation: number; words: { w: string; start: number; end: number }[] }
-  emoji: { emoji: string; start: number; end: number }[]
-  broll: { query: string; start: number; end: number; layout?: 'overlay' | 'split-screen' } | null
-  music: boolean
-  framing: { width: number; height: number }
-  audio: { targetLufs: number }
-  durationSec: number
-  createdAt: string
-  plan?: unknown
-  // What the render deployment can actually do (b-roll needs a Pexels key, music
-  // needs a bed URL). Refine HIDES toggles that are explicitly false so the UI
-  // never offers a switch that silently no-ops. Absent on older EDLs.
-  features?: { broll: boolean; music: boolean }
-}
-
-// The creator-facing caption styles + highlight colors offered in Refine.
-export const CAPTION_STYLE_OPTIONS = [
-  { id: 'bold-pop', label: 'Bold Pop' },
-  { id: 'karaoke-word', label: 'Karaoke' },
-  { id: 'boxed', label: 'Boxed' },
-  { id: 'clean-lower', label: 'Clean' },
-  { id: 'top', label: 'Top' },
-] as const
-
-export const CAPTION_COLOR_OPTIONS = [
-  { id: 0, label: 'Amber', hex: '#F5A623' },
-  { id: 1, label: 'Teal', hex: '#65E5D8' },
-  { id: 2, label: 'Coral', hex: '#FF5B7B' },
-  { id: 3, label: 'Gold', hex: '#FFD400' },
-] as const

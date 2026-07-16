@@ -2,7 +2,7 @@
 
 export const BRAND = {
   oneLiner: 'One link in. A finished, on-brand video out.',
-  subLine: 'Script, teleprompter, auto-edit and caption — the whole loop in one window.',
+  subLine: 'Script, teleprompter and captions — the whole loop in one window.',
   category: 'Reference-based creation, not a clipper.',
   positioning:
     'For creators, founders & agencies who know a reel works but can’t make their own fast enough, TwinAI turns any proven reference into a personalized hook, script, shot list, edit and schedule. Others clip your footage; we make the references you admire shootable in your voice.',
@@ -95,7 +95,7 @@ export const PLANS: PlanTier[] = [
     features: [
       '15 videos / mo',
       '1 brand voice',
-      'Full auto-edit (captions + cuts)',
+      'One-click AI edit (being rebuilt — coming soon)',
       'Publish to all your platforms',
       'Content calendar',
       'Analytics',

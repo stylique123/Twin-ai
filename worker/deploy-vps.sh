@@ -17,7 +17,7 @@
 #   GEMINI_API_KEY=<your Gemini key>
 #   APIFY_TOKEN=<Apify API token — YouTube + Instagram transcripts (yt-dlp is
 #               bot-blocked on both from datacenter IPs). TikTok uses yt-dlp.>
-#   WORKER_JOB_TYPES=ingest,build_voice,autoedit,scrape_dna
+#   WORKER_JOB_TYPES=ingest,build_voice,scrape_dna
 #   WHISPER_MODEL=base         # tiny|base|small — drop to tiny on a small box
 #   WORKER_MAX_MEDIA_SECS=900
 set -euo pipefail

@@ -1,17 +1,13 @@
 // Saved-take pointer — recording durability across a refresh / tab close / phone
 // lock. The take BYTES are uploaded to the `takes` bucket the moment recording
-// finishes (server-side, durable); only this tiny pointer (the storage path + the
-// per-scene shots) lives in localStorage, keyed by generation id. On the Result
-// screen we read it and offer "Resume" so a finished recording is never lost to an
-// accidental navigation before the edit is confirmed.
-import type { TakeShots } from './api'
-
+// finishes (server-side, durable); only this tiny pointer (the storage path) lives
+// in localStorage, keyed by generation id, so a finished recording is never lost
+// to an accidental navigation. The rebuilt editor will consume this pointer.
 const KEY = (genId: string) => `twinai_take_${genId}`
 
 export interface SavedTake {
   takePath: string
   contentType: string
-  shots?: TakeShots
   savedAt: number
 }
 

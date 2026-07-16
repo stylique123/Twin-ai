@@ -29,7 +29,7 @@ This is a fresh, real rebuild: a Vite + React + TypeScript frontend, a Supabase 
 
 **Built since this list was first written**
 - Pulling/transcribing the actual reference video — the ingest pipeline + VPS worker fetch and transcribe real TikTok/YouTube/IG references (via Apify + Whisper).
-- In-app auto-edit / rendering / export — the VPS worker cuts, captions, grades, and loudness-normalizes the take into a finished vertical MP4 (ffmpeg, with an optional Revideo premium pass).
+- In-app AI editing — **being rebuilt**. The old auto-edit pipeline was removed (see `docs/ai-editor-rebuild-status.md`); recording, upload and playback of finished videos still work, and a new one-click editor is on the way.
 - Checkout rails — the billing edge function + webhook are built; paid plans are gated off behind the `PAYMENTS_LIVE` flag until go-live.
 
 **Roadmap (honestly not built yet / partially)**
@@ -75,8 +75,8 @@ apps/web/src/
 packages/shared/   @twinai/shared — types, brand tokens, API layer, scene timeline
 supabase/
   migrations/ 0001 → latest  (profiles, generations, jobs, RLS, RPCs, buckets, storage caps, oauth nonce, worker liveness, tour flag)
-  functions/  15 edge functions (generate-blueprint, start-dna, dna-poll, enqueue-autoedit, social, …)
-worker/       VPS auto-edit pipeline (ffmpeg + whisper + Gemini director)
+  functions/  edge functions (generate-blueprint, start-dna, dna-poll, social, …)
+worker/       VPS job worker (reference ingestion + DNA; ffmpeg + whisper)
 ```
 
 ## Brand

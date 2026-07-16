@@ -2,21 +2,19 @@
 //
 // Teleprompter records ONE continuous MediaRecorder session, pausing between
 // scenes (so the output is a single valid clip with no dead air between scenes).
-// At each scene boundary we record the cumulative active-recording time → these
-// become `shots.bounds`, and each scene's spoken line becomes `shots.lines`. On
-// finish we hand the take + shots to the SAME tested auto-edit path the V1 record
-// flow uses (autoEditTake), so the worker builds captions PER SEGMENT from the
-// timeline lines and cuts at the timeline scene boundaries — no re-guessing.
+// The finished take is autosaved to the private `takes` bucket the moment
+// recording ends. AI editing is being rebuilt — this screen only records, saves
+// and lets the creator download their raw take.
 //
-// Only talking scenes (show_in_teleprompter) are recorded; silent b-roll is added
-// by the editor as cutaways. Takes are preserved in-memory across back/exit.
+// Only talking scenes (show_in_teleprompter) are recorded. Takes are preserved
+// in-memory across back/exit.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, Wand2, Zap, Waves, Mountain, UploadCloud, Film, X } from 'lucide-react'
+import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
 import { buildTimeline } from '../../lib/timelineAdapter'
-import { autoEditTake, autoEditFromPath, uploadTakeToBucket, pickRecorderMime, getGeneration, updateGenerationChoice, type TakeShots } from '../../lib/api'
+import { uploadTakeToBucket, pickRecorderMime, getGeneration } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
@@ -69,9 +67,6 @@ export default function V2Capture() {
 
   // Back always returns to the plan (Result) — the single plan screen for the flow.
   const onBack = () => nav(`/result/${id}`)
-  // The finished video + live render progress now live on the single studio page
-  // (Result), not a separate review screen — hand the edit job off there.
-  const onJob = (job: string) => nav(`/result/${id}?job=${job}`)
 
   if (!timeline) {
     if (loadFailed) {
@@ -91,16 +86,15 @@ export default function V2Capture() {
     return <div className="min-h-[100dvh] grid place-items-center bg-ink text-sand">Loading…</div>
   }
   return mode === 'upload'
-    ? <UploadMode genId={id} onBack={onBack} onJob={onJob} />
-    : <Teleprompter genId={id} timeline={timeline} setTimeline={setTimeline} onBack={onBack} onJob={onJob} />
+    ? <UploadMode genId={id} onBack={onBack} />
+    : <Teleprompter genId={id} timeline={timeline} setTimeline={setTimeline} onBack={onBack} />
 }
 
-function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
+function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   genId: string
   timeline: SceneTimeline
   setTimeline: (t: SceneTimeline) => void
   onBack: () => void
-  onJob: (jobId: string) => void
 }) {
   const scenes = useMemo(() => teleprompterScenes(timeline), [timeline])
   const [i, setI] = useState(0)
@@ -113,9 +107,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
   // Guard against losing a recording to an accidental refresh / tab close / phone
   // lock: warn (native "Leave site?" prompt) whenever a take is being recorded or
-  // reviewed but hasn't been handed to the edit yet. (A finished take is also
-  // autosaved server-side so it can be resumed, but the warning still prevents the
-  // surprise.) beforeunload only fires on real browser unloads, not SPA navigation.
+  // reviewed but not yet safely autosaved server-side. beforeunload only fires on
+  // real browser unloads, not SPA navigation.
   const dirtyRef = useRef(false)
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -127,17 +120,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
   const [camError, setCamError] = useState<string | null>(null)
-  // Separate from camError on purpose: this is an upload/enqueue failure (e.g. out
-  // of credits), not a camera problem. Mixing the two into one state previously
-  // meant a credits error could render under the "Camera needed to record" heading.
-  const [editError, setEditError] = useState<string | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [uploadPct, setUploadPct] = useState<number>(-1) // 0..1, or -1 indeterminate
-  // Review-screen edit-style picker (mock parity). The choice is REAL: the worker
-  // reads generations.edit_style (punchy → high-energy cuts, clean/cinematic →
-  // calm pacing), so we persist it right before enqueueing the edit.
-  const [styleOpen, setStyleOpen] = useState(false)
-  const [editStyle, setEditStyle] = useState<'punchy' | 'clean' | 'cinematic'>('punchy')
+  // 'saving' → autosave upload in flight · 'saved' → take is in the takes bucket ·
+  // 'failed' → autosave failed (Download is the only way to keep the take).
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
   // Teleprompter feel: font size (S/M/L/XL) + a per-scene timing clock so the script
   // can advance word-by-word in step with the chosen WPM.
   const FONT_PX = [24, 30, 38, 48]
@@ -168,15 +153,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   const sceneStartSecRef = useRef(0)   // current scene's window start (active seconds)
   const reviewBlobRef = useRef<Blob | null>(null) // the raw recorded take, kept for review
   // Autosave: the `takes`-bucket path the finished take was uploaded to the instant
-  // recording ended, so a refresh before the edit is confirmed doesn't lose it and
-  // startAiEdit can enqueue from this path with NO re-upload.
+  // recording ended, so a refresh doesn't lose it.
   const savedTakePathRef = useRef<string | null>(null)
-  // Set once the edit is enqueued, so a slow autosave that resolves afterwards can't
-  // re-write a resume pointer for a take that's already being edited.
-  const editStartedRef = useRef(false)
   const liveRef = useRef(false)        // true ONLY while a scene is actively recording (race guard)
-  const confirmBusyRef = useRef(false) // double-tap guard on the review Continue (double-charge bug)
-  const uploadCancelRef = useRef(false) // creator cancelled the upload — ignore its result
   const wakeLockRef = useRef<{ release?: () => Promise<void> } | null>(null) // keep the screen awake mid-take
   const exitSheetRef = useRef(false)   // freeze the auto-advance while "Discard this take?" is open
   const finishRef = useRef<() => void>(() => {}) // latest finishScene, callable from the timer
@@ -214,8 +193,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   }, [recording, i, sceneLimit])
 
   // A take is "dirty" (worth warning about on unload) while recording, or while a
-  // finished take is being reviewed but hasn't been sent to the edit yet.
-  useEffect(() => { dirtyRef.current = recording || !!reviewUrl }, [recording, reviewUrl])
+  // finished take is being reviewed but isn't autosaved server-side yet.
+  useEffect(() => { dirtyRef.current = recording || (!!reviewUrl && saveState !== 'saved') }, [recording, reviewUrl, saveState])
 
   // Real teleprompter motion: the whole script GLIDES UPWARD (translateY on the text
   // block) past a fixed read-line, regardless of length — not a word-by-word jump.
@@ -381,84 +360,24 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     setReviewUrl(URL.createObjectURL(blob))
     // Autosave the take server-side immediately (best-effort, non-blocking): upload
     // the bytes to the `takes` bucket and stash a local pointer so a refresh / phone
-    // lock before the creator confirms the edit can RESUME instead of losing it. A
-    // real recorder error or an empty blob is not worth persisting.
+    // lock never loses a finished recording. A real recorder error or an empty blob
+    // is not worth persisting.
     if (!recErrRef.current && blob.size >= MIN_TAKE_BYTES) {
       const contentType = blob.type || 'video/webm'
-      const shots = buildShots()
+      setSaveState('saving')
       uploadTakeToBucket(genId, { blob, contentType })
         .then((takePath) => {
           savedTakePathRef.current = takePath
-          // If the edit already started while this upload was in flight, don't write a
-          // resume pointer for a take that's already being edited.
-          if (!editStartedRef.current) saveTakePointer(genId, { takePath, contentType, shots })
+          saveTakePointer(genId, { takePath, contentType })
+          setSaveState('saved')
         })
-        .catch(() => { /* best-effort — the beforeunload guard still protects */ })
+        .catch(() => setSaveState('failed')) // the beforeunload guard still protects
     }
   }
 
-  // The per-scene shots contract, built from the recorded bounds/lines/windows.
-  // Shared by autosave and startAiEdit so a resumed edit gets identical scene sync.
-  const buildShots = (): TakeShots | undefined => {
-    // boundsRef holds each scene's cumulative END second, e.g. [5, 11, 18]. The worker
-    // expects `total` = clip DURATION and `bounds` = INTERIOR cuts only (it re-appends
-    // the end itself). segments are explicit keep-windows (drop flubbed/retaken reads).
-    const rawBounds = boundsRef.current
-    const sceneCount = rawBounds.length
-    const totalSec = rawBounds[rawBounds.length - 1] ?? 0
-    const interiorBounds = rawBounds.slice(0, -1)
-    const lines = linesRef.current
-    const segments = segmentsRef.current.filter((s) => s.end > s.start)
-    return sceneCount > 1
-      ? { bounds: interiorBounds, total: totalSec, lines, ...(segments.length > 1 ? { segments } : {}) }
-      : undefined
-  }
-
-  // Review action: hand the raw take to the SAME tested auto-edit path (captions,
-  // cuts, b-roll). Only now does the upload + edit job start.
   // A real few-second webm/mp4 take is tens of KB minimum; anything under this is
-  // an empty/failed recording (no chunks, a recorder error, a 0-byte blob). Refuse
-  // it BEFORE upload so it can't burn the worker's whole retry cycle and come back
-  // as an opaque "the edit failed".
+  // an empty/failed recording (no chunks, a recorder error, a 0-byte blob).
   const MIN_TAKE_BYTES = 2048
-
-  const startAiEdit = async () => {
-    const blob = reviewBlobRef.current
-    if (!blob) return
-    if (recErrRef.current) {
-      setEditError(`${recErrRef.current} Please re-record this take.`)
-      return
-    }
-    if (blob.size < MIN_TAKE_BYTES) {
-      setEditError('That recording came through empty — nothing was captured. Please re-record.')
-      return
-    }
-    setEditError(null)
-    uploadCancelRef.current = false
-    editStartedRef.current = true
-    setUploading(true)
-    try {
-      // Per-scene keep-windows + spoken line → the worker trims+concats the kept
-      // windows (dropping flubbed/retaken reads) and captions each per scene.
-      const shots = buildShots()
-      // If autosave already uploaded this take, enqueue from that path — no second
-      // upload of the same bytes. Otherwise upload now (autosave failed / not done).
-      let jobId: string
-      if (savedTakePathRef.current) {
-        setUploadPct(-1)
-        ;({ jobId } = await autoEditFromPath(genId, savedTakePathRef.current, shots))
-      } else {
-        setUploadPct(-1)
-        ;({ jobId } = await autoEditTake(genId, { blob, contentType: blob.type || 'video/webm' }, shots, (f) => setUploadPct(f)))
-      }
-      if (uploadCancelRef.current) return // creator backed out — take is still in memory on the review screen
-      clearTakePointer(genId) // consumed — the edit job owns the take now
-      onJob(jobId)
-    } catch (e) {
-      if (!uploadCancelRef.current) setEditError(e instanceof Error ? e.message : 'Could not start the edit')
-      setUploading(false)
-    }
-  }
 
   // Review action: download the raw take as-is (no edit).
   const downloadRaw = () => {
@@ -476,7 +395,6 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     // never offers a discarded recording. (The orphaned bucket object is harmless.)
     clearTakePointer(genId)
     savedTakePathRef.current = null
-    editStartedRef.current = false
     reviewBlobRef.current = null
     recErrRef.current = null
     chunksRef.current = []
@@ -490,7 +408,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     setRecording(false)
     setI(0)
     setCamError(null)
-    setEditError(null)
+    setSaveState('idle')
     setCamNonce((n) => n + 1)
   }
 
@@ -498,7 +416,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
   // Step back one scene. If the scene we're returning to was already committed
   // (its boundary/window/line are recorded), pop those trailing entries exactly
   // like retakeScene does — otherwise re-recording it would APPEND a duplicate
-  // window and the scene would appear twice in the final edit.
+  // window and the scene would appear twice in the take's records.
   const goPrevScene = () => {
     if (i === 0 || recording) return
     if (boundsRef.current.length >= i) {
@@ -510,8 +428,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
     setI((v) => v - 1)
   }
   // Retake the scene we just finished: drop its kept window (the flubbed read stays
-  // in the blob but is trimmed out by the worker) and re-open the SAME scene. The
-  // next startScene reopens the window past the bad read.
+  // in the blob) and re-open the SAME scene. The next startScene reopens the window
+  // past the bad read.
   const retakeScene = () => {
     segmentsRef.current.pop()
     boundsRef.current.pop()
@@ -521,63 +439,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
 
   const pickSpeed = async (wpm: WpmPreset) => { setTimeline(await setWpm(timeline, wpm)); setSpeedSheet(false) }
 
-  if (uploading) {
-    const pctLabel = uploadPct >= 0 && uploadPct < 1 ? `Uploading your take… ${Math.round(uploadPct * 100)}%` : 'Uploading your take and starting the edit…'
-    return (
-      <div className="min-h-[100dvh] grid place-items-center bg-ink text-cream px-6">
-        <div className="text-center w-full max-w-xs">
-          <div className="h-10 w-10 mx-auto rounded-full border-2 border-white/20 border-t-white animate-spin" />
-          <p className="mt-3 text-sm text-white/70">{pctLabel}</p>
-          {uploadPct >= 0 && (
-            <div className="mt-3 h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
-              <div className="h-full bg-white transition-all" style={{ width: `${Math.max(3, Math.round(uploadPct * 100))}%` }} />
-            </div>
-          )}
-          {/* Escape hatch: a stalled upload must never trap the creator on a spinner
-              (refreshing would destroy the in-memory take). Cancel returns to the
-              review screen with the recording intact. */}
-          <button
-            onClick={() => {
-              uploadCancelRef.current = true
-              setUploading(false)
-              // Back to review, take not consumed — restore the resume pointer so a
-              // refresh here still recovers it.
-              editStartedRef.current = false
-              if (savedTakePathRef.current) {
-                saveTakePointer(genId, { takePath: savedTakePathRef.current, contentType: reviewBlobRef.current?.type || 'video/webm', shots: buildShots() })
-              }
-            }}
-            className="mt-5 text-xs text-white/50 hover:text-white"
-          >Cancel and go back to my recording</button>
-        </div>
-      </div>
-    )
-  }
-
-  // Review screen — the recorded take plays here FIRST (camera already off), then the
-  // creator picks what to do. We never auto-throw them into an editing spinner; the
-  // edit only starts when they confirm an edit style (mock parity: Review your
-  // recording → Auto edit → Choose edit style → Continue).
+  // Review screen — the recorded take plays here (camera already off) while the
+  // autosave runs in the background. AI editing is being rebuilt, so the actions
+  // are: record again, download the raw take, or head back to the studio.
   if (reviewUrl) {
-    const EDIT_STYLES = [
-      { id: 'punchy' as const, label: 'Punchy', popular: true, note: 'Fast-paced, high-energy edits. Great for social media.', icon: Zap, tint: 'from-coral/30 to-coral/5 text-coral' },
-      { id: 'clean' as const, label: 'Clean', popular: false, note: 'Clean cuts, natural pacing, and a professional look.', icon: Waves, tint: 'from-teal/25 to-teal/5 text-teal' },
-      { id: 'cinematic' as const, label: 'Cinematic', popular: false, note: 'Story-driven edits with smooth pacing and mood.', icon: Mountain, tint: 'from-amber/25 to-amber/5 text-amber' },
-    ]
-    const confirmEdit = async () => {
-      // Double-tap guard: two rapid taps here used to fire TWO uploads + TWO paid
-      // enqueues (the persist await below opened a re-entry window).
-      if (confirmBusyRef.current || uploading) return
-      confirmBusyRef.current = true
-      try {
-        // Persist the pick (worker reads it), then enqueue — best-effort persist,
-        // the edit itself must never be blocked by the choice write.
-        try { await updateGenerationChoice(genId, { edit_style: editStyle }) } catch { /* optimistic */ }
-        await startAiEdit()
-      } finally {
-        confirmBusyRef.current = false
-      }
-    }
     return (
       <div className="min-h-[100dvh] w-full bg-ink text-cream overflow-x-hidden">
         <div className="mx-auto flex min-h-[100dvh] w-full max-w-screen-sm flex-col lg:max-w-4xl lg:flex-row lg:items-start lg:gap-10 lg:px-8 lg:py-8">
@@ -596,70 +461,36 @@ function Teleprompter({ genId, timeline, setTimeline, onBack, onJob }: {
           </div>
 
           <div className="px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-1 space-y-3 lg:w-[22rem] lg:shrink-0 lg:px-0 lg:pt-14">
-            {editError ? (
+            {recErrRef.current ? (
               <div className="rounded-2xl border border-coral/40 bg-coral/10 p-4">
-                <p className="text-sm font-semibold text-coral">Couldn't start the edit</p>
-                <p className="text-xs text-white/70 mt-1">{editError}</p>
+                <p className="text-sm font-semibold text-coral">Something went wrong while recording</p>
+                <p className="text-xs text-white/70 mt-1">{recErrRef.current} Please re-record this take.</p>
               </div>
             ) : (
               <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.04] p-4">
                 <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-coral/40 bg-coral/10"><Sparkles className="h-4 w-4 text-coral" /></span>
                 <div>
                   <p className="text-sm font-semibold text-cream">Your recording looks good.</p>
-                  <p className="text-xs text-stone">Ready to turn this into a high-performing video.</p>
+                  <p className="text-xs text-stone">
+                    {saveState === 'saved' && 'Saved to your library — safe even if you close this tab.'}
+                    {saveState === 'saving' && 'Saving to your library…'}
+                    {saveState === 'failed' && 'Could not save online — use Download to keep this take.'}
+                    {saveState === 'idle' && 'Download it to keep it, or record another take.'}
+                  </p>
                 </div>
               </div>
             )}
 
-            {!styleOpen ? (
-              <>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={reRecord} className="rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-4 text-center hover:bg-white/[0.08]">
-                    <RotateCcw className="mx-auto h-4 w-4 text-cream" />
-                    <div className="mt-1 text-sm font-semibold text-cream">Record again</div>
-                    <div className="text-[11px] text-stone">Try a new take</div>
-                  </button>
-                  <button onClick={() => setStyleOpen(true)} className="btn-gradient !rounded-2xl !px-3 !py-4 text-center !block">
-                    <Wand2 className="mx-auto h-4 w-4" />
-                    <div className="mt-1 text-sm font-semibold">Auto edit</div>
-                    <div className="text-[11px] opacity-80">Continue to edit style</div>
-                  </button>
-                </div>
-                <button onClick={downloadRaw} className="w-full rounded-2xl border border-white/15 py-3 text-sm font-medium text-cream hover:bg-white/10">Download raw video</button>
-                {/* Honest exit: the take lives only in this tab's memory — leaving discards
-                    it. The old label promised "edit later", which was never true. */}
-                <button onClick={onBack} className="w-full py-2 text-sm text-white/50 hover:text-white">Exit without saving this take</button>
-              </>
-            ) : (
-              <div className="rounded-panel border border-white/10 bg-ink2/80 p-4">
-                <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/20 lg:hidden" />
-                <h3 className="text-center font-display text-xl">Choose edit style</h3>
-                <p className="mt-0.5 text-center text-xs text-stone">This decides how we cut and pace your video.</p>
-                <div className="mt-4 space-y-2.5">
-                  {EDIT_STYLES.map((s) => {
-                    const active = editStyle === s.id
-                    return (
-                      <button key={s.id} onClick={() => setEditStyle(s.id)}
-                        className={`flex w-full items-center gap-3 rounded-2xl border p-3 text-left transition-colors ${active ? 'border-coral/60 bg-coral/[0.06]' : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}>
-                        <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br ${s.tint}`}><s.icon className="h-5 w-5" /></span>
-                        <span className="min-w-0 flex-1">
-                          <span className="flex items-center gap-2 text-sm font-semibold text-cream">
-                            {s.label}
-                            {s.popular && <span className="rounded-full bg-coral/15 px-2 py-0.5 text-[10px] font-bold text-coral">Popular</span>}
-                          </span>
-                          <span className="mt-0.5 block text-xs leading-snug text-stone">{s.note}</span>
-                        </span>
-                        <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border-2 ${active ? 'border-coral' : 'border-white/25'}`}>
-                          {active && <span className="h-2.5 w-2.5 rounded-full bg-coral" />}
-                        </span>
-                      </button>
-                    )
-                  })}
-                </div>
-                <button onClick={confirmEdit} className="btn-gradient mt-4 w-full !py-3.5">Continue</button>
-                <p className="mt-2.5 flex items-center justify-center gap-1.5 text-center text-[11px] text-stone">🔒 You can change this later with Edit video.</p>
-              </div>
-            )}
+            <button onClick={reRecord} className="w-full rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-4 text-center hover:bg-white/[0.08]">
+              <RotateCcw className="mx-auto h-4 w-4 text-cream" />
+              <div className="mt-1 text-sm font-semibold text-cream">Record again</div>
+              <div className="text-[11px] text-stone">Try a new take</div>
+            </button>
+            <button onClick={downloadRaw} className="w-full rounded-2xl border border-white/15 py-3 text-sm font-medium text-cream hover:bg-white/10">Download raw video</button>
+            <button onClick={onBack} className="w-full py-2 text-sm text-white/50 hover:text-white">
+              {saveState === 'saved' ? 'Back to studio' : 'Exit without keeping this take'}
+            </button>
+            <p className="text-center text-[11px] text-stone">AI editing is being rebuilt — for now your raw take is kept safe here.</p>
           </div>
         </div>
       </div>
@@ -849,7 +680,7 @@ function fmtBytes(n: number): string {
   return `${Math.round(n / 1e3)} KB`
 }
 
-function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => void; onJob: (jobId: string) => void }) {
+function UploadMode({ genId, onBack }: { genId: string; onBack: () => void }) {
   const [busy, setBusy] = useState(false)
   const [pct, setPct] = useState(-1)        // 0..1 upload progress, -1 = not started/indeterminate
   const [file, setFile] = useState<File | null>(null)
@@ -863,12 +694,14 @@ function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => voi
     if (!f.type.startsWith('video/')) { setErr('That’s not a video file — pick an MP4 or MOV.'); return }
     setFile(f); setBusy(true); setErr(null); setPct(0); cancelRef.current = false
     try {
-      // No shots → the worker runs PySceneDetect on the clip and maps segments.
-      // The progress callback drives the real % bar so a big upload never looks
-      // frozen (the "it took 5 minutes with no feedback" complaint).
-      const { jobId } = await autoEditTake(genId, { blob: f, contentType: f.type || 'video/mp4' }, undefined, (p) => setPct(p))
+      // Upload the clip to the private `takes` bucket and remember its path so the
+      // rebuilt editor can pick it up. The progress callback drives the real % bar
+      // so a big upload never looks frozen.
+      const contentType = f.type || 'video/mp4'
+      const takePath = await uploadTakeToBucket(genId, { blob: f, contentType }, (p) => setPct(p))
       if (cancelRef.current) return
-      onJob(jobId)
+      saveTakePointer(genId, { takePath, contentType })
+      onBack()
     } catch (e) {
       if (!cancelRef.current) { setErr(e instanceof Error ? e.message : 'Upload failed — try again.'); setBusy(false) }
     }
@@ -913,7 +746,7 @@ function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => voi
                 <UploadCloud className={cn('h-9 w-9', drag ? 'text-coral' : 'text-ink')} />
               </span>
               <p className="mt-6 font-display text-2xl">Drop a clip, or tap to browse</p>
-              <p className="mt-2 max-w-sm text-sm text-stone">MP4 or MOV · we detect the scenes and line them up with your plan.</p>
+              <p className="mt-2 max-w-sm text-sm text-stone">MP4 or MOV · saved privately with this video's plan.</p>
             </button>
           ) : (
             <div className="w-full rounded-3xl border border-white/10 bg-white/[0.03] p-6">
@@ -929,7 +762,7 @@ function UploadMode({ genId, onBack, onJob }: { genId: string; onBack: () => voi
                 <div className={cn('h-full rounded-full bg-gradient-to-r from-amber via-coral to-teal transition-[width] duration-200 ease-out', !showPct && 'animate-pulse')}
                   style={{ width: showPct ? `${Math.max(4, Math.round(pct * 100))}%` : '100%' }} />
               </div>
-              <p className="mt-3 text-center text-xs text-stone">{showPct ? 'Uploading your clip…' : 'Upload complete — starting your edit…'}</p>
+              <p className="mt-3 text-center text-xs text-stone">{showPct ? 'Uploading your clip…' : 'Upload complete — saving…'}</p>
             </div>
           )}
 

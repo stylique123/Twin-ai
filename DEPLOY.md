@@ -45,19 +45,11 @@ sudo nano /opt/twinai-worker.env
 #   SUPABASE_SERVICE_ROLE_KEY=xxx
 #   GEMINI_API_KEY=xxx
 #   APIFY_TOKEN=xxx            # YouTube + Instagram transcripts (yt-dlp is bot-blocked there)
-#   WORKER_JOB_TYPES=ingest,build_voice,autoedit,scrape_dna
+#   WORKER_JOB_TYPES=ingest,build_voice,scrape_dna
 #   WHISPER_MODEL=base         # drop to tiny on a small box
 #   WORKER_MAX_MEDIA_SECS=900
-#
-# Editor value-add toggles (ALL optional; unset = that enrichment is OFF and the
-# Refine panel hides its switch). This is where "the editor just cuts + captions"
-# becomes "cuts + captions + b-roll + music + emoji + premium captions":
-#   PEXELS_API_KEY=xxx         # b-roll cutaways (free key: pexels.com/api)
-#   MUSIC_BED_URL=https://…    # music bed MP3 → ducked bed + beat-synced b-roll
-#   EDIT_EMOJI=true            # Twemoji overlays on caption moments
-#   EDIT_WINDOW_WHISPER=true   # real per-scene caption timing (extra whisper cost)
-#   REVIDEO_TRUSTED=true       # let the premium (Revideo) pass replace the render
-#                              # (REVIDEO_URL is auto-set by deploy-worker.yml)
+# (The old editor's toggles — PEXELS/MUSIC_BED/EDIT_*/REVIDEO_* — are gone with
+#  the old AI editor; deploy-worker.yml scrubs any REVIDEO_* lines from the box.)
 
 # Deploy / update (pulls main, builds, restarts):
 sudo bash worker/deploy-vps.sh
@@ -73,9 +65,8 @@ docker logs -f twinai-worker     # expect {"msg":"worker up",...} then claimed �
 #   (reuses the worker container's secrets at run time)
 cd discovery && sudo bash deploy-vps.sh
 
-# Renderer — timeline-driven video render service
-docker build -t twinai-revideo revideo/ && \
-  docker run -d --name twinai-revideo --restart unless-stopped twinai-revideo
+# (The Revideo renderer was removed with the old AI editor. One-time cleanup on
+#  an existing box: docker rm -f twinai-revideo && docker rmi twinai-revideo)
 
 # Publishing + analytics — self-hosted Postiz (docker-compose + Caddy)
 cd postiz && docker compose up -d
