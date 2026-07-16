@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Quote, FileText, Clapperboard,
@@ -183,7 +183,8 @@ const MOCK_GENERATION = {
 
 export default function Result() {
   const { id } = useParams()
-  const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const jobId = searchParams.get('job')
   const { profile } = useAuth()
   const [gen, setGen] = useState<Generation | null>(() => (id ? GEN_CACHE[id] ?? null : null))
   // Only block on the full-screen loader when we have NOTHING cached to show.
@@ -273,7 +274,7 @@ export default function Result() {
   }
   const onRefineApplied = async (jobId: string) => {
     setRefineStatus('Re-rendering your edit…')
-    // Shared terminal-poll loop (same one V2Review uses) instead of a hand-rolled copy.
+    // Shared terminal-poll loop (the same edit-job poller used across the flow).
     const job = await pollEditJob(jobId, (label) => { if (label) setRefineStatus(label) }, { shouldStop: () => !alive.current })
     if (!alive.current) return // navigated away — don't setState
     if (job?.status === 'done' && job.result?.output_url) {
@@ -285,6 +286,45 @@ export default function Result() {
       setRefineStatus('Still rendering — check your Library shortly.')
     }
   }
+
+  // Inline edit-render progress. This is what used to be the separate "Your video is
+  // ready!" screen (V2Review): the auto-edit job runs and we show live progress
+  // RIGHT HERE, then the finished video appears in the media row below — script,
+  // video and cover all on this one page. Driven by the `?job=` param that the
+  // recorder (and Resume) hand off; cleared once the render lands.
+  const [renderLabel, setRenderLabel] = useState('Starting the edit…')
+  const [renderPct, setRenderPct] = useState(5)
+  const [renderPhase, setRenderPhase] = useState<'idle' | 'rendering' | 'failed' | 'timeout'>('idle')
+  useEffect(() => {
+    // No job to watch, or the video already finished → nothing to render here.
+    if (!id || !jobId) { setRenderPhase('idle'); return }
+    if (gen?.edit_path) { setRenderPhase('idle'); return }
+    setRenderPhase('rendering'); setRenderPct(5); setRenderLabel('Starting the edit…')
+    let stop = false
+    // Synthetic creep so the bar always shows motion during the worker's silent
+    // warm-up (download take + load models); real pct overrides via Math.max.
+    const creep = setInterval(() => { if (!stop) setRenderPct((p) => (p < 90 ? p + Math.max(0.4, (90 - p) * 0.03) : p)) }, 1400)
+    ;(async () => {
+      const job = await pollEditJob(
+        jobId,
+        (label, pct) => { if (label) setRenderLabel(label); if (pct) setRenderPct((prev) => Math.max(prev, Math.min(99, pct))) },
+        { attempts: 300, shouldStop: () => stop || !alive.current },
+      )
+      if (stop || !alive.current) return
+      clearInterval(creep)
+      // Poll window elapsed with no terminal state — it's still rendering, not failed.
+      if (!job) { setRenderPhase('timeout'); return }
+      if (job.status === 'failed') { setRenderPhase('failed'); setRenderLabel(job.error || 'The edit failed.'); return }
+      // Done → refetch so edit_path resolves and the video card below shows the render,
+      // then drop the job param so a refresh doesn't re-enter the rendering state.
+      const g = await getGeneration(id).catch(() => null)
+      if (g && alive.current) { GEN_CACHE[id] = g; setGen(g) }
+      setRenderPct(100); setRenderPhase('idle')
+      setSearchParams({}, { replace: true })
+      setTimeout(() => document.getElementById('your-video')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200)
+    })()
+    return () => { stop = true; clearInterval(creep) }
+  }, [id, jobId, gen?.edit_path]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!id) return
@@ -340,7 +380,8 @@ export default function Result() {
   }, [id, gen?.edit_path])
 
   // Resume: enqueue the auto-edit from the already-uploaded take (no re-record, no
-  // re-upload) and go to the edit progress screen.
+  // re-upload). Stay on THIS page and surface the live render progress inline via
+  // the `?job=` param — no separate review screen to bounce to.
   const resumeEdit = async () => {
     if (!id || !resumeTake || resuming) return
     setResuming(true); setResumeErr(null)
@@ -348,7 +389,8 @@ export default function Result() {
       const { jobId } = await autoEditFromPath(id, resumeTake.takePath, resumeTake.shots)
       clearTakePointer(id)
       setResumeTake(null)
-      navigate(`/v2/review/${id}?job=${jobId}`)
+      setResuming(false)
+      setSearchParams({ job: jobId }, { replace: true })
     } catch (e) {
       setResumeErr(e instanceof Error ? e.message : 'Could not resume — please try again.')
       setResuming(false)
@@ -544,6 +586,39 @@ export default function Result() {
               )}
             </div>
           </motion.div>
+
+          {/* INLINE RENDER PROGRESS — replaces the old standalone "Your video is
+              ready!" screen. While the auto-edit runs, progress shows here; when it
+              lands, the finished video appears in the media row just below. */}
+          {renderPhase !== 'idle' && (
+            <div className="mt-8 rounded-card border border-coral/25 bg-ink2/70 p-5 backdrop-blur-sm">
+              {renderPhase === 'rendering' ? (
+                <>
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-signature shadow-glow"><SlidersHorizontal className="h-4 w-4 text-ink" /></span>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-cream">Creating your video</div>
+                      <div className="truncate text-xs text-stone">{renderLabel}</div>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex items-center gap-3">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
+                      <div className="h-full rounded-full bg-gradient-to-r from-amber to-coral transition-all" style={{ width: `${Math.round(renderPct)}%` }} />
+                    </div>
+                    <span className="text-sm font-semibold text-cream">{Math.round(renderPct)}%</span>
+                  </div>
+                  <p className="mt-3 text-xs text-stone">This usually takes 1–2 minutes. You can leave this page — we keep rendering and it lands in your Library.</p>
+                </>
+              ) : renderPhase === 'timeout' ? (
+                <p className="text-sm text-stone">This one is taking longer than usual — we'll keep rendering it and it'll appear in your <Link to="/history" className="text-cream underline">Library</Link>. You don't need to wait here.</p>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-coral">{renderLabel || "The edit didn't come through."}</p>
+                  <Link to={`/record/${gen.id}?mode=record`} className="btn-ghost py-2 text-xs font-semibold">Re-record &amp; try again</Link>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* MEDIA ROW — the finished video and its AI cover image, side by side, each
               hugging its own frame. The cover lives HERE (not inside the Title card) so

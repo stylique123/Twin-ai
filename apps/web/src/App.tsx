@@ -31,7 +31,6 @@ const JoinWorkspace = lazy(() => import('./pages/JoinWorkspace'))
 const V2Create = lazy(() => import('./pages/v2/V2Create'))
 const V2Building = lazy(() => import('./pages/v2/V2Building'))
 const V2Capture = lazy(() => import('./pages/v2/V2Capture'))
-const V2Review = lazy(() => import('./pages/v2/V2Review'))
 
 function Protected({ children }: { children: JSX.Element }) {
   const { id } = useParams()
@@ -81,7 +80,10 @@ function AppToV2() {
 // Redirect a legacy /v2/plan/:id or /v2/capture/:id deep link to its live home.
 function RedirectWithId({ to }: { to: 'result' | 'record' }) {
   const { id } = useParams()
-  return <Navigate to={`/${to}/${id ?? ''}`} replace />
+  const { search } = useLocation()
+  // Preserve the query string (e.g. ?job=… when an old /v2/review link redirects to
+  // /result) so the destination still picks up the in-flight edit job.
+  return <Navigate to={`/${to}/${id ?? ''}${search}`} replace />
 }
 
 // Smooth cross-fade + lift between routes.
@@ -113,7 +115,7 @@ export default function App() {
       void import('./pages/v2/V2Capture'); void import('./pages/Result'); void import('./pages/History')
       void import('./pages/Brands'); void import('./pages/Settings'); void import('./pages/Billing')
       void import('./pages/Onboarding'); void import('./pages/Metrics'); void import('./pages/ClientReport')
-      void import('./pages/Calendar'); void import('./pages/v2/V2Building'); void import('./pages/v2/V2Review')
+      void import('./pages/Calendar'); void import('./pages/v2/V2Building')
     }
     const w = window as unknown as { requestIdleCallback?: (cb: () => void) => void }
     if (w.requestIdleCallback) w.requestIdleCallback(warm)
@@ -168,11 +170,13 @@ export default function App() {
               a wide empty window. */}
           <Route path="/v2" element={<Protected><AppShell mobileChrome={false}><Page><V2Create /></Page></AppShell></Protected>} />
           <Route path="/v2/building" element={<Protected><AppShell mobileChrome={false}><Page><V2Building /></Page></AppShell></Protected>} />
-          {/* Legacy deep links: the standalone plan/capture screens were folded into
-              Result (/result/:id) and the recorder (/record/:id). Redirect, don't 404. */}
+          {/* Legacy deep links: the standalone plan/capture/review screens were folded
+              into Result (/result/:id) and the recorder (/record/:id). The finished
+              video + live render progress now live on Result too, so /v2/review
+              redirects there (carrying any ?job=). Redirect, don't 404. */}
           <Route path="/v2/plan/:id" element={<RedirectWithId to="result" />} />
           <Route path="/v2/capture/:id" element={<RedirectWithId to="record" />} />
-          <Route path="/v2/review/:id" element={<Protected><AppShell mobileChrome={false}><Page><V2Review /></Page></AppShell></Protected>} />
+          <Route path="/v2/review/:id" element={<RedirectWithId to="result" />} />
           <Route
             path="/result/:id"
             element={<Protected><AppShell><Page><Result /></Page></AppShell></Protected>}

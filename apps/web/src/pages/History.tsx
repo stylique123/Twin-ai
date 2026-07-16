@@ -186,7 +186,7 @@ export default function History() {
                       <RevealItem key={g.id}>
                         <div className="glass glass-hover flex gap-4 p-3.5 sm:p-4">
                           {/* Thumbnail */}
-                          <Link to={status === 'draft' ? `/result/${g.id}` : `/v2/review/${g.id}`} className="relative block h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-coral/20 via-ink2 to-ink sm:h-28 sm:w-44">
+                          <Link to={`/result/${g.id}`} className="relative block h-24 w-24 shrink-0 overflow-hidden rounded-xl bg-gradient-to-br from-coral/20 via-ink2 to-ink sm:h-28 sm:w-44">
                             {cover ? (
                               <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
                             ) : (
@@ -222,10 +222,10 @@ export default function History() {
                                 </>
                               ) : (
                                 <>
-                                  <Link to={`/v2/review/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.05] px-3.5 py-1.5 text-xs font-semibold text-cream hover:bg-white/10">
+                                  <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.05] px-3.5 py-1.5 text-xs font-semibold text-cream hover:bg-white/10">
                                     <Eye className="h-3 w-3" /> View
                                   </Link>
-                                  <Link to={`/v2/review/${g.id}`} className="btn-gradient !rounded-xl !px-3.5 !py-1.5 text-xs">
+                                  <Link to={`/result/${g.id}`} className="btn-gradient !rounded-xl !px-3.5 !py-1.5 text-xs">
                                     <Share className="h-3 w-3" /> {status === 'published' ? 'Share again' : 'Export'}
                                   </Link>
                                   <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs font-medium text-stone hover:text-cream">
