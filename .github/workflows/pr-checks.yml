@@ -31,3 +31,28 @@ jobs:
         run: |
           npm ci
           npx tsc --noEmit
+
+  # Guard: the OLD AI editor was removed (see docs/ai-editor-rebuild-status.md).
+  # Fail any change that reintroduces its entry points into live code. Historical
+  # migrations and the removal docs are excluded on purpose; the new editor must
+  # use new names, not resurrect these.
+  no-legacy-editor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No legacy editor references in live code
+        run: |
+          if grep -rnE 'enqueue-autoedit|handleAutoEdit|autoEditTake|autoEditFromPath|pollEditJob|REVIDEO_URL|REVIDEO_TRUSTED|twinai-revideo' \
+              apps/web/src packages/shared/src worker/src supabase/functions supabase/config.toml \
+              --exclude-dir=node_modules --exclude-dir=dist; then
+            echo '::error::Legacy editor reference detected — the old AI editor was removed; do not reintroduce its entry points.'
+            exit 1
+          fi
+          echo "clean: no legacy editor references"
+      - name: Worker registry must not register autoedit
+        run: |
+          if grep -n "autoedit" worker/src/jobs/index.ts | grep -v "removed"; then
+            echo '::error::autoedit handler reappeared in the worker registry.'
+            exit 1
+          fi
+          echo "clean: worker registry has no autoedit handler"
