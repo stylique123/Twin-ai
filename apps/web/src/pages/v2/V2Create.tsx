@@ -109,12 +109,13 @@ export default function V2Create() {
           (narrower, tighter type) and desktop. Both knobs are REAL: fidelity +
           tone ride the request into generate-blueprint, where each maps to a
           hard prompt rule — switching them changes the script you get back. ── */}
-      {/* Phone: a normal app-tab page — content flows under AppShell's sticky top
-          bar and above the bottom tab bar (no dvh centering: the dynamic-viewport
-          unit resizes as the phone browser bar collapses, which made the column
-          jump up and down while scrolling). Desktop keeps the full-height
-          centered canvas beside the sidebar, where the viewport is stable. */}
-      <div className="relative grid overflow-clip px-5 py-10 text-cream sm:px-8 lg:min-h-[100dvh] lg:place-items-center lg:py-16">
+      {/* Centered on phone AND desktop. Phone uses svh (the SMALL viewport height),
+          which is FIXED and doesn't grow/shrink as the mobile browser bar collapses
+          — so the column centers cleanly without the up-and-down jump that dvh caused.
+          The 3.5rem offset accounts for AppShell's sticky top bar; the bottom tab bar
+          is already handled by AppShell's main padding. Desktop keeps dvh (stable —
+          no browser-bar chrome beside the sidebar). */}
+      <div className="relative grid min-h-[calc(100svh-3.5rem)] place-items-center overflow-clip px-5 py-10 text-cream sm:px-8 lg:min-h-[100dvh] lg:py-16">
         <Aurora className="opacity-80" />
         <div className="pointer-events-none absolute inset-0" aria-hidden>
           <div className="absolute left-1/3 top-1/4 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[160px]" />
