@@ -37,7 +37,10 @@ app.post('/render', express.json({ limit: '4mb' }), async (req, res) => {
   )
   // Highlight color follows the EDL's caption `variation` index (the same palette
   // the ffmpeg path uses), as correct web hex. A brand hex, when present, wins.
-  const POP_HEX = ['#F5A623' /*amber*/, '#65E5D8' /*teal*/, '#FF6B6B' /*coral*/, '#FFE500' /*gold*/]
+  // Must match edit.ts POP_PALETTE exactly so the premium render's highlight color
+  // is identical to the instant ffmpeg render (was drifted: coral #FF6B6B vs #FF5B7B,
+  // gold #FFE500 vs #FFD400).
+  const POP_HEX = ['#F5A623' /*amber*/, '#65E5D8' /*teal*/, '#FF5B7B' /*coral*/, '#FFD400' /*gold*/]
   const variation = Number(edl.captions?.variation ?? 0)
   const highlightColor =
     edl.captions?.highlight_hex ??

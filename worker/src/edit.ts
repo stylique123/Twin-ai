@@ -506,7 +506,7 @@ async function snapToBeat(bedFile: string, t: number, tol = 0.4): Promise<number
 // {starts, ends} shape jumpCutSilence already consumes — so it's a drop-in
 // upgrade to the detector with zero change to the downstream cut/render logic.
 // Returns null on ANY failure so the caller falls back to ffmpeg silencedetect.
-async function vadSilence(base: string, duration: number): Promise<{ starts: number[]; ends: number[] } | null> {
+async function vadSilence(base: string, duration: number, minPause = 0.5): Promise<{ starts: number[]; ends: number[] } | null> {
   const wav = `${base}.vad.wav`
   try {
     await run('ffmpeg', ['-y', '-i', base, '-vn', '-ac', '1', '-ar', '16000', wav], Math.max(60_000, duration * 1500))
@@ -522,11 +522,10 @@ async function vadSilence(base: string, duration: number): Promise<{ starts: num
       .sort((a, b) => a[0] - b[0])
     if (!sp.length) return null // no speech detected → let silencedetect decide
     // Silence = the gaps the speech leaves, only counting pauses >= MIN_PAUSE.
-    // 0.5s (not 0.35s): a natural sentence/breath pause is ~0.3-0.5s, so cutting at
-    // 0.35 machine-guns the edit — every comma becomes a jump cut and the video reads
-    // choppy/incoherent (the "dead space cut and overlaps, not coherent" complaint).
-    // At 0.5s only genuine dead air is removed and the read keeps its rhythm.
-    const MIN_PAUSE = 0.5
+    // Caller-tuned by pacing: ~0.5s (Relaxed) keeps a natural sentence/breath rhythm
+    // and cuts only genuine dead air; ~0.35s (Snappy) cuts tighter for a punchier
+    // edit. Below ~0.35 every comma becomes a jump cut and the read machine-guns.
+    const MIN_PAUSE = minPause
     const starts: number[] = []
     const ends: number[] = []
     let cursor = 0
@@ -553,10 +552,15 @@ async function computeSilenceKeep(base: string, energy: 'high' | 'calm' = 'calm'
   const duration = await probeDuration(base)
   if (duration < 3) return null // too short to bother
 
+  // Pacing → cut aggressiveness. Snappy ('high') removes shorter pauses so the edit
+  // is visibly tighter; Relaxed ('calm') keeps the natural breath rhythm. This is the
+  // first time the pacing control changes CUT density (it used to only affect zoom).
+  const minPause = energy === 'high' ? 0.35 : 0.5
+
   const starts: number[] = []
   const ends: number[] = []
   // Prefer speech-aware VAD; fall back to amplitude silencedetect on any failure.
-  const vad = await vadSilence(base, duration)
+  const vad = await vadSilence(base, duration, minPause)
   if (vad) {
     starts.push(...vad.starts)
     ends.push(...vad.ends)
@@ -570,11 +574,11 @@ async function computeSilenceKeep(base: string, energy: 'high' | 'calm' = 'calm'
       const mm = vd.match(/mean_volume:\s*(-?[0-9.]+)\s*dB/)
       if (mm) noiseDb = Math.max(-45, Math.min(-28, parseFloat(mm[1]) - 8))
     } catch { /* keep -30 */ }
-    // Detect silence quieter than the adaptive threshold for >= 0.5s (see MIN_PAUSE
-    // above: 0.35 turns every breath into a jump cut; 0.5 cuts only real dead air).
+    // Detect silence quieter than the adaptive threshold for >= minPause (pacing-
+    // tuned: 0.5s Relaxed cuts only real dead air; 0.35s Snappy cuts tighter).
     const { stderr } = await run(
       'ffmpeg',
-      ['-i', base, '-af', `silencedetect=noise=${noiseDb.toFixed(1)}dB:d=0.5`, '-f', 'null', '-'],
+      ['-i', base, '-af', `silencedetect=noise=${noiseDb.toFixed(1)}dB:d=${minPause.toFixed(2)}`, '-f', 'null', '-'],
       Math.max(120_000, duration * 2000),
     )
     for (const m of stderr.matchAll(/silence_start:\s*([0-9.]+)/g)) starts.push(parseFloat(m[1]))
