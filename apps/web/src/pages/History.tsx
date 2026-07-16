@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Wand2, FileText, Clapperboard, Loader2, Play, Video, Plus, Pencil, Share, Eye, CalendarDays } from 'lucide-react'
+import { Wand2, Clapperboard, Loader2, Play, Video, Plus, Eye, CalendarDays } from 'lucide-react'
 import { listGenerations, signEditUrls, listPosts } from '../lib/api'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -210,28 +210,19 @@ export default function History() {
                             <p className="mt-1 flex items-center gap-1.5 text-xs text-stone">
                               <CalendarDays className="h-3 w-3" /> {when}
                             </p>
+                            {/* ONE action per row — everything opens the same Result
+                                page anyway, so View/Export/Script were three names for
+                                one link. Drafts jump straight to the recorder (the
+                                title/thumbnail already open the script). */}
                             <div className="mt-3 flex flex-wrap gap-2">
                               {status === 'draft' ? (
-                                <>
-                                  <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.05] px-3.5 py-1.5 text-xs font-semibold text-cream hover:bg-white/10">
-                                    <Pencil className="h-3 w-3" /> Edit
-                                  </Link>
-                                  <Link to={`/record/${g.id}`} className="btn-gradient !rounded-xl !px-3.5 !py-1.5 text-xs">
-                                    <Video className="h-3 w-3" /> Record
-                                  </Link>
-                                </>
+                                <Link to={`/record/${g.id}`} className="btn-gradient !rounded-xl !px-3.5 !py-1.5 text-xs">
+                                  <Video className="h-3 w-3" /> Record
+                                </Link>
                               ) : (
-                                <>
-                                  <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-white/[0.05] px-3.5 py-1.5 text-xs font-semibold text-cream hover:bg-white/10">
-                                    <Eye className="h-3 w-3" /> View
-                                  </Link>
-                                  <Link to={`/result/${g.id}`} className="btn-gradient !rounded-xl !px-3.5 !py-1.5 text-xs">
-                                    <Share className="h-3 w-3" /> {status === 'published' ? 'Share again' : 'Export'}
-                                  </Link>
-                                  <Link to={`/result/${g.id}`} className="inline-flex items-center gap-1.5 rounded-xl px-2 py-1.5 text-xs font-medium text-stone hover:text-cream">
-                                    <FileText className="h-3 w-3" /> Script
-                                  </Link>
-                                </>
+                                <Link to={`/result/${g.id}`} className="btn-gradient !rounded-xl !px-3.5 !py-1.5 text-xs">
+                                  <Eye className="h-3 w-3" /> View
+                                </Link>
                               )}
                             </div>
                           </div>
