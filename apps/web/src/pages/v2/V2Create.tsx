@@ -6,7 +6,7 @@
 // PRODUCT_VISION §7.
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Link2, Wand2, Target, Shuffle, Feather, Wind, Activity, Flame, SlidersHorizontal, ChevronDown, ArrowLeft } from 'lucide-react'
+import { Link2, Wand2, Target, Shuffle, Feather, Wind, Activity, Flame, SlidersHorizontal, ChevronDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { listGenerations } from '../../lib/api'
 import { videosFromCredits } from '../../lib/brand'
@@ -109,22 +109,17 @@ export default function V2Create() {
           (narrower, tighter type) and desktop. Both knobs are REAL: fidelity +
           tone ride the request into generate-blueprint, where each maps to a
           hard prompt rule — switching them changes the script you get back. ── */}
-      <div className="relative grid min-h-[100dvh] place-items-center overflow-clip px-5 py-16 text-cream sm:px-8">
+      {/* Phone: a normal app-tab page — content flows under AppShell's sticky top
+          bar and above the bottom tab bar (no dvh centering: the dynamic-viewport
+          unit resizes as the phone browser bar collapses, which made the column
+          jump up and down while scrolling). Desktop keeps the full-height
+          centered canvas beside the sidebar, where the viewport is stable. */}
+      <div className="relative grid overflow-clip px-5 py-10 text-cream sm:px-8 lg:min-h-[100dvh] lg:place-items-center lg:py-16">
         <Aurora className="opacity-80" />
         <div className="pointer-events-none absolute inset-0" aria-hidden>
           <div className="absolute left-1/3 top-1/4 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[160px]" />
           <div className="absolute right-0 bottom-0 h-[20rem] w-[20rem] rounded-full bg-teal/10 blur-[140px]" />
         </div>
-
-        {/* Back to the dashboard — the phone wizard had this in its header bar; keep
-            the escape hatch now that there's one unified layout. */}
-        <button
-          onClick={() => nav('/dashboard')}
-          aria-label="Back"
-          className="absolute left-4 top-[max(1rem,env(safe-area-inset-top))] z-10 grid h-10 w-10 place-items-center rounded-full border border-white/12 bg-white/[0.04] text-sand transition-colors hover:border-white/20 hover:text-cream"
-        >
-          <ArrowLeft className="h-4.5 w-4.5" />
-        </button>
 
         <div className="relative mx-auto w-full max-w-2xl text-center">
           <p className="eyebrow">Studio</p>

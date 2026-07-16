@@ -20,15 +20,13 @@ const Ctx = createContext<AuthState>({
   signOut: async () => {},
 })
 
-// Idle auto-logout window: one hour of inactivity ends the session.
+// Legacy idle-logout marker — the hour-long idle auto-logout is GONE (it kicked
+// creators out every time they reopened the app after an hour away, which read
+// as "it goes blank and logs me out"). Clean the stale key up on sign-out only.
 const IDLE_KEY = 'twinai_last_active'
-const IDLE_MS = 60 * 60 * 1000
-const bumpActivity = () => {
-  try { localStorage.setItem(IDLE_KEY, String(Date.now())) } catch { /* storage off */ }
-}
 
 // Fully clear the session: local-scope sign-out + strip any persisted auth token
-// and the activity marker so the next load can't resurrect the session.
+// so the next load can't resurrect the session.
 async function doSignOut() {
   try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* ignore */ }
   try {
@@ -80,11 +78,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const idleExceeded = () => {
-      const last = Number(localStorage.getItem(IDLE_KEY) || 0)
-      return last > 0 && Date.now() - last > IDLE_MS
-    }
-
     // Guarantee the "Loading…" gate always clears. Previously `setLoading(false)`
     // ran only AFTER `await refreshProfile()`, so a hung/failed profile query (e.g.
     // the access token refreshing after an idle period) left the app stuck on the
@@ -95,52 +88,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const finishLoading = () => { if (!settled) { settled = true; setLoading(false) } }
     const safety = window.setTimeout(finishLoading, 8000)
 
+    // Sessions persist until the user signs out (or the refresh token is revoked
+    // server-side) — no idle auto-logout. Supabase refreshes the token itself.
     supabase.auth.getSession().then(async ({ data }) => {
-      // Security: if the last activity was over an hour ago, treat the session as
-      // expired and sign out on load — reopening a tab after an idle hour requires
-      // a fresh login instead of silently restoring the session.
-      if (data.session && idleExceeded()) {
-        await doSignOut()
-        finishLoading()
-        return
-      }
       setSession(data.session)
       finishLoading() // unblock route guards immediately
-      if (data.session) { bumpActivity(); void refreshProfile(); void redeemStoredReferral() } // profile + referral in background
+      if (data.session) { void refreshProfile(); void redeemStoredReferral() } // profile + referral in background
     }).catch(finishLoading).finally(() => window.clearTimeout(safety))
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
       finishLoading()
-      // Start the idle clock here too: an OAuth / magic-link login arrives via this
-      // listener (not getSession), so without this the activity marker stays unset
-      // until the first mouse move.
-      if (s) { bumpActivity(); void refreshProfile(); void redeemStoredReferral() }
+      if (s) { void refreshProfile(); void redeemStoredReferral() }
       else setProfile(null)
     })
     return () => { window.clearTimeout(safety); sub.subscription.unsubscribe() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  // Idle auto-logout: record activity, and every 30s check whether the user has
-  // been inactive for over an hour — if so, sign them out.
-  useEffect(() => {
-    if (!session) return
-    const onActivity = () => bumpActivity()
-    const events = ['mousemove', 'keydown', 'click', 'scroll', 'touchstart', 'visibilitychange']
-    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }))
-    const timer = window.setInterval(() => {
-      const last = Number(localStorage.getItem(IDLE_KEY) || 0)
-      if (last > 0 && Date.now() - last > IDLE_MS) {
-        void doSignOut().then(() => window.location.assign('/'))
-      }
-    }, 30_000)
-    return () => {
-      events.forEach((e) => window.removeEventListener(e, onActivity))
-      window.clearInterval(timer)
-    }
-     
-  }, [session])
 
   const signOut = async () => {
     // Clear local state FIRST so the UI (route guards, nav) flips to logged-out

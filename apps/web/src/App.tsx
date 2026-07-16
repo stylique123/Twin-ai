@@ -164,11 +164,11 @@ export default function App() {
           {/* /app is the single entry to the create flow — always the V2 studio
               (the legacy V1 Studio page was retired; V2 has been the only flow). */}
           <Route path="/app" element={<AppToV2 />} />
-          {/* V2 Creative Studio — full-screen wizard on phone (no mobile chrome,
-              each screen has its own back button); on desktop it sits inside the
-              same sidebar dashboard as every other screen, not floating alone in
-              a wide empty window. */}
-          <Route path="/v2" element={<Protected><AppShell mobileChrome={false}><Page><V2Create /></Page></AppShell></Protected>} />
+          {/* V2 Creative Studio. The create screen (/v2) is a normal app tab — full
+              chrome on phone (top bar + bottom tab bar) exactly like Dashboard or
+              Library. Only the transient building screen stays chrome-less: it's a
+              modal progress moment, not a destination. */}
+          <Route path="/v2" element={<Protected><AppShell><Page><V2Create /></Page></AppShell></Protected>} />
           <Route path="/v2/building" element={<Protected><AppShell mobileChrome={false}><Page><V2Building /></Page></AppShell></Protected>} />
           {/* Legacy deep links: the standalone plan/capture/review screens were folded
               into Result (/result/:id) and the recorder (/record/:id). The finished
