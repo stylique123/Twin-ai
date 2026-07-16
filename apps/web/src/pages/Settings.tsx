@@ -619,7 +619,12 @@ export default function Settings() {
 // and work on your client voices + scripts on your remixes. More seats are paid
 // (later). If you're a teammate yourself, this shows your workspace status.
 const SEAT_LIMIT = 1
+// Teammates are a top-tier feature only. Solo plans (free / aspiring /
+// professional) manage a single voice themselves and never see invite controls.
+const TEAM_PLANS = new Set(['studio', 'agency'])
+
 function TeamSeats() {
+  const { profile } = useAuth()
   const [ws, setWs] = useState<WorkspaceState | null>(null)
   const [link, setLink] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -642,6 +647,7 @@ function TeamSeats() {
   }
 
   // A teammate in someone else's workspace — show status, no invite controls.
+  // (Shown regardless of the teammate's own plan; it's just informational.)
   if (ws?.memberOf) {
     return (
       <section className="glass mt-5 p-5 sm:p-6">
@@ -653,6 +659,10 @@ function TeamSeats() {
       </section>
     )
   }
+
+  // Owner-side invite controls are Studio/Agency only — hide the whole section
+  // on solo plans (the "why is invite a teammate here on Free?" fix).
+  if (!TEAM_PLANS.has(profile?.plan ?? 'free')) return null
 
   const used = ws?.members.length ?? 0
   const atCap = used >= SEAT_LIMIT
