@@ -141,6 +141,39 @@ function fromDb(it: GalleryItem): Card {
 }
 
 
+// Diversity re-rank. The feed is still RELEVANCE-first (best `scoreOf` wins), but
+// this stops it stacking the same creator or platform back-to-back — the "same three
+// videos again and again / the same @handle twice" problem. Greedy: at each slot pick
+// the highest-scored card that keeps variety; a creator's SECOND clip only appears
+// after every other creator has had a turn, so handles never cluster.
+function diversify(cards: Card[], scoreOf: (c: Card) => number): Card[] {
+  const pool = [...cards].sort((a, b) => scoreOf(b) - scoreOf(a))
+  const handle = (c: Card) => (c.creator || '').trim().toLowerCase()
+  const totalCreators = new Set(pool.map(handle)).size
+  const out: Card[] = []
+  let usedCreators = new Set<string>()
+
+  while (pool.length) {
+    const prev = out[out.length - 1]
+    // Try each rule in order of how much variety it preserves; take the first (=
+    // highest-scored, since `pool` is score-sorted) card that satisfies it.
+    const rules: Array<(c: Card) => boolean> = [
+      (c) => !usedCreators.has(handle(c)) && !!prev && c.platform !== prev.platform,
+      (c) => !usedCreators.has(handle(c)),
+      (c) => !prev || handle(c) !== handle(prev),
+      () => true,
+    ]
+    let idx = -1
+    for (const ok of rules) { idx = pool.findIndex(ok); if (idx !== -1) break }
+    const [picked] = pool.splice(idx, 1)
+    out.push(picked)
+    usedCreators.add(handle(picked))
+    // Everyone's been shown once → open the next round so second clips can flow.
+    if (usedCreators.size >= totalCreators) usedCreators = new Set()
+  }
+  return out
+}
+
 function ytId(url: string): string | null {
   const m = url.match(/[?&]v=([\w-]+)/) || url.match(/youtu\.be\/([\w-]+)/) || url.match(/shorts\/([\w-]+)/)
   return m ? m[1] : null
@@ -287,20 +320,21 @@ export default function Gallery() {
       const needle = q.trim().toLowerCase()
       out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(needle))
     }
-    // Always rank by the Opportunity score (engagement × reach × your-niche fit) —
-    // the redundant Top/All toggle is gone.
-    const byScore = (a: Card, b: Card) =>
-      (scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0)
     const isForYou = (!!mySubNiche && niche === mySubNiche) || (!!myNiche && niche === myNiche)
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
+    const rank = (c: Card) =>
+      c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
     if (isForYou) {
-      const rank = (c: Card) =>
-        c.niche === mySubNiche ? 0 : c.niche === myNiche ? 1 : related.includes(c.niche) ? 2 : 3
       const relevant = out.filter((c) => rank(c) < 3)
-      const base = relevant.length >= 6 ? relevant : out
-      return [...base].sort((a, b) => rank(a) - rank(b) || byScore(a, b))
+      out = relevant.length >= 6 ? relevant : out
     }
-    return [...out].sort(byScore)
+    // Relevance score: your-niche fit first (in the "for you" view), then the
+    // Opportunity score (engagement × reach × fit). The diversity re-rank then
+    // interleaves creators/platforms so the top of the feed isn't three clips from
+    // the same person — without letting a low-relevance card jump the queue.
+    const relevanceOf = (c: Card) =>
+      (isForYou ? (3 - rank(c)) * 1_000_000 : 0) + (scores.get(c.id)?.score ?? 0)
+    return diversify(out, relevanceOf)
   }, [all, myNiche, mySubNiche, niche, q, searchBlobs, related, scores])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
