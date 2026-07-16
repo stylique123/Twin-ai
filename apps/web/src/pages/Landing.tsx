@@ -101,7 +101,7 @@ const FEATURES = [
   { icon: AtSign, t: 'Voice DNA', d: 'Paste your @handle once. We read your real posts and build a voice profile every script is written in.', gradient: 'from-teal/20 to-teal/5' },
   { icon: FileText, t: 'Full script', d: 'Not a caption. A hook, script with delivery notes, shot list, edit checklist and a 20-minute shoot plan.', gradient: 'from-amber/20 to-amber/5' },
   { icon: Clapperboard, t: 'In-app teleprompter', d: 'Record straight from the browser with your script scrolling. A hook-timing marker keeps you on pace.', gradient: 'from-coral/20 to-coral/5' },
-  { icon: Scissors, t: 'One-click auto-edit', d: 'Animated captions, dead-air removal, beat-timed jump cuts, b-roll cutaways, vertical export. One tap.', gradient: 'from-teal/20 to-teal/5' },
+  { icon: Scissors, t: 'One-click AI edit', d: 'Captions, cuts and vertical export in one tap — being rebuilt from the ground up, coming soon.', gradient: 'from-teal/20 to-teal/5' },
   { icon: Send, t: 'Publish helper', d: 'One tap copies your on-brand caption and opens the post, then log it, so the loop ends with a post.', gradient: 'from-amber/20 to-amber/5' },
   { icon: LayoutGrid, t: 'Niche gallery', d: 'A living feed of what\'s working in your niche. See why it hit, then recreate it in one click.', gradient: 'from-coral/20 to-coral/5' },
 ]
