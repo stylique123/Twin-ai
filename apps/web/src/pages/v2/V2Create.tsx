@@ -109,13 +109,16 @@ export default function V2Create() {
           (narrower, tighter type) and desktop. Both knobs are REAL: fidelity +
           tone ride the request into generate-blueprint, where each maps to a
           hard prompt rule — switching them changes the script you get back. ── */}
-      {/* Centered on phone AND desktop. Phone uses svh (the SMALL viewport height),
-          which is FIXED and doesn't grow/shrink as the mobile browser bar collapses
-          — so the column centers cleanly without the up-and-down jump that dvh caused.
-          The 3.5rem offset accounts for AppShell's sticky top bar; the bottom tab bar
-          is already handled by AppShell's main padding. Desktop keeps dvh (stable —
-          no browser-bar chrome beside the sidebar). */}
-      <div className="relative grid min-h-[calc(100svh-3.5rem)] place-items-center overflow-clip px-5 py-10 text-cream sm:px-8 lg:min-h-[100dvh] lg:py-16">
+      {/* Centered on phone AND desktop, and keyboard-aware. Phone height is dvh
+          (DYNAMIC viewport) minus the app chrome (~8rem = top bar + bottom tab bar),
+          so the box fills exactly the VISIBLE area between them. dvh shrinks when the
+          on-screen keyboard opens → the column re-centers ABOVE the keyboard and the
+          input stays in view, then restores cleanly when it closes (svh stayed fixed,
+          which left the page stuck scrolled with black gaps). Subtracting the chrome
+          means the box never exceeds the viewport, so it never becomes scrollable —
+          which is what caused the earlier up-and-down shake. Desktop keeps 100dvh
+          (stable beside the sidebar, no browser-bar chrome). */}
+      <div className="relative grid min-h-[calc(100dvh-8rem)] place-items-center overflow-clip px-5 py-8 text-cream sm:px-8 lg:min-h-[100dvh] lg:py-16">
         <Aurora className="opacity-80" />
         <div className="pointer-events-none absolute inset-0" aria-hidden>
           <div className="absolute left-1/3 top-1/4 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[160px]" />
