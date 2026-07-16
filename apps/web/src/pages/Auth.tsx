@@ -42,6 +42,18 @@ export default function Auth() {
     if (ref) { try { localStorage.setItem(REFERRAL_CODE_KEY, ref) } catch { /* storage unavailable */ } }
   }, [params])
 
+  // Un-stick the form after a cancelled OAuth redirect. `oauth()` sets busy=true
+  // and hands off to Google; if the user backs out, the browser restores THIS page
+  // from its back-forward cache with busy frozen true, leaving every button stuck
+  // on "One sec…" until a manual refresh. `pageshow` fires on that bfcache restore —
+  // reset busy so email sign-in works immediately. (Harmless on a normal load,
+  // where busy is already false and no request is mid-flight.)
+  useEffect(() => {
+    const unstick = () => setBusy(false)
+    window.addEventListener('pageshow', unstick)
+    return () => window.removeEventListener('pageshow', unstick)
+  }, [])
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setMsg(null)

@@ -13,33 +13,41 @@ import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
 import { cn } from '../lib/cn'
 
+// Stale-while-revalidate cache (module-scoped, survives route changes) so hopping
+// back to the Dashboard is INSTANT — it renders last data immediately and refetches
+// in the background — instead of blanking to skeletons and re-hitting four endpoints
+// every single visit (the "everything takes so long between screens" complaint).
+let DASH_CACHE: { stats: DashboardStats | null; recent: Generation[]; gens: Generation[]; posts: Post[]; voices: BrandVoice[] } | null = null
+
 export default function Dashboard() {
   const { profile } = useAuth()
-  const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [recent, setRecent] = useState<Generation[]>([])
-  const [gens, setGens] = useState<Generation[]>([])
-  const [posts, setPosts] = useState<Post[]>([])
-  const [voices, setVoices] = useState<BrandVoice[]>([])
+  const [stats, setStats] = useState<DashboardStats | null>(() => DASH_CACHE?.stats ?? null)
+  const [recent, setRecent] = useState<Generation[]>(() => DASH_CACHE?.recent ?? [])
+  const [gens, setGens] = useState<Generation[]>(() => DASH_CACHE?.gens ?? [])
+  const [posts, setPosts] = useState<Post[]>(() => DASH_CACHE?.posts ?? [])
+  const [voices, setVoices] = useState<BrandVoice[]>(() => DASH_CACHE?.voices ?? [])
   const [selectedBrand, setSelectedBrand] = useState('') // '' = all brands
   const [brandStats, setBrandStats] = useState<BrandStats | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Only block on the skeleton when there's nothing cached to show.
+  const [loading, setLoading] = useState(() => !DASH_CACHE)
   const [error, setError] = useState(false)
 
   const credits = profile?.credits ?? 0
 
   // Extracted so a failed load surfaces a real retry instead of leaving every
-  // stat stuck on "…" with no way to recover.
+  // stat stuck on "…" with no way to recover. With cached data present we refetch
+  // SILENTLY (no skeleton flash); only a cold load shows the loading state.
   const load = () => {
-    setLoading(true); setError(false)
+    if (!DASH_CACHE) setLoading(true)
+    setError(false)
     Promise.all([getDashboardStats(credits), listGenerations(), listPosts(), listBrandVoices().catch(() => [])])
       .then(([s, g, p, vs]) => {
-        setStats(s)
-        setRecent(g.slice(0, 5))
-        setGens(g)
-        setPosts(p)
-        setVoices((vs as BrandVoice[]).filter((v) => v.status === 'ready'))
+        const readyVoices = (vs as BrandVoice[]).filter((v) => v.status === 'ready')
+        const recent5 = g.slice(0, 5)
+        setStats(s); setRecent(recent5); setGens(g); setPosts(p); setVoices(readyVoices)
+        DASH_CACHE = { stats: s, recent: recent5, gens: g, posts: p, voices: readyVoices }
       })
-      .catch(() => setError(true))
+      .catch(() => { if (!DASH_CACHE) setError(true) })
       .finally(() => setLoading(false))
   }
 
@@ -75,11 +83,15 @@ export default function Dashboard() {
   const hoursSaved = Math.round(totalRemixes * 0.5 + finishedVideos * 1.5)
   const topId = posts.reduce((best, p) => ((p.views ?? 0) > 0 && (p.views ?? 0) > (posts.find((x) => x.id === best)?.views ?? 0) ? p.id : best), '')
 
-  // Greet with the ACTIVE BRAND VOICE handle first (@itsabd_63) — that's the
-  // identity the creator cares about — then a set display name, then the email
-  // prefix only as a last resort.
-  const rawName = ((brand?.handle ? `@${brand.handle}` : '') || profile?.display_name?.trim() || profile?.email?.split('@')[0] || 'creator')
-  const name = rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
+  // Greet with the ACTIVE BRAND VOICE handle first (@itsabd_63) — the identity the
+  // creator cares about — then a set display name. The email prefix is a LAST
+  // resort AND only once brand voices have finished loading: otherwise the name
+  // flashed the email ("abd63…") for a beat before the handle arrived. While the
+  // voices are still loading we show no name rather than the wrong one.
+  const rawName = (brand?.handle ? `@${brand.handle}` : '')
+    || profile?.display_name?.trim()
+    || (loading ? '' : (profile?.email?.split('@')[0] || 'creator'))
+  const name = !rawName ? '' : rawName.startsWith('@') ? rawName : rawName.charAt(0).toUpperCase() + rawName.slice(1)
 
   // "+N this week" deltas per stage, from the rows we already fetched — real
   // counts, not decorations. A generation with a finished video counts toward
@@ -101,7 +113,7 @@ export default function Dashboard() {
         <Reveal>
           <p className="eyebrow tracking-widest">Dashboard</p>
           <h1 className="mt-4 font-display text-4xl leading-[1.1] tracking-tight sm:text-5xl lg:text-6xl">
-            Welcome back,{' '}<span className="gradient-text">{name}</span>.
+            Welcome back{name && <>,{' '}<span className="gradient-text">{name}</span></>}.
           </h1>
           <p className="mt-4 max-w-md text-base text-stone">
             Everything you've shipped, and what to make next.
