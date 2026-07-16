@@ -117,6 +117,16 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key
 `apps/web/vercel.json` also carries the SPA rewrite. Manual alternative: `npm run
 web:build` from the repo root and upload `apps/web/dist/` to any static host.
 
+> **`vercel.json` headers rationale** (the file itself can't hold comments —
+> Vercel's schema rejects unknown properties, and an added `"comment"` key once
+> broke every deploy): the catch-all rule serves the HTML shell with
+> `max-age=0, must-revalidate` so browsers always pick up the newest build (a
+> cached shell kept users on old code indefinitely), plus the security headers
+> (HSTS, nosniff, frame-ancestors 'none', referrer + permissions policy —
+> camera/microphone stay allowed for the in-app recorder). The `/assets/*` rule
+> is listed last so it wins for fingerprinted build assets, which are immutable
+> and safe to cache for a year.
+
 > The web app is the single client surface — it is fully responsive (phone +
 > desktop). There is no separate native app; a former Expo/iOS app was removed to
 > keep one codebase and eliminate cross-surface drift.
