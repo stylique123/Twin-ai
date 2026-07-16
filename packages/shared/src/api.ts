@@ -124,6 +124,14 @@ export async function getProfile(): Promise<Profile | null> {
   return data as Profile
 }
 
+// Record that this account has seen the first-run product tour (column-granted
+// self-update; best-effort — a failed write just means one more showing later).
+export async function markTourSeen(): Promise<void> {
+  const { data: auth } = await supabase.auth.getUser()
+  if (!auth.user) return
+  await supabase.from('profiles').update({ tour_seen_at: new Date().toISOString() }).eq('id', auth.user.id)
+}
+
 export async function saveDNA(dna: CreatorDNA): Promise<void> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
