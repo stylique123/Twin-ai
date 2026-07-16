@@ -61,9 +61,15 @@ jobs:
             # so `reset --hard origin/main` could land on a stale commit.
             git fetch origin main
             git reset --hard FETCH_HEAD
-            # Old-editor cleanup: drop Revideo wiring from the box env (the render
-            # service was removed with the old AI editor).
-            sed -i '/^REVIDEO_/d' /opt/twinai-worker.env || true
+            # Old-editor cleanup: drop Revideo wiring from the box env, remove the
+            # Revideo container + image, and drop autoedit from the box's job-type
+            # override (the whole render service was removed with the old AI editor).
+            sed -i '/^REVIDEO_/d;/^PEXELS_API_KEY/d;/^MUSIC_BED_URL/d;/^EDIT_/d' /opt/twinai-worker.env || true
+            sed -i 's/^\(WORKER_JOB_TYPES=.*\),\?autoedit,\?/\1/;s/autoedit,//;s/,autoedit//' /opt/twinai-worker.env || true
+            docker rm -f twinai-revideo 2>/dev/null || true
+            docker rmi -f twinai-revideo 2>/dev/null || true
+            echo "revideo container: $(docker ps -a --filter name=twinai-revideo -q | grep -q . && echo STILL-PRESENT || echo removed)"
+            echo "port 4500 listener: $(ss -tlnp 2>/dev/null | grep -q ':4500 ' && echo STILL-LISTENING || echo none)"
             # Keep the last-good image so a boot-crashing build can roll back
             # instead of leaving NOTHING running (the old rm-then-run had no net).
             docker tag twinai-worker twinai-worker:prev 2>/dev/null || true
