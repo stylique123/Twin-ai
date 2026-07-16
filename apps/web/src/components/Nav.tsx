@@ -110,10 +110,9 @@ export function Nav() {
               {session ? (
                 <Link to="/app" className="btn-gradient mt-1 !rounded-xl">Open studio</Link>
               ) : (
-                <>
-                  <Link to="/auth?mode=signin" className="rounded-xl px-3 py-2.5 text-sand hover:bg-white/5">Sign in</Link>
-                  <Link to="/auth?mode=signup" className="btn-gradient mt-1 !rounded-xl">Start free</Link>
-                </>
+                /* "Start free" already lives in the top bar — don't repeat it here.
+                   Sign in takes the prominent full-width spot instead. */
+                <Link to="/auth?mode=signin" className="btn-ghost mt-1 w-full justify-center !rounded-xl">Sign in</Link>
               )}
             </div>
           </motion.div>
