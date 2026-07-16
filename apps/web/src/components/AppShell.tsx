@@ -56,7 +56,9 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
   const left = videosFromCredits(profile?.credits ?? 0)
   // Hide agency-only items (Workspaces) from solo/aspiring/pro plans.
   const navItems = NAV.filter((n) => !n.agencyOnly || profile?.plan === 'agency')
-  const isActive = (to: string) => to === '/app' ? pathname === '/app' || pathname.startsWith('/result') : pathname.startsWith(to)
+  // Studio's tab links to /app, which redirects into /v2 — both (plus an open
+  // result) count as "in the studio" so the tab highlights correctly.
+  const isActive = (to: string) => to === '/app' ? pathname === '/app' || pathname.startsWith('/v2') || pathname.startsWith('/result') : pathname.startsWith(to)
   // Hard navigation (full reload), not SPA navigate(): a client-side route change
   // here raced the AnimatePresence route exit while `profile` was torn down,
   // leaving a blank screen on logout. A full reload guarantees a clean render.

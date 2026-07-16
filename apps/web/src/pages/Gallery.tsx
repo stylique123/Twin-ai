@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Wand2, Eye, Heart, Play, Search, Mic, Repeat, Layers, Film, Sparkles, TrendingUp, ChevronRight, Flame, Zap, X, ExternalLink } from 'lucide-react'
+import { Wand2, Eye, Heart, Play, Search, Mic, Repeat, Layers, Film, Sparkles, TrendingUp, ChevronRight, X, ExternalLink } from 'lucide-react'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
@@ -255,12 +255,6 @@ function opportunity(reach: number, loves: number, fit: number): Opp {
   ].sort((a, b) => b.k - a.k)
   return { score, tier, why: `${reasons[0].t} · ${reasons[1].t}`, er }
 }
-const SCORE_SKIN: Record<Opp['tier'], string> = {
-  hot: 'border-coral/50 bg-coral/20 text-coral',
-  strong: 'border-amber/50 bg-amber/20 text-amber',
-  solid: 'border-white/20 bg-white/10 text-sand',
-}
-
 const ACCENT_GLOW: Record<string, string> = {
   'text-amber': 'hover:border-amber/40 hover:shadow-[0_0_24px_rgba(255,179,71,0.15)]',
   'text-teal':  'hover:border-teal/40 hover:shadow-[0_0_24px_rgba(101,229,216,0.15)]',
@@ -457,7 +451,6 @@ export default function Gallery() {
             <h1 className="font-display text-4xl leading-tight tracking-tight sm:text-5xl lg:text-6xl">
               Find what's working. <span className="gradient-text">Make it yours.</span>
             </h1>
-            <p className="mt-4 max-w-xl text-base text-sand leading-relaxed">Proven viral formats, <span className="text-cream">scored for your niche</span> and ranked by what's most likely to win — rebuilt in your voice with one tap.</p>
           </Reveal>
         </div>
       </div>
@@ -471,7 +464,6 @@ export default function Gallery() {
               Your playbook{myNiche ? <> — what wins in <span className="text-amber">{myNiche}</span></> : ' — formats that grow you'}
             </h2>
           </div>
-          <p className="mb-3 -mt-2 text-xs text-stone">Tap a format to see real examples of it below.</p>
           <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
             {playbookFor(myNiche).map((f) => {
               const on = activeFormat?.name === f.name
@@ -527,7 +519,6 @@ export default function Gallery() {
             {visible.map((c) => {
               const thumb = thumbnails[c.id]
               const glowClass = ACCENT_GLOW[c.accent] ?? 'hover:border-white/20'
-              const opp = scores.get(c.id)
               return (
                 <RevealItem key={c.id}>
                   <Tilt max={5} className="h-full">
@@ -543,13 +534,9 @@ export default function Gallery() {
                       {thumb && <img src={thumb} alt={c.label} className="absolute inset-0 h-full w-full object-cover" loading="lazy" />}
                       <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/55 to-ink/10" />
 
-                      {/* Top badges */}
+                      {/* Top badge — platform only (the opportunity score still drives
+                          the feed's RANKING, it's just not shown as a number). */}
                       <span className="absolute left-2.5 top-2.5 rounded-full border border-white/15 bg-ink/75 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-cream backdrop-blur-sm">{c.platform}</span>
-                      {opp && (
-                        <span className={cn('absolute right-2.5 top-2.5 inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[11px] font-bold backdrop-blur-sm', SCORE_SKIN[opp.tier])} title="Opportunity score">
-                          {opp.tier === 'hot' ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {opp.score}
-                        </span>
-                      )}
 
                       {/* Play (original) — surfaces on hover, centred over the reel. */}
                       <div className="absolute inset-0 grid place-items-center">
@@ -594,14 +581,12 @@ export default function Gallery() {
       {/* Card detail modal — opens on click instead of jumping straight to the video.
           Explains WHY it works + stats, then lets you remix it or open the original. */}
       {detail && (() => {
-        const opp = scores.get(detail.id)
         return (
           <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => setDetail(null)}>
             <div className="glass relative max-h-[88vh] w-full max-w-lg overflow-y-auto p-6 sm:p-7" onClick={(e) => e.stopPropagation()}>
               <button onClick={() => setDetail(null)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-white/15 bg-ink/75 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-cream">{detail.platform}</span>
-                {opp && <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', SCORE_SKIN[opp.tier])}>{opp.tier === 'hot' ? <Flame className="h-3 w-3" /> : <Zap className="h-3 w-3" />} {opp.score} score</span>}
               </div>
               <p className={cn('mt-3 text-[11px] font-bold uppercase tracking-wider', detail.accent)}>{detail.label}</p>
               <h3 className="mt-1 font-heading text-lg leading-snug text-cream">{detail.hook}</h3>
@@ -614,7 +599,6 @@ export default function Gallery() {
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-stone">Why it works</p>
                 <p className="mt-1.5 text-sm leading-relaxed text-sand">{detail.why}</p>
               </div>
-              {opp && <p className={cn('mt-3 text-xs font-medium', detail.accent)}>Why for you · {opp.why}</p>}
               <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                 <button onClick={() => { remix(detail); setDetail(null) }} className="btn-gradient flex-1"><Wand2 className="h-4 w-4" /> Remix in my voice</button>
                 <button onClick={() => window.open(detail.url, '_blank', 'noopener,noreferrer')} className="btn-ghost flex-1"><ExternalLink className="h-4 w-4" /> Open original</button>
