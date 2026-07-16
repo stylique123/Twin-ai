@@ -660,45 +660,23 @@ export default function Result() {
             </div>
           )}
 
-          {/* Concept + packaging — the video idea and the title/thumbnail that earn
-              the click, shown before the script in EVERY blueprint view (parity with
-              the V2 plan). Full width so it renders on both mobile and desktop. */}
-          {(b.concept?.premise || (b.packaging?.titles?.length ?? 0) > 0) && (
-            <div className="mt-6 grid items-start gap-3 lg:grid-cols-2">
-              {b.concept?.premise && (
-                <div className="flex flex-col rounded-card border border-teal/25 bg-teal/[0.06] p-4">
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal">Your video idea</div>
-                  <p className="text-sm font-semibold leading-snug text-cream">{b.concept.premise}</p>
-                  {b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Film it solo: </span>{b.concept.your_scale}</p>}
-                  {b.concept.translations?.length ? (
-                    <div className="mt-2 space-y-1">
-                      {b.concept.translations.map((t, i) => (
-                        <div key={i} className="text-xs leading-snug"><span className="text-stone">{t.theirs}</span><span className="text-teal"> → </span><span className="text-cream">{t.yours}</span></div>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              )}
-              {(b.packaging?.titles?.length ?? 0) > 0 && (
-                <div className="flex flex-col rounded-card border border-amber/25 bg-amber/[0.06] p-4">
-                  <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-amber">Title &amp; cover image</div>
-                  <p className="text-[10px] uppercase tracking-wide text-stone">Suggested title</p>
-                  <p className="text-sm font-bold leading-snug text-cream">{b.packaging!.titles[0]}</p>
-                  {b.packaging!.titles.length > 1 && (
-                    <div className="mt-1.5 space-y-0.5">{b.packaging!.titles.slice(1).map((t, i) => <p key={i} className="text-xs text-sand/80">{t}</p>)}</div>
-                  )}
-                  {b.packaging!.thumbnail && (
-                    <div className="mt-2 space-y-0.5 rounded-lg border border-white/10 bg-white/[0.03] p-2.5 text-xs">
-                      <p className="text-[10px] uppercase tracking-wide text-stone">Cover photo to take</p>
-                      <p className="text-cream"><span className="text-stone">Big words: </span>“{b.packaging!.thumbnail.text_overlay}”</p>
-                      <p className="text-sand/85"><span className="text-stone">The photo: </span>{b.packaging!.thumbnail.concept}</p>
-                      <p className="text-sand/85"><span className="text-stone">How to frame it: </span>{b.packaging!.thumbnail.composition}</p>
-                      <p className="text-sand/85"><span className="text-stone">Colours: </span>{b.packaging!.thumbnail.colors}</p>
-                      <p className="pt-1 text-[10px] text-stone">Generate the cover image at the top ↑</p>
-                    </div>
-                  )}
-                </div>
-              )}
+          {/* Your video idea. The old "Title & cover image" card (suggested titles +
+              a shot-by-shot cover-photo brief) was removed — the app generates the
+              actual cover thumbnail now, so those manual instructions were redundant. */}
+          {b.concept?.premise && (
+            <div className="mt-6">
+              <div className="flex flex-col rounded-card border border-teal/25 bg-teal/[0.06] p-4">
+                <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-teal">Your video idea</div>
+                <p className="text-sm font-semibold leading-snug text-cream">{b.concept.premise}</p>
+                {b.concept.your_scale && <p className="mt-1.5 text-xs leading-snug text-sand/85"><span className="text-stone">Film it solo: </span>{b.concept.your_scale}</p>}
+                {b.concept.translations?.length ? (
+                  <div className="mt-2 space-y-1">
+                    {b.concept.translations.map((t, i) => (
+                      <div key={i} className="text-xs leading-snug"><span className="text-stone">{t.theirs}</span><span className="text-teal"> → </span><span className="text-cream">{t.yours}</span></div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           )}
 
