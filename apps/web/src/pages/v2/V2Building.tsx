@@ -197,9 +197,11 @@ export default function V2Building() {
   const isVoiceIssue = /voice/i.test(error ?? '')
 
   return (
-    // Full brand canvas, vertically centered — one composed card, no stranded
-    // column or dead space. Matches the "Creating your video" render screen.
-    <div className="relative grid min-h-[100dvh] w-full place-items-center overflow-clip bg-ink px-5 py-10 text-cream">
+    // Brand canvas, vertically centered in the space BETWEEN the app chrome (top
+    // bar + tab bar, ~8rem on phone) so the card sits clean and the nav/tab bar stay
+    // reachable — the creator can leave to any tab while it builds. Desktop centers
+    // full-height beside the sidebar.
+    <div className="relative grid min-h-[calc(100dvh-8rem)] w-full place-items-center overflow-clip bg-ink px-5 py-8 text-cream lg:min-h-[100dvh] lg:py-10">
       <Aurora className="opacity-70" />
       <div className="pointer-events-none absolute inset-0" aria-hidden>
         <div className="absolute left-1/2 top-1/3 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[150px]" />

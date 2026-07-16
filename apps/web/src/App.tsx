@@ -169,7 +169,10 @@ export default function App() {
               Library. Only the transient building screen stays chrome-less: it's a
               modal progress moment, not a destination. */}
           <Route path="/v2" element={<Protected><AppShell><Page><V2Create /></Page></AppShell></Protected>} />
-          <Route path="/v2/building" element={<Protected><AppShell mobileChrome={false}><Page><V2Building /></Page></AppShell></Protected>} />
+          {/* Building keeps the full app chrome (top bar + tab bar) so the creator can
+              leave to any tab while it builds in the background — the copy promises
+              "leave anytime" and the build already survives in-app navigation. */}
+          <Route path="/v2/building" element={<Protected><AppShell><Page><V2Building /></Page></AppShell></Protected>} />
           {/* Legacy deep links: the standalone plan/capture/review screens were folded
               into Result (/result/:id) and the recorder (/record/:id). The finished
               video + live render progress now live on Result too, so /v2/review
