@@ -51,6 +51,9 @@ export default function V2Building() {
   const state = (loc.state || {}) as BuildState
   const [active, setActive] = useState(0)
   const [pct, setPct] = useState(6)
+  // True while the reference is being scraped/transcribed (step 0 is held the whole
+  // time). Drives a slow crawl so the bar never freezes at 12% and reads as stuck.
+  const [ingesting, setIngesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
   // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
@@ -69,14 +72,23 @@ export default function V2Building() {
 
   // Ease the % bar toward the current step's target so it always creeps forward
   // (never a dead bar), and snaps to 100 the instant the plan is ready.
+  //
+  // The reference scrape holds step 0 for the whole read; if the bar just sat at
+  // 12% it read as frozen ("people think it's stuck"). So while ingesting, step 0
+  // gets a SLOW independent crawl up to a ~40% ceiling — always visibly moving,
+  // but paced so it doesn't reach the ceiling before the read realistically ends.
+  // Once the steps advance, the normal per-step targets take over.
   useEffect(() => {
     if (error) return
-    const target = STEP_PCT[Math.min(active, STEP_PCT.length - 1)]
+    const scraping = active === 0 && ingesting
+    const target = scraping ? 40 : STEP_PCT[Math.min(active, STEP_PCT.length - 1)]
+    const factor = scraping ? 0.012 : 0.08 // gentler climb during the long read
+    const floor = scraping ? 0.12 : 0.4
     const id = setInterval(() => {
-      setPct((p) => (p >= target ? p : Math.min(target, p + Math.max(0.4, (target - p) * 0.08))))
+      setPct((p) => (p >= target ? p : Math.min(target, p + Math.max(floor, (target - p) * factor))))
     }, 90)
     return () => clearInterval(id)
-  }, [active, error])
+  }, [active, ingesting, error])
 
   useEffect(() => {
     // No input (e.g. refresh) → go back to Create.
@@ -112,12 +124,16 @@ export default function V2Building() {
         //    strands the creator for minutes.
         let transcript_id: string | undefined
         if (willIngest) {
+          setIngesting(true)
           try {
             const { jobId, transcriptId } = await ingestReference(refUrl)
             transcript_id = transcriptId // cache hit → immediate
             if (!transcript_id) {
-              for (let i = 0; i < 30; i++) { // ~75s ceiling, then proceed anyway
-                await new Promise((r) => setTimeout(r, 2500))
+              // Poll on a tighter 1.2s cadence so a transcript that finishes early is
+              // picked up promptly (was 2.5s → up to 2.5s wasted after it was ready).
+              // ~72s ceiling preserved, then we proceed in pattern mode regardless.
+              for (let i = 0; i < 60; i++) {
+                await new Promise((r) => setTimeout(r, 1200))
                 if (cancelled.current) return // explicit Cancel → stop, no spend
                 const job = await getJob(jobId)
                 if (!job) continue
@@ -128,6 +144,8 @@ export default function V2Building() {
           } catch (e) {
             // Ingest itself errored — log and build from the reference without it.
             console.warn('[build] reference read failed; using pattern mode', e)
+          } finally {
+            setIngesting(false)
           }
         }
 
