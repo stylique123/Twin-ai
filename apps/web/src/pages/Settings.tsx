@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext'
 import { saveDNA, startCheckout, listBrandVoices, startDna, pollDna, saveBrandKit, uploadBrandLogo, getWorkspace, createWorkspaceInvite, removeWorkspaceMember, type WorkspaceState } from '../lib/api'
 import { PLANS, ADD_ONS, videosFromCredits, PAYMENTS_LIVE } from '../lib/brand'
 import type { CreatorDNA, Platform, VoiceProfile, BrandKit } from '../lib/types'
-import { CAPTION_STYLE_OPTIONS, CAPTION_COLOR_OPTIONS } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
 import { cn } from '../lib/cn'
@@ -312,8 +311,8 @@ export default function Settings() {
           </section>
         </Reveal>
 
-        {/* Brand kit — default caption look applied to every edit (rides the EDL,
-            no render change). The editor panel's #1 churn ask, render-safe slice. */}
+        {/* Brand kit — the creator's real colors + logo. Palette steers blueprint
+            suggestions today; the rebuilt editor will consume the kit for renders. */}
         <Reveal delay={0.13}>
           <section className="glass mt-5 p-5 sm:p-6">
             <div className="flex items-center justify-between gap-2.5">
@@ -324,32 +323,11 @@ export default function Settings() {
               {kitSaved && <span className="inline-flex items-center gap-1 text-xs text-teal"><Check className="h-3.5 w-3.5" /> Saved</span>}
               {kitErr && <span className="text-xs text-coral">Couldn’t save — change it again to retry.</span>}
             </div>
-            <p className="mt-2 text-sm text-stone">Your default caption look — applied to every video you edit.</p>
+            <p className="mt-2 text-sm text-stone">Your real brand colors and logo — used across your blueprints and videos.</p>
             {!defaultVoiceId ? (
               <p className="mt-4 text-sm text-stone/70">Scan a brand voice first to set a brand kit.</p>
             ) : (
               <div className="mt-4 space-y-4">
-                <div>
-                  <label className="eyebrow mb-2 block">Caption style</label>
-                  <div className="flex flex-wrap gap-2">
-                    {CAPTION_STYLE_OPTIONS.map((s) => (
-                      <button key={s.id} onClick={() => saveKit({ ...brandKit, caption_style: s.id })}
-                        className={cn('rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors', brandKit.caption_style === s.id ? 'border-coral/60 bg-coral/15 text-cream' : 'border-white/10 bg-white/5 text-stone hover:text-cream')}>
-                        {s.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <label className="eyebrow mb-2 block">Highlight color</label>
-                  <div className="flex flex-wrap gap-2.5">
-                    {CAPTION_COLOR_OPTIONS.map((c) => (
-                      <button key={c.id} onClick={() => saveKit({ ...brandKit, color: c.id })} title={c.label}
-                        className={cn('h-9 w-9 rounded-full ring-2 ring-offset-2 ring-offset-ink transition-all', brandKit.color === c.id ? 'scale-110 ring-cream' : 'ring-transparent hover:ring-white/30')}
-                        style={{ backgroundColor: c.hex }} />
-                    ))}
-                  </div>
-                </div>
                 <div>
                   <label className="eyebrow mb-2 block">Your brand colors <span className="font-normal normal-case text-stone">— your real palette, in hex</span></label>
                   {/* Honest fallback: the scan tried to read the palette from the
@@ -363,7 +341,7 @@ export default function Settings() {
                     </div>
                   )}
                   <div className="flex flex-wrap gap-5">
-                    {([['highlight', 'Caption highlight'], ['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => {
+                    {([['primary', 'Primary'], ['secondary', 'Secondary']] as const).map(([key, label]) => {
                       // Only show a swatch for a colour the creator has ACTUALLY set
                       // (scanned or hand-picked). Never fabricate a default hex — an
                       // unset colour showed a fake teal that looked like "a colour I
@@ -397,10 +375,10 @@ export default function Settings() {
                       )
                     })}
                   </div>
-                  <p className="mt-1.5 text-[11px] text-stone">Not set yet? Tap ＋ to add a colour, or hit “Refresh voice &amp; stats” to read them from your posts. Caption highlight overrides the preset above in every render; primary/secondary steer background &amp; wardrobe suggestions in your blueprints.</p>
+                  <p className="mt-1.5 text-[11px] text-stone">Not set yet? Tap ＋ to add a colour, or hit “Refresh voice &amp; stats” to read them from your posts. Primary/secondary steer background &amp; wardrobe suggestions in your blueprints.</p>
                 </div>
                 <div>
-                  <label className="eyebrow mb-2 block">Logo <span className="font-normal normal-case text-stone">— burned into the top-right of every export</span></label>
+                  <label className="eyebrow mb-2 block">Logo <span className="font-normal normal-case text-stone">— part of your brand kit</span></label>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="btn-ghost cursor-pointer text-sm">
                       {logoBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
@@ -416,7 +394,7 @@ export default function Settings() {
                   </div>
                   <p className="mt-1 text-[11px] text-stone">PNG with transparency works best. Max 3MB.</p>
                 </div>
-                <p className="text-xs text-stone">Applied as the default on new edits, on every plan. You can still tweak any single video in Refine. (16:9 / long-form export + trending audio are coming next.)</p>
+                <p className="text-xs text-stone">Saved with your brand — the rebuilt AI editor will apply your kit to every video automatically.</p>
               </div>
             )}
           </section>

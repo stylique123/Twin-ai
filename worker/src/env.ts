@@ -18,9 +18,9 @@ export const env = {
   // instead, which pull real captions/transcripts reliably. TikTok still uses
   // yt-dlp + whisper (that works from datacenter IPs).
   // Optional cheaper/faster model for the MECHANICAL Gemini calls (reference-
-  // structure extraction + the edit Director). Pointing this at your flash model
-  // cuts COGS ~$0.06 per remix with no quality loss on these schema-constrained
-  // tasks. Defaults to the main model (no behaviour change) until set.
+  // structure extraction). Pointing this at your flash model cuts COGS with no
+  // quality loss on these schema-constrained tasks. Defaults to the main model
+  // (no behaviour change) until set.
   fastModel: (process.env.GEMINI_FAST_MODEL ?? process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview').trim(),
   apifyToken: (process.env.APIFY_TOKEN ?? '').trim(),
   // Actor that returns YouTube captions as [{ start, dur, text }] in its KV output.
@@ -29,39 +29,12 @@ export const env = {
   // { text, duration, segments: [{ start, end, text }] }. ID for
   // apple_yang/instagram-transcripts-scraper.
   apifyInstagramActor: (process.env.APIFY_INSTAGRAM_ACTOR ?? 'S9A11NvceWaGorwwh').trim(),
-  // Keyword->emoji caption auto-stamp (money->💰). Off by default: it cheapens an
-  // otherwise pro edit (the "TikTok 2022" look). Director/refine-chosen emoji are
-  // unaffected; this only gates the keyword-regex fallback. Set EDIT_EMOJI=true to
-  // restore it.
-  editEmoji: (process.env.EDIT_EMOJI ?? 'false').trim() === 'true',
-  // Optional: free Pexels API key enables b-roll cutaways.
-  pexelsKey: (process.env.PEXELS_API_KEY ?? '').trim(),
-  // AUTO b-roll is OFF by default: dropping random stock footage over a personal
-  // talking-head read looks out of place. A creator can still ADD b-roll per video
-  // in Refine (that path is unaffected). Set EDIT_BROLL=true to auto-insert again.
-  editBroll: (process.env.EDIT_BROLL ?? 'false').trim() === 'true',
-  // Optional: URL of a royalty-free music bed (mp3) mixed + ducked under the VO.
-  // The single biggest lever for making cut clips feel like one coherent video.
-  musicBedUrl: (process.env.MUSIC_BED_URL ?? '').trim(),
-  // Revideo render service (premium captions pass). When set, every edit's ffmpeg
-  // result is auto-upgraded to the Revideo render. Empty = ffmpeg-only.
-  revideoUrl: (process.env.REVIDEO_URL ?? '').trim(),
-  // SAFETY GATE: the premium render OVERWRITES the good ffmpeg result in place, so a
-  // container running stale code (e.g. before the caption word-mapping fix) would
-  // silently ship a caption-less video. Premium overwrite only happens when this is
-  // explicitly 'true' — flip it on ONLY after verifying the rebuilt container renders
-  // captioned output. Default off: REVIDEO_URL alone will NOT overwrite.
-  revideoTrusted: (process.env.REVIDEO_TRUSTED ?? '').trim() === 'true',
-  // Hard timeout on the Revideo render call. Must stay well under the job lease
-  // (visibilitySecs) so a hung render can't run past it and get the job reclaimed
-  // + double-run. 8 min covers a short-form premium render with headroom.
-  revideoTimeoutMs: Number(process.env.REVIDEO_TIMEOUT_MS ?? '480000'),
-
   // Which job types this worker process handles.
   // 'transcribe' removed — it was registered + claimed but nothing ever enqueues it
-  // (ingest-reference enqueues type 'ingest'). build_dna stays edge-driven (dna-poll),
-  // never add it here or the worker would dead-letter it.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,autoedit,scrape_dna').split(',').map((s) => s.trim()),
+  // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI
+  // editor. build_dna stays edge-driven (dna-poll), never add it here or the worker
+  // would dead-letter it.
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight
@@ -75,26 +48,14 @@ export const env = {
   maxJobMs: Number(process.env.WORKER_MAX_JOB_MS ?? '2100000'), // 35 min, < lease
 
   // ASR. 'base' is the speed/quality sweet spot for short-form English (≈1.5-2x
-  // faster than 'small'); the filler pre-pass only needs rough word boundaries so
-  // it runs on the much faster 'tiny' model.
+  // faster than 'small').
   whisperModel: process.env.WHISPER_MODEL ?? 'base', // tiny|base|small|medium
-  whisperFillerModel: process.env.WHISPER_FILLER_MODEL ?? 'tiny',
   whisperDevice: process.env.WHISPER_DEVICE ?? 'cpu', // cpu|cuda
   // Pin the spoken language so faster-whisper never mis-detects an English take
-  // as Arabic/Urdu/etc and burns in garbage captions. 'auto' restores detection.
+  // as Arabic/Urdu/etc. 'auto' restores detection.
   whisperLanguage: (process.env.WHISPER_LANGUAGE ?? 'en').trim(),
-  // Per-scene/per-shot captions default to spreading the script's words EVENLY
-  // across the recorded window — accurate for a steady pace but drifts on a long
-  // line read unevenly. When enabled, each window is transcribed individually
-  // (real word timestamps) and only falls back to the even spread if that window's
-  // audio has no detected speech. Now ON by default: even-spread captions drift
-  // off the real speech (the "muffled / mistimed captions" complaint) whenever a
-  // creator ad-libs or pauses. Real per-window transcription keeps captions locked
-  // to what was actually said. Set EDIT_WINDOW_WHISPER=false to revert to the
-  // cheaper even-spread if render time becomes a problem.
-  editWindowWhisper: (process.env.EDIT_WINDOW_WHISPER ?? 'true').trim() === 'true',
   maxMediaSecs: Number(process.env.WORKER_MAX_MEDIA_SECS ?? '900'), // skip > 15 min by default
-  // Hard cap on any single Storage download (raw take, b-roll, music bed). The
+  // Hard cap on any single Storage download (raw take, reference media). The
   // single worker buffers/streams these to disk; an oversized or corrupt object
   // would otherwise OOM the process and wedge the whole queue. 600 MB comfortably
   // covers a 15-min phone take while bounding worst-case memory/disk per job.

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Copy, Check, Quote, FileText, Clapperboard,
@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, pollEditJob, listPosts, autoEditFromPath } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts } from '../lib/api'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 
 // Stale-while-revalidate cache so reopening a plan is INSTANT instead of showing a
@@ -182,18 +182,14 @@ const MOCK_GENERATION = {
 
 export default function Result() {
   const { id } = useParams()
-  const [searchParams, setSearchParams] = useSearchParams()
-  const jobId = searchParams.get('job')
   const { profile } = useAuth()
   const [gen, setGen] = useState<Generation | null>(() => (id ? GEN_CACHE[id] ?? null : null))
   // Only block on the full-screen loader when we have NOTHING cached to show.
   const [loading, setLoading] = useState(() => !(id && GEN_CACHE[id]))
   const [posted, setPosted] = useState(false)
-  // A recording that was autosaved (uploaded to the takes bucket) but whose edit was
-  // never confirmed — offer to resume it so an accidental refresh can't lose it.
+  // A recording that was autosaved (uploaded to the takes bucket) — surface it here
+  // so an accidental refresh can't make a finished recording invisible.
   const [resumeTake, setResumeTake] = useState<SavedTake | null>(null)
-  const [resuming, setResuming] = useState(false)
-  const [resumeErr, setResumeErr] = useState<string | null>(null)
   const [chosenHook, setChosenHook] = useState('')
   const [approved, setApproved] = useState(false)
   const [mobileTab, setMobileTab] = useState<'script' | 'strategy' | 'spec' | 'publish'>('script')
@@ -257,48 +253,9 @@ export default function Result() {
     const ok = await setGenerationApproved(gen.id, next)
     if (!ok) setApproved(!next) // revert on failure
   }
-  // Live across the long refine poll so we don't setState (or keep polling) after
-  // the user navigates away mid-render.
+  // Guards setState after the user navigates away mid-fetch.
   const alive = useRef(true)
   useEffect(() => () => { alive.current = false }, [])
-  // Inline edit-render progress. This is what used to be the separate "Your video is
-  // ready!" screen (V2Review): the auto-edit job runs and we show live progress
-  // RIGHT HERE, then the finished video appears in the media row below — script,
-  // video and cover all on this one page. Driven by the `?job=` param that the
-  // recorder (and Resume) hand off; cleared once the render lands.
-  const [renderLabel, setRenderLabel] = useState('Starting the edit…')
-  const [renderPct, setRenderPct] = useState(5)
-  const [renderPhase, setRenderPhase] = useState<'idle' | 'rendering' | 'failed' | 'timeout'>('idle')
-  useEffect(() => {
-    // No job to watch, or the video already finished → nothing to render here.
-    if (!id || !jobId) { setRenderPhase('idle'); return }
-    if (gen?.edit_path) { setRenderPhase('idle'); return }
-    setRenderPhase('rendering'); setRenderPct(5); setRenderLabel('Starting the edit…')
-    let stop = false
-    // Synthetic creep so the bar always shows motion during the worker's silent
-    // warm-up (download take + load models); real pct overrides via Math.max.
-    const creep = setInterval(() => { if (!stop) setRenderPct((p) => (p < 90 ? p + Math.max(0.4, (90 - p) * 0.03) : p)) }, 1400)
-    ;(async () => {
-      const job = await pollEditJob(
-        jobId,
-        (label, pct) => { if (label) setRenderLabel(label); if (pct) setRenderPct((prev) => Math.max(prev, Math.min(99, pct))) },
-        { attempts: 300, shouldStop: () => stop || !alive.current },
-      )
-      if (stop || !alive.current) return
-      clearInterval(creep)
-      // Poll window elapsed with no terminal state — it's still rendering, not failed.
-      if (!job) { setRenderPhase('timeout'); return }
-      if (job.status === 'failed') { setRenderPhase('failed'); setRenderLabel(job.error || 'The edit failed.'); return }
-      // Done → refetch so edit_path resolves and the video card below shows the render,
-      // then drop the job param so a refresh doesn't re-enter the rendering state.
-      const g = await getGeneration(id).catch(() => null)
-      if (g && alive.current) { GEN_CACHE[id] = g; setGen(g) }
-      setRenderPct(100); setRenderPhase('idle')
-      setSearchParams({}, { replace: true })
-      setTimeout(() => document.getElementById('your-video')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 200)
-    })()
-    return () => { stop = true; clearInterval(creep) }
-  }, [id, jobId, gen?.edit_path]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!id) return
@@ -342,9 +299,8 @@ export default function Result() {
       .finally(() => setLoading(false))
   }, [id])
 
-  // Offer to resume an autosaved recording whose edit was never confirmed. If the
-  // video is already finished (edit_path set), the take was consumed — drop the
-  // pointer instead of offering a stale resume.
+  // Surface an autosaved recording. If the video is already finished (edit_path
+  // set), the take was consumed — drop the pointer instead of offering a stale take.
   useEffect(() => {
     if (!id) return
     const t = readTakePointer(id)
@@ -353,38 +309,19 @@ export default function Result() {
     else setResumeTake(t)
   }, [id, gen?.edit_path])
 
-  // The recorded-but-not-edited take, from either source: the generation row
-  // (durable, any device) or the local saved-take pointer (same browser). This is
-  // what the header's "Edit my video" turns into the finished video.
-  const takeForEdit = !gen?.edit_path ? (gen?.take_path ?? resumeTake?.takePath ?? null) : null
+  // The recorded-but-not-yet-processed take, from either source: the generation row
+  // (durable, any device) or the local saved-take pointer (same browser).
+  const rawTakePath = !gen?.edit_path ? (gen?.take_path ?? resumeTake?.takePath ?? null) : null
 
-  // Edit: enqueue the auto-edit from the already-uploaded take (no re-record, no
-  // re-upload). Stay on THIS page and surface the live render progress inline via
-  // the `?job=` param — no separate review screen to bounce to.
-  const resumeEdit = async () => {
-    if (!id || !takeForEdit || resuming) return
-    setResuming(true); setResumeErr(null)
-    try {
-      const { jobId } = await autoEditFromPath(id, takeForEdit, resumeTake?.shots)
-      clearTakePointer(id)
-      setResumeTake(null)
-      setResuming(false)
-      setSearchParams({ job: jobId }, { replace: true })
-    } catch (e) {
-      setResumeErr(e instanceof Error ? e.message : 'Could not start the edit — please try again.')
-      setResuming(false)
-    }
-  }
-
-  // Sign the raw take so it PLAYS on this page while it's still unedited — the
-  // recording shouldn't be invisible just because the edit hasn't run yet.
+  // Sign the raw take so it PLAYS on this page — the recording shouldn't be
+  // invisible just because no finished video exists yet.
   const [rawTakeUrl, setRawTakeUrl] = useState<string | null>(null)
   useEffect(() => {
-    if (!takeForEdit) { setRawTakeUrl(null); return }
+    if (!rawTakePath) { setRawTakeUrl(null); return }
     let live = true
-    signTakeUrl(takeForEdit).then((u) => { if (live) setRawTakeUrl(u) }).catch(() => {})
+    signTakeUrl(rawTakePath).then((u) => { if (live) setRawTakeUrl(u) }).catch(() => {})
     return () => { live = false }
-  }, [takeForEdit])
+  }, [rawTakePath])
 
   // Pick which hook to shoot: persist it so the teleprompter, cover and b-roll all
   // use THIS hook. Optimistic — the UI updates immediately.
@@ -488,10 +425,8 @@ export default function Result() {
             
             <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
               {/* ONE clear action per stage, never mixed:
-                  1. edited & final  → Post now (or the Posted chip). Nothing else.
-                  2. edit rendering  → no CTA here; the progress card below is the state.
-                  3. recorded, not edited → Edit my video (finish it from the saved take).
-                  4. nothing recorded → Record Script / Upload Take. */}
+                  1. finished video → Post now (or the Posted chip). Nothing else.
+                  2. otherwise → Record Script / Upload Take. */}
               {gen.edit_path ? (
                 posted ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-xs font-semibold text-teal">
@@ -502,12 +437,6 @@ export default function Result() {
                     <Send className="h-3.5 w-3.5" /> Post now
                   </button>
                 )
-              ) : renderPhase === 'rendering' ? null : takeForEdit ? (
-                <button onClick={resumeEdit} disabled={resuming} className="btn-gradient py-2 text-xs font-semibold">
-                  {resuming
-                    ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</>
-                    : <><SlidersHorizontal className="h-3.5 w-3.5" /> Edit my video</>}
-                </button>
               ) : (
                 <>
                   <Link to={`/record/${gen.id}`} className="btn-gradient py-2 text-xs font-semibold"><Video className="h-3.5 w-3.5" /> Record Script</Link>
@@ -516,7 +445,6 @@ export default function Result() {
               )}
             </div>
           </div>
-          {resumeErr && <p className="mt-2 rounded-lg bg-coral/10 px-3 py-2 text-xs text-coral">{resumeErr}</p>}
 
           <motion.div
             initial={{ opacity: 0, y: 12 }}
@@ -553,60 +481,24 @@ export default function Result() {
             </div>
           </motion.div>
 
-          {/* INLINE RENDER PROGRESS — replaces the old standalone "Your video is
-              ready!" screen. While the auto-edit runs, progress shows here; when it
-              lands, the finished video appears in the media row just below. */}
-          {renderPhase !== 'idle' && (
-            <div className="mt-8 rounded-card border border-coral/25 bg-ink2/70 p-5 backdrop-blur-sm">
-              {renderPhase === 'rendering' ? (
-                <>
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-signature shadow-glow"><SlidersHorizontal className="h-4 w-4 text-ink" /></span>
-                    <div className="min-w-0">
-                      <div className="text-sm font-semibold text-cream">Creating your video</div>
-                      <div className="truncate text-xs text-stone">{renderLabel}</div>
-                    </div>
-                  </div>
-                  <div className="mt-4 flex items-center gap-3">
-                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-white/10">
-                      <div className="h-full rounded-full bg-gradient-to-r from-amber to-coral transition-all" style={{ width: `${Math.round(renderPct)}%` }} />
-                    </div>
-                    <span className="text-sm font-semibold text-cream">{Math.round(renderPct)}%</span>
-                  </div>
-                  <p className="mt-3 text-xs text-stone">This usually takes 1–2 minutes. You can leave this page — we keep rendering and it lands in your Library.</p>
-                </>
-              ) : renderPhase === 'timeout' ? (
-                <p className="text-sm text-stone">This one is taking longer than usual — we'll keep rendering it and it'll appear in your <Link to="/history" className="text-cream underline">Library</Link>. You don't need to wait here.</p>
-              ) : (
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-coral">{renderLabel || "The edit didn't come through."}</p>
-                  <Link to={`/record/${gen.id}?mode=record`} className="btn-ghost py-2 text-xs font-semibold">Re-record &amp; try again</Link>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* MEDIA ROW — the finished video and its AI cover image, side by side, each
               hugging its own frame. The cover lives HERE (not inside the Title card) so
               generating one never balloons the concept/title cards. */}
-          {(gen.edit_path || takeForEdit || b.packaging?.thumbnail) && (
+          {(gen.edit_path || rawTakePath || b.packaging?.thumbnail) && (
             <div className="mt-8 flex flex-wrap items-start gap-4">
-              {/* Recorded but NOT edited yet — show the raw take right here so the
-                  recording is never invisible. "Edit my video" above finishes it. */}
-              {takeForEdit && renderPhase !== 'rendering' && (
+              {/* A recorded raw take — shown right here so the recording is never
+                  invisible. AI editing is being rebuilt and will pick this up. */}
+              {rawTakePath && (
                 <div className="w-full max-w-[280px] rounded-card border border-coral/25 bg-ink2/70 p-3 backdrop-blur-sm">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-cream"><span className="h-2 w-2 rounded-full bg-coral" /> Your recording</div>
-                    <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone">Not edited yet</span>
+                    <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-stone">Raw take</span>
                   </div>
                   <div className="flex aspect-[9/16] w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
                     {rawTakeUrl
                       ? <video src={rawTakeUrl} controls playsInline className="h-full w-full object-contain" />
                       : <Loader2 className="h-6 w-6 animate-spin text-white/40" />}
                   </div>
-                  <button onClick={resumeEdit} disabled={resuming} className="btn-gradient mt-2 w-full !py-2.5 text-sm font-semibold">
-                    {resuming ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</> : <><SlidersHorizontal className="h-3.5 w-3.5" /> Edit my video</>}
-                  </button>
                 </div>
               )}
               {gen.edit_path && (

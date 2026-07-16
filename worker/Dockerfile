@@ -7,36 +7,16 @@ FROM node:22-bookworm-slim
 # it's on PATH. Pull the static Deno binary from the official image.
 COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
 
-# System deps: ffmpeg (audio extract + caption burn), python3 + pip
-# (faster-whisper), ca-certs, and color-emoji + a clean bold font for captions.
+# System deps: ffmpeg (audio extract/convert — reused by the rebuilt editor),
+# python3 + pip (faster-whisper), ca-certs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
-      fonts-noto-color-emoji fonts-dejavu-core fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
-# Bundle bold caption fonts so captions look DESIGNED, not default:
-#   Anton           — heavy impact face for the punchy/viral styles
-#   Poppins ExtraBold — clean modern face for the calm/boxed styles
-# Installed system-wide + cached so libass (ffmpeg subtitles filter) finds them by name.
-COPY fonts/*.ttf /usr/share/fonts/truetype/twinai/
-RUN fc-cache -f
-
-# yt-dlp + faster-whisper. Jump-cuts are done with ffmpeg's own silencedetect
-# (no heavy auto-editor dep / glibc requirements). (PEP 668: allow system pip.)
+# yt-dlp + faster-whisper — reference ingestion (download + transcribe). Whisper
+# stays: the rebuilt editor will reuse it. (PEP 668: allow system pip.)
 RUN pip3 install --no-cache-dir --break-system-packages \
       "yt-dlp>=2025.1.15" "faster-whisper>=1.0.3" "youtube-transcript-api>=0.6.2"
-
-# CLIP semantic b-roll matching: rank stock-clip thumbnails against the spoken line so
-# the cutaway is RELEVANT, not keyword-roulette. CPU-only torch keeps the image lean;
-# the model is pre-downloaded so no render pays for it. Entirely fail-open in code —
-# if any of this is missing at runtime, broll.ts falls back to its keyword pick.
-RUN pip3 install --no-cache-dir --break-system-packages \
-      --extra-index-url https://download.pytorch.org/whl/cpu \
-      "torch>=2.2,<2.6" "torchaudio>=2.2,<2.6" "sentence-transformers>=3.0,<4" "pillow>=10.0" \
-      "scenedetect>=0.6.4" "opencv-python-headless>=4.9" "stable-ts>=2.17" \
-      "silero-vad>=5.1" "soundfile>=0.12" "librosa>=0.10,<0.11" \
- && python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('clip-ViT-B-32')" \
- && python3 -c "from silero_vad import load_silero_vad; load_silero_vad()"
 
 WORKDIR /app
 
@@ -49,21 +29,12 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY whisper_transcribe.py ./whisper_transcribe.py
 COPY youtube_transcript.py ./youtube_transcript.py
-COPY clip_rank.py ./clip_rank.py
-COPY scene_detect.py ./scene_detect.py
-COPY vad.py ./vad.py
-COPY beats.py ./beats.py
 RUN npm run build
 
 # Pre-download the ASR models at build time so no job ever pays a download.
-# tiny = filler pre-pass, base = captions/reference (the speed/quality sweet spot),
-# small kept for opt-in higher accuracy.
+# base = reference transcription (the speed/quality sweet spot); tiny/small kept
+# for boxes that override WHISPER_MODEL.
 RUN python3 -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('tiny','base','small')]"
-
-# Pre-cache the wav2vec2 acoustic model for WhisperX-style forced alignment so no
-# render pays its download. Best-effort: the forced-align tier is fail-open, so if
-# this ever fails the build still works and captions fall back to stable-ts.
-RUN python3 -c "import torchaudio; torchaudio.pipelines.WAV2VEC2_ASR_BASE_960H.get_model()" || true
 
 ENV NODE_ENV=production
 

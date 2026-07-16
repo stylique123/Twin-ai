@@ -61,9 +61,9 @@ jobs:
             # so `reset --hard origin/main` could land on a stale commit.
             git fetch origin main
             git reset --hard FETCH_HEAD
-            # One flow: ensure the worker can reach the Revideo premium-render service.
-            # 172.17.0.1 is the docker bridge gateway -> the host, where revideo publishes :4500.
-            grep -q '^REVIDEO_URL=' /opt/twinai-worker.env || echo 'REVIDEO_URL=http://172.17.0.1:4500' >> /opt/twinai-worker.env
+            # Old-editor cleanup: drop Revideo wiring from the box env (the render
+            # service was removed with the old AI editor).
+            sed -i '/^REVIDEO_/d' /opt/twinai-worker.env || true
             # Keep the last-good image so a boot-crashing build can roll back
             # instead of leaving NOTHING running (the old rm-then-run had no net).
             docker tag twinai-worker twinai-worker:prev 2>/dev/null || true
@@ -82,7 +82,6 @@ jobs:
             fi
             docker image prune -f >/dev/null 2>&1 || true
             echo "deployed: $(git rev-parse --short HEAD)"
-            echo "revideo health: $(curl -s --max-time 5 http://127.0.0.1:4500/health || echo UNREACHABLE)"
             docker logs --tail 3 twinai-worker
             docker ps --filter name=twinai-worker --format 'STATUS: {{.Status}}'
           REMOTE

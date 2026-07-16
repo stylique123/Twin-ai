@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { planFor } from './brand'
-import type { BrandVoice, CreatorDNA, EditDecisionList, Generation, Platform, Profile, VoiceProfile } from './types'
+import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 
 // ---- Client injection ------------------------------------------------------
 // The web app is the single client surface. It wires its Supabase client, an
@@ -166,43 +166,18 @@ export interface IngestJob {
   result:
     | {
         transcript_id?: string
-        output_url?: string
-        output_path?: string
         duration_sec?: number
         words?: number
-        edl_path?: string // path to the EDL JSON in the edits bucket (for Refine)
-        // Live progress while the job is still running (worker updates this).
-        progress?: { phase: string; pct: number; label: string; instant_url?: string }
       }
     | null
   error: string | null
 }
 
-// ---- Auto-editor (Phase 6: worker burns captions + vertical + loudness) ----
+// ---- Takes (recording durability) -------------------------------------------
 
-// Upload a recorded take to private storage, then enqueue an `autoedit` job.
-// Returns the job id to poll with getJob; on `done`, result.output_url is the
-// finished, signed MP4 URL.
-// First auto-edit is FREE (bundled with the blueprint). Uploads the take, then
-// enqueues THROUGH the edge function, the only credit-enforced path. The server
-// decides free-vs-paid, so the client can't grant itself a free render.
-// `shots` describes the per-scene structure of a recorded take.
-// - bounds/total/lines: cumulative cut points (contiguous scenes) — original contract.
-// - segments: explicit keep-windows [{start,end,line}] in seconds. When present, the
-//   worker trims to ONLY these windows and concatenates them (so a re-taken/flubbed
-//   stretch between windows is dropped), captioning each window from its line. This is
-//   what makes per-scene Retake correct on a single continuous recording.
-export interface TakeShots {
-  bounds: number[]
-  total: number
-  lines: string[]
-  segments?: { start: number; end: number; line: string }[]
-}
-
-// Upload a recorded take to the `takes` bucket and return its storage path. Split
-// out of autoEditTake so a take can be persisted the instant recording finishes
-// (autosave) and the edit enqueued later from the SAME path — no re-upload, and the
-// bytes are safe on the server even if the tab is refreshed before the edit starts.
+// Upload a recorded take to the `takes` bucket and return its storage path, so a
+// take is persisted the instant recording finishes (autosave) and the bytes are
+// safe on the server even if the tab is refreshed.
 export async function uploadTakeToBucket(generationId: string, file: TakeFile, onProgress?: (fraction: number) => void): Promise<string> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
@@ -214,46 +189,6 @@ export async function uploadTakeToBucket(generationId: string, file: TakeFile, o
   if (!_uploadTake) throw new Error('No uploadTake configured — pass it to initApi().')
   await _uploadTake(take_path, file, onProgress)
   return take_path
-}
-
-// Enqueue the auto-edit for a take that is ALREADY uploaded (by uploadTakeToBucket
-// or a resumed autosave). The edge fn decides free-vs-paid server-side.
-export async function autoEditFromPath(generationId: string, takePath: string, shots?: TakeShots): Promise<{ jobId: string; takePath: string }> {
-  const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
-    body: { generation_id: generationId, take_path: takePath, ...(shots ? { shots } : {}) },
-  })
-  if (error) throw new Error(await readInvokeError(error))
-  return { jobId: (data as { job_id: string }).job_id, takePath }
-}
-
-export async function autoEditTake(generationId: string, file: TakeFile, shots?: TakeShots, onProgress?: (fraction: number) => void): Promise<{ jobId: string; takePath: string }> {
-  const take_path = await uploadTakeToBucket(generationId, file, onProgress)
-  return autoEditFromPath(generationId, take_path, shots)
-}
-
-// Download the EDL JSON for a finished edit (from its signed edits-bucket path),
-// so the Refine panel can load the exact decisions the auto-edit made.
-export async function fetchEdl(edlPath: string): Promise<EditDecisionList | null> {
-  try {
-    const urls = await signEditUrls([edlPath])
-    const url = urls[edlPath]
-    if (!url) return null
-    const res = await fetch(url)
-    if (!res.ok) return null
-    return (await res.json()) as EditDecisionList
-  } catch {
-    return null
-  }
-}
-
-// REFINE: re-render the same take from the creator's edited EDL. Free (it's a
-// correction of an edit they already paid for), enforced server-side.
-export async function reEditWithEdl(generationId: string, takePath: string, edl: EditDecisionList): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('enqueue-autoedit', {
-    body: { generation_id: generationId, take_path: takePath, edl },
-  })
-  if (error) throw new Error(await readInvokeError(error))
-  return (data as { job_id: string }).job_id
 }
 
 // Kick off real analysis of a reference URL. Returns the worker job id to watch.
