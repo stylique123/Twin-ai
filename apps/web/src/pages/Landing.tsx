@@ -5,7 +5,7 @@ import { motion, AnimatePresence, useInView, useMotionValue, useSpring, useTrans
 import {
   ArrowRight, Check, Plus, Minus, AtSign, Wand2, Captions, Clapperboard, Scissors,
   ShieldCheck, Building2, Users, Clock, Eye, Heart, Play, Send, LayoutGrid,
-  FileText, Sparkles, TrendingUp, Mic, BarChart3, Flame, Zap, Repeat,
+  FileText, Sparkles, TrendingUp, Mic, BarChart3, Flame, Zap, Repeat, Upload,
 } from 'lucide-react'
 import { BRAND, PLANS, PAYMENTS_LIVE } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
@@ -88,11 +88,11 @@ const PAIN = [
 ]
 
 const LOOP = [
-  { icon: Play, k: 'Paste', t: 'Paste any link', d: 'Drop the link to any TikTok, Reel or Short. No link in mind? Pick from what\'s trending in your niche.' },
-  { icon: FileText, k: 'Get your script', t: 'Get your script', d: 'TwinAI reads the real video and rewrites it in your voice — hooks, full script, shot list, caption pack.' },
-  { icon: Clapperboard, k: 'Record', t: 'Record', d: 'The built-in teleprompter walks you through it. Hit record, nail the hook, done.' },
-  { icon: Scissors, k: 'Edit + render', t: 'Edit + render', d: 'Real editing — cuts, captions, polish — rendered inside the app. No CapCut, no exporting.' },
-  { icon: Send, k: 'Post', t: 'Post', d: 'Caption, hashtags, best time, and one-tap posting. Right from here. You never leave the app.' },
+  { icon: FileText, k: 'Paste', t: 'Paste any link', d: 'Paste any video link or upload your own.' },
+  { icon: FileText, k: 'Get your script', t: 'Get your script', d: 'We pull the hook, beats, and payoffs into a script.' },
+  { icon: Mic, k: 'Record', t: 'Record', d: 'Record your voice — on cam or just voice.' },
+  { icon: Scissors, k: 'Edit + render', t: 'Edit + render', d: 'TwinAI edits it for you. Captions, B-roll, pacing — done.' },
+  { icon: Upload, k: 'Post', t: 'Post', d: 'Export and post. TwinAI handles the rest.' },
 ]
 
 const FEATURES = [
