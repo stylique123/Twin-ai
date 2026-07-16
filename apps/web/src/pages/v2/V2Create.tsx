@@ -1,14 +1,12 @@
 // Screen 1 — Create / Remix Input. One job: get the user's starting point (a
-// link, an idea, or a clip) and go. On PHONE it's the single-focus wizard (one
-// field, one CTA, options collapsed). On DESKTOP it's the full studio page the
-// product had before the wizard existed: the reference field with every option
-// (fidelity / tone / delivery) laid out as visible cards — not a phone column
-// floating in a wide window. Both submit into the same V2 flow. PRODUCT_VISION §7.
+// link, an idea, or a clip) and go. ONE responsive layout serves phone and
+// desktop alike — a single focused column on the brand canvas (the reference
+// field, advanced settings collapsed, one Remix CTA), so the phone experience
+// is the same studio page as desktop, just narrower. No separate phone wizard.
+// PRODUCT_VISION §7.
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Link2, Wand2, Target, Shuffle, Feather, Wind, Activity, Flame, SlidersHorizontal, ChevronDown } from 'lucide-react'
-import ScreenLayout from '../../components/v2/ScreenLayout'
-import { PrimaryButton, Card, RecommendedBadge } from '../../components/v2/Primitives'
+import { Link2, Wand2, Target, Shuffle, Feather, Wind, Activity, Flame, SlidersHorizontal, ChevronDown, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { listGenerations } from '../../lib/api'
 import { videosFromCredits } from '../../lib/brand'
@@ -106,55 +104,31 @@ export default function V2Create() {
         </div>
       )}
 
-      {/* ── PHONE — the single-focus wizard, unchanged ─────────────────── */}
-      <div className="lg:hidden">
-        <ScreenLayout
-          title="Make a video"
-          subtitle="Paste a reference — we rebuild it in your voice."
-          onBack={() => nav('/dashboard')}
-          cta={<PrimaryButton onClick={go} disabled={!input.trim() || checking}>{checking ? 'Checking…' : 'Remix →'}</PrimaryButton>}
-        >
-          <Card>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              rows={3}
-              placeholder="Paste a video link…"
-              className="w-full resize-none bg-transparent outline-none text-cream placeholder:text-sand/40"
-            />
-          </Card>
-
-          <div className="flex items-center justify-between">
-            <RecommendedBadge reason="We'll read it and plan your scenes automatically." />
-            <button onClick={() => setAdvanced((v) => !v)} className="text-sm font-medium text-sand hover:text-cream">
-              {advanced ? 'Hide options' : 'Advanced ▸'}
-            </button>
-          </div>
-
-          {advanced && (
-            <Card className="space-y-4">
-              <Choice label="How close to the reference" value={fidelity} onChange={(v) => setFidelity(v as Fidelity)}
-                options={[['close', 'Close'], ['balanced', 'Balanced'], ['loose', 'Loose']]} />
-              <Choice label="How it should sound" value={tone} onChange={(v) => setTone(v as Tone)}
-                options={[['understated', 'Calm'], ['balanced', 'Natural'], ['punchy', 'Punchy']]} />
-            </Card>
-          )}
-        </ScreenLayout>
-      </div>
-
-      {/* ── DESKTOP — one focused column on the brand canvas: input → advanced
-          settings (collapsed) → Remix. Both knobs are REAL: fidelity + tone ride
-          the request into generate-blueprint, where each maps to a hard prompt
-          rule — switching them changes the script you get back. ───────────── */}
-      <div className="relative hidden min-h-[100dvh] place-items-center overflow-clip px-8 py-16 text-cream lg:grid">
+      {/* ── One focused column on the brand canvas: input → advanced settings
+          (collapsed) → Remix. Fully responsive — the same studio page on phone
+          (narrower, tighter type) and desktop. Both knobs are REAL: fidelity +
+          tone ride the request into generate-blueprint, where each maps to a
+          hard prompt rule — switching them changes the script you get back. ── */}
+      <div className="relative grid min-h-[100dvh] place-items-center overflow-clip px-5 py-16 text-cream sm:px-8">
         <Aurora className="opacity-80" />
         <div className="pointer-events-none absolute inset-0" aria-hidden>
           <div className="absolute left-1/3 top-1/4 h-[26rem] w-[26rem] -translate-x-1/2 rounded-full bg-coral/10 blur-[160px]" />
           <div className="absolute right-0 bottom-0 h-[20rem] w-[20rem] rounded-full bg-teal/10 blur-[140px]" />
         </div>
+
+        {/* Back to the dashboard — the phone wizard had this in its header bar; keep
+            the escape hatch now that there's one unified layout. */}
+        <button
+          onClick={() => nav('/dashboard')}
+          aria-label="Back"
+          className="absolute left-4 top-[max(1rem,env(safe-area-inset-top))] z-10 grid h-10 w-10 place-items-center rounded-full border border-white/12 bg-white/[0.04] text-sand transition-colors hover:border-white/20 hover:text-cream"
+        >
+          <ArrowLeft className="h-4.5 w-4.5" />
+        </button>
+
         <div className="relative mx-auto w-full max-w-2xl text-center">
           <p className="eyebrow">Studio</p>
-          <h1 className="mt-3 font-display text-5xl tracking-tight">Make a video</h1>
+          <h1 className="mt-3 font-display text-4xl tracking-tight sm:text-5xl">Make a video</h1>
           <p className="mx-auto mt-3 max-w-sm text-[15px] leading-relaxed text-stone">
             Paste a reference you wish you'd made — we rebuild it in your voice.
           </p>
@@ -240,23 +214,6 @@ function OptionRow({ label, options, value, onPick }: {
             </button>
           )
         })}
-      </div>
-    </div>
-  )
-}
-
-/* ── Phone option chips (unchanged) ─────────────────────────────────── */
-function Choice({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: [string, string][] }) {
-  return (
-    <div>
-      <div className="text-xs font-semibold text-sand/70 mb-1.5">{label}</div>
-      <div className="flex gap-2">
-        {options.map(([id, text]) => (
-          <button key={id} onClick={() => onChange(id)}
-            className={`flex-1 rounded-xl border py-2 text-sm ${value === id ? 'border-teal bg-teal/10 text-cream font-medium' : 'border-white/15 text-sand hover:bg-white/5'}`}>
-            {text}
-          </button>
-        ))}
       </div>
     </div>
   )
