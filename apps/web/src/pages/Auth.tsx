@@ -155,10 +155,12 @@ export default function Auth() {
         {/* Left, brand panel — a real creator reel runs behind it (dimmed under a
             scrim) so the sign-up screen feels like the product, not a plain form. */}
         <div className="relative hidden flex-col justify-between gap-8 overflow-hidden bg-signature-soft p-8 md:flex">
+          {/* Same-origin checked-in asset — the old external CloudFront URL had
+              expired (empty panel + an avoidable third-party request on the auth page). */}
           <video
             autoPlay muted loop playsInline
             className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-25"
-            src="https://d8j0ntlcm91z4.cloudfront.net/user_3A4BLQYlkqlIIcq5F4BohQmaHaz/hf_20260623_023134_b4da463a-9a9b-45b7-ac53-7b7f30d4cf77.mp4"
+            src="/media/hero-talkinghead.mp4"
           />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-ink/70 via-ink/55 to-ink/80" />
           <div className="relative z-10 flex items-center justify-between">

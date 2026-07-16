@@ -6,9 +6,17 @@
   "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }],
   "headers": [
     {
-      "comment": "Never cache the HTML shell — it points at the current fingerprinted JS. Without this, a browser/CDN kept serving an OLD index.html (whose old chunks still exist on Vercel, so nothing 404s and the stale-chunk auto-reload never fires), leaving users on stale code after every deploy.",
+      "comment": "Security headers (M3) + never cache the HTML shell. The shell points at the current fingerprinted JS; without max-age=0 a browser/CDN kept serving an OLD index.html (whose old chunks still exist on Vercel, so nothing 404s and the auto-reload never fires). camera/microphone are allowed for self (the in-app recorder needs them). No strict resource-CSP here yet — that needs dedicated testing against Supabase/Gemini/media/OAuth origins; frame-ancestors 'none' (clickjacking) is safe to ship now.",
       "source": "/(.*)",
-      "headers": [{ "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }]
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" },
+        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Content-Security-Policy", "value": "frame-ancestors 'none'" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "Permissions-Policy", "value": "camera=(self), microphone=(self), geolocation=(), browsing-topics=()" }
+      ]
     },
     {
       "comment": "Fingerprinted build assets are immutable — safe to cache forever. This rule is LAST so it wins over the catch-all for /assets/*.",

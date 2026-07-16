@@ -74,9 +74,12 @@ async function verifyAndParse(
     const name = body?.meta?.event_name ?? ''
     const userId = body?.meta?.custom_data?.user_id ?? null
     const status = body?.data?.attributes?.status ?? ''
+    // M10: require a stable provider id (webhook_id or data.id); never invent one.
+    const lsEventId = body?.meta?.webhook_id ?? body?.data?.id
+    if (!lsEventId) return fail
     return {
       ok: true,
-      eventId: String(body?.meta?.webhook_id ?? body?.data?.id ?? crypto.randomUUID()),
+      eventId: String(lsEventId),
       userId,
       active: /created|payment_success|updated/.test(name) && /active|paid|on_trial/.test(status || 'active'),
       externalId: body?.data?.id ? String(body.data.id) : undefined,
@@ -90,13 +93,20 @@ async function verifyAndParse(
     const t = header.match(/t=([0-9]+)/)?.[1]
     const v1 = header.match(/v1=([a-f0-9]+)/)?.[1]
     if (!secret || !t || !v1 || !safeEqual(await hmacHex(secret, `${t}.${raw}`), v1)) return fail
+    // H8: reject a valid-but-stale/replayed signature outside a 5-minute tolerance
+    // (Stripe's standard). Without this a captured payload could be replayed forever.
+    const skew = Math.abs(Date.now() / 1000 - Number(t))
+    if (!Number.isFinite(skew) || skew > 300) return fail
     const body = JSON.parse(raw)
+    // M10: a signed payment event MUST carry Stripe's stable event id; never invent one
+    // (a random UUID would let a replayed malformed payload bypass idempotency).
+    if (!body?.id) return fail
     const obj = body?.data?.object ?? {}
     const userId = obj?.metadata?.user_id ?? obj?.client_reference_id ?? null
     const type = body?.type ?? ''
     return {
       ok: true,
-      eventId: String(body?.id ?? crypto.randomUUID()),
+      eventId: String(body.id),
       userId,
       active: /checkout\.session\.completed|invoice\.paid|customer\.subscription\.(created|updated)/.test(type),
       externalId: obj?.subscription ? String(obj.subscription) : obj?.id ? String(obj.id) : undefined,
@@ -111,9 +121,12 @@ async function verifyAndParse(
     const given = headers.get('X-Admin-Secret') ?? ''
     if (!adminSecret || !safeEqual(adminSecret, given)) return fail
     const body = JSON.parse(raw)
+    // M10: a manual/crypto confirmation must supply a stable event_id so a resend is
+    // idempotent (a random UUID would re-grant credits on every retry).
+    if (!body?.event_id) return fail
     return {
       ok: true,
-      eventId: String(body?.event_id ?? crypto.randomUUID()),
+      eventId: String(body.event_id),
       userId: body?.user_id ?? null,
       active: body?.active !== false,
       externalId: body?.tx ? String(body.tx) : undefined,

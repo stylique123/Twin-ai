@@ -62,6 +62,7 @@ export default function Settings() {
   const [voiceErr, setVoiceErr] = useState(false)
   const [brandKit, setBrandKit] = useState<BrandKit>({})
   const [kitSaved, setKitSaved] = useState(false)
+  const [kitErr, setKitErr] = useState(false)
   const loadVoice = useCallback(() => {
     setVoiceErr(false); setVoiceLoading(true)
     listBrandVoices()
@@ -92,7 +93,12 @@ export default function Settings() {
   const saveKit = async (next: BrandKit) => {
     setBrandKit(next)
     if (!defaultVoiceId) return
-    try { await saveBrandKit(defaultVoiceId, next); setKitSaved(true); setTimeout(() => setKitSaved(false), 1500) } catch { /* ignore */ }
+    // Surface a failed save (M7) instead of swallowing it — otherwise the creator
+    // thinks a brand colour/kit change persisted when it didn't, then gets a surprise
+    // at render time. The optimistic setBrandKit above keeps their edit on screen to retry.
+    setKitErr(false)
+    try { await saveBrandKit(defaultVoiceId, next); setKitSaved(true); setTimeout(() => setKitSaved(false), 1500) }
+    catch { setKitErr(true) }
   }
   const [logoBusy, setLogoBusy] = useState(false)
   const onLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -316,6 +322,7 @@ export default function Settings() {
                 <p className="eyebrow !text-sand">Brand kit</p>
               </div>
               {kitSaved && <span className="inline-flex items-center gap-1 text-xs text-teal"><Check className="h-3.5 w-3.5" /> Saved</span>}
+              {kitErr && <span className="text-xs text-coral">Couldn’t save — change it again to retry.</span>}
             </div>
             <p className="mt-2 text-sm text-stone">Your default caption look — applied to every video you edit.</p>
             {!defaultVoiceId ? (
@@ -704,7 +711,7 @@ function TeamSeats() {
       {link && (
         <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/8 bg-ink/40 px-3 py-2">
           <span className="min-w-0 flex-1 truncate text-xs text-stone">{link}</span>
-          <button onClick={() => { navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600) }, () => {}) }} className="shrink-0 text-stone hover:text-cream"><Copy className="h-3.5 w-3.5" /></button>
+          <button aria-label="Copy invite link" title="Copy invite link" onClick={() => { navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1600) }, () => {}) }} className="shrink-0 rounded text-stone hover:text-cream focus-visible:outline focus-visible:outline-2 focus-visible:outline-coral"><Copy className="h-3.5 w-3.5" /></button>
         </div>
       )}
     </section>

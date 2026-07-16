@@ -574,8 +574,9 @@ export async function markPosted(input: {
 
 // Schedule a post for a future date on a chosen platform, from a library item.
 // status='scheduled'; the calendar shows it on `scheduled_for`. Real auto-posting
-// (platform OAuth) lands later; until then this is a calendar + caption holder so
-// the creator posts on time with everything ready.
+// IS live for connected accounts (platform OAuth adapters + the publish_due cron);
+// for anything not connected this remains a calendar + caption holder so the
+// creator posts on time with everything ready.
 export async function schedulePost(input: {
   generationId: string
   platform: string

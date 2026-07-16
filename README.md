@@ -74,7 +74,7 @@ apps/web/src/
   pages/      Landing, Auth, Onboarding, Dashboard, Result, History, Gallery, v2/ (Create → Building → Capture → Review)
 packages/shared/   @twinai/shared — types, brand tokens, API layer, scene timeline
 supabase/
-  migrations/ 0001 → 0065  (profiles, generations, jobs, RLS, RPCs, buckets)
+  migrations/ 0001 → latest  (profiles, generations, jobs, RLS, RPCs, buckets, storage caps, oauth nonce, worker liveness, tour flag)
   functions/  15 edge functions (generate-blueprint, start-dna, dna-poll, enqueue-autoedit, social, …)
 worker/       VPS auto-edit pipeline (ffmpeg + whisper + Gemini director)
 ```

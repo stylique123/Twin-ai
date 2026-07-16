@@ -19,9 +19,74 @@ fs.mkdirSync(WORK, { recursive: true })
 
 app.get('/health', (_req, res) => res.json({ ok: true }))
 
+// --- Hardening (audit B1) ------------------------------------------------------
+// This service runs expensive Chromium renders and fetches an operator-supplied URL,
+// so left open it's both a compute-DoS and an SSRF surface. Three guards:
+//   1. Bearer auth when RENDER_TOKEN is set (the worker sends the same token).
+//   2. SSRF allow-list: https only, and either an explicit host allow-list
+//      (RENDER_ALLOWED_HOSTS) or, absent that, block localhost / private / link-local
+//      / cloud-metadata targets so a caller can't make Chromium probe the internal net.
+//   3. A hard concurrency cap so a burst can't exhaust RAM/CPU.
+// Operationally this MUST still be bound to loopback / a private network and firewalled
+// (see deploy-revideo.yml) — auth is defence in depth, not the only control.
+const RENDER_TOKEN = (process.env.RENDER_TOKEN ?? '').trim()
+const ALLOWED_HOSTS = (process.env.RENDER_ALLOWED_HOSTS ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+const MAX_CONCURRENT = Number(process.env.REVIDEO_MAX_CONCURRENT ?? 2)
+const MAX_WORDS = Number(process.env.REVIDEO_MAX_WORDS ?? 4000)
+let inFlight = 0
+
+function timingSafeEq(a: string, b: string): boolean {
+  const ba = Buffer.from(a), bb = Buffer.from(b)
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb)
+}
+
+function isPrivateHost(host: string): boolean {
+  const h = host.toLowerCase()
+  if (h === 'localhost' || h.endsWith('.localhost') || h === '::1' || h === '0.0.0.0') return true
+  // IPv4 literal → block loopback / private / link-local / metadata ranges.
+  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h)
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])]
+    if (a === 127 || a === 10 || a === 0) return true
+    if (a === 169 && b === 254) return true // link-local incl. 169.254.169.254 metadata
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 192 && b === 168) return true
+    if (a === 100 && b >= 64 && b <= 127) return true // CGNAT
+  }
+  if (h.startsWith('fc') || h.startsWith('fd') || h.startsWith('fe80')) return true // IPv6 ULA/link-local
+  return false
+}
+
+function validClipUrl(raw: unknown): boolean {
+  if (typeof raw !== 'string' || !raw) return false
+  let u: URL
+  try { u = new URL(raw) } catch { return false }
+  if (u.protocol !== 'https:') return false
+  const host = u.hostname.toLowerCase()
+  if (ALLOWED_HOSTS.length) return ALLOWED_HOSTS.includes(host)
+  return !isPrivateHost(host)
+}
+
 app.post('/render', express.json({ limit: '4mb' }), async (req, res) => {
+  // 1. Auth (enforced only when a token is configured; the worker sends it).
+  if (RENDER_TOKEN) {
+    const bearer = (req.header('authorization') ?? '').replace(/^Bearer\s+/i, '')
+    if (!bearer || !timingSafeEq(bearer, RENDER_TOKEN)) return res.status(401).json({ error: 'unauthorized' })
+  }
   const { baseClipUrl, edl } = req.body ?? {}
   if (!baseClipUrl || !edl) return res.status(400).json({ error: 'baseClipUrl and edl are required' })
+  // 2. SSRF: only allow a public https media URL (or an explicit allow-listed host).
+  if (!validClipUrl(baseClipUrl)) return res.status(400).json({ error: 'baseClipUrl must be a public https URL' })
+  // 3. Concurrency cap — reject rather than pile on and OOM.
+  if (inFlight >= MAX_CONCURRENT) return res.status(429).json({ error: 'render service busy' })
+  if (Array.isArray(edl?.captions?.words ?? edl?.words) && (edl.captions?.words ?? edl.words).length > MAX_WORDS) {
+    return res.status(400).json({ error: 'too many caption words' })
+  }
+  inFlight++
+  try { await handleRender(baseClipUrl, edl, res) } finally { inFlight-- }
+})
+
+async function handleRender(baseClipUrl: unknown, edl: any, res: express.Response): Promise<void> {
   const outName = `${crypto.randomUUID()}.mp4`
   // The worker's EDL stores caption words as { w, start, end } (worker/src/edl.ts),
   // but the Revideo scene (src/project.tsx) reads `.text`. Map w→text here or every
@@ -78,6 +143,6 @@ app.post('/render', express.json({ limit: '4mb' }), async (req, res) => {
     console.error('[render] failed', e)
     res.status(500).json({ error: String(e).slice(0, 400) })
   }
-})
+}
 
 app.listen(PORT, () => console.log(`twinai-revideo render service on :${PORT}`))

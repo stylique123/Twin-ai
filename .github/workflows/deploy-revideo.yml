@@ -35,7 +35,11 @@ jobs:
             fi
             docker build -t twinai-revideo revideo/
             docker rm -f twinai-revideo 2>/dev/null || true
-            docker run -d --name twinai-revideo --restart unless-stopped               -p 4500:4500 -e PORT=4500 -e REVIDEO_WORKERS=2 twinai-revideo
+            # B1: bind the render port to LOOPBACK only — the worker on the same host
+            # reaches it at 127.0.0.1:4500, but it is never exposed on the public
+            # interface (was -p 4500:4500 = 0.0.0.0). Pass through the auth token +
+            # host allow-list so the service enforces them (defence in depth).
+            docker run -d --name twinai-revideo --restart unless-stopped               -p 127.0.0.1:4500:4500 -e PORT=4500 -e REVIDEO_WORKERS=2               -e RENDER_TOKEN="${RENDER_TOKEN:-}" -e RENDER_ALLOWED_HOSTS="${RENDER_ALLOWED_HOSTS:-}" twinai-revideo
             sleep 4
             echo "deployed: $(git rev-parse --short HEAD)"
             echo "health: $(curl -s --max-time 5 http://127.0.0.1:4500/health || echo UNREACHABLE)"

@@ -113,6 +113,9 @@ No borders, no watermark, no UI chrome, no fake play button.`
     } catch (err) {
       lastErr = err
       console.error(`generate-thumbnail: attempt ${attempt + 1}/3 failed`, err instanceof Error ? err.message : err)
+      // M9: back off with jitter between retries instead of hammering the paid image
+      // API instantly (which amplifies provider overload). ~0.6s, ~1.4s.
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 400 * (attempt + 1) + Math.floor(Math.random() * 400)))
     }
   }
   if (!b64) {
