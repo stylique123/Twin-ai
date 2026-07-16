@@ -69,7 +69,9 @@ export default function V2Capture() {
 
   // Back always returns to the plan (Result) — the single plan screen for the flow.
   const onBack = () => nav(`/result/${id}`)
-  const onJob = (job: string) => nav(`/v2/review/${id}?job=${job}`)
+  // The finished video + live render progress now live on the single studio page
+  // (Result), not a separate review screen — hand the edit job off there.
+  const onJob = (job: string) => nav(`/result/${id}?job=${job}`)
 
   if (!timeline) {
     if (loadFailed) {
