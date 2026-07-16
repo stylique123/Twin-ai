@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Wand2, Eye, Heart, Play, Search, Mic, Repeat, Layers, Film, Sparkles, TrendingUp, ChevronRight, X, ExternalLink } from 'lucide-react'
+import { Wand2, Eye, Heart, Play, Search, ChevronRight, X, ExternalLink } from 'lucide-react'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
@@ -86,59 +86,6 @@ function resolveNiche(userNiche: string, known: string[]): string {
   return known.find((n) => u.includes(n.toLowerCase()) || n.toLowerCase().includes(u)) ?? ''
 }
 
-// --- The Playbook (the "brain") --------------------------------------------
-// What KINDS of videos actually grow THIS creator — not just reference clips, but
-// the formats most likely to win in their niche. Each format carries a search term
-// (`q`) so tapping it surfaces real examples of that format in the feed below.
-interface Format { name: string; why: string; q: string; icon: typeof Mic }
-const PLAYBOOK: Record<string, Format[]> = {
-  Business: [
-    { name: 'Talking-head hot take', why: 'A sharp, contrarian POV straight to camera — the fastest, highest-trust format for founders.', q: 'hook', icon: Mic },
-    { name: 'Soundbite clip', why: 'A 30-second answer to one real question. Repurposable and authority-building.', q: 'insight', icon: Film },
-    { name: 'Case-study breakdown', why: 'A before → after result with the steps. Buyers save and share proof.', q: 'process', icon: TrendingUp },
-    { name: '3 things they didn’t know', why: 'Numbered value holds retention and is dead-simple to script.', q: 'explain', icon: Layers },
-  ],
-  Fitness: [
-    { name: 'Transformation transition', why: 'A clean before/after cut on the beat — the most-shared fitness format.', q: 'transition', icon: Repeat },
-    { name: 'Form-check talking head', why: 'Fix one common mistake to camera. Saves + “sending this to my gym buddy.”', q: 'callout', icon: Mic },
-    { name: 'Day-of-eating', why: 'A relatable POV walkthrough that builds the para-social bond that retains.', q: 'routine', icon: Film },
-    { name: 'Myth-buster hot take', why: 'Name the bad advice, flip it. Comment-bait that drives reach.', q: 'hook', icon: TrendingUp },
-  ],
-  Beauty: [
-    { name: 'GRWM + a story', why: 'Get-ready-with-me while you talk — high completion, easy to film daily.', q: 'grwm', icon: Mic },
-    { name: 'Outfit try-on', why: 'Outfit or product transitions on the beat — the signature beauty/fashion win.', q: 'transition', icon: Repeat },
-    { name: 'Step-by-step tutorial', why: 'A clear how-to with a satisfying payoff. Saveable and re-watchable.', q: 'tutorial', icon: Layers },
-    { name: 'First-impression reaction', why: 'Honest real-time reactions earn trust and comments.', q: 'reaction', icon: Film },
-  ],
-  Food: [
-    { name: 'Jump-cut recipe', why: 'A beat every 1-2 seconds so attention never resets — the Lynja effect.', q: 'cook', icon: Repeat },
-    { name: 'ASMR process reveal', why: 'Satisfying sound + visuals carry the watch with no script needed.', q: 'process', icon: Film },
-    { name: 'Taste-test reaction', why: 'Genuine reactions are inherently loopable and shareable.', q: 'reaction', icon: Mic },
-    { name: '3-ingredient quick recipe', why: 'Low-effort promise = high saves. Easy series to sustain.', q: 'recipe', icon: Layers },
-  ],
-  Education: [
-    { name: 'Explainer w/ visuals', why: 'One idea, clear payoff, no fluff — the format that makes expertise feel actionable.', q: 'explain', icon: Layers },
-    { name: '“Did you know” hook', why: 'A surprising fact cold-open that stops the scroll fast.', q: 'hook', icon: Sparkles },
-    { name: 'How it’s made', why: 'Curiosity-driven step reveals are deeply saveable.', q: 'process', icon: Film },
-    { name: 'Authority insight clip', why: 'Name the outcome, give one concrete mechanism, keep it short.', q: 'insight', icon: Mic },
-  ],
-  Lifestyle: [
-    { name: 'Day-in-the-life', why: 'A micro-narrative arc builds the para-social bond that drives follows.', q: 'vlog', icon: Film },
-    { name: 'Relatable POV skit', why: 'A shared “that’s so me” moment — the most shareable lifestyle format.', q: 'relatable', icon: Sparkles },
-    { name: 'Get-ready chat', why: 'Talk to camera while doing something — high completion, low effort.', q: 'routine', icon: Mic },
-    { name: 'Story-time', why: 'Setup → escalation → payoff with tight cuts rewards a full watch.', q: 'story', icon: Repeat },
-  ],
-}
-const DEFAULT_PLAYBOOK: Format[] = [
-  { name: 'Talking-head hot take', why: 'A clear POV to camera is the fastest, highest-trust video to make in any niche.', q: 'hook', icon: Mic },
-  { name: 'On-beat transition', why: 'A satisfying before/after or scene cut on the beat — universally shareable.', q: 'transition', icon: Repeat },
-  { name: '3 quick wins', why: 'Numbered value is easy to script and holds retention.', q: 'explain', icon: Layers },
-  { name: 'Story-time', why: 'Setup → tension → payoff keeps people to the end.', q: 'story', icon: Film },
-]
-function playbookFor(niche: string): Format[] {
-  return PLAYBOOK[niche] ?? DEFAULT_PLAYBOOK
-}
-
 interface Card {
   id: string; niche: string; platform: string; label: string; creator: string
   hook: string; why: string; reach: string; loves: string; accent: string; poster: string; url: string
@@ -193,34 +140,6 @@ function fromDb(it: GalleryItem): Card {
   return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || fallbackWhy, reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url }
 }
 
-// Classify a card into a content CATEGORY from its text — so tapping a playbook
-// format actually surfaces a different, relevant set instead of barely changing
-// (the "Story-time and 3-things look the same" complaint). Works on every card,
-// featured or community, without hand-tagging each one.
-function cardCat(c: Card): string {
-  const t = `${c.label} ${c.hook} ${c.why}`.toLowerCase()
-  if (/transition|before.?after|glow.?up|outfit|try.?on/.test(t)) return 'transition'
-  if (/reaction|react|stitch|callout|taste.?test|first.?impression|reassure|reply|reframe/.test(t)) return 'reaction'
-  if (/recipe|cook|ingredient|kitchen|asmr|baking|pun|gag/.test(t)) return 'recipe'
-  if (/process|reveal|how.?it|behind.?the|made|breakdown|case.?study/.test(t)) return 'process'
-  if (/vlog|day.?in|travel|day.?of|routine|micro.?story/.test(t)) return 'vlog'
-  if (/story.?time|story/.test(t)) return 'story'
-  if (/grwm|get.?ready|makeup|skincare/.test(t)) return 'grwm'
-  if (/tutorial|step.?by.?step|how.?to/.test(t)) return 'tutorial'
-  if (/listicle|ways to|3 things|three things|did.?n.?t know|quick wins/.test(t)) return 'listicle'
-  if (/insight|authority|did you know|explain/.test(t)) return 'insight'
-  return 'talkinghead' // hot take, POV, motivational, hook…
-}
-// Map a playbook format's search term to the same category space.
-function qToCat(q: string): string {
-  const m: Record<string, string> = {
-    hook: 'talkinghead', relatable: 'talkinghead', callout: 'reaction', reaction: 'reaction',
-    transition: 'transition', cook: 'recipe', recipe: 'recipe', process: 'process',
-    routine: 'vlog', vlog: 'vlog', story: 'story', grwm: 'grwm', tutorial: 'tutorial',
-    explain: 'insight', insight: 'insight',
-  }
-  return m[q] ?? 'talkinghead'
-}
 
 function ytId(url: string): string | null {
   const m = url.match(/[?&]v=([\w-]+)/) || url.match(/youtu\.be\/([\w-]+)/) || url.match(/shorts\/([\w-]+)/)
@@ -280,7 +199,6 @@ export default function Gallery() {
   const [q, setQ] = useState('')
   // Playbook format filter (no longer hijacks the search box — that left "hook"
   // stuck in search). null = no format filter.
-  const [activeFormat, setActiveFormat] = useState<{ name: string; q: string } | null>(null)
   const [community, setCommunity] = useState<Card[]>(COMMUNITY_CACHE ?? [])
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const [showAll, setShowAll] = useState(false)
@@ -369,18 +287,10 @@ export default function Gallery() {
       const needle = q.trim().toLowerCase()
       out = out.filter((c) => (searchBlobs.get(c.id) ?? '').includes(needle))
     }
-    // Playbook format: a SOFT boost (not a hard filter) — cards whose CATEGORY
-    // matches the chosen format float to the top (so each format shows a different
-    // set), but the feed never goes empty when the seed pool is thin.
-    const fmtCat = activeFormat ? qToCat(activeFormat.q) : ''
-    const fmtBoost = (c: Card) => {
-      if (!activeFormat) return 0
-      return cardCat(c) === fmtCat ? 1 : 0
-    }
     // Always rank by the Opportunity score (engagement × reach × your-niche fit) —
-    // the redundant Top/All toggle is gone. Format matches are boosted first.
+    // the redundant Top/All toggle is gone.
     const byScore = (a: Card, b: Card) =>
-      (fmtBoost(b) - fmtBoost(a)) || ((scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0))
+      (scores.get(b.id)?.score ?? 0) - (scores.get(a.id)?.score ?? 0)
     const isForYou = (!!mySubNiche && niche === mySubNiche) || (!!myNiche && niche === myNiche)
     if (niche !== 'All' && !isForYou) out = out.filter((c) => c.niche === niche)
     if (isForYou) {
@@ -391,7 +301,7 @@ export default function Gallery() {
       return [...base].sort((a, b) => rank(a) - rank(b) || byScore(a, b))
     }
     return [...out].sort(byScore)
-  }, [all, myNiche, mySubNiche, niche, q, activeFormat, searchBlobs, related, scores])
+  }, [all, myNiche, mySubNiche, niche, q, searchBlobs, related, scores])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
   // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
@@ -454,33 +364,6 @@ export default function Gallery() {
           </Reveal>
         </div>
       </div>
-      {/* The Playbook — the "brain": what FORMATS will actually grow this creator,
-          not just reference clips. Tap one to surface real examples in the feed. */}
-      <div className="relative mx-auto max-w-6xl px-5 pb-6">
-        <Reveal delay={0.03}>
-          <div className="mb-4 flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-amber" />
-            <h2 className="font-heading text-lg text-cream">
-              Your playbook{myNiche ? <> — what wins in <span className="text-amber">{myNiche}</span></> : ' — formats that grow you'}
-            </h2>
-          </div>
-          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-            {playbookFor(myNiche).map((f) => {
-              const on = activeFormat?.name === f.name
-              return (
-              <button
-                key={f.name}
-                title={f.why}
-                onClick={() => { touched.current = true; setShowAll(false); setActiveFormat(on ? null : { name: f.name, q: f.q }) }}
-                className={cn('inline-flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-sm transition-all duration-200', on ? 'border-amber/60 bg-amber/15 text-cream' : 'border-white/10 bg-white/[0.03] text-sand hover:border-amber/30 hover:text-cream')}
-              >
-                <f.icon className={cn('h-3.5 w-3.5', on ? 'text-amber' : 'text-stone')} /> {f.name}
-              </button>
-              )
-            })}
-          </div>
-        </Reveal>
-      </div>
       <div className="relative mx-auto max-w-6xl px-5 pb-16">
         <Reveal delay={0.04}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -498,11 +381,6 @@ export default function Gallery() {
                 </select>
                 <ChevronRight className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 rotate-90 text-stone" />
               </div>
-              {activeFormat && (
-                <button onClick={() => setActiveFormat(null)} className="chip border-amber/40 text-cream" title="Clear format filter">
-                  {activeFormat.name} <span className="text-stone">✕</span>
-                </button>
-              )}
             </div>
             <div className="flex items-center gap-2">
               <div className="relative sm:w-56">
