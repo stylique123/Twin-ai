@@ -32,6 +32,26 @@ jobs:
           npm ci
           npx tsc --noEmit
 
+  # Focused automated tests for Part 1 (old-editor removal + retained-flow contract).
+  # Shared: the client API surface can no longer construct an editor call, and the
+  # recording/teleprompter data path still builds from a blueprint. Worker: the job
+  # registry cannot claim `autoedit` and the editor env flags are gone.
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Install + test @twinai/shared
+        run: |
+          npm ci
+          npm test -w @twinai/shared
+      - name: Install + test worker
+        working-directory: worker
+        run: |
+          npm ci
+          npm test
+
   # Guard: the OLD AI editor was removed (see docs/ai-editor-rebuild-status.md).
   # Fail any change that reintroduces its entry points into live code. Historical
   # migrations and the removal docs are excluded on purpose; the new editor must

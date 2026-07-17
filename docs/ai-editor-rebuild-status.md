@@ -45,12 +45,43 @@ gallery, posting, billing · the jobs queue (`ingest`, `build_voice`, `scrape_dn
   `WORKER_JOB_TYPES`. `db.ts` (claim/complete/fail), `storage.ts` and the ffmpeg +
   faster-whisper deps are all still in place to reuse.
 
+## Database-level guarantee (not just "nothing enqueues it")
+
+Migration `0073_block_new_autoedit_jobs.sql` adds a `BEFORE INSERT` trigger on
+`public.jobs` that **rejects any new row with `type='autoedit'`, for every role
+including the service role** (triggers fire regardless of RLS/role). Verified
+live: a service-role-context insert is rejected and the historical row count is
+unchanged (0 new job, 0 credits, 0 storage). The rebuilt editor MUST register a
+**new** job type — it must not reuse `autoedit`.
+
+## Approved transitional remnants (explicit, not "absent")
+
+These are intentionally kept and are inert; listing them so "zero-legacy" is not
+overstated:
+- **Deployed edge function `enqueue-autoedit`** — kept as a **410 tombstone**
+  (disabled + non-executable, not absent) so a stale client gets an explicit
+  error instead of silent behavior. Inserts nothing.
+- **`refund_failed_autoedit` trigger + `autoedit_requires_generation` constraint**
+  on `jobs` — dormant; fire only for a job type that can no longer be created.
+- **`admin/index.ts` metric** counting historical `type='autoedit'` jobs — read-only.
+- **`generations.edit_style` / `edl_path` columns** — legacy no-ops (deprecate-data).
+- Explanatory "removed" **comments** in `worker/src/env.ts` and `jobs/index.ts`.
+
 ## Deprecated data (kept, not dropped)
 
-`generations.edit_style` and `edl_path` are legacy no-ops. All autoedit-related
-migrations (refund trigger, constraints, analytics counting `type='autoedit'`)
-remain in place and are harmless — nothing enqueues that job type anymore.
-Analytics "edits rendered" reads 0 for new activity until the new editor ships.
+`generations.edit_style` and `edl_path` are legacy no-ops. Analytics "edits
+rendered" reads 0 for new activity until the new editor ships.
+
+## Regression tests (Part 1 guard)
+
+- `packages/shared/src/__tests__/no-legacy-editor.test.ts` — the client API surface
+  cannot construct an editor call (removed exports absent), recording/playback
+  primitives present, and `buildTimeline` still turns a blueprint into recordable
+  teleprompter scenes.
+- `worker/src/__tests__/registry.test.ts` — the job registry is exactly
+  `{ingest, build_voice, scrape_dna}` (no `autoedit`) and editor env flags are gone.
+- Both run in CI (`pr-checks.yml` → `unit-tests`), alongside the `no-legacy-editor`
+  grep guard.
 
 ## Operator steps when this branch deploys (VPS / Supabase)
 
