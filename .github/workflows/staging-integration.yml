@@ -13,13 +13,13 @@
 # a real media rejection matrix, worker kill/recovery, and the retake race.
 name: staging-integration
 
-# workflow_dispatch only registers from the default branch, so during the gate
-# period this runs on every push to the Phase-1 branch instead. After merge the
-# branch filter never matches again and dispatch becomes available.
+# Runs on every push to an editor-v2 phase branch (the ci-bootstrap credential
+# gate only answers to THIS workflow file on those refs or main), and via
+# dispatch once the file is on the default branch.
 on:
   workflow_dispatch:
   push:
-    branches: [rebuild/editor-v2-foundation]
+    branches: ['rebuild/editor-v2-*']
 
 permissions:
   id-token: write
@@ -64,5 +64,8 @@ jobs:
       - name: Harness dependency
         run: npm i --no-save --no-audit --no-fund @supabase/supabase-js@2
 
-      - name: Run integration matrix
+      - name: Run Phase 1 integration matrix (source-asset chain)
         run: node scripts/staging-integration/run.mjs
+
+      - name: Run Phase 2 integration matrix (start-editor-v2)
+        run: node scripts/staging-integration/phase2.mjs

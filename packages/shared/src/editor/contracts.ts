@@ -60,3 +60,51 @@ export function sourceAssetPath(ownerId: string, generationId: string, assetId: 
 // so the client can fail fast with the same numbers).
 export const SOURCE_MAX_BYTES = 600 * 1024 * 1024 // matches the takes bucket cap
 export const SOURCE_MIN_BYTES = 2048 // a real few-second take is tens of KB minimum
+
+// ---- Edit projects (Phase 2) -----------------------------------------------
+// One row per one-click edit request. Created ONLY by start-editor-v2 (which
+// atomically also enqueues exactly one editor_v2 job); every later state
+// transition is worker-owned (Phase 3+). Clients read via RLS, never write.
+
+export type EditProjectStatus =
+  | 'queued'
+  | 'inspecting'
+  | 'transcribing'
+  | 'analyzing'
+  | 'directing'
+  | 'compiling'
+  | 'rendering'
+  | 'validating'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export const EDIT_PROJECT_ACTIVE_STATUSES: readonly EditProjectStatus[] = [
+  'queued', 'inspecting', 'transcribing', 'analyzing', 'directing',
+  'compiling', 'rendering', 'validating',
+]
+
+// The client-visible shape of an edit project row (RLS-guarded SELECT).
+export interface EditProject {
+  id: string
+  owner_id: string
+  generation_id: string
+  source_asset_id: string
+  status: EditProjectStatus
+  output_asset_id: string | null
+  failure_code: string | null
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+// Stable rejection codes start-editor-v2 returns BEFORE any project/job exists.
+export type StartEditorRejection =
+  | 'source_not_found'
+  | 'not_a_source'
+  | 'generation_mismatch'
+  | 'source_rejected'
+  | 'source_deleted'
+  | 'source_not_ready'
+  | 'source_not_editor_eligible'
+  | 'too_many_active_projects'
