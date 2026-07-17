@@ -61,5 +61,13 @@ export const env = {
   // covers a 15-min phone take while bounding worst-case memory/disk per job.
   maxDownloadBytes: Number(process.env.WORKER_MAX_DOWNLOAD_BYTES ?? String(600 * 1024 * 1024)),
 
+  // Source validation (validate_source) bounds — configurable so the product
+  // limit can tighten without a code change. 30 min is a hard sanity cap for a
+  // short-form editor; the pixel cap admits 4K (3840x2160 ≈ 8.3M px) and
+  // rejects decode-bomb resolutions above it.
+  sourceMaxDurationMs: Number(process.env.SOURCE_MAX_DURATION_MS ?? String(30 * 60 * 1000)),
+  sourceMinDurationMs: Number(process.env.SOURCE_MIN_DURATION_MS ?? '500'),
+  sourceMaxPixels: Number(process.env.SOURCE_MAX_PIXELS ?? String(3840 * 2160)),
+
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }

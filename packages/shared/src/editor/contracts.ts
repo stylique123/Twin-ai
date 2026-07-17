@@ -16,6 +16,7 @@ export interface MediaAsset {
   id: string
   owner_id: string
   generation_id: string | null
+  recording_attempt_id: string | null
   kind: MediaAssetKind
   bucket: string
   storage_path: string
@@ -32,13 +33,19 @@ export interface MediaAsset {
   validated_at: string | null
 }
 
-// What the `source-asset` edge function returns when an upload intent is created.
-// The path is server-chosen and STABLE for the asset — retries re-upload to the
-// same object instead of minting timestamped duplicates.
+// What the `source-asset` edge function returns when an upload intent is
+// created. The path is server-chosen and STABLE for the asset — retries
+// re-upload to the same object instead of minting timestamped duplicates.
+// token/signedUrl authorize a PUT of exactly that object (short-lived,
+// upsert-enabled); they are null when the asset is already `ready` and there
+// is nothing left to upload.
 export interface SourceUploadIntent {
   assetId: string
   bucket: string
   path: string
+  status: MediaAssetStatus
+  token: string | null
+  signedUrl: string | null
 }
 
 // Stable object path for a source asset. The first segment MUST be the owner id —

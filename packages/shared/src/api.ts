@@ -12,15 +12,21 @@ import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfil
 export interface TakeFile { contentType: string; blob?: unknown; name?: string }
 // onProgress reports upload completion as a 0..1 fraction, or -1 for indeterminate.
 export type UploadTake = (path: string, file: TakeFile, onProgress?: (fraction: number) => void) => Promise<void>
+// A server-authorized signed-upload target (editor-v2 source flow): the token
+// authorizes a PUT of exactly this object — no storage INSERT policy involved.
+export interface SignedUploadTarget { bucket: string; path: string; token: string; signedUrl: string; contentType: string }
+export type UploadSigned = (target: SignedUploadTarget, file: TakeFile, onProgress?: (fraction: number) => void) => Promise<void>
 
 let _sb: SupabaseClient | undefined
 let _appOrigin = ''
 let _uploadTake: UploadTake | undefined
+let _uploadSigned: UploadSigned | undefined
 
-export function initApi(opts: { client: SupabaseClient; appOrigin?: string; uploadTake?: UploadTake }): void {
+export function initApi(opts: { client: SupabaseClient; appOrigin?: string; uploadTake?: UploadTake; uploadSigned?: UploadSigned }): void {
   _sb = opts.client
   _appOrigin = opts.appOrigin ?? ''
   _uploadTake = opts.uploadTake
+  _uploadSigned = opts.uploadSigned
 }
 
 function activeClient(): SupabaseClient {
@@ -34,12 +40,17 @@ export function getClient(): SupabaseClient {
   return activeClient()
 }
 
-// Upload a file to an EXPLICIT storage path using the injected upload impl. For
-// sibling shared modules (editor/api) whose paths are server-chosen — unlike
-// uploadTakeToBucket, this never invents a path of its own.
-export async function uploadFileToPath(path: string, file: TakeFile, onProgress?: (fraction: number) => void): Promise<void> {
-  if (!_uploadTake) throw new Error('No uploadTake configured — pass it to initApi().')
-  await _uploadTake(path, file, onProgress)
+// Upload bytes to a server-signed target (editor/api). Uses the injected
+// platform impl (XHR with real progress on web) and falls back to supabase-js
+// uploadToSignedUrl. The path/token come from the server intent — this layer
+// never invents a path of its own.
+export async function uploadToSignedTarget(target: SignedUploadTarget, file: TakeFile, onProgress?: (fraction: number) => void): Promise<void> {
+  if (_uploadSigned) { await _uploadSigned(target, file, onProgress); return }
+  const { error } = await activeClient().storage
+    .from(target.bucket)
+    .uploadToSignedUrl(target.path, target.token, file.blob as Blob, { contentType: target.contentType, upsert: true })
+  if (error) throw error
+  onProgress?.(1)
 }
 
 // Proxy so existing `supabase.from(...)` / `.auth` / `.functions` / `.storage`

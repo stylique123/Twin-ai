@@ -1,6 +1,6 @@
 // Editor v2 Phase 1 — source-asset contract tests.
 import { describe, it, expect } from 'vitest'
-import { UploadOnce } from '../api.js'
+import { UploadOnce, newRecordingAttemptId } from '../api.js'
 import { sourceAssetPath, SOURCE_MIN_BYTES, SOURCE_MAX_BYTES } from '../contracts.js'
 
 describe('UploadOnce — autosave/confirm/navigation share ONE upload', () => {
@@ -57,5 +57,12 @@ describe('source asset path + bounds', () => {
   it('bounds are sane', () => {
     expect(SOURCE_MIN_BYTES).toBeGreaterThan(0)
     expect(SOURCE_MAX_BYTES).toBe(600 * 1024 * 1024)
+  })
+
+  it('recording attempt ids are uuids and unique per take', () => {
+    const a = newRecordingAttemptId()
+    const b = newRecordingAttemptId()
+    expect(a).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+    expect(a).not.toBe(b)
   })
 })
