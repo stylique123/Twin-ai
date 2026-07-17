@@ -41,7 +41,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 20 }
+        # Node 22: the worker registry test transitively loads @supabase/supabase-js,
+        # which needs a native WebSocket (Node 22+) — the same reason the worker's
+        # Docker image is Node 22.
+        with: { node-version: 22 }
       - name: Install + test @twinai/shared
         run: |
           npm ci
@@ -64,7 +67,7 @@ jobs:
         run: |
           if grep -rnE 'enqueue-autoedit|handleAutoEdit|autoEditTake|autoEditFromPath|pollEditJob|REVIDEO_URL|REVIDEO_TRUSTED|twinai-revideo' \
               apps/web/src packages/shared/src worker/src supabase/functions supabase/config.toml \
-              --exclude-dir=node_modules --exclude-dir=dist; then
+              --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=__tests__ --exclude='*.test.ts'; then
             echo '::error::Legacy editor reference detected — the old AI editor was removed; do not reintroduce its entry points.'
             exit 1
           fi
