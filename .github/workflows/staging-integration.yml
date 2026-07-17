@@ -13,8 +13,13 @@
 # a real media rejection matrix, worker kill/recovery, and the retake race.
 name: staging-integration
 
+# workflow_dispatch only registers from the default branch, so during the gate
+# period this runs on every push to the Phase-1 branch instead. After merge the
+# branch filter never matches again and dispatch becomes available.
 on:
   workflow_dispatch:
+  push:
+    branches: [rebuild/editor-v2-foundation]
 
 permissions:
   id-token: write
