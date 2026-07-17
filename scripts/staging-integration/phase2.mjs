@@ -228,6 +228,10 @@ async function main() {
     check('G1 still one project row', (await projectsFor('source_asset_id', srcA)).length === 1)
     check('G1 still one job', (await editorJobs(projectA.id)).length === 1)
     // ...including under CONCURRENCY: 4 simultaneous different-key requests.
+    // (G1 makes 13 start calls total against the 10/min limit under test —
+    // reset the window here so the limiter can't trip the convergence tests.)
+    console.log('   (waiting out the rate window…)')
+    await sleep(61_000)
     const burst = await Promise.all(Array.from({ length: 4 }, () => startEdit(cOwner, genA, srcA, randomUUID())))
     check('G1 concurrent different keys all converge (active-source uniqueness)',
       burst.every((r2) => r2.status === 200 && r2.body.projectId === projectA.id), burst.map((r2) => r2.status).join(','))
