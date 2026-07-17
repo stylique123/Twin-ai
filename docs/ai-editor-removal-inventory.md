@@ -45,7 +45,7 @@ Legend:
 
 | File | Class | Notes |
 | --- | --- | --- |
-| `enqueue-autoedit/` | REMOVE-ENTIRELY | The only editor edge function; sole callers removed. Also remove its `[functions.enqueue-autoedit]` entry in `supabase/config.toml`. Operator step: delete the deployed function from Supabase. |
+| `enqueue-autoedit/` | REMOVE-SOURCE, KEEP-TOMBSTONE | Source dir + its `[functions.enqueue-autoedit]` `config.toml` entry removed. The *deployed* function is kept as a 410 tombstone (single tombstone policy in `docs/ai-editor-rebuild-status.md`) — do NOT delete it yet; delete only after logs show zero supported-client calls for a release cycle. |
 | `review/` | KEEP | Login-free agency approval/playback of the finished video. |
 | everything else | KEEP | DNA, blueprint, thumbnail, billing, social, admin — unrelated. |
 
