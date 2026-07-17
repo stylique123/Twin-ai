@@ -109,6 +109,12 @@ create policy "media_assets read" on public.media_assets
   using (owner_id = auth.uid() or owner_id in (select workspace_peers()));
 
 grant select on public.media_assets to authenticated;
+-- Supabase default privileges auto-grant table access to anon/authenticated on
+-- creation. RLS already yields zero rows / denies writes (verified on staging),
+-- but the audited posture is explicit grants only — same lesson as migration
+-- 0075: revoke what the defaults handed out.
+revoke all on public.media_assets from anon;
+revoke insert, update, delete on public.media_assets from authenticated;
 
 -- Durable source pointer on the generation. Authoritative over the legacy
 -- compatibility field take_path (which the validator also writes so existing
