@@ -1,0 +1,161 @@
+// Editor v2 — client API for the durable source-asset flow (Phase 1).
+//
+// The flow (docs/twinai-new-editor-build-plan.md §J):
+//   recording finishes → the client mints ONE recording_attempt_id for the take
+//   → create a server-authorized upload intent (DB-unique per attempt, stable
+//   path, signed upload token) → PUT the bytes exactly once → finalize (atomic
+//   uploading→validating + one dedup-keyed validation job) → the worker
+//   ffprobes it → ready → generations.source_asset_id persisted server-side.
+//
+// Idempotency is DATABASE-backed, not browser-backed: repeating create/finalize
+// from a refreshed page, a second tab, or another device converges on the same
+// asset row, same object, same job. UploadOnce below is only an in-page
+// convenience to avoid firing redundant requests. There is NO fallback to the
+// legacy direct-bucket upload — if this flow fails, the caller keeps the Blob
+// and retries the SAME attempt (same asset, same path); it never silently
+// switches persistence systems.
+import { getClient, uploadToSignedTarget, type TakeFile } from '../api'
+import type { MediaAsset, SourceUploadIntent } from './contracts'
+
+// ---- Upload-once coordinator -------------------------------------------------
+// Autosave, confirmation and navigation must share ONE upload. Concurrent (and
+// repeated) callers get the same in-flight promise; only a FAILED attempt clears
+// the slot so a retry can run. Success is sticky — later callers reuse the result.
+export class UploadOnce<T> {
+  private inflight: Promise<T> | null = null
+  run(start: () => Promise<T>): Promise<T> {
+    if (!this.inflight) {
+      this.inflight = start().catch((e) => {
+        this.inflight = null // failed → allow retry
+        throw e
+      })
+    }
+    return this.inflight
+  }
+  reset(): void {
+    this.inflight = null
+  }
+  get active(): boolean {
+    return this.inflight !== null
+  }
+}
+
+// A recording attempt's identity. One take = one attempt id (mint at record
+// finish / file pick); a RETAKE intentionally mints a new one. Retries of the
+// same take MUST reuse the same id — that is what lets the server converge.
+export function newRecordingAttemptId(): string {
+  return crypto.randomUUID()
+}
+
+// Create (or converge on) the server-authorized upload intent for this attempt.
+// Returns the asset id, the STABLE object path, and a signed upload token bound
+// to exactly that object (null if the asset is already ready).
+export async function createSourceUpload(
+  generationId: string,
+  attemptId: string,
+  file: { contentType: string; sizeBytes: number },
+): Promise<SourceUploadIntent> {
+  const { data, error } = await getClient().functions.invoke('source-asset', {
+    body: {
+      action: 'create',
+      generation_id: generationId,
+      recording_attempt_id: attemptId,
+      content_type: file.contentType,
+      size_bytes: file.sizeBytes,
+    },
+  })
+  if (error) throw new Error(await invokeError(error))
+  return data as SourceUploadIntent
+}
+
+// Tell the server the bytes are uploaded → it verifies the object exists, then
+// atomically flips to validating and enqueues exactly one validation job
+// (editor_finalize_source in the DB). Idempotent per asset — repeats reconcile.
+export async function finalizeSourceUpload(assetId: string): Promise<void> {
+  const { error } = await getClient().functions.invoke('source-asset', {
+    body: { action: 'finalize', asset_id: assetId },
+  })
+  if (error) throw new Error(await invokeError(error))
+}
+
+// The full one-upload pipeline: intent → signed PUT → finalize. Poll separately
+// for `ready` (validation runs on the worker). Wrap calls in an UploadOnce so
+// in-page callers share this single operation; cross-page/tab/device dedup is
+// the database's job via attemptId.
+export async function uploadSourceRecording(
+  generationId: string,
+  attemptId: string,
+  file: TakeFile & { sizeBytes: number },
+  onProgress?: (fraction: number) => void,
+): Promise<SourceUploadIntent> {
+  const intent = await createSourceUpload(generationId, attemptId, {
+    contentType: file.contentType,
+    sizeBytes: file.sizeBytes,
+  })
+  // Already validated (e.g. finalized from another tab/device) → nothing to send.
+  if (intent.status === 'ready' || !intent.token || !intent.signedUrl) {
+    onProgress?.(1)
+    return intent
+  }
+  await uploadToSignedTarget(
+    { bucket: intent.bucket, path: intent.path, token: intent.token, signedUrl: intent.signedUrl, contentType: file.contentType },
+    file,
+    onProgress,
+  )
+  await finalizeSourceUpload(intent.assetId)
+  return intent
+}
+
+// Read one asset (RLS: owner + workspace peers).
+export async function getMediaAsset(assetId: string): Promise<MediaAsset | null> {
+  const { data, error } = await getClient().from('media_assets').select('*').eq('id', assetId).maybeSingle()
+  if (error) return null
+  return (data as MediaAsset) ?? null
+}
+
+// The newest READY source asset for a generation — the durable, cross-device
+// recovery path (works with localStorage cleared and from another device).
+// Matches the server's link rule: newest ready source by creation order.
+export async function getReadySourceAsset(generationId: string): Promise<MediaAsset | null> {
+  const { data, error } = await getClient()
+    .from('media_assets')
+    .select('*')
+    .eq('generation_id', generationId)
+    .eq('kind', 'source')
+    .eq('status', 'ready')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) return null
+  return (data as MediaAsset) ?? null
+}
+
+// Wait for worker-side validation to settle. Resolves with the terminal asset
+// ('ready' | 'rejected') or null on timeout/stop — the caller decides how to
+// present a still-validating asset.
+export async function pollSourceAssetReady(
+  assetId: string,
+  opts: { attempts?: number; intervalMs?: number; shouldStop?: () => boolean } = {},
+): Promise<MediaAsset | null> {
+  const { attempts = 60, intervalMs = 2000, shouldStop } = opts
+  for (let i = 0; i < attempts; i++) {
+    await new Promise((r) => setTimeout(r, intervalMs))
+    if (shouldStop?.()) return null
+    const asset = await getMediaAsset(assetId)
+    if (asset && (asset.status === 'ready' || asset.status === 'rejected')) return asset
+  }
+  return null
+}
+
+async function invokeError(error: unknown): Promise<string> {
+  const ctx = (error as { context?: Response }).context
+  if (ctx?.json) {
+    try {
+      const body = await ctx.json()
+      if (body?.error) return String(body.error)
+    } catch {
+      /* fall through */
+    }
+  }
+  return (error as { message?: string }).message ?? 'Could not save your recording'
+}

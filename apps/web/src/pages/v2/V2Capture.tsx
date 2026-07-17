@@ -14,7 +14,7 @@ import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
 import { buildTimeline } from '../../lib/timelineAdapter'
-import { uploadTakeToBucket, pickRecorderMime, getGeneration } from '../../lib/api'
+import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
@@ -155,6 +155,12 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // Autosave: the `takes`-bucket path the finished take was uploaded to the instant
   // recording ended, so a refresh doesn't lose it.
   const savedTakePathRef = useRef<string | null>(null)
+  // ONE upload per take: autosave/confirm/navigation all share this operation
+  // (editor-v2 source-asset contract). reset() only on an explicit re-record.
+  const uploadOnceRef = useRef(new UploadOnce<{ path: string }>())
+  // The take's recording-attempt identity. Minted once per take; retries reuse
+  // it (the DB converges them onto ONE asset); a re-record mints a new one.
+  const attemptIdRef = useRef<string | null>(null)
   const liveRef = useRef(false)        // true ONLY while a scene is actively recording (race guard)
   const wakeLockRef = useRef<{ release?: () => Promise<void> } | null>(null) // keep the screen awake mid-take
   const exitSheetRef = useRef(false)   // freeze the auto-advance while "Discard this take?" is open
@@ -358,21 +364,42 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     reviewBlobRef.current = blob
     setRecording(false)
     setReviewUrl(URL.createObjectURL(blob))
-    // Autosave the take server-side immediately (best-effort, non-blocking): upload
-    // the bytes to the `takes` bucket and stash a local pointer so a refresh / phone
-    // lock never loses a finished recording. A real recorder error or an empty blob
-    // is not worth persisting.
+    // Autosave server-side immediately (best-effort, non-blocking) through the
+    // ONE shared upload (editor-v2 source-asset flow: intent → bytes → finalize →
+    // worker validation). The database record — not localStorage — is what makes
+    // the take recoverable after refresh and on other devices. A real recorder
+    // error or an empty blob is not worth persisting.
     if (!recErrRef.current && blob.size >= MIN_TAKE_BYTES) {
-      const contentType = blob.type || 'video/webm'
       setSaveState('saving')
-      uploadTakeToBucket(genId, { blob, contentType })
-        .then((takePath) => {
-          savedTakePathRef.current = takePath
-          saveTakePointer(genId, { takePath, contentType })
-          setSaveState('saved')
-        })
+      saveSourceOnce(blob)
+        .then((r) => { savedTakePathRef.current = r.path; setSaveState('saved') })
         .catch(() => setSaveState('failed')) // the beforeunload guard still protects
     }
+  }
+
+  // The single upload operation for this take. Every caller (autosave, the
+  // retry button) shares it — concurrent calls can never create a second
+  // storage object. There is NO legacy-bucket fallback: the source-asset flow
+  // is the only write path for new recordings, so on failure we keep the Blob
+  // and retry the SAME attempt (same asset, same stable path) — never a second
+  // persistence system the editor can't find.
+  const saveSourceOnce = (blob: Blob) => uploadOnceRef.current.run(async () => {
+    const contentType = blob.type || 'video/webm'
+    attemptIdRef.current ??= newRecordingAttemptId()
+    const intent = await uploadSourceRecording(genId, attemptIdRef.current, { blob, contentType, sizeBytes: blob.size })
+    saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
+    return { path: intent.path }
+  })
+
+  // Manual retry after a failed save. Reuses the same attempt id, so the server
+  // resumes the same asset/object instead of minting a duplicate.
+  const retrySave = () => {
+    const blob = reviewBlobRef.current
+    if (!blob || saveState === 'saving') return
+    setSaveState('saving')
+    saveSourceOnce(blob)
+      .then((r) => { savedTakePathRef.current = r.path; setSaveState('saved') })
+      .catch(() => setSaveState('failed'))
   }
 
   // A real few-second webm/mp4 take is tens of KB minimum; anything under this is
@@ -395,6 +422,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     // never offers a discarded recording. (The orphaned bucket object is harmless.)
     clearTakePointer(genId)
     savedTakePathRef.current = null
+    uploadOnceRef.current.reset() // a NEW take is a NEW asset/upload
+    attemptIdRef.current = null   // …with a NEW recording-attempt identity
     reviewBlobRef.current = null
     recErrRef.current = null
     chunksRef.current = []
@@ -474,11 +503,17 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
                   <p className="text-xs text-stone">
                     {saveState === 'saved' && 'Saved to your library — safe even if you close this tab.'}
                     {saveState === 'saving' && 'Saving to your library…'}
-                    {saveState === 'failed' && 'Could not save online — use Download to keep this take.'}
+                    {saveState === 'failed' && 'Source not saved — retry the upload, or use Download to keep a copy.'}
                     {saveState === 'idle' && 'Download it to keep it, or record another take.'}
                   </p>
                 </div>
               </div>
+            )}
+
+            {saveState === 'failed' && (
+              <button onClick={retrySave} className="w-full rounded-2xl bg-coral px-3 py-4 text-center text-sm font-semibold text-ink shadow-glow hover:opacity-90">
+                Retry upload
+              </button>
             )}
 
             <button onClick={reRecord} className="w-full rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-4 text-center hover:bg-white/[0.08]">
@@ -688,22 +723,31 @@ function UploadMode({ genId, onBack }: { genId: string; onBack: () => void }) {
   const [err, setErr] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const cancelRef = useRef(false)
+  // One recording attempt per PICKED FILE: retrying the same file reuses the
+  // same attempt id, so the server resumes the same asset/object instead of
+  // minting a duplicate. Picking a different file is a new attempt.
+  const attemptRef = useRef<{ key: string; id: string } | null>(null)
 
   const onFile = async (f: File | undefined) => {
     if (!f || busy) return
     if (!f.type.startsWith('video/')) { setErr('That’s not a video file — pick an MP4 or MOV.'); return }
     setFile(f); setBusy(true); setErr(null); setPct(0); cancelRef.current = false
     try {
-      // Upload the clip to the private `takes` bucket and remember its path so the
-      // rebuilt editor can pick it up. The progress callback drives the real % bar
-      // so a big upload never looks frozen.
+      // One durable upload through the editor-v2 source-asset flow (intent →
+      // signed PUT → finalize → worker validation). The progress callback
+      // drives the real % bar so a big upload never looks frozen. No legacy
+      // fallback: on failure the user retries the SAME attempt — the file is
+      // still in their hands, and a second persistence system would leave
+      // recordings the editor can't find.
       const contentType = f.type || 'video/mp4'
-      const takePath = await uploadTakeToBucket(genId, { blob: f, contentType }, (p) => setPct(p))
+      const key = `${f.name}:${f.size}:${f.lastModified}`
+      if (attemptRef.current?.key !== key) attemptRef.current = { key, id: newRecordingAttemptId() }
+      const intent = await uploadSourceRecording(genId, attemptRef.current.id, { blob: f, contentType, sizeBytes: f.size }, (p) => setPct(p))
       if (cancelRef.current) return
-      saveTakePointer(genId, { takePath, contentType })
+      saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
       onBack()
     } catch (e) {
-      if (!cancelRef.current) { setErr(e instanceof Error ? e.message : 'Upload failed — try again.'); setBusy(false) }
+      if (!cancelRef.current) { setErr(e instanceof Error ? e.message : 'Source not saved — retry the upload.'); setBusy(false) }
     }
   }
 

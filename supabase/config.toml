@@ -12,6 +12,10 @@ verify_jwt = true
 [functions.ingest-reference]
 verify_jwt = true
 
+# Editor v2: source-upload intents + finalization (owner-authenticated).
+[functions.source-asset]
+verify_jwt = true
+
 [functions.admin]
 verify_jwt = true
 

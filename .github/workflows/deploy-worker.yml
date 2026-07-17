@@ -69,9 +69,12 @@ jobs:
             # with the old editor. Neither has a handler, so a stale override would
             # only make the worker claim jobs it can't run.
             sed -i '/^REVIDEO_/d;/^PEXELS_API_KEY/d;/^MUSIC_BED_URL/d;/^EDIT_/d' /opt/twinai-worker.env || true
-            # Only touch the WORKER_JOB_TYPES line; drop retired types then tidy commas.
-            sed -Ei '/^WORKER_JOB_TYPES=/{ s/(autoedit|transcribe)//g; s/,+/,/g; s/=,/=/; s/,$// }' /opt/twinai-worker.env || true
-            echo "worker job types: $(grep '^WORKER_JOB_TYPES=' /opt/twinai-worker.env || echo '(code default: ingest,build_voice,scrape_dna)')"
+            # Drop the box's WORKER_JOB_TYPES override entirely: the code default in
+            # worker/src/env.ts is the single source of truth for job types now.
+            # (A stale override once kept retired types alive AND would silently
+            # exclude newly-registered types like validate_source.)
+            sed -i '/^WORKER_JOB_TYPES=/d' /opt/twinai-worker.env || true
+            echo "worker job types: code default (see worker/src/env.ts jobTypes)"
             docker rm -f twinai-revideo 2>/dev/null || true
             docker rmi -f twinai-revideo 2>/dev/null || true
             echo "revideo container: $(docker ps -a --filter name=twinai-revideo -q | grep -q . && echo STILL-PRESENT || echo removed)"

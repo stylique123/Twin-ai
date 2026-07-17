@@ -1,0 +1,68 @@
+# Editor v2 Phase 1 — the REAL integration gate, run against the DEDICATED
+# staging Supabase project (twinai-phase1-staging). Never touches production.
+#
+# Auth is keyless: the runner proves its identity with a GitHub OIDC token and
+# the staging-only `ci-bootstrap` edge function verifies it (issuer + audience +
+# exact repository + exact branch) before returning the staging keys. Nothing
+# secret lives in this public repository.
+#
+# The harness exercises the full chain the DB-only tests cannot:
+#   client → source-asset edge fn → signed Storage upload → finalize RPC
+#   → validate_source job → REAL worker (ffprobe) → ready → generation pointer
+# including concurrency, refresh/second-device recovery, token lifecycle,
+# a real media rejection matrix, worker kill/recovery, and the retake race.
+name: staging-integration
+
+# workflow_dispatch only registers from the default branch, so during the gate
+# period this runs on every push to the Phase-1 branch instead. After merge the
+# branch filter never matches again and dispatch becomes available.
+on:
+  workflow_dispatch:
+  push:
+    branches: [rebuild/editor-v2-foundation]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+
+      - name: Fetch staging credentials via GitHub OIDC (keyless)
+        run: |
+          OIDC=$(curl -sS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=twinai-staging-integration" | jq -r .value)
+          RESP=$(curl -sS -X POST "https://otgzjsagybpgtwweuptj.supabase.co/functions/v1/ci-bootstrap" \
+            -H 'Content-Type: application/json' -d "{\"token\":\"$OIDC\"}")
+          SERVICE=$(echo "$RESP" | jq -r .serviceRoleKey)
+          ANON=$(echo "$RESP" | jq -r .anonKey)
+          URL=$(echo "$RESP" | jq -r .url)
+          if [ -z "$SERVICE" ] || [ "$SERVICE" = "null" ]; then
+            echo "bootstrap failed: $(echo "$RESP" | jq -r '.error // "no error field"')"; exit 1
+          fi
+          echo "::add-mask::$SERVICE"
+          {
+            echo "STAGING_URL=$URL"
+            echo "STAGING_ANON_KEY=$ANON"
+            echo "STAGING_SERVICE_ROLE_KEY=$SERVICE"
+          } >> "$GITHUB_ENV"
+
+      - name: Build worker (the real one that will run in production)
+        run: cd worker && npm ci && npm run build
+
+      - name: Harness dependency
+        run: npm i --no-save --no-audit --no-fund @supabase/supabase-js@2
+
+      - name: Run integration matrix
+        run: node scripts/staging-integration/run.mjs

@@ -9,11 +9,14 @@ beforeAll(() => {
 })
 
 describe('worker job registry has no old editor', () => {
-  it('registers exactly ingest, build_voice, scrape_dna — and NOT autoedit', async () => {
+  it('registers exactly the active job types — and NOT autoedit/transcribe', async () => {
     const { handlers } = await import('../jobs/index.js')
     const types = Object.keys(handlers).sort()
-    expect(types).toEqual(['build_voice', 'ingest', 'scrape_dna'])
+    // validate_source (editor-v2 Phase 1) VALIDATES an uploaded recording; it is
+    // not an editor/render job. The editor job (`editor_v2`) arrives in Phase 2+.
+    expect(types).toEqual(['build_voice', 'ingest', 'scrape_dna', 'validate_source'])
     expect(handlers).not.toHaveProperty('autoedit')
+    expect(handlers).not.toHaveProperty('transcribe')
   })
 
   it('default WORKER_JOB_TYPES does not drain autoedit', async () => {

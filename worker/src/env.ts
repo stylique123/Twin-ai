@@ -34,7 +34,7 @@ export const env = {
   // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI
   // editor. build_dna stays edge-driven (dna-poll), never add it here or the worker
   // would dead-letter it.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna').split(',').map((s) => s.trim()),
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight
@@ -60,6 +60,14 @@ export const env = {
   // would otherwise OOM the process and wedge the whole queue. 600 MB comfortably
   // covers a 15-min phone take while bounding worst-case memory/disk per job.
   maxDownloadBytes: Number(process.env.WORKER_MAX_DOWNLOAD_BYTES ?? String(600 * 1024 * 1024)),
+
+  // Source validation (validate_source) bounds — configurable so the product
+  // limit can tighten without a code change. 30 min is a hard sanity cap for a
+  // short-form editor; the pixel cap admits 4K (3840x2160 ≈ 8.3M px) and
+  // rejects decode-bomb resolutions above it.
+  sourceMaxDurationMs: Number(process.env.SOURCE_MAX_DURATION_MS ?? String(30 * 60 * 1000)),
+  sourceMinDurationMs: Number(process.env.SOURCE_MIN_DURATION_MS ?? '500'),
+  sourceMaxPixels: Number(process.env.SOURCE_MAX_PIXELS ?? String(3840 * 2160)),
 
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }
