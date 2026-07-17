@@ -1,4 +1,4 @@
-// Screen 4 — Teleprompter or Upload. REAL capture, driven by the Scene Timeline.
+// Screen 4 — Teleprompter or Upload. REAL capture, driven by the Recording Script.
 //
 // Teleprompter records ONE continuous MediaRecorder session, pausing between
 // scenes (so the output is a single valid clip with no dead air between scenes).
@@ -12,15 +12,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { loadTimeline, setWpm } from '../../lib/timelineApi'
-import { buildTimeline } from '../../lib/timelineAdapter'
+import { loadRecordingScript, setWpm } from '../../lib/api'
+import { buildRecordingScript } from '../../lib/api'
 import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
 import {
-  type SceneTimeline,
-  type Scene,
+  type RecordingScript,
+  type RecordingScene,
   type WpmPreset,
   WPM_PRESETS,
   WPM_LABEL,
@@ -37,11 +37,11 @@ export default function V2Capture() {
   const [params] = useSearchParams()
   const mode = params.get('mode') === 'upload' ? 'upload' : 'record'
   const nav = useNavigate()
-  const [timeline, setTimeline] = useState<SceneTimeline | null>(null)
+  const [timeline, setTimeline] = useState<RecordingScript | null>(null)
   const [loadFailed, setLoadFailed] = useState(false)
   const [loadNonce, setLoadNonce] = useState(0) // bump to retry the load
 
-  // Load the persisted Scene Timeline; if there isn't one (e.g. a blueprint made via
+  // Load the persisted Recording Script; if there isn't one (e.g. a blueprint made via
   // the classic Studio flow), synthesize it from the blueprint in-memory so every
   // generation is recordable here. A throw OR an unresolvable generation flips to
   // an error card with Retry — never the "Loading…" screen forever.
@@ -50,10 +50,10 @@ export default function V2Capture() {
     setLoadFailed(false)
     ;(async () => {
       try {
-        let tl = await loadTimeline(id)
+        let tl = await loadRecordingScript(id)
         if (!tl) {
           const g = await getGeneration(id)
-          if (g) tl = buildTimeline({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook })
+          if (g) tl = buildRecordingScript({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook })
         }
         if (!alive) return
         if (tl) setTimeline(tl)
@@ -92,8 +92,8 @@ export default function V2Capture() {
 
 function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   genId: string
-  timeline: SceneTimeline
-  setTimeline: (t: SceneTimeline) => void
+  timeline: RecordingScript
+  setTimeline: (t: RecordingScript) => void
   onBack: () => void
 }) {
   const scenes = useMemo(() => teleprompterScenes(timeline), [timeline])
@@ -817,7 +817,7 @@ function UploadMode({ genId, onBack }: { genId: string; onBack: () => void }) {
   )
 }
 
-function sceneTypeLabel(t?: Scene['scene_type']) {
+function sceneTypeLabel(t?: RecordingScene['scene_type']) {
   switch (t) {
     case 'talking_head': return 'Talking'
     case 'cta': return 'Final action'

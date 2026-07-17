@@ -8,8 +8,8 @@ import { Sparkles, Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions 
 import { generateBlueprint, ingestReference, getJob } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
-import { buildTimeline } from '../../lib/timelineAdapter'
-import { saveTimeline } from '../../lib/timelineApi'
+import { buildRecordingScript } from '../../lib/api'
+import { saveRecordingScript } from '../../lib/api'
 
 const STEPS = [
   { label: 'Watching your reference', icon: Eye },
@@ -161,13 +161,13 @@ export default function V2Building() {
         // A recreation was just spent — refresh so the remixes-left counter is
         // accurate everywhere (AppShell / Dashboard / Settings), not one behind.
         void refreshProfile()
-        const timeline = buildTimeline({
+        const timeline = buildRecordingScript({
           generationId: gen.id,
           blueprint: gen.blueprint,
           selectedHook: gen.selected_hook,
           platform: gen.blueprint?.reference_read?.platform,
         })
-        await saveTimeline(timeline)
+        await saveRecordingScript(timeline)
         if (ticker) clearInterval(ticker)
         // The blueprint is saved server-side regardless of navigation, so it's
         // already in the Library. Only route the user there if they're still here.
