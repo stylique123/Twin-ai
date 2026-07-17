@@ -98,12 +98,24 @@ object path. The signed PUT — not the bucket INSERT policy — authorizes the
 bytes, so every new-flow object provably has a corresponding intent row, with
 server-checked type/size bounds and generation ownership.
 
-**Remaining exposure (documented, scheduled):** the `takes` bucket still has its
-legacy INSERT policy (authenticated, own-uid prefix), kept only for the
-pre-Phase-1 recorder paths still in the wild. Once the new flow is the only
-recorder in production (post-rollout verification), that policy must be revoked
-so intent-less uploads become impossible. Track this as a Phase 12
-(production-readiness) closure item.
+**Remaining exposure (documented, TRACKED closure):** the `takes` bucket still
+has its legacy INSERT policy (authenticated, own-uid prefix), kept only for the
+pre-Phase-1 `uploadTakeToBucket` path during the transition.
+
+- **Requirement:** remove direct legacy `takes` uploads (policy + function)
+  after supported clients use source-asset intents and **before editor beta
+  traffic begins**.
+- **Telemetry (live now):** every legacy-path use logs an analytics event
+  `legacy_take_upload`; additionally, legacy objects are identifiable as takes
+  objects with **no matching `media_assets.storage_path` row**:
+  ```sql
+  select count(*) from storage.objects o
+   where o.bucket_id = 'takes' and o.created_at > now() - interval '30 days'
+     and not exists (select 1 from public.media_assets a where a.storage_path = o.name);
+  ```
+- **Closure gate:** zero `legacy_take_upload` events AND zero unmatched new
+  objects for a release cycle → migration revokes the `"twinai takes insert"`
+  policy and the function is deleted.
 
 ## Limits & knobs
 

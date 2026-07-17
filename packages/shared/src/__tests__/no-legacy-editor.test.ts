@@ -7,8 +7,8 @@
 import { describe, it, expect } from 'vitest'
 import * as shared from '../index.js'
 import * as capture from '../capture.js'
-import { buildTimeline } from '../timelineAdapter.js'
-import { teleprompterScenes, estimateDurationSec, sceneTimeCapSec, WPM_PRESETS } from '../timeline.js'
+import { buildRecordingScript } from '../recordingScriptAdapter.js'
+import { teleprompterScenes, estimateDurationSec, sceneTimeCapSec, WPM_PRESETS } from '../recordingScript.js'
 import type { Blueprint } from '../types.js'
 
 describe('old AI editor is gone from the client API surface', () => {
@@ -59,8 +59,8 @@ describe('recording + teleprompter data path still builds from a blueprint (no e
     production_sprint: [],
   } as unknown as Blueprint
 
-  it('buildTimeline turns a blueprint into recordable teleprompter scenes', () => {
-    const tl = buildTimeline({ generationId: 'g1', blueprint, selectedHook: 'This is the hook line.' })
+  it('buildRecordingScript turns a blueprint into recordable teleprompter scenes', () => {
+    const tl = buildRecordingScript({ generationId: 'g1', blueprint, selectedHook: 'This is the hook line.' })
     const scenes = teleprompterScenes(tl)
     expect(scenes.length).toBeGreaterThan(0)
     // The chosen hook opens the teleprompter.
@@ -74,8 +74,8 @@ describe('recording + teleprompter data path still builds from a blueprint (no e
     expect(WPM_PRESETS.natural).toBeGreaterThan(0)
   })
 
-  it('the Scene Timeline is RECORDING-ONLY — no render/edit fields on any scene', () => {
-    const tl = buildTimeline({ generationId: 'g1', blueprint, selectedHook: 'This is the hook line.' })
+  it('the Recording Script is RECORDING-ONLY — no render/edit fields on any scene', () => {
+    const tl = buildRecordingScript({ generationId: 'g1', blueprint, selectedHook: 'This is the hook line.' })
     // These are the old editor's per-scene render instructions — they must not be
     // part of the recording model anymore (Stage 2.3 separation).
     const FORBIDDEN = ['broll_instruction', 'cut_point', 'transition', 'edl', 'zoom', 'keyframe', 'render', 'output_path', 'segments']

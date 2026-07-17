@@ -1,7 +1,7 @@
-// Blueprint → SceneTimeline adapter.
+// Blueprint → RecordingScript adapter.
 //
 // Turns the existing AI Blueprint (reference read + hook options + script +
-// shot list + captions) into ONE Scene Timeline that drives every V2 module.
+// shot list + captions) into ONE Recording Script that drives every V2 module.
 // Deterministic and invariant-clean: the hook lands once in scene 1, every
 // talking line becomes a contiguous talking scene with a clean cut, b-roll
 // moments from the shot list become silent insert scenes, and a final CTA scene
@@ -9,13 +9,13 @@
 
 import type { Blueprint } from './types'
 import {
-  type Scene,
-  type SceneTimeline,
+  type RecordingScene,
+  type RecordingScript,
   type WpmPreset,
   DEFAULT_WPM,
   estimateDurationSec,
   totalDurationSec,
-} from './timeline'
+} from './recordingScript'
 
 const BROLL_HINT = /(b-?roll|insert|cutaway|show|overlay|screen|demo|product)/i
 
@@ -44,7 +44,7 @@ function framingFor(
   }
 }
 
-export interface BuildTimelineInput {
+export interface BuildRecordingScriptInput {
   generationId: string
   blueprint: Blueprint
   selectedHook?: string | null
@@ -52,13 +52,13 @@ export interface BuildTimelineInput {
   wpm?: WpmPreset
 }
 
-export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
+export function buildRecordingScript(input: BuildRecordingScriptInput): RecordingScript {
   const { generationId, blueprint } = input
   const wpm = input.wpm ?? DEFAULT_WPM
   const hook = (input.selectedHook || blueprint.hook_options?.[0] || blueprint.script?.[0]?.line || '').trim()
   const platform = input.platform || blueprint.reference_read?.platform || 'reels'
 
-  const scenes: Scene[] = []
+  const scenes: RecordingScene[] = []
   const usedCaptions = new Set<string>()
   const pushCaption = (base: string, n: number): string => {
     let c = base || `Scene ${n}`

@@ -1,13 +1,17 @@
 // ─────────────────────────────────────────────────────────────────────────────
-// Scene Timeline — THE single source of truth for TwinAI Creative Studio (V2).
+// Recording Script — the RECORDING model for TwinAI Creative Studio (V2).
 //
-// One master object drives EVERYTHING downstream: script, hook, shot guide,
-// teleprompter, recording pauses, editor cuts, captions, b-roll, music, final
-// video, and publishing copy. No module ever re-guesses scene boundaries — they
-// all read the same `scenes[]`. This is what guarantees the teleprompter pauses
-// where the editor cuts where the captions reset, by construction.
+// One object drives everything about CAPTURING a take: spoken dialogue, scene
+// order, WPM pacing, camera-framing guidance, and estimated durations for the
+// teleprompter. No module re-guesses scene boundaries — they all read the same
+// `scenes[]`.
 //
-// Mirrored 1:1 by worker/src/timeline.ts so the render uses the exact structure.
+// BOUNDARY: this is NOT — and must never become — the editor's timeline. The
+// rebuilt one-click editor (editor v2) owns its own canonical EditPlan derived
+// from the VALIDATED SOURCE MEDIA, not from this script. Nothing here may grow
+// cut markers, transitions, caption timing, render styles, or output paths.
+// (Persisted as generations.scene_timeline jsonb — the column name and wire
+// keys are historical and stay stable; only code identifiers were renamed.)
 // See docs/PRODUCT_VISION.md §8.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -24,7 +28,7 @@ export type SceneType =
 // paths, or EDL data). The old AI editor's per-scene render fields (broll_instruction,
 // cut_point, transition) were removed here so the recording model stays clean; the
 // rebuilt one-click editor will own its own edit plan, separate from this.
-export interface Scene {
+export interface RecordingScene {
   scene_number: number // 1-based, contiguous, in order
   scene_type: SceneType
   purpose: string // plain-language why this scene exists
@@ -40,13 +44,13 @@ export interface Scene {
   show_in_teleprompter: boolean // true for spoken scenes; false for silent b-roll
 }
 
-export interface SceneTimeline {
+export interface RecordingScript {
   version: 1
   generation_id: string
   platform: string // e.g. "tiktok" | "reels" | "shorts"
   hook: string // the ONE selected hook — appears once, at scene 1
   wpm: WpmPreset // teleprompter speed preset
-  scenes: Scene[]
+  scenes: RecordingScene[]
   total_duration_sec: number // sum of scene durations (derived)
 }
 
@@ -85,13 +89,13 @@ export function sceneTimeCapSec(estSec: number): number {
   return Math.min(Math.max(estSec + 5, 12), 30)
 }
 
-export function totalDurationSec(scenes: Scene[]): number {
+export function totalDurationSec(scenes: RecordingScene[]): number {
   return Math.round(scenes.reduce((a, s) => a + (s.duration_sec || 0), 0) * 10) / 10
 }
 
 // The scenes the teleprompter actually walks through (spoken only). Silent b-roll
 // is never a teleprompter scene unless it carries voiceover (dialogue != null).
-export function teleprompterScenes(t: SceneTimeline): Scene[] {
+export function teleprompterScenes(t: RecordingScript): RecordingScene[] {
   return t.scenes.filter((s) => s.show_in_teleprompter)
 }
 
