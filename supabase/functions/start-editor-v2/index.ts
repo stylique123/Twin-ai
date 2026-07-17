@@ -74,6 +74,20 @@ Deno.serve(async (req: Request) => {
   })
   if (rateOk === false) return json({ error: 'Too many edit requests — give it a few seconds.' }, 429)
 
+  // An idempotency key binds to ONE set of inputs, forever. Reuse with a
+  // different generation/source is a conflict — never silently answered with
+  // an unrelated project. (The RPC re-checks this atomically under a row lock;
+  // this early check just gives the clean 409 in the common case.)
+  const { data: keyed } = await admin
+    .from('edit_projects')
+    .select('id, generation_id, source_asset_id')
+    .eq('owner_id', user.id)
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle()
+  if (keyed && (keyed.generation_id !== generationId || keyed.source_asset_id !== sourceAssetId)) {
+    return json({ error: 'That request key was already used for a different edit.', code: 'idempotency_key_conflict' }, 409)
+  }
+
   // Generation: must exist and belong to the caller (owner-strict).
   const { data: gen } = await admin
     .from('generations')
@@ -131,6 +145,9 @@ Deno.serve(async (req: Request) => {
   const { data: proj, error: startErr } = await admin.rpc('editor_start_project', {
     p_owner: user.id, p_generation: generationId, p_source: sourceAssetId, p_idempotency: idempotencyKey,
   })
+  if (startErr?.message?.includes('idempotency_conflict')) {
+    return json({ error: 'That request key was already used for a different edit.', code: 'idempotency_key_conflict' }, 409)
+  }
   if (startErr || !proj) return json({ error: 'Could not start the edit — try again.' }, 500)
 
   return json({

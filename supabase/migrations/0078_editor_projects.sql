@@ -47,6 +47,29 @@ create unique index edit_projects_active_source_uniq on public.edit_projects (so
 create index edit_projects_owner_idx on public.edit_projects (owner_id, created_at desc);
 create index edit_projects_generation_idx on public.edit_projects (generation_id, created_at desc);
 
+-- Identity columns are IMMUTABLE after creation — ownership, the source, the
+-- generation, and the idempotency key can never be repointed, for any role
+-- including service_role. Lifecycle columns (status, versions, output,
+-- failure, timestamps) remain worker-writable (Phase 3+).
+create or replace function public.edit_projects_guard_immutable()
+returns trigger
+language plpgsql
+as $$
+begin
+  if new.owner_id is distinct from old.owner_id
+     or new.generation_id is distinct from old.generation_id
+     or new.source_asset_id is distinct from old.source_asset_id
+     or new.idempotency_key is distinct from old.idempotency_key then
+    raise exception 'edit_projects: owner/generation/source/idempotency_key are immutable';
+  end if;
+  return new;
+end;
+$$;
+
+create trigger trg_edit_projects_immutable
+  before update on public.edit_projects
+  for each row execute function public.edit_projects_guard_immutable();
+
 alter table public.edit_projects enable row level security;
 create policy "edit_projects read" on public.edit_projects
   for select to authenticated
@@ -160,6 +183,15 @@ begin
   select * into proj from public.edit_projects
    where owner_id = p_owner and idempotency_key = p_idempotency
    for update;
+  if found then
+    -- A key binds to ONE set of inputs, forever. Reusing it with a different
+    -- generation/source is a caller bug — refuse loudly rather than silently
+    -- returning a project for different work (the edge fn maps this to 409).
+    if proj.generation_id is distinct from p_generation
+       or proj.source_asset_id is distinct from p_source then
+      raise exception 'idempotency_conflict: key is bound to different inputs';
+    end if;
+  end if;
   if not found then
     -- Reconcile by active project for this source (different key, same work).
     select * into proj from public.edit_projects

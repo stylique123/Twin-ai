@@ -108,3 +108,4 @@ export type StartEditorRejection =
   | 'source_not_ready'
   | 'source_not_editor_eligible'
   | 'too_many_active_projects'
+  | 'idempotency_key_conflict'

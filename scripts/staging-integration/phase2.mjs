@@ -173,7 +173,10 @@ async function main() {
   const srcA = await sourceFlow(cOwner, genA, fix.good, 'video/webm')
   const srcB = await sourceFlow(cOwner, genB, fix.good, 'video/webm')
   const srcNoAudio = await sourceFlow(cOwner, genNoAudio, fix.noaudio, 'video/webm')
-  const srcRejected = await sourceFlow(cOwner, genRejected, fix.good.subarray(0, 40_000), 'video/webm')
+  // Genuinely unprobeable bytes (a truncated WEBM still probes — its headers
+  // are at the front — so use random data, which no demuxer can parse).
+  const { randomBytes } = await import('node:crypto')
+  const srcRejected = await sourceFlow(cOwner, genRejected, randomBytes(50_000), 'video/webm')
   const a = await waitTerminal(srcA)
   const b = await waitTerminal(srcB)
   const na = await waitTerminal(srcNoAudio)
@@ -208,6 +211,14 @@ async function main() {
   }
   const projectA = (await projectsFor('source_asset_id', srcA))[0]
 
+  // Two browser sessions (same user, fresh login) with the SAME key → the
+  // same project. This is the refresh / second-device / timeout-after-commit
+  // retry shape: the commit survived, the retry converges.
+  {
+    const session2 = await login(owner.email)
+    const r = await startEdit(session2, genA, srcA, key1)
+    check('G1 second session, same key → same project', r.status === 200 && r.body.projectId === projectA.id, JSON.stringify(r.body))
+  }
   // Different key, same source, project still active → converge on the SAME
   // active project (no second project/job, nothing charged twice).
   {
@@ -216,6 +227,32 @@ async function main() {
       r.status === 200 && r.body.projectId === projectA.id, JSON.stringify(r.body))
     check('G1 still one project row', (await projectsFor('source_asset_id', srcA)).length === 1)
     check('G1 still one job', (await editorJobs(projectA.id)).length === 1)
+    // ...including under CONCURRENCY: 4 simultaneous different-key requests.
+    const burst = await Promise.all(Array.from({ length: 4 }, () => startEdit(cOwner, genA, srcA, randomUUID())))
+    check('G1 concurrent different keys all converge (active-source uniqueness)',
+      burst.every((r2) => r2.status === 200 && r2.body.projectId === projectA.id), burst.map((r2) => r2.status).join(','))
+    check('G1 still exactly one project + one job', (await projectsFor('source_asset_id', srcA)).length === 1 && (await editorJobs(projectA.id)).length === 1)
+  }
+  // KEY-REUSE CONFLICT: the same key with DIFFERENT inputs must 409, never
+  // silently answer with the unrelated project.
+  {
+    const rGen = await startEdit(cOwner, genB, srcB, key1) // key1 is bound to genA/srcA
+    check('G1 key reused with different generation+source → 409/idempotency_key_conflict',
+      rGen.status === 409 && rGen.body.code === 'idempotency_key_conflict', `status=${rGen.status} code=${rGen.body.code}`)
+    const rSrc = await startEdit(cOwner, genA, srcB, key1) // same gen, different source
+    check('G1 key reused with different source → 409/idempotency_key_conflict',
+      rSrc.status === 409 && rSrc.body.code === 'idempotency_key_conflict', `status=${rSrc.status} code=${rSrc.body.code}`)
+    check('G1 conflict created no project for source B', (await projectsFor('source_asset_id', srcB)).length === 0)
+  }
+  // Job payload is IDs ONLY — no paths, URLs, cuts, prompts, or options.
+  {
+    const [job] = await editorJobs(projectA.id)
+    const { data: full } = await admin.from('jobs').select('payload').eq('id', job.id).maybeSingle()
+    const keys = Object.keys(full?.payload ?? {}).sort()
+    const UUIDISH = /^[0-9a-f-]{36}$/i
+    check('G1 job payload keys are exactly {generation_id, project_id, source_asset_id}',
+      JSON.stringify(keys) === JSON.stringify(['generation_id', 'project_id', 'source_asset_id']), keys.join(','))
+    check('G1 job payload values are bare IDs', Object.values(full?.payload ?? {}).every((v) => UUIDISH.test(String(v))))
   }
   // Job-loss reconciliation: delete the queued job, repeat the same key → the
   // job is re-inserted, never duplicated.
@@ -245,6 +282,30 @@ async function main() {
         `status=${r.status} code=${r.body.code}`)
       const projs = await projectsFor('generation_id', g)
       check(`G2 ${label} created NO project`, projs.length === 0, `rows=${projs.length}`)
+    }
+    // uploading source: an intent with no bytes/finalize stays 'uploading'
+    const genUp = await newGen(owner.id)
+    const up = await callEdge(cOwner, 'source-asset', {
+      action: 'create', generation_id: genUp, recording_attempt_id: randomUUID(),
+      content_type: 'video/webm', size_bytes: 100_000,
+    })
+    const rUp = await startEdit(cOwner, genUp, up.body.assetId, randomUUID())
+    check('G2 uploading source → 409/source_not_ready', rUp.status === 409 && rUp.body.code === 'source_not_ready',
+      `status=${rUp.status} code=${rUp.body.code}`)
+    // missing source
+    const rMiss = await startEdit(cOwner, genA, randomUUID(), randomUUID())
+    check('G2 missing source → 404/source_not_found', rMiss.status === 404 && rMiss.body.code === 'source_not_found',
+      `status=${rMiss.status} code=${rMiss.body.code}`)
+    // asset of a kind other than source (service-minted music asset)
+    const { data: musicRow, error: musicErr } = await admin.from('media_assets').insert({
+      owner_id: owner.id, generation_id: genA, kind: 'music', bucket: 'takes',
+      storage_path: `${owner.id}/music/${randomUUID()}.mp3`, status: 'ready',
+    }).select('id').single()
+    check('G2 setup: non-source asset minted', !musicErr && !!musicRow, musicErr?.message)
+    if (musicRow) {
+      const rKind = await startEdit(cOwner, genA, musicRow.id, randomUUID())
+      check('G2 non-source kind → 409/not_a_source', rKind.status === 409 && rKind.body.code === 'not_a_source',
+        `status=${rKind.status} code=${rKind.body.code}`)
     }
     // deleted source
     await admin.from('media_assets').update({ status: 'deleted' }).eq('id', srcRejected)
@@ -332,6 +393,16 @@ async function main() {
     check('G4 project untouched after all attempts', after?.status === 'queued', after?.status)
     const anonRead = await cAnon.from('edit_projects').select('id').limit(1)
     check('G4 anonymous cannot read edit_projects', anonRead.error !== null || (anonRead.data ?? []).length === 0)
+    // Identity columns are immutable even for the SERVICE role (trigger).
+    const { error: immErr } = await admin.from('edit_projects').update({ owner_id: outsider.id }).eq('id', projectA.id)
+    check('G4 ownership cannot change (immutable even for service role)', immErr !== null, immErr?.message ?? 'update succeeded!')
+    const { error: immErr2 } = await admin.from('edit_projects').update({ source_asset_id: srcB }).eq('id', projectA.id)
+    check('G4 source cannot change after creation', immErr2 !== null, immErr2?.message ?? 'update succeeded!')
+    // An unrelated user cannot even observe that the project EXISTS.
+    const { data: outObs } = await cOutsider.from('edit_projects').select('id').eq('id', projectA.id)
+    check('G4 unrelated user cannot observe project existence (0 rows)', (outObs ?? []).length === 0)
+    const { data: outEv } = await cOutsider.from('edit_events').select('id').eq('project_id', projectA.id)
+    check('G4 unrelated user cannot observe events either', (outEv ?? []).length === 0)
   }
 
   // ---------- G5: the Phase-2 boundary ----------
