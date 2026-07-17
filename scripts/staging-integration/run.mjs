@@ -328,7 +328,6 @@ async function main() {
     check('T7-oversize refused (400)', r.status === 400, `status=${r.status}`)
   }
 
-  console.log('== T7 setup: media matrix enqueued ==')
   const matrix = [
     ['portrait.webm', 'video/webm', 'ready', null],
     ['landscape-2.mp4', 'video/mp4', 'ready', null, 'landscape.mp4'],
@@ -341,22 +340,37 @@ async function main() {
     ['bigres.mp4', 'video/mp4', 'rejected', /resolution_too_high/],
     ['toolong.mp4', 'video/mp4', 'rejected', /too_long/],
   ]
+  // ---------- Phase B: start the REAL worker ----------
+  console.log('== starting the real worker (ffprobe) ==')
+  startWorker()
+
+  console.log('== T7 setup: media matrix enqueued (paced under the open-asset cap) ==')
+  // 10 fixtures against a 5-open-asset cap: the worker drains validations while
+  // we submit, and we wait for headroom before each create — the cap itself is
+  // covered by the dedicated Caps section above.
+  async function waitOpenBelow(ownerId, n, timeoutMs = 180_000) {
+    const start = Date.now()
+    for (;;) {
+      const { count } = await admin.from('media_assets').select('id', { count: 'exact', head: true })
+        .eq('owner_id', ownerId).eq('kind', 'source').in('status', ['uploading', 'validating'])
+      if ((count ?? 0) < n) return
+      if (Date.now() - start > timeoutMs) throw new Error(`open-asset headroom never appeared (count=${count})`)
+      await sleep(1000)
+    }
+  }
   const matrixAssets = []
   for (const row of matrix) {
     const [label, ct, , , srcName] = row
     const buf = fix[srcName ?? label]
     const g = await newGen(matrixOwner.id)
     try {
+      await waitOpenBelow(matrixOwner.id, 5)
       const r = await fullFlow(cMatrix, g, randomUUID(), buf, ct)
       matrixAssets.push({ label, assetId: r.intent.assetId, gen: g, expect: row[2], codeRe: row[3] })
     } catch (e) {
       matrixAssets.push({ label, assetId: null, gen: g, expect: row[2], codeRe: row[3], setupError: String(e) })
     }
   }
-
-  // ---------- Phase B: start the REAL worker ----------
-  console.log('== starting the real worker (ffprobe) ==')
-  startWorker()
 
   console.log('== T1: record-equivalent portrait webm → ready, exact accounting ==')
   {
