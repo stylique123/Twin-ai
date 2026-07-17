@@ -220,13 +220,15 @@ Deno.serve(async (req: Request) => {
     )
     if (!head.ok) return json({ error: "The upload didn't complete — try again." }, 409)
     const objectBytes = Number(head.headers.get('content-length') ?? '0')
+    const objectEtag = head.headers.get('etag')
     if (objectBytes < MIN_BYTES) return json({ error: 'The uploaded file is empty — please re-record.' }, 409)
     if (objectBytes > MAX_BYTES) return json({ error: 'The uploaded file is too large.' }, 409)
 
     // Atomic in the DB: uploading→validating + exactly-one dedup-keyed
-    // validation job, in one transaction. Safe to repeat.
+    // validation job, in one transaction. Safe to repeat. The size + etag pin
+    // WHICH bytes were finalized — the validator refuses different bytes.
     const { data: status, error: finErr } = await admin.rpc('editor_finalize_source', {
-      p_asset_id: assetId, p_object_bytes: objectBytes,
+      p_asset_id: assetId, p_object_bytes: objectBytes, p_object_etag: objectEtag,
     })
     if (finErr) return json({ error: 'Could not queue validation — try again.' }, 500)
     return json({ ok: true, status: status ?? 'validating' })

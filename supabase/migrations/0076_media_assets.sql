@@ -22,6 +22,9 @@ create table public.media_assets (
   -- `create` across refreshes/tabs/devices converge on this same row. A retake
   -- intentionally gets a NEW attempt id (and therefore a new asset).
   recording_attempt_id uuid,
+  -- Strictly monotonic insertion order: the deterministic "newer" tiebreaker
+  -- for retake ordering even when created_at timestamps collide.
+  seq bigint generated always as identity,
   bucket text not null,
   storage_path text not null unique,
   content_sha256 text,
@@ -150,7 +153,7 @@ create unique index if not exists jobs_dedup_key_uniq
 -- Service-role only (the source-asset edge function calls it after verifying
 -- caller ownership and that the storage object really exists).
 -- ---------------------------------------------------------------------------
-create or replace function public.editor_finalize_source(p_asset_id uuid, p_object_bytes bigint default null)
+create or replace function public.editor_finalize_source(p_asset_id uuid, p_object_bytes bigint default null, p_object_etag text default null)
 returns text
 language plpgsql
 security definer
@@ -165,9 +168,14 @@ begin
   end if;
 
   if a.status = 'uploading' then
+    -- Record WHICH bytes were finalized (size + storage etag). The validator
+    -- re-HEADs before download and rejects if the object changed — a replayed
+    -- upload token must never get different content validated.
     update public.media_assets
        set status = 'validating',
-           size_bytes = coalesce(p_object_bytes, size_bytes)
+           size_bytes = coalesce(p_object_bytes, size_bytes),
+           metadata = metadata || jsonb_strip_nulls(jsonb_build_object(
+             'finalized_bytes', p_object_bytes, 'finalized_etag', p_object_etag))
      where id = p_asset_id
      returning * into a;
   end if;
@@ -186,17 +194,18 @@ begin
 end;
 $$;
 
-revoke all on function public.editor_finalize_source(uuid, bigint) from public;
-revoke all on function public.editor_finalize_source(uuid, bigint) from anon;
-revoke all on function public.editor_finalize_source(uuid, bigint) from authenticated;
+revoke all on function public.editor_finalize_source(uuid, bigint, text) from public;
+revoke all on function public.editor_finalize_source(uuid, bigint, text) from anon;
+revoke all on function public.editor_finalize_source(uuid, bigint, text) from authenticated;
 
 -- ---------------------------------------------------------------------------
 -- editor_link_ready_source(asset)
 -- The ONE privileged generation update, with retake-race protection: a slower
 -- validation of an OLDER take must never overwrite the pointer to a NEWER one.
 -- Rule (documented in docs/editor-v2-source-asset.md): the generation points to
--- the newest ready source by (created_at, id); explicit user selection can
--- arrive later as selected_source_asset_id without changing this seam.
+-- the newest ready source by insertion order (seq — strictly monotonic, so the
+-- rule stays deterministic even with equal created_at); explicit user selection
+-- can arrive later as selected_source_asset_id without changing this seam.
 -- Returns true when the pointer was set/kept, false when a newer source won.
 -- Service-role only (called by the worker after marking the asset ready).
 -- ---------------------------------------------------------------------------
@@ -224,7 +233,7 @@ begin
        or exists (
          select 1 from public.media_assets cur
           where cur.id = g.source_asset_id
-            and (cur.created_at, cur.id) < (a.created_at, a.id)
+            and cur.seq < a.seq
        )
      );
   get diagnostics linked = row_count;

@@ -58,11 +58,37 @@ and `ready`; clients have **no** INSERT/UPDATE/DELETE on `media_assets` at all.
 Take A validating slowly + user records take B + B becomes ready first →
 A's late `ready` must not steal the pointer. `editor_link_ready_source()` only
 updates `generations.source_asset_id` when the candidate is **newer** than the
-currently linked source (ordered by `(created_at, id)`).
+currently linked source.
 
-**Documented rule: the generation points to the newest ready source asset.**
-Explicit user selection (`selected_source_asset_id`) can be added later without
-changing this seam.
+**Documented rule: the generation points to the newest ready source asset,
+"newest" = highest `seq`** (a strictly monotonic identity column = insertion
+order), so the rule stays deterministic even if two takes share a `created_at`
+timestamp. Explicit user selection (`selected_source_asset_id`) can be added
+later without changing this seam.
+
+## Finalized-bytes integrity (upload-token replay)
+
+The signed upload token is upsert-enabled with a platform-fixed ~2h lifetime,
+so in principle a client could re-PUT the object AFTER finalize. The system
+refuses to validate swapped bytes:
+
+- `finalize` records the object's **size and storage etag** at finalize time
+  (`metadata.finalized_bytes` / `metadata.finalized_etag`, set inside the
+  atomic `editor_finalize_source()`).
+- The validator re-HEADs the object before download and compares the etag, and
+  compares the downloaded byte count to the finalized size — any mismatch →
+  `rejected: bytes_changed_after_finalize` (retryable as a new validation
+  version after the client re-finalizes what is actually there).
+- `ready` records the content `sha256`; later consumers (the Phase 2+ editor)
+  must verify it before use, so post-ready tampering is also detectable.
+
+## No-audio policy (explicit)
+
+A take with a video stream but **no audio** becomes `ready` — it is playable,
+durable, recoverable. It is **not eligible for AI editing**: the editor's
+analysis chain starts from speech. `has_audio=false` (and the mirror flag
+`metadata.editor_eligible=false`) is the machine-readable gate Phase 2's
+start-editor endpoint must check and refuse with a clear reason.
 
 ## Upload authorization
 

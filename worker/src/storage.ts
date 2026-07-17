@@ -50,6 +50,19 @@ export async function downloadObject(bucket: string, path: string, toFile: strin
   }
 }
 
+// HEAD an object: existence + size + etag, without downloading. Used by
+// validate_source to prove the bytes it is about to download are the SAME
+// bytes finalize saw (etag match) — an upload token replayed after finalize
+// must not let different content get validated.
+export async function headObject(bucket: string, path: string): Promise<{ sizeBytes: number; etag: string | null } | null> {
+  const res = await fetch(`${base}/object/${bucket}/${encodePath(path)}`, { method: 'HEAD', headers: auth })
+  if (!res.ok) return null
+  return {
+    sizeBytes: Number(res.headers.get('content-length') ?? '0'),
+    etag: res.headers.get('etag'),
+  }
+}
+
 // Upload a local file (overwrites if present).
 export async function uploadObject(bucket: string, path: string, fromFile: string, contentType: string): Promise<void> {
   const body = await readFile(fromFile)

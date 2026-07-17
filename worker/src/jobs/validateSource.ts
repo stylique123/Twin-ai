@@ -18,9 +18,10 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { createReadStream } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { stat } from 'node:fs/promises'
 import { db, type Job } from '../db.js'
 import { env } from '../env.js'
-import { downloadObject } from '../storage.js'
+import { downloadObject, headObject } from '../storage.js'
 
 const run = promisify(execFile)
 
@@ -102,7 +103,7 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
 
   const { data: asset } = await db
     .from('media_assets')
-    .select('id, owner_id, generation_id, bucket, storage_path, status, mime_type')
+    .select('id, owner_id, generation_id, bucket, storage_path, status, mime_type, size_bytes, metadata')
     .eq('id', assetId)
     .maybeSingle()
   if (!asset) throw new Error('validate_source: asset not found')
@@ -120,6 +121,18 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
     if (!gen) return await reject(assetId, 'ownership_mismatch', 'asset owner does not own the generation')
   }
 
+  // The bytes we validate must be the bytes finalize saw. A signed upload token
+  // (upsert, ~2h lifetime) replayed AFTER finalize could otherwise swap the
+  // object's content between finalize and validation — compare the storage
+  // etag/size recorded at finalize before trusting the object.
+  const finalized = (asset.metadata ?? {}) as { finalized_etag?: string; finalized_bytes?: number }
+  const head = await headObject(asset.bucket, asset.storage_path)
+  if (!head) return await reject(assetId, 'object_missing', 'storage object disappeared before validation')
+  if (finalized.finalized_etag && head.etag && head.etag !== finalized.finalized_etag) {
+    return await reject(assetId, 'bytes_changed_after_finalize',
+      `storage etag ${head.etag} != finalized ${finalized.finalized_etag}`)
+  }
+
   const dir = await mkdtemp(join(tmpdir(), 'validate-src-'))
   try {
     const local = join(dir, 'source')
@@ -127,6 +140,11 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
       await downloadObject(asset.bucket, asset.storage_path, local)
     } catch (e) {
       return await reject(assetId, 'download_failed', String(e).slice(0, 300))
+    }
+    const localBytes = (await stat(local)).size
+    if (asset.size_bytes && localBytes !== Number(asset.size_bytes)) {
+      return await reject(assetId, 'bytes_changed_after_finalize',
+        `downloaded ${localBytes} bytes != finalized ${asset.size_bytes}`)
     }
 
     const sha256 = await fileSha256(local)
@@ -168,6 +186,10 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
           container: verdict.container,
           video_codec: verdict.videoCodec,
           audio_codec: verdict.audioCodec,
+          // Policy: a no-audio take is READY (playable, recoverable) but NOT
+          // eligible for AI editing — the editor requires speech to analyze.
+          // Phase 2's start-editor gate reads has_audio; this flag documents it.
+          editor_eligible: verdict.hasAudio,
         },
       })
       .eq('id', assetId)
