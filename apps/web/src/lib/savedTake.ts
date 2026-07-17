@@ -1,20 +1,24 @@
-// Saved-take pointer — recording durability across a refresh / tab close / phone
-// lock. The take BYTES are uploaded to the `takes` bucket the moment recording
-// finishes (server-side, durable); only this tiny pointer (the storage path) lives
-// in localStorage, keyed by generation id, so a finished recording is never lost
-// to an accidental navigation. The rebuilt editor will consume this pointer.
+// Saved-take pointer — a CONVENIENCE CACHE only, never the authority. The take
+// bytes live in the private `takes` bucket and the durable record is the
+// media_assets row (+ generations.source_asset_id) written server-side. On
+// recovery, screens consult the database FIRST (getReadySourceAsset) and use
+// this localStorage pointer only when the server has no record yet (e.g. the
+// upload is still in flight in this same tab).
 const KEY = (genId: string) => `twinai_take_${genId}`
 
 export interface SavedTake {
   takePath: string
   contentType: string
+  // The durable media_assets id when the take went through the source-asset flow.
+  // Absent on legacy/fallback uploads that only wrote the bucket directly.
+  sourceAssetId?: string
   savedAt: number
 }
 
 export function saveTakePointer(genId: string, take: Omit<SavedTake, 'savedAt'>): void {
   try {
     localStorage.setItem(KEY(genId), JSON.stringify({ ...take, savedAt: Date.now() }))
-  } catch { /* storage full/unavailable — the beforeunload guard still protects */ }
+  } catch { /* storage full/unavailable — the server record still protects */ }
 }
 
 export function readTakePointer(genId: string): SavedTake | null {

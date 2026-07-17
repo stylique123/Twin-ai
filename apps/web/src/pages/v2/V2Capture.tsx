@@ -14,7 +14,7 @@ import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadTimeline, setWpm } from '../../lib/timelineApi'
 import { buildTimeline } from '../../lib/timelineAdapter'
-import { uploadTakeToBucket, pickRecorderMime, getGeneration } from '../../lib/api'
+import { uploadTakeToBucket, pickRecorderMime, getGeneration, uploadSourceRecording, UploadOnce } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
@@ -155,6 +155,9 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // Autosave: the `takes`-bucket path the finished take was uploaded to the instant
   // recording ended, so a refresh doesn't lose it.
   const savedTakePathRef = useRef<string | null>(null)
+  // ONE upload per take: autosave/confirm/navigation all share this operation
+  // (editor-v2 source-asset contract). reset() only on an explicit re-record.
+  const uploadOnceRef = useRef(new UploadOnce<{ path: string }>())
   const liveRef = useRef(false)        // true ONLY while a scene is actively recording (race guard)
   const wakeLockRef = useRef<{ release?: () => Promise<void> } | null>(null) // keep the screen awake mid-take
   const exitSheetRef = useRef(false)   // freeze the auto-advance while "Discard this take?" is open
@@ -358,22 +361,36 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     reviewBlobRef.current = blob
     setRecording(false)
     setReviewUrl(URL.createObjectURL(blob))
-    // Autosave the take server-side immediately (best-effort, non-blocking): upload
-    // the bytes to the `takes` bucket and stash a local pointer so a refresh / phone
-    // lock never loses a finished recording. A real recorder error or an empty blob
-    // is not worth persisting.
+    // Autosave server-side immediately (best-effort, non-blocking) through the
+    // ONE shared upload (editor-v2 source-asset flow: intent → bytes → finalize →
+    // worker validation). The database record — not localStorage — is what makes
+    // the take recoverable after refresh and on other devices. A real recorder
+    // error or an empty blob is not worth persisting.
     if (!recErrRef.current && blob.size >= MIN_TAKE_BYTES) {
-      const contentType = blob.type || 'video/webm'
       setSaveState('saving')
-      uploadTakeToBucket(genId, { blob, contentType })
-        .then((takePath) => {
-          savedTakePathRef.current = takePath
-          saveTakePointer(genId, { takePath, contentType })
-          setSaveState('saved')
-        })
+      saveSourceOnce(blob)
+        .then((r) => { savedTakePathRef.current = r.path; setSaveState('saved') })
         .catch(() => setSaveState('failed')) // the beforeunload guard still protects
     }
   }
+
+  // The single upload operation for this take. Every caller (autosave now;
+  // future confirm/navigation paths) shares it — concurrent calls can never
+  // create a second storage object. Falls back to the legacy direct bucket
+  // upload if the source-asset backend is unavailable, because recording
+  // durability always wins over the new bookkeeping.
+  const saveSourceOnce = (blob: Blob) => uploadOnceRef.current.run(async () => {
+    const contentType = blob.type || 'video/webm'
+    try {
+      const intent = await uploadSourceRecording(genId, { blob, contentType, sizeBytes: blob.size })
+      saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
+      return { path: intent.path }
+    } catch {
+      const takePath = await uploadTakeToBucket(genId, { blob, contentType })
+      saveTakePointer(genId, { takePath, contentType })
+      return { path: takePath }
+    }
+  })
 
   // A real few-second webm/mp4 take is tens of KB minimum; anything under this is
   // an empty/failed recording (no chunks, a recorder error, a 0-byte blob).
@@ -395,6 +412,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     // never offers a discarded recording. (The orphaned bucket object is harmless.)
     clearTakePointer(genId)
     savedTakePathRef.current = null
+    uploadOnceRef.current.reset() // a NEW take is a NEW asset/upload
     reviewBlobRef.current = null
     recErrRef.current = null
     chunksRef.current = []
@@ -694,13 +712,20 @@ function UploadMode({ genId, onBack }: { genId: string; onBack: () => void }) {
     if (!f.type.startsWith('video/')) { setErr('That’s not a video file — pick an MP4 or MOV.'); return }
     setFile(f); setBusy(true); setErr(null); setPct(0); cancelRef.current = false
     try {
-      // Upload the clip to the private `takes` bucket and remember its path so the
-      // rebuilt editor can pick it up. The progress callback drives the real % bar
-      // so a big upload never looks frozen.
+      // One durable upload through the editor-v2 source-asset flow (intent →
+      // bytes → finalize → worker validation). The progress callback drives the
+      // real % bar so a big upload never looks frozen. Legacy direct-bucket
+      // fallback keeps the clip safe if the new backend is unavailable.
       const contentType = f.type || 'video/mp4'
-      const takePath = await uploadTakeToBucket(genId, { blob: f, contentType }, (p) => setPct(p))
-      if (cancelRef.current) return
-      saveTakePointer(genId, { takePath, contentType })
+      try {
+        const intent = await uploadSourceRecording(genId, { blob: f, contentType, sizeBytes: f.size }, (p) => setPct(p))
+        if (cancelRef.current) return
+        saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
+      } catch {
+        const takePath = await uploadTakeToBucket(genId, { blob: f, contentType }, (p) => setPct(p))
+        if (cancelRef.current) return
+        saveTakePointer(genId, { takePath, contentType })
+      }
       onBack()
     } catch (e) {
       if (!cancelRef.current) { setErr(e instanceof Error ? e.message : 'Upload failed — try again.'); setBusy(false) }

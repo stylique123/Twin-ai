@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset } from '../lib/api'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 
 // Stale-while-revalidate cache so reopening a plan is INSTANT instead of showing a
@@ -309,9 +309,23 @@ export default function Result() {
     else setResumeTake(t)
   }, [id, gen?.edit_path])
 
-  // The recorded-but-not-yet-processed take, from either source: the generation row
-  // (durable, any device) or the local saved-take pointer (same browser).
-  const rawTakePath = !gen?.edit_path ? (gen?.take_path ?? resumeTake?.takePath ?? null) : null
+  // Database-first recovery of the recorded take (editor-v2 source-asset flow):
+  // the READY media_assets row is authoritative (survives cleared localStorage
+  // and works cross-device); generations.take_path is the compatibility
+  // projection (also covers historical rows); the local pointer is a same-tab
+  // convenience only — never proof of a completed upload.
+  const [serverSourcePath, setServerSourcePath] = useState<string | null>(null)
+  useEffect(() => {
+    if (!id) { setServerSourcePath(null); return }
+    let live = true
+    getReadySourceAsset(id)
+      .then((a) => { if (live) setServerSourcePath(a?.storage_path ?? null) })
+      .catch(() => {})
+    return () => { live = false }
+  }, [id])
+
+  // The recorded-but-not-yet-processed take: server asset > compat column > local pointer.
+  const rawTakePath = !gen?.edit_path ? (serverSourcePath ?? gen?.take_path ?? resumeTake?.takePath ?? null) : null
 
   // Sign the raw take so it PLAYS on this page — the recording shouldn't be
   // invisible just because no finished video exists yet.

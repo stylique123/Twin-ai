@@ -34,6 +34,14 @@ export function getClient(): SupabaseClient {
   return activeClient()
 }
 
+// Upload a file to an EXPLICIT storage path using the injected upload impl. For
+// sibling shared modules (editor/api) whose paths are server-chosen — unlike
+// uploadTakeToBucket, this never invents a path of its own.
+export async function uploadFileToPath(path: string, file: TakeFile, onProgress?: (fraction: number) => void): Promise<void> {
+  if (!_uploadTake) throw new Error('No uploadTake configured — pass it to initApi().')
+  await _uploadTake(path, file, onProgress)
+}
+
 // Proxy so existing `supabase.from(...)` / `.auth` / `.functions` / `.storage`
 // call sites work unchanged, forwarding to whichever client initApi() set.
 // Methods are bound to the real client so `this` stays correct.

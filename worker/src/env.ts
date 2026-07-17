@@ -34,7 +34,7 @@ export const env = {
   // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI
   // editor. build_dna stays edge-driven (dna-poll), never add it here or the worker
   // would dead-letter it.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna').split(',').map((s) => s.trim()),
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight
