@@ -268,12 +268,14 @@ export async function getGeneration(id: string): Promise<Generation | null> {
   return data as Generation
 }
 
-// Persist the creator's hook/edit-style choice on their generation. Column grants
-// (migration 0014) restrict the update to these two presentation fields, so this
-// is safe to call from the client. Returns false on failure (caller is optimistic).
+// Persist the creator's hook choice on their generation. Column grants restrict
+// the update to `selected_hook` (recording), so this is safe from the client.
+// `edit_style` (old manual-editor field) is no longer accepted here — its client
+// UPDATE grant is revoked in migration 0074. Returns false on failure (caller is
+// optimistic).
 export async function updateGenerationChoice(
   id: string,
-  patch: { selected_hook?: string; edit_style?: string },
+  patch: { selected_hook?: string },
 ): Promise<boolean> {
   const { error } = await supabase.from('generations').update(patch).eq('id', id)
   return !error

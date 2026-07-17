@@ -62,10 +62,16 @@ jobs:
             git fetch origin main
             git reset --hard FETCH_HEAD
             # Old-editor cleanup: drop Revideo wiring from the box env, remove the
-            # Revideo container + image, and drop autoedit from the box's job-type
-            # override (the whole render service was removed with the old AI editor).
+            # Revideo container + image, and drop the retired job types (autoedit,
+            # transcribe) from the box's WORKER_JOB_TYPES override so the box config
+            # matches the code registry {ingest, build_voice, scrape_dna}. transcribe
+            # was retired (ingest-reference enqueues 'ingest'); autoedit was removed
+            # with the old editor. Neither has a handler, so a stale override would
+            # only make the worker claim jobs it can't run.
             sed -i '/^REVIDEO_/d;/^PEXELS_API_KEY/d;/^MUSIC_BED_URL/d;/^EDIT_/d' /opt/twinai-worker.env || true
-            sed -i 's/^\(WORKER_JOB_TYPES=.*\),\?autoedit,\?/\1/;s/autoedit,//;s/,autoedit//' /opt/twinai-worker.env || true
+            # Only touch the WORKER_JOB_TYPES line; drop retired types then tidy commas.
+            sed -Ei '/^WORKER_JOB_TYPES=/{ s/(autoedit|transcribe)//g; s/,+/,/g; s/=,/=/; s/,$// }' /opt/twinai-worker.env || true
+            echo "worker job types: $(grep '^WORKER_JOB_TYPES=' /opt/twinai-worker.env || echo '(code default: ingest,build_voice,scrape_dna)')"
             docker rm -f twinai-revideo 2>/dev/null || true
             docker rmi -f twinai-revideo 2>/dev/null || true
             echo "revideo container: $(docker ps -a --filter name=twinai-revideo -q | grep -q . && echo STILL-PRESENT || echo removed)"

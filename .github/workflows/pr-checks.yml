@@ -55,20 +55,23 @@ jobs:
           npm ci
           npm test
 
-  # Guard: the OLD AI editor was removed (see docs/ai-editor-rebuild-status.md).
-  # Fail any change that reintroduces its entry points into live code. Historical
+  # Guard: the OLD AI editor AND the old manual/timeline/Refine/EDL editor were
+  # removed (see docs/ai-editor-rebuild-status.md + docs/manual-editor-remnant-inventory.md).
+  # Fail any change that reintroduces their entry points into live code. Historical
   # migrations and the removal docs are excluded on purpose; the new editor must
-  # use new names, not resurrect these.
+  # use new names, not resurrect these. NOTE: the generic word "timeline" is NOT
+  # forbidden — the recording Scene Timeline and future internal planning code use
+  # it legitimately; behavior is reviewed separately.
   no-legacy-editor:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: No legacy editor references in live code
         run: |
-          if grep -rnE 'enqueue-autoedit|handleAutoEdit|autoEditTake|autoEditFromPath|pollEditJob|REVIDEO_URL|REVIDEO_TRUSTED|twinai-revideo' \
+          if grep -rnE 'enqueue-autoedit|handleAutoEdit|autoEditTake|autoEditFromPath|reEditWithEdl|fetchEdl|pollEditJob|EditDecisionList|ManualEditor|TimelineEditor|RefineEditor|manual-rerender|REVIDEO_URL|REVIDEO_TRUSTED|twinai-revideo' \
               apps/web/src packages/shared/src worker/src supabase/functions supabase/config.toml \
               --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=__tests__ --exclude='*.test.ts'; then
-            echo '::error::Legacy editor reference detected — the old AI editor was removed; do not reintroduce its entry points.'
+            echo '::error::Legacy editor reference detected — the old AI/manual editor was removed; do not reintroduce its entry points.'
             exit 1
           fi
           echo "clean: no legacy editor references"

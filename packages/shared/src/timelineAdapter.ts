@@ -77,9 +77,6 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
     duration_sec: estimateDurationSec(hook, wpm),
     ...framingFor(0, blueprint, blueprint.script?.[0]),
     caption_text: pushCaption(captionFromLine(hook), 1),
-    broll_instruction: null,
-    cut_point: true,
-    transition: 'cut',
     pause_after: true,
     show_in_teleprompter: true,
   })
@@ -114,7 +111,6 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
   body.forEach((seg, i) => {
     const n = scenes.length + 1
     const line = (seg.line || '').trim()
-    const brollNote = blueprint.shot_list?.[i + 1]?.notes
     const isBroll = BROLL_HINT.test(seg.direction || '') || BROLL_HINT.test(seg.section || '')
     scenes.push({
       scene_number: n,
@@ -124,9 +120,6 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
       duration_sec: estimateDurationSec(line, wpm),
       ...framingFor(i + 1, blueprint, seg),
       caption_text: pushCaption(captionFromLine(line), n),
-      broll_instruction: isBroll && brollNote ? `Show this while talking: ${brollNote}` : null,
-      cut_point: true,
-      transition: 'cut',
       pause_after: true,
       show_in_teleprompter: true,
     })
@@ -148,9 +141,6 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
       background: shot.notes?.trim() || '',
       movement: '',
       caption_text: pushCaption(captionFromLine(shot.shot || `B-roll ${i + 1}`), n),
-      broll_instruction: `Show this while talking: ${shot.shot || shot.notes || ''}`.trim(),
-      cut_point: true,
-      transition: 'cut',
       pause_after: false,
       show_in_teleprompter: false,
     })
@@ -169,9 +159,6 @@ export function buildTimeline(input: BuildTimelineInput): SceneTimeline {
     duration_sec: estimateDurationSec(cta, wpm),
     ...framingFor(scenes.length, blueprint),
     caption_text: pushCaption(captionFromLine(cta), ctaN),
-    broll_instruction: null,
-    cut_point: true,
-    transition: 'cut',
     pause_after: false,
     show_in_teleprompter: true,
   })

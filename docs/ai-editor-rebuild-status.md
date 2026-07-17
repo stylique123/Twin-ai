@@ -35,9 +35,19 @@ gallery, posting, billing · the jobs queue (`ingest`, `build_voice`, `scrape_dn
 
 ## The seam the new editor plugs into
 
-- **Input:** the raw take at `generations.take_path` (private `takes` bucket).
-  The recorder autosaves every finished take there and keeps a local pointer
-  (`apps/web/src/lib/savedTake.ts`).
+- **Input — IMPORTANT, verify before relying on it:** the raw take bytes are
+  uploaded to the private `takes` bucket by the recorder (`uploadTakeToBucket`),
+  and the storage path is kept **only in localStorage** (`saveTakePointer`,
+  `apps/web/src/lib/savedTake.ts`). **`generations.take_path` is NOT written by any
+  current code** — the rows that have it (6/32) are historical, written by the old
+  editor path that was removed. So `Result` recovers a *new* take only via the
+  local pointer (`resumeTake?.takePath`), which means **cross-device recovery and
+  recovery after localStorage is cleared do NOT work today.** Note also that after
+  migration 0074/0075 the client roles have **no UPDATE grant on `take_path`**.
+  **Part 2 must add durable persistence of `take_path`** — the recorder (or an edge
+  function) must write the storage path onto the generation row after a validated
+  upload — before the new editor can treat `generations.take_path` as the input
+  seam. Until then the take is durable in the bucket but its *pointer* is browser-local.
 - **Output:** write the finished MP4 + cover to the private `edits` bucket and set
   `generations.edit_path` / `thumb_path`. Playback (studio page, Library "ready"
   state, the `review` approval page, posting) all light up again automatically.
@@ -60,7 +70,12 @@ These are intentionally kept and are inert; listing them so "zero-legacy" is not
 overstated:
 - **Deployed edge function `enqueue-autoedit`** — kept as a **410 tombstone**
   (disabled + non-executable, not absent) so a stale client gets an explicit
-  error instead of silent behavior. Inserts nothing.
+  error instead of silent behavior. Inserts nothing. **Tombstone policy (single,
+  authoritative):** keep the authenticated 410 tombstone through a compatibility
+  window; do not describe it as absent while deployed. Remove it (`supabase
+  functions delete enqueue-autoedit`) only after confirming, via edge-function
+  logs, zero calls from supported clients for a full release cycle. Even if
+  invoked it is inert (the DB trigger from 0073 also blocks any `autoedit` insert).
 - **`refund_failed_autoedit` trigger + `autoedit_requires_generation` constraint**
   on `jobs` — dormant; fire only for a job type that can no longer be created.
 - **`admin/index.ts` metric** counting historical `type='autoedit'` jobs — read-only.
@@ -85,12 +100,13 @@ rendered" reads 0 for new activity until the new editor ships.
 
 ## Operator steps when this branch deploys (VPS / Supabase)
 
-1. VPS: `docker rm -f twinai-revideo && docker rmi twinai-revideo` (one-time).
-   `deploy-worker.yml` scrubs `REVIDEO_*` from `/opt/twinai-worker.env` automatically;
-   also remove `PEXELS_API_KEY`, `MUSIC_BED_URL`, `EDIT_*` if present, and drop
-   `autoedit` from `WORKER_JOB_TYPES` if the box overrides it.
-2. Supabase: delete the deployed `enqueue-autoedit` edge function
-   (`supabase functions delete enqueue-autoedit`).
+1. VPS: `docker rm -f twinai-revideo && docker rmi twinai-revideo` (one-time —
+   `deploy-worker.yml` now also does this automatically). It also scrubs
+   `REVIDEO_*`/`PEXELS_API_KEY`/`MUSIC_BED_URL`/`EDIT_*` and the retired job types
+   (`autoedit`, `transcribe`) from `/opt/twinai-worker.env` so the box's
+   `WORKER_JOB_TYPES` matches the code registry `{ingest, build_voice, scrape_dna}`.
+2. Supabase `enqueue-autoedit` — **KEEP as the deployed 410 tombstone** (single
+   policy; see "Tombstone policy" below). Do NOT delete it yet.
 
 ## Before merging to main — honesty checklist
 
@@ -98,6 +114,14 @@ rendered" reads 0 for new activity until the new editor ships.
   "auto-edits captions and cuts". Either land Part 2 (the new editor) first, or
   soften that copy when this branch merges — otherwise the product over-claims
   while editing is being rebuilt.
+
+## Non-goal (explicit)
+
+The first production AI editor is one-click. TwinAI does not provide a manual
+multitrack timeline, editable EDL, or second renderer. There is no Refine panel,
+no drag-to-trim, no waveform/playhead editor, and no manual rerender path. See
+`docs/manual-editor-remnant-inventory.md` for the discovery/verification that no
+such surface remains.
 
 ## Next: Part 2 — build the new one-click editor
 

@@ -18,19 +18,24 @@ export type SceneType =
   | 'product_demo'
   | 'cta'
 
+// RECORDING-ONLY model. This describes the script/teleprompter/recording for one
+// scene — it deliberately carries NO editing/render instructions (no render cut
+// markers, transitions, b-roll/zoom/music events, caption timing/styles, output
+// paths, or EDL data). The old AI editor's per-scene render fields (broll_instruction,
+// cut_point, transition) were removed here so the recording model stays clean; the
+// rebuilt one-click editor will own its own edit plan, separate from this.
 export interface Scene {
   scene_number: number // 1-based, contiguous, in order
   scene_type: SceneType
   purpose: string // plain-language why this scene exists
   dialogue: string | null // exact spoken words, or null for silent b-roll
-  duration_sec: number // estimated, drives teleprompter pacing + editor timing
+  duration_sec: number // estimated, drives teleprompter pacing
   camera_framing: string // creator language, e.g. "Chest-up shot"
   background: string // setting guidance
   movement: string // expression / motion cue
-  caption_text: string // what burns on screen for this scene
-  broll_instruction: string | null // "Show this while talking", or null
-  cut_point: boolean // clean cut marker at scene end (true for every talking scene)
-  transition: 'cut' | 'crossfade' | 'none'
+  caption_text: string // the scene's on-screen text HINT shown to the creator (no
+                       // timing/style — not a render caption event); also a fallback
+                       // line label in the recorder.
   pause_after: boolean // teleprompter pauses after this scene
   show_in_teleprompter: boolean // true for spoken scenes; false for silent b-roll
 }

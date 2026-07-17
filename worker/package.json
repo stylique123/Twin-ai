@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "TwinAI background worker — claims jobs from the Supabase queue and runs the heavy work (yt-dlp ingest + faster-whisper transcription, later render).",
+  "description": "TwinAI background worker \u2014 claims jobs from the Supabase queue and runs the heavy work (yt-dlp ingest + faster-whisper transcription, later render).",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "start": "node --enable-source-maps dist/index.js",
@@ -19,5 +19,8 @@
     "tsx": "^4.16.0",
     "typescript": "^5.5.0",
     "vitest": "^2.1.9"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
