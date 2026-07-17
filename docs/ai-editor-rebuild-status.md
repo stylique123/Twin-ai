@@ -99,6 +99,14 @@ rendered" reads 0 for new activity until the new editor ships.
   soften that copy when this branch merges — otherwise the product over-claims
   while editing is being rebuilt.
 
+## Non-goal (explicit)
+
+The first production AI editor is one-click. TwinAI does not provide a manual
+multitrack timeline, editable EDL, or second renderer. There is no Refine panel,
+no drag-to-trim, no waveform/playhead editor, and no manual rerender path. See
+`docs/manual-editor-remnant-inventory.md` for the discovery/verification that no
+such surface remains.
+
 ## Next: Part 2 — build the new one-click editor
 
 Design goal: ONE new pipeline (no dual renderers, no fallback paths), reading the

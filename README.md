@@ -70,7 +70,7 @@ Vercel: import the repo, framework = Vite. Set `VITE_SUPABASE_URL` and `VITE_SUP
 apps/web/src/
   lib/        shims re-exporting @twinai/shared (supabase client, API layer, brand, timeline)
   context/    auth provider
-  components/ Nav, AppShell, RefinePanel, v2 primitives, …
+  components/ Nav, AppShell, v2 primitives, …
   pages/      Landing, Auth, Onboarding, Dashboard, Result, History, Gallery, v2/ (Create → Building → Capture → Review)
 packages/shared/   @twinai/shared — types, brand tokens, API layer, scene timeline
 supabase/

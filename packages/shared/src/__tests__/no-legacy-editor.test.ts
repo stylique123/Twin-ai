@@ -73,4 +73,19 @@ describe('recording + teleprompter data path still builds from a blueprint (no e
     expect(Number.isFinite(sceneTimeCapSec(secs))).toBe(true)
     expect(WPM_PRESETS.natural).toBeGreaterThan(0)
   })
+
+  it('the Scene Timeline is RECORDING-ONLY — no render/edit fields on any scene', () => {
+    const tl = buildTimeline({ generationId: 'g1', blueprint, selectedHook: 'This is the hook line.' })
+    // These are the old editor's per-scene render instructions — they must not be
+    // part of the recording model anymore (Stage 2.3 separation).
+    const FORBIDDEN = ['broll_instruction', 'cut_point', 'transition', 'edl', 'zoom', 'keyframe', 'render', 'output_path', 'segments']
+    for (const scene of tl.scenes) {
+      for (const key of FORBIDDEN) {
+        expect(scene as Record<string, unknown>).not.toHaveProperty(key)
+      }
+      // recording fields ARE present
+      expect(scene).toHaveProperty('dialogue')
+      expect(scene).toHaveProperty('show_in_teleprompter')
+    }
+  })
 })
