@@ -502,7 +502,10 @@ async function main() {
     startWorker()
     const a = await waitTerminal(r.intent.assetId, 240_000)
     check('T8 asset converges to ONE terminal state (ready)', a?.status === 'ready', `status=${a?.status}`)
-    const jobs = await jobsFor(r.intent.assetId)
+    // The asset flips ready a beat BEFORE complete_job marks the job done —
+    // give the job row a moment to settle instead of racing it.
+    let jobs = await jobsFor(r.intent.assetId)
+    for (let i = 0; i < 15 && jobs[0]?.status !== 'done'; i++) { await sleep(1000); jobs = await jobsFor(r.intent.assetId) }
     check('T8 still exactly one job row (re-claimed, not duplicated)', jobs.length === 1 && jobs[0].status === 'done', JSON.stringify(jobs))
     if (dangling) check('T8 attempts > 1 proves the reclaim happened', (jobs[0]?.attempts ?? 0) >= 2, `attempts=${jobs[0]?.attempts}`)
     const gen = await genRow(g)
