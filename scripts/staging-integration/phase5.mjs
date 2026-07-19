@@ -266,7 +266,7 @@ async function main() {
   const CANCEL_POINTS = [
     { key: 'before_download', label: 'before download', slow: 'before_reconcile', waitStage: true },
     { key: 'during_download', label: 'during download', slow: 'during_download', waitStage: true },
-    { key: 'during_extract', label: 'during audio extraction', slow: 'during_extract', waitStage: true },
+    { key: 'during_extract', label: 'during audio extraction', slow: 'during_extract', waitWav: true },
     { key: 'model_load', label: 'during model loading', hold: 'after_model_load', waitWav: true },
     { key: 'mid_transcription', label: 'mid-transcription', hold: 'after_transcribe', waitWav: true },
     { key: 'after_asr', label: 'after transcription, before persist', slow: 'after_asr_before_persist', waitWav: true },

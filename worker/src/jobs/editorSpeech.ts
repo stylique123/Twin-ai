@@ -400,9 +400,13 @@ function runGroupProcess(
 }
 
 function extractAudio(srcPath: string, wavPath: string, watch: CancelWatch): Promise<void> {
+  // Matrix-only: `-re` throttles input reading to real time so the extraction
+  // subprocess stays alive long enough to prove a mid-extraction cancel tears
+  // down the ffmpeg process group. Never set in production.
+  const throttle = env.speechSlowPoint === 'during_extract' ? ['-re'] : []
   return runGroupProcess(
     'ffmpeg',
-    ['-hide_banner', '-loglevel', 'error', '-y', '-i', srcPath, '-vn', '-ac', '1', '-ar', '16000', '-f', 'wav', wavPath],
+    ['-hide_banner', '-loglevel', 'error', '-y', ...throttle, '-i', srcPath, '-vn', '-ac', '1', '-ar', '16000', '-f', 'wav', wavPath],
     env.speechExtractTimeoutMs, watch, 'during_extract',
     (code, stderr) => code === 0 ? null
       : new PermanentJobError(`speech: audio extraction failed (exit ${code}): ${stderr.slice(0, 200)}`, 'audio_extract_failed'),
