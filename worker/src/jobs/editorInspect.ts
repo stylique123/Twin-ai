@@ -24,6 +24,7 @@ import { db, type Job } from '../db.js'
 import { env } from '../env.js'
 import { PermanentJobError } from '../errors.js'
 import { downloadObject, headObject } from '../storage.js'
+import { makeSlowPoint, sleep, watchCancellation, type CancelWatch } from './editorCancel.js'
 import { assessProbe, extractProbeFacts, type ProbeFacts, type ProbeResult } from './validateSource.js'
 
 export const MEDIA_INSPECTION_SCHEMA_VERSION = 1
@@ -35,7 +36,7 @@ export class InspectionCancelledError extends Error {
   }
 }
 
-interface AssetRow {
+export interface AssetRow {
   id: string
   owner_id: string
   generation_id: string | null
@@ -144,28 +145,9 @@ export function buildInspection(
   }
 }
 
-// ---- cancellation plumbing --------------------------------------------------
-interface CancelWatch { signal: AbortSignal; cancelled: () => boolean; stop: () => void }
-
-function watchCancellation(projectId: string): CancelWatch {
-  const ctrl = new AbortController()
-  let flagged = false
-  const t = setInterval(() => {
-    db.from('edit_projects').select('cancel_requested_at').eq('id', projectId).maybeSingle()
-      .then(({ data }) => {
-        if (data?.cancel_requested_at) { flagged = true; ctrl.abort() }
-      }, () => { /* transient read failure — next tick retries */ })
-  }, 750)
-  return { signal: ctrl.signal, cancelled: () => flagged || ctrl.signal.aborted, stop: () => clearInterval(t) }
-}
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
-
-// Matrix-only hold at a named boundary; checks cancellation when it wakes.
-async function slowPoint(point: string, watch: CancelWatch): Promise<void> {
-  if (env.inspectSlowPoint === point) await sleep(env.inspectSlowMs)
-  if (watch.cancelled()) throw new InspectionCancelledError(point)
-}
+// ---- cancellation plumbing (shared with the speech stage) -------------------
+const slowPoint = (point: string, watch: CancelWatch) =>
+  makeSlowPoint(env.inspectSlowPoint, env.inspectSlowMs, (p) => new InspectionCancelledError(p))(point, watch)
 
 // ---- ffprobe with process-group termination ---------------------------------
 function ffprobeFile(path: string, watch: CancelWatch): Promise<ProbeResult> {
@@ -207,7 +189,7 @@ function ffprobeFile(path: string, watch: CancelWatch): Promise<ProbeResult> {
   })
 }
 
-function fileSha256(path: string): Promise<string> {
+export function fileSha256(path: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const hash = createHash('sha256')
     const stream = createReadStream(path)
@@ -226,49 +208,71 @@ export interface InspectOutcome {
   rejectionCode?: string
 }
 
-export async function runInspectingStage(job: Job, projectId: string, dir: string): Promise<InspectOutcome> {
+// Shared by inspection (Phase 4) and speech (Phase 5): load the project's
+// CURRENT source asset and re-prove eligibility at execution time — every
+// real stage fails cleanly BEFORE doing work on an asset that is missing,
+// deleted, rejected, un-validated or editor-ineligible.
+export async function loadEligibleSource(projectId: string, label: string): Promise<{
+  proj: { id: string; source_asset_id: string; cancel_requested_at: string | null }
+  asset: AssetRow & { content_sha256: string }
+  meta: Record<string, unknown>
+}> {
   const { data: proj, error: projErr } = await db
     .from('edit_projects').select('id, source_asset_id, cancel_requested_at').eq('id', projectId).maybeSingle()
-  if (projErr) throw new Error(`inspect: project read failed: ${projErr.message}`)
-  if (!proj) throw new PermanentJobError(`inspect: project ${projectId} missing`, 'project_missing')
+  if (projErr) throw new Error(`${label}: project read failed: ${projErr.message}`)
+  if (!proj) throw new PermanentJobError(`${label}: project ${projectId} missing`, 'project_missing')
 
   const { data: asset, error: assetErr } = await db
     .from('media_assets')
     .select('id, owner_id, generation_id, bucket, storage_path, status, kind, content_sha256, duration_ms, width, height, rotation, has_audio, validation_version, metadata')
     .eq('id', proj.source_asset_id)
     .maybeSingle<AssetRow>()
-  if (assetErr) throw new Error(`inspect: asset read failed: ${assetErr.message}`)
+  if (assetErr) throw new Error(`${label}: asset read failed: ${assetErr.message}`)
 
-  // Eligibility re-check at execution time — fail BEFORE any later stage.
-  if (!asset) throw new PermanentJobError('inspect: source asset missing', 'source_missing')
-  if (asset.status === 'deleted') throw new PermanentJobError('inspect: source deleted', 'source_deleted')
-  if (asset.status === 'rejected') throw new PermanentJobError('inspect: source rejected', 'source_rejected')
+  if (!asset) throw new PermanentJobError(`${label}: source asset missing`, 'source_missing')
+  if (asset.status === 'deleted') throw new PermanentJobError(`${label}: source deleted`, 'source_deleted')
+  if (asset.status === 'rejected') throw new PermanentJobError(`${label}: source rejected`, 'source_rejected')
   if (asset.status !== 'ready' || asset.kind !== 'source') {
-    throw new PermanentJobError(`inspect: source not ready (${asset.kind}/${asset.status})`, 'source_not_ready')
+    throw new PermanentJobError(`${label}: source not ready (${asset.kind}/${asset.status})`, 'source_not_ready')
   }
-  if (!asset.content_sha256) throw new PermanentJobError('inspect: source has no validation checksum', 'missing_checksum')
+  if (!asset.content_sha256) throw new PermanentJobError(`${label}: source has no validation checksum`, 'missing_checksum')
   const meta = (asset.metadata ?? {}) as Record<string, unknown>
   if (meta.editor_eligible !== true) {
-    throw new PermanentJobError('inspect: source is not editor-eligible (no audio)', 'source_not_editor_eligible')
+    throw new PermanentJobError(`${label}: source is not editor-eligible (no audio)`, 'source_not_editor_eligible')
   }
+  return { proj, asset: asset as AssetRow & { content_sha256: string }, meta }
+}
+
+// Integrity reconciliation, shared: the object in storage must still be the
+// object finalize saw. Runs BEFORE any cache lookup in every real stage — a
+// previously cached analysis must never legitimize changed bytes.
+export async function reconcileStorageIntegrity(
+  asset: AssetRow, meta: Record<string, unknown>, label: string,
+): Promise<{ etag: string | null; sizeBytes: number | null; finalizedEtag: string | undefined }> {
+  const finalizedEtag = (meta as { finalized_etag?: string }).finalized_etag
+  const finalizedBytes = Number((meta as { finalized_bytes?: number }).finalized_bytes ?? 0) || null
+  const head = await headObject(asset.bucket, asset.storage_path)
+  if (!head) throw new PermanentJobError(`${label}: storage object missing`, 'object_missing')
+  if (finalizedEtag && head.etag && head.etag !== finalizedEtag) {
+    throw new PermanentJobError(`${label}: storage bytes changed after finalize`, 'source_bytes_changed')
+  }
+  if (finalizedBytes && head.sizeBytes && head.sizeBytes !== finalizedBytes) {
+    throw new PermanentJobError(`${label}: storage size changed after finalize`, 'source_bytes_changed')
+  }
+  return { etag: head.etag, sizeBytes: head.sizeBytes, finalizedEtag }
+}
+
+export async function runInspectingStage(job: Job, projectId: string, dir: string): Promise<InspectOutcome> {
+  const { proj, asset, meta } = await loadEligibleSource(projectId, 'inspect')
 
   const watch = watchCancellation(projectId)
   try {
     if (proj.cancel_requested_at) throw new InspectionCancelledError('before_inspection')
 
-    // Integrity reconciliation runs BEFORE the cache lookup, every run: the
-    // object in storage must still be the object finalize saw (etag). A
-    // previously cached analysis must never legitimize changed bytes.
-    const finalizedEtag = (meta as { finalized_etag?: string }).finalized_etag
-    const finalizedBytes = Number((meta as { finalized_bytes?: number }).finalized_bytes ?? 0) || null
-    const head = await headObject(asset.bucket, asset.storage_path)
-    if (!head) throw new PermanentJobError('inspect: storage object missing', 'object_missing')
-    if (finalizedEtag && head.etag && head.etag !== finalizedEtag) {
-      throw new PermanentJobError('inspect: storage bytes changed after finalize', 'source_bytes_changed')
-    }
-    if (finalizedBytes && head.sizeBytes && head.sizeBytes !== finalizedBytes) {
-      throw new PermanentJobError('inspect: storage size changed after finalize', 'source_bytes_changed')
-    }
+    // Integrity reconciliation runs BEFORE the cache lookup, every run (see
+    // reconcileStorageIntegrity — shared with the speech stage).
+    const head = await reconcileStorageIntegrity(asset, meta, 'inspect')
+    const finalizedEtag = head.finalizedEtag
 
     // Cache: one immutable component per (asset, component, inspector version).
     const { data: cached } = await db

@@ -517,12 +517,15 @@ async function main() {
   // =================================================================
   console.log('\n== K. Phase-4 boundary + hygiene ==')
   {
-    const { count: nonInspection } = await admin.from('media_analyses')
-      .select('id', { count: 'exact', head: true }).neq('component', 'inspection')
-    check('K1 zero speech/visual/other components (later phases)', (nonInspection ?? 0) === 0)
+    // Phase 5 made `transcribing` real: completing Phase-4 projects now also
+    // record a speech component. Anything beyond inspection+speech stays a
+    // later phase.
+    const { count: beyondSpeech } = await admin.from('media_analyses')
+      .select('id', { count: 'exact', head: true }).not('component', 'in', '("inspection","speech")')
+    check('K1 zero components beyond inspection+speech (visual/audio/hook are later phases)', (beyondSpeech ?? 0) === 0)
     const { count: transcripts } = await admin.from('transcripts')
       .select('id', { count: 'exact', head: true }).in('owner_id', [uA.id, uB.id])
-    check('K2 zero transcript rows for this run (no Whisper)', (transcripts ?? 0) === 0)
+    check('K2 zero legacy transcript rows for this run (speech lives in media_analyses)', (transcripts ?? 0) === 0)
     const count = async (t) => (await admin.from(t).select('id', { count: 'exact', head: true })).count ?? 0
     check('K3 zero edit_plans', (await count('edit_plans')) === 0)
     const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true }).eq('kind', 'output')

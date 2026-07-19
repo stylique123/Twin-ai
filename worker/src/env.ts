@@ -106,5 +106,25 @@ export const env = {
   inspectSlowPoint: (process.env.EDITOR_INSPECT_SLOW_POINT ?? '').trim(),
   inspectSlowMs: Number(process.env.EDITOR_INSPECT_SLOW_MS ?? '4000'),
 
+  // ---- speech analysis (Phase 5) ----
+  // Cache identity: one immutable speech component per
+  // (source_asset_id, 'speech', speech version). Bumping recomputes.
+  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-1').trim(),
+  // ASR model for the speech component (independent of the caption/reference
+  // knob so a caption tweak can never silently change component identity).
+  speechModel: (process.env.EDITOR_SPEECH_MODEL ?? process.env.WHISPER_MODEL ?? 'base').trim(),
+  // Hard timeouts: audio extraction is I/O-bound (minutes at worst); ASR on
+  // CPU runs ~0.2-0.5x realtime for `base`, so 15 min of audio fits well
+  // inside 20 min. Both stay far under the 2400s visibility lease.
+  speechExtractTimeoutMs: Number(process.env.EDITOR_SPEECH_EXTRACT_TIMEOUT_MS ?? '180000'),
+  speechAsrTimeoutMs: Number(process.env.EDITOR_SPEECH_ASR_TIMEOUT_MS ?? '1200000'),
+  // Minimum word/VAD gap that becomes a silence CANDIDATE (evidence only).
+  speechSilenceMinMs: Number(process.env.EDITOR_SPEECH_SILENCE_MIN_MS ?? '700'),
+  // Matrix-only boundary holds ('before_reconcile' | 'before_download' |
+  // 'during_download' | 'before_extract' | 'during_extract' | 'before_asr' |
+  // 'during_asr' | 'after_persist').
+  speechSlowPoint: (process.env.EDITOR_SPEECH_SLOW_POINT ?? '').trim(),
+  speechSlowMs: Number(process.env.EDITOR_SPEECH_SLOW_MS ?? '4000'),
+
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }

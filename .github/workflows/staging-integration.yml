@@ -34,7 +34,7 @@ concurrency:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -42,8 +42,20 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install ffmpeg
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      - name: Install ffmpeg + espeak-ng (fixtures & audio extraction)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg espeak-ng
+
+      # The worker's Phase-5 speech stage shells out to python3 + faster-whisper
+      # (phases 3-5 all drive it now that `transcribing` is real). Pinned — a
+      # mutable ASR dependency would silently move the component contract.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned faster-whisper + pre-fetch the ASR model
+        run: |
+          pip install --quiet 'faster-whisper==1.2.0'
+          python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
 
       - name: Verify the ci-bootstrap gate refuses unauthorized callers
         run: |
@@ -141,3 +153,6 @@ jobs:
 
       - name: Run Phase 4 integration matrix (real media inspection)
         run: node scripts/staging-integration/phase4.mjs
+
+      - name: Run Phase 5 integration matrix (real speech transcription)
+        run: node scripts/staging-integration/phase5.mjs

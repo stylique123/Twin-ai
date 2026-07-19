@@ -43,6 +43,7 @@ export function sanitizeError(err: unknown, stage: string): SafeError {
     : /download aborted|abort/i.test(raw) ? 'aborted'
     : /too large|exceeded cap/.test(raw) ? 'download_too_large'
     : /storage download/.test(raw) ? 'storage_download_failed'
+    : /asr_failed/.test(raw) ? 'asr_failed'
     : /probe/i.test(raw) ? 'probe_failed'
     : 'unexpected_error'
   return {

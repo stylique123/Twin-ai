@@ -755,11 +755,12 @@ async function main() {
   console.log('\n== K. Phase-3 boundary: orchestration only, no downstream side effects ==')
   {
     const count = async (t) => (await admin.from(t).select('id', { count: 'exact', head: true })).count ?? 0
-    // Phase 4 made `inspecting` real: inspection components are the ONE
-    // sanctioned analysis write. Anything beyond that stays a later phase.
-    const { count: nonInspection } = await admin.from('media_analyses')
-      .select('id', { count: 'exact', head: true }).neq('component', 'inspection')
-    check('K1 zero NON-inspection analysis rows (speech/visual are later phases)', (nonInspection ?? 0) === 0)
+    // Phase 4 made `inspecting` real and Phase 5 made `transcribing` real:
+    // inspection + speech components are the sanctioned analysis writes.
+    // Anything beyond those stays a later phase.
+    const { count: beyondSpeech } = await admin.from('media_analyses')
+      .select('id', { count: 'exact', head: true }).not('component', 'in', '("inspection","speech")')
+    check('K1 zero analysis rows beyond inspection+speech (visual/audio/hook are later phases)', (beyondSpeech ?? 0) === 0)
     check('K2 zero edit_plans rows (planning is a later phase)', (await count('edit_plans')) === 0)
     const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true }).eq('kind', 'output')
     check('K3 zero output assets rendered', (outputs ?? 0) === 0)

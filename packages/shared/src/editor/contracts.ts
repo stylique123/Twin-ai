@@ -123,6 +123,9 @@ export type EditEventMessageCode =
   | 'stage_retry_scheduled'  // retryable failure — the job will run again
   | 'cancel_requested'       // the owner asked to cancel
   | 'job_reenqueued'         // reconciler healed a queued project's lost job
+  | 'inspection_recorded'    // Phase 4: the inspection component was recorded/reused
+  | 'speech_recorded'        // Phase 5: the speech component was recorded/reused
+  | 'speech_analysis_verified' // Phase 5: analyzing re-verified the speech component
   | 'project_completed'
   | 'project_failed'
   | 'project_cancelled'
@@ -190,6 +193,90 @@ export interface MediaInspection {
   source: {
     reusedValidationFacts: boolean   // built from Phase-1 facts, no download
     fallbackProbePerformed: boolean  // bounded one-time upgrade probe ran
+  }
+}
+
+// ---- Speech analysis (Phase 5) ---------------------------------------------
+// The canonical, versioned output of the editor's real `transcribing` stage:
+// Faster-Whisper word-level transcription of the ACTUAL recording (never a
+// teleprompter script), plus VAD and audio-energy EVIDENCE and edit CANDIDATES.
+// Stored as an immutable `speech` component in media_analyses, keyed
+// (source_asset_id, 'speech', speechVersion) — the same per-asset cache
+// identity as inspection (no cross-tenant dedup; owner derived from the asset).
+//
+// Hard rules:
+//  * Integer milliseconds everywhere; word/sentence ids are deterministic for
+//    a given (source bytes, speechVersion) — re-running the same version on
+//    the same bytes reproduces the same ids.
+//  * CANDIDATES ONLY: nothing in this contract is a cut decision. Silence,
+//    filler, false-start and repetition entries are evidence-bearing
+//    suggestions for the (later-phase) director; low ASR confidence alone
+//    NEVER produces a removal candidate, and no candidate implies a removal
+//    is safe.
+//  * The transcript is never filtered against any script: words the speaker
+//    added off-script stay in the transcript and in the word list.
+export const SPEECH_ANALYSIS_SCHEMA_VERSION = 1
+
+export interface SpeechWord {
+  id: string        // deterministic: 'w' + zero-based index in spoken order
+  text: string
+  startMs: number
+  endMs: number
+  confidence: number      // ASR word probability, 0..1 (3 decimals)
+  sentenceEnd: boolean    // this word closes a sentence (terminal punctuation)
+}
+
+export interface SpeechSentence {
+  id: string        // deterministic: 's' + zero-based index
+  startMs: number
+  endMs: number
+  firstWordId: string
+  lastWordId: string
+  text: string
+}
+
+export type SpeechCandidateKind = 'silence' | 'filler' | 'false_start' | 'repetition'
+
+export interface SpeechCandidate {
+  id: string        // deterministic: 'c' + zero-based index in start order
+  kind: SpeechCandidateKind
+  startMs: number
+  endMs: number
+  wordIds: string[] // the words this candidate refers to ([] for pure silence)
+  // Heuristic strength of the CANDIDATE (not permission to cut).
+  confidence: 'high' | 'medium' | 'low'
+  evidence: Record<string, unknown>
+}
+
+export interface SpeechAnalysis {
+  schemaVersion: number
+  speechVersion: string       // analyzer bundle version (cache identity)
+
+  sourceAssetId: string
+  sourceChecksum: string      // sha256 the downloaded bytes verified against
+
+  language: string
+  languageConfidence: number  // 0..1
+  durationMs: number          // duration of the ANALYZED audio track
+
+  transcript: string          // full text of the actual recording
+  words: SpeechWord[]
+  sentences: SpeechSentence[]
+
+  // Silero VAD speech regions over the source timeline (evidence, not cuts).
+  vadSegments: Array<{ startMs: number; endMs: number }>
+
+  // Coarse RMS energy curve (bounded: windowMs >= 100, values 4 decimals).
+  energy: { windowMs: number; rms: number[] }
+
+  candidates: SpeechCandidate[]
+
+  provenance: {
+    asrEngine: 'faster-whisper'
+    asrModel: string          // e.g. 'base'
+    beamSize: number
+    vad: 'silero'
+    silenceMinMs: number      // gap threshold used for silence candidates
   }
 }
 

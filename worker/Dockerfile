@@ -13,10 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# yt-dlp + faster-whisper — reference ingestion (download + transcribe). Whisper
-# stays: the rebuilt editor will reuse it. (PEP 668: allow system pip.)
+# yt-dlp + faster-whisper. faster-whisper is PINNED: the editor's speech
+# component (Phase 5) must be reproducible for a given
+# EDITOR_SPEECH_VERSION — a floating ASR dependency would silently move the
+# contract. Bump the pin together with the speech version, never alone.
+# (PEP 668: allow system pip.)
 RUN pip3 install --no-cache-dir --break-system-packages \
-      "yt-dlp>=2025.1.15" "faster-whisper>=1.0.3" "youtube-transcript-api>=0.6.2"
+      "yt-dlp>=2025.1.15" "faster-whisper==1.2.0" "youtube-transcript-api>=0.6.2"
 
 WORKDIR /app
 
@@ -28,6 +31,7 @@ RUN npm install --omit=dev=false
 COPY tsconfig.json ./
 COPY src ./src
 COPY whisper_transcribe.py ./whisper_transcribe.py
+COPY editor_speech.py ./editor_speech.py
 COPY youtube_transcript.py ./youtube_transcript.py
 RUN npm run build
 
