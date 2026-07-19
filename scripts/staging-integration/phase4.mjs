@@ -169,12 +169,27 @@ async function mintReady(client, ownerId, buf, ct = 'video/webm') {
   if (asset.status !== 'ready') throw new Error(`fixture asset rejected: ${JSON.stringify(asset.metadata)}`)
   return { gen, assetId, asset }
 }
-// Simulate a pre-Phase-4 asset: validated, ready, but with no probe_facts.
+// Simulate a pre-Phase-4 asset: validated, ready, but with neither probe
+// facts NOR a finalize integrity reference (legacy assets predate both).
 async function stripProbeFacts(assetId) {
   const { data: a } = await admin.from('media_assets').select('metadata').eq('id', assetId).maybeSingle()
   const meta = { ...(a.metadata ?? {}) }
   delete meta.probe_facts
+  delete meta.finalized_etag
+  delete meta.finalized_bytes
   await admin.from('media_assets').update({ metadata: meta }).eq('id', assetId)
+}
+
+// The PROJECT settles (fenced finish) an instant before the JOB result is
+// acknowledged — poll for the job too before reading result.inspection.
+async function waitJobSettled(pid, timeoutMs = 15_000) {
+  const start = Date.now()
+  for (;;) {
+    const j = await getJob(pid)
+    if (j && ['done', 'failed'].includes(j.status)) return j
+    if (Date.now() - start > timeoutMs) return j
+    await sleep(400)
+  }
 }
 // Overwrite a validated object with different bytes (tamper simulation).
 // MUST verify the write took — a silently failed overwrite made integrity
@@ -247,7 +262,7 @@ async function main() {
   {
     const pid = await startProject(cA, A.gen, A.assetId)
     const p = await runToSettled('p4-reuse', pid)
-    const job = await getJob(pid)
+    const job = await waitJobSettled(pid)
     const insp = job?.result?.inspection
     check('A1 project completed with the real inspecting stage', p.status === 'completed', p.status)
     check('A2 inspection REUSED Phase-1 facts — no fallback probe',
@@ -269,7 +284,7 @@ async function main() {
     // B: repeat project on the SAME asset + version → cache hit, still 1 row.
     const pid2 = await startProject(cA, A.gen, A.assetId)
     await runToSettled('p4-cachehit', pid2)
-    const insp2 = (await getJob(pid2))?.result?.inspection
+    const insp2 = (await waitJobSettled(pid2))?.result?.inspection
     check('B1 repeat project hits the cached component', insp2?.cacheHit === true, JSON.stringify(insp2))
     check('B2 still exactly one component row', (await analyses(A.assetId)).length === 1)
 
@@ -288,7 +303,7 @@ async function main() {
     await stripProbeFacts(D.assetId)
     const pid = await startProject(cA, D.gen, D.assetId)
     const p = await runToSettled('p4-upgrade', pid)
-    const insp = (await getJob(pid))?.result?.inspection
+    const insp = (await waitJobSettled(pid))?.result?.inspection
     check('D1 missing facts → ONE bounded fallback probe', p.status === 'completed'
       && insp?.fallbackProbePerformed === true && insp?.reusedValidationFacts === false, JSON.stringify(insp))
     const rows = await analyses(D.assetId)
@@ -303,7 +318,7 @@ async function main() {
     const pid2 = await startProject(cA, D.gen, D.assetId)
     await runToSettled('p4-upgrade2', pid2)
     check('D3 subsequent project reuses the upgraded component (no re-probe)',
-      (await getJob(pid2))?.result?.inspection?.cacheHit === true && (await analyses(D.assetId)).length === 1)
+      (await waitJobSettled(pid2))?.result?.inspection?.cacheHit === true && (await analyses(D.assetId)).length === 1)
   }
 
   // =================================================================
@@ -441,7 +456,7 @@ async function main() {
     await sleep(1500)
     stopWorker(w4, 'SIGKILL')
     const p4 = await runToSettled('p4-crash2', pid4, { WORKER_VISIBILITY_SECS: '8' })
-    const j4 = await getJob(pid4)
+    const j4 = await waitJobSettled(pid4)
     check('G4 crash mid-inspection reclaims and completes', p4.status === 'completed' && j4?.attempts === 2, `${p4.status}/${j4?.attempts}`)
     check('G4 convergence: exactly one component despite the crash-retry', (await analyses(G4.assetId)).length === 1)
 
