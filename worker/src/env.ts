@@ -93,5 +93,18 @@ export const env = {
   // empty in production — matrix-only, proves exact crash-point recovery.
   editorSimCrashPoint: (process.env.EDITOR_SIM_CRASH_POINT ?? '').trim(),
 
+  // ---- media inspection (Phase 4) ----
+  // Cache identity: one immutable inspection component per
+  // (source_asset_id, component, inspector version). Bumping the version
+  // recomputes; same version reuses.
+  inspectorVersion: (process.env.EDITOR_INSPECTOR_VERSION ?? 'inspect-1').trim(),
+  // ffprobe hard timeout for the (exceptional) fallback/upgrade probe.
+  inspectProbeTimeoutMs: Number(process.env.EDITOR_INSPECT_PROBE_TIMEOUT_MS ?? '60000'),
+  // Matrix-only: hold at a named inspection boundary so cancellation can be
+  // proven to land in every window ('before_download' | 'during_download' |
+  // 'before_probe' | 'during_probe' | 'after_probe' | 'after_persist').
+  inspectSlowPoint: (process.env.EDITOR_INSPECT_SLOW_POINT ?? '').trim(),
+  inspectSlowMs: Number(process.env.EDITOR_INSPECT_SLOW_MS ?? '4000'),
+
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }

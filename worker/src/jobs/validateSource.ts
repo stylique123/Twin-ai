@@ -31,10 +31,45 @@ export interface ProbeStream {
   width?: number
   height?: number
   side_data_list?: Array<{ rotation?: number }>
+  r_frame_rate?: string
+  avg_frame_rate?: string
+  pix_fmt?: string
+  color_space?: string
+  sample_rate?: string
+  channels?: number
+  channel_layout?: string
 }
 export interface ProbeResult {
   streams?: ProbeStream[]
   format?: { duration?: string; size?: string; format_name?: string }
+}
+
+// The full fact set the editor's inspection contract needs, captured ONCE at
+// validation so the inspecting stage can reuse it without re-downloading
+// (docs/editor-v2-worker-orchestration.md: analyze once and reuse). Assets
+// validated before this field existed take the bounded one-time upgrade probe.
+export interface ProbeFacts {
+  frame_rate: string | null      // rational, e.g. "30000/1001"
+  avg_frame_rate: string | null
+  pix_fmt: string | null
+  color_space: string | null
+  audio_sample_rate: number | null
+  audio_channels: number | null
+  audio_channel_layout: string | null
+}
+
+export function extractProbeFacts(probe: ProbeResult): ProbeFacts {
+  const video = probe.streams?.find((s) => s.codec_type === 'video')
+  const audio = probe.streams?.find((s) => s.codec_type === 'audio')
+  return {
+    frame_rate: video?.r_frame_rate ?? null,
+    avg_frame_rate: video?.avg_frame_rate ?? null,
+    pix_fmt: video?.pix_fmt ?? null,
+    color_space: video?.color_space ?? null,
+    audio_sample_rate: audio?.sample_rate ? Number(audio.sample_rate) : null,
+    audio_channels: audio?.channels ?? null,
+    audio_channel_layout: audio?.channel_layout ?? null,
+  }
 }
 
 export interface SourceLimits {
@@ -186,6 +221,7 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
           container: verdict.container,
           video_codec: verdict.videoCodec,
           audio_codec: verdict.audioCodec,
+          probe_facts: extractProbeFacts(probe),
           // Policy: a no-audio take is READY (playable, recoverable) but NOT
           // eligible for AI editing — the editor requires speech to analyze.
           // Phase 2's start-editor gate reads has_audio; this flag documents it.

@@ -138,6 +138,61 @@ export interface EditEvent {
   created_at: string
 }
 
+// ---- Media inspection (Phase 4) --------------------------------------------
+// The canonical, versioned output of the editor's real `inspecting` stage.
+// Integer milliseconds and rational frame rates ONLY — no floating-point
+// seconds in persisted contracts. Stored as an immutable `inspection`
+// component in media_analyses, keyed (source_asset_id, component,
+// inspectorVersion); later phases add sibling components (speech/visual/…)
+// without ever mutating this one.
+export const MEDIA_INSPECTION_SCHEMA_VERSION = 1
+
+export interface MediaInspection {
+  schemaVersion: number
+  inspectorVersion: string
+
+  sourceAssetId: string
+  sourceChecksum: string
+  sourceValidationVersion: number
+
+  container: string
+  durationMs: number
+
+  video: {
+    codec: string
+    width: number
+    height: number
+    displayWidth: number   // rotation-applied presentation dimensions
+    displayHeight: number
+    frameRateNumerator: number
+    frameRateDenominator: number
+    averageFrameRateNumerator?: number
+    averageFrameRateDenominator?: number
+    variableFrameRate: boolean
+    rotation: 0 | 90 | 180 | 270
+    pixelFormat?: string
+    colorSpace?: string
+  }
+
+  audio: {
+    present: boolean
+    codec?: string
+    sampleRate?: number
+    channels?: number
+    channelLayout?: string
+  }
+
+  eligibility: {
+    editorEligible: boolean
+    rejectionCode?: string
+  }
+
+  source: {
+    reusedValidationFacts: boolean   // built from Phase-1 facts, no download
+    fallbackProbePerformed: boolean  // bounded one-time upgrade probe ran
+  }
+}
+
 // Idempotency-key semantics (exact, so callers never over-assume):
 //  * The key that CREATES a project is permanently bound to that project's
 //    (generation, source) and stored on the row. Reusing it with different
