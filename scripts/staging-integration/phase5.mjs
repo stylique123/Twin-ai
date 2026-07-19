@@ -479,9 +479,15 @@ async function main() {
       const pid = await startProject(cA, a.gen, a.assetId)
       const w = startWorker(`p5-cancel-${point.key}`, extraEnv)
       await waitStage(pid, 'transcribing', 120_000, `cancel-${point.key}`)
-      // For bridge-hold windows (model load / mid-transcription / after-asr),
-      // wait until a NEW extracted wav proves the bridge is running.
-      if (point.waitWav) {
+      if (point.keepsRow) {
+        // after-persist: the RPC persists the component, THEN the worker holds
+        // at after_persist. Wait for the row to exist so the cancel lands
+        // inside that hold (proving the persisted component survives a cancel).
+        const deadline = Date.now() + 90_000
+        while (Date.now() < deadline && (await speechRows(a.assetId)).length === 0) await sleep(300)
+      } else if (point.waitWav) {
+        // bridge-hold / extraction windows: a NEW extracted wav proves the
+        // download finished and ffmpeg/the bridge is running.
         const deadline = Date.now() + 60_000
         let saw = false
         while (Date.now() < deadline && !saw) {
