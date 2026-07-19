@@ -65,18 +65,32 @@ async function callEdge(client, fn, body) {
   return { status: res.status, body: await res.json().catch(() => ({})) }
 }
 async function putSigned(signedUrl, buf, ct) {
-  return (await fetch(signedUrl, { method: 'PUT', headers: { 'x-upsert': 'true', 'content-type': ct }, body: buf })).status
+  const res = await fetch(signedUrl, { method: 'PUT', headers: { 'x-upsert': 'true', 'content-type': ct }, body: buf })
+  return { status: res.status, body: res.ok ? '' : (await res.text().catch(() => '')).slice(0, 200) }
 }
 async function sourceFlow(client, genId, buf, ct = 'video/webm') {
-  const c = await callEdge(client, 'source-asset', {
-    action: 'create', generation_id: genId, recording_attempt_id: randomUUID(), content_type: ct, size_bytes: buf.byteLength,
-  })
-  if (c.status !== 200) throw new Error(`source create ${c.status}: ${JSON.stringify(c.body)}`)
-  const p = await putSigned(c.body.signedUrl, buf, ct)
-  if (p >= 300) throw new Error(`signed PUT ${p}`)
-  const f = await callEdge(client, 'source-asset', { action: 'finalize', asset_id: c.body.assetId })
-  if (f.status !== 200) throw new Error(`finalize ${f.status}`)
-  return { assetId: c.body.assetId, signedUrl: c.body.signedUrl }
+  // A fresh signed PUT occasionally 400s transiently on the shared staging
+  // storage; the whole intent (create → PUT → finalize) is retried once with
+  // a NEW attempt id — exactly the client retry contract from Phase 1.
+  let lastErr
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const c = await callEdge(client, 'source-asset', {
+        action: 'create', generation_id: genId, recording_attempt_id: randomUUID(), content_type: ct, size_bytes: buf.byteLength,
+      })
+      if (c.status !== 200) throw new Error(`source create ${c.status}: ${JSON.stringify(c.body)}`)
+      const p = await putSigned(c.body.signedUrl, buf, ct)
+      if (p.status >= 300) throw new Error(`signed PUT ${p.status}: ${p.body}`)
+      const f = await callEdge(client, 'source-asset', { action: 'finalize', asset_id: c.body.assetId })
+      if (f.status !== 200) throw new Error(`finalize ${f.status}: ${JSON.stringify(f.body)}`)
+      return { assetId: c.body.assetId, signedUrl: c.body.signedUrl }
+    } catch (e) {
+      lastErr = e
+      console.log(`   (upload intent failed, retrying once: ${e.message})`)
+      await sleep(2000)
+    }
+  }
+  throw lastErr
 }
 async function waitAsset(assetId, timeoutMs = 120_000) {
   const start = Date.now()
