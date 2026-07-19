@@ -34,7 +34,7 @@ export const env = {
   // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI
   // editor. build_dna stays edge-driven (dna-poll), never add it here or the worker
   // would dead-letter it.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source').split(',').map((s) => s.trim()),
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source,editor_v2').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight
@@ -46,6 +46,9 @@ export const env = {
   // avoiding a double-run overlap. With SKIP-LOCKED claims this is what makes running
   // N concurrent worker containers across hosts genuinely safe.
   maxJobMs: Number(process.env.WORKER_MAX_JOB_MS ?? '2100000'), // 35 min, < lease
+  // Base of the retry backoff curve (30s, 60s, 120s… in production). The
+  // staging matrix shrinks it so retry scenarios settle in seconds.
+  retryBackoffBaseSecs: Number(process.env.WORKER_RETRY_BACKOFF_BASE_SECS ?? '30'),
 
   // ASR. 'base' is the speed/quality sweet spot for short-form English (≈1.5-2x
   // faster than 'small').
@@ -68,6 +71,27 @@ export const env = {
   sourceMaxDurationMs: Number(process.env.SOURCE_MAX_DURATION_MS ?? String(30 * 60 * 1000)),
   sourceMinDurationMs: Number(process.env.SOURCE_MIN_DURATION_MS ?? '500'),
   sourceMaxPixels: Number(process.env.SOURCE_MAX_PIXELS ?? String(3840 * 2160)),
+
+  // ---- editor_v2 orchestration (Phase 3) ----
+  // Per-stage hard timeout: a hung stage fails RETRYABLE well before the
+  // visibility lease would expire (no silent reclaim mid-stage).
+  editorStageTimeoutMs: Number(process.env.EDITOR_STAGE_TIMEOUT_MS ?? '300000'),
+  // Background lease-renewal cadence while an editor_v2 job runs. Must be
+  // comfortably under WORKER_VISIBILITY_SECS.
+  editorLeaseRenewMs: Number(process.env.EDITOR_LEASE_RENEW_MS ?? '30000'),
+  // Orphaned per-job scratch dirs older than this are swept on each claim.
+  editorTempMaxAgeMs: Number(process.env.EDITOR_TEMP_MAX_AGE_MS ?? String(6 * 3600 * 1000)),
+  // SIMULATED stage work (Phase 3 has no real stage implementations): how long
+  // each stage pretends to work, plus deterministic fault injection for the
+  // staging matrix (fail a named stage while job.attempts <= N, in one of
+  // three modes: retryable | permanent | hang).
+  editorSimStageMs: Number(process.env.EDITOR_SIM_STAGE_MS ?? '300'),
+  editorSimFailStage: (process.env.EDITOR_SIM_FAIL_STAGE ?? '').trim(),
+  editorSimFailMode: (process.env.EDITOR_SIM_FAIL_MODE ?? 'retryable').trim() as 'retryable' | 'permanent' | 'hang',
+  editorSimFailAttempts: Number(process.env.EDITOR_SIM_FAIL_ATTEMPTS ?? '9999'),
+  // Deterministic crash injection ('before_stage:<stage>' | 'after_finish');
+  // empty in production — matrix-only, proves exact crash-point recovery.
+  editorSimCrashPoint: (process.env.EDITOR_SIM_CRASH_POINT ?? '').trim(),
 
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }

@@ -114,6 +114,30 @@ export type StartEditorRejection =
   | 'too_many_active_projects'
   | 'idempotency_key_conflict'
 
+// Stable message codes the Phase-3 orchestration writes into edit_events.
+// The history is append-only and seq-ordered at the database; clients render
+// progress from it (durable across refresh/devices — never from local state).
+export type EditEventMessageCode =
+  | 'stage_started'          // fenced advance into a pipeline stage
+  | 'resumed'                // a reclaimed job resumed from the persisted stage
+  | 'stage_retry_scheduled'  // retryable failure — the job will run again
+  | 'cancel_requested'       // the owner asked to cancel
+  | 'job_reenqueued'         // reconciler healed a queued project's lost job
+  | 'project_completed'
+  | 'project_failed'
+  | 'project_cancelled'
+
+// Client-visible shape of an edit_events row (RLS-guarded SELECT).
+export interface EditEvent {
+  seq: number
+  project_id: string
+  stage: string
+  pct: number | null
+  message_code: EditEventMessageCode | string
+  details: Record<string, unknown>
+  created_at: string
+}
+
 // Idempotency-key semantics (exact, so callers never over-assume):
 //  * The key that CREATES a project is permanently bound to that project's
 //    (generation, source) and stored on the row. Reusing it with different

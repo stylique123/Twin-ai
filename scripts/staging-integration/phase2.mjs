@@ -421,14 +421,23 @@ async function main() {
     await sleep(4000) // give the (validate_source-only) worker time to misbehave if it were going to
     const jobs = await editorJobs(projectA.id)
     check('G5 editor_v2 job is STILL queued (no handler claimed it)', jobs.length === 1 && jobs[0].status === 'queued', JSON.stringify(jobs))
-    const { count: analyses } = await admin.from('media_analyses').select('id', { count: 'exact', head: true })
-    const { count: plans } = await admin.from('edit_plans').select('id', { count: 'exact', head: true })
+    // Boundary counts are scoped to THIS RUN's identities. The staging DB is
+    // persistent and append-only history survives by design — the Phase-3
+    // matrix (which runs after this one, and on earlier heads) legitimately
+    // writes edit_events for its own projects, so a global zero would be
+    // asserting something Phase 2 never claimed.
+    const runUsers = [owner.id, peer.id, outsider.id, rateUser.id]
+    const { count: analyses } = await admin.from('media_analyses').select('id', { count: 'exact', head: true }).in('owner_id', runUsers)
+    const { count: plans } = await admin.from('edit_plans').select('id', { count: 'exact', head: true }).in('owner_id', runUsers)
+    const { data: runProjects } = await admin.from('edit_projects').select('id').in('owner_id', runUsers)
     const { count: events } = await admin.from('edit_events').select('id', { count: 'exact', head: true })
-    check('G5 zero media_analyses rows', analyses === 0, `rows=${analyses}`)
-    check('G5 zero edit_plans rows', plans === 0, `rows=${plans}`)
-    check('G5 zero edit_events rows', events === 0, `rows=${events}`)
-    const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true }).in('kind', ['output', 'thumbnail'])
-    check('G5 zero output/thumbnail assets', outputs === 0, `rows=${outputs}`)
+      .in('project_id', (runProjects ?? []).map((p) => p.id))
+    check('G5 zero media_analyses rows for this run', analyses === 0, `rows=${analyses}`)
+    check('G5 zero edit_plans rows for this run', plans === 0, `rows=${plans}`)
+    check('G5 zero edit_events rows for this run’s projects', events === 0, `rows=${events}`)
+    const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true })
+      .in('kind', ['output', 'thumbnail']).in('owner_id', runUsers)
+    check('G5 zero output/thumbnail assets for this run', outputs === 0, `rows=${outputs}`)
     const { count: creditsAfter } = await admin.from('credit_events').select('id', { count: 'exact', head: true })
     check('G5 zero credits charged (baseline unchanged)', creditsAfter === creditsBefore, `before=${creditsBefore} after=${creditsAfter}`)
   }
