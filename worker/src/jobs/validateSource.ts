@@ -217,7 +217,11 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
         has_audio: verdict.hasAudio,
         size_bytes: verdict.sizeBytes ?? undefined,
         validated_at: new Date().toISOString(),
+        // MERGE into the existing metadata — finalized_etag/finalized_bytes
+        // recorded at finalize MUST survive to `ready`: the editor's
+        // inspection re-proves object integrity against them on every run.
         metadata: {
+          ...((asset.metadata ?? {}) as Record<string, unknown>),
           container: verdict.container,
           video_codec: verdict.videoCodec,
           audio_codec: verdict.audioCodec,

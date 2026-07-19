@@ -139,9 +139,11 @@ async function makeFixtures(dir) {
     '-c:v', 'libvpx', '-b:v', '600k', '-c:a', 'libvorbis', '-shortest', join(dir, 'portrait.webm')])
   await ff(['-f', 'lavfi', '-i', 'testsrc=size=1280x720:rate=30000/1001:duration=6', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-movflags', '+faststart', join(dir, 'landscape.mp4')])
+  // Rotation must be a real display-matrix (modern ffmpeg drops the legacy
+  // `rotate` metadata tag on mp4 mux): encode, then remux with the matrix.
   await ff(['-f', 'lavfi', '-i', 'testsrc=size=720x1280:rate=30:duration=6', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=6',
-    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-metadata:s:v:0', 'rotate=90',
-    '-movflags', '+faststart', join(dir, 'rotated.mp4')])
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest', '-movflags', '+faststart', join(dir, 'rot-src.mp4')])
+  await ff(['-display_rotation', '90', '-i', join(dir, 'rot-src.mp4'), '-c', 'copy', '-movflags', '+faststart', join(dir, 'rotated.mp4')])
   await ff(['-f', 'lavfi', '-i', 'sine=frequency=440:duration=6', '-c:a', 'libvorbis', join(dir, 'audio-only.webm')])
   return {
     portrait: await readFile(join(dir, 'portrait.webm')),
@@ -165,6 +167,18 @@ async function stripProbeFacts(assetId) {
   delete meta.probe_facts
   await admin.from('media_assets').update({ metadata: meta }).eq('id', assetId)
 }
+// Overwrite a validated object with different bytes (tamper simulation).
+// MUST verify the write took — a silently failed overwrite made integrity
+// tests pass vacuously in an earlier run.
+async function tamperObject(asset, buf, ct = 'video/webm') {
+  const res = await fetch(`${URL}/storage/v1/object/${asset.bucket}/${asset.storage_path}`, {
+    method: 'PUT',
+    headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': ct },
+    body: buf,
+  })
+  if (!res.ok) throw new Error(`tamper overwrite failed: ${res.status} ${(await res.text()).slice(0, 120)}`)
+}
+
 async function runToSettled(name, projectId, extraEnv = {}, timeoutMs = 90_000) {
   const w = startWorker(name, extraEnv)
   const p = await waitSettled(projectId, timeoutMs, name)
@@ -309,11 +323,7 @@ async function main() {
   console.log('\n== F. integrity reconciliation ==')
   {
     // F1: overwrite the object AFTER validation → etag mismatch → safe failure.
-    await fetch(`${URL}/storage/v1/object/${F1.asset.bucket}/${F1.asset.storage_path}`, {
-      method: 'POST',
-      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'video/webm', 'x-upsert': 'true' },
-      body: fix.landscape, // different bytes
-    })
+    await tamperObject(F1.asset, fix.landscape)
     const pid1 = await startProject(cA, F1.gen, F1.assetId)
     const p1 = await runToSettled('p4-bytes', pid1)
     check('F1 changed bytes fail safely as source_bytes_changed', p1.status === 'failed' && p1.failure_code === 'source_bytes_changed',
@@ -341,11 +351,7 @@ async function main() {
 
     // F7: a CACHED analysis must not legitimize changed bytes — A's asset has
     // two cached components; tamper its object and start a fresh project.
-    await fetch(`${URL}/storage/v1/object/${A.asset.bucket}/${A.asset.storage_path}`, {
-      method: 'POST',
-      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'video/webm', 'x-upsert': 'true' },
-      body: fix.landscape,
-    })
+    await tamperObject(A.asset, fix.landscape)
     const pidT = await startProject(cA, A.gen, A.assetId)
     const pT = await runToSettled('p4-cachetamper', pidT)
     check('F7 cache does NOT legitimize changed bytes (etag re-proved every run)',
@@ -370,13 +376,18 @@ async function main() {
       const pid = await startProject(cA, item.gen, item.assetId)
       const w = startWorker(`p4-${label}`, { EDITOR_INSPECT_SLOW_POINT: slowPoint, EDITOR_INSPECT_SLOW_MS: '6000' })
       const t0 = Date.now()
-      for (;;) { // cancel once inspecting is underway
+      for (;;) { // cancel once the run is inside the targeted window
         const p = await getProject(pid)
-        if (p.status === 'inspecting') break
-        if (Date.now() - t0 > 30_000) throw new Error(`${label}: never reached inspecting`)
+        if (p.status === 'inspecting') {
+          // after_persist: the row must EXIST before we cancel, or the cancel
+          // lands earlier in the pipeline and proves the wrong thing.
+          if (slowPoint !== 'after_persist') break
+          if ((await analyses(item.assetId)).length > 0) break
+        }
+        if (Date.now() - t0 > 40_000) throw new Error(`${label}: never reached the ${slowPoint} window`)
         await sleep(300)
       }
-      await sleep(600) // let it reach the held boundary
+      if (slowPoint !== 'after_persist') await sleep(600) // into the held boundary
       await cA.rpc('editor_request_cancel', { p_project: pid })
       const p = await waitSettled(pid, 30_000, label)
       stopWorker(w)

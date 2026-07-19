@@ -304,7 +304,11 @@ export async function runInspectingStage(job: Job, projectId: string, dir: strin
 
     let reused = true
     let fallback = false
-    if (!hasRequiredFacts(facts)) {
+    // The no-download path is safe ONLY when the finalize etag exists to
+    // reconcile against (assets validated before the metadata-merge fix lack
+    // it). Without it, integrity must come from the sha256 the fallback path
+    // verifies — so force the bounded upgrade.
+    if (!hasRequiredFacts(facts) || !finalizedEtag) {
       // Bounded ONE-TIME upgrade for assets validated before probe_facts
       // existed: download (capped, abortable), verify the Phase-1 checksum,
       // reprobe, and merge the missing facts. The resulting component is
