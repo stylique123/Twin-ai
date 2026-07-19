@@ -53,8 +53,11 @@ jobs:
           python-version: '3.12'
 
       - name: Install pinned faster-whisper + pre-fetch the ASR model
+        # requests is pinned explicitly: faster_whisper.utils imports it, but
+        # current huggingface_hub no longer brings it transitively on a fresh
+        # Python 3.12 environment.
         run: |
-          pip install --quiet 'faster-whisper==1.2.0'
+          pip install --quiet 'faster-whisper==1.2.0' 'requests==2.32.5'
           python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
 
       - name: Verify the ci-bootstrap gate refuses unauthorized callers
