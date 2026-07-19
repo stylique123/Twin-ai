@@ -55,12 +55,28 @@ export interface SpeechBridgeOutput {
 }
 
 // ---- pure contract construction (unit-tested) ------------------------------
-const FILLER_WORDS = new Set(['um', 'uh', 'uhm', 'umm', 'uhh', 'erm', 'er', 'ah', 'hmm', 'mm', 'mmm'])
+export const SPEECH_RULE_VERSION = 'speech-rules-1'
+
+// Clear disfluencies: near-always insertions, not lexical content.
+const DISFLUENCY_FILLERS = new Set(['um', 'uh', 'uhm', 'umm', 'uhh', 'erm', 'er', 'ah', 'hmm', 'mm', 'mmm'])
+// Discourse markers: frequently MEANINGFUL ("I feel like a winner", "so good").
+// Only ever emitted as LOW-confidence candidates, and only when context
+// (a bracketing pause / clause boundary) suggests hesitation use — never for
+// every occurrence.
+const DISCOURSE_MARKERS = new Set(['like', 'well', 'so', 'actually', 'basically', 'right'])
 const SENTENCE_END_RE = /[.!?]["')\]]?$/
 
-// 30 min source cap at 100ms windows = 18000; anything past this is a bug,
-// not data — refuse rather than silently truncate.
-const MAX_ENERGY_WINDOWS = 18000
+// Hard sanity backstop for the energy curve. The curve is ALWAYS downsampled
+// to <= this length below (adaptive windowMs), so a 30-minute source can never
+// blow the component past the DB payload limit; a bridge that somehow exceeds
+// even the raw cap is a bug, not data.
+const MAX_ENERGY_WINDOWS = 2000
+const RAW_ENERGY_HARD_CAP = 200000
+
+// Silence banding (evidence, NOT a cut). A gap under silenceMinMs is a NATURAL
+// PAUSE and produces no candidate at all — the resolution threshold generates
+// evidence, it does not mean "shorten every gap".
+const DEAD_AIR_MS = 2000
 
 function normalizeToken(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '')
@@ -69,8 +85,9 @@ function normalizeToken(text: string): string {
 const toMs = (sec: number) => Math.round(sec * 1000)
 
 interface BuiltWord {
-  id: string; text: string; startMs: number; endMs: number
-  confidence: number; sentenceEnd: boolean
+  id: string; text: string; normalizedText: string
+  startMs: number; endMs: number; confidence: number
+  sentenceEnd: boolean; sentenceId: string
 }
 
 // Overlap of [s,e) with the union of VAD speech segments, in ms.
@@ -80,105 +97,192 @@ function speechOverlapMs(sMs: number, eMs: number, vad: Array<{ startMs: number;
   return covered
 }
 
+// Downsample the raw RMS curve so its length is bounded regardless of source
+// duration. Aggregation is by mean over N raw windows — a coarser but faithful
+// curve, NOT a truncation (no tail is dropped).
+function boundEnergy(raw: number[], rawWindowMs: number): { windowMs: number; rms: number[] } {
+  if (raw.length <= MAX_ENERGY_WINDOWS) return { windowMs: rawWindowMs, rms: raw }
+  const factor = Math.ceil(raw.length / MAX_ENERGY_WINDOWS)
+  const out: number[] = []
+  for (let i = 0; i < raw.length; i += factor) {
+    const chunk = raw.slice(i, i + factor)
+    out.push(Math.round((chunk.reduce((a, b) => a + b, 0) / chunk.length) * 10000) / 10000)
+  }
+  return { windowMs: rawWindowMs * factor, rms: out }
+}
+
+function avgEnergy(sMs: number, eMs: number, windowMs: number, rms: number[]): number {
+  const a = Math.floor(sMs / windowMs); const b = Math.min(rms.length, Math.ceil(eMs / windowMs))
+  if (b <= a) return 0
+  let sum = 0; for (let i = a; i < b; i++) sum += rms[i] ?? 0
+  return Math.round((sum / (b - a)) * 10000) / 10000
+}
+
 export function buildSpeechAnalysis(
   asset: { id: string; content_sha256: string },
   bridge: SpeechBridgeOutput,
-  opts: { speechVersion: string; asrModel: string; beamSize: number; silenceMinMs: number },
+  opts: { speechVersion: string; asrModel: string; asrComputeType: string; device: string
+    beamSize: number; languagePolicy: string; silenceMinMs: number
+    vadMinSilenceMs: number; vadSpeechPadMs: number },
 ): Record<string, unknown> {
   if (!Array.isArray(bridge.words)) throw new PermanentJobError('speech: bridge produced no word list', 'asr_failed')
-  if (bridge.energy.rms.length > MAX_ENERGY_WINDOWS || bridge.energy.window_ms < 100) {
+  if (bridge.energy.window_ms < 100 || bridge.energy.rms.length > RAW_ENERGY_HARD_CAP) {
     throw new PermanentJobError('speech: energy curve out of bounds', 'speech_energy_overflow')
   }
+  const durationMs = toMs(bridge.duration_sec)
 
-  const words: BuiltWord[] = bridge.words.map((w, i) => ({
-    id: `w${i}`,
-    text: w.w,
-    startMs: toMs(w.start),
-    endMs: Math.max(toMs(w.end), toMs(w.start)),
-    confidence: Math.max(0, Math.min(1, Number(w.p) || 0)),
-    sentenceEnd: SENTENCE_END_RE.test(w.w),
-  }))
+  // Words: clamp end >= start and keep every word inside the source duration
+  // (Whisper occasionally overruns the last word past the clip end). No word
+  // is invented or dropped — off-script words are retained verbatim.
+  const rawWords = bridge.words.map((w, i) => {
+    const startMs = Math.max(0, Math.min(toMs(w.start), durationMs))
+    const endMs = Math.max(startMs, Math.min(toMs(w.end), durationMs))
+    return {
+      id: `w${i}`, text: w.w, normalizedText: normalizeToken(w.w),
+      startMs, endMs,
+      confidence: Math.max(0, Math.min(1, Number(w.p) || 0)),
+      sentenceEnd: SENTENCE_END_RE.test(w.w), sentenceId: '',
+    }
+  })
+  // Enforce non-decreasing start order (ASR returns sorted; guard anyway).
+  for (let i = 1; i < rawWords.length; i++) {
+    if (rawWords[i].startMs < rawWords[i - 1].startMs) rawWords[i].startMs = rawWords[i - 1].startMs
+    if (rawWords[i].endMs < rawWords[i].startMs) rawWords[i].endMs = rawWords[i].startMs
+  }
 
-  // Sentences: group words up to (and including) each terminal-punctuation
-  // word; a trailing run without terminal punctuation still closes a sentence.
+  // Sentences: group up to (and including) each terminal-punctuation word; a
+  // trailing run without terminal punctuation still closes a sentence.
   const sentences: Array<Record<string, unknown>> = []
   let sStart = 0
-  for (let i = 0; i < words.length; i++) {
-    if (words[i].sentenceEnd || i === words.length - 1) {
-      const group = words.slice(sStart, i + 1)
+  for (let i = 0; i < rawWords.length; i++) {
+    if (rawWords[i].sentenceEnd || i === rawWords.length - 1) {
+      const group = rawWords.slice(sStart, i + 1)
+      const sid = `s${sentences.length}`
+      for (const w of group) w.sentenceId = sid
       sentences.push({
-        id: `s${sentences.length}`,
-        startMs: group[0].startMs,
-        endMs: group[group.length - 1].endMs,
-        firstWordId: group[0].id,
-        lastWordId: group[group.length - 1].id,
+        id: sid, startMs: group[0].startMs, endMs: group[group.length - 1].endMs,
+        firstWordId: group[0].id, lastWordId: group[group.length - 1].id,
         text: group.map((w) => w.text).join(' '),
       })
       sStart = i + 1
     }
   }
+  const words: BuiltWord[] = rawWords
 
   const vadSegments = bridge.vad_segments.map((v) => ({ startMs: toMs(v.start), endMs: toMs(v.end) }))
-  const durationMs = toMs(bridge.duration_sec)
+  const energy = boundEnergy(bridge.energy.rms, bridge.energy.window_ms)
 
-  // ---- candidates (evidence only — never cut decisions) --------------------
-  type Cand = {
+  // ---- candidates (evidence only — the analyzer proposes, never removes) ----
+  interface Cand {
     kind: 'silence' | 'filler' | 'false_start' | 'repetition'
     startMs: number; endMs: number; wordIds: string[]
-    confidence: 'high' | 'medium' | 'low'; evidence: Record<string, unknown>
+    prevWordId: string | null; nextWordId: string | null
+    confidence: 'high' | 'medium' | 'low'
+    evidenceCodes: string[]; evidence: Record<string, unknown>
   }
   const cands: Cand[] = []
+  const wid = (i: number): string | null => (i >= 0 && i < words.length ? words[i].id : null)
 
-  const silenceAt = (sMs: number, eMs: number, position: 'leading' | 'internal' | 'trailing') => {
+  // Silence: leading/internal/trailing gaps, banded into removable / dead_air
+  // / uncertain. Natural pauses (< silenceMinMs) produce NO candidate.
+  const silenceAt = (sMs: number, eMs: number, prevIdx: number, nextIdx: number, position: string) => {
     const gapMs = eMs - sMs
-    if (gapMs < opts.silenceMinMs) return
-    // VAD support: the majority of the gap lies outside detected speech.
+    if (gapMs < opts.silenceMinMs) return // natural pause — evidence by absence
     const nonSpeechRatio = 1 - speechOverlapMs(sMs, eMs, vadSegments) / gapMs
+    const energyHere = avgEnergy(sMs, eMs, energy.windowMs, energy.rms)
+    const vadClear = nonSpeechRatio >= 0.6
+    let cls: string; let confidence: 'high' | 'medium' | 'low'; const codes = ['silence_gap']
+    if (!vadClear) { cls = 'uncertain'; confidence = 'low'; codes.push('vad_ambiguous') }
+    else if (gapMs >= DEAD_AIR_MS) { cls = 'dead_air'; confidence = 'high'; codes.push('gap_dead_air', 'vad_nonspeech') }
+    else { cls = 'removable'; confidence = 'medium'; codes.push('gap_removable', 'vad_nonspeech') }
     cands.push({
       kind: 'silence', startMs: sMs, endMs: eMs, wordIds: [],
-      confidence: nonSpeechRatio >= 0.5 ? 'high' : 'medium',
-      evidence: { gapMs, position, vadSupported: nonSpeechRatio >= 0.5 },
+      prevWordId: wid(prevIdx), nextWordId: wid(nextIdx), confidence,
+      evidenceCodes: codes,
+      evidence: { gapMs, position, class: cls, vadNonSpeechRatio: Math.round(nonSpeechRatio * 100) / 100, avgEnergy: energyHere },
     })
   }
   if (words.length > 0) {
-    silenceAt(0, words[0].startMs, 'leading')
-    for (let i = 1; i < words.length; i++) silenceAt(words[i - 1].endMs, words[i].startMs, 'internal')
-    silenceAt(words[words.length - 1].endMs, durationMs, 'trailing')
+    silenceAt(0, words[0].startMs, -1, 0, 'leading')
+    for (let i = 1; i < words.length; i++) silenceAt(words[i - 1].endMs, words[i].startMs, i - 1, i, 'internal')
+    silenceAt(words[words.length - 1].endMs, durationMs, words.length - 1, words.length, 'trailing')
   }
 
-  // Fillers: runs of consecutive filler tokens.
+  const norm = words.map((w) => w.normalizedText)
+  const gapBefore = (i: number) => (i > 0 ? words[i].startMs - words[i - 1].endMs : Infinity)
+  const gapAfter = (i: number) => (i < words.length - 1 ? words[i + 1].startMs - words[i].endMs : Infinity)
+
+  // Disfluency fillers: runs of um/uh/… — high unless the ASR itself was
+  // unsure (a low-confidence "um" may be a mis-heard real word).
   for (let i = 0; i < words.length;) {
-    if (!FILLER_WORDS.has(normalizeToken(words[i].text))) { i++; continue }
+    if (!DISFLUENCY_FILLERS.has(norm[i])) { i++; continue }
     let j = i
-    while (j + 1 < words.length && FILLER_WORDS.has(normalizeToken(words[j + 1].text))) j++
+    while (j + 1 < words.length && DISFLUENCY_FILLERS.has(norm[j + 1])) j++
     const run = words.slice(i, j + 1)
     const minConf = Math.min(...run.map((w) => w.confidence))
     cands.push({
       kind: 'filler', startMs: run[0].startMs, endMs: run[run.length - 1].endMs,
-      wordIds: run.map((w) => w.id),
-      // A LOW-confidence "um" may be a mis-heard real word — the candidate is
-      // kept but marked low so no downstream phase treats it as safe.
+      wordIds: run.map((w) => w.id), prevWordId: wid(i - 1), nextWordId: wid(j + 1),
       confidence: minConf >= 0.5 ? 'high' : 'low',
-      evidence: { words: run.map((w) => w.text), minAsrConfidence: minConf },
+      evidenceCodes: minConf >= 0.5 ? ['filler_disfluency'] : ['filler_disfluency', 'asr_low_conf'],
+      evidence: { markerType: 'disfluency', words: run.map((w) => w.text), minAsrConfidence: minConf },
     })
     i = j + 1
   }
 
-  // Repeated bigram — "I want, I want to…" — classified false_start when a
-  // pause or comma separates the runs, else repetition. Immediate identical
-  // unigrams are repetition candidates.
-  const norm = words.map((w) => normalizeToken(w.text))
+  // Discourse markers (like/well/so/…): ALWAYS low confidence, and only when
+  // context (a bracketing pause ≥200ms or a clause boundary) suggests
+  // hesitation — never for every occurrence, so meaningful uses are left alone.
+  for (let i = 0; i < words.length; i++) {
+    if (!DISCOURSE_MARKERS.has(norm[i])) continue
+    const boundaryBefore = i === 0 || words[i - 1].sentenceEnd || /,$/.test(words[i - 1].text)
+    const bracketed = gapBefore(i) >= 200 || gapAfter(i) >= 200
+    if (!boundaryBefore && !bracketed) continue // fluent, meaningful use — skip
+    cands.push({
+      kind: 'filler', startMs: words[i].startMs, endMs: words[i].endMs,
+      wordIds: [words[i].id], prevWordId: wid(i - 1), nextWordId: wid(i + 1),
+      confidence: 'low',
+      evidenceCodes: ['ambiguous_discourse_marker'],
+      evidence: { markerType: 'discourse', token: words[i].text, boundaryBefore, bracketed },
+    })
+  }
+
+  // "you know" as a discourse-marker bigram (same low-confidence rule).
+  for (let i = 0; i + 1 < words.length; i++) {
+    if (norm[i] !== 'you' || norm[i + 1] !== 'know') continue
+    const bracketed = gapBefore(i) >= 200 || gapAfter(i + 1) >= 200 || /,$/.test(words[i + 1].text)
+    if (!bracketed) continue
+    cands.push({
+      kind: 'filler', startMs: words[i].startMs, endMs: words[i + 1].endMs,
+      wordIds: [words[i].id, words[i + 1].id], prevWordId: wid(i - 1), nextWordId: wid(i + 2),
+      confidence: 'low', evidenceCodes: ['ambiguous_discourse_marker'],
+      evidence: { markerType: 'discourse', token: 'you know', bracketed },
+    })
+  }
+
+  // False starts vs repetition. A repeated bigram (A B … A B) is a false start
+  // when a pause/comma separates the runs, else a repetition. Immediate
+  // identical words are stutters/repetition. Proper nouns and cross-sentence
+  // repeats are kept as LOW candidates so intentional repetition is not
+  // treated as removable.
   const claimed = new Set<number>()
   for (let i = 0; i + 3 < words.length; i++) {
     if (!norm[i] || !norm[i + 1]) continue
+    if (words[i + 1].sentenceEnd) continue // separate sentences sharing words
     if (norm[i] === norm[i + 2] && norm[i + 1] === norm[i + 3]) {
       const pauseMs = words[i + 2].startMs - words[i + 1].endMs
       const comma = /,$/.test(words[i + 1].text)
+      const isFalseStart = pauseMs >= 150 || comma
+      const codes = ['repeat_bigram']
+      if (isFalseStart) {
+        if (pauseMs >= 150) codes.push('pause_between')
+        if (comma) codes.push('comma_boundary')
+      }
       cands.push({
-        kind: pauseMs >= 150 || comma ? 'false_start' : 'repetition',
+        kind: isFalseStart ? 'false_start' : 'repetition',
         startMs: words[i].startMs, endMs: words[i + 1].endMs,
-        wordIds: [words[i].id, words[i + 1].id],
-        confidence: 'medium',
+        wordIds: [words[i].id, words[i + 1].id], prevWordId: wid(i - 1), nextWordId: wid(i + 2),
+        confidence: 'medium', evidenceCodes: codes,
         evidence: { repeated: `${words[i].text} ${words[i + 1].text}`, pauseMs, secondStartWordId: words[i + 2].id },
       })
       for (const k of [i, i + 1, i + 2, i + 3]) claimed.add(k)
@@ -187,19 +291,46 @@ export function buildSpeechAnalysis(
   }
   for (let i = 0; i + 1 < words.length; i++) {
     if (claimed.has(i) || claimed.has(i + 1)) continue
-    if (norm[i] && norm[i].length >= 2 && norm[i] === norm[i + 1] && !FILLER_WORDS.has(norm[i])) {
-      cands.push({
-        kind: 'repetition', startMs: words[i].startMs, endMs: words[i].endMs,
-        wordIds: [words[i].id], confidence: 'medium',
-        evidence: { token: words[i].text, repeatWordId: words[i + 1].id },
-      })
-    }
+    if (words[i].sentenceEnd) continue // repeat across a sentence boundary
+    if (!norm[i] || norm[i].length < 2 || norm[i] !== norm[i + 1]) continue
+    if (DISFLUENCY_FILLERS.has(norm[i])) continue
+    // A capitalized token repeated is likely a proper noun / intentional
+    // emphasis — keep the candidate but LOW so it is never treated as safe.
+    const properNoun = /^[A-Z]/.test(words[i].text) && /^[A-Z]/.test(words[i + 1].text)
+    const stutter = norm[i].length <= 3
+    cands.push({
+      kind: 'repetition', startMs: words[i].startMs, endMs: words[i + 1].endMs,
+      wordIds: [words[i].id, words[i + 1].id], prevWordId: wid(i - 1), nextWordId: wid(i + 2),
+      confidence: properNoun ? 'low' : 'medium',
+      evidenceCodes: properNoun ? ['immediate_repeat', 'proper_noun'] : stutter ? ['immediate_repeat', 'stutter'] : ['immediate_repeat'],
+      evidence: { token: words[i].text, repeatWordId: words[i + 1].id, properNoun, stutter },
+    })
   }
 
   cands.sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs)
-  const candidates = cands.map((c, i) => ({ id: `c${i}`, ...c }))
+  const candidates = cands.map((c, i) => ({
+    id: `c${i}`, kind: c.kind, startMs: c.startMs, endMs: c.endMs,
+    wordIds: c.wordIds, prevWordId: c.prevWordId, nextWordId: c.nextWordId,
+    confidence: c.confidence, safeToConsider: true,
+    evidenceCodes: c.evidenceCodes, evidence: c.evidence, ruleVersion: SPEECH_RULE_VERSION,
+  }))
 
-  return {
+  const fullWords = words.map(({ id, text, normalizedText, startMs, endMs, confidence, sentenceEnd, sentenceId }) =>
+    ({ id, text, normalizedText, startMs, endMs, confidence, sentenceEnd, sentenceId }))
+  const provenance = {
+    asrEngine: 'faster-whisper',
+    asrModel: opts.asrModel,
+    asrComputeType: opts.asrComputeType,
+    device: opts.device,
+    beamSize: opts.beamSize,
+    languagePolicy: opts.languagePolicy,
+    vad: 'silero',
+    vadMinSilenceMs: opts.vadMinSilenceMs,
+    vadSpeechPadMs: opts.vadSpeechPadMs,
+    silenceMinMs: opts.silenceMinMs,
+    ruleVersion: SPEECH_RULE_VERSION,
+  }
+  const base = {
     schemaVersion: SPEECH_ANALYSIS_SCHEMA_VERSION,
     speechVersion: opts.speechVersion,
     sourceAssetId: asset.id,
@@ -208,19 +339,32 @@ export function buildSpeechAnalysis(
     languageConfidence: Math.max(0, Math.min(1, Number(bridge.language_probability) || 0)),
     durationMs,
     transcript: bridge.text,
-    words: words.map(({ id, text, startMs, endMs, confidence, sentenceEnd }) => ({ id, text, startMs, endMs, confidence, sentenceEnd })),
-    sentences,
-    vadSegments,
-    energy: { windowMs: bridge.energy.window_ms, rms: bridge.energy.rms },
-    candidates,
-    provenance: {
-      asrEngine: 'faster-whisper',
-      asrModel: opts.asrModel,
-      beamSize: opts.beamSize,
-      vad: 'silero',
-      silenceMinMs: opts.silenceMinMs,
-    },
+    sentences, vadSegments, energy, candidates, provenance,
   }
+
+  // DB payload safety. The component is bounded by construction (energy is
+  // downsampled; words/candidates scale with speech, not duration). A very
+  // long, very dense source can still approach the 1 MiB DB limit — when it
+  // does, drop ONLY the two fully DERIVABLE per-word fields (normalizedText =
+  // normalize(text); sentenceId = the sentence whose range contains the word)
+  // and mark the component `compact`. This is a normalized representation, NOT
+  // a truncation: every word, candidate and timing stays. If it STILL exceeds
+  // the limit after that, fail LOUD rather than drop real evidence.
+  const BUDGET = 1_000_000
+  let result: Record<string, unknown> = { ...base, words: fullWords, compact: false }
+  if (Buffer.byteLength(JSON.stringify(result), 'utf8') > BUDGET) {
+    // Compact: keep only NON-derivable per-word data. normalizedText,
+    // sentenceId AND sentenceEnd are all reconstructable from `sentences`
+    // (which is retained in full). No word, candidate or timing is dropped.
+    const leanWords = words.map(({ id, text, startMs, endMs, confidence }) =>
+      ({ id, text, startMs, endMs, confidence }))
+    result = { ...base, words: leanWords, compact: true }
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(result), 'utf8')
+  if (bytes > BUDGET) {
+    throw new PermanentJobError(`speech: component ${bytes} bytes exceeds payload budget`, 'speech_component_too_large')
+  }
+  return result
 }
 
 // ---- subprocesses with process-group termination ----------------------------
@@ -274,7 +418,8 @@ function runAsrBridge(wavPath: string, outPath: string, watch: CancelWatch): Pro
       '--audio', wavPath, '--out', outPath,
       '--model', env.speechModel, '--device', env.whisperDevice,
       '--language', env.whisperLanguage, '--beam-size', '1',
-      '--max-seconds', String(Math.ceil(env.sourceMaxDurationMs / 1000))],
+      '--max-seconds', String(Math.ceil(env.sourceMaxDurationMs / 1000)),
+      ...(env.speechBridgeHoldAt ? ['--hold-at', env.speechBridgeHoldAt, '--hold-ms', String(env.speechBridgeHoldMs)] : [])],
     env.speechAsrTimeoutMs, watch, 'during_asr',
     (code, stderr) => {
       if (code === 0) return null
@@ -371,9 +516,16 @@ export async function runTranscribingStage(job: Job, projectId: string, dir: str
     const analysis = buildSpeechAnalysis(
       { id: asset.id, content_sha256: asset.content_sha256 },
       bridge,
-      { speechVersion: env.speechVersion, asrModel: env.speechModel, beamSize: 1, silenceMinMs: env.speechSilenceMinMs },
+      {
+        speechVersion: env.speechVersion, asrModel: env.speechModel,
+        asrComputeType: env.whisperDevice === 'cuda' ? 'float16' : 'int8',
+        device: env.whisperDevice, beamSize: 1, languagePolicy: env.whisperLanguage,
+        silenceMinMs: env.speechSilenceMinMs,
+        vadMinSilenceMs: env.speechVadMinSilenceMs, vadSpeechPadMs: env.speechVadSpeechPadMs,
+      },
     )
 
+    await slowPoint('after_asr_before_persist', watch)
     if (watch.cancelled()) throw new SpeechCancelledError('before_persist')
 
     // FENCED persistence — same writer as inspection: re-proves the lease and

@@ -129,6 +129,10 @@ function startWorker(name, extraEnv = {}) {
       WORKER_RETRY_BACKOFF_BASE_SECS: '1',
       EDITOR_SIM_STAGE_MS: '200',
       EDITOR_LEASE_RENEW_MS: '2000',
+      // Phase 5 made `transcribing` real; this matrix exercises ORCHESTRATION,
+      // not transcription quality, so run the fastest ASR model. Speech
+      // content is irrelevant to every Phase-3 assertion.
+      EDITOR_SPEECH_MODEL: 'tiny',
       EDITOR_STAGE_TIMEOUT_MS: '120000',
       ...extraEnv,
     },

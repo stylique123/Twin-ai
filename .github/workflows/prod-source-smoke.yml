@@ -35,6 +35,13 @@ on:
         description: 'Pre-created probe generation id (uuid)'
         required: true
 
+# Kill switch / no overlap: one production smoke at a time. Attach
+# required-reviewer protection to the `production` environment in repo settings
+# so each run needs human approval before it can create anything.
+concurrency:
+  group: prod-source-smoke
+  cancel-in-progress: false
+
 jobs:
   smoke:
     runs-on: ubuntu-latest
@@ -99,7 +106,7 @@ jobs:
           # worker validates it.
           STATUS=""
           for i in $(seq 1 60); do
-            ROW=$(curl -sS "$BASE/rest/v1/media_assets?id=eq.$ASSET&select=status,content_sha256,duration_ms,width,height,rotation,has_audio,metadata" \
+            ROW=$(curl -sS "$BASE/rest/v1/media_assets?id=eq.$ASSET&select=status,storage_path,content_sha256,duration_ms,width,height,rotation,has_audio,metadata" \
               -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq '.[0]')
             STATUS=$(echo "$ROW" | jq -r .status)
             [ "$STATUS" = "ready" ] && break
@@ -136,3 +143,23 @@ jobs:
           done
           [ "$PTR" = "$ASSET" ] || { echo "GENERATION POINTER NOT LINKED (got $PTR)"; exit 1; }
           echo "generation pointer linked — metadata merge preserved all finalization + probe facts — PASS"
+
+          # GUARANTEED SUPPORTED-API CLEANUP. Delete the object THROUGH the
+          # Storage API with the probe user's OWN session (RLS allows owners to
+          # delete their own objects) — this removes the metadata row AND the
+          # backend blob together, while the row still exists. Never delete
+          # storage.objects rows by SQL: that strips the row's version pointer
+          # and orphans the backend blob. Verify the object is gone afterwards.
+          OBJPATH=$(echo "$ROW" | jq -r .storage_path)
+          [ -n "$OBJPATH" ] && [ "$OBJPATH" != "null" ] || { echo "no storage_path to clean up"; exit 1; }
+          PATH_ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$OBJPATH")
+          DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
+            "$BASE/storage/v1/object/takes/$PATH_ENC" \
+            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN")
+          echo "cleanup delete status=$DEL"
+          [ "$DEL" = "200" ] || { echo "SUPPORTED-API CLEANUP FAILED: $DEL"; exit 1; }
+          GONE=$(curl -sS -o /dev/null -w '%{http_code}' \
+            "$BASE/storage/v1/object/takes/$PATH_ENC" \
+            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN")
+          echo "post-cleanup object fetch status=$GONE (expect 400/404)"
+          case "$GONE" in 400|404) echo "object cleaned via supported API — no orphan left" ;; *) echo "OBJECT STILL PRESENT AFTER DELETE ($GONE)"; exit 1 ;; esac

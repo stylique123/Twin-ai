@@ -13,13 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# yt-dlp + faster-whisper. faster-whisper is PINNED: the editor's speech
-# component (Phase 5) must be reproducible for a given
-# EDITOR_SPEECH_VERSION — a floating ASR dependency would silently move the
-# contract. Bump the pin together with the speech version, never alone.
-# (PEP 668: allow system pip.)
-RUN pip3 install --no-cache-dir --break-system-packages \
-      "yt-dlp>=2025.1.15" "faster-whisper==1.2.0" "youtube-transcript-api>=0.6.2"
+# Python deps from the SINGLE pinned source shared with CI (worker/
+# requirements.txt): the editor's speech component must be reproducible for a
+# given EDITOR_SPEECH_VERSION, so the exact ASR/VAD stack that ran in the
+# staging gate is the one baked here. (PEP 668: allow system pip.)
+COPY requirements.txt ./requirements.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r requirements.txt
 
 WORKDIR /app
 

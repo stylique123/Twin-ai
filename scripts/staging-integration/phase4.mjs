@@ -123,8 +123,13 @@ async function startProject(client, genId, assetId) {
 async function getProject(id) { return (await admin.from('edit_projects').select('*').eq('id', id).maybeSingle()).data }
 async function getJob(pid) { return (await admin.from('jobs').select('*').eq('dedup_key', `editor_v2:${pid}:1`).maybeSingle()).data }
 async function getEvents(pid) { return (await admin.from('edit_events').select('*').eq('project_id', pid).order('seq')).data ?? [] }
+// Phase 4 asserts on the INSPECTION component only. Phase 5 made `transcribing`
+// real, so a completed project now ALSO writes a `speech` component for the
+// same asset — that row is phase5.mjs's subject, not Phase 4's. Scope every
+// Phase-4 count to inspection so those assertions stay about inspection.
 async function analyses(assetId) {
-  return (await admin.from('media_analyses').select('*').eq('source_asset_id', assetId).order('created_at')).data ?? []
+  return (await admin.from('media_analyses').select('*')
+    .eq('source_asset_id', assetId).eq('component', 'inspection').order('created_at')).data ?? []
 }
 async function waitSettled(id, timeoutMs = 90_000, label = '') {
   const start = Date.now()
@@ -144,6 +149,9 @@ function startWorker(name, extraEnv = {}) {
       ...process.env, SUPABASE_URL: URL, SUPABASE_SERVICE_ROLE_KEY: SERVICE, HOSTNAME: name,
       WORKER_JOB_TYPES: 'editor_v2', WORKER_POLL_MS: '400', WORKER_VISIBILITY_SECS: '60',
       WORKER_RETRY_BACKOFF_BASE_SECS: '1', EDITOR_SIM_STAGE_MS: '120', EDITOR_LEASE_RENEW_MS: '2000',
+      // Phase 5 made `transcribing` real; Phase 4 asserts on INSPECTION, so the
+      // speech stage that now also runs per project uses the fastest model.
+      EDITOR_SPEECH_MODEL: 'tiny',
       ...extraEnv,
     },
     stdio: ['ignore', 'pipe', 'pipe'],

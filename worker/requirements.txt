@@ -1,0 +1,36 @@
+# Single pinned Python dependency source for the TwinAI worker.
+#
+# BOTH the Docker image (worker/Dockerfile) and the staging-integration CI
+# install from THIS file, so the editor's speech component is reproducible:
+# the exact same ASR/VAD stack runs in CI, on the VPS, and in every job.
+# Bump the ASR pins ONLY together with EDITOR_SPEECH_VERSION — a moved model
+# or runtime silently changes the persisted `speech` component contract.
+#
+# Versions are the resolved closure of faster-whisper==1.2.0 (verified to
+# import + load the `base` model + run Silero VAD + PyAV decode). Do not relax
+# a `==` pin to a range.
+
+# ---- Editor speech analysis (Phase 5): ASR + VAD + audio decode -------------
+# faster-whisper 1.2.0: the current stable line. Chosen over 1.1.x because
+# 1.2.0 ships the batched pipeline and the bundled Silero VAD assets this
+# worker relies on (get_speech_timestamps / VadOptions), and over the 0.x line
+# which predates word-probability output. Pinned exactly for reproducibility.
+faster-whisper==1.2.0
+ctranslate2==4.8.1        # faster-whisper inference backend (int8 CPU)
+av==18.0.0               # PyAV — audio decode for VAD/energy (decode_audio)
+onnxruntime==1.27.0      # runs the bundled Silero VAD ONNX model
+tokenizers==0.23.1
+huggingface_hub==1.24.0  # model fetch; pinned so the transitive `requests`
+                         # dependency is deterministic on fresh runners
+numpy==2.4.6             # RMS energy math
+requests==2.33.1         # imported by faster_whisper.utils (not always
+                         # transitive on a clean Python 3.12 environment)
+
+# ---- Reference ingestion (unchanged behaviour) -----------------------------
+# yt-dlp is intentionally kept on a floor, not an exact pin: YouTube's
+# anti-bot changes break older releases within weeks, so the ingestion path
+# must be free to move. It does NOT feed the editor speech component (that
+# path is the exactly-pinned stack above), so its freshness cannot affect
+# Phase-5 reproducibility.
+yt-dlp>=2025.1.15
+youtube-transcript-api>=0.6.2

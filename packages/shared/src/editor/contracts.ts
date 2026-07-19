@@ -219,11 +219,18 @@ export const SPEECH_ANALYSIS_SCHEMA_VERSION = 1
 
 export interface SpeechWord {
   id: string        // deterministic: 'w' + zero-based index in spoken order
-  text: string
+  text: string            // original ASR text, verbatim (never script-derived)
   startMs: number
   endMs: number
   confidence: number      // ASR word probability, 0..1 (3 decimals)
-  sentenceEnd: boolean    // this word closes a sentence (terminal punctuation)
+  // Derivable fields, present on normal components and OMITTED when the
+  // component is `compact` (see SpeechAnalysis.compact) — all reconstructable
+  // from `sentences`: sentenceEnd = this word is a sentence's lastWordId;
+  // sentenceId = the sentence whose span contains it; normalizedText =
+  // lowercased + punctuation-stripped `text`.
+  sentenceEnd?: boolean
+  normalizedText?: string
+  sentenceId?: string
 }
 
 export interface SpeechSentence {
@@ -237,15 +244,22 @@ export interface SpeechSentence {
 
 export type SpeechCandidateKind = 'silence' | 'filler' | 'false_start' | 'repetition'
 
+// The analyzer PROPOSES candidates; it never decides a removal. `safeToConsider`
+// is deliberately not `safeToRemove` — the later Director/compiler applies
+// policy to decide whether a candidate is acted on.
 export interface SpeechCandidate {
   id: string        // deterministic: 'c' + zero-based index in start order
   kind: SpeechCandidateKind
   startMs: number
   endMs: number
-  wordIds: string[] // the words this candidate refers to ([] for pure silence)
-  // Heuristic strength of the CANDIDATE (not permission to cut).
-  confidence: 'high' | 'medium' | 'low'
+  wordIds: string[]        // the words this candidate refers to ([] for pure silence)
+  prevWordId: string | null // adjacent context (null at the recording edge)
+  nextWordId: string | null
+  confidence: 'high' | 'medium' | 'low'  // heuristic strength, NOT permission
+  safeToConsider: true     // always a suggestion; never an instruction
+  evidenceCodes: string[]  // stable machine codes (see docs) for why it fired
   evidence: Record<string, unknown>
+  ruleVersion: string      // candidate rule/language version
 }
 
 export interface SpeechAnalysis {
@@ -263,10 +277,18 @@ export interface SpeechAnalysis {
   words: SpeechWord[]
   sentences: SpeechSentence[]
 
+  // True when derivable per-word fields (normalizedText/sentenceId) were
+  // dropped to keep a very long, dense source within the DB payload limit.
+  // No words, candidates or timings are ever dropped — see the docs.
+  compact: boolean
+
   // Silero VAD speech regions over the source timeline (evidence, not cuts).
   vadSegments: Array<{ startMs: number; endMs: number }>
 
-  // Coarse RMS energy curve (bounded: windowMs >= 100, values 4 decimals).
+  // Coarse RMS energy curve. windowMs is ADAPTIVE so the array length is
+  // bounded regardless of source length (a 30-minute source cannot blow the
+  // component past the DB payload limit): windowMs grows so rms.length stays
+  // within a fixed cap. Values are 4 decimals.
   energy: { windowMs: number; rms: number[] }
 
   candidates: SpeechCandidate[]
@@ -274,9 +296,15 @@ export interface SpeechAnalysis {
   provenance: {
     asrEngine: 'faster-whisper'
     asrModel: string          // e.g. 'base'
+    asrComputeType: string    // e.g. 'int8' (part of the reproducibility identity)
+    device: string            // 'cpu' | 'cuda'
     beamSize: number
+    languagePolicy: string    // pinned ISO code, or 'auto'
     vad: 'silero'
+    vadMinSilenceMs: number
+    vadSpeechPadMs: number
     silenceMinMs: number      // gap threshold used for silence candidates
+    ruleVersion: string       // candidate rule/language version
   }
 }
 

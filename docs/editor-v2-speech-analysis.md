@@ -98,6 +98,93 @@ sanitizer (urls/secrets/JWTs/hex/paths/DSNs redacted, ≤300 chars); the raw
 stderr tail exists only in the worker's stdout (access-controlled container
 logs).
 
+## Word contract
+
+Each word: stable id (`w<i>`, spoken order), original `text` (verbatim ASR),
+integer `startMs`/`endMs` (clamped so `endMs >= startMs` and every word stays
+inside `durationMs` — Whisper's occasional end-overrun is clamped, never
+dropped), `confidence` (0..1), `sentenceEnd`, `sentenceId`, and `normalizedText`.
+Starts are monotonic non-decreasing. Ids are deterministic for a given
+`(source bytes, speechVersion)`. In a `compact` component (see Payload) the
+derivable fields (`normalizedText`, `sentenceId`, `sentenceEnd`) are omitted —
+all reconstructable from `sentences`.
+
+## Candidate contract
+
+Every candidate carries: stable id (`c<i>`, start order), `kind`
+(`silence`/`filler`/`false_start`/`repetition`), `startMs`/`endMs`, `wordIds`,
+`prevWordId`/`nextWordId` (adjacent context), `confidence`
+(`high`/`medium`/`low` — heuristic strength, never permission), **`safeToConsider:
+true`** (a proposal, never `safeToRemove`), `evidenceCodes` (stable machine
+codes), `evidence` (structured detail) and `ruleVersion` (`speech-rules-1`).
+The analyzer proposes; the later Director/compiler decides.
+
+Evidence codes (v1): `silence_gap`, `gap_removable`, `gap_dead_air`,
+`vad_nonspeech`, `vad_ambiguous`, `filler_disfluency`, `asr_low_conf`,
+`ambiguous_discourse_marker`, `repeat_bigram`, `pause_between`,
+`comma_boundary`, `immediate_repeat`, `stutter`, `proper_noun`.
+
+### Silence banding
+A gap under `EDITOR_SPEECH_SILENCE_MIN_MS` (700 ms) is a NATURAL PAUSE and
+produces no candidate — the resolution threshold generates evidence, it does
+not mean "shorten every gap". Above it, banded by VAD + energy:
+`removable` (medium, VAD-clear, < 2 s), `dead_air` (high, VAD-clear, ≥ 2 s),
+`uncertain` (low, VAD says the gap is actually speech).
+
+### Filler vs discourse markers
+`um`/`uh`/`erm`/… are `filler` disfluencies (high, downgraded to low when the
+ASR itself was unsure). `like`/`well`/`so`/`actually`/`basically`/`right` and
+`you know` are discourse markers — frequently meaningful — so they are flagged
+ONLY in hesitation context (bracketed by a ≥200 ms pause or a clause boundary),
+ALWAYS at low confidence, code `ambiguous_discourse_marker`. A fluent
+meaningful use ("I feel like a winner") produces no candidate. **Low ASR
+confidence alone never produces any candidate.**
+
+### False start vs repetition
+A repeated bigram (A B … A B) separated by a ≥150 ms pause or a comma is a
+`false_start`; otherwise `repetition`. Immediate identical words are
+`repetition` (`stutter` code for short tokens). A capitalized repeat is treated
+as a proper noun / intentional emphasis — kept but LOW (`proper_noun`) so it is
+never treated as removable. Repeats spanning a sentence boundary (separate
+sentences sharing a word) produce no candidate.
+
+## Payload
+
+The component is bounded by construction: the energy curve is downsampled to
+≤ 2000 windows (adaptive `windowMs`, mean-aggregated — coarser, never
+truncated), and words/candidates scale with speech, not clock time. A very
+long, very dense source that would still exceed the 1 MiB DB limit triggers a
+deterministic `compact` mode that drops ONLY the three derivable per-word
+fields — no word, candidate or timing is ever dropped. If it still exceeds the
+limit after compaction it fails LOUD (`speech_component_too_large`), never
+silently truncates. A 30-minute source at 3 words/sec fits well under 1 MiB.
+
+## Dependency reproducibility
+
+`worker/requirements.txt` is the SINGLE pinned Python source; both the Docker
+image and CI install from it, so the ASR/VAD stack is byte-identical
+everywhere. The full closure is `==`-pinned: faster-whisper 1.2.0, ctranslate2
+4.8.1, PyAV 18.0.0, onnxruntime 1.27.0, tokenizers 0.23.1, huggingface_hub
+1.24.0, numpy 2.4.6, requests 2.33.1. faster-whisper **1.2.0** was chosen as
+the current stable line that ships the bundled Silero VAD assets this worker
+uses (`get_speech_timestamps`/`VadOptions`) and word-probability output, over
+0.x (no word probabilities) and unreleased mains. The `base` model is
+baked into the image (and pre-fetched in CI) so no job downloads a model at
+run time. The analyzer identity — model name, compute type (`int8`), device,
+beam size (1), language policy, VAD params — is recorded in `provenance`; a
+change to ANY of these must bump `EDITOR_SPEECH_VERSION`.
+
+## Cancellation points (all seven proven)
+
+before download, during download, during audio extraction, during model
+loading, mid-transcription, after transcription/before persistence, and after
+persistence/before stage advancement. The download stream and BOTH subprocess
+process groups (ffmpeg, faster-whisper) are torn down on abort; deterministic
+bridge holds (`--hold-at after_model_load|after_transcribe`) make the
+model-load and mid-transcription windows reproducible. In every non-persisted
+window no component is written and no stage advances past `transcribing`; after
+persistence the component is kept and reused.
+
 ## The bridge (`worker/editor_speech.py`)
 
 Separate from the caption-oriented `whisper_transcribe.py` on purpose: the

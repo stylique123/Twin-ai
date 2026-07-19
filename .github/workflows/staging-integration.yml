@@ -52,13 +52,16 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install pinned faster-whisper + pre-fetch the ASR model
-        # requests is pinned explicitly: faster_whisper.utils imports it, but
-        # current huggingface_hub no longer brings it transitively on a fresh
-        # Python 3.12 environment.
+      - name: Install the worker's pinned Python deps + pre-fetch the ASR model
+        # SAME locked source the Docker image installs from (worker/
+        # requirements.txt) — the speech component's ASR/VAD stack is identical
+        # in CI and on the VPS. Pre-fetch the `base` model so no matrix job
+        # pays a per-run download (mirrors the image's baked model).
         run: |
-          pip install --quiet 'faster-whisper==1.2.0' 'requests==2.32.5'
-          python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
+          pip install --quiet -r worker/requirements.txt
+          # base = Phase-5 quality gate; tiny = the fast model Phase-3/4 use for
+          # their now-real speech stage. Pre-fetch both so no job downloads.
+          python -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('base','tiny')]"
 
       - name: Verify the ci-bootstrap gate refuses unauthorized callers
         run: |

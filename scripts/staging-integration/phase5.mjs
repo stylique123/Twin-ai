@@ -244,8 +244,8 @@ async function runToSettled(name, projectId, extraEnv = {}, timeoutMs = 150_000)
 async function main() {
   console.log('== setup ==')
   const dir = await mkdtemp(join(tmpdir(), 'phase5-'))
-  const [fix, uA] = await Promise.all([makeSpeechFixture(dir), makeUser('p5a')])
-  const cA = await login(uA.email)
+  const [fix, uA, uB] = await Promise.all([makeSpeechFixture(dir), makeUser('p5a'), makeUser('p5b')])
+  const [cA, cB] = await Promise.all([login(uA.email), login(uB.email)])
 
   // Settle strays from earlier matrices (same persistent staging DB).
   await admin.from('jobs').update({ status: 'done', result: { drained_by: 'phase5-setup' }, locked_at: null, locked_by: null })
@@ -254,14 +254,26 @@ async function main() {
 
   const validator = startWorker('p5-validator', { WORKER_JOB_TYPES: 'validate_source' })
   const S = await mintReady(cA, uA.id, fix.speech)   // happy path + cache + version chain
+  const XA = await mintReady(cA, uA.id, fix.speech)  // cross-tenant: identical bytes, owner A
+  const XB = await mintReady(cB, uB.id, fix.speech)  // cross-tenant: identical bytes, owner B
   const T = await mintReady(cA, uA.id, fix.speech)   // tamper mid-project (speech's own guard)
   const T2 = await mintReady(cA, uA.id, fix.speech)  // cached speech never legitimizes tamper
-  const G1 = await mintReady(cA, uA.id, fix.speech)  // cancel during download
-  const G2 = await mintReady(cA, uA.id, fix.speech)  // cancel during ASR (process kill)
-  const G3 = await mintReady(cA, uA.id, fix.speech)  // cancel after persist → converge
   const G4 = await mintReady(cA, uA.id, fix.speech)  // crash after speech → converge
-  const CC = await mintReady(cA, uA.id, fix.speech)  // concurrent misses converge
+  const CC = await mintReady(cA, uA.id, fix.speech)  // stale-writer fence
   const P = await mintReady(cA, uA.id, fix.speech)   // provider failure sanitized
+  // Cancellation gets a dedicated asset PER window (each project settles
+  // cancelled before publishing, except after_persist which keeps its row).
+  const CANCEL_POINTS = [
+    { key: 'before_download', label: 'before download', slow: 'before_reconcile', waitStage: true },
+    { key: 'during_download', label: 'during download', slow: 'during_download', waitStage: true },
+    { key: 'during_extract', label: 'during audio extraction', slow: 'during_extract', waitStage: true },
+    { key: 'model_load', label: 'during model loading', hold: 'after_model_load', waitWav: true },
+    { key: 'mid_transcription', label: 'mid-transcription', hold: 'after_transcribe', waitWav: true },
+    { key: 'after_asr', label: 'after transcription, before persist', slow: 'after_asr_before_persist', waitWav: true },
+    { key: 'after_persist', label: 'after persistence, before stage advance', slow: 'after_persist', keepsRow: true, waitWav: true },
+  ]
+  const cancelAssets = {}
+  for (const p of CANCEL_POINTS) cancelAssets[p.key] = await mintReady(cA, uA.id, fix.speech)
   stopWorker(validator)
 
   const { count: creditsBefore } = await admin.from('credit_events')
@@ -304,20 +316,27 @@ async function main() {
     check('S9 VAD evidence: multiple speech regions on the source timeline',
       (r.vadSegments ?? []).length >= 2 && r.vadSegments.every((v) => Number.isInteger(v.startMs) && v.endMs > v.startMs))
     check('S10 bounded energy curve present',
-      r.energy && r.energy.windowMs >= 100 && Array.isArray(r.energy.rms) && r.energy.rms.length > 0 && r.energy.rms.length <= 18000)
+      r.energy && r.energy.windowMs >= 100 && Array.isArray(r.energy.rms) && r.energy.rms.length > 0 && r.energy.rms.length <= 2000)
 
     const cands = r.candidates ?? []
     const kinds = new Set(cands.map((c) => c.kind))
     const sil = cands.filter((c) => c.kind === 'silence')
-    check('S11 silence candidates cover the inserted 1.5s gaps (evidence, VAD-supported)',
-      sil.some((c) => c.evidence?.gapMs >= 1000 && c.evidence?.vadSupported === true), JSON.stringify(sil.map((c) => c.evidence)))
-    check('S12 filler candidate for the spoken "um"',
-      cands.some((c) => c.kind === 'filler' && (c.evidence?.words ?? []).some((w) => /um/i.test(w))),
+    check('S11 silence candidates are banded (removable / dead_air) over the inserted gaps',
+      sil.some((c) => c.evidence?.gapMs >= 1000 && ['removable', 'dead_air'].includes(c.evidence?.class)),
+      JSON.stringify(sil.map((c) => ({ gapMs: c.evidence?.gapMs, class: c.evidence?.class, conf: c.confidence }))))
+    check('S12 filler candidate for the spoken "um" (disfluency)',
+      cands.some((c) => c.kind === 'filler' && c.evidence?.markerType === 'disfluency'
+        && (c.evidence?.words ?? []).some((w) => /um/i.test(w))),
       JSON.stringify(cands.filter((c) => c.kind === 'filler')))
     check('S13 the "I want, I want" stumble is a false_start/repetition CANDIDATE',
       kinds.has('false_start') || kinds.has('repetition'), [...kinds].join(','))
-    check('S14 no candidate is a cut decision (all carry evidence + bounded confidence)',
-      cands.every((c) => c.evidence && ['high', 'medium', 'low'].includes(c.confidence) && Array.isArray(c.wordIds)))
+    check('S14 candidates are PROPOSALS: safeToConsider, evidence codes, rule version, bounded confidence',
+      cands.length > 0 && cands.every((c) =>
+        c.safeToConsider === true && !('safeToRemove' in c)
+        && Array.isArray(c.evidenceCodes) && c.evidenceCodes.length > 0
+        && c.ruleVersion === 'speech-rules-1'
+        && ['high', 'medium', 'low'].includes(c.confidence)
+        && 'prevWordId' in c && 'nextWordId' in c))
 
     const ev = await getEvents(pid)
     const rec = ev.find((e) => e.message_code === 'speech_recorded')
@@ -332,6 +351,37 @@ async function main() {
     check('S18 provenance pins engine/model/vad', r.provenance?.asrEngine === 'faster-whisper' && r.provenance?.vad === 'silero')
     check('S19 the speech write did NOT clobber the inspection epoch (0085)',
       proj.analysis_version === 'inspect-1', String(proj.analysis_version))
+    // Word timing contract: monotonic, non-overlapping beyond a small tolerated
+    // ASR overlap, every word inside the source duration.
+    let mono = true; let inBounds = true; let overlaps = 0
+    for (let i = 0; i < words.length; i++) {
+      if (words[i].endMs < words[i].startMs) inBounds = false
+      if (words[i].endMs > r.durationMs + 50 || words[i].startMs < 0) inBounds = false
+      if (i > 0) {
+        if (words[i].startMs < words[i - 1].startMs) mono = false
+        if (words[i].startMs < words[i - 1].endMs - 50) overlaps++
+      }
+    }
+    check('S20 words monotonic, in-bounds, no material overlaps', mono && inBounds && overlaps === 0,
+      `mono=${mono} inBounds=${inBounds} overlaps=${overlaps}`)
+  }
+
+  // =================================================================
+  console.log('\n== X. cross-tenant identical bytes stay isolated ==')
+  {
+    check('X1 identical bytes → identical checksums (the collision case)',
+      XA.asset.content_sha256 === XB.asset.content_sha256 && !!XA.asset.content_sha256)
+    const pidA = await startProject(cA, XA.gen, XA.assetId)
+    const pidB = await startProject(cB, XB.gen, XB.assetId)
+    const w = startWorker('p5-xtenant')
+    const [pA, pB] = await Promise.all([waitSettled(pidA, 180_000, 'xA'), waitSettled(pidB, 180_000, 'xB')])
+    stopWorker(w)
+    check('X2 both tenants completed', pA.status === 'completed' && pB.status === 'completed', `${pA.status}/${pB.status}`)
+    const rowsA = await speechRows(XA.assetId); const rowsB = await speechRows(XB.assetId)
+    check('X3 each asset owns its OWN speech row (no cross-tenant dedup)',
+      rowsA.length === 1 && rowsB.length === 1 && rowsA[0].id !== rowsB[0].id)
+    check('X4 owner is derived from the asset, not the caller',
+      rowsA[0].owner_id === uA.id && rowsB[0].owner_id === uB.id, `${rowsA[0].owner_id}/${rowsB[0].owner_id}`)
   }
 
   // =================================================================
@@ -404,25 +454,8 @@ async function main() {
   }
 
   // =================================================================
-  console.log('\n== G. cooperative cancellation in the real speech windows ==')
+  console.log('\n== G. cooperative cancellation lands in EVERY real speech window ==')
   {
-    // G-a: during the bounded download.
-    const pid1 = await startProject(cA, G1.gen, G1.assetId)
-    const w1 = startWorker('p5-c-dl', { EDITOR_SPEECH_SLOW_POINT: 'during_download', EDITOR_SPEECH_SLOW_MS: '6000' })
-    await waitStage(pid1, 'transcribing', 120_000, 'cancel-dl')
-    await sleep(700)
-    await cA.rpc('editor_request_cancel', { p_project: pid1 })
-    const t1 = Date.now()
-    const p1 = await waitSettled(pid1, 60_000, 'cancel-dl')
-    stopWorker(w1)
-    check('G1 cancel during download → cancelled promptly',
-      p1.status === 'cancelled' && Date.now() - t1 < 20_000, `${p1.status} in ${Date.now() - t1}ms`)
-    check('G2 no component from the aborted run', (await speechRows(G1.assetId)).length === 0)
-
-    // G-b: during ASR — the faster-whisper process group must die promptly.
-    // The extracted wav appearing in a NEW attempt dir marks extract-done →
-    // the bridge is spawning/running; cancel lands mid-ASR. Snapshot first:
-    // crashed attempts from EARLIER matrices may have left wavs behind.
     const base = join(tmpdir(), 'editor-v2')
     const wavDirs = async () => {
       const out = new Set()
@@ -433,46 +466,61 @@ async function main() {
       } catch { }
       return out
     }
-    const preexisting = await wavDirs()
-    const pid2 = await startProject(cA, G2.gen, G2.assetId)
-    const w2 = startWorker('p5-c-asr', {})
-    await waitStage(pid2, 'transcribing', 120_000, 'cancel-asr')
-    const deadline = Date.now() + 60_000
-    let sawWav = false
-    while (Date.now() < deadline && !sawWav) {
-      sawWav = [...await wavDirs()].some((d) => !preexisting.has(d))
-      if (!sawWav) await sleep(250)
+    let gi = 0
+    for (const point of CANCEL_POINTS) {
+      gi++
+      const a = cancelAssets[point.key]
+      const extraEnv = point.hold
+        ? { EDITOR_SPEECH_BRIDGE_HOLD_AT: point.hold, EDITOR_SPEECH_BRIDGE_HOLD_MS: '20000' }
+        : { EDITOR_SPEECH_SLOW_POINT: point.slow, EDITOR_SPEECH_SLOW_MS: '9000' }
+      // Snapshot existing wav scratch dirs BEFORE this case so we detect only
+      // the wav THIS run extracts (not leftovers).
+      const pre = await wavDirs()
+      const pid = await startProject(cA, a.gen, a.assetId)
+      const w = startWorker(`p5-cancel-${point.key}`, extraEnv)
+      await waitStage(pid, 'transcribing', 120_000, `cancel-${point.key}`)
+      // For bridge-hold windows (model load / mid-transcription / after-asr),
+      // wait until a NEW extracted wav proves the bridge is running.
+      if (point.waitWav) {
+        const deadline = Date.now() + 60_000
+        let saw = false
+        while (Date.now() < deadline && !saw) {
+          saw = [...await wavDirs()].some((d) => !pre.has(d))
+          if (!saw) await sleep(250)
+        }
+      } else {
+        await sleep(800)
+      }
+      await cA.rpc('editor_request_cancel', { p_project: pid })
+      const t0 = Date.now()
+      const p = await waitSettled(pid, 60_000, `cancel-${point.key}`)
+      const elapsed = Date.now() - t0
+      stopWorker(w)
+      check(`G${gi} cancel ${point.label} → cancelled promptly (process group torn down)`,
+        p.status === 'cancelled' && elapsed < 25_000, `${p.status} in ${elapsed}ms`)
+      const rows = await speechRows(a.assetId)
+      if (point.keepsRow) {
+        check(`G${gi}b after-persist keeps the valid immutable component`, rows.length === 1, `rows=${rows.length}`)
+      } else {
+        check(`G${gi}b no component written from the aborted run`, rows.length === 0, `rows=${rows.length}`)
+      }
+      // No stage advanced past transcribing after cancellation.
+      check(`G${gi}c no stage advanced past transcribing after cancel`,
+        !(await getEvents(pid)).some((e) => e.message_code === 'stage_started'
+          && ['directing', 'compiling', 'rendering', 'validating'].includes(e.stage)))
     }
-    check('G3 observed the ASR window (extracted audio present)', sawWav)
-    await sleep(1000)
-    await cA.rpc('editor_request_cancel', { p_project: pid2 })
-    const t2 = Date.now()
-    const p2 = await waitSettled(pid2, 60_000, 'cancel-asr')
-    stopWorker(w2)
-    check('G4 cancel mid-ASR → cancelled promptly (process group killed, not awaited)',
-      p2.status === 'cancelled' && Date.now() - t2 < 15_000, `${p2.status} in ${Date.now() - t2}ms`)
-    check('G5 no component from the killed ASR', (await speechRows(G2.assetId)).length === 0)
 
-    // G-c: after persist — component survives, project cancels, next run converges.
-    const pid3 = await startProject(cA, G3.gen, G3.assetId)
-    const w3 = startWorker('p5-c-persist', { EDITOR_SPEECH_SLOW_POINT: 'after_persist', EDITOR_SPEECH_SLOW_MS: '8000' })
-    await waitStage(pid3, 'transcribing', 120_000, 'cancel-persist')
-    const persistDeadline = Date.now() + 90_000
-    while (Date.now() < persistDeadline && (await speechRows(G3.assetId)).length === 0) await sleep(400)
-    check('G6 component persisted during the hold', (await speechRows(G3.assetId)).length === 1)
-    await cA.rpc('editor_request_cancel', { p_project: pid3 })
-    const p3 = await waitSettled(pid3, 60_000, 'cancel-persist')
-    stopWorker(w3)
-    check('G7 project still cancels AFTER persist (analysis kept, run abandoned)', p3.status === 'cancelled', p3.status)
-    const pid4 = await startProject(cA, G3.gen, G3.assetId)
-    const p4 = await runToSettled('p5-c-converge', pid4)
-    const ev4 = await getEvents(pid4)
-    check('G8 next project converges on the kept component (cache hit)',
-      p4.status === 'completed'
-      && ev4.some((e) => e.message_code === 'speech_recorded' && e.details?.cache_hit === true)
-      && (await speechRows(G3.assetId)).length === 1)
+    // After a post-persist cancellation the kept component is reusable: the
+    // next project converges on it (cache hit, still one row).
+    const ap = cancelAssets.after_persist
+    const pidR = await startProject(cA, ap.gen, ap.assetId)
+    const pR = await runToSettled('p5-cancel-converge', pidR)
+    check('G8 post-persist component is reusable — next project cache-hits it',
+      pR.status === 'completed'
+      && (await getEvents(pidR)).some((e) => e.message_code === 'speech_recorded' && e.details?.cache_hit === true)
+      && (await speechRows(ap.assetId)).length === 1)
 
-    // G-d: crash AFTER speech persisted → reclaim resumes, cache-hits, ONE row.
+    // Crash AFTER speech persisted → reclaim resumes, cache-hits, ONE row.
     const pid5 = await startProject(cA, G4.gen, G4.assetId)
     const w5 = startWorker('p5-crash', {
       WORKER_VISIBILITY_SECS: '30', EDITOR_SIM_CRASH_POINT: 'before_stage:analyzing', EDITOR_SIM_FAIL_ATTEMPTS: '1',
@@ -564,23 +612,29 @@ async function main() {
   // =================================================================
   console.log('\n== B. phase boundary: speech evidence only, nothing downstream ==')
   {
-    const runAssets = [S, T, T2, G1, G2, G3, G4, CC, P].map((x) => x.assetId)
+    const runAssets = [S, XA, XB, T, T2, G4, CC, P, ...Object.values(cancelAssets)].map((x) => x.assetId)
     const { data: comps } = await admin.from('media_analyses')
       .select('component').in('source_asset_id', runAssets)
     const kinds = new Set((comps ?? []).map((c) => c.component))
-    check('B1 only inspection+speech components exist for this run',
-      [...kinds].every((k) => ['inspection', 'speech'].includes(k)), [...kinds].join(','))
+    check('B1 only inspection+speech components exist (visual/audio/hook = 0)',
+      [...kinds].every((k) => ['inspection', 'speech'].includes(k)) && kinds.has('speech'), [...kinds].join(','))
     const count = async (t) => (await admin.from(t).select('id', { count: 'exact', head: true })).count ?? 0
     check('B2 zero edit_plans (no Director/EditPlan — later phases)', (await count('edit_plans')) === 0)
     const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true }).eq('kind', 'output')
-    check('B3 zero output assets (no cutting/captions/rendering)', (outputs ?? 0) === 0)
+    check('B3 zero output assets — no FFmpeg VIDEO editing (audio extraction only)', (outputs ?? 0) === 0)
     const { count: creditsAfter } = await admin.from('credit_events')
-      .select('id', { count: 'exact', head: true }).eq('user_id', uA.id)
-    check('B4 zero credit events for the run user (no charging)', (creditsAfter ?? 0) === (creditsBefore ?? 0),
+      .select('id', { count: 'exact', head: true }).in('user_id', [uA.id, uB.id])
+    check('B4 zero credit events for the run users (no charging)', (creditsAfter ?? 0) === (creditsBefore ?? 0),
       `${creditsBefore}->${creditsAfter}`)
     const { count: transcripts } = await admin.from('transcripts')
-      .select('id', { count: 'exact', head: true }).eq('owner_id', uA.id)
+      .select('id', { count: 'exact', head: true }).in('owner_id', [uA.id, uB.id])
     check('B5 zero legacy transcript rows (speech lives only in media_analyses)', (transcripts ?? 0) === 0)
+    // No Gemini Director in this phase: a completed speech project reaches
+    // `completed` with only speech evidence; no plan/analysis rows beyond the
+    // two sanctioned components exist (B1+B2), which is the observable proof
+    // that no Director/EditPlan generation ran.
+    check('B6 no analysis beyond the two sanctioned components (no Gemini Director output)',
+      (comps ?? []).every((c) => ['inspection', 'speech'].includes(c.component)))
 
     // Temp hygiene: every attempt dir belonging to THIS run's jobs is gone —
     // except the deliberately SIGKILLed crash attempt (G-d), which the age

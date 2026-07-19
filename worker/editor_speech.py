@@ -48,7 +48,14 @@ def main() -> int:
     ap.add_argument("--beam-size", type=int, default=1)
     ap.add_argument("--max-seconds", type=int, default=1800)
     ap.add_argument("--energy-window-ms", type=int, default=200)
+    # Matrix-only deterministic holds so cooperative cancellation can be proven
+    # to land in the model-load and mid-transcription windows (the worker kills
+    # this process group on abort). Never set in production.
+    ap.add_argument("--hold-at", default="")   # after_model_load | after_transcribe
+    ap.add_argument("--hold-ms", type=int, default=0)
     args = ap.parse_args()
+
+    import time
 
     from faster_whisper import WhisperModel
     from faster_whisper.audio import decode_audio
@@ -58,6 +65,8 @@ def main() -> int:
     lang = None if args.language.lower() in ("auto", "", "detect") else args.language
 
     model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
+    if args.hold_at == "after_model_load" and args.hold_ms > 0:
+        time.sleep(args.hold_ms / 1000.0)
     segments_iter, info = model.transcribe(
         args.audio,
         word_timestamps=True,
@@ -73,6 +82,19 @@ def main() -> int:
         return 2
 
     words, segments, text_parts = [], [], []
+    if args.hold_at == "after_transcribe" and args.hold_ms > 0:
+        # segments_iter is lazy — force the first segment so transcription has
+        # genuinely begun, then hold (mid-transcription window).
+        first = next(segments_iter, None)
+        time.sleep(args.hold_ms / 1000.0)
+        if first is not None:
+            segments.append({"start": round(first.start, 3), "end": round(first.end, 3), "text": first.text.strip()})
+            text_parts.append(first.text)
+            for w in (first.words or []):
+                t = (w.word or "").strip()
+                if t and w.end >= w.start:
+                    words.append({"w": t, "start": round(w.start, 3), "end": round(w.end, 3),
+                                  "p": round(float(getattr(w, "probability", 0.0) or 0.0), 3)})
     for seg in segments_iter:
         segments.append({"start": round(seg.start, 3), "end": round(seg.end, 3), "text": seg.text.strip()})
         text_parts.append(seg.text)

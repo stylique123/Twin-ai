@@ -120,11 +120,20 @@ export const env = {
   speechAsrTimeoutMs: Number(process.env.EDITOR_SPEECH_ASR_TIMEOUT_MS ?? '1200000'),
   // Minimum word/VAD gap that becomes a silence CANDIDATE (evidence only).
   speechSilenceMinMs: Number(process.env.EDITOR_SPEECH_SILENCE_MIN_MS ?? '700'),
+  // Silero VAD parameters (pinned in the bridge; surfaced for provenance so a
+  // change is visible in the component and can be tied to a version bump).
+  speechVadMinSilenceMs: Number(process.env.EDITOR_SPEECH_VAD_MIN_SILENCE_MS ?? '300'),
+  speechVadSpeechPadMs: Number(process.env.EDITOR_SPEECH_VAD_SPEECH_PAD_MS ?? '100'),
   // Matrix-only boundary holds ('before_reconcile' | 'before_download' |
   // 'during_download' | 'before_extract' | 'during_extract' | 'before_asr' |
-  // 'during_asr' | 'after_persist').
+  // 'after_asr_before_persist' | 'after_persist').
   speechSlowPoint: (process.env.EDITOR_SPEECH_SLOW_POINT ?? '').trim(),
   speechSlowMs: Number(process.env.EDITOR_SPEECH_SLOW_MS ?? '4000'),
+  // Matrix-only deterministic bridge holds so cancellation lands in the
+  // model-load / mid-transcription windows ('after_model_load' |
+  // 'after_transcribe'). The worker kills the bridge process group on abort.
+  speechBridgeHoldAt: (process.env.EDITOR_SPEECH_BRIDGE_HOLD_AT ?? '').trim(),
+  speechBridgeHoldMs: Number(process.env.EDITOR_SPEECH_BRIDGE_HOLD_MS ?? '0'),
 
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }
