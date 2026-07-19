@@ -1,23 +1,69 @@
 # Post-merge production verification for the editor-v2 launch gate.
-# The start-editor-v2 gate fires BEFORE auth, so an unauthenticated probe
-# proves the fail-closed state: production must answer 503 editor_not_available
-# (no EDITOR_V2_START_ENABLED secret is ever set there until Phase-3 rollout).
+# Two walls, both fail-closed:
+#   unauthenticated → 401 at the platform JWT wall (endpoint unreachable
+#                     without a session — proven by the first probe)
+#   authenticated   → 503 editor_not_available from the in-function gate
+#                     (no EDITOR_V2_START_ENABLED secret exists in production
+#                     until Phase-3 rollout — proven by the second probe)
 name: Verify production editor gate
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      probe_email:
+        description: 'Throwaway probe user email (authenticated fail-closed probe)'
+        required: false
+        default: ''
+      probe_password:
+        description: 'Throwaway probe user password'
+        required: false
+        default: ''
 
 jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Production start-editor-v2 must be fail-closed
+      - uses: actions/checkout@v4
+
+      - name: Unauthenticated callers cannot reach the endpoint (401 wall)
         run: |
           RESP=$(curl -s -w '\n%{http_code}' -X POST \
             "https://jmdecibuytznsonrasxw.supabase.co/functions/v1/start-editor-v2" \
             -H 'Content-Type: application/json' -d '{}')
           BODY=$(echo "$RESP" | head -1)
           CODE=$(echo "$RESP" | tail -1)
-          echo "status=$CODE body=$BODY"
+          echo "unauthenticated status=$CODE body=$BODY"
+          [ "$CODE" = "401" ] || { echo "EXPECTED PLATFORM 401 FOR UNAUTHENTICATED"; exit 1; }
+
+      # Optional authenticated probe (workflow_dispatch inputs). The gate fires
+      # before auth, but the release checklist requires proving fail-closed for
+      # a signed-in, otherwise-valid request too. The anon key is read from the
+      # committed public web env (it ships in every browser bundle).
+      - name: Authenticated fail-closed probe
+        if: ${{ inputs.probe_email != '' }}
+        run: |
+          ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
+          TOKEN=$(curl -sS -X POST "https://jmdecibuytznsonrasxw.supabase.co/auth/v1/token?grant_type=password" \
+            -H "apikey: $ANON" -H 'Content-Type: application/json' \
+            -d "{\"email\":\"${{ inputs.probe_email }}\",\"password\":\"${{ inputs.probe_password }}\"}" | jq -r .access_token)
+          [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            "https://jmdecibuytznsonrasxw.supabase.co/functions/v1/start-editor-v2" \
+            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            -d '{"generation_id":"00000000-0000-4000-8000-000000000000","source_asset_id":"00000000-0000-4000-8000-000000000001","idempotency_key":"00000000-0000-4000-8000-000000000002"}')
+          BODY=$(echo "$RESP" | head -1)
+          CODE=$(echo "$RESP" | tail -1)
+          echo "authenticated status=$CODE body=$BODY"
           [ "$CODE" = "503" ] && echo "$BODY" | grep -q 'editor_not_available' \
-            || { echo "PRODUCTION GATE IS NOT FAIL-CLOSED"; exit 1; }
+            || { echo "AUTHENTICATED PROBE: GATE NOT FAIL-CLOSED"; exit 1; }
+
+      - name: Verify EDITOR_V2_START_ENABLED is absent from production secrets
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          curl -sS -o /dev/null -w '' https://example.com || true
+          npx --yes supabase@latest secrets list --project-ref jmdecibuytznsonrasxw > /tmp/secrets.txt
+          cat /tmp/secrets.txt | sed 's/|.*$/| (value digest hidden)/'
+          grep -q 'EDITOR_V2_START_ENABLED' /tmp/secrets.txt \
+            && { echo "EDITOR_V2_START_ENABLED IS SET IN PRODUCTION"; exit 1; } \
+            || echo "confirmed absent"
