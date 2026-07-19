@@ -175,10 +175,22 @@ async function startProject(client, genId, assetId) {
     generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
   })
   if (r.status !== 200) throw new Error(`start-editor-v2 ${r.status}: ${JSON.stringify(r.body)}`)
+  allProjects.push(r.body.projectId)
   return r.body.projectId
 }
 
 const PIPELINE = ['inspecting', 'transcribing', 'analyzing', 'directing', 'compiling', 'rendering', 'validating']
+
+// Every project this run creates — for run-scoped hygiene sweeps at the end.
+const allProjects = []
+
+// The editor scratch root the spawned workers use (same host as this harness,
+// so temp-dir lifecycle is assertable directly on the filesystem).
+const EDITOR_TMP = join(tmpdir(), 'editor-v2')
+async function editorTmpEntries() {
+  const { readdir } = await import('node:fs/promises')
+  try { return await readdir(EDITOR_TMP) } catch { return [] }
+}
 
 async function makeFixture(dir) {
   const ff = (args) => execFile('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { timeout: 120_000 })
@@ -191,10 +203,17 @@ async function makeFixture(dir) {
 async function main() {
   console.log('== setup: identities, fixture, ready sources via the REAL chain ==')
   const dir = await mkdtemp(join(tmpdir(), 'phase3-'))
-  const [good, u1, u2, outsider] = await Promise.all([
-    makeFixture(dir), makeUser('p3a'), makeUser('p3b'), makeUser('p3out'),
+  const [good, u1, u2, outsider, peer] = await Promise.all([
+    makeFixture(dir), makeUser('p3a'), makeUser('p3b'), makeUser('p3out'), makeUser('p3peer'),
   ])
-  const [c1, c2, cOut] = await Promise.all([login(u1.email), login(u2.email), login(outsider.email)])
+  // peer joins u2's workspace: the product rule is peers OBSERVE, never control.
+  {
+    const { error } = await admin.from('workspace_members').insert({ owner_id: u2.id, member_id: peer.id })
+    if (error) throw new Error(`workspace_members: ${error.message}`)
+  }
+  const [c1, c2, cOut, cPeer] = await Promise.all([
+    login(u1.email), login(u2.email), login(outsider.email), login(peer.email),
+  ])
 
   // The Phase-2 matrix (which runs before this one, same staging DB)
   // deliberately leaves its editor_v2 jobs queued — "no worker claims them"
@@ -224,8 +243,8 @@ async function main() {
     console.log(`  minted ${n} ready sources for ${ownerLabel}`)
     return out
   }
-  const s1 = await mintSources(c1, 'u1', 6)
-  const s2 = await mintSources(c2, 'u2', 8)
+  const s1 = await mintSources(c1, 'u1', 9)
+  const s2 = await mintSources(c2, 'u2', 13)
   stopWorker(validator)
 
   // =================================================================
@@ -349,6 +368,63 @@ async function main() {
   }
 
   // =================================================================
+  console.log('\n== CP. deterministic crash points ==')
+  {
+    // CP-a: crash BEFORE a stage starts (after the previous stage committed).
+    const { gen, asset } = s1[6]
+    const pidA = await startProject(c1, gen, asset)
+    const w1 = startWorker('p3-cp-a1', {
+      WORKER_VISIBILITY_SECS: '8', EDITOR_SIM_CRASH_POINT: 'before_stage:analyzing', EDITOR_SIM_FAIL_ATTEMPTS: '1',
+    })
+    // the process exits itself at the crash point; wait for it
+    await new Promise((r) => w1.on('exit', r))
+    workers.delete(w1)
+    const w2 = startWorker('p3-cp-a2', { WORKER_VISIBILITY_SECS: '8' })
+    const pA = await waitProject(pidA, isSettled, 90_000, 'crash-before-stage')
+    stopWorker(w2)
+    const jA = await getEditorJob(pidA)
+    const evA = await getEvents(pidA)
+    check('CP1 crash before a stage: converges to completed', pA.status === 'completed', pA.status)
+    check('CP2 reclaimed on attempt 2, resumed from the last COMMITTED stage',
+      jA?.attempts === 2 && evA.some((e) => e.message_code === 'resumed' && e.details?.from_stage === 'transcribing'),
+      `attempts=${jA?.attempts}`)
+    check('CP3 no stage was skipped (analyzing..validating all present after resume)',
+      ['analyzing', 'directing', 'compiling', 'rendering', 'validating']
+        .every((s) => evA.some((e) => e.message_code === 'stage_started' && e.stage === s)))
+
+    // CP-b: crash AFTER the terminal state commit but BEFORE the job is
+    // acknowledged — the exact "state committed, ack lost" window.
+    const { gen: g2, asset: a2 } = s1[7]
+    const pidB = await startProject(c1, g2, a2)
+    const w3 = startWorker('p3-cp-b1', {
+      WORKER_VISIBILITY_SECS: '8', EDITOR_SIM_CRASH_POINT: 'after_finish', EDITOR_SIM_FAIL_ATTEMPTS: '1',
+    })
+    await new Promise((r) => w3.on('exit', r))
+    workers.delete(w3)
+    const pMid = await getProject(pidB)
+    const jMid = await getEditorJob(pidB)
+    check('CP4 crash window is real: project settled, job still unacknowledged',
+      pMid.status === 'completed' && jMid?.status === 'running', `p=${pMid.status} j=${jMid?.status}`)
+    const w4 = startWorker('p3-cp-b2', { WORKER_VISIBILITY_SECS: '8' })
+    const start = Date.now()
+    for (;;) {
+      const j = await getEditorJob(pidB)
+      if (j?.status === 'done') break
+      if (Date.now() - start > 60_000) break
+      await sleep(500)
+    }
+    stopWorker(w4)
+    const jB = await getEditorJob(pidB)
+    const evB = await getEvents(pidB)
+    check('CP5 reclaim converges the job as a no-op (project already terminal)',
+      jB?.status === 'done' && jB?.result?.noop === true && jB?.attempts === 2,
+      `j=${jB?.status} attempts=${jB?.attempts}`)
+    check('CP6 no duplicated terminal event, no duplicated stages',
+      evB.filter((e) => e.message_code === 'project_completed').length === 1
+      && evB.filter((e) => e.message_code === 'stage_started').length === 7)
+  }
+
+  // =================================================================
   console.log('\n== E. duplicate-worker prevention ==')
   {
     // E1: two LIVE workers, one job — SKIP LOCKED admits exactly one driver.
@@ -391,6 +467,37 @@ async function main() {
       `maxSeq ${maxSeqBefore} → ${ev2.at(-1)?.seq}`)
     const j2 = await getEditorJob(pid2)
     check('E6 job settled done exactly once', j2?.status === 'done')
+
+    // E7: SAME-IDENTITY reclaim — the reviewer's sharpest case. locked_by
+    // alone cannot fence this: both processes carry the same worker id, so
+    // only the immutable ATTEMPT token separates the stale run (attempt 1)
+    // from its own successor (attempt 2).
+    const { gen: g3, asset: a3 } = s2[9]
+    const pid3 = await startProject(c2, g3, a3)
+    const sameA = startWorker('p3-same', { WORKER_VISIBILITY_SECS: '6', EDITOR_SIM_STAGE_MS: '2500', EDITOR_LEASE_RENEW_MS: '60000' })
+    await waitProject(pid3, (p) => p.status !== 'queued', 30_000, 'same-id-claim')
+    sameA.kill('SIGSTOP')
+    await sleep(8000)
+    const sameB = startWorker('p3-same', { WORKER_VISIBILITY_SECS: '6', EDITOR_SIM_STAGE_MS: '400' })
+    const p3 = await waitProject(pid3, isSettled, 60_000, 'same-id-recover')
+    const seqBefore = (await getEvents(pid3)).at(-1)?.seq
+    sameA.kill('SIGCONT')
+    await sleep(5000)
+    stopWorker(sameA); stopWorker(sameB)
+    const ev3 = await getEvents(pid3)
+    const j3 = await getEditorJob(pid3)
+    check('E7 same-identity reclaim completed under attempt 2', p3.status === 'completed' && j3?.attempts === 2,
+      `p=${p3.status} attempts=${j3?.attempts}`)
+    check('E8 the woken attempt-1 run (same worker id!) wrote NOTHING after settlement',
+      ev3.at(-1)?.seq === seqBefore && ev3.filter((e) => e.message_code === 'project_completed').length === 1,
+      `maxSeq ${seqBefore} → ${ev3.at(-1)?.seq}`)
+    check('E9 job stayed settled (attempt token fenced complete/fail too)', j3?.status === 'done')
+
+    // Workspace rule: peers OBSERVE, never control.
+    const { data: peerSees } = await cPeer.from('edit_projects').select('id').eq('id', pid2)
+    check('E10 workspace peer CAN observe the project', (peerSees ?? []).length === 1)
+    const { error: ePeer } = await cPeer.rpc('editor_request_cancel', { p_project: pid2 })
+    check('E11 workspace peer CANNOT cancel (owner-only, identical not_found)', /not_found/.test(ePeer?.message ?? ''), ePeer?.message)
   }
 
   // =================================================================
@@ -432,6 +539,39 @@ async function main() {
       ev.some((e) => e.message_code === 'stage_retry_scheduled' && /simulated retryable/.test(e.details?.error ?? '')))
     check('G3 project state was durable across the retry (resumed at analyzing)',
       ev.some((e) => e.message_code === 'resumed' && e.details?.from_stage === 'analyzing'))
+  }
+
+  // =================================================================
+  console.log('\n== RC. cancellation during retry delay ==')
+  {
+    // Attempt 1 fails retryable with a LONG backoff so the job parks queued.
+    // A cancel arriving in that window must settle immediately — the job is
+    // unclaimed, so nobody will ever observe the flag otherwise.
+    const { gen, asset } = s2[8]
+    const projectId = await startProject(c2, gen, asset)
+    const w = startWorker('p3-retrydelay', {
+      EDITOR_SIM_FAIL_STAGE: 'directing', EDITOR_SIM_FAIL_MODE: 'retryable', EDITOR_SIM_FAIL_ATTEMPTS: '9999',
+      WORKER_RETRY_BACKOFF_BASE_SECS: '60',
+    })
+    const start = Date.now()
+    for (;;) {
+      const j = await getEditorJob(projectId)
+      if (j?.status === 'queued' && j?.attempts === 1 && j?.error) break
+      if (Date.now() - start > 60_000) throw new Error('retry-delay park not reached')
+      await sleep(500)
+    }
+    stopWorker(w)
+    const { data: mode } = await c2.rpc('editor_request_cancel', { p_project: projectId })
+    check('RC1 cancel during retry backoff settles immediately', mode === 'cancelled', String(mode))
+    const p = await getProject(projectId)
+    const j = await getEditorJob(projectId)
+    const ev = await getEvents(projectId)
+    check('RC2 project cancelled from its persisted mid-pipeline stage', p.status === 'cancelled' && !!p.completed_at, p.status)
+    check('RC3 parked job closed without another attempt', j?.status === 'done' && j?.result?.cancelled === true && j?.attempts === 1,
+      `j=${j?.status} attempts=${j?.attempts}`)
+    check('RC4 history: retry recorded, then cancel, then terminal — in seq order',
+      ev.some((e) => e.message_code === 'stage_retry_scheduled')
+      && ev.at(-1)?.message_code === 'project_cancelled')
   }
 
   // =================================================================
@@ -495,6 +635,69 @@ async function main() {
     check('I6 dead-lettered job → project failed as job_dead_lettered', pC.status === 'failed' && pC.failure_code === 'job_dead_lettered',
       `${pC.status}/${pC.failure_code}`)
     check('I7 job error propagated into failure details', /synthetic dead-letter/.test(pC.failure_details?.job_error ?? ''))
+
+    // I8: the reconciler must never touch a HEALTHY, actively leased run.
+    const { gen: gH, asset: aH } = s2[10]
+    const pidH = await startProject(c2, gH, aH)
+    const wH = startWorker('p3-healthy', { EDITOR_SIM_STAGE_MS: '1500' })
+    await waitProject(pidH, (p) => p.status !== 'queued', 30_000, 'healthy-mid')
+    const { data: rH } = await admin.rpc('editor_reconcile_lost_projects', { p_min_age_secs: 0 })
+    const pHmid = await getProject(pidH)
+    check('I8 mid-run project untouched by a concurrent reconciler sweep',
+      !['failed', 'cancelled'].includes(pHmid.status) && !(await getEvents(pidH)).some((e) => e.details?.reconciled === true),
+      JSON.stringify(rH))
+    const pH = await waitProject(pidH, isSettled, 60_000, 'healthy-finish')
+    stopWorker(wH)
+    check('I9 …and it completed normally afterwards', pH.status === 'completed', pH.status)
+
+    // I10: reconciler RESPECTS CANCELLATION — a swept project whose owner
+    // asked to cancel settles cancelled, never failed, never re-enqueued.
+    const { gen: gR, asset: aR } = s2[11]
+    const pidR = await startProject(c2, gR, aR)
+    const wR = startWorker('p3-cancelrec', { EDITOR_SIM_STAGE_MS: '2000' })
+    await waitProject(pidR, (p) => p.status !== 'queued', 30_000, 'cancelrec-mid')
+    const { data: modeR } = await c2.rpc('editor_request_cancel', { p_project: pidR })
+    stopWorker(wR, 'SIGKILL')
+    await admin.from('jobs').delete().eq('dedup_key', `editor_v2:${pidR}:1`)
+    const { data: rR } = await admin.rpc('editor_reconcile_lost_projects', { p_min_age_secs: 0 })
+    const pR = await getProject(pidR)
+    check('I10 reconciler honors a pending cancellation (cancelled, not failed/re-enqueued)',
+      modeR === 'cancel_requested' && pR.status === 'cancelled' && rR?.cancelled >= 1,
+      `mode=${modeR} p=${pR.status} r=${JSON.stringify(rR)}`)
+
+    // I11: TERMINAL project left with a stale queued job → the sweep closes it.
+    const { gen: gT, asset: aT } = s2[0] // E1's completed project
+    void gT; void aT
+    const pidT = (await admin.from('edit_projects').select('id').eq('source_asset_id', s2[0].asset).maybeSingle()).data?.id
+    await admin.from('jobs').update({ status: 'queued', locked_at: null, locked_by: null })
+      .eq('dedup_key', `editor_v2:${pidT}:1`)
+    const { data: rT } = await admin.rpc('editor_reconcile_lost_projects', { p_min_age_secs: 0 })
+    const jT = await getEditorJob(pidT)
+    check('I11 stale queued job under a terminal project is closed by the sweep',
+      rT?.closed_stale_jobs >= 1 && jT?.status === 'done' && jT?.result?.reconciled === true,
+      `r=${JSON.stringify(rT)} j=${jT?.status}`)
+    check('I12 closure recorded in history', (await getEvents(pidT)).some((e) => e.message_code === 'stale_job_closed'))
+
+    // I13/I14: idempotency + concurrent convergence. Broken state: queued
+    // project, job deleted. Two reconciler runs race; then a third repeats.
+    const { gen: gD, asset: aD } = s2[12]
+    const pidD = await startProject(c2, gD, aD)
+    await admin.from('jobs').delete().eq('dedup_key', `editor_v2:${pidD}:1`)
+    await Promise.all([
+      admin.rpc('editor_reconcile_lost_projects', { p_min_age_secs: 0 }),
+      admin.rpc('editor_reconcile_lost_projects', { p_min_age_secs: 0 }),
+    ])
+    const evD = await getEvents(pidD)
+    const jD = await getEditorJob(pidD)
+    check('I13 two CONCURRENT reconciler runs converge: exactly one heal, one event',
+      jD?.status === 'queued' && evD.filter((e) => e.message_code === 'job_reenqueued').length === 1,
+      `j=${jD?.status} heals=${evD.filter((e) => e.message_code === 'job_reenqueued').length}`)
+    const { data: r3 } = await admin.rpc('editor_reconcile_lost_projects', { p_min_age_secs: 0 })
+    const evD2 = await getEvents(pidD)
+    check('I14 a REPEATED run is a no-op on healed state',
+      evD2.filter((e) => e.message_code === 'job_reenqueued').length === 1 && (r3?.requeued ?? 0) === 0,
+      JSON.stringify(r3))
+    await c2.rpc('editor_request_cancel', { p_project: pidD }) // settle
   }
 
   // =================================================================
@@ -508,11 +711,11 @@ async function main() {
     const anonC = createClient(URL, ANON, { auth: { persistSession: false } })
     const uuid = randomUUID()
     const rpcs = [
-      ['renew_job_lease', { p_id: uuid, p_worker: 'x' }],
-      ['dead_letter_job', { p_id: uuid, p_error: 'x', p_worker: 'x' }],
-      ['editor_advance_stage', { p_project: uuid, p_job: uuid, p_worker: 'x', p_to: 'inspecting', p_pct: 1, p_message_code: 'x', p_details: {} }],
-      ['editor_finish_project', { p_project: uuid, p_job: uuid, p_worker: 'x', p_status: 'failed', p_failure_code: null, p_details: {} }],
-      ['editor_append_event', { p_project: uuid, p_job: uuid, p_worker: 'x', p_message_code: 'x', p_pct: null, p_details: {} }],
+      ['renew_job_lease', { p_id: uuid, p_worker: 'x', p_attempt: 1 }],
+      ['dead_letter_job', { p_id: uuid, p_error: 'x', p_worker: 'x', p_attempt: 1 }],
+      ['editor_advance_stage', { p_project: uuid, p_job: uuid, p_worker: 'x', p_attempt: 1, p_to: 'inspecting', p_pct: 1, p_message_code: 'x', p_details: {} }],
+      ['editor_finish_project', { p_project: uuid, p_job: uuid, p_worker: 'x', p_attempt: 1, p_status: 'failed', p_failure_code: null, p_details: {} }],
+      ['editor_append_event', { p_project: uuid, p_job: uuid, p_worker: 'x', p_attempt: 1, p_message_code: 'x', p_pct: null, p_details: {} }],
       ['editor_reconcile_lost_projects', { p_min_age_secs: 0 }],
     ]
     let authDenied = 0; let anonDenied = 0
@@ -545,6 +748,44 @@ async function main() {
     check('K3 zero output assets rendered', (outputs ?? 0) === 0)
     const { data: charged } = await admin.from('edit_projects').select('id,output_asset_id').not('output_asset_id', 'is', null)
     check('K4 no project acquired an output pointer', (charged ?? []).length === 0)
+
+    // Event hygiene: no temp paths or raw path-like strings in any event this
+    // run produced (error messages are sliced, never raw stack/paths).
+    let dirty = 0
+    for (const pid of allProjects) {
+      for (const e of await getEvents(pid)) {
+        const s = JSON.stringify(e.details ?? {})
+        if (/\/tmp\/|editor-v2\//.test(s)) dirty++
+      }
+    }
+    check('K5 no event detail contains temp paths', dirty === 0, `${dirty} dirty events`)
+  }
+
+  // =================================================================
+  console.log('\n== T. temp-dir lifecycle on the shared filesystem ==')
+  {
+    // Crash scenarios (SIGKILL / process.exit) leave orphans BY DESIGN —
+    // finally-blocks cannot run. Everything else must have cleaned up.
+    const leftovers = await editorTmpEntries()
+    check('T1 crash orphans exist and are attempt-scoped dirs', leftovers.length > 0 && leftovers.every((n) => /-a\d+$/.test(n)),
+      JSON.stringify(leftovers))
+
+    // The age-based orphan sweep (runs at each claim) removes them. Age floor
+    // 1ms here; production uses 6h >> the 35-min hard job cap, so a LIVE
+    // attempt's dir can never be swept there — and this scenario runs a solo
+    // worker, so the sweep races nothing.
+    const { gen, asset } = s1[8]
+    const projectId = await startProject(c1, gen, asset)
+    const w = startWorker('p3-sweep', { EDITOR_TEMP_MAX_AGE_MS: '1' })
+    const proj = await waitProject(projectId, isSettled, 60_000, 'sweep')
+    stopWorker(w)
+    await sleep(1500) // let the worker's graceful exit finish its cleanup
+    const after = await editorTmpEntries()
+    const job = await getEditorJob(projectId)
+    check('T2 sweep run completed and reported the orphans it removed',
+      proj.status === 'completed' && (job?.result?.swept_orphan_dirs ?? 0) >= leftovers.length,
+      `swept=${job?.result?.swept_orphan_dirs} expected>=${leftovers.length}`)
+    check('T3 editor temp root is EMPTY after sweep + own cleanup', after.length === 0, JSON.stringify(after))
   }
 
   // =================================================================

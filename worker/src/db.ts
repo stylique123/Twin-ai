@@ -28,11 +28,13 @@ export async function claimJob(types: string[]): Promise<Job | null> {
   return rows && rows.length ? rows[0] : null
 }
 
-export async function completeJob(id: string, result: unknown): Promise<void> {
-  // Pass our worker id so the RPC only completes a job we still own (a job
-  // reclaimed after the visibility timeout must not be clobbered by us). A 0 return
-  // means we lost the lease — the new owner now drives it, so don't clobber/log loud.
-  const { data, error } = await db.rpc('complete_job', { p_id: id, p_result: result, p_worker: env.workerId })
+export async function completeJob(id: string, result: unknown, attempt?: number): Promise<void> {
+  // Pass our worker id AND the attempt observed at claim time so the RPC only
+  // completes a job we still own (a job reclaimed after the visibility timeout
+  // must not be clobbered by us — even by a later claim under the SAME worker
+  // identity; attempts is the immutable fencing token). A 0 return means we
+  // lost the lease — the new owner now drives it, so don't clobber/log loud.
+  const { data, error } = await db.rpc('complete_job', { p_id: id, p_result: result, p_worker: env.workerId, p_attempt: attempt ?? null })
   if (error) throw error
   if (data === 0) console.log(JSON.stringify({ t: new Date().toISOString(), level: 'warn', msg: 'complete_job no-op: job was reclaimed', job: id, worker: env.workerId }))
 }
@@ -57,26 +59,26 @@ export async function heartbeat(): Promise<void> {
   } catch { /* best-effort; the Docker HEALTHCHECK file still reflects local liveness */ }
 }
 
-// Extend the visibility lease on a job this worker still owns. Returns 1 when
-// renewed, 0 when the lease was lost (reclaimed/settled) — the caller must
-// STOP driving the job's work when it sees 0.
-export async function renewJobLease(id: string): Promise<number> {
-  const { data, error } = await db.rpc('renew_job_lease', { p_id: id, p_worker: env.workerId })
+// Extend the visibility lease on a job this worker still owns (worker id +
+// attempt token). Returns 1 when renewed, 0 when the lease was lost
+// (reclaimed/settled) — the caller must STOP driving the job's work on 0.
+export async function renewJobLease(id: string, attempt: number): Promise<number> {
+  const { data, error } = await db.rpc('renew_job_lease', { p_id: id, p_worker: env.workerId, p_attempt: attempt })
   if (error) throw error
   return (data as number) ?? 0
 }
 
 // Settle a PERMANENT (non-retryable) failure immediately instead of burning
 // the remaining retry budget on an error that can never succeed. Fenced the
-// same way as complete/fail: only the current lease holder settles.
-export async function deadLetterJob(id: string, message: string): Promise<void> {
-  const { data, error } = await db.rpc('dead_letter_job', { p_id: id, p_error: message.slice(0, 500), p_worker: env.workerId })
+// same way as complete/fail: only the current lease+attempt holder settles.
+export async function deadLetterJob(id: string, message: string, attempt: number): Promise<void> {
+  const { data, error } = await db.rpc('dead_letter_job', { p_id: id, p_error: message.slice(0, 500), p_worker: env.workerId, p_attempt: attempt })
   if (error) throw error
   if (data === 0) console.log(JSON.stringify({ t: new Date().toISOString(), level: 'warn', msg: 'dead_letter_job no-op: job was reclaimed', job: id, worker: env.workerId }))
 }
 
-export async function failJob(id: string, message: string, backoffSecs = 30): Promise<void> {
-  const { data, error } = await db.rpc('fail_job', { p_id: id, p_error: message.slice(0, 500), p_backoff_secs: backoffSecs, p_worker: env.workerId })
+export async function failJob(id: string, message: string, backoffSecs = 30, attempt?: number): Promise<void> {
+  const { data, error } = await db.rpc('fail_job', { p_id: id, p_error: message.slice(0, 500), p_backoff_secs: backoffSecs, p_worker: env.workerId, p_attempt: attempt ?? null })
   if (error) throw error
   if (data === 0) console.log(JSON.stringify({ t: new Date().toISOString(), level: 'warn', msg: 'fail_job no-op: job was reclaimed', job: id, worker: env.workerId }))
 }

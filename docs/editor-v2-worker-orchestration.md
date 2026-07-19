@@ -31,7 +31,12 @@ sufficient: a worker that stalls past its visibility lease gets its job
 reclaimed, and the *original* process may wake up later and keep writing.
 Phase 3 closes that at the database — every project-state write is a fenced
 RPC that re-proves, inside the same transaction, that the caller still holds
-the **running** lease on the project's job:
+the **running** lease on the project's job **under the attempt it claimed**.
+The fencing token is `jobs.attempts` (0081): `claim_job` increments it and
+nothing ever decrements it, so it is immutable per claim. `locked_by` alone
+would not fence the same worker identity reclaiming its own job later — the
+stale run carries a lower attempt and is rejected even against its own
+successor (proven in the matrix with two processes sharing one worker id):
 
 | RPC | Purpose |
 |---|---|
@@ -75,33 +80,74 @@ the job a fenced no-op.
 ## Cancellation foundations
 
 `editor_request_cancel(project_id)` is the single authenticated entry point
-(owner-only; foreign and missing projects raise the identical `not_found`):
+(owner-only — workspace peers observe but never control; foreign and missing
+projects raise the identical `not_found`):
 
-- project still `queued` and its job unclaimed → settle immediately
-  (`cancelled`; the job is closed without ever running)
+- job **unclaimed** (never started, or parked in retry backoff) → settle
+  immediately (`cancelled`; the job is closed without ever running again).
+  The RPC holds the job row lock, so a concurrent claim cannot race it.
 - claimed/running → set `cancel_requested_at`; the worker observes it at the
   next stage boundary and finishes the project as `cancelled`
-- already settled → idempotent no-op returning the settled status
+- already settled → idempotent no-op returning the settled status (a terminal
+  project can never be revived or mutated — the stage guard enforces this for
+  every role)
 
 ## Lost-job reconciliation
 
 `editor_reconcile_lost_projects()` (pg_cron, every 5 min, 10-min grace) sweeps
-non-terminal projects whose job is missing, dead-lettered, or settled:
+non-terminal projects whose job is missing, dead-lettered, or settled — and
+stale jobs left under already-terminal projects:
 
 | Situation | Action |
 |---|---|
-| `queued` project, job row missing | re-enqueue under the same dedup key (`job_reenqueued` event) |
+| any swept project with `cancel_requested_at` set | settle as `cancelled` — cancellation is honored, never re-enqueued, never mislabeled `failed` |
+| `queued` project, job row missing | re-enqueue under the same dedup key (`job_reenqueued` event, emitted only when the insert actually inserted) |
 | mid-flight project, job row missing | fail the project: `lost_job` |
 | job dead-lettered (`failed`) | fail the project: `job_dead_lettered` (job error copied into details) |
 | job `done` but project active | fail the project: `job_settled_without_project` |
+| **terminal** project with a `queued` (or ≥60s-stale `running`) job | close the job (`stale_job_closed` event); an actively leased running job is never touched |
+| running job with an expired lease, active project | left alone — `claim_job` reclaims it on the next poll (that is the recovery path) |
 
-No project can hang in a non-terminal state forever.
+Properties: repeated runs are idempotent (healed state is a no-op); two
+concurrent runs converge on exactly one heal/settle (row locks serialize,
+counters/events fire only on actual writes); a healthy, actively leased run
+is never altered. The 5-minute cadence is a **recovery target**, not an
+absolute bound — during a database or pg_cron outage the sweep resumes when
+the scheduler does. No project can hang in a non-terminal state forever.
 
 ## Temp-dir lifecycle
 
-Each job gets `$TMPDIR/editor-v2/<job_id>`; it is removed on every exit path
-(success, failure, cancellation). Orphans older than `EDITOR_TEMP_MAX_AGE_MS`
-(default 6 h — crashed processes can't clean up) are swept at each claim.
+Each **attempt** gets its own scratch dir `$TMPDIR/editor-v2/<job_id>-a<attempt>`
+(a reclaimed attempt never shares state with a crashed one), removed on every
+exit path — success, failure, timeout, cancellation, lease loss. Both path
+components are validated UUIDs/integers, so a path can never escape the temp
+root. Crashes skip the cleanup by nature; orphans older than
+`EDITOR_TEMP_MAX_AGE_MS` (default 6 h) are swept at each claim — safely, since
+the hard job cap (35 min) is far below the sweep age, a *live* attempt's dir
+can never be old enough to sweep. A crash **during cleanup** just leaves an
+orphan for the sweep.
+
+## Crash-point convergence and future idempotency keys
+
+Recovery is proven at exact boundaries (deterministic crash injection in the
+matrix): before a stage starts, mid-stage, after stage work before the state
+commit, **after the terminal commit before job acknowledgement** (the new
+claim finds the project terminal and no-ops the job), during lease renewal,
+and during cleanup. The invariant: re-running the persisted stage is always
+safe, stages are never skipped, terminal events are never duplicated.
+
+Simulated stages are trivially idempotent; the real ones must carry their own
+idempotency keys when they land, because "re-run the interrupted stage" stays
+the resume contract:
+
+| Future stage | Idempotency key (planned) |
+|---|---|
+| transcription | `(source_hash, transcriber_version)` — write-once cache |
+| media analysis | `(source_hash, analyzer_bundle_version)` — already unique in `media_analyses` (0078) |
+| directing (LLM) | `(edit_project_id, plan version)` — one plan row per version, unique in `edit_plans` |
+| compiling | deterministic from the plan: keyed by `plan_hash` |
+| rendering | `(edit_project_id, plan_hash)` — the output asset's storage path derives from it, so a re-render overwrites its own object, never duplicates |
+| billing finalize | one reservation row per project; finalize/release transition that row exactly once |
 
 ## Event history
 

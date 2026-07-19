@@ -89,6 +89,9 @@ export const env = {
   editorSimFailStage: (process.env.EDITOR_SIM_FAIL_STAGE ?? '').trim(),
   editorSimFailMode: (process.env.EDITOR_SIM_FAIL_MODE ?? 'retryable').trim() as 'retryable' | 'permanent' | 'hang',
   editorSimFailAttempts: Number(process.env.EDITOR_SIM_FAIL_ATTEMPTS ?? '9999'),
+  // Deterministic crash injection ('before_stage:<stage>' | 'after_finish');
+  // empty in production — matrix-only, proves exact crash-point recovery.
+  editorSimCrashPoint: (process.env.EDITOR_SIM_CRASH_POINT ?? '').trim(),
 
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }

@@ -47,7 +47,7 @@ async function tick(): Promise<boolean> {
   })
   try {
     const result = await Promise.race([handler(job), guard])
-    await completeJob(job.id, result)
+    await completeJob(job.id, result, job.attempts)
     log('info', 'done', { job: job.id, type: job.type })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
@@ -60,12 +60,12 @@ async function tick(): Promise<boolean> {
     const permanent = isPermanent(err)
     if (permanent) {
       // Non-retryable: settle immediately instead of burning the retry budget.
-      await deadLetterJob(job.id, message)
+      await deadLetterJob(job.id, message, job.attempts)
     } else {
       // Exponential backoff (30s, 60s, 120s… capped at 10min) so a flaky yt-dlp/Apify
       // call gets progressively more breathing room instead of hammering on a fixed 30s.
       const backoff = Math.min(env.retryBackoffBaseSecs * 2 ** Math.max(0, job.attempts - 1), 600)
-      await failJob(job.id, message, backoff) // fail_job retries or dead-letters by attempts
+      await failJob(job.id, message, backoff, job.attempts) // fail_job retries or dead-letters by attempts
     }
     log('error', 'failed', { job: job.id, type: job.type, attempt: job.attempts, permanent, error: message })
     // Dead-letter alert: the LAST attempt failed → surface it so spikes are visible

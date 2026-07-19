@@ -36,9 +36,12 @@ interface EditProjectRow {
 }
 
 // ---- fenced RPC wrappers ---------------------------------------------------
+// Every call carries (job id, worker id, attempt) — the attempt observed at
+// claim time is the immutable fencing token; the database rejects any write
+// from a run whose claim has been superseded, even by the same worker id.
 async function advanceStage(job: Job, projectId: string, to: EditorStage): Promise<EditProjectRow> {
   const { data, error } = await db.rpc('editor_advance_stage', {
-    p_project: projectId, p_job: job.id, p_worker: env.workerId,
+    p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_to: to, p_pct: stagePct(to), p_message_code: 'stage_started',
     p_details: { attempt: job.attempts, simulated: true },
   })
@@ -53,7 +56,7 @@ async function finishProject(
   failureCode?: string, details: Record<string, unknown> = {},
 ): Promise<void> {
   const { error } = await db.rpc('editor_finish_project', {
-    p_project: projectId, p_job: job.id, p_worker: env.workerId,
+    p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_status: status, p_failure_code: failureCode ?? null, p_details: details,
   })
   if (error) throw toClassifiedError(error.message)
@@ -65,7 +68,7 @@ async function appendEvent(
   // History markers are best-effort ONLY when the failure is not fencing:
   // a lease_lost refusal must still abort the caller.
   const { error } = await db.rpc('editor_append_event', {
-    p_project: projectId, p_job: job.id, p_worker: env.workerId,
+    p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_message_code: messageCode, p_pct: null, p_details: details,
   })
   if (error) {
@@ -86,12 +89,23 @@ function toClassifiedError(message: string): Error {
 function startLeaseRenewal(job: Job): { lost: () => boolean; stop: () => void } {
   let lost = false
   const t = setInterval(() => {
-    renewJobLease(job.id).then(
+    renewJobLease(job.id, job.attempts).then(
       (n) => { if (n === 0) lost = true },
       () => { /* transient network error: the next tick retries; fenced RPCs are the hard guarantee */ },
     )
   }, env.editorLeaseRenewMs)
   return { lost: () => lost, stop: () => clearInterval(t) }
+}
+
+// Deterministic crash injection for the staging matrix ONLY: hard-exit the
+// process at a named point ('before_stage:<stage>' | 'after_finish') so crash
+// recovery can be proven at exact boundaries, not just wherever SIGKILL lands.
+// Gated by EDITOR_SIM_FAIL_ATTEMPTS so the retried attempt runs clean.
+function maybeCrash(point: string, job: Job): void {
+  if (env.editorSimCrashPoint && env.editorSimCrashPoint === point && job.attempts <= env.editorSimFailAttempts) {
+    console.error(JSON.stringify({ level: 'error', msg: 'simulated crash', point, attempt: job.attempts }))
+    process.exit(9)
+  }
 }
 
 // ---- temp-dir lifecycle ----------------------------------------------------
@@ -149,12 +163,19 @@ async function runStageWithTimeout(stage: EditorStage, job: Job, dir: string): P
 }
 
 // ---- the handler -----------------------------------------------------------
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function handleEditorV2(job: Job): Promise<Record<string, unknown>> {
   const projectId = String(job.payload?.project_id ?? '')
-  if (!projectId) throw new PermanentJobError('editor_v2 job missing project_id', 'bad_payload')
+  if (!UUID_RE.test(projectId)) throw new PermanentJobError('editor_v2 job missing/invalid project_id', 'bad_payload')
+  // job.id comes from our own uuid column, but validate anyway so the scratch
+  // path can NEVER escape the configured temp root.
+  if (!UUID_RE.test(job.id)) throw new PermanentJobError('editor_v2 job has a non-uuid id', 'bad_payload')
 
   const sweptOrphans = await sweepOrphanTempDirs()
-  const dir = join(TEMP_BASE, job.id)
+  // One directory PER ATTEMPT: a reclaimed attempt on the same host never
+  // shares scratch state with the crashed attempt's leftovers.
+  const dir = join(TEMP_BASE, `${job.id}-a${job.attempts}`)
   await mkdir(dir, { recursive: true })
 
   const lease = startLeaseRenewal(job)
@@ -188,6 +209,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // exists in Phase 3; see docs/editor-v2-worker-orchestration.md.
     for (const stage of stagesFrom(proj.status)) {
       if (lease.lost()) throw new LeaseLostError(`lease lost before stage ${stage}`)
+      maybeCrash(`before_stage:${stage}`, job)
 
       // Fenced advance. On resume the first call re-enters the persisted
       // stage (a same-status no-op transition) and re-records stage_started.
@@ -202,11 +224,11 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     }
 
     await finishProject(job, projectId, 'completed', undefined, { simulated: true })
+    maybeCrash('after_finish', job) // project settled, job not yet acknowledged
     return {
       simulated: true,
       stages_ran: ranStages,
       swept_orphan_dirs: sweptOrphans,
-      temp_dir: dir,
       temp_dir_cleaned: true, // the finally below removes it before we return
     }
   } catch (err) {
