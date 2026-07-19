@@ -260,10 +260,14 @@ export async function runInspectingStage(job: Job, projectId: string, dir: strin
     // object in storage must still be the object finalize saw (etag). A
     // previously cached analysis must never legitimize changed bytes.
     const finalizedEtag = (meta as { finalized_etag?: string }).finalized_etag
+    const finalizedBytes = Number((meta as { finalized_bytes?: number }).finalized_bytes ?? 0) || null
     const head = await headObject(asset.bucket, asset.storage_path)
     if (!head) throw new PermanentJobError('inspect: storage object missing', 'object_missing')
     if (finalizedEtag && head.etag && head.etag !== finalizedEtag) {
       throw new PermanentJobError('inspect: storage bytes changed after finalize', 'source_bytes_changed')
+    }
+    if (finalizedBytes && head.sizeBytes && head.sizeBytes !== finalizedBytes) {
+      throw new PermanentJobError('inspect: storage size changed after finalize', 'source_bytes_changed')
     }
 
     // Cache: one immutable component per (asset, component, inspector version).
@@ -375,6 +379,12 @@ export async function runInspectingStage(job: Job, projectId: string, dir: strin
       p_component: 'inspection', p_schema_version: MEDIA_INSPECTION_SCHEMA_VERSION,
       p_bundle_version: env.inspectorVersion, p_source_hash: asset.content_sha256,
       p_result: inspection,
+      // One-time fenced integrity backfill: after a sha256-VERIFIED fallback
+      // download on a legacy asset with no finalize reference, persist the
+      // current trusted etag/size so the NEXT project reconciles and reuses
+      // with no download. Never overwrites an existing reference (DB-guarded).
+      p_backfill_etag: fallback && !finalizedEtag ? head.etag : null,
+      p_backfill_bytes: fallback && !finalizedEtag ? head.sizeBytes : null,
     })
     if (recErr) throw recErr
 

@@ -170,13 +170,23 @@ async function stripProbeFacts(assetId) {
 // Overwrite a validated object with different bytes (tamper simulation).
 // MUST verify the write took — a silently failed overwrite made integrity
 // tests pass vacuously in an earlier run.
+async function headEtag(asset) {
+  const res = await fetch(`${URL}/storage/v1/object/${asset.bucket}/${asset.storage_path}`, {
+    method: 'HEAD', headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
+  })
+  return res.ok ? res.headers.get('etag') : null
+}
 async function tamperObject(asset, buf, ct = 'video/webm') {
+  const before = await headEtag(asset)
   const res = await fetch(`${URL}/storage/v1/object/${asset.bucket}/${asset.storage_path}`, {
     method: 'PUT',
     headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': ct },
     body: buf,
   })
   if (!res.ok) throw new Error(`tamper overwrite failed: ${res.status} ${(await res.text()).slice(0, 120)}`)
+  const after = await headEtag(asset)
+  if (!before || !after || before === after) throw new Error(`tamper NOT effective: etag ${before} -> ${after}`)
+  return { before, after }
 }
 
 async function runToSettled(name, projectId, extraEnv = {}, timeoutMs = 90_000) {
@@ -275,6 +285,11 @@ async function main() {
     const rows = await analyses(D.assetId)
     check('D2 upgrade produced the cached component with full facts',
       rows.length === 1 && rows[0].result?.video?.frameRateNumerator > 0 && rows[0].result?.sourceChecksum === D.asset.content_sha256)
+    // The upgrade backfilled the integrity reference (fenced, absent-only):
+    // the next project reconciles the etag and reuses with no download.
+    const { data: dMeta } = await admin.from('media_assets').select('metadata').eq('id', D.assetId).maybeSingle()
+    check('D2b upgrade backfilled finalized_etag/bytes for future reconciliation',
+      !!dMeta?.metadata?.finalized_etag && dMeta?.metadata?.integrity_backfilled === true, JSON.stringify({ e: dMeta?.metadata?.finalized_etag }))
     // Repeat → cache hit, no second probe ever.
     const pid2 = await startProject(cA, D.gen, D.assetId)
     await runToSettled('p4-upgrade2', pid2)
@@ -323,7 +338,9 @@ async function main() {
   console.log('\n== F. integrity reconciliation ==')
   {
     // F1: overwrite the object AFTER validation → etag mismatch → safe failure.
-    await tamperObject(F1.asset, fix.landscape)
+    const t1 = await tamperObject(F1.asset, fix.landscape)
+    check('F0 tamper is REAL: overwrite succeeded and the object etag changed',
+      !!t1.before && !!t1.after && t1.before !== t1.after, JSON.stringify(t1))
     const pid1 = await startProject(cA, F1.gen, F1.assetId)
     const p1 = await runToSettled('p4-bytes', pid1)
     check('F1 changed bytes fail safely as source_bytes_changed', p1.status === 'failed' && p1.failure_code === 'source_bytes_changed',

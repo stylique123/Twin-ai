@@ -59,6 +59,17 @@ matrix proves it mid-download, mid-probe, and after persist (the persisted
 component is kept: it is content-addressed and safe). A cancelled or stale
 run cannot publish (fenced writer).
 
+## Carry-forward integrity rule (Phases 5–10)
+
+ETag/size reconciliation protects cache selection, not later stages. Any
+future stage that downloads source bytes (transcription, rendering, …) must
+re-reconcile the current etag/size AND sha256-verify what it downloaded
+before processing — a source replaced after Phase 4's HEAD check must never
+reach a later stage's pipeline. Legacy assets with no finalize reference get
+it backfilled (fenced, absent-only) after their first sha256-verified upgrade
+download; an asset with neither a finalize etag nor a trusted sha256 fails
+closed.
+
 ## Error sanitization
 
 Everything persisted (events, `failure_details`, `jobs.error` via the safe
