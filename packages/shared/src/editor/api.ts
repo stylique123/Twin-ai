@@ -15,7 +15,7 @@
 // and retries the SAME attempt (same asset, same path); it never silently
 // switches persistence systems.
 import { getClient, uploadToSignedTarget, type TakeFile } from '../api'
-import type { MediaAsset, SourceUploadIntent } from './contracts'
+import type { EditProject, MediaAsset, SourceUploadIntent } from './contracts'
 
 // ---- Upload-once coordinator -------------------------------------------------
 // Autosave, confirmation and navigation must share ONE upload. Concurrent (and
@@ -145,6 +145,53 @@ export async function pollSourceAssetReady(
     if (asset && (asset.status === 'ready' || asset.status === 'rejected')) return asset
   }
   return null
+}
+
+// ---- Edit start (Phase 2) ---------------------------------------------------
+// The one-click entry point. The browser sends EXACTLY three IDs — never
+// storage paths, URLs, transcripts, cuts, captions, prompts, or model/FFmpeg
+// options; the server derives everything else. Repeats/retries MUST reuse the
+// same idempotencyKey (one per user click-intent) — the database converges
+// them onto ONE project and ONE queued editor_v2 job. A new deliberate edit
+// (after completion/failure) mints a new key.
+
+export function newIdempotencyKey(): string {
+  return crypto.randomUUID()
+}
+
+export async function startEditorV2(
+  generationId: string,
+  sourceAssetId: string,
+  idempotencyKey: string,
+): Promise<{ projectId: string; status: string }> {
+  const { data, error } = await getClient().functions.invoke('start-editor-v2', {
+    body: { generation_id: generationId, source_asset_id: sourceAssetId, idempotency_key: idempotencyKey },
+  })
+  if (error) throw new Error(await invokeError(error))
+  return data as { projectId: string; status: string }
+}
+
+// Read one edit project (RLS: owner + workspace peers). Durable observation —
+// works after refresh and from any device; Realtime is only ever an
+// optimization on top of this.
+export async function getEditProject(projectId: string): Promise<EditProject | null> {
+  const { data, error } = await getClient().from('edit_projects').select('*').eq('id', projectId).maybeSingle()
+  if (error) return null
+  return (data as EditProject) ?? null
+}
+
+// The newest edit project for a generation — how a refreshed/other-device
+// session resumes watching without any local state.
+export async function getLatestEditProject(generationId: string): Promise<EditProject | null> {
+  const { data, error } = await getClient()
+    .from('edit_projects')
+    .select('*')
+    .eq('generation_id', generationId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) return null
+  return (data as EditProject) ?? null
 }
 
 async function invokeError(error: unknown): Promise<string> {

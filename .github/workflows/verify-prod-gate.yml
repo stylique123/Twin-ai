@@ -1,0 +1,23 @@
+# Post-merge production verification for the editor-v2 launch gate.
+# The start-editor-v2 gate fires BEFORE auth, so an unauthenticated probe
+# proves the fail-closed state: production must answer 503 editor_not_available
+# (no EDITOR_V2_START_ENABLED secret is ever set there until Phase-3 rollout).
+name: Verify production editor gate
+on:
+  workflow_dispatch: {}
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Production start-editor-v2 must be fail-closed
+        run: |
+          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+            "https://jmdecibuytznsonrasxw.supabase.co/functions/v1/start-editor-v2" \
+            -H 'Content-Type: application/json' -d '{}')
+          BODY=$(echo "$RESP" | head -1)
+          CODE=$(echo "$RESP" | tail -1)
+          echo "status=$CODE body=$BODY"
+          [ "$CODE" = "503" ] && echo "$BODY" | grep -q 'editor_not_available' \
+            || { echo "PRODUCTION GATE IS NOT FAIL-CLOSED"; exit 1; }

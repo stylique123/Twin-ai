@@ -16,6 +16,10 @@ verify_jwt = true
 [functions.source-asset]
 verify_jwt = true
 
+# Editor v2: the ONLY way an edit begins (owner-authenticated; Phase 2).
+[functions.start-editor-v2]
+verify_jwt = true
+
 [functions.admin]
 verify_jwt = true
 
