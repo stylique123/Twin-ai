@@ -194,6 +194,7 @@ async function main() {
   const G5 = await mintReady(cA, uA.id, fix.portrait)         // probe timeout classification
   const F1 = await mintReady(cA, uA.id, fix.portrait)         // bytes changed
   const F2 = await mintReady(cA, uA.id, fix.portrait)         // deleted source
+  const F3o = await mintReady(cA, uA.id, fix.portrait)        // storage object vanishes
   const H = await mintReady(cA, uA.id, fix.portrait)          // becomes ineligible
   const XA = await mintReady(cA, uA.id, fix.landscape, 'video/mp4') // identical bytes, tenant A
   const XB = await mintReady(cB, uB.id, fix.landscape, 'video/mp4') // identical bytes, tenant B
@@ -337,6 +338,28 @@ async function main() {
     const ev3 = await getEvents(pid3)
     check('F6 no stage beyond inspecting ever started',
       !ev3.some((e) => e.message_code === 'stage_started' && e.stage !== 'inspecting'))
+
+    // F7: a CACHED analysis must not legitimize changed bytes — A's asset has
+    // two cached components; tamper its object and start a fresh project.
+    await fetch(`${URL}/storage/v1/object/${A.asset.bucket}/${A.asset.storage_path}`, {
+      method: 'POST',
+      headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}`, 'Content-Type': 'video/webm', 'x-upsert': 'true' },
+      body: fix.landscape,
+    })
+    const pidT = await startProject(cA, A.gen, A.assetId)
+    const pT = await runToSettled('p4-cachetamper', pidT)
+    check('F7 cache does NOT legitimize changed bytes (etag re-proved every run)',
+      pT.status === 'failed' && pT.failure_code === 'source_bytes_changed', `${pT.status}/${pT.failure_code}`)
+    check('F8 the immutable cached components themselves are untouched', (await analyses(A.assetId)).length === 2)
+
+    // F9: storage object deleted outright → object_missing.
+    const pidO = await startProject(cA, F3o.gen, F3o.assetId)
+    await fetch(`${URL}/storage/v1/object/${F3o.asset.bucket}/${F3o.asset.storage_path}`, {
+      method: 'DELETE', headers: { apikey: SERVICE, Authorization: `Bearer ${SERVICE}` },
+    })
+    const pO = await runToSettled('p4-objmissing', pidO)
+    check('F9 vanished storage object fails as object_missing', pO.status === 'failed' && pO.failure_code === 'object_missing',
+      `${pO.status}/${pO.failure_code}`)
   }
 
   // =================================================================

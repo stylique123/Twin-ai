@@ -256,6 +256,16 @@ export async function runInspectingStage(job: Job, projectId: string, dir: strin
   try {
     if (proj.cancel_requested_at) throw new InspectionCancelledError('before_inspection')
 
+    // Integrity reconciliation runs BEFORE the cache lookup, every run: the
+    // object in storage must still be the object finalize saw (etag). A
+    // previously cached analysis must never legitimize changed bytes.
+    const finalizedEtag = (meta as { finalized_etag?: string }).finalized_etag
+    const head = await headObject(asset.bucket, asset.storage_path)
+    if (!head) throw new PermanentJobError('inspect: storage object missing', 'object_missing')
+    if (finalizedEtag && head.etag && head.etag !== finalizedEtag) {
+      throw new PermanentJobError('inspect: storage bytes changed after finalize', 'source_bytes_changed')
+    }
+
     // Cache: one immutable component per (asset, component, inspector version).
     const { data: cached } = await db
       .from('media_analyses').select('id, result, source_hash')
@@ -278,15 +288,6 @@ export async function runInspectingStage(job: Job, projectId: string, dir: strin
         editorEligible: r.eligibility?.editorEligible ?? true,
         rejectionCode: r.eligibility?.rejectionCode,
       }
-    }
-
-    // Cheap integrity reconciliation: the object in storage must still be the
-    // object finalize saw (etag) — no download needed to prove it.
-    const finalizedEtag = (meta as { finalized_etag?: string }).finalized_etag
-    const head = await headObject(asset.bucket, asset.storage_path)
-    if (!head) throw new PermanentJobError('inspect: storage object missing', 'object_missing')
-    if (finalizedEtag && head.etag && head.etag !== finalizedEtag) {
-      throw new PermanentJobError('inspect: storage bytes changed after finalize', 'source_bytes_changed')
     }
 
     let facts: InspectionFactInput = {
