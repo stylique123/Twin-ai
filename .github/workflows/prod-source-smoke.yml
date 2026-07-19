@@ -1,0 +1,97 @@
+# Controlled PRODUCTION smoke of the Phase-1 source chain — required after any
+# change to validate_source (Phase 4 changed how ready-state metadata is
+# written). Runs the REAL flow as a signed-in probe user:
+#   create source asset → signed upload → finalize → validate_source (VPS
+#   worker) → ready
+# then proves the database-level metadata merge preserved EVERYTHING:
+# finalized_etag, finalized_bytes, probe_facts, container/codec facts and
+# editor eligibility. Reads use the probe user's own RLS-scoped session.
+#
+# The probe user + generation are created (and afterwards removed through the
+# sanctioned retention path) by the operator; this workflow only exercises the
+# client-visible chain and asserts. It mutates nothing beyond the one asset.
+name: Production source-validation smoke
+on:
+  workflow_dispatch:
+    inputs:
+      probe_email:
+        description: 'Throwaway probe user email'
+        required: true
+      probe_password:
+        description: 'Throwaway probe user password'
+        required: true
+      generation_id:
+        description: 'Pre-created probe generation id (uuid)'
+        required: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ffmpeg (fixture generation only)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+
+      - name: Run the real source chain and verify preserved metadata
+        run: |
+          set -euo pipefail
+          BASE="https://jmdecibuytznsonrasxw.supabase.co"
+          ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
+
+          ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30:duration=2 \
+            -f lavfi -i sine=frequency=440:duration=2 -c:v libvpx -b:v 200k -c:a libvorbis -shortest /tmp/probe.webm
+          SIZE=$(stat -c%s /tmp/probe.webm)
+          echo "fixture bytes=$SIZE"
+
+          TOKEN=$(curl -sS -X POST "$BASE/auth/v1/token?grant_type=password" \
+            -H "apikey: $ANON" -H 'Content-Type: application/json' \
+            -d "{\"email\":\"${{ inputs.probe_email }}\",\"password\":\"${{ inputs.probe_password }}\"}" | jq -r .access_token)
+          [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
+
+          ATTEMPT=$(uuidgen)
+          CREATE=$(curl -sS -X POST "$BASE/functions/v1/source-asset" \
+            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            -d "{\"action\":\"create\",\"generation_id\":\"${{ inputs.generation_id }}\",\"recording_attempt_id\":\"$ATTEMPT\",\"content_type\":\"video/webm\",\"size_bytes\":$SIZE}")
+          ASSET=$(echo "$CREATE" | jq -r .assetId)
+          SIGNED=$(echo "$CREATE" | jq -r .signedUrl)
+          [ -n "$ASSET" ] && [ "$ASSET" != "null" ] || { echo "create failed: $CREATE"; exit 1; }
+          echo "asset=$ASSET"
+
+          PUT=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "$SIGNED" \
+            -H 'x-upsert: true' -H 'content-type: video/webm' --data-binary @/tmp/probe.webm)
+          [ "$PUT" -lt 300 ] || { echo "signed PUT failed: $PUT"; exit 1; }
+
+          FIN=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/functions/v1/source-asset" \
+            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+            -d "{\"action\":\"finalize\",\"asset_id\":\"$ASSET\"}")
+          [ "$FIN" = "200" ] || { echo "finalize failed: $FIN"; exit 1; }
+
+          # Poll via the probe user's OWN RLS-scoped read until the production
+          # worker validates it.
+          for i in $(seq 1 60); do
+            ROW=$(curl -sS "$BASE/rest/v1/media_assets?id=eq.$ASSET&select=status,content_sha256,duration_ms,has_audio,metadata" \
+              -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq '.[0]')
+            STATUS=$(echo "$ROW" | jq -r .status)
+            [ "$STATUS" = "ready" ] && break
+            [ "$STATUS" = "rejected" ] && { echo "REJECTED: $ROW"; exit 1; }
+            sleep 3
+          done
+          [ "$STATUS" = "ready" ] || { echo "asset never became ready (last: $STATUS)"; exit 1; }
+          echo "ready row (metadata keys + facts):"
+          echo "$ROW" | jq '{status, duration_ms, has_audio, sha_len: (.content_sha256|length), meta_keys: (.metadata|keys), probe_facts: .metadata.probe_facts, container: .metadata.container, video_codec: .metadata.video_codec, audio_codec: .metadata.audio_codec, editor_eligible: .metadata.editor_eligible, has_finalized_etag: (.metadata.finalized_etag != null), finalized_bytes: .metadata.finalized_bytes}'
+
+          echo "$ROW" | jq -e '
+            .status == "ready"
+            and .metadata.finalized_etag != null
+            and (.metadata.finalized_bytes | tonumber) > 0
+            and .metadata.probe_facts.frame_rate != null
+            and .metadata.container != null
+            and .metadata.video_codec != null
+            and .metadata.audio_codec != null
+            and .metadata.editor_eligible == true
+            and (.content_sha256 | length) == 64
+            and .duration_ms > 1500 and .has_audio == true
+          ' > /dev/null || { echo "METADATA MERGE VERIFICATION FAILED"; exit 1; }
+          echo "metadata merge preserved all finalization + probe facts — PASS"
