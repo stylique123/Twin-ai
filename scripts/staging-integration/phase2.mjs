@@ -397,6 +397,11 @@ async function main() {
     check('G4 project untouched after all attempts', after?.status === 'queued', after?.status)
     const anonRead = await cAnon.from('edit_projects').select('id').limit(1)
     check('G4 anonymous cannot read edit_projects', anonRead.error !== null || (anonRead.data ?? []).length === 0)
+    // Privileged RPCs are not client-callable at all.
+    const { error: rpcErr } = await cOwner.rpc('editor_start_project', {
+      p_owner: owner.id, p_generation: genA, p_source: srcA, p_idempotency: randomUUID(),
+    })
+    check('G4 authenticated cannot execute editor_start_project directly', rpcErr !== null, rpcErr?.message ?? 'rpc succeeded!')
     // Identity columns are immutable even for the SERVICE role (trigger).
     const { error: immErr } = await admin.from('edit_projects').update({ owner_id: outsider.id }).eq('id', projectA.id)
     check('G4 ownership cannot change (immutable even for service role)', immErr !== null, immErr?.message ?? 'update succeeded!')
@@ -425,6 +430,32 @@ async function main() {
     check('G5 zero output/thumbnail assets', outputs === 0, `rows=${outputs}`)
     const { count: creditsAfter } = await admin.from('credit_events').select('id', { count: 'exact', head: true })
     check('G5 zero credits charged (baseline unchanged)', creditsAfter === creditsBefore, `before=${creditsBefore} after=${creditsAfter}`)
+  }
+
+  // ---------- G6: DB-enforced append-only event history ----------
+  console.log('== G6: edit_events is append-only AT THE DATABASE ==')
+  {
+    const { data: ev, error: insErr } = await admin.from('edit_events')
+      .insert({ project_id: projectA.id, stage: 'queued', message_code: 'TEST_EVENT' })
+      .select('id, seq').single()
+    check('G6 service role can append an event', !insErr && !!ev, insErr?.message)
+    check('G6 events carry a monotonic seq', Number.isInteger(Number(ev?.seq)), String(ev?.seq))
+    const { error: updErr } = await admin.from('edit_events').update({ message_code: 'REWRITTEN' }).eq('id', ev.id)
+    check('G6 UPDATE raises even for service role', updErr !== null, updErr?.message ?? 'update succeeded!')
+    const { error: tsErr } = await admin.from('edit_events').update({ created_at: new Date(0).toISOString() }).eq('id', ev.id)
+    check('G6 timestamp rewrite raises', tsErr !== null, tsErr?.message ?? 'update succeeded!')
+    const { error: delErr } = await admin.from('edit_events').delete().eq('id', ev.id)
+    check('G6 direct DELETE raises even for service role', delErr !== null, delErr?.message ?? 'delete succeeded!')
+    const { data: still } = await admin.from('edit_events').select('id, message_code').eq('id', ev.id).maybeSingle()
+    check('G6 event survived all mutation attempts, unmodified', still?.message_code === 'TEST_EVENT')
+    // The ONE sanctioned deletion path: retention via the project cascade.
+    // Deleting genA cascades edit_projects → edit_events; the trigger's
+    // trigger-depth carve-out must let the cascade through.
+    const { error: cascadeErr } = await admin.from('generations').delete().eq('id', genA)
+    check('G6 retention cascade (generation → project → events) is permitted', cascadeErr === null, cascadeErr?.message)
+    const { count: evLeft } = await admin.from('edit_events').select('id', { count: 'exact', head: true }).eq('project_id', projectA.id)
+    const { count: projLeft } = await admin.from('edit_projects').select('id', { count: 'exact', head: true }).eq('id', projectA.id)
+    check('G6 cascade removed project and events together', evLeft === 0 && projLeft === 0, `events=${evLeft} projects=${projLeft}`)
   }
 
   killWorker()

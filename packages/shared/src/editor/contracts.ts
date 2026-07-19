@@ -99,7 +99,11 @@ export interface EditProject {
 }
 
 // Stable rejection codes start-editor-v2 returns BEFORE any project/job exists.
+// `editor_not_available` (503) is the fail-closed launch gate: the server-side
+// EDITOR_V2_START_ENABLED switch is off (missing = off) — production stays
+// disabled until the Phase-3 worker exists and rollout begins.
 export type StartEditorRejection =
+  | 'editor_not_available'
   | 'source_not_found'
   | 'not_a_source'
   | 'generation_mismatch'
@@ -109,3 +113,14 @@ export type StartEditorRejection =
   | 'source_not_editor_eligible'
   | 'too_many_active_projects'
   | 'idempotency_key_conflict'
+
+// Idempotency-key semantics (exact, so callers never over-assume):
+//  * The key that CREATES a project is permanently bound to that project's
+//    (generation, source) and stored on the row. Reusing it with different
+//    inputs is a 409 conflict, forever.
+//  * A DIFFERENT key sent while a project for the same source is still ACTIVE
+//    gets that active project back via active-source reconciliation. That
+//    alternate key is NOT stored and NOT consumed — it acquired no binding.
+//    If the project later settles (completed/failed/cancelled) and the same
+//    alternate key is sent again with valid inputs, it will CREATE a new
+//    project and only then become bound.

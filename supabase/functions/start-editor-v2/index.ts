@@ -40,6 +40,16 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
+  // FAIL-CLOSED launch gate. Production has no editor_v2 worker handler until
+  // Phase 3 — an authenticated caller must not be able to park jobs in a queue
+  // nothing drains. The switch is SERVER environment only (missing/anything
+  // but 'true' = disabled); no request field can influence it. Staging sets it
+  // to true for the gate matrices; production stays disabled until Phase 3's
+  // controlled rollout.
+  if ((Deno.env.get('EDITOR_V2_START_ENABLED') ?? '').trim().toLowerCase() !== 'true') {
+    return json({ error: 'AI editing is not available yet.', code: 'editor_not_available' }, 503)
+  }
+
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const authHeader = req.headers.get('Authorization') ?? ''

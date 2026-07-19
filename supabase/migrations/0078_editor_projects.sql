@@ -45,6 +45,7 @@ create unique index edit_projects_idem_uniq on public.edit_projects (owner_id, i
 create unique index edit_projects_active_source_uniq on public.edit_projects (source_asset_id)
   where status not in ('completed','failed','cancelled');
 create index edit_projects_owner_idx on public.edit_projects (owner_id, created_at desc);
+create index edit_projects_output_asset_idx on public.edit_projects (output_asset_id);
 create index edit_projects_generation_idx on public.edit_projects (generation_id, created_at desc);
 
 -- Identity columns are IMMUTABLE after creation — ownership, the source, the
@@ -54,6 +55,7 @@ create index edit_projects_generation_idx on public.edit_projects (generation_id
 create or replace function public.edit_projects_guard_immutable()
 returns trigger
 language plpgsql
+set search_path = pg_catalog, public
 as $$
 begin
   if new.owner_id is distinct from old.owner_id
@@ -73,7 +75,7 @@ create trigger trg_edit_projects_immutable
 alter table public.edit_projects enable row level security;
 create policy "edit_projects read" on public.edit_projects
   for select to authenticated
-  using (owner_id = auth.uid() or owner_id in (select workspace_peers()));
+  using (owner_id = (select auth.uid()) or owner_id in (select workspace_peers()));
 grant select on public.edit_projects to authenticated;
 revoke all on public.edit_projects from anon;
 revoke insert, update, delete, truncate, references, trigger on public.edit_projects from authenticated;
@@ -93,11 +95,12 @@ create table public.media_analyses (
 );
 create unique index media_analyses_reuse_uniq on public.media_analyses (source_hash, analyzer_bundle_version);
 create index media_analyses_asset_idx on public.media_analyses (source_asset_id);
+create index media_analyses_owner_idx on public.media_analyses (owner_id);
 
 alter table public.media_analyses enable row level security;
 create policy "media_analyses read" on public.media_analyses
   for select to authenticated
-  using (owner_id = auth.uid() or owner_id in (select workspace_peers()));
+  using (owner_id = (select auth.uid()) or owner_id in (select workspace_peers()));
 grant select on public.media_analyses to authenticated;
 revoke all on public.media_analyses from anon;
 revoke insert, update, delete, truncate, references, trigger on public.media_analyses from authenticated;
@@ -118,11 +121,12 @@ create table public.edit_plans (
   created_at timestamptz not null default now()
 );
 create unique index edit_plans_version_uniq on public.edit_plans (edit_project_id, version);
+create index edit_plans_owner_idx on public.edit_plans (owner_id);
 
 alter table public.edit_plans enable row level security;
 create policy "edit_plans read" on public.edit_plans
   for select to authenticated
-  using (owner_id = auth.uid() or owner_id in (select workspace_peers()));
+  using (owner_id = (select auth.uid()) or owner_id in (select workspace_peers()));
 grant select on public.edit_plans to authenticated;
 revoke all on public.edit_plans from anon;
 revoke insert, update, delete, truncate, references, trigger on public.edit_plans from authenticated;
@@ -132,6 +136,9 @@ revoke insert, update, delete, truncate, references, trigger on public.edit_plan
 -- ---------------------------------------------------------------------------
 create table public.edit_events (
   id uuid primary key default gen_random_uuid(),
+  -- Strictly monotonic insertion order: event history has a deterministic
+  -- sequence even when created_at timestamps collide.
+  seq bigint generated always as identity,
   project_id uuid not null references public.edit_projects(id) on delete cascade,
   stage text not null,
   pct integer,
@@ -141,13 +148,37 @@ create table public.edit_events (
 );
 create index edit_events_project_idx on public.edit_events (project_id, created_at);
 
+-- DB-ENFORCED append-only (not convention): updates always raise; deletes
+-- raise unless they arrive via the FK retention cascade (project/generation
+-- deletion), which runs at trigger depth > 1. A service-role programming
+-- mistake cannot silently rewrite or erase history.
+create or replace function public.edit_events_append_only()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    raise exception 'edit_events is append-only: updates are not permitted';
+  end if;
+  if pg_trigger_depth() = 1 then
+    raise exception 'edit_events is append-only: direct deletes are not permitted (retention runs via project deletion cascade)';
+  end if;
+  return old;
+end;
+$$;
+
+create trigger trg_edit_events_append_only
+  before update or delete on public.edit_events
+  for each row execute function public.edit_events_append_only();
+
 alter table public.edit_events enable row level security;
 create policy "edit_events read" on public.edit_events
   for select to authenticated
   using (exists (
     select 1 from public.edit_projects p
      where p.id = project_id
-       and (p.owner_id = auth.uid() or p.owner_id in (select workspace_peers()))
+       and (p.owner_id = (select auth.uid()) or p.owner_id in (select workspace_peers()))
   ));
 grant select on public.edit_events to authenticated;
 revoke all on public.edit_events from anon;
@@ -174,7 +205,7 @@ create or replace function public.editor_start_project(
 ) returns public.edit_projects
 language plpgsql
 security definer
-set search_path = public
+set search_path = pg_catalog, public
 as $$
 declare
   proj public.edit_projects;

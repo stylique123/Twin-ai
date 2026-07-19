@@ -98,6 +98,21 @@ jobs:
       - name: Harness dependency
         run: npm i --no-save --no-audit --no-fund @supabase/supabase-js@2
 
+      - name: Prove the DISABLED start gate (env unset = fail closed)
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase secrets unset EDITOR_V2_START_ENABLED --project-ref otgzjsagybpgtwweuptj || true
+          sleep 20   # secret changes restart the function runtime
+          node scripts/staging-integration/phase2-disabled.mjs
+
+      - name: Enable the start gate for the staging matrices
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase secrets set EDITOR_V2_START_ENABLED=true --project-ref otgzjsagybpgtwweuptj
+          sleep 20
+
       - name: Run Phase 1 integration matrix (source-asset chain)
         run: node scripts/staging-integration/run.mjs
 
