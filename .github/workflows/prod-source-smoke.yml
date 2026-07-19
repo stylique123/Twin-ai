@@ -2,20 +2,31 @@
 # change to validate_source (Phase 4 changed how ready-state metadata is
 # written). Runs the REAL flow as a signed-in probe user:
 #   create source asset → signed upload → finalize → validate_source (VPS
-#   worker) → ready
-# then proves the database-level metadata merge preserved EVERYTHING:
-# finalized_etag, finalized_bytes, probe_facts, container/codec facts and
-# editor eligibility. Reads use the probe user's own RLS-scoped session.
+#   worker) → ready → generation pointer linked
+# then proves the database-level metadata merge preserved EVERYTHING.
 #
-# The probe user + generation are created (and afterwards removed through the
-# sanctioned retention path) by the operator; this workflow only exercises the
-# client-visible chain and asserts. It mutates nothing beyond the one asset.
+# SAFETY ENVELOPE (this workflow touches production):
+#   * workflow_dispatch ONLY — no push/PR/schedule/repository_dispatch
+#   * refuses to run from any ref except main (no arbitrary-ref execution)
+#   * inputs are ONLY probe credentials + a pre-created generation uuid
+#     (validated); target URL, function names, bucket and paths are pinned —
+#     nothing caller-provided reaches them
+#   * least privilege: uses ONLY the public anon key from the committed web
+#     env + the probe user's own session; no repository secrets at all — it
+#     CANNOT read service keys, set EDITOR_V2_START_ENABLED, apply
+#     migrations, or deploy anything
+#   * access token and signed upload URL are masked before first use; error
+#     paths print redacted bodies only
+#   * probe identity uses the fixed gate-probe-* prefix; cleanup of the probe
+#     user/generation runs operator-side through the sanctioned retention
+#     path (this job creates nothing durable beyond the one probe asset, and
+#     its runner scratch dies with the runner)
 name: Production source-validation smoke
 on:
   workflow_dispatch:
     inputs:
       probe_email:
-        description: 'Throwaway probe user email'
+        description: 'Throwaway probe user email (gate-probe-* prefix)'
         required: true
       probe_password:
         description: 'Throwaway probe user password'
@@ -27,9 +38,21 @@ on:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 10
     steps:
+      - name: Refuse non-main refs
+        run: |
+          [ "$GITHUB_REF_NAME" = "main" ] || { echo "::error::runs only from main"; exit 1; }
+
       - uses: actions/checkout@v4
+
+      - name: Validate inputs
+        run: |
+          echo '${{ inputs.generation_id }}' | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
+            || { echo "::error::generation_id is not a uuid"; exit 1; }
+          echo '${{ inputs.probe_email }}' | grep -Eq '^gate-probe-[a-z0-9-]+@twinai\.internal$' \
+            || { echo "::error::probe_email must use the fixed gate-probe-*@twinai.internal prefix"; exit 1; }
 
       - name: Install ffmpeg (fixture generation only)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
@@ -49,6 +72,7 @@ jobs:
             -H "apikey: $ANON" -H 'Content-Type: application/json' \
             -d "{\"email\":\"${{ inputs.probe_email }}\",\"password\":\"${{ inputs.probe_password }}\"}" | jq -r .access_token)
           [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
+          echo "::add-mask::$TOKEN"
 
           ATTEMPT=$(uuidgen)
           CREATE=$(curl -sS -X POST "$BASE/functions/v1/source-asset" \
@@ -56,7 +80,10 @@ jobs:
             -d "{\"action\":\"create\",\"generation_id\":\"${{ inputs.generation_id }}\",\"recording_attempt_id\":\"$ATTEMPT\",\"content_type\":\"video/webm\",\"size_bytes\":$SIZE}")
           ASSET=$(echo "$CREATE" | jq -r .assetId)
           SIGNED=$(echo "$CREATE" | jq -r .signedUrl)
-          [ -n "$ASSET" ] && [ "$ASSET" != "null" ] || { echo "create failed: $CREATE"; exit 1; }
+          if [ -z "$ASSET" ] || [ "$ASSET" = "null" ]; then
+            echo "create failed: $(echo "$CREATE" | jq 'del(.signedUrl, .token)')"; exit 1
+          fi
+          echo "::add-mask::$SIGNED"
           echo "asset=$ASSET"
 
           PUT=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "$SIGNED" \
@@ -70,17 +97,18 @@ jobs:
 
           # Poll via the probe user's OWN RLS-scoped read until the production
           # worker validates it.
+          STATUS=""
           for i in $(seq 1 60); do
-            ROW=$(curl -sS "$BASE/rest/v1/media_assets?id=eq.$ASSET&select=status,content_sha256,duration_ms,has_audio,metadata" \
+            ROW=$(curl -sS "$BASE/rest/v1/media_assets?id=eq.$ASSET&select=status,content_sha256,duration_ms,width,height,rotation,has_audio,metadata" \
               -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq '.[0]')
             STATUS=$(echo "$ROW" | jq -r .status)
             [ "$STATUS" = "ready" ] && break
-            [ "$STATUS" = "rejected" ] && { echo "REJECTED: $ROW"; exit 1; }
+            [ "$STATUS" = "rejected" ] && { echo "REJECTED: $(echo "$ROW" | jq .metadata)"; exit 1; }
             sleep 3
           done
           [ "$STATUS" = "ready" ] || { echo "asset never became ready (last: $STATUS)"; exit 1; }
-          echo "ready row (metadata keys + facts):"
-          echo "$ROW" | jq '{status, duration_ms, has_audio, sha_len: (.content_sha256|length), meta_keys: (.metadata|keys), probe_facts: .metadata.probe_facts, container: .metadata.container, video_codec: .metadata.video_codec, audio_codec: .metadata.audio_codec, editor_eligible: .metadata.editor_eligible, has_finalized_etag: (.metadata.finalized_etag != null), finalized_bytes: .metadata.finalized_bytes}'
+          echo "ready row (facts + metadata keys):"
+          echo "$ROW" | jq '{status, duration_ms, width, height, rotation, has_audio, sha_len: (.content_sha256|length), meta_keys: (.metadata|keys), probe_facts: .metadata.probe_facts, container: .metadata.container, video_codec: .metadata.video_codec, audio_codec: .metadata.audio_codec, editor_eligible: .metadata.editor_eligible, has_finalized_etag: (.metadata.finalized_etag != null), finalized_bytes: .metadata.finalized_bytes}'
 
           echo "$ROW" | jq -e '
             .status == "ready"
@@ -93,5 +121,11 @@ jobs:
             and .metadata.editor_eligible == true
             and (.content_sha256 | length) == 64
             and .duration_ms > 1500 and .has_audio == true
+            and .width == 320 and .height == 240 and .rotation == 0
           ' > /dev/null || { echo "METADATA MERGE VERIFICATION FAILED"; exit 1; }
-          echo "metadata merge preserved all finalization + probe facts — PASS"
+
+          # Generation pointer must link to the probe asset (RLS-scoped read).
+          PTR=$(curl -sS "$BASE/rest/v1/generations?id=eq.${{ inputs.generation_id }}&select=source_asset_id" \
+            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq -r '.[0].source_asset_id')
+          [ "$PTR" = "$ASSET" ] || { echo "GENERATION POINTER NOT LINKED (got $PTR)"; exit 1; }
+          echo "generation pointer linked — metadata merge preserved all finalization + probe facts — PASS"
