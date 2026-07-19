@@ -125,7 +125,14 @@ jobs:
           ' > /dev/null || { echo "METADATA MERGE VERIFICATION FAILED"; exit 1; }
 
           # Generation pointer must link to the probe asset (RLS-scoped read).
-          PTR=$(curl -sS "$BASE/rest/v1/generations?id=eq.${{ inputs.generation_id }}&select=source_asset_id" \
-            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq -r '.[0].source_asset_id')
+          # The ready flip and the link are consecutive worker statements —
+          # poll briefly instead of racing the gap (same as the staging matrix).
+          PTR=""
+          for i in $(seq 1 20); do
+            PTR=$(curl -sS "$BASE/rest/v1/generations?id=eq.${{ inputs.generation_id }}&select=source_asset_id" \
+              -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq -r '.[0].source_asset_id')
+            [ "$PTR" = "$ASSET" ] && break
+            sleep 2
+          done
           [ "$PTR" = "$ASSET" ] || { echo "GENERATION POINTER NOT LINKED (got $PTR)"; exit 1; }
           echo "generation pointer linked — metadata merge preserved all finalization + probe facts — PASS"
