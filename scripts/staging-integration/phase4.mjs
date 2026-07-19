@@ -90,12 +90,21 @@ async function waitAsset(assetId, timeoutMs = 120_000) {
 
 const allProjects = []
 async function startProject(client, genId, assetId) {
-  const r = await callEdge(client, 'start-editor-v2', {
-    generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
-  })
-  if (r.status !== 200) throw new Error(`start ${r.status}: ${JSON.stringify(r.body)}`)
-  allProjects.push(r.body.projectId)
-  return r.body.projectId
+  for (let attempt = 0; ; attempt++) {
+    const r = await callEdge(client, 'start-editor-v2', {
+      generation_id: genId, source_asset_id: assetId, idempotency_key: randomUUID(),
+    })
+    if (r.status === 429 && attempt < 2) {
+      // The per-user start rate limit (10/60s) is a PRODUCT feature, not a
+      // failure — the matrix legitimately packs starts; wait out the window.
+      console.log('   (start rate window — waiting 61s…)')
+      await sleep(61_000)
+      continue
+    }
+    if (r.status !== 200) throw new Error(`start ${r.status}: ${JSON.stringify(r.body)}`)
+    allProjects.push(r.body.projectId)
+    return r.body.projectId
+  }
 }
 async function getProject(id) { return (await admin.from('edit_projects').select('*').eq('id', id).maybeSingle()).data }
 async function getJob(pid) { return (await admin.from('jobs').select('*').eq('dedup_key', `editor_v2:${pid}:1`).maybeSingle()).data }
