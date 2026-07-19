@@ -31,10 +31,45 @@ export interface ProbeStream {
   width?: number
   height?: number
   side_data_list?: Array<{ rotation?: number }>
+  r_frame_rate?: string
+  avg_frame_rate?: string
+  pix_fmt?: string
+  color_space?: string
+  sample_rate?: string
+  channels?: number
+  channel_layout?: string
 }
 export interface ProbeResult {
   streams?: ProbeStream[]
   format?: { duration?: string; size?: string; format_name?: string }
+}
+
+// The full fact set the editor's inspection contract needs, captured ONCE at
+// validation so the inspecting stage can reuse it without re-downloading
+// (docs/editor-v2-worker-orchestration.md: analyze once and reuse). Assets
+// validated before this field existed take the bounded one-time upgrade probe.
+export interface ProbeFacts {
+  frame_rate: string | null      // rational, e.g. "30000/1001"
+  avg_frame_rate: string | null
+  pix_fmt: string | null
+  color_space: string | null
+  audio_sample_rate: number | null
+  audio_channels: number | null
+  audio_channel_layout: string | null
+}
+
+export function extractProbeFacts(probe: ProbeResult): ProbeFacts {
+  const video = probe.streams?.find((s) => s.codec_type === 'video')
+  const audio = probe.streams?.find((s) => s.codec_type === 'audio')
+  return {
+    frame_rate: video?.r_frame_rate ?? null,
+    avg_frame_rate: video?.avg_frame_rate ?? null,
+    pix_fmt: video?.pix_fmt ?? null,
+    color_space: video?.color_space ?? null,
+    audio_sample_rate: audio?.sample_rate ? Number(audio.sample_rate) : null,
+    audio_channels: audio?.channels ?? null,
+    audio_channel_layout: audio?.channel_layout ?? null,
+  }
 }
 
 export interface SourceLimits {
@@ -168,32 +203,29 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
     })
     if (!verdict.ok) return await reject(assetId, verdict.code, verdict.detail)
 
-    // The transition guard trigger enforces validating→ready; the status filter
-    // here just keeps a lost race (another worker settled it) a clean no-op.
-    const { error: upErr } = await db
-      .from('media_assets')
-      .update({
-        status: 'ready',
-        content_sha256: sha256,
-        duration_ms: verdict.durationMs,
-        width: verdict.width,
-        height: verdict.height,
-        rotation: verdict.rotation,
-        has_audio: verdict.hasAudio,
-        size_bytes: verdict.sizeBytes ?? undefined,
-        validated_at: new Date().toISOString(),
-        metadata: {
-          container: verdict.container,
-          video_codec: verdict.videoCodec,
-          audio_codec: verdict.audioCodec,
-          // Policy: a no-audio take is READY (playable, recoverable) but NOT
-          // eligible for AI editing — the editor requires speech to analyze.
-          // Phase 2's start-editor gate reads has_audio; this flag documents it.
-          editor_eligible: verdict.hasAudio,
-        },
-      })
-      .eq('id', assetId)
-      .eq('status', 'validating')
+    // Atomic ready-flip with a DATABASE-LEVEL metadata merge (metadata ||
+    // patch): finalized_etag/finalized_bytes recorded at finalize survive to
+    // `ready` — the editor's inspection re-proves object integrity against
+    // them on every run — and no client-side read-modify-write window exists.
+    const { error: upErr } = await db.rpc('editor_complete_validation', {
+      p_asset: assetId,
+      p_sha256: sha256,
+      p_duration_ms: verdict.durationMs,
+      p_width: verdict.width,
+      p_height: verdict.height,
+      p_rotation: verdict.rotation,
+      p_has_audio: verdict.hasAudio,
+      p_size_bytes: verdict.sizeBytes ?? null,
+      p_meta_patch: {
+        container: verdict.container,
+        video_codec: verdict.videoCodec,
+        audio_codec: verdict.audioCodec,
+        probe_facts: extractProbeFacts(probe),
+        // Policy: a no-audio take is READY (playable, recoverable) but NOT
+        // eligible for AI editing — the editor requires speech to analyze.
+        editor_eligible: verdict.hasAudio,
+      },
+    })
     if (upErr) throw new Error(`validate_source: ready update failed: ${upErr.message}`)
 
     // Durable pointers on the generation via the guarded DB function:

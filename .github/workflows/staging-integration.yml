@@ -25,6 +25,12 @@ permissions:
   id-token: write
   contents: read
 
+# The matrices run against ONE shared staging project — two overlapping runs
+# would drain/settle each other's fixtures. Strictly serialize.
+concurrency:
+  group: staging-integration
+  cancel-in-progress: false
+
 jobs:
   integration:
     runs-on: ubuntu-latest
@@ -75,9 +81,12 @@ jobs:
             echo "STAGING_SERVICE_ROLE_KEY=$SERVICE"
           } >> "$GITHUB_ENV"
 
+      # Pinned (not 'latest'): resolving the latest release hits the GitHub API
+      # unauthenticated from shared runner IPs and rate-limits sporadically —
+      # and a mutable toolchain weakens reproducibility anyway.
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.109.1
 
       - name: Deploy THIS BRANCH's editor edge functions to STAGING
         # The functions under test must be the branch's code, not a hand-pushed
@@ -129,3 +138,6 @@ jobs:
 
       - name: Run Phase 3 integration matrix (editor_v2 worker orchestration)
         run: node scripts/staging-integration/phase3.mjs
+
+      - name: Run Phase 4 integration matrix (real media inspection)
+        run: node scripts/staging-integration/phase4.mjs

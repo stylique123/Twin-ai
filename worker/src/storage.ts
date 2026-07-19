@@ -14,9 +14,12 @@ const auth = { apikey: env.serviceKey, Authorization: `Bearer ${env.serviceKey}`
 // the process and wedge the queue. We stream to disk and abort the moment we
 // cross the cap (checking the declared content-length first, then enforcing it
 // byte-by-byte in case the header is missing or lies).
-export async function downloadObject(bucket: string, path: string, toFile: string): Promise<void> {
+export async function downloadObject(
+  bucket: string, path: string, toFile: string,
+  opts: { signal?: AbortSignal; chunkPauseMs?: number } = {},
+): Promise<void> {
   const cap = env.maxDownloadBytes
-  const res = await fetch(`${base}/object/${bucket}/${encodePath(path)}`, { headers: auth })
+  const res = await fetch(`${base}/object/${bucket}/${encodePath(path)}`, { headers: auth, signal: opts.signal })
   if (!res.ok) throw new Error(`storage download ${res.status}: ${(await res.text()).slice(0, 160)}`)
   const declared = Number(res.headers.get('content-length') ?? '0')
   if (declared > cap) throw new Error(`storage download too large: ${declared} bytes > cap ${cap}`)
@@ -34,11 +37,15 @@ export async function downloadObject(bucket: string, path: string, toFile: strin
   let seen = 0
   try {
     for (;;) {
+      if (opts.signal?.aborted) throw new Error('download aborted')
       const { done, value } = await reader.read()
       if (done) break
       seen += value.byteLength
       if (seen > cap) throw new Error(`storage download too large: exceeded cap ${cap} bytes`)
       if (!out.write(value)) await once(out, 'drain')
+      // Matrix-only throttle: widens the during-download window so mid-transfer
+      // cancellation is provable; 0 (production) adds nothing.
+      if (opts.chunkPauseMs) await new Promise((r) => setTimeout(r, opts.chunkPauseMs))
     }
     out.end()
     await once(out, 'finish')

@@ -25,7 +25,9 @@ import { tmpdir } from 'node:os'
 import { db, renewJobLease, type Job } from '../db.js'
 import { env } from '../env.js'
 import { LeaseLostError, PermanentJobError, isLeaseLost } from '../errors.js'
+import { sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
+import { InspectionCancelledError, runInspectingStage } from './editorInspect.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -207,6 +209,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // will be taken HERE — at worker claim, before the first stage — and
     // finalized/released in editor_finish_project. No reservation or charge
     // exists in Phase 3; see docs/editor-v2-worker-orchestration.md.
+    let inspect: Record<string, unknown> | null = null
     for (const stage of stagesFrom(proj.status)) {
       if (lease.lost()) throw new LeaseLostError(`lease lost before stage ${stage}`)
       maybeCrash(`before_stage:${stage}`, job)
@@ -219,15 +222,37 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         return { cancelled: true, at_stage: stage, stages_ran: ranStages }
       }
 
-      await runStageWithTimeout(stage, job, dir)
+      if (stage === 'inspecting') {
+        // Phase 4: the ONE real stage. Reuses Phase-1 validation facts (or the
+        // cached component) and only downloads/reprobes as a bounded upgrade.
+        try {
+          const out = await runInspectingStage(job, projectId, dir)
+          inspect = { ...out }
+          await appendEvent(job, projectId, 'inspection_recorded', {
+            cache_hit: out.cacheHit,
+            reused_validation_facts: out.reusedValidationFacts,
+            fallback_probe_performed: out.fallbackProbePerformed,
+            inspector_version: env.inspectorVersion,
+          })
+        } catch (err) {
+          if (err instanceof InspectionCancelledError) {
+            await finishProject(job, projectId, 'cancelled', undefined, { at_stage: stage })
+            return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          }
+          throw err
+        }
+      } else {
+        await runStageWithTimeout(stage, job, dir)
+      }
       ranStages.push(stage)
     }
 
-    await finishProject(job, projectId, 'completed', undefined, { simulated: true })
+    await finishProject(job, projectId, 'completed', undefined, { simulated_after_inspection: true })
     maybeCrash('after_finish', job) // project settled, job not yet acknowledged
     return {
-      simulated: true,
+      simulated: true, // every stage AFTER inspection is still simulated
       stages_ran: ranStages,
+      inspection: inspect,
       swept_orphan_dirs: sweptOrphans,
       temp_dir_cleaned: true, // the finally below removes it before we return
     }
@@ -236,9 +261,12 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // silently; every state write is fenced so nothing was corrupted.
     if (isLeaseLost(err)) throw err
 
-    const message = err instanceof Error ? err.message : String(err)
     const permanent = err instanceof PermanentJobError
     const lastAttempt = job.attempts >= job.max_attempts
+    // Everything persisted goes through the sanitizer: stable code, safe
+    // stage, retry class, bounded REDACTED message. The raw error stays in
+    // the worker's stdout only (access-controlled container logs).
+    const safe = sanitizeError(err, ranStages.at(-1) ?? 'inspecting')
     try {
       if (permanent || lastAttempt) {
         // We still hold the lease: settle the PROJECT before the job settles,
@@ -246,10 +274,12 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // here instead, the reconciler sweep closes the same gap.)
         await finishProject(job, projectId, 'failed',
           permanent ? (err as PermanentJobError).code : 'retries_exhausted',
-          { error: message.slice(0, 500), attempt: job.attempts, stages_ran: ranStages })
+          { error: safe.message, code: safe.code, retry: safe.retry, stage: safe.stage,
+            attempt: job.attempts, stages_ran: ranStages })
       } else {
         await appendEvent(job, projectId, 'stage_retry_scheduled', {
-          error: message.slice(0, 500), attempt: job.attempts, max_attempts: job.max_attempts,
+          error: safe.message, code: safe.code, retry: safe.retry,
+          attempt: job.attempts, max_attempts: job.max_attempts,
         })
       }
     } catch (settleErr) {

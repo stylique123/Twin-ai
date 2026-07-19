@@ -524,8 +524,15 @@ async function main() {
     const rB = await fullFlow(cRace, g, randomUUID(), mp4, 'video/mp4')
     const b = await waitTerminal(rB.intent.assetId)
     check('T9 newer take B becomes ready first', b?.status === 'ready', `status=${b?.status}`)
-    const genAfterB = await genRow(g)
-    check('T9 generation links to B', genAfterB?.source_asset_id === rB.intent.assetId)
+    // The ready flip and the generation link are two consecutive statements
+    // in the worker — poll briefly rather than racing the gap between them.
+    let genAfterB = await genRow(g)
+    for (let i = 0; i < 25 && genAfterB?.source_asset_id !== rB.intent.assetId; i++) {
+      await sleep(400)
+      genAfterB = await genRow(g)
+    }
+    check('T9 generation links to B', genAfterB?.source_asset_id === rB.intent.assetId,
+      `points to ${genAfterB?.source_asset_id}`)
     // Now A finishes late.
     const fA = await finalize(cRace, cA.body.assetId)
     check('T9 old take A finalize still succeeds', fA.status === 200, JSON.stringify(fA.body))
