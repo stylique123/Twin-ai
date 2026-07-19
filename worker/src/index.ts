@@ -5,9 +5,10 @@
 // horizontally scalable: run N replicas, they won't collide.
 
 import { writeFileSync } from 'node:fs'
-import { db, claimJob, completeJob, failJob, heartbeat } from './db.js'
+import { db, claimJob, completeJob, deadLetterJob, failJob, heartbeat } from './db.js'
 import { handlers } from './jobs/index.js'
 import { env } from './env.js'
+import { isLeaseLost, isPermanent } from './errors.js'
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -50,14 +51,26 @@ async function tick(): Promise<boolean> {
     log('info', 'done', { job: job.id, type: job.type })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
-    // Exponential backoff (30s, 60s, 120s… capped at 10min) so a flaky yt-dlp/Apify
-    // call gets progressively more breathing room instead of hammering on a fixed 30s.
-    const backoff = Math.min(30 * 2 ** Math.max(0, job.attempts - 1), 600)
-    await failJob(job.id, message, backoff) // fail_job retries or dead-letters by attempts
-    log('error', 'failed', { job: job.id, type: job.type, attempt: job.attempts, error: message })
+    // A lost lease means another worker owns the job now. Every settle RPC is
+    // fenced (would no-op), so just abandon — the new owner drives it.
+    if (isLeaseLost(err)) {
+      log('warn', 'lease lost — abandoning without settling', { job: job.id, type: job.type, error: message })
+      return true
+    }
+    const permanent = isPermanent(err)
+    if (permanent) {
+      // Non-retryable: settle immediately instead of burning the retry budget.
+      await deadLetterJob(job.id, message)
+    } else {
+      // Exponential backoff (30s, 60s, 120s… capped at 10min) so a flaky yt-dlp/Apify
+      // call gets progressively more breathing room instead of hammering on a fixed 30s.
+      const backoff = Math.min(env.retryBackoffBaseSecs * 2 ** Math.max(0, job.attempts - 1), 600)
+      await failJob(job.id, message, backoff) // fail_job retries or dead-letters by attempts
+    }
+    log('error', 'failed', { job: job.id, type: job.type, attempt: job.attempts, permanent, error: message })
     // Dead-letter alert: the LAST attempt failed → surface it so spikes are visible
     // (the reliability panel's "alert when fail-rate spikes"). Best-effort.
-    if (job.attempts >= job.max_attempts) {
+    if (permanent || job.attempts >= job.max_attempts) {
       await db.from('ops_events')
         .insert({ kind: 'job_dead_letter', severity: 'warn', user_id: job.owner_id ?? null, detail: { job_id: job.id, type: job.type, attempts: job.attempts, error: message.slice(0, 300) } })
         .then(() => {}, () => {})

@@ -13,8 +13,9 @@ describe('worker job registry has no old editor', () => {
     const { handlers } = await import('../jobs/index.js')
     const types = Object.keys(handlers).sort()
     // validate_source (editor-v2 Phase 1) VALIDATES an uploaded recording; it is
-    // not an editor/render job. The editor job (`editor_v2`) arrives in Phase 2+.
-    expect(types).toEqual(['build_voice', 'ingest', 'scrape_dna', 'validate_source'])
+    // not an editor/render job. editor_v2 (Phase 3) is the rebuilt editor's
+    // orchestration loop — simulated stages until later phases land real work.
+    expect(types).toEqual(['build_voice', 'editor_v2', 'ingest', 'scrape_dna', 'validate_source'])
     expect(handlers).not.toHaveProperty('autoedit')
     expect(handlers).not.toHaveProperty('transcribe')
   })

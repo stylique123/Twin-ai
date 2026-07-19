@@ -15,7 +15,7 @@
 // and retries the SAME attempt (same asset, same path); it never silently
 // switches persistence systems.
 import { getClient, uploadToSignedTarget, type TakeFile } from '../api'
-import type { EditProject, MediaAsset, SourceUploadIntent } from './contracts'
+import type { EditEvent, EditProject, EditProjectStatus, MediaAsset, SourceUploadIntent } from './contracts'
 
 // ---- Upload-once coordinator -------------------------------------------------
 // Autosave, confirmation and navigation must share ONE upload. Concurrent (and
@@ -192,6 +192,36 @@ export async function getLatestEditProject(generationId: string): Promise<EditPr
     .maybeSingle()
   if (error) return null
   return (data as EditProject) ?? null
+}
+
+// ---- Cancellation (Phase 3 foundations) -------------------------------------
+// Ask the server to cancel an edit project the caller owns. Resolution modes:
+//  * 'cancelled'        — the project was still queued and unclaimed: settled
+//                         immediately, the job will never run
+//  * 'cancel_requested' — a worker is (or may be) driving it: the flag is set
+//                         and the worker finishes the project as cancelled at
+//                         the next stage boundary
+//  * a terminal status  — the project had already settled; cancel is a no-op
+// Foreign/missing projects raise the same 'not_found' (no existence leak).
+export async function cancelEditProject(
+  projectId: string,
+): Promise<'cancelled' | 'cancel_requested' | EditProjectStatus> {
+  const { data, error } = await getClient().rpc('editor_request_cancel', { p_project: projectId })
+  if (error) throw new Error(error.message)
+  return data as 'cancelled' | 'cancel_requested' | EditProjectStatus
+}
+
+// Durable progress observation: the append-only event history for a project
+// (RLS: owner + workspace peers), in deterministic seq order.
+export async function getEditEvents(projectId: string, afterSeq = 0): Promise<EditEvent[]> {
+  const { data, error } = await getClient()
+    .from('edit_events')
+    .select('seq,project_id,stage,pct,message_code,details,created_at')
+    .eq('project_id', projectId)
+    .gt('seq', afterSeq)
+    .order('seq', { ascending: true })
+  if (error) return []
+  return (data as EditEvent[]) ?? []
 }
 
 async function invokeError(error: unknown): Promise<string> {
