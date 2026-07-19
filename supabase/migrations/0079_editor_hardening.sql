@@ -108,6 +108,7 @@ $$;
 
 -- create-or-replace preserves grants, but re-assert the posture explicitly.
 revoke all on function public.editor_finalize_source(uuid, bigint, text) from public, anon, authenticated;
+revoke all on function public.media_assets_guard_transition() from public, anon, authenticated;
 revoke all on function public.editor_link_ready_source(uuid) from public, anon, authenticated;
 
 drop policy "media_assets read" on public.media_assets;

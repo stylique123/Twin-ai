@@ -71,6 +71,9 @@ $$;
 create trigger trg_edit_projects_immutable
   before update on public.edit_projects
   for each row execute function public.edit_projects_guard_immutable();
+-- Trigger functions are uninvokable outside triggers, but strip the inert
+-- default EXECUTE grants anyway — explicit-grants-only, everywhere.
+revoke all on function public.edit_projects_guard_immutable() from public, anon, authenticated;
 
 alter table public.edit_projects enable row level security;
 create policy "edit_projects read" on public.edit_projects
@@ -171,6 +174,7 @@ $$;
 create trigger trg_edit_events_append_only
   before update or delete on public.edit_events
   for each row execute function public.edit_events_append_only();
+revoke all on function public.edit_events_append_only() from public, anon, authenticated;
 
 alter table public.edit_events enable row level security;
 create policy "edit_events read" on public.edit_events

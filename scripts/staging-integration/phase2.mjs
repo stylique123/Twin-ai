@@ -397,11 +397,12 @@ async function main() {
     check('G4 project untouched after all attempts', after?.status === 'queued', after?.status)
     const anonRead = await cAnon.from('edit_projects').select('id').limit(1)
     check('G4 anonymous cannot read edit_projects', anonRead.error !== null || (anonRead.data ?? []).length === 0)
-    // Privileged RPCs are not client-callable at all.
-    const { error: rpcErr } = await cOwner.rpc('editor_start_project', {
-      p_owner: owner.id, p_generation: genA, p_source: srcA, p_idempotency: randomUUID(),
-    })
-    check('G4 authenticated cannot execute editor_start_project directly', rpcErr !== null, rpcErr?.message ?? 'rpc succeeded!')
+    // Privileged RPCs are not client-callable by ANY identity.
+    const rpcArgs = { p_owner: owner.id, p_generation: genA, p_source: srcA, p_idempotency: randomUUID() }
+    for (const [who, cl] of [['owner', cOwner], ['workspace peer', cPeer], ['unrelated user', cOutsider], ['anonymous', cAnon]]) {
+      const { error: rpcErr } = await cl.rpc('editor_start_project', rpcArgs)
+      check(`G4 ${who} cannot execute editor_start_project directly`, rpcErr !== null, rpcErr?.message ?? 'rpc succeeded!')
+    }
     // Identity columns are immutable even for the SERVICE role (trigger).
     const { error: immErr } = await admin.from('edit_projects').update({ owner_id: outsider.id }).eq('id', projectA.id)
     check('G4 ownership cannot change (immutable even for service role)', immErr !== null, immErr?.message ?? 'update succeeded!')
@@ -439,7 +440,18 @@ async function main() {
       .insert({ project_id: projectA.id, stage: 'queued', message_code: 'TEST_EVENT' })
       .select('id, seq').single()
     check('G6 service role can append an event', !insErr && !!ev, insErr?.message)
-    check('G6 events carry a monotonic seq', Number.isInteger(Number(ev?.seq)), String(ev?.seq))
+    const { data: ev2 } = await admin.from('edit_events')
+      .insert({ project_id: projectA.id, stage: 'queued', message_code: 'TEST_EVENT_2' })
+      .select('id, seq').single()
+    check('G6 event order is deterministic (seq strictly increases)',
+      Number.isInteger(Number(ev?.seq)) && Number(ev2?.seq) > Number(ev?.seq), `${ev?.seq} → ${ev2?.seq}`)
+    // Clients cannot append at all (no INSERT grant/policy).
+    const { error: cliIns } = await cOwner.from('edit_events').insert({ project_id: projectA.id, stage: 'fake', message_code: 'X' })
+    check('G6 client insert fails', cliIns !== null, cliIns?.message ?? 'insert succeeded!')
+    const { error: cliUpd } = await cOwner.from('edit_events').update({ message_code: 'HACKED' }).eq('id', ev.id)
+    check('G6 client update fails', cliUpd !== null, cliUpd?.message ?? 'update succeeded!')
+    const { error: cliDel } = await cOwner.from('edit_events').delete().eq('id', ev.id)
+    check('G6 client delete fails', cliDel !== null, cliDel?.message ?? 'delete succeeded!')
     const { error: updErr } = await admin.from('edit_events').update({ message_code: 'REWRITTEN' }).eq('id', ev.id)
     check('G6 UPDATE raises even for service role', updErr !== null, updErr?.message ?? 'update succeeded!')
     const { error: tsErr } = await admin.from('edit_events').update({ created_at: new Date(0).toISOString() }).eq('id', ev.id)
