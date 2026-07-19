@@ -155,6 +155,19 @@ async function getEditorJob(projectId) {
   const { data } = await admin.from('jobs').select('*').eq('dedup_key', `editor_v2:${projectId}:1`).maybeSingle()
   return data
 }
+// The project settles (fenced finish) an instant before the JOB is
+// acknowledged (complete/fail/dead-letter) — poll briefly before asserting
+// terminal job state, and let the dependent check report the real state if
+// acknowledgement never lands within the bound.
+async function waitEditorJobSettled(projectId, timeoutMs = 15_000) {
+  const start = Date.now()
+  for (;;) {
+    const j = await getEditorJob(projectId)
+    if (j && ['done', 'failed'].includes(j.status)) return j
+    if (Date.now() - start > timeoutMs) return j
+    await sleep(400)
+  }
+}
 async function getEvents(projectId) {
   const { data } = await admin.from('edit_events').select('*').eq('project_id', projectId).order('seq', { ascending: true })
   return data ?? []
@@ -263,7 +276,7 @@ async function main() {
     check('A3 timestamps set, no failure', !!proj.started_at && !!proj.completed_at && proj.failure_code === null)
     check('A4 simulated completion has NO output asset (rendering is a later phase)', proj.output_asset_id === null)
 
-    const job = await getEditorJob(projectId)
+    const job = await waitEditorJobSettled(projectId)
     check('A5 job done in one attempt', job?.status === 'done' && job?.attempts === 1, `status=${job?.status} attempts=${job?.attempts}`)
     check('A6 job result reports all 7 simulated stages + temp-dir cleanup',
       job?.result?.simulated === true && job?.result?.stages_ran?.length === 7 && job?.result?.temp_dir_cleaned === true)
@@ -291,7 +304,7 @@ async function main() {
     const { data: mode1, error: e1 } = await c1.rpc('editor_request_cancel', { p_project: projectId })
     check('B1 queued cancel settles immediately', !e1 && mode1 === 'cancelled', e1?.message ?? mode1)
     const p1 = await getProject(projectId)
-    const j1 = await getEditorJob(projectId)
+    const j1 = await waitEditorJobSettled(projectId)
     check('B2 project cancelled, job closed without ever running',
       p1.status === 'cancelled' && j1?.status === 'done' && j1?.result?.cancelled === true && j1?.attempts === 0,
       `p=${p1.status} j=${j1?.status} attempts=${j1?.attempts}`)
@@ -309,7 +322,7 @@ async function main() {
     const p2 = await waitProject(pid2, isSettled, 60_000, 'cancel-midrun-settle')
     stopWorker(w)
     check('B5 worker finished the project as cancelled at a stage boundary', p2.status === 'cancelled', p2.status)
-    const j2 = await getEditorJob(pid2)
+    const j2 = await waitEditorJobSettled(pid2)
     check('B6 mid-run cancel: job settled cleanly', j2?.status === 'done' && j2?.result?.cancelled === true, `j=${j2?.status}`)
     const ev2 = await getEvents(pid2)
     check('B7 mid-run history has cancel_requested then project_cancelled last',
@@ -465,7 +478,7 @@ async function main() {
     check('E4 exactly one terminal event despite the woken stale worker', terminal.length === 1 && terminal[0].message_code === 'project_completed')
     check('E5 the fenced stale worker appended NOTHING after settlement', ev2.at(-1)?.seq === maxSeqBefore,
       `maxSeq ${maxSeqBefore} → ${ev2.at(-1)?.seq}`)
-    const j2 = await getEditorJob(pid2)
+    const j2 = await waitEditorJobSettled(pid2)
     check('E6 job settled done exactly once', j2?.status === 'done')
 
     // E7: SAME-IDENTITY reclaim — the reviewer's sharpest case. locked_by
@@ -485,7 +498,7 @@ async function main() {
     await sleep(5000)
     stopWorker(sameA); stopWorker(sameB)
     const ev3 = await getEvents(pid3)
-    const j3 = await getEditorJob(pid3)
+    const j3 = await waitEditorJobSettled(pid3)
     check('E7 same-identity reclaim completed under attempt 2', p3.status === 'completed' && j3?.attempts === 2,
       `p=${p3.status} attempts=${j3?.attempts}`)
     check('E8 the woken attempt-1 run (same worker id!) wrote NOTHING after settlement',
@@ -513,7 +526,7 @@ async function main() {
     })
     const proj = await waitProject(projectId, isSettled, 90_000, 'timeout')
     stopWorker(w)
-    const job = await getEditorJob(projectId)
+    const job = await waitEditorJobSettled(projectId)
     const ev = await getEvents(projectId)
     const retry = ev.find((e) => e.message_code === 'stage_retry_scheduled')
     check('F1 completed after the timeout retry', proj.status === 'completed', proj.status)
@@ -564,7 +577,7 @@ async function main() {
     const { data: mode } = await c2.rpc('editor_request_cancel', { p_project: projectId })
     check('RC1 cancel during retry backoff settles immediately', mode === 'cancelled', String(mode))
     const p = await getProject(projectId)
-    const j = await getEditorJob(projectId)
+    const j = await waitEditorJobSettled(projectId)
     const ev = await getEvents(projectId)
     check('RC2 project cancelled from its persisted mid-pipeline stage', p.status === 'cancelled' && !!p.completed_at, p.status)
     check('RC3 parked job closed without another attempt', j?.status === 'done' && j?.result?.cancelled === true && j?.attempts === 1,
@@ -584,7 +597,7 @@ async function main() {
     })
     const proj = await waitProject(projectId, isSettled, 60_000, 'permanent')
     stopWorker(w)
-    const job = await getEditorJob(projectId)
+    const job = await waitEditorJobSettled(projectId)
     const ev = await getEvents(projectId)
     check('H1 project failed with the permanent code', proj.status === 'failed' && proj.failure_code === 'simulated_permanent',
       `${proj.status}/${proj.failure_code}`)
