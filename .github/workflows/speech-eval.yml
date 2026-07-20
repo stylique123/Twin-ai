@@ -1,0 +1,66 @@
+# Phase 5 human-speech evaluation (engineering gate). Manual dispatch only.
+# Builds a licensed PUBLIC human-speech corpus IN CI (runners have open
+# internet; the dev sandbox does not), runs the REAL worker speech pipeline over
+# it, and gates against the PREDEFINED thresholds in scripts/speech-eval/
+# thresholds.json. Audio is fetched into the ephemeral runner (private CI
+# storage) and NEVER committed to Git. Licenses are verified BEFORE download.
+#
+# This does NOT touch the database, storage, or the staging matrices — it is an
+# offline quality evaluation. Report is uploaded as a build artifact.
+name: speech-eval
+on:
+  workflow_dispatch:
+    inputs:
+      clean_clips:
+        description: 'LibriSpeech clean clips'
+        required: false
+        default: '5'
+      ami_per_category:
+        description: 'AMI clips per disfluency category'
+        required: false
+        default: '3'
+
+concurrency:
+  group: speech-eval
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the pinned ASR stack + corpus tooling
+        run: |
+          pip install --quiet -r worker/requirements.txt
+          pip install --quiet 'datasets>=2.19,<4' 'soundfile>=0.12' 'huggingface_hub>=0.25' 'requests>=2.31'
+          python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
+      - name: Build worker (real bridge + builder)
+        run: cd worker && npm ci && npm run build
+      - name: Verify licenses + build the corpus (audio → ephemeral runner only)
+        run: |
+          python scripts/speech-eval/build_corpus.py \
+            --out "$RUNNER_TEMP/speech-corpus" \
+            --clean "${{ inputs.clean_clips }}" \
+            --ami-per-category "${{ inputs.ami_per_category }}"
+      - name: Run the real Phase 5 pipeline + gate against predefined thresholds
+        env:
+          SPEECH_EVAL_MANIFEST: ${{ runner.temp }}/speech-corpus/manifest.json
+        run: node scripts/speech-eval/evaluate.mjs
+      - name: Upload evaluation report (provenance + category metrics + failures)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: speech-eval-report
+          path: |
+            speech-eval-report.json
+            ${{ runner.temp }}/speech-corpus/provenance.json
+          if-no-files-found: warn

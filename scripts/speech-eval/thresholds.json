@@ -1,0 +1,11 @@
+{
+  "_comment": "PREDEFINED Phase 5 human-speech beta thresholds. Fixed BEFORE the first baseline run (see docs/editor-v2-phase5-speech-eval.md). Do NOT weaken after seeing results; a miss is a real finding. Any change requires a documented engineering justification, never gaming for green.",
+  "maxMeanWerClean": 0.20,
+  "maxInventedWordRatioClean": 0.03,
+  "minOffScriptRetentionRatio": 0.90,
+  "minFillerPrecision": 0.50,
+  "minFalseStartPrecision": 0.40,
+  "minRepetitionPrecision": 0.40,
+  "minSilenceClassAgreement": 0.60,
+  "maxLowConfidenceOnlyRemovalCandidates": 0
+}
