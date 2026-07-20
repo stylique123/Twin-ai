@@ -82,6 +82,8 @@ jobs:
             --clean "${{ inputs.clean_clips || '5' }}" \
             --ami-per-category "${{ inputs.ami_per_category || '3' }}"
       - name: Run the real Phase 5 pipeline + gate against predefined thresholds
+        # runner.temp is valid at STEP level here (unlike job-level env, where only
+        # github.* contexts resolve — see staging-integration.yml).
         env:
           SPEECH_EVAL_MANIFEST: ${{ runner.temp }}/speech-corpus/manifest.json
           # Grade the PINNED snapshot loaded offline (requirePinnedModel enforces it).

@@ -37,9 +37,10 @@ jobs:
     timeout-minutes: 45
     # Phases 3-5 all drive the REAL speech stage, which now loads the PINNED
     # snapshot from this path offline (fetched + digest-verified in the install
-    # step). Job-level so EVERY phase inherits it, not just Phase 5.
+    # step). Job-level so EVERY phase inherits it, not just Phase 5. NOTE: the
+    # `runner` context is NOT available in job-level env — use github.workspace.
     env:
-      EDITOR_SPEECH_MODEL_PATH: ${{ runner.temp }}/faster-whisper-small
+      EDITOR_SPEECH_MODEL_PATH: ${{ github.workspace }}/.pinned-model
     steps:
       - uses: actions/checkout@v4
 
@@ -72,7 +73,7 @@ jobs:
           # digest-verify it (speech-6). Same fetch_model.py the Docker build runs.
           python worker/scripts/fetch_model.py \
             --manifest worker/models/faster-whisper-small.manifest.json \
-            --dest "$RUNNER_TEMP/faster-whisper-small"
+            --dest "$GITHUB_WORKSPACE/.pinned-model"
 
       - name: Verify the ci-bootstrap gate refuses unauthorized callers
         run: |
