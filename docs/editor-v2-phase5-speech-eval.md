@@ -88,13 +88,20 @@ interpreter teardown, AFTER the corpus is complete. pyarrow is **core to
 Fix, part 2 (process isolation, not masking): `build_corpus.py` runs the
 pyarrow-heavy build in an isolated **child process**; the parent process (the one
 CI invokes) imports **no** datasets/pyarrow, so it **tears down and exits
-normally with code 0** — there is **no `os._exit` anywhere**. The parent does not
-trust the child's teardown exit code: it independently **re-validates the
-artifact** (reopen + schema + SHA-256 + all-12-categories, pure stdlib). A build
-that failed *before* finishing leaves an invalid/absent artifact and fails the
-gate; only a complete build that merely crashed at teardown passes. The child's
-crash and all its logs stay fully visible in CI. Issue #192 records this. The
-rest of the hardening still applies:
+normally** — there is **no `os._exit` anywhere**. The broken pyarrow teardown is
+**nondeterministic**: run 29747252159 showed SIGABRT (exit 134), run 29748071316
+showed a **deadlock** (the finished child hung 39 min until the job timeout). So
+the parent handles both: the worker writes a fsync'd `build.done` **sentinel
+only after** every artifact is written, fsync'd and validated in-child; the
+parent polls, and once the sentinel exists grants a short grace then **kills the
+finalizing child** — at that point its only remaining work is interpreter
+finalization. The gate is the **artifact**, not the child's exit code: the parent
+independently re-validates it (reopen + schema + SHA-256 + all-12-categories,
+pure stdlib). A build that failed or hung *before* finishing has no sentinel and
+an invalid/absent artifact → the gate fails; a mid-build hang is killed at a
+hard deadline and fails the same way. The child's crash and all its logs stay
+fully visible in CI. Issue #192 records this. The rest of the hardening still
+applies:
 
 - Fail-**closed**: any exception forces a non-zero exit, so an earlier failure
   can never be masked by a clean process exit.

@@ -424,12 +424,17 @@ def validate(out_dir):
     return errs
 
 
+SENTINEL = "build.done"
+
+
 def worker():
-    """Runs in the CHILD process. Imports datasets -> pyarrow (whose native
-    thread-pool SIGABRTs at interpreter finalization AFTER all work completes —
-    exit 134 — and cannot be removed while streaming HF corpora). Does the whole
-    build, writes+fsyncs artifacts, and validates. Its teardown crash is
-    irrelevant: the parent re-validates the artifact and owns the real exit code."""
+    """Runs in the CHILD process. Imports datasets -> pyarrow, whose native
+    thread-pool teardown is broken at interpreter finalization AFTER all work
+    completes — nondeterministically either SIGABRT (exit 134) or a DEADLOCK
+    (hang forever) — and cannot be removed while streaming HF corpora. Does the
+    whole build, writes+fsyncs artifacts, validates, then writes a fsync'd
+    completion sentinel BEFORE returning, so the parent can distinguish
+    'finished, stuck in teardown' from 'hung mid-build'."""
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--out", required=True)
     known, _ = ap.parse_known_args()
@@ -448,32 +453,71 @@ def worker():
             print(f"  - {e}")
         return 1
     print("corpus validation OK (12/12 categories populated; artifacts reopened, schema + sha256 verified)")
+    sys.stdout.flush()
+    sys.stderr.flush()
+    write_json(os.path.join(known.out, SENTINEL), {"ok": True})  # all work done; only teardown remains
     return 0
 
 
 def parent():
     """THIS process (invoked by CI). Imports NO datasets/pyarrow — everything
     heavy runs in an isolated child — so this process TEARS DOWN AND EXITS
-    NORMALLY with code 0. No os._exit anywhere. We trust the ARTIFACT, not the
-    child's teardown exit code: reopen + schema + sha256 + 12/12 with pure stdlib
-    here. A build that failed BEFORE finishing leaves an invalid/absent artifact
-    and fails; only a complete build that merely crashed at teardown passes."""
+    NORMALLY. No os._exit anywhere. It must survive BOTH broken child-teardown
+    modes (SIGABRT and deadlock): it polls the child; once the completion
+    sentinel exists (written only after every artifact is fsync'd and validated
+    in-child) it grants a short grace for a clean exit, then kills the child —
+    at that point the child's ONLY remaining work is interpreter finalization.
+    The gate is the ARTIFACT, not the child's exit: reopen + schema + sha256 +
+    12/12 re-checked here with pure stdlib. A build that failed or hung BEFORE
+    finishing has no sentinel/invalid artifact and FAILS. Nothing is masked."""
     import subprocess
+    import time
     ap = argparse.ArgumentParser(add_help=False)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--build-deadline-sec", type=int, default=1500)  # hard cap for the BUILD itself
     known, _ = ap.parse_known_args()
-    child = subprocess.run([sys.executable, os.path.abspath(__file__), "--worker", *sys.argv[1:]])
+    sentinel = os.path.join(known.out, SENTINEL)
+    # Never trust stale outputs from a previous run: without this, a child that
+    # hangs mid-build could "pass" validation on leftovers.
+    os.makedirs(known.out, exist_ok=True)
+    for stale in (sentinel, os.path.join(known.out, "manifest.json"), os.path.join(known.out, "provenance.json")):
+        if os.path.exists(stale):
+            os.remove(stale)
+    proc = subprocess.Popen([sys.executable, os.path.abspath(__file__), "--worker", *sys.argv[1:]])
+    deadline = time.time() + known.build_deadline_sec
+    rc = None
+    while True:
+        try:
+            rc = proc.wait(timeout=5)
+            break  # child exited on its own (clean teardown or SIGABRT)
+        except subprocess.TimeoutExpired:
+            pass
+        if os.path.exists(sentinel):
+            try:
+                rc = proc.wait(timeout=20)  # grace for a clean exit
+            except subprocess.TimeoutExpired:
+                print("::warning::corpus worker finished ALL work (sentinel present, artifacts "
+                      "fsync'd + validated) but its pyarrow teardown deadlocked at interpreter "
+                      "finalization; killing the finalizing child. See docs/editor-v2-phase5-speech-eval.md")
+                proc.kill()
+                rc = proc.wait()
+            break
+        if time.time() > deadline:
+            print(f"corpus worker exceeded the {known.build_deadline_sec}s build deadline "
+                  "WITHOUT completing (no sentinel) — killing; the artifact gate below will fail")
+            proc.kill()
+            rc = proc.wait()
+            break
     errs = validate(known.out)
     if errs:
         print("\nCORPUS VALIDATION FAILED (parent gate — artifact invalid/incomplete):")
         for e in errs:
             print(f"  - {e}")
-        print(f"(corpus worker exit code was {child.returncode})")
+        print(f"(corpus worker exit code was {rc})")
         return 1
-    if child.returncode != 0:
-        print(f"::warning::corpus worker exited {child.returncode} (pyarrow thread-pool teardown "
-              f"AFTER the corpus was complete — see docs/editor-v2-phase5-speech-eval.md); "
-              f"artifact re-validated OK, parent exits 0 cleanly")
+    if rc != 0:
+        print(f"::warning::corpus worker exit code {rc} came from its broken pyarrow teardown "
+              f"AFTER the corpus was complete; artifact re-validated OK, parent exits 0 cleanly")
     print("build_corpus: artifact validated by the parent; exiting 0 normally (no os._exit)")
     return 0
 
