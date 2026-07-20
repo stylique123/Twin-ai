@@ -78,6 +78,10 @@ const RAW_ENERGY_HARD_CAP = 200000
 // evidence, it does not mean "shorten every gap".
 const DEAD_AIR_MS = 2000
 
+// Inter-word gap that closes a pause-defined speech unit when neither
+// punctuation nor an ASR segment edge is present.
+const PAUSE_UNIT_MS = 600
+
 function normalizeToken(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '')
 }
@@ -87,7 +91,7 @@ const toMs = (sec: number) => Math.round(sec * 1000)
 interface BuiltWord {
   id: string; text: string; normalizedText: string
   startMs: number; endMs: number; confidence: number
-  sentenceEnd: boolean; sentenceId: string
+  endsUnit: boolean; unitId: string
 }
 
 // Overlap of [s,e) with the union of VAD speech segments, in ms.
@@ -141,7 +145,7 @@ export function buildSpeechAnalysis(
       id: `w${i}`, text: w.w, normalizedText: normalizeToken(w.w),
       startMs, endMs,
       confidence: Math.max(0, Math.min(1, Number(w.p) || 0)),
-      sentenceEnd: SENTENCE_END_RE.test(w.w), sentenceId: '',
+      endsUnit: false, unitId: '',
     }
   })
   // Enforce non-decreasing start order (ASR returns sorted; guard anyway).
@@ -150,36 +154,47 @@ export function buildSpeechAnalysis(
     if (rawWords[i].endMs < rawWords[i].startMs) rawWords[i].endMs = rawWords[i].startMs
   }
 
-  // Sentence boundaries: a word closes a sentence if it carries terminal
-  // punctuation OR it is the last word of an ASR segment (Faster-Whisper splits
-  // segments on natural pauses). Using the segment structure makes boundaries
-  // robust when the ASR omits punctuation (common on terse/synthetic speech),
-  // and matches the "segment" unit the contract references.
+  // Speech-unit boundaries — NOT blindly "sentences". A unit closes when the
+  // word carries terminal punctuation (a real sentence), when it sits at a
+  // Faster-Whisper segment edge (a decoding unit), or after a long pause (a
+  // pause-defined utterance). The `kind` records WHICH, so the future Director
+  // never mistakes arbitrary ASR segmentation for grammatical completeness.
   const segEnds = (bridge.segments ?? []).map((s) => toMs(s.end)).filter((e) => e > 0).sort((a, b) => a - b)
   const endsSegment = (i: number): boolean => {
     if (i >= rawWords.length - 1) return false
     const gapStart = rawWords[i].endMs; const gapEnd = rawWords[i + 1].startMs
     return segEnds.some((e) => e >= gapStart - 50 && e <= gapEnd + 50)
   }
+  const boundaries: Array<Record<string, unknown>> = []
+  let uStart = 0
   for (let i = 0; i < rawWords.length; i++) {
-    rawWords[i].sentenceEnd = SENTENCE_END_RE.test(rawWords[i].text) || endsSegment(i)
-  }
-
-  // Group up to (and including) each sentence-closing word; a trailing run
-  // without a boundary still closes a sentence.
-  const sentences: Array<Record<string, unknown>> = []
-  let sStart = 0
-  for (let i = 0; i < rawWords.length; i++) {
-    if (rawWords[i].sentenceEnd || i === rawWords.length - 1) {
-      const group = rawWords.slice(sStart, i + 1)
-      const sid = `s${sentences.length}`
-      for (const w of group) w.sentenceId = sid
-      sentences.push({
-        id: sid, startMs: group[0].startMs, endMs: group[group.length - 1].endMs,
-        firstWordId: group[0].id, lastWordId: group[group.length - 1].id,
+    const isLast = i === rawWords.length - 1
+    const codes: string[] = []
+    let kind: 'punctuation_sentence' | 'asr_segment' | 'pause_utterance' | null = null
+    if (SENTENCE_END_RE.test(rawWords[i].text)) { codes.push('terminal_punctuation'); kind = 'punctuation_sentence' }
+    if (!isLast && endsSegment(i)) { codes.push('asr_segment_end'); kind = kind ?? 'asr_segment' }
+    if (!isLast && rawWords[i + 1].startMs - rawWords[i].endMs >= PAUSE_UNIT_MS) {
+      codes.push('pause_gap'); kind = kind ?? 'pause_utterance'
+    }
+    if (isLast && !kind) {
+      // Trailing unit: label by the honest available evidence, never asserted
+      // as a sentence unless punctuation supported it.
+      if (segEnds.length > 0) { kind = 'asr_segment'; codes.push('asr_segment_end') }
+      else { kind = 'pause_utterance'; codes.push('trailing') }
+    }
+    if (kind || isLast) {
+      const group = rawWords.slice(uStart, i + 1)
+      const uid = `u${boundaries.length}`
+      for (const w of group) w.unitId = uid
+      group[group.length - 1].endsUnit = true
+      boundaries.push({
+        id: uid, kind: kind ?? 'pause_utterance',
+        startWordId: group[0].id, endWordId: group[group.length - 1].id,
+        startMs: group[0].startMs, endMs: group[group.length - 1].endMs,
         text: group.map((w) => w.text).join(' '),
+        evidence: codes.length ? codes : ['trailing'],
       })
-      sStart = i + 1
+      uStart = i + 1
     }
   }
   const words: BuiltWord[] = rawWords
@@ -250,7 +265,7 @@ export function buildSpeechAnalysis(
   // hesitation — never for every occurrence, so meaningful uses are left alone.
   for (let i = 0; i < words.length; i++) {
     if (!DISCOURSE_MARKERS.has(norm[i])) continue
-    const boundaryBefore = i === 0 || words[i - 1].sentenceEnd || /,$/.test(words[i - 1].text)
+    const boundaryBefore = i === 0 || words[i - 1].endsUnit || /,$/.test(words[i - 1].text)
     const bracketed = gapBefore(i) >= 200 || gapAfter(i) >= 200
     if (!boundaryBefore && !bracketed) continue // fluent, meaningful use — skip
     cands.push({
@@ -283,7 +298,7 @@ export function buildSpeechAnalysis(
   const claimed = new Set<number>()
   for (let i = 0; i + 3 < words.length; i++) {
     if (!norm[i] || !norm[i + 1]) continue
-    if (words[i + 1].sentenceEnd) continue // separate sentences sharing words
+    if (words[i + 1].endsUnit) continue // separate sentences sharing words
     if (norm[i] === norm[i + 2] && norm[i + 1] === norm[i + 3]) {
       const pauseMs = words[i + 2].startMs - words[i + 1].endMs
       const comma = /,$/.test(words[i + 1].text)
@@ -306,7 +321,7 @@ export function buildSpeechAnalysis(
   }
   for (let i = 0; i + 1 < words.length; i++) {
     if (claimed.has(i) || claimed.has(i + 1)) continue
-    if (words[i].sentenceEnd) continue // repeat across a sentence boundary
+    if (words[i].endsUnit) continue // repeat across a sentence boundary
     if (!norm[i] || norm[i].length < 2 || norm[i] !== norm[i + 1]) continue
     if (DISFLUENCY_FILLERS.has(norm[i])) continue
     // A capitalized token repeated is likely a proper noun / intentional
@@ -330,8 +345,8 @@ export function buildSpeechAnalysis(
     evidenceCodes: c.evidenceCodes, evidence: c.evidence, ruleVersion: SPEECH_RULE_VERSION,
   }))
 
-  const fullWords = words.map(({ id, text, normalizedText, startMs, endMs, confidence, sentenceEnd, sentenceId }) =>
-    ({ id, text, normalizedText, startMs, endMs, confidence, sentenceEnd, sentenceId }))
+  const fullWords = words.map(({ id, text, normalizedText, startMs, endMs, confidence, endsUnit, unitId }) =>
+    ({ id, text, normalizedText, startMs, endMs, confidence, endsUnit, unitId }))
   const provenance = {
     asrEngine: 'faster-whisper',
     asrModel: opts.asrModel,
@@ -354,7 +369,7 @@ export function buildSpeechAnalysis(
     languageConfidence: Math.max(0, Math.min(1, Number(bridge.language_probability) || 0)),
     durationMs,
     transcript: bridge.text,
-    sentences, vadSegments, energy, candidates, provenance,
+    boundaries, vadSegments, energy, candidates, provenance,
   }
 
   // DB payload safety. The component is bounded by construction (energy is
@@ -368,12 +383,15 @@ export function buildSpeechAnalysis(
   const BUDGET = 1_000_000
   let result: Record<string, unknown> = { ...base, words: fullWords, compact: false }
   if (Buffer.byteLength(JSON.stringify(result), 'utf8') > BUDGET) {
-    // Compact: keep only NON-derivable per-word data. normalizedText,
-    // sentenceId AND sentenceEnd are all reconstructable from `sentences`
-    // (which is retained in full). No word, candidate or timing is dropped.
+    // Compact: keep only NON-derivable per-word data. normalizedText, unitId
+    // AND endsUnit are all reconstructable from `boundaries` (retained in
+    // full). No word, candidate or timing is dropped.
     const leanWords = words.map(({ id, text, startMs, endMs, confidence }) =>
       ({ id, text, startMs, endMs, confidence }))
-    result = { ...base, words: leanWords, compact: true }
+    // Boundary `text` is derivable from startWordId..endWordId over `words`;
+    // drop it too under compaction (kind/evidence/ids/timings all kept).
+    const leanBoundaries = boundaries.map(({ text, ...b }) => b)
+    result = { ...base, words: leanWords, boundaries: leanBoundaries, compact: true }
   }
   const bytes = Buffer.byteLength(JSON.stringify(result), 'utf8')
   if (bytes > BUDGET) {

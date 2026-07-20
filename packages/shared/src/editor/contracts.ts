@@ -225,21 +225,34 @@ export interface SpeechWord {
   confidence: number      // ASR word probability, 0..1 (3 decimals)
   // Derivable fields, present on normal components and OMITTED when the
   // component is `compact` (see SpeechAnalysis.compact) — all reconstructable
-  // from `sentences`: sentenceEnd = this word is a sentence's lastWordId;
-  // sentenceId = the sentence whose span contains it; normalizedText =
-  // lowercased + punctuation-stripped `text`.
-  sentenceEnd?: boolean
+  // from `boundaries`: endsUnit = this word is a boundary's endWordId; unitId =
+  // the boundary whose span contains it; normalizedText = lowercased +
+  // punctuation-stripped `text`.
+  endsUnit?: boolean
   normalizedText?: string
-  sentenceId?: string
+  unitId?: string
 }
 
-export interface SpeechSentence {
-  id: string        // deterministic: 's' + zero-based index
+// A SPEECH UNIT boundary. Deliberately NOT always a "sentence": an ASR segment
+// can end mid-sentence, merge sentences, or shift with model parameters, so the
+// `kind` records HOW the boundary was determined and only `punctuation_sentence`
+// asserts a (punctuation-supported) grammatical sentence. Downstream (the AI
+// Director, hook selection, cut safety) must consult `kind` before treating a
+// boundary as a complete sentence.
+export type SpeechBoundaryKind =
+  | 'punctuation_sentence'  // closed by terminal punctuation (a real sentence)
+  | 'asr_segment'           // closed at a Faster-Whisper segment edge (decoding unit)
+  | 'pause_utterance'       // closed by a long inter-word pause (no segment/punctuation)
+
+export interface SpeechBoundary {
+  id: string        // deterministic: 'u' + zero-based index
+  kind: SpeechBoundaryKind
+  startWordId: string
+  endWordId: string
   startMs: number
   endMs: number
-  firstWordId: string
-  lastWordId: string
-  text: string
+  text?: string       // derivable from startWordId..endWordId; omitted when compact
+  evidence: string[]  // stable codes: terminal_punctuation | asr_segment_end | pause_gap
 }
 
 export type SpeechCandidateKind = 'silence' | 'filler' | 'false_start' | 'repetition'
@@ -275,7 +288,10 @@ export interface SpeechAnalysis {
 
   transcript: string          // full text of the actual recording
   words: SpeechWord[]
-  sentences: SpeechSentence[]
+  // Speech-unit boundaries (see SpeechBoundary). Only punctuation_sentence
+  // boundaries assert grammatical sentences; asr_segment / pause_utterance are
+  // decoding/pause units, honestly labelled.
+  boundaries: SpeechBoundary[]
 
   // True when derivable per-word fields (normalizedText/sentenceId) were
   // dropped to keep a very long, dense source within the DB payload limit.

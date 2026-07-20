@@ -68,7 +68,7 @@ describe('speech word contract', () => {
       expect(w.confidence).toBeLessThanOrEqual(1)
       expect(w.startMs).toBeGreaterThanOrEqual(0)
       expect(w.endMs).toBeLessThanOrEqual(a.durationMs)   // no word outside source
-      expect(w.sentenceId).toMatch(/^s\d+$/)
+      expect(w.unitId).toMatch(/^u\d+$/)
     }
     expect(a.words[3].normalizedText).toBe('um')   // 'Um,' → 'um'
     // monotonic non-decreasing starts
@@ -85,20 +85,22 @@ describe('speech word contract', () => {
     expect(a.words[15].endMs).toBe(a.durationMs)
   })
 
-  it('derives sentences and flags terminal words', async () => {
+  it('punctuation-supported boundaries are punctuation_sentence', async () => {
     const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
     const a = buildSpeechAnalysis(asset, fixtureBridge(), opts) as Record<string, any>
-    expect(a.sentences.map((s: any) => s.text)).toEqual([
+    expect(a.boundaries.map((b: any) => b.text)).toEqual([
       'The quick fox.',
       'Um, I want, I want to tell you about pineapples.',
       'Bananas are wonderful.',
     ])
-    expect(a.words.filter((w: any) => w.sentenceEnd).map((w: any) => w.id)).toEqual(['w2', 'w12', 'w15'])
-    expect(a.words[0].sentenceId).toBe('s0')
-    expect(a.words[3].sentenceId).toBe('s1')
+    expect(a.boundaries.every((b: any) => b.kind === 'punctuation_sentence')).toBe(true)
+    expect(a.boundaries.every((b: any) => b.evidence.includes('terminal_punctuation'))).toBe(true)
+    expect(a.words.filter((w: any) => w.endsUnit).map((w: any) => w.id)).toEqual(['w2', 'w12', 'w15'])
+    expect(a.words[0].unitId).toBe('u0')
+    expect(a.words[3].unitId).toBe('u1')
   })
 
-  it('derives sentence boundaries from ASR segments when punctuation is absent', async () => {
+  it('punctuation-free segment boundaries are labeled asr_segment, NOT sentence', async () => {
     const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
     const br = {
       language: 'en', language_probability: 0.9, duration_sec: 6,
@@ -107,20 +109,45 @@ describe('speech word contract', () => {
         { w: 'the', start: 0.2, end: 0.4, p: 0.9 },
         { w: 'quick', start: 0.4, end: 0.7, p: 0.9 },
         { w: 'fox', start: 0.7, end: 1.0, p: 0.9 },
+        { w: 'bananas', start: 1.2, end: 1.6, p: 0.9 },  // <600ms gap → same unit but a segment edge splits
+        { w: 'are', start: 1.6, end: 1.8, p: 0.9 },
+        { w: 'good', start: 1.8, end: 2.2, p: 0.9 },
+      ],
+      segments: [
+        { start: 0.2, end: 1.0, text: 'the quick fox' },
+        { start: 1.2, end: 2.2, text: 'bananas are good' },
+      ],
+      vad_segments: [{ start: 0.2, end: 2.2 }],
+      energy: { window_ms: 200, rms: Array.from({ length: 30 }, () => 0.2) },
+    }
+    const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
+    expect(a.boundaries.map((b: any) => b.text)).toEqual(['the quick fox', 'bananas are good'])
+    expect(a.boundaries[0].kind).toBe('asr_segment')
+    expect(a.boundaries[0].evidence).toContain('asr_segment_end')
+    expect(a.boundaries.some((b: any) => b.kind === 'punctuation_sentence')).toBe(false)
+  })
+
+  it('a long pause with no segment/punctuation is a pause_utterance', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = {
+      language: 'en', language_probability: 0.9, duration_sec: 6,
+      text: 'the quick fox bananas are good',
+      words: [
+        { w: 'the', start: 0.2, end: 0.4, p: 0.9 },
+        { w: 'quick', start: 0.4, end: 0.7, p: 0.9 },
+        { w: 'fox', start: 0.7, end: 1.0, p: 0.9 },   // 1.0 → 3.0 = 2000ms pause, no segment here
         { w: 'bananas', start: 3.0, end: 3.4, p: 0.9 },
         { w: 'are', start: 3.4, end: 3.6, p: 0.9 },
         { w: 'good', start: 3.6, end: 4.0, p: 0.9 },
       ],
-      segments: [
-        { start: 0.2, end: 1.0, text: 'the quick fox' },
-        { start: 3.0, end: 4.0, text: 'bananas are good' },
-      ],
-      vad_segments: [{ start: 0.2, end: 1.0 }, { start: 3.0, end: 4.0 }],
+      segments: [],  // no ASR segments at all
+      vad_segments: [{ start: 0.2, end: 4.0 }],
       energy: { window_ms: 200, rms: Array.from({ length: 30 }, () => 0.2) },
     }
     const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
-    expect(a.sentences.map((s: any) => s.text)).toEqual(['the quick fox', 'bananas are good'])
-    expect(a.words[2].sentenceEnd).toBe(true) // 'fox' closes the first segment
+    expect(a.boundaries[0].kind).toBe('pause_utterance')
+    expect(a.boundaries[0].evidence).toContain('pause_gap')
+    expect(a.boundaries.every((b: any) => b.kind !== 'punctuation_sentence')).toBe(true)
   })
 })
 
@@ -309,7 +336,7 @@ describe('speech energy + payload safety', () => {
     br.words = []; br.segments = []; br.text = ''; br.vad_segments = []
     const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
     expect(a.words).toEqual([])
-    expect(a.sentences).toEqual([])
+    expect(a.boundaries).toEqual([])
     expect(a.candidates).toEqual([])
   })
 

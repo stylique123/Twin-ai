@@ -1,0 +1,95 @@
+{
+  "_comment": "Phase 5 human-speech evaluation manifest. Point SPEECH_EVAL_MANIFEST at a real copy of this. Every clip MUST be a legally-usable recording with explicit consent and documented provenance (see README.md). `audio` paths are resolved relative to this file. Omit `thresholds` for a BASELINE run; add them only after a baseline is recorded honestly.",
+  "provenance": {
+    "consent": "describe how consent was obtained for every speaker",
+    "license": "e.g. internal consented recordings / CC0 / CC BY 4.0 (with attribution)",
+    "retention": "where the audio lives, who may access it, and the deletion policy"
+  },
+  "thresholds": null,
+  "clips": [
+    {
+      "id": "clean-natural",
+      "category": "clean_natural_speech",
+      "audio": "clips/clean-natural.wav",
+      "referenceTranscript": "the exact words the speaker said, transcribed by a human",
+      "expected": { "offScriptWords": [], "fillers": [], "falseStarts": [], "repetitions": [], "silences": [] }
+    },
+    {
+      "id": "um-uh",
+      "category": "um_uh_in_real_words",
+      "audio": "clips/um-uh.wav",
+      "referenceTranscript": "so um I was going to uh talk about the launch",
+      "expected": { "fillers": [{ "approxMs": 400 }, { "approxMs": 2100 }] }
+    },
+    {
+      "id": "meaningful-like",
+      "category": "meaningful_like",
+      "audio": "clips/meaningful-like.wav",
+      "referenceTranscript": "it looks like a real camera",
+      "expected": { "fillers": [] }
+    },
+    {
+      "id": "meaningful-well-so",
+      "category": "meaningful_well_or_so",
+      "audio": "clips/meaningful-well-so.wav",
+      "referenceTranscript": "well the results were so good that we shipped",
+      "expected": { "fillers": [] }
+    },
+    {
+      "id": "false-start-correction",
+      "category": "false_start_then_correction",
+      "audio": "clips/false-start.wav",
+      "referenceTranscript": "we should we need to rewrite the intro",
+      "expected": { "falseStarts": [{ "approxMs": 300 }] }
+    },
+    {
+      "id": "rhetorical-repetition",
+      "category": "intentional_rhetorical_repetition",
+      "audio": "clips/rhetorical.wav",
+      "referenceTranscript": "this is very very important",
+      "expected": { "repetitions": [{ "approxMs": 700 }] }
+    },
+    {
+      "id": "accidental-repeat",
+      "category": "accidental_repeated_phrase",
+      "audio": "clips/accidental-repeat.wav",
+      "referenceTranscript": "and then and then we upload it",
+      "expected": { "falseStarts": [{ "approxMs": 300 }] }
+    },
+    {
+      "id": "dead-air",
+      "category": "long_dead_air",
+      "audio": "clips/dead-air.wav",
+      "referenceTranscript": "let me think about that",
+      "expected": { "silences": [{ "approxMs": 3000, "class": "dead_air" }] }
+    },
+    {
+      "id": "emphasis-pause",
+      "category": "short_emphasis_pause",
+      "audio": "clips/emphasis-pause.wav",
+      "referenceTranscript": "and the answer is no",
+      "expected": { "silences": [] }
+    },
+    {
+      "id": "off-script-addition",
+      "category": "off_script_addition",
+      "audio": "clips/off-script.wav",
+      "referenceTranscript": "the plan is simple honestly it is dead simple",
+      "expected": { "offScriptWords": ["honestly"] }
+    },
+    {
+      "id": "background-noise",
+      "category": "moderate_background_noise",
+      "audio": "clips/noise.wav",
+      "referenceTranscript": "recording this from a busy cafe",
+      "expected": {}
+    },
+    {
+      "id": "accent-variation",
+      "category": "accent_variation",
+      "audio": "clips/accent.wav",
+      "referenceTranscript": "a speaker with a non default accent reading naturally",
+      "expected": {}
+    }
+  ]
+}

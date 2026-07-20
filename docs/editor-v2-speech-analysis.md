@@ -16,9 +16,10 @@ Related: `editor-v2-media-inspection.md` (Phase 4), `editor-v2-worker-orchestrat
 
 `SpeechAnalysis` (packages/shared/src/editor/contracts.ts, schema version 1):
 
-* **Integer milliseconds everywhere.** Words, sentences, VAD segments and
+* **Integer milliseconds everywhere.** Words, boundaries, VAD segments and
   candidates carry `startMs`/`endMs`; no float seconds are persisted.
-* **Deterministic, stable ids.** `w<i>` / `s<i>` / `c<i>` in spoken order.
+* **Deterministic, stable ids.** `w<i>` (words) / `u<i>` (boundaries) / `c<i>`
+  (candidates) in spoken order.
   Greedy decoding (beam 1, temperature 0, `condition_on_previous_text=False`)
   over fixed (model, bytes) is deterministic, so one
   `(source bytes, speechVersion)` pair always reproduces the same ids —
@@ -103,11 +104,30 @@ logs).
 Each word: stable id (`w<i>`, spoken order), original `text` (verbatim ASR),
 integer `startMs`/`endMs` (clamped so `endMs >= startMs` and every word stays
 inside `durationMs` — Whisper's occasional end-overrun is clamped, never
-dropped), `confidence` (0..1), `sentenceEnd`, `sentenceId`, and `normalizedText`.
+dropped), `confidence` (0..1), `endsUnit`, `unitId`, and `normalizedText`.
 Starts are monotonic non-decreasing. Ids are deterministic for a given
 `(source bytes, speechVersion)`. In a `compact` component (see Payload) the
-derivable fields (`normalizedText`, `sentenceId`, `sentenceEnd`) are omitted —
-all reconstructable from `sentences`.
+derivable fields (`normalizedText`, `unitId`, `endsUnit`) are omitted —
+all reconstructable from `boundaries`.
+
+## Speech-unit boundaries (NOT blindly "sentences")
+
+`boundaries: SpeechBoundary[]` — each `{ id, kind, startWordId, endWordId,
+startMs, endMs, text, evidence }`. An ASR segment is **not** guaranteed to be a
+grammatical sentence (it can end mid-sentence, merge sentences, or shift with
+model parameters), so every boundary records HOW it was determined:
+
+* `punctuation_sentence` — closed by terminal punctuation; the only kind that
+  asserts a real sentence (evidence `terminal_punctuation`).
+* `asr_segment` — closed at a Faster-Whisper segment edge, a decoding unit
+  (evidence `asr_segment_end`).
+* `pause_utterance` — closed by a long inter-word pause with no segment or
+  punctuation (evidence `pause_gap`).
+
+The future AI Director / hook selection / cut safety MUST consult `kind` before
+treating a boundary as a complete sentence — arbitrary ASR segmentation is
+never asserted as grammatical completeness. `boundary.text` is derivable from
+`startWordId..endWordId` and is omitted in `compact` components.
 
 ## Candidate contract
 
@@ -145,8 +165,8 @@ A repeated bigram (A B … A B) separated by a ≥150 ms pause or a comma is a
 `false_start`; otherwise `repetition`. Immediate identical words are
 `repetition` (`stutter` code for short tokens). A capitalized repeat is treated
 as a proper noun / intentional emphasis — kept but LOW (`proper_noun`) so it is
-never treated as removable. Repeats spanning a sentence boundary (separate
-sentences sharing a word) produce no candidate.
+never treated as removable. Repeats spanning a unit boundary (separate
+units sharing a word) produce no candidate.
 
 ## Payload
 
@@ -221,7 +241,7 @@ espeak-synthesized real speech fixture (known script + 1.5 s gaps + an
 off-script sentence):
 
 * S — real transcription end-to-end: scripted-word recall, off-script words
-  retained, integer-ms words with probabilities, sentences, VAD, energy,
+  retained, integer-ms words with probabilities, boundaries, VAD, energy,
   gap/filler/stumble candidates, telemetry events, epoch not clobbered
 * C — analyze-once cache hit (no second ASR)
 * V — version bump → second immutable row; UPDATE/DELETE rejected
@@ -236,6 +256,19 @@ off-script sentence):
 
 Phases 1–4 matrices rerun unchanged except their boundary checks, which now
 admit the sanctioned `speech` component (phase3 K1, phase4 K1/K2).
+
+## Human-speech evaluation (quality, not just plumbing)
+
+The staging matrix uses a deterministic `espeak` fixture to prove pipeline
+behaviour; it cannot prove transcription QUALITY on real recordings. A separate
+offline harness (`scripts/speech-eval/`) runs the real pipeline over a set of
+legally-usable, consented human recordings (12 categories: clean, um/uh,
+meaningful like/well/so, false start + correction, rhetorical vs accidental
+repetition, dead air, emphasis pause, off-script addition, background noise,
+accent) and reports WER, missing/invented words, off-script retention,
+filler/false-start/repetition candidate precision, silence-classification
+agreement, and low-confidence behaviour. Baseline first (honest numbers), then
+beta thresholds. See `scripts/speech-eval/README.md`.
 
 ## Carried forward to Phase 6+
 

@@ -311,8 +311,15 @@ async function main() {
     check('S7 off-script words the speaker ADDED are retained (not teleprompter-filtered)',
       OFFSCRIPT_WORDS.some((w) => heard.has(w)), `heard=${[...heard].join(' ')}`)
 
-    check('S8 sentence boundaries derived (>=2 sentences with word spans)',
-      (r.sentences ?? []).length >= 2 && r.sentences.every((s) => s.firstWordId && s.lastWordId && Number.isInteger(s.startMs)))
+    const bounds = r.boundaries ?? []
+    const KINDS = ['punctuation_sentence', 'asr_segment', 'pause_utterance']
+    check('S8 speech-unit boundaries derived (>=2), each honestly typed with word spans + evidence',
+      bounds.length >= 2
+      && bounds.every((b) => KINDS.includes(b.kind) && b.startWordId && b.endWordId
+        && Number.isInteger(b.startMs) && Array.isArray(b.evidence) && b.evidence.length > 0),
+      JSON.stringify(bounds.map((b) => ({ kind: b.kind, ev: b.evidence }))))
+    check('S8b no boundary is labeled punctuation_sentence without terminal_punctuation evidence',
+      bounds.every((b) => b.kind !== 'punctuation_sentence' || b.evidence.includes('terminal_punctuation')))
     check('S9 VAD evidence: multiple speech regions on the source timeline',
       (r.vadSegments ?? []).length >= 2 && r.vadSegments.every((v) => Number.isInteger(v.startMs) && v.endMs > v.startMs))
     check('S10 bounded energy curve present',

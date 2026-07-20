@@ -80,6 +80,13 @@ jobs:
             -d "{\"email\":\"${{ inputs.probe_email }}\",\"password\":\"${{ inputs.probe_password }}\"}" | jq -r .access_token)
           [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
           echo "::add-mask::$TOKEN"
+          # Export creds so the ALWAYS-run cleanup step can delete the object
+          # even if a later assertion in this step fails. (TOKEN is masked.)
+          {
+            echo "PROBE_BASE=$BASE"
+            echo "PROBE_ANON=$ANON"
+            echo "PROBE_TOKEN=$TOKEN"
+          } >> "$GITHUB_ENV"
 
           ATTEMPT=$(uuidgen)
           CREATE=$(curl -sS -X POST "$BASE/functions/v1/source-asset" \
@@ -92,6 +99,7 @@ jobs:
           fi
           echo "::add-mask::$SIGNED"
           echo "asset=$ASSET"
+          echo "PROBE_ASSET=$ASSET" >> "$GITHUB_ENV"
 
           PUT=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "$SIGNED" \
             -H 'x-upsert: true' -H 'content-type: video/webm' --data-binary @/tmp/probe.webm)
@@ -144,22 +152,31 @@ jobs:
           [ "$PTR" = "$ASSET" ] || { echo "GENERATION POINTER NOT LINKED (got $PTR)"; exit 1; }
           echo "generation pointer linked — metadata merge preserved all finalization + probe facts — PASS"
 
-          # GUARANTEED SUPPORTED-API CLEANUP. Delete the object THROUGH the
-          # Storage API with the probe user's OWN session (RLS allows owners to
-          # delete their own objects) — this removes the metadata row AND the
-          # backend blob together, while the row still exists. Never delete
-          # storage.objects rows by SQL: that strips the row's version pointer
-          # and orphans the backend blob. Verify the object is gone afterwards.
-          OBJPATH=$(echo "$ROW" | jq -r .storage_path)
-          [ -n "$OBJPATH" ] && [ "$OBJPATH" != "null" ] || { echo "no storage_path to clean up"; exit 1; }
+      # GUARANTEED SUPPORTED-API CLEANUP — runs even if the chain above failed
+      # (if: always()), so a partial run never leaves an orphaned probe object.
+      # Deletes THROUGH the Storage API with the probe user's OWN session (RLS
+      # allows owners to delete their own objects), which removes the metadata
+      # row AND the backend blob together while the row still exists. Never
+      # delete storage.objects rows by SQL: that strips the row's version
+      # pointer and orphans the backend blob.
+      - name: Cleanup the probe object via the Storage API (always)
+        if: always()
+        run: |
+          set -uo pipefail
+          [ -n "${PROBE_ASSET:-}" ] || { echo "no probe asset created — nothing to clean"; exit 0; }
+          OBJPATH=$(curl -sS "$PROBE_BASE/rest/v1/media_assets?id=eq.$PROBE_ASSET&select=storage_path" \
+            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" | jq -r '.[0].storage_path // empty')
+          if [ -z "$OBJPATH" ]; then echo "no storage_path (asset row absent) — nothing to clean"; exit 0; fi
           PATH_ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$OBJPATH")
           DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-            "$BASE/storage/v1/object/takes/$PATH_ENC" \
-            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN")
+            "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
+            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN")
           echo "cleanup delete status=$DEL"
-          [ "$DEL" = "200" ] || { echo "SUPPORTED-API CLEANUP FAILED: $DEL"; exit 1; }
           GONE=$(curl -sS -o /dev/null -w '%{http_code}' \
-            "$BASE/storage/v1/object/takes/$PATH_ENC" \
-            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN")
+            "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
+            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN")
           echo "post-cleanup object fetch status=$GONE (expect 400/404)"
-          case "$GONE" in 400|404) echo "object cleaned via supported API — no orphan left" ;; *) echo "OBJECT STILL PRESENT AFTER DELETE ($GONE)"; exit 1 ;; esac
+          case "$GONE" in
+            400|404) echo "object cleaned via supported API — no orphan left" ;;
+            *) echo "::error::OBJECT STILL PRESENT AFTER DELETE ($GONE) — recoverable probe object $OBJPATH left for operator; do NOT SQL-delete its row"; exit 1 ;;
+          esac
