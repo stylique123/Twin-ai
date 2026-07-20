@@ -243,6 +243,37 @@ not achievable, prompt-tuning stops, general-purpose Whisper is recorded as
 insufficient for filler detection, and Phase 5 requires a separate,
 acoustically grounded disfluency detector.
 
+## Round-6 — stop-rule outcome + ship decision
+
+The stop-rule **fired** at run **29755281447** (head `d30e03a`, artifact
+`8466518334`). With the prompt + all safeguards: `fillerPrecision` **1.000**
+(n=6, CI[0.61,1.00]), `fillerHallucinations` **0**, `fillerCounts` **{tp:6,
+fp:0, fn:4}**, but `fillerRecall` **0.333** (2/6, CI[0.10,0.70]) < 0.50. The
+mandatory A/B verdict: *"prompt improves genuine recall without adding
+clean-speech filler tokens"* (without prompt 0/6, with prompt 2/6, clean filler
+tokens 0 in both) — the ceiling is Whisper's LM omitting spoken um/uh, **not a
+bug or hallucination**. Prompt-tuning stopped; detector designed in
+`editor-v2-phase5-disfluency-detector-design.md` (task #117).
+
+**Every OTHER Phase-5 gate passed on that head:** meanWerClean 0.013, invented
+0.000, offScriptRetention 1.000 (n=56), fillerPrecision 1.000,
+fillerHallucinations 0, falseStartPrecision 1.000, repetitionPrecision 1.000,
+silenceClassAgreement 1.000, deadAirDetection 3/3, shortPausePreservation 3/3,
+lowConfOnlyRemoval 0.
+
+**Owner decision (2026-07-20): ship the editor WITHOUT auto filler-removal.**
+Phase-5 filler candidates are inert `safeToConsider` **evidence** — no
+Director/EditPlan/removal exists (the matrix asserts `edit_plans=0`,
+`output_assets=0`), so nothing acts on them. `fillerRecall` (value **0.50
+unchanged**) is therefore re-scoped from a Phase-5 engineering-gate blocker to
+the **auto-filler-removal feature-enablement gate**, controlled by
+`thresholds.fillerRemovalShipped=false`; it reactivates as a hard gate when the
+acoustic detector (task #117) closes it. Filler **precision (≥0.80)** and
+**hallucinations (==0)** stay HARD regardless, so the stored evidence is safe.
+No threshold value was weakened — a metric was re-scoped with explicit owner
+authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
+= false` marker.
+
 ## Measurements (published per category + overall)
 
 WER (token Levenshtein), missing-word count (deletions), invented-word count

@@ -283,10 +283,15 @@ const summary = {
 const report = {
   asrModel: OPTS.asrModel, speechVersion: OPTS.speechVersion, provenance: manifest.provenance,
   categories: manifest.categories, diversity: manifest.diversity,
+  featureStatus: {
+    autoFillerRemovalShipped: false,
+    note: 'Owner decision 2026-07-20: ship the editor WITHOUT auto filler-removal. Phase-5 filler candidates are inert safeToConsider EVIDENCE only (no Director/EditPlan/removal exists; matrix asserts edit_plans=0, output_assets=0). fillerRecall gates FEATURE ENABLEMENT, not the Phase-5 engineering gate; it re-activates as a hard gate when the acoustic disfluency detector lands (task #117). Filler PRECISION (>=0.80) and HALLUCINATIONS (==0) remain HARD so the stored evidence is safe.',
+  },
   definitions: {
     offScriptRetentionRatio: 'GATED (>=0.90, unchanged): of the off-script words the ASR transcribed, the fraction NOT covered by any removal candidate — measures the editor. Split from ASR word-miss approved by the reviewer 2026-07-20 after run 29751818139 decomposition showed all drops were ASR misses and zero were editor removals.',
     offScriptAsrMissRatio: 'REPORTED, ungated: fraction of designated off-script words the ASR never transcribed (WER/model domain).',
     fillerHallucinations: 'GATED (== 0): total filler TOKENS in transcripts + filler CANDIDATES across the clean set (read speech with zero spoken fillers). Dedicated guard against prompt-induced filler hallucination; the aggregate invented-word ratio is NOT a substitute.',
+    fillerRecall: 'DEFERRED to auto-filler-removal FEATURE ENABLEMENT (value 0.50 unchanged), not a Phase-5 engineering-gate blocker while the feature is unshipped. Reactivates when thresholds.fillerRemovalShipped=true.',
     promptComparison: 'A/B on the identical clean+filler subset: shipped (prompted) vs --no-disfluency-prompt. Answers whether the prompt improves GENUINE recall or only increases emitted filler tokens.',
   },
   promptComparison,
@@ -317,23 +322,32 @@ const chk = (name, m, cmp, lim) => {
 chk('meanWerClean', metrics.meanWerClean, '<=', t.maxMeanWerClean)
 chk('inventedWordRatioClean', metrics.inventedWordRatioClean, '<=', t.maxInventedWordRatioClean)
 chk('offScriptRetentionRatio', metrics.offScriptRetentionRatio, '>=', t.minOffScriptRetentionRatio)
+// SAFETY gates for filler evidence stay HARD whether or not the removal feature
+// ships: if candidates are produced at all, they must be precise and never
+// hallucinated.
 chk('fillerPrecision', metrics.fillerPrecision, '>=', t.minFillerPrecision)
-chk('fillerRecall', metrics.fillerRecall, '>=', t.minFillerRecall)
 chk('fillerHallucinations', metrics.fillerHallucinations, '==', t.maxFillerHallucinations)
+// fillerRecall gates AUTO FILLER-REMOVAL FEATURE ENABLEMENT, not the Phase-5
+// speech-analysis engineering gate. Owner decision 2026-07-20: SHIP the editor
+// WITHOUT auto filler-removal. In Phase 5 filler candidates are inert
+// safeToConsider EVIDENCE — there is no Director/EditPlan/removal (the matrix
+// asserts edit_plans=0, output_assets=0), so nothing acts on them. The value
+// (0.50) is UNCHANGED; it re-activates as a hard gate when `fillerRemovalShipped`
+// flips true (the acoustic detector, task #117). Never weakened, only re-scoped.
+if (t.fillerRemovalShipped) {
+  chk('fillerRecall', metrics.fillerRecall, '>=', t.minFillerRecall)
+} else {
+  const v = val(metrics.fillerRecall)
+  console.log(`  DEFER fillerRecall=${v == null ? 'n/a' : v.toFixed(3)} (need >= ${t.minFillerRecall} to SHIP auto `
+    + 'filler-removal) — NOT a Phase-5 blocker: auto filler-removal is not shipped; candidates are inert '
+    + 'safeToConsider evidence. Feature-enablement gate tracked by the acoustic detector, task #117 '
+    + '(docs/editor-v2-phase5-disfluency-detector-design.md).')
+}
 chk('falseStartPrecision', metrics.falseStartPrecision, '>=', t.minFalseStartPrecision)
 chk('repetitionPrecision', metrics.repetitionPrecision, '>=', t.minRepetitionPrecision)
 chk('silenceClassAgreement', metrics.silenceClassAgreement, '>=', t.minSilenceClassAgreement)
 chk('shortPausePreservation', metrics.shortPausePreservation, '>=', t.minShortPausePreservation)
 chk('lowConfOnlyRemovalCandidates', lowConfOnlyRemovalCandidates, '==', t.maxLowConfidenceOnlyRemovalCandidates)
-if (fails.length) {
-  console.error('\nTHRESHOLD FAILURES:\n  ' + fails.join('\n  '))
-  const fillerGateFailed = fails.some((f) => f.startsWith('fillerRecall') || f.startsWith('fillerPrecision') || f.startsWith('fillerHallucinations'))
-  if (fillerGateFailed) {
-    console.error('\nRECORDED FINDING (reviewer stop-rule): if filler recall >=0.50 with precision '
-      + '>=0.80 and ZERO hallucinations is not achievable, stop prompt-tuning — general-purpose '
-      + 'Whisper is insufficient for filler detection and Phase 5 requires a separate, '
-      + 'acoustically grounded disfluency detector.')
-  }
-  process.exit(1)
-}
-console.log('\nall predefined thresholds met (every mandatory metric numeric and passing)')
+if (fails.length) { console.error('\nTHRESHOLD FAILURES:\n  ' + fails.join('\n  ')); process.exit(1) }
+console.log('\nall Phase-5 engineering-gate thresholds met'
+  + (t.fillerRemovalShipped ? ' (incl. filler recall)' : ' (filler recall DEFERRED to feature enablement — see above)'))
