@@ -112,10 +112,11 @@ export const env = {
   // speech-2: disfluency emission (bridge suppress_tokens=[]) vs speech-1.
   // speech-3: ASR model base -> small (reviewer-approved). speech-4: VAD-aware
   // candidate rules (speech-rules-2: silence regions from word gaps UNION VAD
-  // gaps; VAD pause evidence for false starts — Whisper word timestamps bridge
-  // real silence) + disfluency-context initial_prompt in the bridge. Each
-  // bridge/model/rules change advances the analyzer-bundle cache identity.
-  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-4').trim(),
+  // gaps; VAD pause evidence for false starts) + disfluency-context prompt.
+  // speech-5: acoustic-evidence filler guard + neighbor-overlap guard + VAD-core
+  // silence-region shrinking (speech-rules-3) — changes candidate output, so the
+  // analyzer-bundle cache identity advances. Each bridge/model/rules change bumps.
+  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-5').trim(),
   // ASR model for the speech component (independent of the caption/reference
   // knob so a caption tweak can never silently change component identity).
   // `small` (was `base`): reviewer-approved production upgrade — base rarely
