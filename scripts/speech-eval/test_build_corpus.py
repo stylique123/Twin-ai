@@ -79,16 +79,22 @@ with tempfile.TemporaryDirectory() as d:
     bc.write_json(os.path.join(d, "provenance.json"), bad["provenance"])
     check("validate catches sha256 mismatch", any("sha256 mismatch" in e for e in bc.validate(d, bad)))
 
-    # missing core category must be caught
+    # validate() re-opens manifest.json + provenance.json FROM DISK (that is the
+    # reopen-and-verify contract), so each mutation case must write BOTH files.
+
+    # restore a good pair, then tamper: sha mismatch already covered above; now
+    # missing core category must be caught.
     empty_core = json.loads(json.dumps(manifest))
     for c in empty_core["categories"]:
         c["count"] = 0
+    bc.write_json(os.path.join(d, "manifest.json"), empty_core)
     bc.write_json(os.path.join(d, "provenance.json"), empty_core["provenance"])
     check("validate catches empty core category", any("core category" in e for e in bc.validate(d, empty_core)))
 
     # zero clips must be caught
     noclips = json.loads(json.dumps(manifest))
     noclips["clips"] = []
+    bc.write_json(os.path.join(d, "manifest.json"), noclips)
     bc.write_json(os.path.join(d, "provenance.json"), noclips["provenance"])
     check("validate catches zero clips", any("zero clips" in e for e in bc.validate(d, noclips)))
 
