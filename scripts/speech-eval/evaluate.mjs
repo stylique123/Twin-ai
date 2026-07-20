@@ -65,19 +65,25 @@ function werStats(ref, hyp) {
   return { refWords: n, hypWords: m, sub, del, ins, wer: n ? (sub + del + ins) / n : 0 }
 }
 
+// SINGLE source of truth for the model under test — the bridge invocation and
+// the report header MUST agree. (Run 29752731049 was invalidated for model
+// attribution because these diverged: the bridge defaulted to base while the
+// report claimed small.)
+const ASR_MODEL = process.env.EDITOR_SPEECH_MODEL || 'small'
+
 async function runBridge(audioAbs) {
   const dir = await mkdtemp(join(tmpdir(), 'speech-eval-'))
   const out = join(dir, 'bridge.json')
   await execFile('python3', [join(REPO, 'worker', 'editor_speech.py'),
     '--audio', audioAbs, '--out', out,
-    '--model', process.env.EDITOR_SPEECH_MODEL || 'base', '--device', process.env.WHISPER_DEVICE || 'cpu',
+    '--model', ASR_MODEL, '--device', process.env.WHISPER_DEVICE || 'cpu',
     '--language', process.env.WHISPER_LANGUAGE || 'en', '--beam-size', '1', '--max-seconds', '1800'],
     { timeout: 1_200_000 })
   return JSON.parse(await readFile(out, 'utf8'))
 }
 
 const OPTS = {
-  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-3', asrModel: process.env.EDITOR_SPEECH_MODEL || 'small',
+  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-3', asrModel: ASR_MODEL,
   asrComputeType: 'int8', device: 'cpu', beamSize: 1, languagePolicy: process.env.WHISPER_LANGUAGE || 'en',
   silenceMinMs: 700, vadMinSilenceMs: 300, vadSpeechPadMs: 100,
 }
