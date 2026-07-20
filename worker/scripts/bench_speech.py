@@ -91,6 +91,10 @@ def main():
     ap.add_argument("--timeout-sec", type=float, default=180.0)
     ap.add_argument("--cancel-after-ms", type=int, default=1500)
     ap.add_argument("--label", default="ci-indicative")
+    ap.add_argument("--limits", default=os.path.join(HERE, "bench_thresholds.json"),
+                    help="predefined capacity limits (pass/fail)")
+    ap.add_argument("--gate", action="store_true",
+                    help="exit non-zero if any predefined limit fails (use on the VPS; omit for indicative CI)")
     args = ap.parse_args()
 
     dur = wav_seconds(args.audio)
@@ -137,11 +141,53 @@ def main():
     report["timeout"] = {"cap_sec": 1.0, "timed_out": to, "killed": rc != 0 or to}
     print(f"  timed_out={to}")
 
+    # ---- pass/fail against PREDEFINED capacity limits -----------------------
+    limits = {}
+    with contextlib.suppress(Exception):
+        with open(args.limits) as fh:
+            limits = json.load(fh)
+    checks = []
+
+    def chk(name, value, ok, limit):
+        checks.append({"name": name, "value": value, "limit": limit, "pass": bool(ok)})
+
+    if limits:
+        chk("processing_ratio_median", report["processing_ratio_median"],
+            report["processing_ratio_median"] is not None and report["processing_ratio_median"] <= limits["maxProcessingRatioMedian"],
+            f"<= {limits['maxProcessingRatioMedian']}")
+        chk("peak_rss_mib", report["peak_rss_mib"],
+            report["peak_rss_mib"] is not None and report["peak_rss_mib"] <= limits["maxPeakRssMib"],
+            f"<= {limits['maxPeakRssMib']}")
+        chk("cancel_exit_sec", report["cancellation"].get("time_to_exit_sec"),
+            report["cancellation"].get("time_to_exit_sec", 1e9) <= limits["maxCancelExitSec"],
+            f"<= {limits['maxCancelExitSec']}")
+        chk("timeout_kills", report["timeout"].get("killed"),
+            (report["timeout"].get("killed") is True) or (not limits.get("timeoutMustKill", True)),
+            "must kill")
+        if report["concurrent"]:
+            chk("concurrent_all_ok", report["concurrent"].get("all_ok"),
+                report["concurrent"].get("all_ok") is True or not limits.get("requireConcurrentAllOk", True),
+                "all rc=0")
+            chk("concurrent_aggregate_ratio", report["concurrent"].get("aggregate_processing_ratio"),
+                report["concurrent"].get("aggregate_processing_ratio", 1e9) <= limits["maxConcurrentAggregateRatio"],
+                f"<= {limits['maxConcurrentAggregateRatio']}")
+        report["gate"] = {"limits": limits, "checks": checks, "allPass": all(c["pass"] for c in checks)}
+
     print("\n=== BENCH REPORT ===")
     print(json.dumps(report, indent=2))
     with open("speech-bench-report.json", "w") as fh:
         json.dump(report, fh, indent=2)
     print("report → speech-bench-report.json")
+
+    if limits:
+        print("\n=== capacity gate ===")
+        for c in checks:
+            print(f"  {'PASS' if c['pass'] else 'FAIL'} {c['name']}={c['value']} (need {c['limit']})")
+        allpass = report["gate"]["allPass"]
+        print(f"CAPACITY GATE: {'PASS' if allpass else 'FAIL'}"
+              + ("" if args.gate else "  (indicative — not enforced; run on the VPS with --gate to enforce)"))
+        if args.gate and not allpass:
+            sys.exit(1)
 
 
 if __name__ == "__main__":

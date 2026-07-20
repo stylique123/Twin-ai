@@ -288,21 +288,37 @@ authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
    same commit (the round-7 commit touches both trigger paths).
 3. **Feature disablement enforced in CODE, not just config.**
    `@twinai/shared` now exports `EDITOR_FEATURES` (`autoFillerRemoval: false`,
-   frozen) and `selectableRemovalCandidates()` — the single mandatory seam any
-   future Director / EditPlan compiler / renderer MUST use to pick removal
-   candidates. It drops every `filler` candidate while the flag is false;
-   silence / false_start / repetition pass. Unit-tested
-   (`packages/shared/src/editor/__tests__/features.test.ts`, 5 tests): a future
-   phase that forgets the guard fails its own tests the moment it tries to act
-   on filler evidence. Flipping the flag is the deliberate enablement step tied
+   frozen) and `selectableRemovalCandidates()` — the **currently approved
+   selection seam** any future Director / EditPlan compiler / renderer MUST use
+   to pick removal candidates. It drops every `filler` candidate while the flag
+   is false; silence / false_start / repetition pass. Unit-tested (5 tests).
+   **This is a convention, not an absolute architectural guarantee** — a future
+   dev could build a removal set without calling it. So when the compiler is
+   introduced it must **independently reject** filler removal while the flag is
+   false, with its own tests (and ideally a type-level exclusion of filler
+   candidates from the compiler input). That is a **mandatory Phase 7/8 merge
+   gate — task #118**. Flipping the flag is the deliberate enablement step tied
    to task #117.
-4. **`small` runtime benchmark before deploy.** `worker/scripts/bench_speech.py`
-   measures processing ratio, peak RSS, timeout, cancellation, and safe
-   concurrency. An **indicative** run executes in CI (x86 GitHub runner — NOT
-   the VPS) and uploads `speech-bench-report.json`. The **authoritative** gate
-   (task #116) is running the same script on the production VPS **before merge**;
-   SSH is owner-side, so the VPS numbers must be produced by the owner and
-   attached to the PASS record.
+4. **`small` runtime benchmark before deploy — with predefined pass/fail.**
+   `worker/scripts/bench_speech.py` measures processing ratio, peak RSS, timeout,
+   cancellation/process-group cleanup, and safe concurrency, and evaluates them
+   against the **predefined capacity limits** in `worker/scripts/bench_thresholds.json`
+   (fixed before the run — no post-hoc tuning). An **indicative** run executes in
+   CI (x86 GitHub runner — NOT the VPS; reports pass/fail but does not enforce)
+   and uploads `speech-bench-report.json`. The **authoritative** gate (task #116)
+   is the owner running it on the production VPS **before merge** and attaching
+   the numbers + verdict:
+
+   ```sh
+   # on the production VPS, with the worker image/deps present:
+   python3 worker/scripts/bench_speech.py \
+     --audio <a-real-16k-mono-speech-clip>.wav --model small \
+     --runs 3 --concurrency 2 --gate --label vps
+   # --gate exits non-zero on any capacity FAIL; attach speech-bench-report.json
+   ```
+
+   Phase 5 is NOT approved on the indicative CI benchmark alone — the VPS
+   `--gate` run must PASS.
 
 ### Precise meaning of a Phase-5 PASS (per the owner)
 

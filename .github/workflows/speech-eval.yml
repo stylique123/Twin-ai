@@ -29,6 +29,8 @@ on:
       - '.github/workflows/speech-eval.yml'
       - 'worker/editor_speech.py'
       - 'worker/src/jobs/editorSpeech.ts'
+      - 'worker/scripts/bench_speech.py'
+      - 'worker/scripts/bench_thresholds.json'
 
 concurrency:
   group: speech-eval

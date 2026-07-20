@@ -1,0 +1,17 @@
+{
+  "_comment": "PREDEFINED VPS capacity limits for the SHIPPED `small` speech model. Fixed BEFORE the authoritative VPS benchmark — no post-hoc tuning. `bench_speech.py --gate` evaluates the measured report against these and exits non-zero on ANY fail. Rationale sized for a modest production VPS (~2-4 vCPU, ~4-8 GiB, the Hetzner-class box in DEPLOY.md).",
+  "maxProcessingRatioMedian": 5.0,
+  "maxPeakRssMib": 2048,
+  "maxCancelExitSec": 12.0,
+  "timeoutMustKill": true,
+  "safeConcurrency": 2,
+  "maxConcurrentAggregateRatio": 12.0,
+  "requireConcurrentAllOk": true,
+  "_rationale": {
+    "maxProcessingRatioMedian": "small int8 on CPU runs ~1.5-4x realtime; 5.0 keeps a 60s recording under ~5 min and fails a pathologically slow/oversubscribed box.",
+    "maxPeakRssMib": "small int8 resident ~0.6-1.0 GiB; 2 GiB ceiling is safe headroom on a 4 GiB box.",
+    "maxCancelExitSec": "cooperative cancel + process-group kill should exit well under 12s.",
+    "maxConcurrentAggregateRatio": "2 parallel jobs on a shared box should not exceed ~2x a single job's wall time envelope.",
+    "requireConcurrentAllOk": "both concurrent bridges must complete rc=0 (no OOM/starvation)."
+  }
+}
