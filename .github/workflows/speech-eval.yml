@@ -51,7 +51,7 @@ jobs:
       - name: Install the pinned ASR stack + corpus tooling
         run: |
           pip install --quiet -r worker/requirements.txt
-          pip install --quiet 'datasets>=2.19,<4' 'soundfile>=0.12' 'huggingface_hub>=0.25' 'requests>=2.31'
+          pip install --quiet 'datasets>=2.19,<4' 'soundfile>=0.12' 'librosa>=0.10' 'huggingface_hub>=0.25' 'requests>=2.31'
           python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
       - name: Build worker (real bridge + builder)
         run: cd worker && npm ci && npm run build
