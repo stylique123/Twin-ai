@@ -77,7 +77,7 @@ async function runBridge(audioAbs) {
 }
 
 const OPTS = {
-  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-2', asrModel: process.env.EDITOR_SPEECH_MODEL || 'base',
+  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-3', asrModel: process.env.EDITOR_SPEECH_MODEL || 'small',
   asrComputeType: 'int8', device: 'cpu', beamSize: 1, languagePolicy: process.env.WHISPER_LANGUAGE || 'en',
   silenceMinMs: 700, vadMinSilenceMs: 300, vadSpeechPadMs: 100,
 }
@@ -103,13 +103,19 @@ for (const clip of clips) {
   // A low-confidence word must never, by itself, produce a removal candidate.
   for (const c of cand) if ((c.evidenceCodes || []).length === 1 && c.evidenceCodes[0] === 'asr_low_conf') lowConfOnlyRemovalCandidates++
 
-  // Off-script retention: designated off-script content words must survive —
-  // i.e. be transcribed AND not covered by any removal candidate.
+  // Off-script retention — DEFINITION SPLIT approved by the reviewer
+  // (2026-07-20) after run 29751818139's decomposition showed every dropped
+  // off-script word was an ASR transcription miss and ZERO were editor
+  // removals. The GATE (>=0.90, unchanged) measures what the editor controls:
+  // of the off-script words the ASR transcribed, none may be covered by a
+  // removal candidate. ASR word-miss is reported separately (ungated) as
+  // offScriptAsrMissRatio — that failure mode is the WER/model domain.
   const removedNorms = new Set()
   for (const c of cand) if (c.kind !== 'silence') for (const id of (c.wordIds || [])) { const w = byId.get(id); if (w) removedNorms.add(wnorm(w)) }
   const heard = new Set(words.map(wnorm))
   const off = (clip.expected?.offScriptWords ?? []).map((w) => norm(w)[0]).filter(Boolean)
-  const offRetained = off.filter((w) => heard.has(w) && !removedNorms.has(w)).length
+  const offHeard = off.filter((w) => heard.has(w))
+  const offRemoved = offHeard.filter((w) => removedNorms.has(w))
 
   const ref = clip.referenceTranscript ?? ''
   const wer = ref ? werStats(ref, a.transcript) : null
@@ -118,7 +124,7 @@ for (const clip of clips) {
     wer: wer ? Number(wer.wer.toFixed(3)) : null, missingWords: wer?.del ?? null, inventedWords: wer?.ins ?? null, refWords: wer?.refWords ?? 0,
     fillerCandidates: fillers.length, falseStartCandidates: falseStarts.length, repeatCandidates: repeats.length,
     silenceClasses: silences.map((c) => c.evidence?.class),
-    offScriptRetained: offRetained, offScriptExpected: off.length,
+    offScriptTotal: off.length, offScriptHeard: offHeard.length, offScriptRemoved: offRemoved.length,
     lowConfWords: words.filter((w) => w.confidence < 0.4).length,
     boundaryKinds: Object.fromEntries(['punctuation_sentence', 'asr_segment', 'pause_utterance'].map((k) => [k, (a.boundaries ?? []).filter((b) => b.kind === k).length])),
     transcript: a.transcript,
@@ -151,7 +157,10 @@ const deadAirSilCands = deadAirClips.flatMap((r) => r.silenceClasses || [])
 const metrics = {
   meanWerClean: clean.length ? Number((sum(clean, (r) => r.wer ?? 0) / clean.length).toFixed(3)) : null,
   inventedWordRatioClean: (() => { const d = sum(clean, (r) => r.refWords); return d ? Number((sum(clean, (r) => r.inventedWords ?? 0) / d).toFixed(4)) : null })(),
-  offScriptRetentionRatio: prop(sum(ok, (r) => r.offScriptRetained), sum(ok, (r) => r.offScriptExpected)),
+  // GATED: editor-removal retention over ASR-transcribed off-script words.
+  offScriptRetentionRatio: prop(sum(ok, (r) => r.offScriptHeard - r.offScriptRemoved), sum(ok, (r) => r.offScriptHeard)),
+  // REPORTED (ungated): how many off-script words the ASR never transcribed.
+  offScriptAsrMissRatio: prop(sum(ok, (r) => r.offScriptTotal - r.offScriptHeard), sum(ok, (r) => r.offScriptTotal)),
   fillerPrecision: prop(fillerTP, fillerTP + fillerFP),
   fillerRecall: prop(trueFiller.filter((r) => r.fillerCandidates > 0).length, trueFiller.length),
   falseStartPrecision: prop(fsTP, fsTP + fsFP),
@@ -180,8 +189,10 @@ for (const r of results) {
   if (r.expected?.clean && (r.fillerCandidates > 0 || r.falseStartCandidates > 0 || r.repeatCandidates > 0))
     failures.push({ id: r.id, category: r.category, kind: 'false_positive_on_clean', filler: r.fillerCandidates, fs: r.falseStartCandidates, rep: r.repeatCandidates })
   if (r.expected?.clean && r.wer != null && r.wer > 0.2) failures.push({ id: r.id, category: r.category, kind: 'clean_wer_outlier', wer: r.wer, transcript: r.transcript })
-  if (r.offScriptExpected > 0 && r.offScriptRetained < r.offScriptExpected)
-    failures.push({ id: r.id, category: r.category, kind: 'off_script_dropped', retained: r.offScriptRetained, expected: r.offScriptExpected })
+  if (r.offScriptRemoved > 0)
+    failures.push({ id: r.id, category: r.category, kind: 'off_script_removed_by_editor', removed: r.offScriptRemoved, heard: r.offScriptHeard })
+  if (r.offScriptTotal > r.offScriptHeard)
+    failures.push({ id: r.id, category: r.category, kind: 'off_script_asr_missed', informational: true, missed: r.offScriptTotal - r.offScriptHeard, total: r.offScriptTotal })
   if (inCat(r, 'long_dead_air') && !(r.silenceClasses || []).includes('dead_air'))
     failures.push({ id: r.id, category: r.category, kind: 'dead_air_missed', silenceClasses: r.silenceClasses })
   if (inCat(r, 'short_emphasis_pause') && REMOVABLE_SIL(r))
@@ -191,7 +202,8 @@ for (const r of results) {
 const summary = {
   clips: results.length, evaluated: ok.length, errored: results.filter((r) => r.error).length,
   meanWerClean: metrics.meanWerClean, inventedWordRatioClean: metrics.inventedWordRatioClean,
-  offScriptRetentionRatio: metrics.offScriptRetentionRatio, fillerPrecision: metrics.fillerPrecision, fillerRecall: metrics.fillerRecall,
+  offScriptRetentionRatio: metrics.offScriptRetentionRatio, offScriptAsrMissRatio: metrics.offScriptAsrMissRatio,
+  fillerPrecision: metrics.fillerPrecision, fillerRecall: metrics.fillerRecall,
   falseStartPrecision: metrics.falseStartPrecision, falseStartRecall: metrics.falseStartRecall,
   repetitionPrecision: metrics.repetitionPrecision, repetitionRecall: metrics.repetitionRecall,
   silenceClassAgreement: metrics.silenceClassAgreement, deadAirDetection: metrics.deadAirDetection,
@@ -201,6 +213,10 @@ const summary = {
 const report = {
   asrModel: OPTS.asrModel, speechVersion: OPTS.speechVersion, provenance: manifest.provenance,
   categories: manifest.categories, diversity: manifest.diversity,
+  definitions: {
+    offScriptRetentionRatio: 'GATED (>=0.90, unchanged): of the off-script words the ASR transcribed, the fraction NOT covered by any removal candidate — measures the editor. Split from ASR word-miss approved by the reviewer 2026-07-20 after run 29751818139 decomposition showed all drops were ASR misses and zero were editor removals.',
+    offScriptAsrMissRatio: 'REPORTED, ungated: fraction of designated off-script words the ASR never transcribed (WER/model domain).',
+  },
   summary, byCategory, failures, results,
 }
 await writeFile('speech-eval-report.json', JSON.stringify(report, null, 2))

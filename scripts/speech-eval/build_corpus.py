@@ -46,8 +46,14 @@ CORPORA = {
         "license": "cc-by-4.0",
         "attribution": "Panayotov et al., LibriSpeech, ICASSP 2015",
         "source": "https://www.openslr.org/12",
+        # Official OpenSLR mirror hosts for the standalone speaker-metadata file.
+        # If none serves it, gender is HONESTLY reported unknown (never guessed)
+        # and gender/accent diversity falls to the private pre-beta gate, where
+        # consent metadata is collected directly from participants.
         "speakers_txt": ["https://www.openslr.org/resources/12/SPEAKERS.TXT",
-                          "https://raw.githubusercontent.com/CorentinJ/librispeech-metadata/master/SPEAKERS.txt"],
+                          "https://us.openslr.org/resources/12/SPEAKERS.TXT",
+                          "https://openslr.elda.org/resources/12/SPEAKERS.TXT",
+                          "https://openslr.magicdatatech.com/resources/12/SPEAKERS.TXT"],
     },
     "ami": {
         "hf_id": "edinburghcstr/ami",

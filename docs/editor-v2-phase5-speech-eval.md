@@ -139,6 +139,35 @@ applies:
   a 95% Wilson confidence interval; a mandatory metric with denominator 0 is
   reported **NOT EVALUATED and fails** the gate (never counted as "met").
 
+## Round-3 (reviewer decisions after the honest round-2 failure)
+
+Run **29751818139** (head `89bcf11`) was structurally complete — normal builder
+exit with no `os._exit`, 12/12 categories, 40 clips, 0 errored — and **failed
+two gates honestly** (no tuning): `fillerRecall 0.167` (1/6, CI [0.03,0.56]) vs
+≥0.50, and end-to-end `offScriptRetentionRatio 0.825` (52/63, CI [0.71,0.90]) vs
+≥0.90. Recorded as the base-model baseline. Diagnosis: (a) base Whisper rarely
+writes disfluencies at all — `suppress_tokens=[]` was not the binding
+constraint; precision stayed 1.0; (b) decomposition of the 11 dropped off-script
+words showed **all were ASR transcription misses** (0.655 WER in far-field
+noise) and **zero were editor removals**.
+
+Reviewer decisions (2026-07-20), both made **before** the round-3 rerun:
+
+1. **Ship `small` instead of `base`** (`EDITOR_SPEECH_MODEL` default, version
+   `speech-3`; the worker Docker image already prefetches small) and rerun the
+   eval **and** the full Phase 1–5 matrix against the **same unchanged gates**.
+   The Phase-5 staging matrix exercises the shipped default.
+2. **Approved definition split** for off-script retention: the ≥0.90 gate
+   measures **editor-removal retention** (of the off-script words the ASR
+   transcribed, none may be covered by a removal candidate); **ASR word-miss**
+   is reported separately as ungated `offScriptAsrMissRatio` (WER/model
+   domain). Documented in the report's `definitions` block.
+
+Also on record from round 2 (ungated findings): 2 of 3 constructed dead-air
+clips produced no silence candidate (Whisper word timestamps bridged the
+inserted mid-utterance silence); gender metadata mirrors for `SPEAKERS.TXT`
+404'd, so gender remained unknown in that run.
+
 ## Measurements (published per category + overall)
 
 WER (token Levenshtein), missing-word count (deletions), invented-word count

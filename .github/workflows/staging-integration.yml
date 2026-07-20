@@ -59,9 +59,9 @@ jobs:
         # pays a per-run download (mirrors the image's baked model).
         run: |
           pip install --quiet -r worker/requirements.txt
-          # base = Phase-5 quality gate; tiny = the fast model Phase-3/4 use for
-          # their now-real speech stage. Pre-fetch both so no job downloads.
-          python -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('base','tiny')]"
+          # small = the SHIPPED default the Phase-5 matrix exercises (speech-3);
+          # tiny = the fast model Phase-3/4 pin. Pre-fetch both so no job downloads.
+          python -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('small','tiny')]"
 
       - name: Verify the ci-bootstrap gate refuses unauthorized callers
         run: |

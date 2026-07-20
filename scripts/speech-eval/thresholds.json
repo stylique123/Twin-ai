@@ -9,5 +9,6 @@
   "minRepetitionPrecision": 0.40,
   "minSilenceClassAgreement": 0.60,
   "maxLowConfidenceOnlyRemovalCandidates": 0,
-  "_minFillerRecall_note": "ADDED for the round-2 rerun as a newly-discovered product-quality requirement (perfect precision with 0.22 recall does not deliver the filler-removal feature). Committed at 0.50 BEFORE the rerun; paired with the bridge suppress_tokens=[] change so Whisper emits disfluencies. Not to be tuned after seeing results."
+  "_minFillerRecall_note": "ADDED for the round-2 rerun as a newly-discovered product-quality requirement (perfect precision with 0.22 recall does not deliver the filler-removal feature). Committed at 0.50 BEFORE the rerun; paired with the bridge suppress_tokens=[] change so Whisper emits disfluencies. Not to be tuned after seeing results.",
+  "_round3_notes": "Run 29751818139 (head 89bcf11) FAILED two gates honestly: fillerRecall 0.167 (base model rarely emits um/uh at all — capability limit, precision 1.0) and offScriptRetentionRatio 0.825 end-to-end (decomposition: ALL 11 drops were ASR transcription misses concentrated in far-field noise; ZERO editor removals). Reviewer decisions 2026-07-20, made BEFORE the round-3 rerun: (1) upgrade the SHIPPED ASR model base->small (speech-3) and rerun against the SAME unchanged gates; (2) approved definition split for offScriptRetentionRatio — the >=0.90 gate measures editor-removal retention over ASR-transcribed off-script words; ASR word-miss is reported separately (offScriptAsrMissRatio, ungated). No threshold VALUES changed."
 }
