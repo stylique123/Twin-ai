@@ -150,8 +150,23 @@ export function buildSpeechAnalysis(
     if (rawWords[i].endMs < rawWords[i].startMs) rawWords[i].endMs = rawWords[i].startMs
   }
 
-  // Sentences: group up to (and including) each terminal-punctuation word; a
-  // trailing run without terminal punctuation still closes a sentence.
+  // Sentence boundaries: a word closes a sentence if it carries terminal
+  // punctuation OR it is the last word of an ASR segment (Faster-Whisper splits
+  // segments on natural pauses). Using the segment structure makes boundaries
+  // robust when the ASR omits punctuation (common on terse/synthetic speech),
+  // and matches the "segment" unit the contract references.
+  const segEnds = (bridge.segments ?? []).map((s) => toMs(s.end)).filter((e) => e > 0).sort((a, b) => a - b)
+  const endsSegment = (i: number): boolean => {
+    if (i >= rawWords.length - 1) return false
+    const gapStart = rawWords[i].endMs; const gapEnd = rawWords[i + 1].startMs
+    return segEnds.some((e) => e >= gapStart - 50 && e <= gapEnd + 50)
+  }
+  for (let i = 0; i < rawWords.length; i++) {
+    rawWords[i].sentenceEnd = SENTENCE_END_RE.test(rawWords[i].text) || endsSegment(i)
+  }
+
+  // Group up to (and including) each sentence-closing word; a trailing run
+  // without a boundary still closes a sentence.
   const sentences: Array<Record<string, unknown>> = []
   let sStart = 0
   for (let i = 0; i < rawWords.length; i++) {

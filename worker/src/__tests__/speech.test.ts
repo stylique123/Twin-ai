@@ -97,6 +97,31 @@ describe('speech word contract', () => {
     expect(a.words[0].sentenceId).toBe('s0')
     expect(a.words[3].sentenceId).toBe('s1')
   })
+
+  it('derives sentence boundaries from ASR segments when punctuation is absent', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = {
+      language: 'en', language_probability: 0.9, duration_sec: 6,
+      text: 'the quick fox bananas are good',
+      words: [
+        { w: 'the', start: 0.2, end: 0.4, p: 0.9 },
+        { w: 'quick', start: 0.4, end: 0.7, p: 0.9 },
+        { w: 'fox', start: 0.7, end: 1.0, p: 0.9 },
+        { w: 'bananas', start: 3.0, end: 3.4, p: 0.9 },
+        { w: 'are', start: 3.4, end: 3.6, p: 0.9 },
+        { w: 'good', start: 3.6, end: 4.0, p: 0.9 },
+      ],
+      segments: [
+        { start: 0.2, end: 1.0, text: 'the quick fox' },
+        { start: 3.0, end: 4.0, text: 'bananas are good' },
+      ],
+      vad_segments: [{ start: 0.2, end: 1.0 }, { start: 3.0, end: 4.0 }],
+      energy: { window_ms: 200, rms: Array.from({ length: 30 }, () => 0.2) },
+    }
+    const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
+    expect(a.sentences.map((s: any) => s.text)).toEqual(['the quick fox', 'bananas are good'])
+    expect(a.words[2].sentenceEnd).toBe(true) // 'fox' closes the first segment
+  })
 })
 
 describe('speech candidate contract (proposals, never removals)', () => {
