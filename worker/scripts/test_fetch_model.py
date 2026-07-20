@@ -75,7 +75,16 @@ def test_valid_revision_regex():
     print("ok: revision regex is exactly [0-9a-f]{40}")
 
 
-def _fake_manifest(dirpath, files_bytes, revision="a" * 40, bundle="speech-6"):
+REQUIRED = ("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
+
+
+def _all_required_bytes():
+    # Distinct bytes per file so digests differ.
+    return {name: (name + "-bytes").encode() for name in REQUIRED}
+
+
+def _fake_manifest(dirpath, files_bytes=None, revision="a" * 40, bundle="speech-6"):
+    files_bytes = files_bytes if files_bytes is not None else _all_required_bytes()
     files = {name: _write(os.path.join(dirpath, name), data) for name, data in files_bytes.items()}
     man = {"repository": "Systran/faster-whisper-small", "revision": revision,
            "license": "MIT", "analyzerBundle": bundle, "files": files}
@@ -87,42 +96,76 @@ def _fake_manifest(dirpath, files_bytes, revision="a" * 40, bundle="speech-6"):
 
 def test_verified_identity_valid_dir_returns_identity():
     with tempfile.TemporaryDirectory() as d:
-        mp = _fake_manifest(d, {"model.bin": b"weights", "config.json": b"{}"})
+        mp = _fake_manifest(d)   # all 4 required files
         ident = fetch_model.verified_identity(mp, d)
         assert ident["repository"] == "Systran/faster-whisper-small"
         assert ident["revision"] == "a" * 40
         assert ident["analyzer_bundle"] == "speech-6"
         assert len(ident["manifest_sha256"]) == 64
-    print("ok: verified_identity returns identity for a verified dir")
+        assert fetch_model.valid_digest(ident["artifact_sha256"])
+    print("ok: verified_identity returns identity for a fully verified dir")
 
 
-def test_verified_identity_rejects_tampered_bytes():
+def test_verified_identity_rejects_tampered_model_bin():
     with tempfile.TemporaryDirectory() as d:
-        mp = _fake_manifest(d, {"model.bin": b"weights", "config.json": b"{}"})
-        _write(os.path.join(d, "model.bin"), b"TAMPERED")   # change bytes after manifest
-        try:
-            fetch_model.verified_identity(mp, d)
-            assert False, "expected ValueError on tampered model.bin"
-        except ValueError as e:
-            assert "model_pin_failed" in str(e)
-    print("ok: verified_identity rejects tampered bytes")
-
-
-def test_verified_identity_rejects_missing_and_bad_revision():
-    with tempfile.TemporaryDirectory() as d:
-        mp = _fake_manifest(d, {"model.bin": b"w", "config.json": b"{}"})
-        os.remove(os.path.join(d, "config.json"))
+        mp = _fake_manifest(d)
+        _write(os.path.join(d, "model.bin"), b"TAMPERED")
         try:
             fetch_model.verified_identity(mp, d); assert False
         except ValueError as e:
             assert "model_pin_failed" in str(e)
+    print("ok: verified_identity rejects tampered model.bin")
+
+
+def test_verified_identity_rejects_tampered_NON_model_file():
+    # A tampered non-model.bin file (tokenizer.json) must ALSO fail the gate.
     with tempfile.TemporaryDirectory() as d:
-        mp = _fake_manifest(d, {"model.bin": b"w", "config.json": b"{}"}, revision="main")
+        mp = _fake_manifest(d)
+        _write(os.path.join(d, "tokenizer.json"), b"TAMPERED-TOKENIZER")
+        try:
+            fetch_model.verified_identity(mp, d); assert False
+        except ValueError as e:
+            assert "model_pin_failed" in str(e) and "tokenizer.json" in str(e)
+    print("ok: verified_identity rejects a tampered NON-model file (tokenizer.json)")
+
+
+def test_verified_identity_rejects_missing_required_file():
+    with tempfile.TemporaryDirectory() as d:
+        mp = _fake_manifest(d)
+        os.remove(os.path.join(d, "vocabulary.txt"))
         try:
             fetch_model.verified_identity(mp, d); assert False
         except ValueError as e:
             assert "model_pin_failed" in str(e)
-    print("ok: verified_identity rejects missing file + non-sha revision")
+    print("ok: verified_identity rejects a missing required file")
+
+
+def test_validate_manifest_rejects_missing_entry_bad_digest_missing_bundle_bad_rev():
+    base = _all_required_bytes()
+    # missing a required ENTRY in the manifest
+    man = {"repository": "r", "revision": "a" * 40, "analyzerBundle": "speech-6",
+           "files": {k: "0" * 64 for k in ("model.bin", "config.json", "tokenizer.json")}}  # no vocabulary.txt
+    _expect_invalid(man, "missing required file")
+    # malformed digest (not 64-hex)
+    man2 = {"repository": "r", "revision": "a" * 40, "analyzerBundle": "speech-6",
+            "files": {k: ("0" * 64 if k != "config.json" else "XYZ") for k in REQUIRED}}
+    _expect_invalid(man2, "not 64-hex")
+    # missing/empty analyzer bundle
+    man3 = {"repository": "r", "revision": "a" * 40, "analyzerBundle": "  ",
+            "files": {k: "0" * 64 for k in REQUIRED}}
+    _expect_invalid(man3, "analyzerBundle")
+    # bad revision
+    man4 = {"repository": "r", "revision": "main", "analyzerBundle": "speech-6",
+            "files": {k: "0" * 64 for k in REQUIRED}}
+    _expect_invalid(man4, "40-char commit sha")
+    print("ok: validate_manifest rejects missing-entry / bad-digest / missing-bundle / bad-revision")
+
+
+def _expect_invalid(man, needle):
+    try:
+        fetch_model.validate_manifest(man); assert False, f"expected invalid: {needle}"
+    except ValueError as e:
+        assert needle in str(e), f"{needle} not in {e}"
 
 
 if __name__ == "__main__":
@@ -132,6 +175,8 @@ if __name__ == "__main__":
     test_manifest_well_formed()
     test_valid_revision_regex()
     test_verified_identity_valid_dir_returns_identity()
-    test_verified_identity_rejects_tampered_bytes()
-    test_verified_identity_rejects_missing_and_bad_revision()
+    test_verified_identity_rejects_tampered_model_bin()
+    test_verified_identity_rejects_tampered_NON_model_file()
+    test_verified_identity_rejects_missing_required_file()
+    test_validate_manifest_rejects_missing_entry_bad_digest_missing_bundle_bad_rev()
     print("all fetch_model verifier tests passed")

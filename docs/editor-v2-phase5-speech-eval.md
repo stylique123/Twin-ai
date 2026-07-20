@@ -371,17 +371,27 @@ authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
    is the owner running it on the production VPS **before merge** and attaching
    the numbers + verdict:
 
+   The founder does NOT need git or the repo checked out on the VPS (`main` does
+   not have the new script). Copy-paste this, filling in the two published values
+   from the exact candidate commit's CI run (the pr-checks `model-pin-guards` job
+   prints `vps_bench.sh sha256: …`, and the head SHA is the commit under review):
+
    ```sh
-   # ON THE PRODUCTION VPS — one command. It builds a THROWAWAY image from the
-   # EXACT candidate commit (so the Docker build itself fetches + digest-verifies
-   # the pinned model and bakes /opt/models), then runs the bench inside THAT
-   # image with --gate --require-identity. It never touches the live worker.
-   # No clip? make one: ffmpeg -i any.mp4 -ac 1 -ar 16000 -t 60 clip.wav
-   bash worker/scripts/vps_bench.sh --sha <exact-40-hex-commit> --audio clip.wav
-   #   → prints "CAPACITY GATE: PASS" AND "MODEL IDENTITY GATE: PASS" (rc 0), or a FAIL (rc != 0)
+   # --- fill these two from the exact candidate commit / its CI log ---
+   SHA=<exact-40-hex-commit>
+   EXPECT_SCRIPT_SHA256=<sha256 of worker/scripts/vps_bench.sh at that commit>
+   # --- make a clip if needed: ffmpeg -i any.mp4 -ac 1 -ar 16000 -t 60 clip.wav ---
+   curl -fsSL "https://raw.githubusercontent.com/stylique123/Twin-ai/$SHA/worker/scripts/vps_bench.sh" -o /tmp/vps_bench.sh
+   echo "$EXPECT_SCRIPT_SHA256  /tmp/vps_bench.sh" | sha256sum -c - || { echo "script digest mismatch — ABORT"; exit 1; }
+   bash /tmp/vps_bench.sh --sha "$SHA" --audio clip.wav
+   #   → the script builds a THROWAWAY image from $SHA (the Docker build itself
+   #     fetches + digest-verifies the pinned model and bakes /opt/models), runs
+   #     the bench inside THAT image with --gate --require-identity, and NEVER
+   #     touches the live worker.
+   #   → prints "CAPACITY GATE: PASS" AND "MODEL IDENTITY GATE: PASS" (rc 0), or FAIL.
    #   → saves ./vps-bench-out/speech-bench-report.json — includes candidateSha +
    #     runtime-observed identity (repository, revision, model.bin sha, manifest
-   #     sha, loadedFromPath, verified, analyzerBundle=speech-6) to attach to the PASS record
+   #     sha, loadedFromPath, verified, analyzerBundle=speech-6).
    ```
 
    Phase 5 is NOT approved on the indicative CI benchmark alone, and NOT on the
@@ -389,23 +399,30 @@ authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
    passing BOTH the capacity limits and the runtime-observed model-identity check
    on an image built from that exact commit.
 
-   **AUTHORITATIVE VPS RESULT (task #116) — CAPACITY GATE: PASS.** Run by the
-   owner on the production Hetzner VPS (`stylique-vps`, 4 vCPU) inside the real
-   `twinai-worker` image, `small` int8, on a 15.1 s real speech clip. Every
-   predefined limit met with wide margin:
+   **Task #116 (speech-6 candidate-image gate): PENDING.** It is closed only when
+   the owner runs `vps_bench.sh --sha <exact speech-6 commit>` and the report
+   passes BOTH the capacity limits AND the full runtime-observed model identity
+   (repository/revision/model.bin sha/manifest sha/loadedFromPath/verified/
+   analyzerBundle=speech-6) plus the candidate SHA. Until then it is NOT closed.
 
-   | Check | Measured | Limit | Verdict |
-   | :--- | :--- | :--- | :--- |
-   | processing ratio (median of 3) | **0.649×** (faster than real time) | ≤ 5.0 | PASS |
-   | peak RSS | **578 MiB** | ≤ 2048 MiB | PASS |
-   | cancellation exit (SIGTERM mid-run) | **0.16 s** | ≤ 12 s | PASS |
-   | timeout kills a run (1 s cap) | **true** | must kill | PASS |
-   | 2× concurrent — both rc=0 | **true** | all rc=0 | PASS |
-   | 2× concurrent — aggregate ratio | **1.205×** | ≤ 12.0 | PASS |
+   **Historical pre-pin capacity baseline (NOT task #116 closure, NOT speech-6).**
+   An earlier run on the production Hetzner VPS (`stylique-vps`, 4 vCPU), inside
+   the then-current `twinai-worker` image on a 15.1 s clip, produced these numbers
+   — recorded only as an indicative capacity baseline. Because that image predates
+   the model pin, it does NOT characterize speech-6 and MUST NOT be treated as the
+   authoritative gate:
 
-   Serial runs: 0.669× / 0.61× / 0.649× (RSS ~577–578 MiB each). `--gate` exited
-   0. This is the authoritative pre-merge capacity evidence; the box comfortably
-   sustains `small` at real-time-plus speed with two concurrent jobs.
+   | Check (pre-pin baseline) | Measured | Limit |
+   | :--- | :--- | :--- |
+   | processing ratio (median of 3) | 0.649× | ≤ 5.0 |
+   | peak RSS | 578 MiB | ≤ 2048 MiB |
+   | cancellation exit (SIGTERM mid-run) | 0.16 s | ≤ 12 s |
+   | timeout kills a run (1 s cap) | true | must kill |
+   | 2× concurrent — both rc=0 | true | all rc=0 |
+   | 2× concurrent — aggregate ratio | 1.205× | ≤ 12.0 |
+
+   Serial runs then: 0.669× / 0.61× / 0.649×. Useful as a rough capacity sanity
+   check only; the speech-6 candidate-image `--gate` run (above) is the gate.
 
 ### Precise meaning of a Phase-5 PASS (per the owner)
 
@@ -430,8 +447,12 @@ listed per clip in the report artifact.
 
 ## PREDEFINED thresholds (set BEFORE any results — never weakened after)
 
-These are principled beta ceilings for the pinned `base` model, fixed in
-`scripts/speech-eval/thresholds.json` before the first run:
+These quality thresholds were fixed in `scripts/speech-eval/thresholds.json`
+BEFORE the first run (originally against a `base`-model baseline) and remain
+UNCHANGED for the pinned SHIPPED `small` model — they were never weakened after
+seeing results. (The shipped ASR is `small` / `Systran/faster-whisper-small`, not
+`base`; the two rationale cells below that still name `base` describe the original
+baseline, and `small` clears the same ceilings.)
 
 | Metric | Threshold | Rationale |
 |---|---|---|

@@ -275,7 +275,8 @@ async function main() {
   const T2 = await mintReady(cA, uA.id, fix.speech)  // cached speech never legitimizes tamper
   const G4 = await mintReady(cA, uA.id, fix.speech)  // crash after speech → converge
   const CC = await mintReady(cA, uA.id, fix.speech)  // stale-writer fence
-  const P = await mintReady(cA, uA.id, fix.speech)   // provider failure sanitized
+  const P = await mintReady(cA, uA.id, fix.speech)   // PERMANENT pin-verification failure
+  const PR = await mintReady(cA, uA.id, fix.speech)  // RETRYABLE ASR-runtime/provider failure
   // Cancellation gets a dedicated asset PER window (each project settles
   // cancelled before publishing, except after_persist which keeps its row).
   const CANCEL_POINTS = [
@@ -442,14 +443,33 @@ async function main() {
   }
 
   // =================================================================
-  console.log('\n== V. version bump recomputes; components immutable ==')
+  console.log('\n== V. version bump recomputes — WITHOUT weakening model/version coupling ==')
   {
+    // V-reject: requesting speech-7 while the DEFAULT (speech-6) manifest is used
+    // must FAIL PERMANENTLY (coupling) and create NO new component. A cache-version
+    // override with a mismatched manifest is NOT a valid recomputation path.
+    const pidBad = await startProject(cA, S.gen, S.assetId)
+    const projBad = await runToSettled('p5-vbump-reject', pidBad, { EDITOR_SPEECH_VERSION: 'speech-7' })
+    check('V0 speech-7 request + speech-6 manifest → permanent model_version_mismatch, no component',
+      projBad.status === 'failed' && projBad.failure_code === 'model_version_mismatch',
+      `${projBad.status}/${projBad.failure_code}`)
+    check('V0b still exactly ONE component (the speech-6 baseline) — no speech-7 row written',
+      (await speechRows(S.assetId)).length === 1)
+
+    // V-recompute: a matching test-only pin (analyzerBundle=speech-7 over the SAME
+    // verified bytes) lets speech-7 recompute a new immutable row legitimately.
+    const testPin = join(REPO_ROOT, 'worker', 'models', 'testonly-speech-7.manifest.json')
     const pid = await startProject(cA, S.gen, S.assetId)
-    const proj = await runToSettled('p5-v2', pid, { EDITOR_SPEECH_VERSION: 'speech-7' })
-    check('V1 bumped-version project completed', proj.status === 'completed', proj.status)
+    const proj = await runToSettled('p5-v2', pid, {
+      EDITOR_SPEECH_VERSION: 'speech-7', EDITOR_SPEECH_MODEL_MANIFEST: testPin,
+    })
+    check('V1 bumped-version project completed (matching speech-7 test pin)', proj.status === 'completed', proj.status)
     const rows = await speechRows(S.assetId)
     check('V2 a NEW immutable component for speech-7 (both rows kept)',
       rows.length === 2 && new Set(rows.map((x) => x.analyzer_bundle_version)).size === 2, `rows=${rows.length}`)
+    const v7 = rows.find((x) => x.analyzer_bundle_version === 'speech-7')
+    check('V2b the speech-7 row records the speech-7 pinned bundle in provenance',
+      v7?.result?.provenance?.modelAnalyzerBundle === 'speech-7', JSON.stringify(v7?.result?.provenance?.modelAnalyzerBundle))
     check('V3 recording speech-7 did not stamp the inspection epoch',
       proj.analysis_version !== 'speech-7', String(proj.analysis_version))
 
@@ -640,24 +660,45 @@ async function main() {
   }
 
   // =================================================================
-  console.log('\n== P. provider failure surfaces SANITIZED ==')
+  console.log('\n== P. PERMANENT pin-verification failure (fail closed, sanitized) ==')
   {
+    // A nonexistent pinned-model path must fail the project PERMANENTLY with the
+    // stable `model_pin_failed` — a misconfigured/substituted model must not retry
+    // forever, must produce no component, and must not advance past transcribing.
     const pid = await startProject(cA, P.gen, P.assetId)
-    // speech-6 loads the PINNED snapshot from --model-path (the alias is ignored),
-    // so a provider failure is forced with a missing model PATH — the bridge exits
-    // non-zero (retryable asr_failed), same class as a real model-fetch failure.
-    const proj = await runToSettled('p5-provider', pid, { EDITOR_SPEECH_MODEL_PATH: '/nonexistent/pinned-model-p5' }, 240_000)
-    check('P1 provider failure fails the project after the retry budget',
+    const proj = await runToSettled('p5-pin-fail', pid, { EDITOR_SPEECH_MODEL_PATH: '/nonexistent/pinned-model-p5' }, 180_000)
+    check('P1 pin failure fails the project PERMANENTLY as model_pin_failed',
+      proj.status === 'failed' && proj.failure_code === 'model_pin_failed', `${proj.status}/${proj.failure_code}`)
+    check('P2 stable sanitized code + PERMANENT retry class + transcribing stage',
+      proj.failure_details?.code === 'model_pin_failed' && proj.failure_details?.retry === 'permanent'
+      && proj.failure_details?.stage === 'transcribing', JSON.stringify(proj.failure_details))
+    const ev = await getEvents(pid)
+    const durable = JSON.stringify({ d: proj.failure_details, e: ev.map((x) => x.details) })
+    check('P3 no URL, host, filesystem path, traceback, or dependency path leaks',
+      !/https?:\/\/|huggingface|\/tmp\/|\/opt\/|\/nonexistent|dist-packages|site-packages|Traceback/.test(durable), durable.slice(0, 300))
+    check('P4 no component recorded, no advance beyond transcribing',
+      (await speechRows(P.assetId)).length === 0)
+  }
+
+  // =================================================================
+  console.log('\n== PR. RETRYABLE ASR-runtime failure (after a successful pin verify) ==')
+  {
+    // The pin verifies fine (default valid path), then the ASR runtime fails
+    // deterministically via an invalid device — the bridge exits through the
+    // GENERIC nonzero path → retryable asr_failed / retries exhausted.
+    const pid = await startProject(cA, PR.gen, PR.assetId)
+    const proj = await runToSettled('p5-asr-runtime', pid, { WHISPER_DEVICE: 'bogus-device-p5' }, 240_000)
+    check('PR1 runtime failure fails after the retry budget (RETRYABLE class)',
       proj.status === 'failed' && ['asr_failed', 'retries_exhausted'].includes(proj.failure_code),
       `${proj.status}/${proj.failure_code}`)
-    check('P2 stable sanitized code + retry class recorded',
+    check('PR2 stable sanitized code + retryable class',
       proj.failure_details?.code === 'asr_failed' && proj.failure_details?.retry === 'retryable',
       JSON.stringify(proj.failure_details))
     const ev = await getEvents(pid)
     const durable = JSON.stringify({ d: proj.failure_details, e: ev.map((x) => x.details) })
-    check('P3 no URLs, hosts, or filesystem paths leak into durable state',
-      !/https?:\/\/|huggingface|\/tmp\/|dist-packages|site-packages/.test(durable), durable.slice(0, 300))
-    check('P4 no component recorded from failed provider runs', (await speechRows(P.assetId)).length === 0)
+    check('PR3 no URL/host/path/traceback/dependency leak in durable state',
+      !/https?:\/\/|huggingface|\/tmp\/|\/opt\/|dist-packages|site-packages|Traceback/.test(durable), durable.slice(0, 300))
+    check('PR4 no component recorded from failed runtime runs', (await speechRows(PR.assetId)).length === 0)
   }
 
   // =================================================================

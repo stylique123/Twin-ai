@@ -4,7 +4,12 @@
 // worker/src/env.ts MUST also change. A model-pin change with an unchanged
 // version is a silent immutability break and FAILS CI.
 //
-//   node scripts/ci/check_model_pin_coupling.mjs            # PR guard (uses base)
+// On a pull request this NEVER silently skips: it explicitly handles the
+// "base introduces neither, head introduces both" case (this Phase-5 PR — main
+// has no manifest yet), and it FAILS CLOSED if the base ref can't be fetched or
+// the head manifest/version can't be parsed.
+//
+//   node scripts/ci/check_model_pin_coupling.mjs            # PR guard
 //   node scripts/ci/check_model_pin_coupling.mjs --selftest # unit-test the logic
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
@@ -19,7 +24,7 @@ function canonicalize(v) {
   return JSON.stringify(v)
 }
 function coreDigest(manifestText) {
-  const m = JSON.parse(manifestText)
+  const m = JSON.parse(manifestText)   // throws on malformed → caller treats as null
   return createHash('sha256').update(canonicalize({ repository: m.repository, revision: m.revision, files: m.files })).digest('hex')
 }
 function defaultVersion(envText) {
@@ -27,52 +32,91 @@ function defaultVersion(envText) {
   return m ? m[1] : null
 }
 
-// PURE, unit-tested rule: a manifest-core change REQUIRES a version change.
-export function couplingViolation(baseCore, headCore, baseVer, headVer) {
-  const coreChanged = baseCore !== headCore
-  const verChanged = baseVer !== headVer
-  return coreChanged && !verChanged
+// PURE decision, unit-tested. `state` fields:
+//   isPR, baseFetchOk, baseHasManifest, baseCore, baseVer, headCore, headVer
+// Returns { ok, reason }.
+export function evaluate(s) {
+  if (!s.isPR) return { ok: true, reason: 'not a PR — merge-base coupling rule enforced on PRs' }
+  if (!s.baseFetchOk) return { ok: false, reason: 'base ref not fetchable — fail closed' }
+  if (!s.headCore) return { ok: false, reason: 'head manifest missing/malformed — fail closed' }
+  if (!s.headVer) return { ok: false, reason: 'head default analyzer version missing — fail closed' }
+  const baseCore = s.baseHasManifest ? s.baseCore : null
+  if (baseCore === null) return { ok: true, reason: 'introduction: base has no manifest; head introduces manifest + version' }
+  if (baseCore !== s.headCore && s.baseVer === s.headVer) {
+    return { ok: false, reason: 'manifest core changed but default analyzer version did NOT (bump speechVersion)' }
+  }
+  return { ok: true, reason: 'core/version consistent' }
 }
 
 function selftest() {
   const A = 'coreA', B = 'coreB'
   const cases = [
-    // [baseCore, headCore, baseVer, headVer, expectViolation]
-    [A, A, 'speech-6', 'speech-6', false],   // nothing changed
-    [A, B, 'speech-6', 'speech-7', false],   // core + version both changed → ok
-    [A, B, 'speech-6', 'speech-6', true],    // core changed, version NOT → violation
-    [A, A, 'speech-6', 'speech-7', false],   // version bumped without core change → ok (cache bump)
+    // name, state, expectedOk
+    ['first introduction (base absent, head present)',
+      { isPR: true, baseFetchOk: true, baseHasManifest: false, baseCore: null, baseVer: null, headCore: A, headVer: 'speech-6' }, true],
+    ['future core + version bump',
+      { isPR: true, baseFetchOk: true, baseHasManifest: true, baseCore: A, baseVer: 'speech-6', headCore: B, headVer: 'speech-7' }, true],
+    ['core change WITHOUT version bump → violation',
+      { isPR: true, baseFetchOk: true, baseHasManifest: true, baseCore: A, baseVer: 'speech-6', headCore: B, headVer: 'speech-6' }, false],
+    ['version-only bump (cache bump, no core change)',
+      { isPR: true, baseFetchOk: true, baseHasManifest: true, baseCore: A, baseVer: 'speech-6', headCore: A, headVer: 'speech-7' }, true],
+    ['unfetchable merge base → fail closed',
+      { isPR: true, baseFetchOk: false, baseHasManifest: false, baseCore: null, baseVer: null, headCore: A, headVer: 'speech-6' }, false],
+    ['malformed head manifest → fail closed',
+      { isPR: true, baseFetchOk: true, baseHasManifest: false, baseCore: null, baseVer: null, headCore: null, headVer: 'speech-6' }, false],
+    ['missing head default version → fail closed',
+      { isPR: true, baseFetchOk: true, baseHasManifest: false, baseCore: null, baseVer: null, headCore: A, headVer: null }, false],
+    ['not a PR → skip allowed',
+      { isPR: false }, true],
   ]
   let failed = 0
-  for (const [bc, hc, bv, hv, exp] of cases) {
-    const got = couplingViolation(bc, hc, bv, hv)
-    if (got !== exp) { console.error(`SELFTEST FAIL: (${bc},${hc},${bv},${hv}) => ${got}, expected ${exp}`); failed++ }
+  for (const [name, state, exp] of cases) {
+    const got = evaluate(state).ok
+    if (got !== exp) { console.error(`SELFTEST FAIL: ${name} => ${got}, expected ${exp}`); failed++ }
+    else console.log(`  ok: ${name}`)
   }
   if (failed) { console.error(`coupling selftest: ${failed} failed`); process.exit(1) }
   console.log('coupling selftest: all cases passed'); process.exit(0)
 }
 
+function gitOk(cmd) { try { execSync(cmd, { stdio: 'ignore' }); return true } catch { return false } }
+function gitShow(ref, path) { return execSync(`git show ${ref}:${path}`, { encoding: 'utf8' }) }
+
 function main() {
-  const base = `origin/${process.env.GITHUB_BASE_REF || 'main'}`
-  let baseManifest, baseEnv
-  try {
-    execSync(`git fetch --depth=50 origin ${process.env.GITHUB_BASE_REF || 'main'}`, { stdio: 'ignore' })
-    baseManifest = execSync(`git show ${base}:${MANIFEST}`, { encoding: 'utf8' })
-    baseEnv = execSync(`git show ${base}:${ENV}`, { encoding: 'utf8' })
-  } catch {
-    console.log(`coupling guard: base ${base} not available (not a PR?) — skipping merge-base check.`)
-    return
+  const isPR = process.env.GITHUB_EVENT_NAME === 'pull_request' || !!process.env.GITHUB_BASE_REF
+  // Head state (always required to be valid on a PR).
+  let headCore = null, headVer = null
+  try { headCore = coreDigest(readFileSync(MANIFEST, 'utf8')) } catch { headCore = null }
+  try { headVer = defaultVersion(readFileSync(ENV, 'utf8')) } catch { headVer = null }
+
+  const state = { isPR, headCore, headVer, baseFetchOk: true, baseHasManifest: false, baseCore: null, baseVer: null }
+
+  if (isPR) {
+    const baseRef = process.env.GITHUB_BASE_REF || 'main'
+    const fetched = gitOk(`git fetch --depth=50 origin ${baseRef}`)
+    const resolved = fetched && gitOk(`git rev-parse --verify origin/${baseRef}`)
+    state.baseFetchOk = resolved
+    if (resolved) {
+      // Distinguish "file absent at base" (introduction) from unreadable.
+      state.baseHasManifest = gitOk(`git cat-file -e origin/${baseRef}:${MANIFEST}`)
+      if (state.baseHasManifest) {
+        try { state.baseCore = coreDigest(gitShow(`origin/${baseRef}`, MANIFEST)) } catch { state.baseCore = null; state.baseHasManifest = false }
+      }
+      try { state.baseVer = defaultVersion(gitShow(`origin/${baseRef}`, ENV)) } catch { state.baseVer = null }
+    }
   }
-  const baseCore = coreDigest(baseManifest)
-  const headCore = coreDigest(readFileSync(MANIFEST, 'utf8'))
-  const baseVer = defaultVersion(baseEnv)
-  const headVer = defaultVersion(readFileSync(ENV, 'utf8'))
-  console.log(`coupling: core base=${baseCore.slice(0, 12)} head=${headCore.slice(0, 12)}; version base=${baseVer} head=${headVer}`)
-  if (couplingViolation(baseCore, headCore, baseVer, headVer)) {
-    console.error('MODEL PIN / VERSION COUPLING VIOLATION: the manifest semantic core changed but the default analyzer bundle version did NOT. Bump speechVersion in worker/src/env.ts.')
-    process.exit(1)
-  }
-  console.log('coupling guard: OK')
+
+  // Prove the actual base/head state used (item 1.6).
+  console.log('coupling guard state: ' + JSON.stringify({
+    isPR: state.isPR, baseFetchOk: state.baseFetchOk, baseHasManifest: state.baseHasManifest,
+    baseCore: state.baseCore ? state.baseCore.slice(0, 12) : 'ABSENT',
+    headCore: state.headCore ? state.headCore.slice(0, 12) : 'ABSENT/MALFORMED',
+    baseVer: state.baseVer || 'ABSENT', headVer: state.headVer || 'ABSENT',
+  }))
+
+  const { ok, reason } = evaluate(state)
+  console.log(`coupling guard: ${ok ? 'OK' : 'FAIL'} — ${reason}`)
+  if (!ok) process.exit(1)
 }
 
 if (process.argv.includes('--selftest')) selftest()

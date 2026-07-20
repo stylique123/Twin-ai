@@ -71,10 +71,14 @@ jobs:
         run: |
           python worker/scripts/test_fetch_model.py
           python worker/scripts/test_editor_speech_pin.py
+          python worker/scripts/test_editor_speech_offline.py
       - name: Model-pin / analyzer-version coupling (selftest + PR guard)
         run: |
           node scripts/ci/check_model_pin_coupling.mjs --selftest
           node scripts/ci/check_model_pin_coupling.mjs
+      - name: Publish vps_bench.sh sha256 (for the founder's self-verifying download)
+        run: |
+          echo "vps_bench.sh sha256: $(sha256sum worker/scripts/vps_bench.sh | cut -d' ' -f1)"
 
   # Guard: the OLD AI editor AND the old manual/timeline/Refine/EDL editor were
   # removed (see docs/ai-editor-rebuild-status.md + docs/manual-editor-remnant-inventory.md).

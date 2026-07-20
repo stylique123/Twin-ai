@@ -17,6 +17,7 @@ import { readFile, writeFile, mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve, isAbsolute } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { createHash } from 'node:crypto'
 
 const execFile = promisify(_ef)
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -329,9 +330,21 @@ const summary = {
 // identity, and require it to match the checked-in manifest. Any drift/mismatch
 // FAILS the eval — the numbers must belong to one, known set of weights.
 const modelManifest = JSON.parse(await readFile(MODEL_MANIFEST, 'utf8'))
+// Recompute the semantic-manifest digest with the SAME canonicalization as
+// fetch_model.py.manifest_sha256 (sorted keys, no spaces, semantic core only),
+// and GATE it — not merely record it.
+function canonicalize(v) {
+  if (Array.isArray(v)) return '[' + v.map(canonicalize).join(',') + ']'
+  if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + canonicalize(v[k])).join(',') + '}'
+  return JSON.stringify(v)
+}
+const expectedManifestSha = createHash('sha256').update(canonicalize({
+  repository: modelManifest.repository, revision: modelManifest.revision, files: modelManifest.files,
+})).digest('hex')
 const expectedIdentity = {
   repository: modelManifest.repository, revision: modelManifest.revision,
   artifactSha256: modelManifest.files['model.bin'], analyzerBundle: modelManifest.analyzerBundle,
+  manifestSha256: expectedManifestSha,
 }
 const observed = ok.map((r) => r.modelIdentity).filter(Boolean)
 const distinct = [...new Set(observed.map((m) => JSON.stringify(m)))]
@@ -340,7 +353,9 @@ if (MODEL_PATH) {
   const one = distinct.length === 1 ? JSON.parse(distinct[0]) : null
   const matches = one
     && one.repository === expectedIdentity.repository && one.revision === expectedIdentity.revision
-    && one.artifactSha256 === expectedIdentity.artifactSha256 && one.analyzerBundle === expectedIdentity.analyzerBundle
+    && one.artifactSha256 === expectedIdentity.artifactSha256
+    && one.manifestSha256 === expectedIdentity.manifestSha256   // EXACT semantic-manifest digest
+    && one.analyzerBundle === expectedIdentity.analyzerBundle
     && one.analyzerBundle === OPTS.speechVersion && one.loadedFromPath === true && one.verified === true
   modelIdentityGate.observed = one
   modelIdentityGate.expected = { ...expectedIdentity, speechVersion: OPTS.speechVersion }

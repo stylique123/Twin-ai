@@ -132,6 +132,11 @@ export const env = {
   // with the network disabled. Overridable for CI, where the snapshot is fetched
   // to a runner temp dir.
   speechModelPath: (process.env.EDITOR_SPEECH_MODEL_PATH ?? '/opt/models/faster-whisper-small').trim(),
+  // Manifest the bridge verifies the loaded bytes against. Defaults (empty) to the
+  // checked-in production manifest resolved in editorSpeech.ts. Overridable ONLY
+  // for tests that need a matching test-pin (e.g. an analyzerBundle=speech-7
+  // fixture over the same verified bytes); production never sets this.
+  speechModelManifest: (process.env.EDITOR_SPEECH_MODEL_MANIFEST ?? '').trim(),
   // Hard timeouts: audio extraction is I/O-bound (minutes at worst); ASR on
   // CPU runs ~0.2-0.5x realtime for `base`, so 15 min of audio fits well
   // inside 20 min. Both stay far under the 2400s visibility lease.

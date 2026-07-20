@@ -31,6 +31,56 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "scr
 import fetch_model  # noqa: E402  (verified_identity, verify_dir, sha256_file)
 
 
+class PinFailed(Exception):
+    """A pinned-model verification/config failure. main() maps it to exit 3, which
+    the worker maps to the PERMANENT `model_pin_failed` (no component, no advance)."""
+
+
+def prepare_model(args):
+    """Resolve, VERIFY, and load the ASR model. Returns (model, model_identity).
+
+    - Forces offline env (HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE) whenever a pin is
+      used or required, BEFORE importing faster_whisper.
+    - With --require-pinned-model (production): rejects an empty/whitespace path
+      (NO alias fallback), requires a manifest + existing dir, and re-verifies the
+      loaded bytes via the SINGLE shared verifier; identity comes only from the
+      verified manifest. Any defect raises PinFailed.
+    - Loads the verified local snapshot with local_files_only=True (no network).
+      The bare alias is dev/back-compat only and never runs under a required pin.
+    """
+    model_path = (args.model_path or "").strip()
+    model_identity = None
+    if model_path or args.require_pinned_model:
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+
+    if args.require_pinned_model:
+        if not model_path:
+            raise PinFailed("model_pin_failed: EDITOR_SPEECH_MODEL_PATH is empty (no alias fallback)")
+        if not args.model_manifest:
+            raise PinFailed("model_pin_failed: --model-manifest is required with --require-pinned-model")
+        if not os.path.isdir(model_path):
+            raise PinFailed("model_pin_failed: pinned model directory not found")
+        try:
+            model_identity = fetch_model.verified_identity(args.model_manifest, model_path)
+        except Exception as e:
+            raise PinFailed(str(e))
+    elif model_path and args.model_manifest and os.path.isdir(model_path):
+        try:
+            model_identity = fetch_model.verified_identity(args.model_manifest, model_path)
+        except Exception as e:
+            raise PinFailed(str(e))
+
+    from faster_whisper import WhisperModel
+    compute_type = "float16" if args.device == "cuda" else "int8"
+    if model_path:
+        model = WhisperModel(model_path, device=args.device,
+                             compute_type=compute_type, local_files_only=True)
+    else:
+        model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
+    return model, model_identity
+
+
 def rms_energy(audio, sample_rate, window_ms):
     """Coarse RMS curve over fixed windows (bounded by audio length)."""
     import numpy as np
@@ -88,60 +138,17 @@ def main() -> int:
 
     import time
 
-    model_path = (args.model_path or "").strip()
+    # Prepare + load the model (offline, verified). Fail closed on any pin defect.
+    try:
+        model, model_identity = prepare_model(args)
+    except PinFailed as e:
+        print(str(e)[:200], file=sys.stderr)   # path-free, stable code
+        return 3
 
-    # Force OFFLINE loading whenever a pin is used or required: no network call can
-    # substitute a moving snapshot. Set before importing faster_whisper.
-    model_identity = None
-    if model_path or args.require_pinned_model:
-        os.environ["HF_HUB_OFFLINE"] = "1"
-        os.environ["TRANSFORMERS_OFFLINE"] = "1"
-
-    # Immutable-component path: bind provenance to the ACTUAL bytes. Reject an
-    # empty/whitespace path (NO alias fallback), verify every load-required file
-    # in the configured dir against the manifest, and derive identity ONLY from
-    # the manifest whose files verified. Any failure → exit 3 (stable permanent
-    # code, no component, no stage advance). Exit 3 is distinct from 1 so the
-    # worker can map it to `model_pin_failed` (permanent), not a retryable fetch.
-    if args.require_pinned_model:
-        if not model_path:
-            print("model_pin_failed: EDITOR_SPEECH_MODEL_PATH is empty (no alias fallback)", file=sys.stderr)
-            return 3
-        if not args.model_manifest:
-            print("model_pin_failed: --model-manifest is required with --require-pinned-model", file=sys.stderr)
-            return 3
-        if not os.path.isdir(model_path):
-            print("model_pin_failed: pinned model directory not found", file=sys.stderr)
-            return 3
-        try:
-            model_identity = fetch_model.verified_identity(args.model_manifest, model_path)
-        except Exception as e:  # ValueError (digest/revision/manifest) or IO
-            # Message is already path-free (basenames + codes); keep it short.
-            print(str(e)[:200], file=sys.stderr)
-            return 3
-    elif model_path and args.model_manifest and os.path.isdir(model_path):
-        # Dev/eval convenience: verify + record identity when both are provided.
-        try:
-            model_identity = fetch_model.verified_identity(args.model_manifest, model_path)
-        except Exception as e:
-            print(str(e)[:200], file=sys.stderr)
-            return 3
-
-    from faster_whisper import WhisperModel
     from faster_whisper.audio import decode_audio
     from faster_whisper.vad import VadOptions, get_speech_timestamps
 
-    compute_type = "float16" if args.device == "cuda" else "int8"
     lang = None if args.language.lower() in ("auto", "", "detect") else args.language
-
-    # Load the VERIFIED local snapshot (offline) when a path is set; otherwise the
-    # alias (dev/back-compat ONLY — never the production immutable-component path,
-    # which requires --require-pinned-model above).
-    if model_path:
-        model = WhisperModel(model_path, device=args.device,
-                             compute_type=compute_type, local_files_only=True)
-    else:
-        model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
     if args.hold_at == "after_model_load" and args.hold_ms > 0:
         time.sleep(args.hold_ms / 1000.0)
     # Default: suppress NOTHING so disfluencies (um/uh) survive; pass -1 only if

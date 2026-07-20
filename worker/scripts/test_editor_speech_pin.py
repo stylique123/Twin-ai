@@ -29,9 +29,15 @@ def run(model_path, manifest="", extra=None):
         return p.returncode, os.path.exists(out), p.stderr
 
 
-def _manifest(d, files_bytes, revision="a" * 40):
+REQUIRED = ("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
+
+
+def _manifest(d, revision="a" * 40):
+    """Write all 4 required files + a matching manifest (so a later tamper is the
+    ONLY reason verification fails, not a missing file)."""
     files = {}
-    for name, data in files_bytes.items():
+    for name in REQUIRED:
+        data = (name + "-bytes").encode()
         with open(os.path.join(d, name), "wb") as f:
             f.write(data)
         files[name] = hashlib.sha256(data).hexdigest()
@@ -70,7 +76,7 @@ def test_missing_manifest_fails_closed():
 
 def test_tampered_bytes_fail_closed():
     with tempfile.TemporaryDirectory() as d:
-        mp = _manifest(d, {"model.bin": b"weights", "config.json": b"{}"})
+        mp = _manifest(d)   # all 4 files present + matching
         with open(os.path.join(d, "model.bin"), "wb") as f:
             f.write(b"TAMPERED")   # digest no longer matches the manifest
         rc, out, err = run(d, manifest=mp)

@@ -163,10 +163,12 @@ def main():
     if args.require_identity or MODEL_PATH:
         expected = {}
         with contextlib.suppress(Exception):
+            import fetch_model as _fm  # single source of truth for the manifest digest
             with open(MANIFEST) as fh:
                 m = json.load(fh)
-                expected = {"repository": m["repository"], "revision": m["revision"],
-                            "artifactSha256": m["files"]["model.bin"], "analyzerBundle": m.get("analyzerBundle")}
+            expected = {"repository": m["repository"], "revision": m["revision"],
+                        "artifactSha256": m["files"]["model.bin"], "analyzerBundle": m.get("analyzerBundle"),
+                        "manifestSha256": _fm.manifest_sha256(m)}
         idout = args.audio + ".identity.json"
         idcmd = bridge_cmd(args.audio, idout, args.model) + ["--require-pinned-model"]
         idp = subprocess.run(idcmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
@@ -188,6 +190,8 @@ def main():
         idchk("repository", identity and identity.get("repository") == expected.get("repository"))
         idchk("revision", identity and identity.get("revision") == expected.get("revision"))
         idchk("artifact_sha256", identity and identity.get("artifactSha256") == expected.get("artifactSha256"))
+        idchk("manifest_sha256", identity and expected.get("manifestSha256")
+              and identity.get("manifestSha256") == expected.get("manifestSha256"))
         idchk("analyzer_bundle", identity and identity.get("analyzerBundle") == expected.get("analyzerBundle") == "speech-6")
         if args.require_identity:
             idchk("candidate_sha_is_40hex", bool(re.fullmatch(r"[0-9a-f]{40}", args.candidate_sha or "")))

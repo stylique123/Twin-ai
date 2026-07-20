@@ -28,10 +28,19 @@ import sys
 
 # A pinned revision must be an EXACT immutable commit sha — 40 lowercase hex.
 REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
+DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+# The load-required file set for a CTranslate2 Faster-Whisper snapshot. EVERY one
+# must be present in the manifest and digest-verified — the single source of truth
+# reused by download, --verify-only, the runtime bridge, CI, and the benchmark.
+REQUIRED_FILES = ("model.bin", "config.json", "tokenizer.json", "vocabulary.txt")
 
 
 def valid_revision(rev):
     return bool(REVISION_RE.fullmatch(rev or ""))
+
+
+def valid_digest(d):
+    return bool(DIGEST_RE.fullmatch(d or ""))
 
 
 def sha256_file(path):
@@ -77,29 +86,45 @@ def manifest_sha256(man):
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()
 
 
-def verified_identity(manifest_path, model_dir):
-    """SINGLE shared verifier: re-hash every load-required file in `model_dir`
-    against the manifest, validate the revision, and derive the pinned identity
-    ONLY from the manifest whose files verified. Raises ValueError (stable,
-    path-free message) on any failure — never returns identity for unverified
-    bytes. Reused by the runtime bridge and the benchmark so digest logic can't
-    drift between them."""
-    with open(manifest_path, encoding="utf-8") as f:
-        man = json.load(f)
+def validate_manifest(man):
+    """Structural manifest validation, shared by every entry point. Raises
+    ValueError (stable, path-free) on any defect. Enforces: valid 40-hex revision;
+    ALL REQUIRED_FILES present with 64-hex digests; a nonempty analyzer bundle."""
     if not valid_revision(man.get("revision")):
         raise ValueError("model_pin_failed: manifest revision is not a 40-char commit sha")
-    if not man.get("files") or "model.bin" not in man["files"]:
-        raise ValueError("model_pin_failed: manifest missing required files")
-    errors = verify_dir(man["files"], model_dir)
+    if not isinstance(man.get("repository"), str) or not man["repository"]:
+        raise ValueError("model_pin_failed: manifest repository missing")
+    bundle = man.get("analyzerBundle")
+    if not isinstance(bundle, str) or not bundle.strip():
+        raise ValueError("model_pin_failed: manifest analyzerBundle missing/empty")
+    files = man.get("files") or {}
+    for name in REQUIRED_FILES:
+        if name not in files:
+            raise ValueError(f"model_pin_failed: manifest missing required file {name}")
+        if not valid_digest(files[name]):
+            raise ValueError(f"model_pin_failed: manifest digest for {name} is not 64-hex")
+
+
+def verified_identity(manifest_path, model_dir):
+    """SINGLE shared verifier: validate the manifest, re-hash every load-required
+    file in `model_dir` against it, and derive the pinned identity ONLY from the
+    manifest whose files verified. Raises ValueError (stable, path-free message)
+    on any failure — never returns identity for unverified bytes. Reused by
+    download, --verify-only, the runtime bridge, CI, and the benchmark so the
+    digest logic cannot drift."""
+    with open(manifest_path, encoding="utf-8") as f:
+        man = json.load(f)
+    validate_manifest(man)
+    # Verify ALL required files (not just whatever the manifest happens to list).
+    errors = verify_dir({k: man["files"][k] for k in REQUIRED_FILES}, model_dir)
     if errors:
-        # Report file basenames + codes only; never absolute paths.
-        raise ValueError("model_pin_failed: " + "; ".join(errors))
+        raise ValueError("model_pin_failed: " + "; ".join(errors))   # basenames + codes only
     return {
         "repository": man["repository"],
         "revision": man["revision"],
         "artifact_sha256": man["files"]["model.bin"],
         "manifest_sha256": manifest_sha256(man),
-        "analyzer_bundle": man.get("analyzerBundle"),
+        "analyzer_bundle": man["analyzerBundle"],
     }
 
 
@@ -113,27 +138,31 @@ def main():
 
     with open(args.manifest) as f:
         man = json.load(f)
-    repo, rev, files = man["repository"], man["revision"], man["files"]
 
     if not args.verify_only:
-        # Pin to the EXACT commit sha. huggingface_hub resolves a full 40-char sha
-        # to that immutable commit; a moving branch name would defeat the purpose.
-        if not valid_revision(rev):
-            print(f"ERROR: revision must be exactly [0-9a-f]{{40}}, got {rev!r}", file=sys.stderr)
+        # Validate structure (revision/required-files/digests/bundle) BEFORE the
+        # network call; then pin to the EXACT commit sha (a moving branch would
+        # defeat the purpose).
+        try:
+            validate_manifest(man)
+        except ValueError as e:
+            print(f"ERROR: {e}", file=sys.stderr)
             sys.exit(2)
         from huggingface_hub import snapshot_download
-        snapshot_download(repo_id=repo, revision=rev, local_dir=args.dest)
+        snapshot_download(repo_id=man["repository"], revision=man["revision"], local_dir=args.dest)
 
-    errors = verify_dir(files, args.dest)
-    if errors:
-        print("MODEL VERIFY FAILED (build must not proceed):", file=sys.stderr)
-        for e in errors:
-            print("  " + e, file=sys.stderr)
+    # Download, --verify-only, runtime, CI and the benchmark ALL finish through
+    # this one validator — no weaker duplicate success path.
+    try:
+        ident = verified_identity(args.manifest, args.dest)
+    except ValueError as e:
+        print(f"MODEL VERIFY FAILED (build must not proceed): {e}", file=sys.stderr)
         sys.exit(1)
 
-    print(f"model verified: {repo}@{rev}")
-    print(f"  files: {', '.join(sorted(files))}")
-    print(f"  manifest_sha256: {manifest_sha256(man)}")
+    print(f"model verified: {ident['repository']}@{ident['revision']}")
+    print(f"  files: {', '.join(sorted(REQUIRED_FILES))}")
+    print(f"  analyzer_bundle: {ident['analyzer_bundle']}")
+    print(f"  manifest_sha256: {ident['manifest_sha256']}")
     print(f"  path: {args.dest}")
 
 

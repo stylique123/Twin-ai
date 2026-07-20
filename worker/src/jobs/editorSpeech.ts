@@ -150,7 +150,8 @@ export function buildSpeechAnalysis(
   // version — the model-pin/version coupling. Any gap → no component.
   if (opts.requirePinnedModel) {
     const m = bridge.model
-    if (!m || !m.loadedFromPath || !m.verified || !m.repository || !m.revision || !m.manifestSha256) {
+    if (!m || !m.loadedFromPath || !m.verified || !m.repository || !m.revision
+        || !m.artifactSha256 || !m.manifestSha256) {
       throw new PermanentJobError('speech: pinned model identity missing or unverified', 'model_not_pinned')
     }
     if (m.analyzerBundle !== opts.speechVersion) {
@@ -585,8 +586,11 @@ function runAsrBridge(wavPath: string, outPath: string, watch: CancelWatch): Pro
       '--model', env.speechModel, '--device', env.whisperDevice,
       // Load ONLY the pinned local snapshot, offline; VERIFY the loaded bytes
       // against the manifest and fail closed on any mismatch (no alias fallback).
+      // Manifest defaults to the checked-in production pin; env override is for
+      // tests only (matching test-pin), never set in production.
       '--model-path', env.speechModelPath,
-      '--model-manifest', join(import.meta.dirname, '..', '..', 'models', 'faster-whisper-small.manifest.json'),
+      '--model-manifest', (env.speechModelManifest
+        || join(import.meta.dirname, '..', '..', 'models', 'faster-whisper-small.manifest.json')),
       '--require-pinned-model',
       '--language', env.whisperLanguage, '--beam-size', '1',
       '--max-seconds', String(Math.ceil(env.sourceMaxDurationMs / 1000)),
