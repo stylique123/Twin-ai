@@ -174,6 +174,17 @@ async function waitJobSettled(pid, timeoutMs = 20_000) {
     await sleep(400)
   }
 }
+async function waitDeadLetterEvent(jobId, timeoutMs = 10_000) {
+  const start = Date.now()
+  for (;;) {
+    const { data } = await admin.from('ops_events').select('detail')
+      .eq('kind', 'job_dead_letter').contains('detail', { job_id: jobId })
+      .order('created_at', { ascending: false }).limit(1).maybeSingle()
+    if (data) return data
+    if (Date.now() - start > timeoutMs) return null
+    await sleep(300)
+  }
+}
 
 const workers = new Set()
 function startWorker(name, extraEnv = {}) {
@@ -462,6 +473,7 @@ async function main() {
     const pid = await startProject(cA, S.gen, S.assetId)
     const proj = await runToSettled('p5-v2', pid, {
       EDITOR_SPEECH_VERSION: 'speech-7', EDITOR_SPEECH_MODEL_MANIFEST: testPin,
+      EDITOR_ALLOW_TEST_MODEL_MANIFEST: 'true',
     })
     check('V1 bumped-version project completed (matching speech-7 test pin)', proj.status === 'completed', proj.status)
     const rows = await speechRows(S.assetId)
@@ -673,11 +685,18 @@ async function main() {
       proj.failure_details?.code === 'model_pin_failed' && proj.failure_details?.retry === 'permanent'
       && proj.failure_details?.stage === 'transcribing', JSON.stringify(proj.failure_details))
     const ev = await getEvents(pid)
-    const durable = JSON.stringify({ d: proj.failure_details, e: ev.map((x) => x.details) })
+    const job = await waitJobSettled(pid)
+    const ops = job ? await waitDeadLetterEvent(job.id) : null
+    const durable = JSON.stringify({ d: proj.failure_details, e: ev.map((x) => x.details), j: job?.error, o: ops?.detail })
     check('P3 no URL, host, filesystem path, traceback, or dependency path leaks',
       !/https?:\/\/|huggingface|\/tmp\/|\/opt\/|\/nonexistent|dist-packages|site-packages|Traceback/.test(durable), durable.slice(0, 300))
-    check('P4 no component recorded, no advance beyond transcribing',
-      (await speechRows(P.assetId)).length === 0)
+    check('P4 no component recorded', (await speechRows(P.assetId)).length === 0)
+    check('P5 no stage advanced beyond transcribing',
+      !ev.some((e) => e.message_code === 'stage_started'
+        && ['analyzing', 'directing', 'compiling', 'rendering', 'validating'].includes(e.stage)))
+    check('P6 queue job + dead-letter event contain the same sanitized pin failure only',
+      !!job?.error && !!ops?.detail?.error && !/\/nonexistent|Traceback|https?:\/\//.test(`${job.error} ${ops.detail.error}`),
+      JSON.stringify({ job: job?.error, ops: ops?.detail?.error }))
   }
 
   // =================================================================
@@ -695,16 +714,25 @@ async function main() {
       proj.failure_details?.code === 'asr_failed' && proj.failure_details?.retry === 'retryable',
       JSON.stringify(proj.failure_details))
     const ev = await getEvents(pid)
-    const durable = JSON.stringify({ d: proj.failure_details, e: ev.map((x) => x.details) })
+    const job = await waitJobSettled(pid)
+    const ops = job ? await waitDeadLetterEvent(job.id) : null
+    const durable = JSON.stringify({ d: proj.failure_details, e: ev.map((x) => x.details), j: job?.error, o: ops?.detail })
     check('PR3 no URL/host/path/traceback/dependency leak in durable state',
       !/https?:\/\/|huggingface|\/tmp\/|\/opt\/|dist-packages|site-packages|Traceback/.test(durable), durable.slice(0, 300))
     check('PR4 no component recorded from failed runtime runs', (await speechRows(PR.assetId)).length === 0)
+    check('PR5 no stage advanced beyond transcribing after retry exhaustion',
+      !ev.some((e) => e.message_code === 'stage_started'
+        && ['analyzing', 'directing', 'compiling', 'rendering', 'validating'].includes(e.stage)))
+    check('PR6 queue job + dead-letter event use the stable generic ASR message',
+      job?.error === 'asr_failed: Speech transcription provider failed.'
+      && ops?.detail?.error === 'asr_failed: Speech transcription provider failed.',
+      JSON.stringify({ job: job?.error, ops: ops?.detail?.error }))
   }
 
   // =================================================================
   console.log('\n== B. phase boundary: speech evidence only, nothing downstream ==')
   {
-    const runAssets = [S, XA, XB, T, T2, G4, CC, P, ...Object.values(cancelAssets)].map((x) => x.assetId)
+    const runAssets = [S, XA, XB, T, T2, G4, CC, P, PR, ...Object.values(cancelAssets)].map((x) => x.assetId)
     const { data: comps } = await admin.from('media_analyses')
       .select('component').in('source_asset_id', runAssets)
     const kinds = new Set((comps ?? []).map((c) => c.component))

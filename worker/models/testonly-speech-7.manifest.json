@@ -1,5 +1,5 @@
 {
-  "_comment": "TEST-ONLY pin fixture: identical verified model bytes (same repository/revision/digests as faster-whisper-small.manifest.json) but analyzerBundle=speech-7, so the staging cache-bump test can recompute a NEW immutable row under speech-7 without weakening the model/version coupling. NOT selectable by production configuration \u2014 production sets no EDITOR_SPEECH_MODEL_MANIFEST override, so it always uses the speech-6 manifest.",
+  "_comment": "TEST-ONLY pin fixture: identical verified model bytes (same repository/revision/digests as faster-whisper-small.manifest.json) but analyzerBundle=speech-7, so the staging cache-bump test can recompute a NEW immutable row under speech-7 without weakening the model/version coupling. It is excluded from the production image, and production code ignores all alternate-manifest overrides even if injected.",
   "repository": "Systran/faster-whisper-small",
   "revision": "536b0662742c02347bc0e980a01041f333bce120",
   "license": "MIT",

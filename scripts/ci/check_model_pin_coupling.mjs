@@ -33,15 +33,22 @@ function defaultVersion(envText) {
 }
 
 // PURE decision, unit-tested. `state` fields:
-//   isPR, baseFetchOk, baseHasManifest, baseCore, baseVer, headCore, headVer
+//   isPR, baseFetchOk, baseHasManifest, baseManifestMalformed,
+//   baseCore, baseVer, headCore, headVer
 // Returns { ok, reason }.
 export function evaluate(s) {
   if (!s.isPR) return { ok: true, reason: 'not a PR — merge-base coupling rule enforced on PRs' }
   if (!s.baseFetchOk) return { ok: false, reason: 'base ref not fetchable — fail closed' }
   if (!s.headCore) return { ok: false, reason: 'head manifest missing/malformed — fail closed' }
   if (!s.headVer) return { ok: false, reason: 'head default analyzer version missing — fail closed' }
-  const baseCore = s.baseHasManifest ? s.baseCore : null
-  if (baseCore === null) return { ok: true, reason: 'introduction: base has no manifest; head introduces manifest + version' }
+  if (s.baseManifestMalformed) return { ok: false, reason: 'base manifest exists but is malformed — fail closed' }
+  if (!s.baseHasManifest) {
+    if (s.baseVer) return { ok: false, reason: 'base has analyzer version but no manifest — fail closed' }
+    return { ok: true, reason: 'introduction: base has no manifest/version; head introduces both' }
+  }
+  if (!s.baseCore) return { ok: false, reason: 'base manifest core unreadable — fail closed' }
+  if (!s.baseVer) return { ok: false, reason: 'base manifest exists but analyzer version is missing — fail closed' }
+  const baseCore = s.baseCore
   if (baseCore !== s.headCore && s.baseVer === s.headVer) {
     return { ok: false, reason: 'manifest core changed but default analyzer version did NOT (bump speechVersion)' }
   }
@@ -66,6 +73,12 @@ function selftest() {
       { isPR: true, baseFetchOk: true, baseHasManifest: false, baseCore: null, baseVer: null, headCore: null, headVer: 'speech-6' }, false],
     ['missing head default version → fail closed',
       { isPR: true, baseFetchOk: true, baseHasManifest: false, baseCore: null, baseVer: null, headCore: A, headVer: null }, false],
+    ['malformed base manifest → fail closed',
+      { isPR: true, baseFetchOk: true, baseHasManifest: true, baseManifestMalformed: true, baseCore: null, baseVer: 'speech-6', headCore: A, headVer: 'speech-7' }, false],
+    ['base version present but manifest absent → fail closed',
+      { isPR: true, baseFetchOk: true, baseHasManifest: false, baseCore: null, baseVer: 'speech-6', headCore: A, headVer: 'speech-6' }, false],
+    ['base manifest present but version absent → fail closed',
+      { isPR: true, baseFetchOk: true, baseHasManifest: true, baseCore: A, baseVer: null, headCore: A, headVer: 'speech-6' }, false],
     ['not a PR → skip allowed',
       { isPR: false }, true],
   ]
@@ -89,7 +102,7 @@ function main() {
   try { headCore = coreDigest(readFileSync(MANIFEST, 'utf8')) } catch { headCore = null }
   try { headVer = defaultVersion(readFileSync(ENV, 'utf8')) } catch { headVer = null }
 
-  const state = { isPR, headCore, headVer, baseFetchOk: true, baseHasManifest: false, baseCore: null, baseVer: null }
+  const state = { isPR, headCore, headVer, baseFetchOk: true, baseHasManifest: false, baseManifestMalformed: false, baseCore: null, baseVer: null }
 
   if (isPR) {
     const baseRef = process.env.GITHUB_BASE_REF || 'main'
@@ -100,7 +113,8 @@ function main() {
       // Distinguish "file absent at base" (introduction) from unreadable.
       state.baseHasManifest = gitOk(`git cat-file -e origin/${baseRef}:${MANIFEST}`)
       if (state.baseHasManifest) {
-        try { state.baseCore = coreDigest(gitShow(`origin/${baseRef}`, MANIFEST)) } catch { state.baseCore = null; state.baseHasManifest = false }
+        try { state.baseCore = coreDigest(gitShow(`origin/${baseRef}`, MANIFEST)) }
+        catch { state.baseCore = null; state.baseManifestMalformed = true }
       }
       try { state.baseVer = defaultVersion(gitShow(`origin/${baseRef}`, ENV)) } catch { state.baseVer = null }
     }
@@ -109,7 +123,8 @@ function main() {
   // Prove the actual base/head state used (item 1.6).
   console.log('coupling guard state: ' + JSON.stringify({
     isPR: state.isPR, baseFetchOk: state.baseFetchOk, baseHasManifest: state.baseHasManifest,
-    baseCore: state.baseCore ? state.baseCore.slice(0, 12) : 'ABSENT',
+    baseManifestMalformed: state.baseManifestMalformed,
+    baseCore: state.baseCore ? state.baseCore.slice(0, 12) : (state.baseHasManifest ? 'MALFORMED' : 'ABSENT'),
     headCore: state.headCore ? state.headCore.slice(0, 12) : 'ABSENT/MALFORMED',
     baseVer: state.baseVer || 'ABSENT', headVer: state.headVer || 'ABSENT',
   }))

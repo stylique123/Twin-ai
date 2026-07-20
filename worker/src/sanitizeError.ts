@@ -46,10 +46,27 @@ export function sanitizeError(err: unknown, stage: string): SafeError {
     : /asr_failed/.test(raw) ? 'asr_failed'
     : /probe/i.test(raw) ? 'probe_failed'
     : 'unexpected_error'
+  // ASR stderr can contain Python tracebacks, local paths, provider internals,
+  // or URLs. Durable state gets a stable product-level message only; raw stderr
+  // is never persisted in projects, events, or jobs.
+  const message = code === 'asr_failed'
+    ? 'Speech transcription provider failed.'
+    : redact(raw)
   return {
     code,
     stage,
     retry: permanent ? 'permanent' : cancelled ? 'cancelled' : 'retryable',
-    message: redact(raw),
+    message,
   }
+}
+
+// The queue layer persists thrown messages into jobs.error and dead-letter
+// operations. Convert the already-sanitized durable error back into an Error
+// while preserving permanent-vs-retryable classification; never rethrow raw
+// provider stderr across that boundary.
+export function queueSafeError(err: unknown, safe: SafeError): Error {
+  const message = `${safe.code}: ${safe.message}`
+  return err instanceof PermanentJobError
+    ? new PermanentJobError(message, err.code)
+    : new Error(message)
 }

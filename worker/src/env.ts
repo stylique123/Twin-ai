@@ -8,6 +8,16 @@ function need(name: string): string {
   return v
 }
 
+// The alternate model-manifest path exists only so the staging matrix can prove
+// a legitimate analyzer-version cache bump.  It must never be selectable by a
+// production worker, even if an environment variable is injected accidentally.
+// Non-production callers must opt in explicitly as well.
+export function resolveSpeechModelManifest(source: NodeJS.ProcessEnv = process.env): string {
+  if ((source.NODE_ENV ?? '').trim() === 'production') return ''
+  if (source.EDITOR_ALLOW_TEST_MODEL_MANIFEST !== 'true') return ''
+  return (source.EDITOR_SPEECH_MODEL_MANIFEST ?? '').trim()
+}
+
 export const env = {
   supabaseUrl: need('SUPABASE_URL'),
   serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
@@ -132,11 +142,11 @@ export const env = {
   // with the network disabled. Overridable for CI, where the snapshot is fetched
   // to a runner temp dir.
   speechModelPath: (process.env.EDITOR_SPEECH_MODEL_PATH ?? '/opt/models/faster-whisper-small').trim(),
-  // Manifest the bridge verifies the loaded bytes against. Defaults (empty) to the
-  // checked-in production manifest resolved in editorSpeech.ts. Overridable ONLY
-  // for tests that need a matching test-pin (e.g. an analyzerBundle=speech-7
-  // fixture over the same verified bytes); production never sets this.
-  speechModelManifest: (process.env.EDITOR_SPEECH_MODEL_MANIFEST ?? '').trim(),
+  // Manifest the bridge verifies the loaded bytes against. Defaults (empty) to
+  // the checked-in production manifest resolved in editorSpeech.ts. A matching
+  // test pin requires an explicit non-production opt-in; production ignores the
+  // override even if both variables are injected.
+  speechModelManifest: resolveSpeechModelManifest(),
   // Hard timeouts: audio extraction is I/O-bound (minutes at worst); ASR on
   // CPU runs ~0.2-0.5x realtime for `base`, so 15 min of audio fits well
   // inside 20 min. Both stay far under the 2400s visibility lease.

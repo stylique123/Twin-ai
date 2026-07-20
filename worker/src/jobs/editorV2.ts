@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os'
 import { db, renewJobLease, type Job } from '../db.js'
 import { env } from '../env.js'
 import { LeaseLostError, PermanentJobError, isLeaseLost } from '../errors.js'
-import { sanitizeError } from '../sanitizeError.js'
+import { queueSafeError, sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
 import { InspectionCancelledError, runInspectingStage } from './editorInspect.js'
 import { SpeechCancelledError, runTranscribingStage, verifySpeechComponent } from './editorSpeech.js'
@@ -333,7 +333,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       // someone else — the original error still decides the job's fate.
       if (!isLeaseLost(settleErr) && !(settleErr instanceof PermanentJobError)) throw settleErr
     }
-    throw err
+    throw queueSafeError(err, safe)
   } finally {
     lease.stop()
     await rm(dir, { recursive: true, force: true }).catch(() => { /* best-effort; the orphan sweep backstops */ })

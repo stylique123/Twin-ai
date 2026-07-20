@@ -32,7 +32,10 @@ COPY src ./src
 COPY whisper_transcribe.py ./whisper_transcribe.py
 COPY editor_speech.py ./editor_speech.py
 COPY youtube_transcript.py ./youtube_transcript.py
-COPY models ./models
+# The speech-7 manifest is a staging-only cache-bump fixture.  Do not bake it
+# into a production image; production contains only the authoritative pin.
+RUN mkdir -p ./models
+COPY models/faster-whisper-small.manifest.json ./models/faster-whisper-small.manifest.json
 COPY scripts/fetch_model.py ./scripts/fetch_model.py
 RUN npm run build
 

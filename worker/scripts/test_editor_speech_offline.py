@@ -147,6 +147,8 @@ def test_full_main_success_emits_model_block():
         assert m["loadedFromPath"] is True and m["verified"] is True, m
         assert m["revision"] == "a" * 40 and m["analyzerBundle"] == "speech-6", m
         assert m["repository"] == "Systran/faster-whisper-small", m
+        assert m["artifactSha256"] == hashlib.sha256(b"model.bin-bytes").hexdigest(), m
+        assert isinstance(m["manifestSha256"], str) and len(m["manifestSha256"]) == 64, m
     print("ok: full main() success writes a populated model block (no NameError)")
 
 

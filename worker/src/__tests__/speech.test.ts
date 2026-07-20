@@ -425,18 +425,42 @@ describe('speech energy + payload safety', () => {
 
 describe('speech error surfaces', () => {
   it('asr failures: stable code, retryable, no host/path/transcript leak', async () => {
-    const { sanitizeError } = await import('../sanitizeError.js')
-    const s = sanitizeError(new Error('asr_failed (exit 1): Traceback /usr/local/lib/python3.11/dist-packages/x.py https://huggingface.co/models/base'), 'transcribing')
+    const { queueSafeError, sanitizeError } = await import('../sanitizeError.js')
+    const raw = new Error('asr_failed (exit 1): Traceback /usr/local/lib/python3.11/dist-packages/x.py https://huggingface.co/models/base')
+    const s = sanitizeError(raw, 'transcribing')
     expect(s.code).toBe('asr_failed')
     expect(s.retry).toBe('retryable')
     expect(s.stage).toBe('transcribing')
-    expect(s.message).not.toMatch(/https?:|huggingface|dist-packages/)
+    expect(s.message).toBe('Speech transcription provider failed.')
+    expect(s.message).not.toMatch(/Traceback|https?:|huggingface|dist-packages|\/usr\//)
+    const queued = queueSafeError(raw, s)
+    expect(queued.message).toBe('asr_failed: Speech transcription provider failed.')
+    expect(queued.message).not.toMatch(/Traceback|https?:|huggingface|dist-packages|\/usr\//)
   })
 
   it('classifies cooperative speech cancellation', async () => {
     const { SpeechCancelledError } = await import('../jobs/editorSpeech.js')
     const { sanitizeError } = await import('../sanitizeError.js')
     expect(sanitizeError(new SpeechCancelledError('during_asr'), 'transcribing').retry).toBe('cancelled')
+  })
+})
+
+describe('speech test-manifest boundary', () => {
+  it('production can never select an alternate/test manifest', async () => {
+    const { resolveSpeechModelManifest } = await import('../env.js')
+    expect(resolveSpeechModelManifest({
+      NODE_ENV: 'production',
+      EDITOR_ALLOW_TEST_MODEL_MANIFEST: 'true',
+      EDITOR_SPEECH_MODEL_MANIFEST: '/tmp/testonly-speech-7.manifest.json',
+    })).toBe('')
+  })
+
+  it('requires an explicit non-production test opt-in', async () => {
+    const { resolveSpeechModelManifest } = await import('../env.js')
+    const source = { NODE_ENV: 'test', EDITOR_SPEECH_MODEL_MANIFEST: '/tmp/test-pin.json' }
+    expect(resolveSpeechModelManifest(source)).toBe('')
+    expect(resolveSpeechModelManifest({ ...source, EDITOR_ALLOW_TEST_MODEL_MANIFEST: 'true' }))
+      .toBe('/tmp/test-pin.json')
   })
 })
 
