@@ -129,8 +129,39 @@ const summary = {
   lowConfOnlyRemovalCandidates,
   cleanFalsePositiveClips: fillerFP + repFP,
 }
-const report = { asrModel: OPTS.asrModel, speechVersion: OPTS.speechVersion, provenance: manifest.provenance, summary, results }
+// Per-category aggregates (published in the report + printed).
+const byCategory = {}
+for (const r of results) {
+  const c = (byCategory[r.category] ||= { clips: 0, evaluated: 0, errored: 0, werSum: 0, fillerCand: 0, repeatCand: 0 })
+  c.clips++
+  if (r.error) { c.errored++; continue }
+  c.evaluated++; c.werSum += r.wer; c.fillerCand += r.fillerCandidates; c.repeatCand += r.repeatCandidates
+}
+for (const k of Object.keys(byCategory)) {
+  const c = byCategory[k]
+  c.meanWer = c.evaluated ? Number((c.werSum / c.evaluated).toFixed(3)) : null
+  delete c.werSum
+}
+
+// Honest failure examples: transcription errors, false positives on clean
+// speech, and clean-speech WER outliers.
+const failures = []
+for (const r of results) {
+  if (r.error) { failures.push({ id: r.id, category: r.category, kind: 'transcription_error', detail: r.error }); continue }
+  if (r.expected?.clean && (r.fillerCandidates > 0 || r.repeatCandidates > 0))
+    failures.push({ id: r.id, category: r.category, kind: 'false_positive_on_clean', filler: r.fillerCandidates, repeat: r.repeatCandidates })
+  if (r.expected?.clean && r.wer > 0.2)
+    failures.push({ id: r.id, category: r.category, kind: 'clean_wer_outlier', wer: r.wer, transcript: r.transcript })
+}
+
+const report = {
+  asrModel: OPTS.asrModel, speechVersion: OPTS.speechVersion, provenance: manifest.provenance,
+  categories: manifest.categories, diversity: manifest.diversity,
+  summary, byCategory, failures, results,
+}
 await writeFile('speech-eval-report.json', JSON.stringify(report, null, 2))
+console.log('\n=== per-category ===\n' + JSON.stringify(byCategory, null, 2))
+if (failures.length) console.log('\n=== failure examples ===\n' + JSON.stringify(failures, null, 2))
 console.log('\n=== speech-eval summary ===\n' + JSON.stringify(summary, null, 2) + '\nreport → speech-eval-report.json')
 
 // Gate against PREDEFINED thresholds (thresholds.json). Never weakened here.

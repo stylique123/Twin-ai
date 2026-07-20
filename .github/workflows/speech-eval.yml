@@ -49,12 +49,18 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install the pinned ASR stack + corpus tooling
+        # NOTE: no librosa. `datasets`' librosa-backed audio decode pulls in
+        # numba, whose native teardown segfaults at interpreter finalization
+        # (PyGILState_Release, exit 134). We decode with soundfile via
+        # Audio(decode=False) instead, so librosa/numba are never imported.
         run: |
           pip install --quiet -r worker/requirements.txt
-          pip install --quiet 'datasets>=2.19,<4' 'soundfile>=0.12' 'librosa>=0.10' 'huggingface_hub>=0.25' 'requests>=2.31'
+          pip install --quiet 'datasets>=2.19,<4' 'soundfile>=0.12' 'huggingface_hub>=0.25' 'requests>=2.31'
           python -c "from faster_whisper import WhisperModel; WhisperModel('base', device='cpu', compute_type='int8')"
       - name: Build worker (real bridge + builder)
         run: cd worker && npm ci && npm run build
+      - name: Guard — corpus builder must not import librosa/numba (teardown-crash regression)
+        run: python scripts/speech-eval/test_build_corpus.py
       - name: Verify licenses + build the corpus (audio → ephemeral runner only)
         run: |
           # inputs.* are empty on `push` events (only set on workflow_dispatch)

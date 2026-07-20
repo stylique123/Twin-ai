@@ -38,24 +38,62 @@ version + SHA-256 of every artifact into the run report (`speech-eval-report.jso
 
 ## Category coverage (12 required)
 
-| # | Category | Source |
-|---|---|---|
-| 1 | Clean natural speech | LibriSpeech dev-clean |
-| 2 | "Um"/"uh" among real words | AMI (word annotations mark disfluencies) |
-| 3 | Meaningful "like" | AMI |
-| 4 | Meaningful "well"/"so" | AMI |
-| 5 | False start + correction | AMI |
-| 6 | Intentional rhetorical repetition | AMI |
-| 7 | Accidental repeated phrase | AMI |
-| 8 | Long dead air | AMI (inter-utterance pauses) |
-| 9 | Short emphasis pause | AMI |
-| 10 | Off-script / spontaneous addition | AMI (spontaneous, no script) |
-| 11 | Moderate background noise | AMI (multi-party / far-field segments) |
-| 12 | Accent + gender + speed variation | LibriSpeech (speaker metadata) + AMI |
+`build_corpus.py` emits a `categories` block in the manifest and report that
+accounts for **all 12** with real counts. Coverage is honestly labelled: `auto`
+= reliably selectable from the corpora's own streamed annotations; `deferred` =
+not reliably isolatable here (speaker *intent*, sub-second/inter-utterance pause
+*timing*, or a config that doesn't stream) and therefore covered by the VAD/
+candidate unit tests **and** the mandatory private pre-beta gate — never silently
+claimed as covered.
+
+| # | Category | Coverage | Source / selection signal |
+|---|---|---|---|
+| 1 | Clean natural speech | auto | LibriSpeech dev-clean |
+| 2 | "Um"/"uh" among real words | auto | AMI ihm — transcript contains um/uh |
+| 3 | Meaningful "like" | auto | AMI ihm — transcript contains "like" |
+| 4 | Meaningful "well"/"so" | auto | AMI ihm — well/so/actually/… |
+| 5 | False start + correction | auto | AMI ihm — partial-word marker (`word-`) |
+| 6 | Intentional rhetorical repetition | **deferred** | intent not annotated; merged into repetition, split covered by private gate |
+| 7 | Accidental repeated phrase | auto | AMI ihm — adjacent repeated token / bigram |
+| 8 | Long dead air | **deferred** | inter-utterance pause timing not in ihm token stream; covered by VAD unit tests + private gate |
+| 9 | Short emphasis pause | **deferred** | sub-second pause timing not annotated; covered by VAD unit tests + private gate |
+| 10 | Off-script / spontaneous addition | auto | AMI ihm — spontaneous meeting speech, no script |
+| 11 | Moderate background noise | auto | AMI **sdm** (single distant mic, far-field/noisy); fail-soft to 0 if the config doesn't stream |
+| 12 | Accent + gender + speed variation | auto | LibriSpeech distinct speakers + `SPEAKERS.TXT` gender + words/sec speed bins (see `manifest.diversity`) |
 
 Reference transcripts and disfluency spans come from each corpus's OWN manual
 annotations — never hand-guessed. Every clip in the emitted manifest records its
-corpus, source clip id, license, and the annotation it was selected for.
+corpus, source clip id, license, and the annotation it was selected for. The
+report's `diversity` block records distinct LibriSpeech speakers, gender balance
+(best-effort from `SPEAKERS.TXT`), and fast/normal/slow speed distribution.
+
+## Runtime / dependency note — teardown-crash fix (no masking)
+
+An early CI run crashed at **interpreter finalization** with
+`Fatal Python error: PyGILState_Release … finalizing` → **SIGABRT, exit 134**,
+*after* the corpus was fully written. The faulting thread had `<no Python frame>`
+and the loaded extension modules ended in **numba**. Root cause: `datasets`'
+librosa-backed audio-decode path imports **librosa → numba**, whose native
+threading-layer teardown segfaults at finalization. It was not multiprocessing
+and not a defect in our own code.
+
+Fix (dependency removal, not a bypass): decode with `Audio(decode=False)` + raw
+**soundfile** (libsndfile, a stable C library); **librosa is no longer
+installed**, so numba is never imported and teardown is clean. Hardening that
+stands regardless of the crash:
+
+- Fail-**closed**: any exception forces a non-zero exit (`os._exit(1)`), so an
+  earlier failure can never be masked by a clean process exit.
+- After writing, artifacts are flushed + fsynced + closed, then **reopened and
+  schema-validated** (non-empty, required fields, every audio file present with a
+  matching SHA-256) and every one of the 12 categories is accounted for; core
+  threshold categories must be non-empty or the build fails.
+- A regression guard (`scripts/speech-eval/test_build_corpus.py`, run as a CI
+  step) asserts the builder imports **neither librosa nor numba** and unit-tests
+  the selection helpers + the validator.
+- The remaining controlled `os._exit(code)` is documented defense-in-depth (only
+  after all validations, code reflects validity). Its removal — once CI confirms
+  clean teardown without it — is tracked in issue #192.
 
 ## Measurements (published per category + overall)
 
