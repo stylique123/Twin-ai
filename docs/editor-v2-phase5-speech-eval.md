@@ -310,11 +310,16 @@ authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
    the numbers + verdict:
 
    ```sh
-   # on the production VPS, with the worker image/deps present:
-   python3 worker/scripts/bench_speech.py \
-     --audio <a-real-16k-mono-speech-clip>.wav --model small \
-     --runs 3 --concurrency 2 --gate --label vps
-   # --gate exits non-zero on any capacity FAIL; attach speech-bench-report.json
+   # ON THE PRODUCTION VPS — one turnkey command (fetches this branch, runs the
+   # bench INSIDE the twinai-worker image so it uses the real small model, and
+   # enforces --gate). No clip? make one: ffmpeg -i any.mp4 -ac 1 -ar 16000 -t 60 clip.wav
+   bash worker/scripts/vps_bench.sh --audio clip.wav
+   #   → prints "CAPACITY GATE: PASS" (rc 0) or "... FAIL" (rc != 0)
+   #   → saves ./vps-bench-out/speech-bench-report.json to attach to the PASS record
+
+   # Equivalent low-level call (if the worker's Python deps are on the box directly):
+   #   python3 worker/scripts/bench_speech.py --audio clip.wav --model small \
+   #     --runs 3 --concurrency 2 --gate --label vps
    ```
 
    Phase 5 is NOT approved on the indicative CI benchmark alone — the VPS

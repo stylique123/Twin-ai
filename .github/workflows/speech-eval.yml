@@ -31,6 +31,7 @@ on:
       - 'worker/src/jobs/editorSpeech.ts'
       - 'worker/scripts/bench_speech.py'
       - 'worker/scripts/bench_thresholds.json'
+      - 'worker/scripts/vps_bench.sh'
 
 concurrency:
   group: speech-eval
