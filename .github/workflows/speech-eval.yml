@@ -19,6 +19,16 @@ on:
         description: 'AMI clips per disfluency category'
         required: false
         default: '3'
+  # Pre-merge: workflow_dispatch by API only works once a workflow is on the
+  # default branch, so also auto-run when the eval files themselves change on a
+  # phase branch. Scoped by paths so unrelated pushes don't trigger it.
+  push:
+    branches: ['rebuild/editor-v2-*']
+    paths:
+      - 'scripts/speech-eval/**'
+      - '.github/workflows/speech-eval.yml'
+      - 'worker/editor_speech.py'
+      - 'worker/src/jobs/editorSpeech.ts'
 
 concurrency:
   group: speech-eval
