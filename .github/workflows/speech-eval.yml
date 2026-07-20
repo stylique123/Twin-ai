@@ -57,10 +57,12 @@ jobs:
         run: cd worker && npm ci && npm run build
       - name: Verify licenses + build the corpus (audio → ephemeral runner only)
         run: |
+          # inputs.* are empty on `push` events (only set on workflow_dispatch)
+          # — fall back to the same defaults.
           python scripts/speech-eval/build_corpus.py \
             --out "$RUNNER_TEMP/speech-corpus" \
-            --clean "${{ inputs.clean_clips }}" \
-            --ami-per-category "${{ inputs.ami_per_category }}"
+            --clean "${{ inputs.clean_clips || '5' }}" \
+            --ami-per-category "${{ inputs.ami_per_category || '3' }}"
       - name: Run the real Phase 5 pipeline + gate against predefined thresholds
         env:
           SPEECH_EVAL_MANIFEST: ${{ runner.temp }}/speech-corpus/manifest.json
