@@ -25,9 +25,10 @@ import { tmpdir } from 'node:os'
 import { db, renewJobLease, type Job } from '../db.js'
 import { env } from '../env.js'
 import { LeaseLostError, PermanentJobError, isLeaseLost } from '../errors.js'
-import { sanitizeError } from '../sanitizeError.js'
+import { queueSafeError, sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
 import { InspectionCancelledError, runInspectingStage } from './editorInspect.js'
+import { SpeechCancelledError, runTranscribingStage, verifySpeechComponent } from './editorSpeech.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -182,6 +183,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
 
   const lease = startLeaseRenewal(job)
   const ranStages: string[] = []
+  let currentStage: EditorStage | null = null
   try {
     const { data: proj, error } = await db
       .from('edit_projects')
@@ -210,9 +212,11 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // finalized/released in editor_finish_project. No reservation or charge
     // exists in Phase 3; see docs/editor-v2-worker-orchestration.md.
     let inspect: Record<string, unknown> | null = null
+    let speech: Record<string, unknown> | null = null
     for (const stage of stagesFrom(proj.status)) {
       if (lease.lost()) throw new LeaseLostError(`lease lost before stage ${stage}`)
       maybeCrash(`before_stage:${stage}`, job)
+      currentStage = stage
 
       // Fenced advance. On resume the first call re-enters the persisted
       // stage (a same-status no-op transition) and re-records stage_started.
@@ -222,9 +226,19 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         return { cancelled: true, at_stage: stage, stages_ran: ranStages }
       }
 
+      // A cooperative mid-stage cancellation (watcher-tripped abort) settles
+      // the project as cancelled — shared by every real stage.
+      const cancelledMidStage = async (err: unknown): Promise<boolean> => {
+        if (err instanceof InspectionCancelledError || err instanceof SpeechCancelledError) {
+          await finishProject(job, projectId, 'cancelled', undefined, { at_stage: stage })
+          return true
+        }
+        return false
+      }
+
       if (stage === 'inspecting') {
-        // Phase 4: the ONE real stage. Reuses Phase-1 validation facts (or the
-        // cached component) and only downloads/reprobes as a bounded upgrade.
+        // Phase 4: reuses Phase-1 validation facts (or the cached component)
+        // and only downloads/reprobes as a bounded upgrade.
         try {
           const out = await runInspectingStage(job, projectId, dir)
           inspect = { ...out }
@@ -235,24 +249,56 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
             inspector_version: env.inspectorVersion,
           })
         } catch (err) {
-          if (err instanceof InspectionCancelledError) {
-            await finishProject(job, projectId, 'cancelled', undefined, { at_stage: stage })
-            return { cancelled: true, at_stage: stage, stages_ran: ranStages }
-          }
+          if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
           throw err
         }
+      } else if (stage === 'transcribing') {
+        // Phase 5: the real speech analysis — integrity-verified download,
+        // Faster-Whisper, VAD/energy evidence, candidates; immutable component.
+        try {
+          const out = await runTranscribingStage(job, projectId, dir)
+          speech = { ...out }
+          await appendEvent(job, projectId, 'speech_recorded', {
+            cache_hit: out.cacheHit,
+            asr_performed: out.asrPerformed,
+            word_count: out.wordCount,
+            language: out.language,
+            candidate_counts: out.candidateCounts,
+            speech_version: env.speechVersion,
+          })
+        } catch (err) {
+          if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          throw err
+        }
+      } else if (stage === 'analyzing') {
+        // Phase 5: the SPEECH portion of analyzing is real — re-verify the
+        // durable component against the current bytes (fail closed). The
+        // visual/audio portions stay simulated until their phases.
+        try {
+          const v = await verifySpeechComponent(projectId)
+          await appendEvent(job, projectId, 'speech_analysis_verified', {
+            speech_version: v.speechVersion,
+            word_count: v.wordCount,
+            candidates_total: v.candidatesTotal,
+          })
+        } catch (err) {
+          if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          throw err
+        }
+        await runStageWithTimeout(stage, job, dir)
       } else {
         await runStageWithTimeout(stage, job, dir)
       }
       ranStages.push(stage)
     }
 
-    await finishProject(job, projectId, 'completed', undefined, { simulated_after_inspection: true })
+    await finishProject(job, projectId, 'completed', undefined, { simulated_after_speech: true })
     maybeCrash('after_finish', job) // project settled, job not yet acknowledged
     return {
-      simulated: true, // every stage AFTER inspection is still simulated
+      simulated: true, // directing/compiling/rendering/validating are still simulated
       stages_ran: ranStages,
       inspection: inspect,
+      speech,
       swept_orphan_dirs: sweptOrphans,
       temp_dir_cleaned: true, // the finally below removes it before we return
     }
@@ -266,7 +312,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // Everything persisted goes through the sanitizer: stable code, safe
     // stage, retry class, bounded REDACTED message. The raw error stays in
     // the worker's stdout only (access-controlled container logs).
-    const safe = sanitizeError(err, ranStages.at(-1) ?? 'inspecting')
+    const safe = sanitizeError(err, currentStage ?? ranStages.at(-1) ?? 'inspecting')
     try {
       if (permanent || lastAttempt) {
         // We still hold the lease: settle the PROJECT before the job settles,
@@ -287,7 +333,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       // someone else — the original error still decides the job's fate.
       if (!isLeaseLost(settleErr) && !(settleErr instanceof PermanentJobError)) throw settleErr
     }
-    throw err
+    throw queueSafeError(err, safe)
   } finally {
     lease.stop()
     await rm(dir, { recursive: true, force: true }).catch(() => { /* best-effort; the orphan sweep backstops */ })

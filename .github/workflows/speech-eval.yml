@@ -1,0 +1,117 @@
+# Phase 5 human-speech evaluation (engineering gate). Manual dispatch only.
+# Builds a licensed PUBLIC human-speech corpus IN CI (runners have open
+# internet; the dev sandbox does not), runs the REAL worker speech pipeline over
+# it, and gates against the PREDEFINED thresholds in scripts/speech-eval/
+# thresholds.json. Audio is fetched into the ephemeral runner (private CI
+# storage) and NEVER committed to Git. Licenses are verified BEFORE download.
+#
+# This does NOT touch the database, storage, or the staging matrices — it is an
+# offline quality evaluation. Report is uploaded as a build artifact.
+name: speech-eval
+on:
+  workflow_dispatch:
+    inputs:
+      clean_clips:
+        description: 'LibriSpeech clean clips'
+        required: false
+        default: '5'
+      ami_per_category:
+        description: 'AMI clips per disfluency category'
+        required: false
+        default: '3'
+  # Pre-merge: workflow_dispatch by API only works once a workflow is on the
+  # default branch, so also auto-run when the eval files themselves change on a
+  # phase branch. Scoped by paths so unrelated pushes don't trigger it.
+  push:
+    branches: ['rebuild/editor-v2-*']
+    paths:
+      - 'scripts/speech-eval/**'
+      - '.github/workflows/speech-eval.yml'
+      - 'worker/editor_speech.py'
+      - 'worker/src/jobs/editorSpeech.ts'
+      - 'worker/scripts/bench_speech.py'
+      - 'worker/scripts/bench_thresholds.json'
+      - 'worker/scripts/vps_bench.sh'
+      - 'worker/scripts/fetch_model.py'
+      - 'worker/models/**'
+
+concurrency:
+  group: speech-eval
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install ffmpeg
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the pinned ASR stack + corpus tooling
+        # NOTE: no librosa. `datasets`' librosa-backed audio decode pulls in
+        # numba, whose native teardown segfaults at interpreter finalization
+        # (PyGILState_Release, exit 134). We decode with soundfile via
+        # Audio(decode=False) instead, so librosa/numba are never imported.
+        run: |
+          pip install --quiet -r worker/requirements.txt
+          pip install --quiet 'datasets>=2.19,<4' 'soundfile>=0.12' 'huggingface_hub>=0.25' 'requests>=2.31'
+          # Offline verifier guard (a digest mismatch must fail), then fetch the
+          # EXACT pinned small revision + digest-verify it (speech-6). The eval
+          # grades these weights, loaded offline — never the moving `small` alias.
+          python worker/scripts/test_fetch_model.py
+          python worker/scripts/test_editor_speech_pin.py
+          python worker/scripts/test_editor_speech_offline.py
+          python worker/scripts/fetch_model.py \
+            --manifest worker/models/faster-whisper-small.manifest.json \
+            --dest "$RUNNER_TEMP/faster-whisper-small"
+      - name: Build worker (real bridge + builder)
+        run: cd worker && npm ci && npm run build
+      - name: Guard — corpus builder must not import librosa/numba (teardown-crash regression)
+        run: python scripts/speech-eval/test_build_corpus.py
+      - name: Verify licenses + build the corpus (audio → ephemeral runner only)
+        run: |
+          # inputs.* are empty on `push` events (only set on workflow_dispatch)
+          # — fall back to the same defaults.
+          python scripts/speech-eval/build_corpus.py \
+            --out "$RUNNER_TEMP/speech-corpus" \
+            --clean "${{ inputs.clean_clips || '5' }}" \
+            --ami-per-category "${{ inputs.ami_per_category || '3' }}"
+      - name: Run the real Phase 5 pipeline + gate against predefined thresholds
+        # runner.temp is valid at STEP level here (unlike job-level env, where only
+        # github.* contexts resolve — see staging-integration.yml).
+        env:
+          SPEECH_EVAL_MANIFEST: ${{ runner.temp }}/speech-corpus/manifest.json
+          # Grade the PINNED snapshot loaded offline (requirePinnedModel enforces it).
+          EDITOR_SPEECH_MODEL_PATH: ${{ runner.temp }}/faster-whisper-small
+        run: node scripts/speech-eval/evaluate.mjs
+      - name: Indicative `small` runtime benchmark (CI x86 — NOT the VPS; authoritative gate is task #116)
+        if: always()
+        run: |
+          # Indicative only: GitHub's x86 runner is not the production VPS. The
+          # AUTHORITATIVE processing-ratio / RAM / concurrency numbers must be
+          # produced by running this same script on the VPS before merge (#116).
+          CLIP=$(python -c "import json; m=json.load(open('$RUNNER_TEMP/speech-corpus/manifest.json')); print(next(c['audio'] for c in m['clips'] if c['category']=='clean_natural_speech'))" 2>/dev/null || true)
+          if [ -n "$CLIP" ] && [ -f "$CLIP" ]; then
+            EDITOR_SPEECH_MODEL=small EDITOR_SPEECH_MODEL_PATH="$RUNNER_TEMP/faster-whisper-small" \
+              python worker/scripts/bench_speech.py \
+              --audio "$CLIP" --model small --runs 3 --concurrency 2 --label ci-indicative-x86 \
+              || echo "::warning::indicative bench failed (non-blocking)"
+          else
+            echo "::warning::no clean clip available for the indicative benchmark"
+          fi
+      - name: Upload evaluation + benchmark reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: speech-eval-report
+          path: |
+            speech-eval-report.json
+            speech-bench-report.json
+            ${{ runner.temp }}/speech-corpus/provenance.json
+          if-no-files-found: warn

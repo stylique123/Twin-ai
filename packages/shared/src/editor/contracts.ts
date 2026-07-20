@@ -123,6 +123,9 @@ export type EditEventMessageCode =
   | 'stage_retry_scheduled'  // retryable failure — the job will run again
   | 'cancel_requested'       // the owner asked to cancel
   | 'job_reenqueued'         // reconciler healed a queued project's lost job
+  | 'inspection_recorded'    // Phase 4: the inspection component was recorded/reused
+  | 'speech_recorded'        // Phase 5: the speech component was recorded/reused
+  | 'speech_analysis_verified' // Phase 5: analyzing re-verified the speech component
   | 'project_completed'
   | 'project_failed'
   | 'project_cancelled'
@@ -190,6 +193,145 @@ export interface MediaInspection {
   source: {
     reusedValidationFacts: boolean   // built from Phase-1 facts, no download
     fallbackProbePerformed: boolean  // bounded one-time upgrade probe ran
+  }
+}
+
+// ---- Speech analysis (Phase 5) ---------------------------------------------
+// The canonical, versioned output of the editor's real `transcribing` stage:
+// Faster-Whisper word-level transcription of the ACTUAL recording (never a
+// teleprompter script), plus VAD and audio-energy EVIDENCE and edit CANDIDATES.
+// Stored as an immutable `speech` component in media_analyses, keyed
+// (source_asset_id, 'speech', speechVersion) — the same per-asset cache
+// identity as inspection (no cross-tenant dedup; owner derived from the asset).
+//
+// Hard rules:
+//  * Integer milliseconds everywhere; word/sentence ids are deterministic for
+//    a given (source bytes, speechVersion) — re-running the same version on
+//    the same bytes reproduces the same ids.
+//  * CANDIDATES ONLY: nothing in this contract is a cut decision. Silence,
+//    filler, false-start and repetition entries are evidence-bearing
+//    suggestions for the (later-phase) director; low ASR confidence alone
+//    NEVER produces a removal candidate, and no candidate implies a removal
+//    is safe.
+//  * The transcript is never filtered against any script: words the speaker
+//    added off-script stay in the transcript and in the word list.
+export const SPEECH_ANALYSIS_SCHEMA_VERSION = 1
+
+export interface SpeechWord {
+  id: string        // deterministic: 'w' + zero-based index in spoken order
+  text: string            // original ASR text, verbatim (never script-derived)
+  startMs: number
+  endMs: number
+  confidence: number      // ASR word probability, 0..1 (3 decimals)
+  // Derivable fields, present on normal components and OMITTED when the
+  // component is `compact` (see SpeechAnalysis.compact) — all reconstructable
+  // from `boundaries`: endsUnit = this word is a boundary's endWordId; unitId =
+  // the boundary whose span contains it; normalizedText = lowercased +
+  // punctuation-stripped `text`.
+  endsUnit?: boolean
+  normalizedText?: string
+  unitId?: string
+}
+
+// A SPEECH UNIT boundary. Deliberately NOT always a "sentence": an ASR segment
+// can end mid-sentence, merge sentences, or shift with model parameters, so the
+// `kind` records HOW the boundary was determined and only `punctuation_sentence`
+// asserts a (punctuation-supported) grammatical sentence. Downstream (the AI
+// Director, hook selection, cut safety) must consult `kind` before treating a
+// boundary as a complete sentence.
+export type SpeechBoundaryKind =
+  | 'punctuation_sentence'  // closed by terminal punctuation (a real sentence)
+  | 'asr_segment'           // closed at a Faster-Whisper segment edge (decoding unit)
+  | 'pause_utterance'       // closed by a long inter-word pause (no segment/punctuation)
+
+export interface SpeechBoundary {
+  id: string        // deterministic: 'u' + zero-based index
+  kind: SpeechBoundaryKind
+  startWordId: string
+  endWordId: string
+  startMs: number
+  endMs: number
+  text?: string       // derivable from startWordId..endWordId; omitted when compact
+  evidence: string[]  // stable codes: terminal_punctuation | asr_segment_end | pause_gap
+}
+
+export type SpeechCandidateKind = 'silence' | 'filler' | 'false_start' | 'repetition'
+
+// The analyzer PROPOSES candidates; it never decides a removal. `safeToConsider`
+// is deliberately not `safeToRemove` — the later Director/compiler applies
+// policy to decide whether a candidate is acted on.
+export interface SpeechCandidate {
+  id: string        // deterministic: 'c' + zero-based index in start order
+  kind: SpeechCandidateKind
+  startMs: number
+  endMs: number
+  wordIds: string[]        // the words this candidate refers to ([] for pure silence)
+  prevWordId: string | null // adjacent context (null at the recording edge)
+  nextWordId: string | null
+  confidence: 'high' | 'medium' | 'low'  // heuristic strength, NOT permission
+  safeToConsider: true     // always a suggestion; never an instruction
+  evidenceCodes: string[]  // stable machine codes (see docs) for why it fired
+  evidence: Record<string, unknown>
+  ruleVersion: string      // candidate rule/language version
+}
+
+export interface SpeechAnalysis {
+  schemaVersion: number
+  speechVersion: string       // analyzer bundle version (cache identity)
+
+  sourceAssetId: string
+  sourceChecksum: string      // sha256 the downloaded bytes verified against
+
+  language: string
+  languageConfidence: number  // 0..1
+  durationMs: number          // duration of the ANALYZED audio track
+
+  transcript: string          // full text of the actual recording
+  words: SpeechWord[]
+  // Speech-unit boundaries (see SpeechBoundary). Only punctuation_sentence
+  // boundaries assert grammatical sentences; asr_segment / pause_utterance are
+  // decoding/pause units, honestly labelled.
+  boundaries: SpeechBoundary[]
+
+  // True when derivable per-word fields (normalizedText/sentenceId) were
+  // dropped to keep a very long, dense source within the DB payload limit.
+  // No words, candidates or timings are ever dropped — see the docs.
+  compact: boolean
+
+  // Silero VAD speech regions over the source timeline (evidence, not cuts).
+  vadSegments: Array<{ startMs: number; endMs: number }>
+
+  // Coarse RMS energy curve. windowMs is ADAPTIVE so the array length is
+  // bounded regardless of source length (a 30-minute source cannot blow the
+  // component past the DB payload limit): windowMs grows so rms.length stays
+  // within a fixed cap. Values are 4 decimals.
+  energy: { windowMs: number; rms: number[] }
+
+  candidates: SpeechCandidate[]
+
+  provenance: {
+    asrEngine: 'faster-whisper'
+    asrModel: string          // LABEL only, e.g. 'small' (weights come from the pin below)
+    asrComputeType: string    // e.g. 'int8' (part of the reproducibility identity)
+    device: string            // 'cpu' | 'cuda'
+    beamSize: number
+    languagePolicy: string    // pinned ISO code, or 'auto'
+    // PINNED model identity (speech-6+): the EXACT weights that produced this
+    // immutable analysis. Null only for legacy/dev analyses that loaded the moving
+    // alias; the worker path REQUIRES them (a rebuilt image is provably the same
+    // model, or the analyzer bundle version must bump).
+    modelRepository: string | null   // e.g. 'Systran/faster-whisper-small'
+    modelRevision: string | null     // exact 40-char commit sha
+    modelArtifactSha256: string | null   // sha256 of model.bin (the loaded artifact)
+    modelManifestSha256: string | null   // stable digest of the pin manifest's semantic core
+    modelAnalyzerBundle: string | null   // analyzer bundle the manifest is pinned to (== speechVersion)
+    modelLoadedFromPath: boolean     // true == loaded the pinned snapshot offline
+    modelVerified: boolean           // true == loaded bytes re-hashed against the manifest before use
+    vad: 'silero'
+    vadMinSilenceMs: number
+    vadSpeechPadMs: number
+    silenceMinMs: number      // gap threshold used for silence candidates
+    ruleVersion: string       // candidate rule/language version
   }
 }
 

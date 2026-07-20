@@ -8,6 +8,16 @@ function need(name: string): string {
   return v
 }
 
+// The alternate model-manifest path exists only so the staging matrix can prove
+// a legitimate analyzer-version cache bump.  It must never be selectable by a
+// production worker, even if an environment variable is injected accidentally.
+// Non-production callers must opt in explicitly as well.
+export function resolveSpeechModelManifest(source: NodeJS.ProcessEnv = process.env): string {
+  if ((source.NODE_ENV ?? '').trim() === 'production') return ''
+  if (source.EDITOR_ALLOW_TEST_MODEL_MANIFEST !== 'true') return ''
+  return (source.EDITOR_SPEECH_MODEL_MANIFEST ?? '').trim()
+}
+
 export const env = {
   supabaseUrl: need('SUPABASE_URL'),
   serviceKey: need('SUPABASE_SERVICE_ROLE_KEY'),
@@ -105,6 +115,59 @@ export const env = {
   // 'before_probe' | 'during_probe' | 'after_probe' | 'after_persist').
   inspectSlowPoint: (process.env.EDITOR_INSPECT_SLOW_POINT ?? '').trim(),
   inspectSlowMs: Number(process.env.EDITOR_INSPECT_SLOW_MS ?? '4000'),
+
+  // ---- speech analysis (Phase 5) ----
+  // Cache identity: one immutable speech component per
+  // (source_asset_id, 'speech', speech version). Bumping recomputes.
+  // speech-2: disfluency emission (bridge suppress_tokens=[]) vs speech-1.
+  // speech-3: ASR model base -> small (reviewer-approved). speech-4: VAD-aware
+  // candidate rules (speech-rules-2: silence regions from word gaps UNION VAD
+  // gaps; VAD pause evidence for false starts) + disfluency-context prompt.
+  // speech-5: acoustic-evidence filler guard + neighbor-overlap guard + VAD-core
+  // silence-region shrinking (speech-rules-3) — changes candidate output, so the
+  // analyzer-bundle cache identity advances. Each bridge/model/rules change bumps.
+  // speech-6: PIN the model snapshot. The bare `small` alias resolved the moving
+  // Hugging Face default, so a rebuilt image could produce different immutable
+  // analysis under the same version. speech-6 loads the exact digest-verified
+  // Systran/faster-whisper-small revision (worker/models/*.manifest.json) offline
+  // and records repo+revision+digest in provenance — the model is now part of the
+  // pinned bundle identity, so pinning it advances the version.
+  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-6').trim(),
+  // ASR model LABEL for the speech component (independent of the caption/reference
+  // knob so a caption tweak can never silently change component identity). The
+  // actual weights come from speechModelPath (pinned snapshot), not this alias.
+  speechModel: (process.env.EDITOR_SPEECH_MODEL ?? process.env.WHISPER_MODEL ?? 'small').trim(),
+  // PINNED local snapshot dir + manifest. The Docker build (and CI) fetch the
+  // exact revision here and digest-verify it; the bridge loads ONLY this path
+  // with the network disabled. Overridable for CI, where the snapshot is fetched
+  // to a runner temp dir.
+  speechModelPath: (process.env.EDITOR_SPEECH_MODEL_PATH ?? '/opt/models/faster-whisper-small').trim(),
+  // Manifest the bridge verifies the loaded bytes against. Defaults (empty) to
+  // the checked-in production manifest resolved in editorSpeech.ts. A matching
+  // test pin requires an explicit non-production opt-in; production ignores the
+  // override even if both variables are injected.
+  speechModelManifest: resolveSpeechModelManifest(),
+  // Hard timeouts: audio extraction is I/O-bound (minutes at worst); ASR on
+  // CPU runs ~0.2-0.5x realtime for `base`, so 15 min of audio fits well
+  // inside 20 min. Both stay far under the 2400s visibility lease.
+  speechExtractTimeoutMs: Number(process.env.EDITOR_SPEECH_EXTRACT_TIMEOUT_MS ?? '180000'),
+  speechAsrTimeoutMs: Number(process.env.EDITOR_SPEECH_ASR_TIMEOUT_MS ?? '1200000'),
+  // Minimum word/VAD gap that becomes a silence CANDIDATE (evidence only).
+  speechSilenceMinMs: Number(process.env.EDITOR_SPEECH_SILENCE_MIN_MS ?? '700'),
+  // Silero VAD parameters (pinned in the bridge; surfaced for provenance so a
+  // change is visible in the component and can be tied to a version bump).
+  speechVadMinSilenceMs: Number(process.env.EDITOR_SPEECH_VAD_MIN_SILENCE_MS ?? '300'),
+  speechVadSpeechPadMs: Number(process.env.EDITOR_SPEECH_VAD_SPEECH_PAD_MS ?? '100'),
+  // Matrix-only boundary holds ('before_reconcile' | 'before_download' |
+  // 'during_download' | 'before_extract' | 'during_extract' | 'before_asr' |
+  // 'after_asr_before_persist' | 'after_persist').
+  speechSlowPoint: (process.env.EDITOR_SPEECH_SLOW_POINT ?? '').trim(),
+  speechSlowMs: Number(process.env.EDITOR_SPEECH_SLOW_MS ?? '4000'),
+  // Matrix-only deterministic bridge holds so cancellation lands in the
+  // model-load / mid-transcription windows ('after_model_load' |
+  // 'after_transcribe'). The worker kills the bridge process group on abort.
+  speechBridgeHoldAt: (process.env.EDITOR_SPEECH_BRIDGE_HOLD_AT ?? '').trim(),
+  speechBridgeHoldMs: Number(process.env.EDITOR_SPEECH_BRIDGE_HOLD_MS ?? '0'),
 
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }

@@ -5,6 +5,15 @@
 #   authenticated   → 503 editor_not_available from the in-function gate
 #                     (no EDITOR_V2_START_ENABLED secret exists in production
 #                     until Phase-3 rollout — proven by the second probe)
+# SAFETY ENVELOPE (read-only production probe):
+#   * workflow_dispatch ONLY; refuses any ref except main
+#   * environment: production (attach required-reviewer protection in repo
+#     settings so a human approves each run — the kill switch)
+#   * creates NOTHING durable: two HTTP probes + a secrets-name listing
+#   * least privilege: the authenticated probe uses ONLY the committed public
+#     anon key + a pre-existing probe user's own session; the CLI uses the
+#     management token to LIST secret NAMES (values are masked in output)
+#   * pinned CLI (no mutable @latest)
 name: Verify production editor gate
 on:
   workflow_dispatch:
@@ -18,11 +27,21 @@ on:
         required: false
         default: ''
 
+# Kill switch / no overlap: one production probe at a time.
+concurrency:
+  group: verify-prod-gate
+  cancel-in-progress: false
+
 jobs:
   probe:
     runs-on: ubuntu-latest
+    environment: production
     timeout-minutes: 5
     steps:
+      - name: Refuse non-main refs
+        run: |
+          [ "$GITHUB_REF_NAME" = "main" ] || { echo "::error::runs only from main"; exit 1; }
+
       - uses: actions/checkout@v4
 
       - name: Unauthenticated callers cannot reach the endpoint (401 wall)
@@ -62,7 +81,7 @@ jobs:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           curl -sS -o /dev/null -w '' https://example.com || true
-          npx --yes supabase@latest secrets list --project-ref jmdecibuytznsonrasxw > /tmp/secrets.txt
+          npx --yes supabase@2.109.1 secrets list --project-ref jmdecibuytznsonrasxw > /tmp/secrets.txt
           cat /tmp/secrets.txt | sed 's/|.*$/| (value digest hidden)/'
           grep -q 'EDITOR_V2_START_ENABLED' /tmp/secrets.txt \
             && { echo "EDITOR_V2_START_ENABLED IS SET IN PRODUCTION"; exit 1; } \

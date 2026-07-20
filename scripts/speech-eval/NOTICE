@@ -1,0 +1,24 @@
+Phase 5 speech-evaluation corpus — third-party attribution
+
+This project's speech-evaluation harness downloads (at CI time, into ephemeral
+private runner storage — never committed to this repository) clips from the
+following permissively-licensed corpora. Attribution is required by their
+licenses and reproduced here.
+
+1. LibriSpeech ASR corpus (subset: dev-clean, OpenSLR SLR12)
+   License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+   Source:  https://www.openslr.org/12
+   Cite:    V. Panayotov, G. Chen, D. Povey and S. Khudanpur,
+            "Librispeech: An ASR corpus based on public domain audio books,"
+            ICASSP 2015.
+
+2. AMI Meeting Corpus
+   License: Creative Commons Attribution 4.0 International (CC BY 4.0)
+   Source:  https://groups.inf.ed.ac.uk/ami/corpus/
+            (ASR-prepared distribution: https://huggingface.co/datasets/edinburghcstr/ami)
+   Cite:    J. Carletta et al., "The AMI Meeting Corpus: A Pre-announcement,"
+            MLMI 2005.
+
+The CI job re-verifies each corpus's license and records the resolved dataset
+version + per-artifact SHA-256 into the run report before use. Both licenses
+permit redistribution and automated/commercial use with attribution.

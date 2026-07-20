@@ -34,6 +34,13 @@ export async function downloadObject(
   // arrive (handles a missing/lying content-length) and honouring backpressure.
   const reader = (res.body as ReadableStream<Uint8Array>).getReader()
   const out = createWriteStream(toFile)
+  // Destroying the stream on abort/cap (below) makes Node emit an 'error' event
+  // (ERR_STREAM_DESTROYED) on the WriteStream; without a listener that becomes
+  // an UNHANDLED exception and crashes the worker. In production there is no
+  // chunk pause, so a real mid-download cancellation lands mid-write and hits
+  // exactly this. The control-flow error is still surfaced by the catch below;
+  // this listener only stops the destroy from crashing the process.
+  out.on('error', () => { /* handled via the try/catch control flow */ })
   let seen = 0
   try {
     for (;;) {
