@@ -91,7 +91,67 @@ def test_empty_path_never_reaches_loader():
     print("ok: empty path raises PinFailed and never reaches the loader")
 
 
+def _install_full_fakes(recorder):
+    """Fake faster_whisper (+ audio/vad) and an EMPTY numpy so a full main() run
+    needs no real model, no numpy math (short audio → rms loop body never runs)."""
+    fw = types.ModuleType("faster_whisper")
+
+    class Info:
+        duration = 1.0
+        language = "en"
+        language_probability = 0.9
+
+    class FakeWhisperModel:
+        def __init__(self, model, **kwargs):
+            recorder["model"] = model
+            recorder["kwargs"] = kwargs
+
+        def transcribe(self, *a, **k):
+            return iter([]), Info()
+    fw.WhisperModel = FakeWhisperModel
+    sys.modules["faster_whisper"] = fw
+    audio = types.ModuleType("faster_whisper.audio")
+    audio.decode_audio = lambda *a, **k: [0.0] * 100   # len < rms window → np never used
+    sys.modules["faster_whisper.audio"] = audio
+    vad = types.ModuleType("faster_whisper.vad")
+    vad.VadOptions = lambda **k: object()
+    vad.get_speech_timestamps = lambda *a, **k: []
+    sys.modules["faster_whisper.vad"] = vad
+    sys.modules.setdefault("numpy", types.ModuleType("numpy"))   # import succeeds; unused
+
+
+def test_full_main_success_emits_model_block():
+    """Regression for the NameError class: a SUCCESSFUL main() must write output
+    with a populated model block (loadedFromPath/verified/revision/analyzerBundle)."""
+    rec = {}
+    _install_full_fakes(rec)
+    import importlib
+    import editor_speech
+    importlib.reload(editor_speech)   # rebind faster_whisper imports to the fakes
+    with tempfile.TemporaryDirectory() as d:
+        mp = _valid_model_dir(d)
+        out = os.path.join(d, "out.json")
+        argv = ["editor_speech.py", "--audio", os.path.join(d, "a.wav"), "--out", out,
+                "--model", "small", "--device", "cpu",
+                "--model-path", d, "--model-manifest", mp, "--require-pinned-model"]
+        old = sys.argv
+        try:
+            sys.argv = argv
+            rc = editor_speech.main()
+        finally:
+            sys.argv = old
+        assert rc == 0, f"main() returned {rc}"
+        with open(out) as f:
+            o = json.load(f)
+        m = o["model"]
+        assert m["loadedFromPath"] is True and m["verified"] is True, m
+        assert m["revision"] == "a" * 40 and m["analyzerBundle"] == "speech-6", m
+        assert m["repository"] == "Systran/faster-whisper-small", m
+    print("ok: full main() success writes a populated model block (no NameError)")
+
+
 if __name__ == "__main__":
     test_verified_local_path_loads_offline()
     test_empty_path_never_reaches_loader()
+    test_full_main_success_emits_model_block()
     print("all editor_speech offline-load tests passed")

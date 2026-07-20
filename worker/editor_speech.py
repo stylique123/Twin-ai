@@ -138,6 +138,9 @@ def main() -> int:
 
     import time
 
+    # Whether the run loaded from a pinned local path (used in the output block).
+    model_path = (args.model_path or "").strip()
+
     # Prepare + load the model (offline, verified). Fail closed on any pin defect.
     try:
         model, model_identity = prepare_model(args)
