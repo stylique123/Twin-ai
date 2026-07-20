@@ -83,7 +83,7 @@ async function runBridge(audioAbs) {
 }
 
 const OPTS = {
-  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-3', asrModel: ASR_MODEL,
+  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-4', asrModel: ASR_MODEL,
   asrComputeType: 'int8', device: 'cpu', beamSize: 1, languagePolicy: process.env.WHISPER_LANGUAGE || 'en',
   silenceMinMs: 700, vadMinSilenceMs: 300, vadSpeechPadMs: 100,
 }

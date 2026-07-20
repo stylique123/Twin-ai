@@ -168,6 +168,43 @@ clips produced no silence candidate (Whisper word timestamps bridged the
 inserted mid-utterance silence); gender metadata mirrors for `SPEAKERS.TXT`
 404'd, so gender remained unknown in that run.
 
+## Round-4 (defect fixes exposed by the first genuine `small` run)
+
+Run **29752731049** was **invalidated for model attribution** (the harness'
+bridge invocation still defaulted to base while the report claimed small —
+caught because every metric was byte-identical to the base baseline; fixed by a
+single `ASR_MODEL` source). The first genuine small run, **29753050199** (head
+`a390093`), delivered clean WER 0.013 / invented 0.000 / off-script retention
+1.000 (n=52) — and exposed three failures with one shared root:
+
+* `fillerRecall 0/6` — small is MORE fluent and omits um/uh even more;
+* `falseStartPrecision NOT EVALUATED` — the constructed clips' inserted pause
+  vanished from Whisper **word timestamps**, so the `pauseMs >= 150` rule never
+  fired (they classified as repetition);
+* `silenceClassAgreement 0/1` + all 3 dead-air clips missed — Whisper word
+  timestamps **bridge real mid-utterance silence**, and silence candidates were
+  derived from word gaps only.
+
+Round-4 changes are **defect fixes in the analyzer, not metric/threshold
+changes** (gates unchanged, `speech-rules-2`, bundle version `speech-4`):
+
+1. **Silence candidates from word gaps ∪ VAD gaps** (merged regions): Silero
+   VAD — already stored as evidence — is the ground truth for non-speech; a
+   real dead-air stretch the ASR bridged now yields a `dead_air` candidate with
+   a `vad_gap` evidence code. Banding rules unchanged.
+2. **VAD pause evidence for false starts**: the repeat-bigram rule consults the
+   longest VAD non-speech stretch across the junction span
+   (`vad_pause_between`) in addition to word-timestamp pause and comma.
+3. **Disfluency-context `initial_prompt`** in the bridge (constant string,
+   greedy decoding — deterministic): token de-suppression alone measured 0/6
+   because Whisper's training transcripts omit fillers; a prompt that itself
+   contains fillers biases verbatim emission. Any prompt leakage into output
+   would trip the invented-word gate.
+4. Corpus: constructed false-start pause 300 → 600 ms so the real silence
+   survives Silero's 100 ms speech pads.
+
+Unit tests added for the two bridged-timestamp behaviors (22 pass).
+
 ## Measurements (published per category + overall)
 
 WER (token Levenshtein), missing-word count (deletions), invented-word count

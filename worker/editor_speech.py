@@ -77,6 +77,13 @@ def main() -> int:
     # Default: suppress NOTHING so disfluencies (um/uh) survive; pass -1 only if
     # the caller explicitly opts back into Whisper's non-speech suppression.
     suppress_tokens = [-1] if args.suppress_non_speech else []
+    # Fixed disfluency-bearing context prompt: Whisper's decoder is biased by
+    # preceding text, and its training transcripts mostly OMIT fillers — token
+    # de-suppression alone measured recall 0/6 on real disfluent speech. A
+    # constant prompt that itself contains fillers makes verbatim um/uh
+    # emission likely. Deterministic (constant string + greedy decoding); any
+    # prompt leakage into output would trip the invented-word gate in the eval.
+    initial_prompt = "Um, uh, er, hmm... okay, so, um, I was, I was thinking, uh, you know, right."
     segments_iter, info = model.transcribe(
         args.audio,
         word_timestamps=True,
@@ -86,6 +93,7 @@ def main() -> int:
         condition_on_previous_text=False,
         no_speech_threshold=0.6,
         suppress_tokens=suppress_tokens,
+        initial_prompt=initial_prompt,
         vad_filter=False,  # timestamps must stay on the source timeline
     )
     if info.duration and info.duration > args.max_seconds:

@@ -195,6 +195,43 @@ describe('speech candidate contract (proposals, never removals)', () => {
     expect(first.evidenceCodes).toContain('vad_ambiguous')
   })
 
+  it('detects dead air the ASR bridged: VAD gap with NO word gap (speech-rules-2)', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = fixtureBridge()
+    // Whisper stretches 'pineapples.' across a real 2.4s silence: word
+    // timestamps leave no gap, but Silero VAD hears the non-speech.
+    br.words[12].end = 7.4
+    br.vad_segments = [
+      { start: 0.3, end: 1.4 }, { start: 2.7, end: 4.9 },
+      { start: 7.3, end: 8.8 }, // 4.9–7.3 = 2.4s non-speech, inside the word span
+    ]
+    const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
+    const bridged = a.candidates.find((c: any) => c.kind === 'silence' && c.startMs === 4900)
+    expect(bridged).toBeTruthy()
+    expect(bridged.evidenceCodes).toContain('vad_gap')
+    expect(bridged.evidence.class).toBe('dead_air')
+    expect(bridged.confidence).toBe('high')
+  })
+
+  it('classifies a bridged repeated bigram as false start via VAD pause evidence', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = fixtureBridge()
+    // Kill BOTH word-timestamp pause and comma between the runs...
+    br.words[5].w = 'want'
+    br.words[6].start = 3.55
+    br.words[6].end = 3.65
+    // ...but VAD hears a real ~350ms pause inside the junction span.
+    br.vad_segments = [
+      { start: 0.3, end: 1.4 }, { start: 2.7, end: 3.3 },
+      { start: 3.7, end: 5.7 }, { start: 7.3, end: 8.8 },
+    ]
+    const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
+    const fs = a.candidates.filter((c: any) => c.kind === 'false_start')
+    expect(fs).toHaveLength(1)
+    expect(fs[0].evidenceCodes).toContain('vad_pause_between')
+    expect(fs[0].evidence.vadPauseMs).toBeGreaterThanOrEqual(150)
+  })
+
   it('disfluency filler (um) is high; low ASR confidence downgrades it', async () => {
     const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
     const a = buildSpeechAnalysis(asset, fixtureBridge(), opts) as Record<string, any>
@@ -346,7 +383,7 @@ describe('speech energy + payload safety', () => {
     expect(a.provenance).toMatchObject({
       asrEngine: 'faster-whisper', asrModel: 'base', asrComputeType: 'int8', device: 'cpu',
       beamSize: 1, languagePolicy: 'en', vad: 'silero', vadMinSilenceMs: 300, vadSpeechPadMs: 100,
-      silenceMinMs: 700, ruleVersion: 'speech-rules-1',
+      silenceMinMs: 700, ruleVersion: 'speech-rules-2',
     })
   })
 })

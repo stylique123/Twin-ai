@@ -55,7 +55,7 @@ export interface SpeechBridgeOutput {
 }
 
 // ---- pure contract construction (unit-tested) ------------------------------
-export const SPEECH_RULE_VERSION = 'speech-rules-1'
+export const SPEECH_RULE_VERSION = 'speech-rules-2'
 
 // Clear disfluencies: near-always insertions, not lexical content.
 const DISFLUENCY_FILLERS = new Set(['um', 'uh', 'uhm', 'umm', 'uhh', 'erm', 'er', 'ah', 'hmm', 'mm', 'mmm'])
@@ -213,34 +213,76 @@ export function buildSpeechAnalysis(
   const cands: Cand[] = []
   const wid = (i: number): string | null => (i >= 0 && i < words.length ? words[i].id : null)
 
-  // Silence: leading/internal/trailing gaps, banded into removable / dead_air
-  // / uncertain. Natural pauses (< silenceMinMs) produce NO candidate.
-  const silenceAt = (sMs: number, eMs: number, prevIdx: number, nextIdx: number, position: string) => {
-    const gapMs = eMs - sMs
-    if (gapMs < opts.silenceMinMs) return // natural pause — evidence by absence
-    const nonSpeechRatio = 1 - speechOverlapMs(sMs, eMs, vadSegments) / gapMs
-    const energyHere = avgEnergy(sMs, eMs, energy.windowMs, energy.rms)
+  // Silence: candidate regions from BOTH evidence sources — ASR word-timestamp
+  // gaps AND Silero VAD non-speech gaps — merged into maximal regions. Whisper
+  // word timestamps often BRIDGE real mid-utterance silence (the `small` model
+  // especially), so word gaps alone systematically miss genuine dead air; VAD
+  // is the honest ground truth for non-speech. Regions under silenceMinMs stay
+  // natural pauses (no candidate). Banding unchanged: removable / dead_air /
+  // uncertain (a word-gap region VAD hears speech in stays `uncertain`).
+  interface SilRegion { s: number; e: number; src: Set<string> }
+  const silRegions: SilRegion[] = []
+  if (words.length > 0) {
+    const wordGap = (s: number, e: number) => {
+      if (e - s >= opts.silenceMinMs) silRegions.push({ s, e, src: new Set(['word_gap']) })
+    }
+    wordGap(0, words[0].startMs)
+    for (let i = 1; i < words.length; i++) wordGap(words[i - 1].endMs, words[i].startMs)
+    wordGap(words[words.length - 1].endMs, durationMs)
+    const sortedVad = [...vadSegments].sort((a, b) => a.startMs - b.startMs)
+    let cursor = 0
+    for (const v of sortedVad) {
+      if (v.startMs - cursor >= opts.silenceMinMs) silRegions.push({ s: cursor, e: v.startMs, src: new Set(['vad_gap']) })
+      cursor = Math.max(cursor, v.endMs)
+    }
+    if (durationMs - cursor >= opts.silenceMinMs) silRegions.push({ s: cursor, e: durationMs, src: new Set(['vad_gap']) })
+  }
+  silRegions.sort((a, b) => a.s - b.s || a.e - b.e)
+  const mergedSil: SilRegion[] = []
+  for (const r of silRegions) {
+    const last = mergedSil[mergedSil.length - 1]
+    if (last && r.s <= last.e) { last.e = Math.max(last.e, r.e); for (const x of r.src) last.src.add(x) }
+    else mergedSil.push(r)
+  }
+  for (const r of mergedSil) {
+    const gapMs = r.e - r.s
+    const nonSpeechRatio = 1 - speechOverlapMs(r.s, r.e, vadSegments) / gapMs
+    const energyHere = avgEnergy(r.s, r.e, energy.windowMs, energy.rms)
     const vadClear = nonSpeechRatio >= 0.6
-    let cls: string; let confidence: 'high' | 'medium' | 'low'; const codes = ['silence_gap']
+    let cls: string; let confidence: 'high' | 'medium' | 'low'; const codes = ['silence_gap', ...r.src]
     if (!vadClear) { cls = 'uncertain'; confidence = 'low'; codes.push('vad_ambiguous') }
     else if (gapMs >= DEAD_AIR_MS) { cls = 'dead_air'; confidence = 'high'; codes.push('gap_dead_air', 'vad_nonspeech') }
     else { cls = 'removable'; confidence = 'medium'; codes.push('gap_removable', 'vad_nonspeech') }
+    // prev = last word starting before the region (may OVERLAP it when the ASR
+    // bridged the silence); next = first word ending after it.
+    let prevIdx = -1
+    for (let i = 0; i < words.length; i++) if (words[i].startMs < r.s) prevIdx = i
+    let nextIdx = words.length
+    for (let i = words.length - 1; i >= 0; i--) if (words[i].endMs > r.e) nextIdx = i
+    const position = prevIdx === -1 ? 'leading' : nextIdx === words.length ? 'trailing' : 'internal'
     cands.push({
-      kind: 'silence', startMs: sMs, endMs: eMs, wordIds: [],
+      kind: 'silence', startMs: r.s, endMs: r.e, wordIds: [],
       prevWordId: wid(prevIdx), nextWordId: wid(nextIdx), confidence,
       evidenceCodes: codes,
       evidence: { gapMs, position, class: cls, vadNonSpeechRatio: Math.round(nonSpeechRatio * 100) / 100, avgEnergy: energyHere },
     })
   }
-  if (words.length > 0) {
-    silenceAt(0, words[0].startMs, -1, 0, 'leading')
-    for (let i = 1; i < words.length; i++) silenceAt(words[i - 1].endMs, words[i].startMs, i - 1, i, 'internal')
-    silenceAt(words[words.length - 1].endMs, durationMs, words.length - 1, words.length, 'trailing')
-  }
 
   const norm = words.map((w) => w.normalizedText)
   const gapBefore = (i: number) => (i > 0 ? words[i].startMs - words[i - 1].endMs : Infinity)
   const gapAfter = (i: number) => (i < words.length - 1 ? words[i + 1].startMs - words[i].endMs : Infinity)
+  // Longest VAD non-speech stretch inside [sMs, eMs] — the pause evidence that
+  // survives when ASR word timestamps bridge a real silence.
+  const maxVadGapWithin = (sMs: number, eMs: number): number => {
+    if (eMs <= sMs) return 0
+    let best = 0; let cursor = sMs
+    for (const v of [...vadSegments].sort((a, b) => a.startMs - b.startMs)) {
+      if (v.endMs <= sMs || v.startMs >= eMs) continue
+      best = Math.max(best, Math.min(v.startMs, eMs) - cursor)
+      cursor = Math.max(cursor, Math.min(v.endMs, eMs))
+    }
+    return Math.max(best, eMs - cursor, 0)
+  }
 
   // Disfluency fillers: runs of um/uh/… — high unless the ASR itself was
   // unsure (a low-confidence "um" may be a mis-heard real word).
@@ -301,11 +343,15 @@ export function buildSpeechAnalysis(
     if (words[i + 1].endsUnit) continue // separate sentences sharing words
     if (norm[i] === norm[i + 2] && norm[i + 1] === norm[i + 3]) {
       const pauseMs = words[i + 2].startMs - words[i + 1].endMs
+      // ASR word timestamps can bridge the real pause between the abandoned
+      // run and the restart — consult VAD across the junction span too.
+      const vadPauseMs = maxVadGapWithin(words[i + 1].startMs, words[i + 2].endMs)
       const comma = /,$/.test(words[i + 1].text)
-      const isFalseStart = pauseMs >= 150 || comma
+      const isFalseStart = pauseMs >= 150 || vadPauseMs >= 150 || comma
       const codes = ['repeat_bigram']
       if (isFalseStart) {
         if (pauseMs >= 150) codes.push('pause_between')
+        if (vadPauseMs >= 150) codes.push('vad_pause_between')
         if (comma) codes.push('comma_boundary')
       }
       cands.push({
@@ -313,7 +359,9 @@ export function buildSpeechAnalysis(
         startMs: words[i].startMs, endMs: words[i + 1].endMs,
         wordIds: [words[i].id, words[i + 1].id], prevWordId: wid(i - 1), nextWordId: wid(i + 2),
         confidence: 'medium', evidenceCodes: codes,
-        evidence: { repeated: `${words[i].text} ${words[i + 1].text}`, pauseMs, secondStartWordId: words[i + 2].id },
+        // vadPauseMs only when non-zero: absence IS the evidence, and dense
+        // sources emit thousands of repeat candidates (payload budget).
+        evidence: { repeated: `${words[i].text} ${words[i + 1].text}`, pauseMs, ...(vadPauseMs > 0 ? { vadPauseMs } : {}), secondStartWordId: words[i + 2].id },
       })
       for (const k of [i, i + 1, i + 2, i + 3]) claimed.add(k)
       i += 3

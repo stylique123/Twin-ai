@@ -267,12 +267,15 @@ def main():
             break
         arr, sr, text = bases[bi]; bi += 1
         lead = arr[: int(sr * trims[k % len(trims)])]
-        # cat 5 false_start: lead + >=150ms pause + lead (A B <pause> A B)
-        gap = np.zeros(int(sr * 0.30), dtype="float32")
+        # cat 5 false_start: lead + pause + lead (A B <pause> A B). 600ms, not
+        # 300: Silero's 100ms speech pads shrink the DETECTED gap on both sides,
+        # and ASR word timestamps may bridge it entirely — the rule's VAD-pause
+        # evidence needs a comfortably-detectable real silence (>=150 after pads).
+        gap = np.zeros(int(sr * 0.60), dtype="float32")
         fa = np.concatenate([lead, gap, lead])
         constructed(f"fs-{k}", "false_start_correction", fa, sr, "",
                     {"hasFalseStartOrRepetition": True}, "duplicate_leading_segment_with_pause",
-                    {"lead_ms": int(trims[k % len(trims)] * 1000), "pause_ms": 300})
+                    {"lead_ms": int(trims[k % len(trims)] * 1000), "pause_ms": 600})
     for k in range(args.constructed_per_category):
         if bi >= len(bases):
             break

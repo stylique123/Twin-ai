@@ -109,12 +109,13 @@ export const env = {
   // ---- speech analysis (Phase 5) ----
   // Cache identity: one immutable speech component per
   // (source_asset_id, 'speech', speech version). Bumping recomputes.
-  // speech-2: disfluency emission (bridge suppress_tokens=[]) changed decoding
-  // output vs speech-1. speech-3: ASR model base -> small (reviewer-approved
-  // upgrade after the human-speech eval showed base cannot emit disfluencies
-  // reliably: filler recall 0.167 vs the committed 0.50 gate). Each change to
-  // the bridge/model combo advances the analyzer-bundle cache identity.
-  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-3').trim(),
+  // speech-2: disfluency emission (bridge suppress_tokens=[]) vs speech-1.
+  // speech-3: ASR model base -> small (reviewer-approved). speech-4: VAD-aware
+  // candidate rules (speech-rules-2: silence regions from word gaps UNION VAD
+  // gaps; VAD pause evidence for false starts — Whisper word timestamps bridge
+  // real silence) + disfluency-context initial_prompt in the bridge. Each
+  // bridge/model/rules change advances the analyzer-bundle cache identity.
+  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-4').trim(),
   // ASR model for the speech component (independent of the caption/reference
   // knob so a caption tweak can never silently change component identity).
   // `small` (was `base`): reviewer-approved production upgrade — base rarely
