@@ -109,7 +109,9 @@ export const env = {
   // ---- speech analysis (Phase 5) ----
   // Cache identity: one immutable speech component per
   // (source_asset_id, 'speech', speech version). Bumping recomputes.
-  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-1').trim(),
+  // speech-2: disfluency emission (bridge suppress_tokens=[]) changes decoding
+  // output, so the analyzer-bundle cache identity must advance from speech-1.
+  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-2').trim(),
   // ASR model for the speech component (independent of the caption/reference
   // knob so a caption tweak can never silently change component identity).
   speechModel: (process.env.EDITOR_SPEECH_MODEL ?? process.env.WHISPER_MODEL ?? 'base').trim(),

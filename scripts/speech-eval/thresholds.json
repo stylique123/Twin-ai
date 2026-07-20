@@ -4,8 +4,10 @@
   "maxInventedWordRatioClean": 0.03,
   "minOffScriptRetentionRatio": 0.90,
   "minFillerPrecision": 0.50,
+  "minFillerRecall": 0.50,
   "minFalseStartPrecision": 0.40,
   "minRepetitionPrecision": 0.40,
   "minSilenceClassAgreement": 0.60,
-  "maxLowConfidenceOnlyRemovalCandidates": 0
+  "maxLowConfidenceOnlyRemovalCandidates": 0,
+  "_minFillerRecall_note": "ADDED for the round-2 rerun as a newly-discovered product-quality requirement (perfect precision with 0.22 recall does not deliver the filler-removal feature). Committed at 0.50 BEFORE the rerun; paired with the bridge suppress_tokens=[] change so Whisper emits disfluencies. Not to be tuned after seeing results."
 }

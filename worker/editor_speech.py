@@ -47,6 +47,13 @@ def main() -> int:
     ap.add_argument("--language", default="en")  # ISO code, or "auto" to detect
     ap.add_argument("--beam-size", type=int, default=1)
     ap.add_argument("--max-seconds", type=int, default=1800)
+    # Emit disfluencies: by default Whisper suppresses the non-speech token set
+    # (suppress_tokens=[-1]), which drops most "um"/"uh" from the transcript and
+    # caps the editor's filler-detection recall. We disable that suppression so
+    # disfluencies survive into the word stream for the filler candidates. Still
+    # deterministic (greedy, temp 0). Pinned by EDITOR_SPEECH_VERSION.
+    ap.add_argument("--suppress-non-speech", action="store_true",
+                    help="keep Whisper's default non-speech suppression (drops um/uh)")
     ap.add_argument("--energy-window-ms", type=int, default=200)
     # Matrix-only deterministic holds so cooperative cancellation can be proven
     # to land in the model-load and mid-transcription windows (the worker kills
@@ -67,6 +74,9 @@ def main() -> int:
     model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
     if args.hold_at == "after_model_load" and args.hold_ms > 0:
         time.sleep(args.hold_ms / 1000.0)
+    # Default: suppress NOTHING so disfluencies (um/uh) survive; pass -1 only if
+    # the caller explicitly opts back into Whisper's non-speech suppression.
+    suppress_tokens = [-1] if args.suppress_non_speech else []
     segments_iter, info = model.transcribe(
         args.audio,
         word_timestamps=True,
@@ -75,6 +85,7 @@ def main() -> int:
         language=lang,
         condition_on_previous_text=False,
         no_speech_threshold=0.6,
+        suppress_tokens=suppress_tokens,
         vad_filter=False,  # timestamps must stay on the source timeline
     )
     if info.duration and info.duration > args.max_seconds:

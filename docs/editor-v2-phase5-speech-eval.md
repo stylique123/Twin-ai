@@ -79,21 +79,45 @@ and not a defect in our own code.
 
 Fix (dependency removal, not a bypass): decode with `Audio(decode=False)` + raw
 **soundfile** (libsndfile, a stable C library); **librosa is no longer
-installed**, so numba is never imported and teardown is clean. Hardening that
-stands regardless of the crash:
+installed**, so numba is never imported and interpreter teardown is clean. The
+builder now **exits normally** (`sys.exit(code)`) — the `os._exit` workaround has
+been **removed** (issue #192); CI proves the normal exit is clean. Hardening:
 
-- Fail-**closed**: any exception forces a non-zero exit (`os._exit(1)`), so an
-  earlier failure can never be masked by a clean process exit.
+- Fail-**closed**: any exception forces a non-zero exit, so an earlier failure
+  can never be masked by a clean process exit.
 - After writing, artifacts are flushed + fsynced + closed, then **reopened and
   schema-validated** (non-empty, required fields, every audio file present with a
-  matching SHA-256) and every one of the 12 categories is accounted for; core
-  threshold categories must be non-empty or the build fails.
-- A regression guard (`scripts/speech-eval/test_build_corpus.py`, run as a CI
-  step) asserts the builder imports **neither librosa nor numba** and unit-tests
-  the selection helpers + the validator.
-- The remaining controlled `os._exit(code)` is documented defense-in-depth (only
-  after all validations, code reflects validity). Its removal — once CI confirms
-  clean teardown without it — is tracked in issue #192.
+  matching SHA-256) and **all 12 categories must be populated** or the build
+  fails.
+- A regression guard (`scripts/speech-eval/test_build_corpus.py`, a CI step)
+  asserts the builder imports **neither librosa nor numba** and unit-tests the
+  selection helpers, `pick_offscript`, and the validator.
+
+## Round-2 closing work (conditional-pass items)
+
+- **Off-script retention is measurable.** Every clip carries a `scriptReference`
+  (the intended script) distinct from the spoken `referenceTranscript`; the
+  removed words are `offScriptWords`. Retention = off-script words that are
+  transcribed **and not covered by any removal candidate**, gated at **≥0.90**.
+- **12/12 categories populated with real audio.** Cats 5 (false start), 6
+  (rhetorical repetition), 8 (long dead air), 9 (short emphasis pause) are
+  **constructed on real human audio** (a real speaker's own voice — a duplicated
+  leading segment for 5/6, a measured inserted silence for 8/9) and disclosed
+  per-clip in provenance (`constructed: true`, method + params). The validator
+  fails the build unless every category count > 0.
+- **Filler recall gate.** Newly-added product-quality requirement:
+  `minFillerRecall = 0.50`, committed in `thresholds.json` **before** the rerun.
+  Paired with the bridge change `suppress_tokens=[]` (see
+  `worker/editor_speech.py`) so Whisper emits disfluencies instead of dropping
+  them; the speech-component version advances `speech-1 → speech-2` (cache
+  identity). Not tuned after seeing results.
+- **Speaker metadata.** Gender is loaded from the public `SPEAKERS.TXT` (multiple
+  mirrors, diagnostics logged); speed is computed (words/sec bins); accent is
+  honestly reported as unlabelled in LibriSpeech (real accent diversity is a
+  private pre-beta gate item), not silently "unknown".
+- **Reporting.** Every proportion is reported as value + numerator/denominator +
+  a 95% Wilson confidence interval; a mandatory metric with denominator 0 is
+  reported **NOT EVALUATED and fails** the gate (never counted as "met").
 
 ## Measurements (published per category + overall)
 

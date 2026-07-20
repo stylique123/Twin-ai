@@ -1,17 +1,16 @@
 // Phase 5 human-speech evaluation harness (offline; no DB/storage/matrix
 // mutation). Runs the REAL worker speech pipeline (editor_speech.py bridge +
-// buildSpeechAnalysis) over a manifest of consented/licensed human recordings
-// and reports honest, category-level metrics against the PREDEFINED thresholds
-// in thresholds.json.
+// buildSpeechAnalysis) over a manifest of licensed human recordings and reports
+// honest, category-level metrics against the PREDEFINED thresholds in
+// thresholds.json.
 //
 //   SPEECH_EVAL_MANIFEST=/path/manifest.json node scripts/speech-eval/evaluate.mjs
 //
-// Metrics are CLIP-LEVEL PRESENCE (robust without word-level timings from the
-// streamed corpora): does a filler-present clip yield a filler candidate; does
-// a CLEAN clip yield NONE (false positives); WER / missing / invented on clean
-// read speech; off-script retention; boundary-kind distribution;
-// low-confidence-alone never producing a removal candidate. With no manifest it
-// EXITS 0 with an explicit "not provisioned" notice — never a false green.
+// Every proportion is reported as value + numerator/denominator + a 95% Wilson
+// confidence interval. A MANDATORY metric that cannot be measured (denominator
+// 0) is reported as NOT EVALUATED and FAILS the gate — it is never silently
+// treated as "met". With no manifest the harness EXITS 0 with an explicit "not
+// provisioned" notice.
 import { execFile as _ef } from 'node:child_process'
 import { promisify } from 'node:util'
 import { readFile, writeFile, mkdtemp } from 'node:fs/promises'
@@ -33,6 +32,17 @@ process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'stub'
 const { buildSpeechAnalysis } = await import(join(REPO, 'worker', 'dist', 'jobs', 'editorSpeech.js'))
 
 const norm = (s) => (s || '').toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').split(/\s+/).filter(Boolean)
+
+// Wilson score interval (95%) for a binomial proportion k/n.
+function wilson(k, n) {
+  if (!n) return null
+  const z = 1.96, p = k / n, z2 = z * z
+  const d = 1 + z2 / n
+  const c = p + z2 / (2 * n)
+  const m = z * Math.sqrt((p * (1 - p) + z2 / (4 * n)) / n)
+  return [Math.max(0, (c - m) / d), Math.min(1, (c + m) / d)]
+}
+const prop = (k, n) => ({ value: n ? Number((k / n).toFixed(3)) : null, num: k, den: n, ci95: wilson(k, n) })
 
 function werStats(ref, hyp) {
   const r = norm(ref); const h = norm(hyp); const n = r.length; const m = h.length
@@ -67,7 +77,7 @@ async function runBridge(audioAbs) {
 }
 
 const OPTS = {
-  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-1', asrModel: process.env.EDITOR_SPEECH_MODEL || 'base',
+  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-2', asrModel: process.env.EDITOR_SPEECH_MODEL || 'base',
   asrComputeType: 'int8', device: 'cpu', beamSize: 1, languagePolicy: process.env.WHISPER_LANGUAGE || 'en',
   silenceMinMs: 700, vadMinSilenceMs: 300, vadSpeechPadMs: 100,
 }
@@ -83,103 +93,145 @@ for (const clip of clips) {
   try { a = buildSpeechAnalysis({ id: clip.id, content_sha256: 'eval' }, await runBridge(audioAbs), OPTS) }
   catch (e) { results.push({ id: clip.id, category: clip.category, error: String(e.message).slice(0, 200) }); console.error(`  ${clip.id}: ${e.message}`); continue }
   const cand = a.candidates ?? []
+  const words = a.words ?? []
+  const wnorm = (w) => w.normalizedText || norm(w.text)[0] || ''
+  const byId = new Map(words.map((w) => [w.id, w]))
   const fillers = cand.filter((c) => c.kind === 'filler')
-  const repeats = cand.filter((c) => c.kind === 'false_start' || c.kind === 'repetition')
+  const falseStarts = cand.filter((c) => c.kind === 'false_start')
+  const repeats = cand.filter((c) => c.kind === 'repetition')
+  const silences = cand.filter((c) => c.kind === 'silence')
   // A low-confidence word must never, by itself, produce a removal candidate.
-  // Our builder never does this; assert structurally by checking no candidate's
-  // evidence is confidence-only (no kind/evidence code beyond low ASR conf).
   for (const c of cand) if ((c.evidenceCodes || []).length === 1 && c.evidenceCodes[0] === 'asr_low_conf') lowConfOnlyRemovalCandidates++
-  const wer = werStats(clip.referenceTranscript ?? '', a.transcript)
-  const heard = new Set(norm(a.transcript))
-  const off = clip.expected?.offScriptWords ?? []
+
+  // Off-script retention: designated off-script content words must survive —
+  // i.e. be transcribed AND not covered by any removal candidate.
+  const removedNorms = new Set()
+  for (const c of cand) if (c.kind !== 'silence') for (const id of (c.wordIds || [])) { const w = byId.get(id); if (w) removedNorms.add(wnorm(w)) }
+  const heard = new Set(words.map(wnorm))
+  const off = (clip.expected?.offScriptWords ?? []).map((w) => norm(w)[0]).filter(Boolean)
+  const offRetained = off.filter((w) => heard.has(w) && !removedNorms.has(w)).length
+
+  const ref = clip.referenceTranscript ?? ''
+  const wer = ref ? werStats(ref, a.transcript) : null
   results.push({
     id: clip.id, category: clip.category, expected: clip.expected,
-    wer: Number(wer.wer.toFixed(3)), missingWords: wer.del, inventedWords: wer.ins, refWords: wer.refWords,
-    fillerCandidates: fillers.length, repeatCandidates: repeats.length,
-    silence: cand.filter((c) => c.kind === 'silence').map((c) => c.evidence?.class),
-    offScriptRetained: off.filter((w) => heard.has(norm(w)[0])).length, offScriptExpected: off.length,
-    lowConfWords: (a.words ?? []).filter((w) => w.confidence < 0.4).length,
+    wer: wer ? Number(wer.wer.toFixed(3)) : null, missingWords: wer?.del ?? null, inventedWords: wer?.ins ?? null, refWords: wer?.refWords ?? 0,
+    fillerCandidates: fillers.length, falseStartCandidates: falseStarts.length, repeatCandidates: repeats.length,
+    silenceClasses: silences.map((c) => c.evidence?.class),
+    offScriptRetained: offRetained, offScriptExpected: off.length,
+    lowConfWords: words.filter((w) => w.confidence < 0.4).length,
     boundaryKinds: Object.fromEntries(['punctuation_sentence', 'asr_segment', 'pause_utterance'].map((k) => [k, (a.boundaries ?? []).filter((b) => b.kind === k).length])),
     transcript: a.transcript,
   })
-  console.log(`  ${clip.id} [${clip.category}] WER=${(wer.wer * 100).toFixed(1)}% miss=${wer.del} inv=${wer.ins} filler=${fillers.length} rep=${repeats.length}`)
+  console.log(`  ${clip.id} [${clip.category}] wer=${wer ? (wer.wer * 100).toFixed(1) + '%' : 'n/a'} filler=${fillers.length} fs=${falseStarts.length} rep=${repeats.length} sil=${silences.length}`)
 }
 
 const ok = results.filter((r) => !r.error)
+const inCat = (r, ...c) => c.includes(r.category)
 const clean = ok.filter((r) => r.expected?.clean)
-const fillerClips = ok.filter((r) => r.expected?.hasFiller)
-const repClips = ok.filter((r) => r.expected?.hasFalseStartOrRepetition)
+const trueFiller = ok.filter((r) => inCat(r, 'ami_filler_um_uh'))
+const fillerShould = ok.filter((r) => r.expected?.hasFiller)
+const falseStartClips = ok.filter((r) => inCat(r, 'false_start_correction'))
+const repetitionClips = ok.filter((r) => inCat(r, 'repetition_rhetorical', 'ami_repetition_accidental'))
+const restartRep = ok.filter((r) => r.expected?.hasFalseStartOrRepetition)
+const deadAirClips = ok.filter((r) => inCat(r, 'long_dead_air'))
+const shortPauseClips = ok.filter((r) => inCat(r, 'short_emphasis_pause'))
 const sum = (arr, f) => arr.reduce((s, r) => s + f(r), 0)
-const ratio = (a, b) => (b ? a / b : null)
+const REMOVABLE_SIL = (r) => (r.silenceClasses || []).some((c) => c === 'dead_air' || c === 'removable')
 
-// Clip-level presence precision/recall. Clean clips are the negative set for
-// false positives.
-const fillerTP = fillerClips.filter((r) => r.fillerCandidates > 0).length
+// Precision denominators are (correct predictions + false positives on clean).
+const fillerTP = fillerShould.filter((r) => r.fillerCandidates > 0).length
 const fillerFP = clean.filter((r) => r.fillerCandidates > 0).length
-const repTP = repClips.filter((r) => r.repeatCandidates > 0).length
+const fsTP = restartRep.filter((r) => r.falseStartCandidates > 0).length
+const fsFP = clean.filter((r) => r.falseStartCandidates > 0).length
+const repTP = restartRep.filter((r) => r.repeatCandidates > 0).length
 const repFP = clean.filter((r) => r.repeatCandidates > 0).length
+const deadAirSilCands = deadAirClips.flatMap((r) => r.silenceClasses || [])
 
-const summary = {
-  clips: results.length, evaluated: ok.length, errored: results.filter((r) => r.error).length,
-  meanWerClean: clean.length ? Number((sum(clean, (r) => r.wer) / clean.length).toFixed(3)) : null,
-  inventedWordRatioClean: ratio(sum(clean, (r) => r.inventedWords), sum(clean, (r) => r.refWords)),
-  offScriptRetentionRatio: ratio(sum(ok, (r) => r.offScriptRetained), sum(ok, (r) => r.offScriptExpected)),
-  fillerPrecision: ratio(fillerTP, fillerTP + fillerFP), fillerRecall: ratio(fillerTP, fillerClips.length),
-  repetitionPrecision: ratio(repTP, repTP + repFP), repetitionRecall: ratio(repTP, repClips.length),
+const metrics = {
+  meanWerClean: clean.length ? Number((sum(clean, (r) => r.wer ?? 0) / clean.length).toFixed(3)) : null,
+  inventedWordRatioClean: (() => { const d = sum(clean, (r) => r.refWords); return d ? Number((sum(clean, (r) => r.inventedWords ?? 0) / d).toFixed(4)) : null })(),
+  offScriptRetentionRatio: prop(sum(ok, (r) => r.offScriptRetained), sum(ok, (r) => r.offScriptExpected)),
+  fillerPrecision: prop(fillerTP, fillerTP + fillerFP),
+  fillerRecall: prop(trueFiller.filter((r) => r.fillerCandidates > 0).length, trueFiller.length),
+  falseStartPrecision: prop(fsTP, fsTP + fsFP),
+  falseStartRecall: prop(falseStartClips.filter((r) => r.falseStartCandidates > 0).length, falseStartClips.length),
+  repetitionPrecision: prop(repTP, repTP + repFP),
+  repetitionRecall: prop(repetitionClips.filter((r) => r.repeatCandidates > 0).length, repetitionClips.length),
+  silenceClassAgreement: prop(deadAirSilCands.filter((c) => c === 'dead_air').length, deadAirSilCands.length),
+  deadAirDetection: prop(deadAirClips.filter((r) => (r.silenceClasses || []).includes('dead_air')).length, deadAirClips.length),
+  shortPausePreservation: prop(shortPauseClips.filter((r) => !REMOVABLE_SIL(r)).length, shortPauseClips.length),
   lowConfOnlyRemovalCandidates,
-  cleanFalsePositiveClips: fillerFP + repFP,
+  cleanFalsePositiveClips: fillerFP + fsFP + repFP,
 }
-// Per-category aggregates (published in the report + printed).
+
+// Per-category aggregates + honest failure examples.
 const byCategory = {}
 for (const r of results) {
-  const c = (byCategory[r.category] ||= { clips: 0, evaluated: 0, errored: 0, werSum: 0, fillerCand: 0, repeatCand: 0 })
-  c.clips++
-  if (r.error) { c.errored++; continue }
-  c.evaluated++; c.werSum += r.wer; c.fillerCand += r.fillerCandidates; c.repeatCand += r.repeatCandidates
+  const c = (byCategory[r.category] ||= { clips: 0, evaluated: 0, errored: 0, werSum: 0, werN: 0, filler: 0, fs: 0, rep: 0 })
+  c.clips++; if (r.error) { c.errored++; continue }
+  c.evaluated++; if (r.wer != null) { c.werSum += r.wer; c.werN++ }
+  c.filler += r.fillerCandidates; c.fs += r.falseStartCandidates; c.rep += r.repeatCandidates
 }
-for (const k of Object.keys(byCategory)) {
-  const c = byCategory[k]
-  c.meanWer = c.evaluated ? Number((c.werSum / c.evaluated).toFixed(3)) : null
-  delete c.werSum
-}
-
-// Honest failure examples: transcription errors, false positives on clean
-// speech, and clean-speech WER outliers.
+for (const k of Object.keys(byCategory)) { const c = byCategory[k]; c.meanWer = c.werN ? Number((c.werSum / c.werN).toFixed(3)) : null; delete c.werSum; delete c.werN }
 const failures = []
 for (const r of results) {
   if (r.error) { failures.push({ id: r.id, category: r.category, kind: 'transcription_error', detail: r.error }); continue }
-  if (r.expected?.clean && (r.fillerCandidates > 0 || r.repeatCandidates > 0))
-    failures.push({ id: r.id, category: r.category, kind: 'false_positive_on_clean', filler: r.fillerCandidates, repeat: r.repeatCandidates })
-  if (r.expected?.clean && r.wer > 0.2)
-    failures.push({ id: r.id, category: r.category, kind: 'clean_wer_outlier', wer: r.wer, transcript: r.transcript })
+  if (r.expected?.clean && (r.fillerCandidates > 0 || r.falseStartCandidates > 0 || r.repeatCandidates > 0))
+    failures.push({ id: r.id, category: r.category, kind: 'false_positive_on_clean', filler: r.fillerCandidates, fs: r.falseStartCandidates, rep: r.repeatCandidates })
+  if (r.expected?.clean && r.wer != null && r.wer > 0.2) failures.push({ id: r.id, category: r.category, kind: 'clean_wer_outlier', wer: r.wer, transcript: r.transcript })
+  if (r.offScriptExpected > 0 && r.offScriptRetained < r.offScriptExpected)
+    failures.push({ id: r.id, category: r.category, kind: 'off_script_dropped', retained: r.offScriptRetained, expected: r.offScriptExpected })
+  if (inCat(r, 'long_dead_air') && !(r.silenceClasses || []).includes('dead_air'))
+    failures.push({ id: r.id, category: r.category, kind: 'dead_air_missed', silenceClasses: r.silenceClasses })
+  if (inCat(r, 'short_emphasis_pause') && REMOVABLE_SIL(r))
+    failures.push({ id: r.id, category: r.category, kind: 'short_pause_over_flagged', silenceClasses: r.silenceClasses })
 }
 
+const summary = {
+  clips: results.length, evaluated: ok.length, errored: results.filter((r) => r.error).length,
+  meanWerClean: metrics.meanWerClean, inventedWordRatioClean: metrics.inventedWordRatioClean,
+  offScriptRetentionRatio: metrics.offScriptRetentionRatio, fillerPrecision: metrics.fillerPrecision, fillerRecall: metrics.fillerRecall,
+  falseStartPrecision: metrics.falseStartPrecision, falseStartRecall: metrics.falseStartRecall,
+  repetitionPrecision: metrics.repetitionPrecision, repetitionRecall: metrics.repetitionRecall,
+  silenceClassAgreement: metrics.silenceClassAgreement, deadAirDetection: metrics.deadAirDetection,
+  shortPausePreservation: metrics.shortPausePreservation,
+  lowConfOnlyRemovalCandidates, cleanFalsePositiveClips: metrics.cleanFalsePositiveClips,
+}
 const report = {
   asrModel: OPTS.asrModel, speechVersion: OPTS.speechVersion, provenance: manifest.provenance,
   categories: manifest.categories, diversity: manifest.diversity,
   summary, byCategory, failures, results,
 }
 await writeFile('speech-eval-report.json', JSON.stringify(report, null, 2))
+console.log('\n=== summary ===\n' + JSON.stringify(summary, null, 2))
 console.log('\n=== per-category ===\n' + JSON.stringify(byCategory, null, 2))
 if (failures.length) console.log('\n=== failure examples ===\n' + JSON.stringify(failures, null, 2))
-console.log('\n=== speech-eval summary ===\n' + JSON.stringify(summary, null, 2) + '\nreport → speech-eval-report.json')
+console.log('report → speech-eval-report.json')
 
 // Gate against PREDEFINED thresholds (thresholds.json). Never weakened here.
 let t = manifest.thresholds
 if (!t) { try { t = JSON.parse(await readFile(join(HERE, 'thresholds.json'), 'utf8')) } catch { t = null } }
 if (!t) { console.log('no thresholds file — BASELINE run (record honestly, then gate)'); process.exit(0) }
 const fails = []
-const chk = (name, val, cmp, lim) => {
-  if (val == null) { console.log(`  (skip ${name}: not measurable on this corpus)`); return }
-  const bad = cmp === '<=' ? val > lim : cmp === '>=' ? val < lim : val !== lim
-  console.log(`  ${bad ? 'FAIL' : 'ok  '} ${name}=${typeof val === 'number' ? val.toFixed(3) : val} (need ${cmp} ${lim})`)
-  if (bad) fails.push(`${name}=${val} !${cmp} ${lim}`)
+const val = (m) => (m && typeof m === 'object' && 'value' in m ? m.value : m)
+// A MANDATORY metric that is null is NOT EVALUATED -> fail (never "met").
+const chk = (name, m, cmp, lim) => {
+  const v = val(m)
+  if (v == null) { console.log(`  FAIL ${name}=NOT EVALUATED (mandatory; need ${cmp} ${lim})`); fails.push(`${name}=not-evaluated`); return }
+  const bad = cmp === '<=' ? v > lim : cmp === '>=' ? v < lim : v !== lim
+  const ci = m && m.ci95 ? ` ci95=[${m.ci95.map((x) => x.toFixed(2)).join(',')}] n=${m.den}` : ''
+  console.log(`  ${bad ? 'FAIL' : 'ok  '} ${name}=${typeof v === 'number' ? v.toFixed(3) : v}${ci} (need ${cmp} ${lim})`)
+  if (bad) fails.push(`${name}=${v} !${cmp} ${lim}`)
 }
-chk('meanWerClean', summary.meanWerClean, '<=', t.maxMeanWerClean)
-chk('inventedWordRatioClean', summary.inventedWordRatioClean, '<=', t.maxInventedWordRatioClean)
-chk('offScriptRetentionRatio', summary.offScriptRetentionRatio, '>=', t.minOffScriptRetentionRatio)
-chk('fillerPrecision', summary.fillerPrecision, '>=', t.minFillerPrecision)
-chk('repetitionPrecision', summary.repetitionPrecision, '>=', t.minRepetitionPrecision)
-chk('lowConfOnlyRemovalCandidates', summary.lowConfOnlyRemovalCandidates, '==', t.maxLowConfidenceOnlyRemovalCandidates)
+chk('meanWerClean', metrics.meanWerClean, '<=', t.maxMeanWerClean)
+chk('inventedWordRatioClean', metrics.inventedWordRatioClean, '<=', t.maxInventedWordRatioClean)
+chk('offScriptRetentionRatio', metrics.offScriptRetentionRatio, '>=', t.minOffScriptRetentionRatio)
+chk('fillerPrecision', metrics.fillerPrecision, '>=', t.minFillerPrecision)
+chk('fillerRecall', metrics.fillerRecall, '>=', t.minFillerRecall)
+chk('falseStartPrecision', metrics.falseStartPrecision, '>=', t.minFalseStartPrecision)
+chk('repetitionPrecision', metrics.repetitionPrecision, '>=', t.minRepetitionPrecision)
+chk('silenceClassAgreement', metrics.silenceClassAgreement, '>=', t.minSilenceClassAgreement)
+chk('lowConfOnlyRemovalCandidates', lowConfOnlyRemovalCandidates, '==', t.maxLowConfidenceOnlyRemovalCandidates)
 if (fails.length) { console.error('\nTHRESHOLD FAILURES:\n  ' + fails.join('\n  ')); process.exit(1) }
-console.log('\nall predefined thresholds met')
+console.log('\nall predefined thresholds met (every mandatory metric numeric and passing)')
