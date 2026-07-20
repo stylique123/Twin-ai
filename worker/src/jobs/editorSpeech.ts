@@ -58,10 +58,12 @@ export interface SpeechBridgeOutput {
   model?: {
     label: string
     loadedFromPath: boolean
+    verified: boolean
     repository: string | null
     revision: string | null
     artifactSha256: string | null
     manifestSha256: string | null
+    analyzerBundle: string | null
   }
 }
 
@@ -143,11 +145,18 @@ export function buildSpeechAnalysis(
   if (!Array.isArray(bridge.words)) throw new PermanentJobError('speech: bridge produced no word list', 'asr_failed')
   // Fail closed: the immutable component MUST name the exact weights that
   // produced it. When a pinned model is required (worker + CI), the bridge must
-  // have loaded the local snapshot and reported its repository/revision/digest.
+  // have (a) loaded the local snapshot, (b) VERIFIED its bytes against the
+  // manifest, and (c) reported an analyzer bundle equal to the requested speech
+  // version — the model-pin/version coupling. Any gap → no component.
   if (opts.requirePinnedModel) {
     const m = bridge.model
-    if (!m || !m.loadedFromPath || !m.repository || !m.revision || !m.manifestSha256) {
-      throw new PermanentJobError('speech: pinned model identity missing from bridge output', 'model_not_pinned')
+    if (!m || !m.loadedFromPath || !m.verified || !m.repository || !m.revision || !m.manifestSha256) {
+      throw new PermanentJobError('speech: pinned model identity missing or unverified', 'model_not_pinned')
+    }
+    if (m.analyzerBundle !== opts.speechVersion) {
+      throw new PermanentJobError(
+        `speech: model pin bundle ${m.analyzerBundle} != requested ${opts.speechVersion}`,
+        'model_version_mismatch')
     }
   }
   if (bridge.energy.window_ms < 100 || bridge.energy.rms.length > RAW_ENERGY_HARD_CAP) {
@@ -471,7 +480,9 @@ export function buildSpeechAnalysis(
     modelRevision: bridge.model?.revision ?? null,
     modelArtifactSha256: bridge.model?.artifactSha256 ?? null,
     modelManifestSha256: bridge.model?.manifestSha256 ?? null,
+    modelAnalyzerBundle: bridge.model?.analyzerBundle ?? null,
     modelLoadedFromPath: bridge.model?.loadedFromPath ?? false,
+    modelVerified: bridge.model?.verified ?? false,
     vad: 'silero',
     vadMinSilenceMs: opts.vadMinSilenceMs,
     vadSpeechPadMs: opts.vadSpeechPadMs,
@@ -572,9 +583,11 @@ function runAsrBridge(wavPath: string, outPath: string, watch: CancelWatch): Pro
     [join(import.meta.dirname, '..', '..', 'editor_speech.py'),
       '--audio', wavPath, '--out', outPath,
       '--model', env.speechModel, '--device', env.whisperDevice,
-      // Load ONLY the pinned local snapshot, offline — never the moving alias.
+      // Load ONLY the pinned local snapshot, offline; VERIFY the loaded bytes
+      // against the manifest and fail closed on any mismatch (no alias fallback).
       '--model-path', env.speechModelPath,
       '--model-manifest', join(import.meta.dirname, '..', '..', 'models', 'faster-whisper-small.manifest.json'),
+      '--require-pinned-model',
       '--language', env.whisperLanguage, '--beam-size', '1',
       '--max-seconds', String(Math.ceil(env.sourceMaxDurationMs / 1000)),
       ...(env.speechBridgeHoldAt ? ['--hold-at', env.speechBridgeHoldAt, '--hold-ms', String(env.speechBridgeHoldMs)] : [])],
@@ -582,6 +595,10 @@ function runAsrBridge(wavPath: string, outPath: string, watch: CancelWatch): Pro
     (code, stderr) => {
       if (code === 0) return null
       if (code === 2) return new PermanentJobError('speech: media too long for transcription', 'speech_too_long')
+      // Pinned-model verification failed (empty/missing path, missing file,
+      // digest/revision/manifest mismatch): a misconfigured or substituted model
+      // must NOT retry forever and must produce no component — PERMANENT.
+      if (code === 3) return new PermanentJobError('speech: pinned model verification failed', 'model_pin_failed')
       // Provider failures (model fetch, runtime) are RETRYABLE — the retry
       // budget dead-letters a persistent one. The stderr tail rides along for
       // the container log; everything durable passes the sanitizer first.

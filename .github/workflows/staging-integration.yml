@@ -35,6 +35,11 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    # Phases 3-5 all drive the REAL speech stage, which now loads the PINNED
+    # snapshot from this path offline (fetched + digest-verified in the install
+    # step). Job-level so EVERY phase inherits it, not just Phase 5.
+    env:
+      EDITOR_SPEECH_MODEL_PATH: ${{ runner.temp }}/faster-whisper-small
     steps:
       - uses: actions/checkout@v4
 
@@ -60,6 +65,7 @@ jobs:
           pip install --quiet -r worker/requirements.txt
           # Offline verifier guard (mirror of the build): a digest mismatch must fail.
           python worker/scripts/test_fetch_model.py
+          python worker/scripts/test_editor_speech_pin.py
           # tiny = the fast model Phase-3/4 pin (alias is fine — not immutable).
           python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
           # small = the SHIPPED Phase-5 model — fetch the EXACT pinned revision and
@@ -166,8 +172,5 @@ jobs:
         run: node scripts/staging-integration/phase4.mjs
 
       - name: Run Phase 5 integration matrix (real speech transcription)
-        # The worker (spawned by the matrix) loads the PINNED small snapshot from
-        # this path offline — the exact revision fetched + digest-verified above.
-        env:
-          EDITOR_SPEECH_MODEL_PATH: ${{ runner.temp }}/faster-whisper-small
+        # EDITOR_SPEECH_MODEL_PATH is set at job level (all phases drive speech).
         run: node scripts/staging-integration/phase5.mjs

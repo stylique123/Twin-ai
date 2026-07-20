@@ -21,27 +21,14 @@ source timeline; VAD runs separately as evidence.
 Exit codes: 0 ok, 2 media too long, 1 any other failure.
 """
 import argparse
-import hashlib
 import json
 import os
 import sys
 
-
-def manifest_identity(manifest_path):
-    """Read the pinned-model manifest and return the identity to persist in the
-    speech provenance: repository, exact revision, the model.bin artifact digest,
-    and a stable manifest_sha256 (semantic core only). Kept byte-for-byte in sync
-    with worker/scripts/fetch_model.py.manifest_sha256()."""
-    with open(manifest_path, encoding="utf-8") as f:
-        man = json.load(f)
-    core = {"repository": man["repository"], "revision": man["revision"], "files": man["files"]}
-    canon = json.dumps(core, sort_keys=True, separators=(",", ":"))
-    return {
-        "repository": man["repository"],
-        "revision": man["revision"],
-        "artifact_sha256": man["files"].get("model.bin"),
-        "manifest_sha256": hashlib.sha256(canon.encode("utf-8")).hexdigest(),
-    }
+# SINGLE shared verifier — same implementation the Docker build and CI use, so
+# the digest logic that binds provenance to the loaded bytes can never drift.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "scripts"))
+import fetch_model  # noqa: E402  (verified_identity, verify_dir, sha256_file)
 
 
 def rms_energy(audio, sample_rate, window_ms):
@@ -73,6 +60,11 @@ def main() -> int:
                     help="local faster-whisper snapshot dir; loaded offline (local_files_only)")
     ap.add_argument("--model-manifest", default="",
                     help="pinned-model manifest json (persisted into provenance)")
+    # Production (immutable component) MUST require a pin: reject an empty path
+    # (no alias fallback), verify the loaded dir's bytes against the manifest
+    # BEFORE loading, and derive identity only from the verified files.
+    ap.add_argument("--require-pinned-model", action="store_true",
+                    help="fail closed unless the loaded dir is digest-verified against the manifest")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--language", default="en")  # ISO code, or "auto" to detect
     ap.add_argument("--beam-size", type=int, default=1)
@@ -96,18 +88,44 @@ def main() -> int:
 
     import time
 
-    # Pinned-model path forces OFFLINE loading: no network call can silently
-    # substitute a moving snapshot. Set before importing faster_whisper so the
-    # huggingface_hub client picks it up.
+    model_path = (args.model_path or "").strip()
+
+    # Force OFFLINE loading whenever a pin is used or required: no network call can
+    # substitute a moving snapshot. Set before importing faster_whisper.
     model_identity = None
-    if args.model_path:
+    if model_path or args.require_pinned_model:
         os.environ["HF_HUB_OFFLINE"] = "1"
         os.environ["TRANSFORMERS_OFFLINE"] = "1"
-        if not os.path.isdir(args.model_path):
-            print(f"pinned model path not found: {args.model_path}", file=sys.stderr)
-            return 1
-        if args.model_manifest:
-            model_identity = manifest_identity(args.model_manifest)
+
+    # Immutable-component path: bind provenance to the ACTUAL bytes. Reject an
+    # empty/whitespace path (NO alias fallback), verify every load-required file
+    # in the configured dir against the manifest, and derive identity ONLY from
+    # the manifest whose files verified. Any failure → exit 3 (stable permanent
+    # code, no component, no stage advance). Exit 3 is distinct from 1 so the
+    # worker can map it to `model_pin_failed` (permanent), not a retryable fetch.
+    if args.require_pinned_model:
+        if not model_path:
+            print("model_pin_failed: EDITOR_SPEECH_MODEL_PATH is empty (no alias fallback)", file=sys.stderr)
+            return 3
+        if not args.model_manifest:
+            print("model_pin_failed: --model-manifest is required with --require-pinned-model", file=sys.stderr)
+            return 3
+        if not os.path.isdir(model_path):
+            print("model_pin_failed: pinned model directory not found", file=sys.stderr)
+            return 3
+        try:
+            model_identity = fetch_model.verified_identity(args.model_manifest, model_path)
+        except Exception as e:  # ValueError (digest/revision/manifest) or IO
+            # Message is already path-free (basenames + codes); keep it short.
+            print(str(e)[:200], file=sys.stderr)
+            return 3
+    elif model_path and args.model_manifest and os.path.isdir(model_path):
+        # Dev/eval convenience: verify + record identity when both are provided.
+        try:
+            model_identity = fetch_model.verified_identity(args.model_manifest, model_path)
+        except Exception as e:
+            print(str(e)[:200], file=sys.stderr)
+            return 3
 
     from faster_whisper import WhisperModel
     from faster_whisper.audio import decode_audio
@@ -116,10 +134,11 @@ def main() -> int:
     compute_type = "float16" if args.device == "cuda" else "int8"
     lang = None if args.language.lower() in ("auto", "", "detect") else args.language
 
-    # Load the PINNED local snapshot (offline) when given; otherwise the alias
-    # (dev/back-compat only — never the production path for the immutable component).
-    if args.model_path:
-        model = WhisperModel(args.model_path, device=args.device,
+    # Load the VERIFIED local snapshot (offline) when a path is set; otherwise the
+    # alias (dev/back-compat ONLY — never the production immutable-component path,
+    # which requires --require-pinned-model above).
+    if model_path:
+        model = WhisperModel(model_path, device=args.device,
                              compute_type=compute_type, local_files_only=True)
     else:
         model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
@@ -207,11 +226,13 @@ def main() -> int:
         # digests come from the pinned manifest when loaded offline.
         "model": {
             "label": args.model,
-            "loadedFromPath": bool(args.model_path),
+            "loadedFromPath": bool(model_path),
+            "verified": model_identity is not None,
             "repository": (model_identity or {}).get("repository"),
             "revision": (model_identity or {}).get("revision"),
             "artifactSha256": (model_identity or {}).get("artifact_sha256"),
             "manifestSha256": (model_identity or {}).get("manifest_sha256"),
+            "analyzerBundle": (model_identity or {}).get("analyzer_bundle"),
         },
     }
     with open(args.out, "w", encoding="utf-8") as f:

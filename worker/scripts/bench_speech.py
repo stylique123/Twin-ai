@@ -19,6 +19,7 @@ import argparse
 import contextlib
 import json
 import os
+import re
 import resource
 import signal
 import subprocess
@@ -102,6 +103,10 @@ def main():
                     help="predefined capacity limits (pass/fail)")
     ap.add_argument("--gate", action="store_true",
                     help="exit non-zero if any predefined limit fails (use on the VPS; omit for indicative CI)")
+    ap.add_argument("--candidate-sha", default="",
+                    help="exact 40-hex git commit the candidate image was built from (recorded + gated)")
+    ap.add_argument("--require-identity", action="store_true",
+                    help="capture + gate the runtime-observed pinned model identity (repo/revision/digests)")
     args = ap.parse_args()
 
     dur = wav_seconds(args.audio)
@@ -148,6 +153,47 @@ def main():
     report["timeout"] = {"cap_sec": 1.0, "timed_out": to, "killed": rc != 0 or to}
     print(f"  timed_out={to}")
 
+    # ---- runtime-observed model identity (bind the bench to the pinned bytes) --
+    # One extra bridge run with --require-pinned-model: the bridge verifies the
+    # loaded dir against the manifest and emits repo/revision/digests/bundle. The
+    # gate proves the CANDIDATE IMAGE (not a stale cache) ran the pinned weights.
+    report["candidateSha"] = args.candidate_sha
+    report["modelIdentity"] = None
+    identity_checks = []
+    if args.require_identity or MODEL_PATH:
+        expected = {}
+        with contextlib.suppress(Exception):
+            with open(MANIFEST) as fh:
+                m = json.load(fh)
+                expected = {"repository": m["repository"], "revision": m["revision"],
+                            "artifactSha256": m["files"]["model.bin"], "analyzerBundle": m.get("analyzerBundle")}
+        idout = args.audio + ".identity.json"
+        idcmd = bridge_cmd(args.audio, idout, args.model) + ["--require-pinned-model"]
+        idp = subprocess.run(idcmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        identity = None
+        if idp.returncode == 0:
+            with contextlib.suppress(Exception):
+                with open(idout) as fh:
+                    identity = json.load(fh).get("model")
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(idout)
+        report["modelIdentity"] = identity
+
+        def idchk(name, ok):
+            identity_checks.append({"name": name, "pass": bool(ok)})
+
+        idchk("bridge_verified_ok", idp.returncode == 0 and identity is not None)
+        idchk("loaded_from_path", bool(identity and identity.get("loadedFromPath")))
+        idchk("verified", bool(identity and identity.get("verified")))
+        idchk("repository", identity and identity.get("repository") == expected.get("repository"))
+        idchk("revision", identity and identity.get("revision") == expected.get("revision"))
+        idchk("artifact_sha256", identity and identity.get("artifactSha256") == expected.get("artifactSha256"))
+        idchk("analyzer_bundle", identity and identity.get("analyzerBundle") == expected.get("analyzerBundle") == "speech-6")
+        if args.require_identity:
+            idchk("candidate_sha_is_40hex", bool(re.fullmatch(r"[0-9a-f]{40}", args.candidate_sha or "")))
+        report["identityGate"] = {"expected": expected, "checks": identity_checks,
+                                  "allPass": all(c["pass"] for c in identity_checks)}
+
     # ---- pass/fail against PREDEFINED capacity limits -----------------------
     limits = {}
     with contextlib.suppress(Exception):
@@ -186,6 +232,16 @@ def main():
         json.dump(report, fh, indent=2)
     print("report → speech-bench-report.json")
 
+    identity_ok = (not identity_checks) or all(c["pass"] for c in identity_checks)
+    if identity_checks:
+        print("\n=== model identity gate ===")
+        for c in identity_checks:
+            print(f"  {'PASS' if c['pass'] else 'FAIL'} {c['name']}")
+        mi = report.get("modelIdentity") or {}
+        print(f"  observed: {mi.get('repository')}@{mi.get('revision')} bundle={mi.get('analyzerBundle')} "
+              f"verified={mi.get('verified')} candidateSha={args.candidate_sha or '(none)'}")
+        print(f"MODEL IDENTITY GATE: {'PASS' if identity_ok else 'FAIL'}")
+
     if limits:
         print("\n=== capacity gate ===")
         for c in checks:
@@ -193,8 +249,11 @@ def main():
         allpass = report["gate"]["allPass"]
         print(f"CAPACITY GATE: {'PASS' if allpass else 'FAIL'}"
               + ("" if args.gate else "  (indicative — not enforced; run on the VPS with --gate to enforce)"))
-        if args.gate and not allpass:
-            sys.exit(1)
+
+    # Under --gate (the authoritative VPS run) BOTH the capacity limits and the
+    # runtime-observed model identity must pass.
+    if args.gate and not (report.get("gate", {}).get("allPass", True) and identity_ok):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

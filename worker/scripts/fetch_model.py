@@ -23,7 +23,15 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
+
+# A pinned revision must be an EXACT immutable commit sha — 40 lowercase hex.
+REVISION_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def valid_revision(rev):
+    return bool(REVISION_RE.fullmatch(rev or ""))
 
 
 def sha256_file(path):
@@ -52,16 +60,47 @@ def verify_dir(files, dest):
     return errors
 
 
-def manifest_sha256(man):
-    """Stable identity of the pinned model, echoed into speech provenance.
+def manifest_core(man):
+    """The SEMANTIC core that identifies the model bytes: repository, revision,
+    and the required-file digests. Comments/formatting/analyzerBundle are NOT
+    part of it (analyzerBundle is version-coupling metadata, not model identity)."""
+    return {"repository": man["repository"], "revision": man["revision"], "files": man["files"]}
 
-    Canonical over the SEMANTIC core only (repository, revision, files) so
-    comments/formatting never change it. Computed here (Python) as the single
-    source of truth; TS/JS consumers echo this value, never recompute it.
-    """
-    core = {"repository": man["repository"], "revision": man["revision"], "files": man["files"]}
-    canon = json.dumps(core, sort_keys=True, separators=(",", ":"))
+
+def manifest_sha256(man):
+    """Stable digest of the semantic core, echoed into speech provenance.
+
+    Canonical (sorted keys, no spaces) so comments/formatting never change it.
+    Computed here (Python) as the single source of truth; other consumers that
+    assert it recompute the SAME canonicalization over the same core."""
+    canon = json.dumps(manifest_core(man), sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canon.encode("utf-8")).hexdigest()
+
+
+def verified_identity(manifest_path, model_dir):
+    """SINGLE shared verifier: re-hash every load-required file in `model_dir`
+    against the manifest, validate the revision, and derive the pinned identity
+    ONLY from the manifest whose files verified. Raises ValueError (stable,
+    path-free message) on any failure — never returns identity for unverified
+    bytes. Reused by the runtime bridge and the benchmark so digest logic can't
+    drift between them."""
+    with open(manifest_path, encoding="utf-8") as f:
+        man = json.load(f)
+    if not valid_revision(man.get("revision")):
+        raise ValueError("model_pin_failed: manifest revision is not a 40-char commit sha")
+    if not man.get("files") or "model.bin" not in man["files"]:
+        raise ValueError("model_pin_failed: manifest missing required files")
+    errors = verify_dir(man["files"], model_dir)
+    if errors:
+        # Report file basenames + codes only; never absolute paths.
+        raise ValueError("model_pin_failed: " + "; ".join(errors))
+    return {
+        "repository": man["repository"],
+        "revision": man["revision"],
+        "artifact_sha256": man["files"]["model.bin"],
+        "manifest_sha256": manifest_sha256(man),
+        "analyzer_bundle": man.get("analyzerBundle"),
+    }
 
 
 def main():
@@ -79,8 +118,8 @@ def main():
     if not args.verify_only:
         # Pin to the EXACT commit sha. huggingface_hub resolves a full 40-char sha
         # to that immutable commit; a moving branch name would defeat the purpose.
-        if len(rev) != 40:
-            print(f"ERROR: revision must be a full 40-char commit sha, got {rev!r}", file=sys.stderr)
+        if not valid_revision(rev):
+            print(f"ERROR: revision must be exactly [0-9a-f]{{40}}, got {rev!r}", file=sys.stderr)
             sys.exit(2)
         from huggingface_hub import snapshot_download
         snapshot_download(repo_id=repo, revision=rev, local_dir=args.dest)

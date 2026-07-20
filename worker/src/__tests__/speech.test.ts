@@ -447,10 +447,12 @@ describe('speech error surfaces', () => {
 const PINNED_MODEL = {
   label: 'small',
   loadedFromPath: true,
+  verified: true,
   repository: 'Systran/faster-whisper-small',
   revision: '536b0662742c02347bc0e980a01041f333bce120',
   artifactSha256: '3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671',
   manifestSha256: 'f'.repeat(64),
+  analyzerBundle: 'speech-6',
 }
 
 describe('speech model pinning (speech-6)', () => {
@@ -462,7 +464,9 @@ describe('speech model pinning (speech-6)', () => {
     expect(a.provenance.modelRevision).toBe('536b0662742c02347bc0e980a01041f333bce120')
     expect(a.provenance.modelArtifactSha256).toBe(PINNED_MODEL.artifactSha256)
     expect(a.provenance.modelManifestSha256).toBe(PINNED_MODEL.manifestSha256)
+    expect(a.provenance.modelAnalyzerBundle).toBe('speech-6')
     expect(a.provenance.modelLoadedFromPath).toBe(true)
+    expect(a.provenance.modelVerified).toBe(true)
   })
 
   it('version coupling: speech-6 analysis carries the pinned revision', async () => {
@@ -487,10 +491,30 @@ describe('speech model pinning (speech-6)', () => {
       .toThrow(/pinned model identity missing/)
   })
 
+  it('fails closed when the bridge did NOT verify the loaded bytes', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = { ...fixtureBridge(), model: { ...PINNED_MODEL, verified: false } }
+    expect(() => buildSpeechAnalysis(asset, br, { ...opts, requirePinnedModel: true }))
+      .toThrow(/pinned model identity missing or unverified/)
+  })
+
+  it('coupling: rejects a pin whose analyzer bundle != the requested speech version', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    // manifest pinned to speech-6 but the run requests speech-7 → mismatch
+    const br = { ...fixtureBridge(), model: { ...PINNED_MODEL, analyzerBundle: 'speech-6' } }
+    expect(() => buildSpeechAnalysis(asset, br, { ...opts, speechVersion: 'speech-7', requirePinnedModel: true }))
+      .toThrow(/model pin bundle .* != requested/)
+    // and the inverse: manifest says speech-7 while the default is speech-6
+    const br2 = { ...fixtureBridge(), model: { ...PINNED_MODEL, analyzerBundle: 'speech-7' } }
+    expect(() => buildSpeechAnalysis(asset, br2, { ...opts, speechVersion: 'speech-6', requirePinnedModel: true }))
+      .toThrow(/model pin bundle .* != requested/)
+  })
+
   it('does not require a pin by default (dev/back-compat): provenance fields null', async () => {
     const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
     const a = buildSpeechAnalysis(asset, fixtureBridge(), opts) as Record<string, any>
     expect(a.provenance.modelRevision).toBeNull()
     expect(a.provenance.modelLoadedFromPath).toBe(false)
+    expect(a.provenance.modelVerified).toBe(false)
   })
 })

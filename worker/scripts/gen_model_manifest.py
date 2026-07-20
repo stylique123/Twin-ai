@@ -17,6 +17,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 
 # Files faster-whisper actually loads for a CTranslate2 Whisper snapshot.
@@ -36,9 +37,11 @@ def main():
     ap.add_argument("--repo", required=True)
     ap.add_argument("--revision", required=True, help="full 40-char commit sha")
     ap.add_argument("--license", default="MIT")
+    ap.add_argument("--analyzer-bundle", required=True,
+                    help="analyzer bundle this pin is coupled to (e.g. speech-7) — must equal the default speechVersion")
     args = ap.parse_args()
-    if len(args.revision) != 40:
-        print("ERROR: --revision must be a full 40-char commit sha", file=sys.stderr)
+    if not re.fullmatch(r"[0-9a-f]{40}", args.revision):
+        print("ERROR: --revision must be exactly [0-9a-f]{40}", file=sys.stderr)
         sys.exit(2)
 
     from huggingface_hub import snapshot_download
@@ -59,6 +62,7 @@ def main():
         "repository": args.repo,
         "revision": args.revision,
         "license": args.license,
+        "analyzerBundle": args.analyzer_bundle,
         "files": files,
     }
     print(json.dumps(man, indent=2))

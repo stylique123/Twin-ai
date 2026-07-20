@@ -322,9 +322,11 @@ export interface SpeechAnalysis {
     // model, or the analyzer bundle version must bump).
     modelRepository: string | null   // e.g. 'Systran/faster-whisper-small'
     modelRevision: string | null     // exact 40-char commit sha
-    modelArtifactSha256: string | null   // sha256 of model.bin
-    modelManifestSha256: string | null   // stable digest of the pin manifest
+    modelArtifactSha256: string | null   // sha256 of model.bin (the loaded artifact)
+    modelManifestSha256: string | null   // stable digest of the pin manifest's semantic core
+    modelAnalyzerBundle: string | null   // analyzer bundle the manifest is pinned to (== speechVersion)
     modelLoadedFromPath: boolean     // true == loaded the pinned snapshot offline
+    modelVerified: boolean           // true == loaded bytes re-hashed against the manifest before use
     vad: 'silero'
     vadMinSilenceMs: number
     vadSpeechPadMs: number

@@ -23,11 +23,24 @@ import { promisify } from 'node:util'
 import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 
 const execFile = promisify(_execFile)
 // scripts/staging-integration/phase5.mjs → repo root is two levels up.
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
+
+// Recompute the pinned-model semantic-manifest digest with the SAME
+// canonicalization as worker/scripts/fetch_model.py.manifest_sha256 (sorted
+// keys, no spaces, semantic core only) so staging asserts the EXACT value.
+function canonicalize(v) {
+  if (Array.isArray(v)) return '[' + v.map(canonicalize).join(',') + ']'
+  if (v && typeof v === 'object') return '{' + Object.keys(v).sort().map((k) => JSON.stringify(k) + ':' + canonicalize(v[k])).join(',') + '}'
+  return JSON.stringify(v)
+}
+function canonicalManifestSha256(man) {
+  const core = { repository: man.repository, revision: man.revision, files: man.files }
+  return createHash('sha256').update(canonicalize(core)).digest('hex')
+}
 const URL = need('STAGING_URL')
 const ANON = need('STAGING_ANON_KEY')
 const SERVICE = need('STAGING_SERVICE_ROLE_KEY')
@@ -296,19 +309,24 @@ async function main() {
       r.schemaVersion === 1 && r.speechVersion === 'speech-6' && r.sourceChecksum === S.asset.content_sha256)
 
     // S3b: the immutable analysis names the EXACT pinned model (speech-6). The
-    // provenance must carry the manifest's repository/revision/artifact digest
-    // and prove the weights were loaded from the local snapshot (offline), not
-    // the moving alias.
+    // provenance must carry the manifest's repository/revision/artifact digest,
+    // the EXACT semantic-manifest digest (recomputed here, not just "64 chars"),
+    // the analyzer bundle == the speech version, and prove the bytes were loaded
+    // from the local snapshot AND re-verified (offline), not the moving alias.
     const modelManifest = JSON.parse(await readFile(
       join(REPO_ROOT, 'worker', 'models', 'faster-whisper-small.manifest.json'), 'utf8'))
+    const expectManifestSha = canonicalManifestSha256(modelManifest)
     const pv = r.provenance ?? {}
-    check('S3b speech provenance pins the model (repo + revision + artifact digest, loaded from path)',
+    check('S3b speech provenance pins the EXACT model (repo/revision/artifact + exact manifest digest + bundle + verified)',
       pv.modelRepository === modelManifest.repository
       && pv.modelRevision === modelManifest.revision
       && pv.modelArtifactSha256 === modelManifest.files['model.bin']
+      && pv.modelManifestSha256 === expectManifestSha
+      && pv.modelAnalyzerBundle === modelManifest.analyzerBundle
+      && pv.modelAnalyzerBundle === 'speech-6'
       && pv.modelLoadedFromPath === true
-      && typeof pv.modelManifestSha256 === 'string' && pv.modelManifestSha256.length === 64,
-      JSON.stringify({ repo: pv.modelRepository, rev: pv.modelRevision, fromPath: pv.modelLoadedFromPath }))
+      && pv.modelVerified === true,
+      JSON.stringify({ rev: pv.modelRevision, mSha: pv.modelManifestSha256, expect: expectManifestSha, bundle: pv.modelAnalyzerBundle, verified: pv.modelVerified }))
 
     const words = r.words ?? []
     check('S4 words exist with integer ms, ordered, deterministic ids',

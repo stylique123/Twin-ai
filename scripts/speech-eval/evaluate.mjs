@@ -83,7 +83,7 @@ async function runBridge(audioAbs, extraArgs = []) {
   await execFile('python3', [join(REPO, 'worker', 'editor_speech.py'),
     '--audio', audioAbs, '--out', out,
     '--model', ASR_MODEL, '--device', process.env.WHISPER_DEVICE || 'cpu',
-    ...(MODEL_PATH ? ['--model-path', MODEL_PATH, '--model-manifest', MODEL_MANIFEST] : []),
+    ...(MODEL_PATH ? ['--model-path', MODEL_PATH, '--model-manifest', MODEL_MANIFEST, '--require-pinned-model'] : []),
     '--language', process.env.WHISPER_LANGUAGE || 'en', '--beam-size', '1', '--max-seconds', '1800',
     ...extraArgs],
     { timeout: 1_200_000 })
@@ -154,6 +154,14 @@ for (const clip of clips) {
     lowConfWords: words.filter((w) => w.confidence < 0.4).length,
     boundaryKinds: Object.fromEntries(['punctuation_sentence', 'asr_segment', 'pause_utterance'].map((k) => [k, (a.boundaries ?? []).filter((b) => b.kind === k).length])),
     transcript: a.transcript,
+    // Runtime-observed model identity for THIS clip (from the analysis the bridge
+    // actually produced) — aggregated below to prove one identity across the run.
+    modelIdentity: {
+      repository: a.provenance.modelRepository, revision: a.provenance.modelRevision,
+      artifactSha256: a.provenance.modelArtifactSha256, manifestSha256: a.provenance.modelManifestSha256,
+      analyzerBundle: a.provenance.modelAnalyzerBundle,
+      loadedFromPath: a.provenance.modelLoadedFromPath, verified: a.provenance.modelVerified,
+    },
   })
   console.log(`  ${clip.id} [${clip.category}] wer=${wer ? (wer.wer * 100).toFixed(1) + '%' : 'n/a'} filler=${fillers.length} fs=${falseStarts.length} rep=${repeats.length} sil=${silences.length}`)
 }
@@ -316,17 +324,38 @@ const summary = {
   shortPausePreservation: metrics.shortPausePreservation,
   lowConfOnlyRemovalCandidates, cleanFalsePositiveClips: metrics.cleanFalsePositiveClips,
 }
+// RUNTIME-OBSERVED model identity: collect the identity from EVERY analyzed clip
+// (not copied from the manifest independently), require exactly one distinct
+// identity, and require it to match the checked-in manifest. Any drift/mismatch
+// FAILS the eval — the numbers must belong to one, known set of weights.
 const modelManifest = JSON.parse(await readFile(MODEL_MANIFEST, 'utf8'))
+const expectedIdentity = {
+  repository: modelManifest.repository, revision: modelManifest.revision,
+  artifactSha256: modelManifest.files['model.bin'], analyzerBundle: modelManifest.analyzerBundle,
+}
+const observed = ok.map((r) => r.modelIdentity).filter(Boolean)
+const distinct = [...new Set(observed.map((m) => JSON.stringify(m)))]
+const modelIdentityGate = { requirePinned: !!MODEL_PATH, evaluatedClips: ok.length, distinctIdentities: distinct.length }
+if (MODEL_PATH) {
+  const one = distinct.length === 1 ? JSON.parse(distinct[0]) : null
+  const matches = one
+    && one.repository === expectedIdentity.repository && one.revision === expectedIdentity.revision
+    && one.artifactSha256 === expectedIdentity.artifactSha256 && one.analyzerBundle === expectedIdentity.analyzerBundle
+    && one.analyzerBundle === OPTS.speechVersion && one.loadedFromPath === true && one.verified === true
+  modelIdentityGate.observed = one
+  modelIdentityGate.expected = { ...expectedIdentity, speechVersion: OPTS.speechVersion }
+  modelIdentityGate.pass = !!matches
+  if (!matches) {
+    console.error('MODEL IDENTITY GATE FAILED:', JSON.stringify(modelIdentityGate))
+    process.exit(1)
+  }
+  console.log(`model identity OK: one verified identity across ${ok.length} clips — ${one.repository}@${one.revision} (${one.analyzerBundle})`)
+}
 const report = {
   asrModel: OPTS.asrModel, speechVersion: OPTS.speechVersion, provenance: manifest.provenance,
-  // The exact pinned weights these numbers belong to (speech-6). requirePinnedModel
-  // means a successful run PROVED each analysis loaded this revision offline.
-  model: {
-    repository: modelManifest.repository,
-    revision: modelManifest.revision,
-    artifactSha256: modelManifest.files['model.bin'],
-    loadedFromPinnedPath: !!MODEL_PATH,
-  },
+  // Runtime-OBSERVED pinned identity (one, verified, across every clip) — these
+  // numbers provably belong to exactly these weights loaded offline.
+  model: modelIdentityGate,
   categories: manifest.categories, diversity: manifest.diversity,
   featureStatus: {
     autoFillerRemovalShipped: false,

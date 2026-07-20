@@ -65,6 +65,7 @@ jobs:
           # EXACT pinned small revision + digest-verify it (speech-6). The eval
           # grades these weights, loaded offline — never the moving `small` alias.
           python worker/scripts/test_fetch_model.py
+          python worker/scripts/test_editor_speech_pin.py
           python worker/scripts/fetch_model.py \
             --manifest worker/models/faster-whisper-small.manifest.json \
             --dest "$RUNNER_TEMP/faster-whisper-small"

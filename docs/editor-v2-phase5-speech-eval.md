@@ -58,6 +58,30 @@ version. `speech-6` closes that:
 Everything — production runtime, CI speech-eval, the Phase 1–5 staging matrix, and
 the VPS capacity benchmark — loads the same digest-verified local snapshot.
 
+**Round-2 hardening (binds identity to the ACTUAL bytes, not a copied manifest):**
+
+- **Runtime re-verifies the loaded directory.** With `--require-pinned-model`
+  (always on the worker path), `editor_speech.py` rejects an empty/whitespace
+  `EDITOR_SPEECH_MODEL_PATH` (NO alias fallback), re-hashes every load-required
+  file in the configured directory against the manifest via the SINGLE shared
+  verifier (`fetch_model.verified_identity`, reused — no duplicated digest logic),
+  and derives identity ONLY from the manifest whose files verified. A missing
+  path/file, digest mismatch, invalid manifest, or non-`[0-9a-f]{40}` revision
+  exits 3 → the worker maps it to the PERMANENT `model_pin_failed`: no component,
+  no stage advance.
+- **Version↔pin coupling.** The manifest carries `analyzerBundle`, and the builder
+  rejects any analysis whose pinned bundle ≠ the requested `speechVersion`
+  (`model_version_mismatch`). A CI guard (`scripts/ci/check_model_pin_coupling.mjs`)
+  fails the PR if the semantic manifest core changes versus the merge base while
+  the default `speechVersion` does not — a model-pin change with an unchanged
+  version cannot merge.
+- **Runtime-observed evidence.** speech-eval collects the identity from EVERY
+  analyzed clip, requires exactly one, and requires it to match the verified
+  manifest (else the eval fails); staging asserts the EXACT semantic manifest
+  digest (recomputed, not "64 chars"); the VPS bench builds a throwaway image
+  from the exact candidate commit and gates the candidate SHA + runtime-observed
+  identity. Reports carry observed identity, never a manifest copy.
+
 ## Corpora (verified in CI before download)
 
 | Corpus | Version | License | Source | Attribution | Categories it supplies |
@@ -348,20 +372,22 @@ authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
    the numbers + verdict:
 
    ```sh
-   # ON THE PRODUCTION VPS — one turnkey command (fetches this branch, runs the
-   # bench INSIDE the twinai-worker image so it uses the real small model, and
-   # enforces --gate). No clip? make one: ffmpeg -i any.mp4 -ac 1 -ar 16000 -t 60 clip.wav
-   bash worker/scripts/vps_bench.sh --audio clip.wav
-   #   → prints "CAPACITY GATE: PASS" (rc 0) or "... FAIL" (rc != 0)
-   #   → saves ./vps-bench-out/speech-bench-report.json to attach to the PASS record
-
-   # Equivalent low-level call (if the worker's Python deps are on the box directly):
-   #   python3 worker/scripts/bench_speech.py --audio clip.wav --model small \
-   #     --runs 3 --concurrency 2 --gate --label vps
+   # ON THE PRODUCTION VPS — one command. It builds a THROWAWAY image from the
+   # EXACT candidate commit (so the Docker build itself fetches + digest-verifies
+   # the pinned model and bakes /opt/models), then runs the bench inside THAT
+   # image with --gate --require-identity. It never touches the live worker.
+   # No clip? make one: ffmpeg -i any.mp4 -ac 1 -ar 16000 -t 60 clip.wav
+   bash worker/scripts/vps_bench.sh --sha <exact-40-hex-commit> --audio clip.wav
+   #   → prints "CAPACITY GATE: PASS" AND "MODEL IDENTITY GATE: PASS" (rc 0), or a FAIL (rc != 0)
+   #   → saves ./vps-bench-out/speech-bench-report.json — includes candidateSha +
+   #     runtime-observed identity (repository, revision, model.bin sha, manifest
+   #     sha, loadedFromPath, verified, analyzerBundle=speech-6) to attach to the PASS record
    ```
 
-   Phase 5 is NOT approved on the indicative CI benchmark alone — the VPS
-   `--gate` run must PASS.
+   Phase 5 is NOT approved on the indicative CI benchmark alone, and NOT on the
+   old pre-pin VPS numbers — the authoritative gate is `vps_bench.sh --sha <candidate>`
+   passing BOTH the capacity limits and the runtime-observed model-identity check
+   on an image built from that exact commit.
 
    **AUTHORITATIVE VPS RESULT (task #116) — CAPACITY GATE: PASS.** Run by the
    owner on the production Hetzner VPS (`stylique-vps`, 4 vCPU) inside the real
