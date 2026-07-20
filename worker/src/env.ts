@@ -116,14 +116,22 @@ export const env = {
   // speech-5: acoustic-evidence filler guard + neighbor-overlap guard + VAD-core
   // silence-region shrinking (speech-rules-3) — changes candidate output, so the
   // analyzer-bundle cache identity advances. Each bridge/model/rules change bumps.
-  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-5').trim(),
-  // ASR model for the speech component (independent of the caption/reference
-  // knob so a caption tweak can never silently change component identity).
-  // `small` (was `base`): reviewer-approved production upgrade — base rarely
-  // writes um/uh at all, capping filler-candidate recall at 0.167 on the
-  // human-speech eval. Cost: ~2-3x slower CPU transcription; the Docker image
-  // already prefetches small. Version speech-3 pins this combo.
+  // speech-6: PIN the model snapshot. The bare `small` alias resolved the moving
+  // Hugging Face default, so a rebuilt image could produce different immutable
+  // analysis under the same version. speech-6 loads the exact digest-verified
+  // Systran/faster-whisper-small revision (worker/models/*.manifest.json) offline
+  // and records repo+revision+digest in provenance — the model is now part of the
+  // pinned bundle identity, so pinning it advances the version.
+  speechVersion: (process.env.EDITOR_SPEECH_VERSION ?? 'speech-6').trim(),
+  // ASR model LABEL for the speech component (independent of the caption/reference
+  // knob so a caption tweak can never silently change component identity). The
+  // actual weights come from speechModelPath (pinned snapshot), not this alias.
   speechModel: (process.env.EDITOR_SPEECH_MODEL ?? process.env.WHISPER_MODEL ?? 'small').trim(),
+  // PINNED local snapshot dir + manifest. The Docker build (and CI) fetch the
+  // exact revision here and digest-verify it; the bridge loads ONLY this path
+  // with the network disabled. Overridable for CI, where the snapshot is fetched
+  // to a runner temp dir.
+  speechModelPath: (process.env.EDITOR_SPEECH_MODEL_PATH ?? '/opt/models/faster-whisper-small').trim(),
   // Hard timeouts: audio extraction is I/O-bound (minutes at worst); ASR on
   // CPU runs ~0.2-0.5x realtime for `base`, so 15 min of audio fits well
   // inside 20 min. Both stay far under the 2400s visibility lease.

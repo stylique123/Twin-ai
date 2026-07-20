@@ -70,6 +70,12 @@ function werStats(ref, hyp) {
 // attribution because these diverged: the bridge defaulted to base while the
 // report claimed small.)
 const ASR_MODEL = process.env.EDITOR_SPEECH_MODEL || 'small'
+// Evaluate the PINNED snapshot, exactly as production does: the bridge loads
+// EDITOR_SPEECH_MODEL_PATH offline (never the moving alias), so the eval numbers
+// belong to the same weights speech-6 ships. In CI this path is a fetch_model.py
+// download of the manifest revision.
+const MODEL_PATH = process.env.EDITOR_SPEECH_MODEL_PATH || ''
+const MODEL_MANIFEST = join(REPO, 'worker', 'models', 'faster-whisper-small.manifest.json')
 
 async function runBridge(audioAbs, extraArgs = []) {
   const dir = await mkdtemp(join(tmpdir(), 'speech-eval-'))
@@ -77,6 +83,7 @@ async function runBridge(audioAbs, extraArgs = []) {
   await execFile('python3', [join(REPO, 'worker', 'editor_speech.py'),
     '--audio', audioAbs, '--out', out,
     '--model', ASR_MODEL, '--device', process.env.WHISPER_DEVICE || 'cpu',
+    ...(MODEL_PATH ? ['--model-path', MODEL_PATH, '--model-manifest', MODEL_MANIFEST] : []),
     '--language', process.env.WHISPER_LANGUAGE || 'en', '--beam-size', '1', '--max-seconds', '1800',
     ...extraArgs],
     { timeout: 1_200_000 })
@@ -92,9 +99,12 @@ const FILLER_TOKENS = new Set(['um', 'uh', 'uhm', 'umm', 'uhh', 'erm', 'er', 'ah
 const countFillerTokens = (text) => norm(text).filter((t) => FILLER_TOKENS.has(t)).length
 
 const OPTS = {
-  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-5', asrModel: ASR_MODEL,
+  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-6', asrModel: ASR_MODEL,
   asrComputeType: 'int8', device: 'cpu', beamSize: 1, languagePolicy: process.env.WHISPER_LANGUAGE || 'en',
   silenceMinMs: 700, vadMinSilenceMs: 300, vadSpeechPadMs: 100,
+  // When a pinned snapshot is provided (CI/prod), REQUIRE the provenance to name
+  // it — a divergence fails the analysis, so the eval can't grade a moving model.
+  requirePinnedModel: !!MODEL_PATH,
 }
 
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
@@ -306,8 +316,17 @@ const summary = {
   shortPausePreservation: metrics.shortPausePreservation,
   lowConfOnlyRemovalCandidates, cleanFalsePositiveClips: metrics.cleanFalsePositiveClips,
 }
+const modelManifest = JSON.parse(await readFile(MODEL_MANIFEST, 'utf8'))
 const report = {
   asrModel: OPTS.asrModel, speechVersion: OPTS.speechVersion, provenance: manifest.provenance,
+  // The exact pinned weights these numbers belong to (speech-6). requirePinnedModel
+  // means a successful run PROVED each analysis loaded this revision offline.
+  model: {
+    repository: modelManifest.repository,
+    revision: modelManifest.revision,
+    artifactSha256: modelManifest.files['model.bin'],
+    loadedFromPinnedPath: !!MODEL_PATH,
+  },
   categories: manifest.categories, diversity: manifest.diversity,
   featureStatus: {
     autoFillerRemovalShipped: false,

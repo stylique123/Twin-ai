@@ -20,6 +20,44 @@ is verified BEFORE download (the job fetches each source's license and asserts
 it matches the recorded license/version; a mismatch aborts before any audio is
 pulled).
 
+## Model pinning — byte-reproducible immutable analysis (speech-6)
+
+The immutable `speech` component claims to be reproducible for a fixed
+(script + model, audio bytes) under one `speechVersion`. Pinning the Python
+packages was **not enough**: `editor_speech.py` loaded the bare `small` alias,
+which faster-whisper resolves to the **moving** Hugging Face default
+(`Systran/faster-whisper-small` repo HEAD). A rebuilt image could therefore bake
+a different snapshot and produce different "immutable" analysis under the same
+version. `speech-6` closes that:
+
+- **Checked-in manifest** — `worker/models/faster-whisper-small.manifest.json`
+  pins the exact repository, the 40-char commit **revision**
+  (`536b0662742c02347bc0e980a01041f333bce120`, MIT), and the per-file SHA-256 of
+  every load-required file (`model.bin`, `config.json`, `tokenizer.json`,
+  `vocabulary.txt`).
+- **Build/CI fetch is digest-verified & fail-closed** — `worker/scripts/fetch_model.py`
+  downloads *that* revision and re-hashes each file; ANY missing file or digest
+  mismatch is a non-zero exit, so the Docker build (and the CI prefetch) **fail**
+  rather than bake a drifted model. The digests are independently re-verified from
+  the freshly downloaded bytes — seeding a wrong digest fails the build.
+  `worker/scripts/test_fetch_model.py` is an offline guard proving a mismatch is
+  detected.
+- **Runtime loads only the local snapshot, offline** — the bridge is invoked with
+  `--model-path /opt/models/faster-whisper-small` and sets `HF_HUB_OFFLINE=1`;
+  no network call can substitute a moving snapshot. A missing path fails closed.
+- **Provenance names the weights** — the persisted component records
+  `modelRepository`, `modelRevision`, `modelArtifactSha256`, `modelManifestSha256`
+  and `modelLoadedFromPath`. The worker path REQUIRES them (`requirePinnedModel`):
+  if the bridge did not load the pinned snapshot, the analysis fails.
+- **Version coupling** — the model is now part of the bundle identity, so pinning
+  it advanced the analyzer bundle to **`speech-6`** (staging asserts `speech-6`
+  baseline / `speech-7` bump-test; the staging `S3b` check asserts the provenance
+  matches the pinned manifest). Advancing the revision later REQUIRES another
+  version bump (regenerate with `worker/scripts/gen_model_manifest.py`).
+
+Everything — production runtime, CI speech-eval, the Phase 1–5 staging matrix, and
+the VPS capacity benchmark — loads the same digest-verified local snapshot.
+
 ## Corpora (verified in CI before download)
 
 | Corpus | Version | License | Source | Attribution | Categories it supplies |

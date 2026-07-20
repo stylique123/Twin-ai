@@ -26,6 +26,8 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
 const execFile = promisify(_execFile)
+// scripts/staging-integration/phase5.mjs → repo root is two levels up.
+const REPO_ROOT = join(import.meta.dirname, '..', '..')
 const URL = need('STAGING_URL')
 const ANON = need('STAGING_ANON_KEY')
 const SERVICE = need('STAGING_SERVICE_ROLE_KEY')
@@ -287,11 +289,26 @@ async function main() {
     check('S1 project completed with the real transcribing stage', proj.status === 'completed', proj.status)
 
     const rows = await speechRows(S.assetId)
-    check('S2 exactly ONE speech component (asset × speech × speech-5)',
-      rows.length === 1 && rows[0].analyzer_bundle_version === 'speech-5', `rows=${rows.length}`)
+    check('S2 exactly ONE speech component (asset × speech × speech-6)',
+      rows.length === 1 && rows[0].analyzer_bundle_version === 'speech-6', `rows=${rows.length}`)
     const r = rows[0]?.result ?? {}
     check('S3 component identity: schema 1, checksum bound to the validated bytes',
-      r.schemaVersion === 1 && r.speechVersion === 'speech-5' && r.sourceChecksum === S.asset.content_sha256)
+      r.schemaVersion === 1 && r.speechVersion === 'speech-6' && r.sourceChecksum === S.asset.content_sha256)
+
+    // S3b: the immutable analysis names the EXACT pinned model (speech-6). The
+    // provenance must carry the manifest's repository/revision/artifact digest
+    // and prove the weights were loaded from the local snapshot (offline), not
+    // the moving alias.
+    const modelManifest = JSON.parse(await readFile(
+      join(REPO_ROOT, 'worker', 'models', 'faster-whisper-small.manifest.json'), 'utf8'))
+    const pv = r.provenance ?? {}
+    check('S3b speech provenance pins the model (repo + revision + artifact digest, loaded from path)',
+      pv.modelRepository === modelManifest.repository
+      && pv.modelRevision === modelManifest.revision
+      && pv.modelArtifactSha256 === modelManifest.files['model.bin']
+      && pv.modelLoadedFromPath === true
+      && typeof pv.modelManifestSha256 === 'string' && pv.modelManifestSha256.length === 64,
+      JSON.stringify({ repo: pv.modelRepository, rev: pv.modelRevision, fromPath: pv.modelLoadedFromPath }))
 
     const words = r.words ?? []
     check('S4 words exist with integer ms, ordered, deterministic ids',
@@ -352,7 +369,7 @@ async function main() {
       rec?.details?.cache_hit === false && rec?.details?.asr_performed === true && rec?.details?.word_count === words.length,
       JSON.stringify(rec?.details))
     check('S16 analyzing re-verified the durable component',
-      ver?.details?.word_count === words.length && ver?.details?.speech_version === 'speech-5', JSON.stringify(ver?.details))
+      ver?.details?.word_count === words.length && ver?.details?.speech_version === 'speech-6', JSON.stringify(ver?.details))
     const job = await waitJobSettled(pid)
     check('S17 job result carries the speech summary', job?.result?.speech?.asrPerformed === true, JSON.stringify(job?.result?.speech))
     check('S18 provenance pins engine/model/vad', r.provenance?.asrEngine === 'faster-whisper' && r.provenance?.vad === 'silero')
@@ -410,13 +427,13 @@ async function main() {
   console.log('\n== V. version bump recomputes; components immutable ==')
   {
     const pid = await startProject(cA, S.gen, S.assetId)
-    const proj = await runToSettled('p5-v2', pid, { EDITOR_SPEECH_VERSION: 'speech-6' })
+    const proj = await runToSettled('p5-v2', pid, { EDITOR_SPEECH_VERSION: 'speech-7' })
     check('V1 bumped-version project completed', proj.status === 'completed', proj.status)
     const rows = await speechRows(S.assetId)
-    check('V2 a NEW immutable component for speech-6 (both rows kept)',
+    check('V2 a NEW immutable component for speech-7 (both rows kept)',
       rows.length === 2 && new Set(rows.map((x) => x.analyzer_bundle_version)).size === 2, `rows=${rows.length}`)
-    check('V3 recording speech-6 did not stamp the inspection epoch',
-      proj.analysis_version !== 'speech-6', String(proj.analysis_version))
+    check('V3 recording speech-7 did not stamp the inspection epoch',
+      proj.analysis_version !== 'speech-7', String(proj.analysis_version))
 
     const { error: upErr } = await admin.from('media_analyses')
       .update({ result: { forged: true } }).eq('id', rows[0].id)
@@ -608,7 +625,10 @@ async function main() {
   console.log('\n== P. provider failure surfaces SANITIZED ==')
   {
     const pid = await startProject(cA, P.gen, P.assetId)
-    const proj = await runToSettled('p5-provider', pid, { EDITOR_SPEECH_MODEL: 'no-such-model-p5' }, 240_000)
+    // speech-6 loads the PINNED snapshot from --model-path (the alias is ignored),
+    // so a provider failure is forced with a missing model PATH — the bridge exits
+    // non-zero (retryable asr_failed), same class as a real model-fetch failure.
+    const proj = await runToSettled('p5-provider', pid, { EDITOR_SPEECH_MODEL_PATH: '/nonexistent/pinned-model-p5' }, 240_000)
     check('P1 provider failure fails the project after the retry budget',
       proj.status === 'failed' && ['asr_failed', 'retries_exhausted'].includes(proj.failure_code),
       `${proj.status}/${proj.failure_code}`)

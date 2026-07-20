@@ -32,6 +32,8 @@ on:
       - 'worker/scripts/bench_speech.py'
       - 'worker/scripts/bench_thresholds.json'
       - 'worker/scripts/vps_bench.sh'
+      - 'worker/scripts/fetch_model.py'
+      - 'worker/models/**'
 
 concurrency:
   group: speech-eval
@@ -59,7 +61,13 @@ jobs:
         run: |
           pip install --quiet -r worker/requirements.txt
           pip install --quiet 'datasets>=2.19,<4' 'soundfile>=0.12' 'huggingface_hub>=0.25' 'requests>=2.31'
-          python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"
+          # Offline verifier guard (a digest mismatch must fail), then fetch the
+          # EXACT pinned small revision + digest-verify it (speech-6). The eval
+          # grades these weights, loaded offline — never the moving `small` alias.
+          python worker/scripts/test_fetch_model.py
+          python worker/scripts/fetch_model.py \
+            --manifest worker/models/faster-whisper-small.manifest.json \
+            --dest "$RUNNER_TEMP/faster-whisper-small"
       - name: Build worker (real bridge + builder)
         run: cd worker && npm ci && npm run build
       - name: Guard — corpus builder must not import librosa/numba (teardown-crash regression)
@@ -75,6 +83,8 @@ jobs:
       - name: Run the real Phase 5 pipeline + gate against predefined thresholds
         env:
           SPEECH_EVAL_MANIFEST: ${{ runner.temp }}/speech-corpus/manifest.json
+          # Grade the PINNED snapshot loaded offline (requirePinnedModel enforces it).
+          EDITOR_SPEECH_MODEL_PATH: ${{ runner.temp }}/faster-whisper-small
         run: node scripts/speech-eval/evaluate.mjs
       - name: Indicative `small` runtime benchmark (CI x86 — NOT the VPS; authoritative gate is task #116)
         if: always()
@@ -84,7 +94,8 @@ jobs:
           # produced by running this same script on the VPS before merge (#116).
           CLIP=$(python -c "import json; m=json.load(open('$RUNNER_TEMP/speech-corpus/manifest.json')); print(next(c['audio'] for c in m['clips'] if c['category']=='clean_natural_speech'))" 2>/dev/null || true)
           if [ -n "$CLIP" ] && [ -f "$CLIP" ]; then
-            EDITOR_SPEECH_MODEL=small python worker/scripts/bench_speech.py \
+            EDITOR_SPEECH_MODEL=small EDITOR_SPEECH_MODEL_PATH="$RUNNER_TEMP/faster-whisper-small" \
+              python worker/scripts/bench_speech.py \
               --audio "$CLIP" --model small --runs 3 --concurrency 2 --label ci-indicative-x86 \
               || echo "::warning::indicative bench failed (non-blocking)"
           else

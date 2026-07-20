@@ -439,3 +439,58 @@ describe('speech error surfaces', () => {
     expect(sanitizeError(new SpeechCancelledError('during_asr'), 'transcribing').retry).toBe('cancelled')
   })
 })
+
+// The immutable `speech` component (speech-6) must name the EXACT pinned model
+// that produced it. The bridge reports repository/revision/artifact+manifest
+// digests; the builder persists them into provenance and, when a pin is required,
+// fails closed if they are absent.
+const PINNED_MODEL = {
+  label: 'small',
+  loadedFromPath: true,
+  repository: 'Systran/faster-whisper-small',
+  revision: '536b0662742c02347bc0e980a01041f333bce120',
+  artifactSha256: '3e305921506d8872816023e4c273e75d2419fb89b24da97b4fe7bce14170d671',
+  manifestSha256: 'f'.repeat(64),
+}
+
+describe('speech model pinning (speech-6)', () => {
+  it('persists repository/revision/digests from the bridge into provenance', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = { ...fixtureBridge(), model: PINNED_MODEL }
+    const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
+    expect(a.provenance.modelRepository).toBe('Systran/faster-whisper-small')
+    expect(a.provenance.modelRevision).toBe('536b0662742c02347bc0e980a01041f333bce120')
+    expect(a.provenance.modelArtifactSha256).toBe(PINNED_MODEL.artifactSha256)
+    expect(a.provenance.modelManifestSha256).toBe(PINNED_MODEL.manifestSha256)
+    expect(a.provenance.modelLoadedFromPath).toBe(true)
+  })
+
+  it('version coupling: speech-6 analysis carries the pinned revision', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = { ...fixtureBridge(), model: PINNED_MODEL }
+    const a = buildSpeechAnalysis(asset, br, { ...opts, speechVersion: 'speech-6' }) as Record<string, any>
+    expect(a.speechVersion).toBe('speech-6')
+    expect(a.provenance.modelRevision).toBe('536b0662742c02347bc0e980a01041f333bce120')
+  })
+
+  it('fails closed when a pin is REQUIRED but the bridge did not report one', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    // bridge without a `model` block (e.g. loaded the moving alias) → reject
+    expect(() => buildSpeechAnalysis(asset, fixtureBridge(), { ...opts, requirePinnedModel: true }))
+      .toThrow(/pinned model identity missing/)
+  })
+
+  it('fails closed when the bridge reports it did NOT load from the pinned path', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = { ...fixtureBridge(), model: { ...PINNED_MODEL, loadedFromPath: false } }
+    expect(() => buildSpeechAnalysis(asset, br, { ...opts, requirePinnedModel: true }))
+      .toThrow(/pinned model identity missing/)
+  })
+
+  it('does not require a pin by default (dev/back-compat): provenance fields null', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const a = buildSpeechAnalysis(asset, fixtureBridge(), opts) as Record<string, any>
+    expect(a.provenance.modelRevision).toBeNull()
+    expect(a.provenance.modelLoadedFromPath).toBe(false)
+  })
+})

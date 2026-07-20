@@ -28,6 +28,10 @@ import wave
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BRIDGE = os.path.join(HERE, "..", "editor_speech.py")
+MANIFEST = os.path.join(HERE, "..", "models", "faster-whisper-small.manifest.json")
+# When set (production image / CI), benchmark the PINNED snapshot loaded offline —
+# the same weights the immutable component ships — not the moving `small` alias.
+MODEL_PATH = os.environ.get("EDITOR_SPEECH_MODEL_PATH", "")
 
 
 def wav_seconds(path):
@@ -36,9 +40,12 @@ def wav_seconds(path):
 
 
 def bridge_cmd(audio, out, model):
-    return [sys.executable, BRIDGE, "--audio", audio, "--out", out,
-            "--model", model, "--device", "cpu", "--language", "en",
-            "--beam-size", "1", "--max-seconds", "1800"]
+    cmd = [sys.executable, BRIDGE, "--audio", audio, "--out", out,
+           "--model", model, "--device", "cpu", "--language", "en",
+           "--beam-size", "1", "--max-seconds", "1800"]
+    if MODEL_PATH:
+        cmd += ["--model-path", MODEL_PATH, "--model-manifest", MANIFEST]
+    return cmd
 
 
 def run_once(audio, model, timeout_sec):

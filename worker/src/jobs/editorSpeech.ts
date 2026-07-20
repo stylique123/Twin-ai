@@ -52,6 +52,17 @@ export interface SpeechBridgeOutput {
   segments: Array<{ start: number; end: number; text: string }>
   vad_segments: Array<{ start: number; end: number }>
   energy: { window_ms: number; rms: number[] }
+  // Exact weights that produced this analysis (from the pinned local snapshot).
+  // Present whenever the bridge was given --model-path/--model-manifest (always
+  // true on the worker + CI paths); persisted into the immutable provenance.
+  model?: {
+    label: string
+    loadedFromPath: boolean
+    repository: string | null
+    revision: string | null
+    artifactSha256: string | null
+    manifestSha256: string | null
+  }
 }
 
 // ---- pure contract construction (unit-tested) ------------------------------
@@ -127,9 +138,18 @@ export function buildSpeechAnalysis(
   bridge: SpeechBridgeOutput,
   opts: { speechVersion: string; asrModel: string; asrComputeType: string; device: string
     beamSize: number; languagePolicy: string; silenceMinMs: number
-    vadMinSilenceMs: number; vadSpeechPadMs: number },
+    vadMinSilenceMs: number; vadSpeechPadMs: number; requirePinnedModel?: boolean },
 ): Record<string, unknown> {
   if (!Array.isArray(bridge.words)) throw new PermanentJobError('speech: bridge produced no word list', 'asr_failed')
+  // Fail closed: the immutable component MUST name the exact weights that
+  // produced it. When a pinned model is required (worker + CI), the bridge must
+  // have loaded the local snapshot and reported its repository/revision/digest.
+  if (opts.requirePinnedModel) {
+    const m = bridge.model
+    if (!m || !m.loadedFromPath || !m.repository || !m.revision || !m.manifestSha256) {
+      throw new PermanentJobError('speech: pinned model identity missing from bridge output', 'model_not_pinned')
+    }
+  }
   if (bridge.energy.window_ms < 100 || bridge.energy.rms.length > RAW_ENERGY_HARD_CAP) {
     throw new PermanentJobError('speech: energy curve out of bounds', 'speech_energy_overflow')
   }
@@ -444,6 +464,14 @@ export function buildSpeechAnalysis(
     device: opts.device,
     beamSize: opts.beamSize,
     languagePolicy: opts.languagePolicy,
+    // Exact pinned weights (speech-6+): the immutable analysis now names the
+    // repository, commit revision and artifact/manifest digests that produced it,
+    // so a rebuilt image is provably the same model or the version must bump.
+    modelRepository: bridge.model?.repository ?? null,
+    modelRevision: bridge.model?.revision ?? null,
+    modelArtifactSha256: bridge.model?.artifactSha256 ?? null,
+    modelManifestSha256: bridge.model?.manifestSha256 ?? null,
+    modelLoadedFromPath: bridge.model?.loadedFromPath ?? false,
     vad: 'silero',
     vadMinSilenceMs: opts.vadMinSilenceMs,
     vadSpeechPadMs: opts.vadSpeechPadMs,
@@ -544,6 +572,9 @@ function runAsrBridge(wavPath: string, outPath: string, watch: CancelWatch): Pro
     [join(import.meta.dirname, '..', '..', 'editor_speech.py'),
       '--audio', wavPath, '--out', outPath,
       '--model', env.speechModel, '--device', env.whisperDevice,
+      // Load ONLY the pinned local snapshot, offline — never the moving alias.
+      '--model-path', env.speechModelPath,
+      '--model-manifest', join(import.meta.dirname, '..', '..', 'models', 'faster-whisper-small.manifest.json'),
       '--language', env.whisperLanguage, '--beam-size', '1',
       '--max-seconds', String(Math.ceil(env.sourceMaxDurationMs / 1000)),
       ...(env.speechBridgeHoldAt ? ['--hold-at', env.speechBridgeHoldAt, '--hold-ms', String(env.speechBridgeHoldMs)] : [])],
@@ -649,6 +680,7 @@ export async function runTranscribingStage(job: Job, projectId: string, dir: str
         device: env.whisperDevice, beamSize: 1, languagePolicy: env.whisperLanguage,
         silenceMinMs: env.speechSilenceMinMs,
         vadMinSilenceMs: env.speechVadMinSilenceMs, vadSpeechPadMs: env.speechVadSpeechPadMs,
+        requirePinnedModel: true,
       },
     )
 

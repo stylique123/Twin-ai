@@ -32,12 +32,24 @@ COPY src ./src
 COPY whisper_transcribe.py ./whisper_transcribe.py
 COPY editor_speech.py ./editor_speech.py
 COPY youtube_transcript.py ./youtube_transcript.py
+COPY models ./models
+COPY scripts/fetch_model.py ./scripts/fetch_model.py
 RUN npm run build
 
-# Pre-download the ASR models at build time so no job ever pays a download.
-# base = reference transcription (the speed/quality sweet spot); tiny/small kept
-# for boxes that override WHISPER_MODEL.
-RUN python3 -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('tiny','base','small')]"
+# Pre-download the CAPTION/VOICE pipeline models (whisper_transcribe.py, keyed by
+# WHISPER_MODEL) so those jobs never pay a per-run download. NOT `small` — the
+# editor's immutable speech component pins that separately below.
+RUN python3 -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('tiny','base')]"
+
+# PIN the editor's `small` snapshot: fetch the EXACT Systran/faster-whisper-small
+# revision named in the manifest and digest-verify every file. Build FAILS on any
+# mismatch — the immutable `speech` component (speech-6) must be byte-reproducible,
+# so a drifted model can never bake in. The bridge loads only /opt/models/... with
+# the network disabled.
+RUN python3 scripts/fetch_model.py \
+      --manifest models/faster-whisper-small.manifest.json \
+      --dest /opt/models/faster-whisper-small
+ENV EDITOR_SPEECH_MODEL_PATH=/opt/models/faster-whisper-small
 
 ENV NODE_ENV=production
 

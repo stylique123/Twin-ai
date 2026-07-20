@@ -52,16 +52,21 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Install the worker's pinned Python deps + pre-fetch the ASR model
+      - name: Install the worker's pinned Python deps + fetch the PINNED ASR model
         # SAME locked source the Docker image installs from (worker/
         # requirements.txt) — the speech component's ASR/VAD stack is identical
-        # in CI and on the VPS. Pre-fetch the `base` model so no matrix job
-        # pays a per-run download (mirrors the image's baked model).
+        # in CI and on the VPS.
         run: |
           pip install --quiet -r worker/requirements.txt
-          # small = the SHIPPED default the Phase-5 matrix exercises (speech-3);
-          # tiny = the fast model Phase-3/4 pin. Pre-fetch both so no job downloads.
-          python -c "from faster_whisper import WhisperModel; [WhisperModel(m, device='cpu', compute_type='int8') for m in ('small','tiny')]"
+          # Offline verifier guard (mirror of the build): a digest mismatch must fail.
+          python worker/scripts/test_fetch_model.py
+          # tiny = the fast model Phase-3/4 pin (alias is fine — not immutable).
+          python -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8')"
+          # small = the SHIPPED Phase-5 model — fetch the EXACT pinned revision and
+          # digest-verify it (speech-6). Same fetch_model.py the Docker build runs.
+          python worker/scripts/fetch_model.py \
+            --manifest worker/models/faster-whisper-small.manifest.json \
+            --dest "$RUNNER_TEMP/faster-whisper-small"
 
       - name: Verify the ci-bootstrap gate refuses unauthorized callers
         run: |
@@ -161,4 +166,8 @@ jobs:
         run: node scripts/staging-integration/phase4.mjs
 
       - name: Run Phase 5 integration matrix (real speech transcription)
+        # The worker (spawned by the matrix) loads the PINNED small snapshot from
+        # this path offline — the exact revision fetched + digest-verified above.
+        env:
+          EDITOR_SPEECH_MODEL_PATH: ${{ runner.temp }}/faster-whisper-small
         run: node scripts/staging-integration/phase5.mjs

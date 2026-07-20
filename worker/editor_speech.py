@@ -21,8 +21,27 @@ source timeline; VAD runs separately as evidence.
 Exit codes: 0 ok, 2 media too long, 1 any other failure.
 """
 import argparse
+import hashlib
 import json
+import os
 import sys
+
+
+def manifest_identity(manifest_path):
+    """Read the pinned-model manifest and return the identity to persist in the
+    speech provenance: repository, exact revision, the model.bin artifact digest,
+    and a stable manifest_sha256 (semantic core only). Kept byte-for-byte in sync
+    with worker/scripts/fetch_model.py.manifest_sha256()."""
+    with open(manifest_path, encoding="utf-8") as f:
+        man = json.load(f)
+    core = {"repository": man["repository"], "revision": man["revision"], "files": man["files"]}
+    canon = json.dumps(core, sort_keys=True, separators=(",", ":"))
+    return {
+        "repository": man["repository"],
+        "revision": man["revision"],
+        "artifact_sha256": man["files"].get("model.bin"),
+        "manifest_sha256": hashlib.sha256(canon.encode("utf-8")).hexdigest(),
+    }
 
 
 def rms_energy(audio, sample_rate, window_ms):
@@ -42,7 +61,18 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--audio", required=True)   # mono 16k wav (worker-extracted)
     ap.add_argument("--out", required=True)
-    ap.add_argument("--model", default="base")
+    ap.add_argument("--model", default="base",
+                    help="model label recorded in provenance (e.g. small); the ACTUAL "
+                         "weights come from --model-path when set")
+    # Determinism: the immutable `speech` component must be byte-reproducible, so
+    # production loads a PINNED local snapshot (exact Systran/faster-whisper-small
+    # revision, digest-verified at build) with the network DISABLED — never the
+    # moving `small` alias. --model-manifest records repository+revision+digest in
+    # provenance so the persisted analysis names exactly which weights produced it.
+    ap.add_argument("--model-path", default="",
+                    help="local faster-whisper snapshot dir; loaded offline (local_files_only)")
+    ap.add_argument("--model-manifest", default="",
+                    help="pinned-model manifest json (persisted into provenance)")
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--language", default="en")  # ISO code, or "auto" to detect
     ap.add_argument("--beam-size", type=int, default=1)
@@ -66,6 +96,19 @@ def main() -> int:
 
     import time
 
+    # Pinned-model path forces OFFLINE loading: no network call can silently
+    # substitute a moving snapshot. Set before importing faster_whisper so the
+    # huggingface_hub client picks it up.
+    model_identity = None
+    if args.model_path:
+        os.environ["HF_HUB_OFFLINE"] = "1"
+        os.environ["TRANSFORMERS_OFFLINE"] = "1"
+        if not os.path.isdir(args.model_path):
+            print(f"pinned model path not found: {args.model_path}", file=sys.stderr)
+            return 1
+        if args.model_manifest:
+            model_identity = manifest_identity(args.model_manifest)
+
     from faster_whisper import WhisperModel
     from faster_whisper.audio import decode_audio
     from faster_whisper.vad import VadOptions, get_speech_timestamps
@@ -73,7 +116,13 @@ def main() -> int:
     compute_type = "float16" if args.device == "cuda" else "int8"
     lang = None if args.language.lower() in ("auto", "", "detect") else args.language
 
-    model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
+    # Load the PINNED local snapshot (offline) when given; otherwise the alias
+    # (dev/back-compat only — never the production path for the immutable component).
+    if args.model_path:
+        model = WhisperModel(args.model_path, device=args.device,
+                             compute_type=compute_type, local_files_only=True)
+    else:
+        model = WhisperModel(args.model, device=args.device, compute_type=compute_type)
     if args.hold_at == "after_model_load" and args.hold_ms > 0:
         time.sleep(args.hold_ms / 1000.0)
     # Default: suppress NOTHING so disfluencies (um/uh) survive; pass -1 only if
@@ -153,6 +202,17 @@ def main() -> int:
         "segments": segments,
         "vad_segments": vad,
         "energy": {"window_ms": args.energy_window_ms, "rms": energy},
+        # Exact weights that produced this analysis — persisted into the immutable
+        # component's provenance. `label` is the alias (small); repository/revision/
+        # digests come from the pinned manifest when loaded offline.
+        "model": {
+            "label": args.model,
+            "loadedFromPath": bool(args.model_path),
+            "repository": (model_identity or {}).get("repository"),
+            "revision": (model_identity or {}).get("revision"),
+            "artifactSha256": (model_identity or {}).get("artifact_sha256"),
+            "manifestSha256": (model_identity or {}).get("manifest_sha256"),
+        },
     }
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump(out, f, ensure_ascii=False)

@@ -311,11 +311,20 @@ export interface SpeechAnalysis {
 
   provenance: {
     asrEngine: 'faster-whisper'
-    asrModel: string          // e.g. 'base'
+    asrModel: string          // LABEL only, e.g. 'small' (weights come from the pin below)
     asrComputeType: string    // e.g. 'int8' (part of the reproducibility identity)
     device: string            // 'cpu' | 'cuda'
     beamSize: number
     languagePolicy: string    // pinned ISO code, or 'auto'
+    // PINNED model identity (speech-6+): the EXACT weights that produced this
+    // immutable analysis. Null only for legacy/dev analyses that loaded the moving
+    // alias; the worker path REQUIRES them (a rebuilt image is provably the same
+    // model, or the analyzer bundle version must bump).
+    modelRepository: string | null   // e.g. 'Systran/faster-whisper-small'
+    modelRevision: string | null     // exact 40-char commit sha
+    modelArtifactSha256: string | null   // sha256 of model.bin
+    modelManifestSha256: string | null   // stable digest of the pin manifest
+    modelLoadedFromPath: boolean     // true == loaded the pinned snapshot offline
     vad: 'silero'
     vadMinSilenceMs: number
     vadSpeechPadMs: number
