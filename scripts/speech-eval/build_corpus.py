@@ -218,6 +218,11 @@ def main():
     n = 0
     for ex in ls:
         spk = str(ex.get("speaker_id"))
+        # The clean set is the HALLUCINATION control: it must contain ZERO
+        # spoken fillers (enforced from the corpus's own transcript), so any
+        # filler token/candidate the pipeline produces on it is a hallucination.
+        if any(t in DISFLUENCY for t in toks(ex.get("text", ""))):
+            continue
         arr, sr = decode_audio(ex["audio"])
         dur = len(arr) / sr
         if dur > args.max_seconds or dur < 2:

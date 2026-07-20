@@ -287,11 +287,11 @@ async function main() {
     check('S1 project completed with the real transcribing stage', proj.status === 'completed', proj.status)
 
     const rows = await speechRows(S.assetId)
-    check('S2 exactly ONE speech component (asset × speech × speech-4)',
-      rows.length === 1 && rows[0].analyzer_bundle_version === 'speech-4', `rows=${rows.length}`)
+    check('S2 exactly ONE speech component (asset × speech × speech-5)',
+      rows.length === 1 && rows[0].analyzer_bundle_version === 'speech-5', `rows=${rows.length}`)
     const r = rows[0]?.result ?? {}
     check('S3 component identity: schema 1, checksum bound to the validated bytes',
-      r.schemaVersion === 1 && r.speechVersion === 'speech-4' && r.sourceChecksum === S.asset.content_sha256)
+      r.schemaVersion === 1 && r.speechVersion === 'speech-5' && r.sourceChecksum === S.asset.content_sha256)
 
     const words = r.words ?? []
     check('S4 words exist with integer ms, ordered, deterministic ids',
@@ -341,7 +341,7 @@ async function main() {
       cands.length > 0 && cands.every((c) =>
         c.safeToConsider === true && !('safeToRemove' in c)
         && Array.isArray(c.evidenceCodes) && c.evidenceCodes.length > 0
-        && c.ruleVersion === 'speech-rules-2'
+        && c.ruleVersion === 'speech-rules-3'
         && ['high', 'medium', 'low'].includes(c.confidence)
         && 'prevWordId' in c && 'nextWordId' in c))
 
@@ -352,7 +352,7 @@ async function main() {
       rec?.details?.cache_hit === false && rec?.details?.asr_performed === true && rec?.details?.word_count === words.length,
       JSON.stringify(rec?.details))
     check('S16 analyzing re-verified the durable component',
-      ver?.details?.word_count === words.length && ver?.details?.speech_version === 'speech-4', JSON.stringify(ver?.details))
+      ver?.details?.word_count === words.length && ver?.details?.speech_version === 'speech-5', JSON.stringify(ver?.details))
     const job = await waitJobSettled(pid)
     check('S17 job result carries the speech summary', job?.result?.speech?.asrPerformed === true, JSON.stringify(job?.result?.speech))
     check('S18 provenance pins engine/model/vad', r.provenance?.asrEngine === 'faster-whisper' && r.provenance?.vad === 'silero')
@@ -410,13 +410,13 @@ async function main() {
   console.log('\n== V. version bump recomputes; components immutable ==')
   {
     const pid = await startProject(cA, S.gen, S.assetId)
-    const proj = await runToSettled('p5-v2', pid, { EDITOR_SPEECH_VERSION: 'speech-5' })
+    const proj = await runToSettled('p5-v2', pid, { EDITOR_SPEECH_VERSION: 'speech-6' })
     check('V1 bumped-version project completed', proj.status === 'completed', proj.status)
     const rows = await speechRows(S.assetId)
-    check('V2 a NEW immutable component for speech-5 (both rows kept)',
+    check('V2 a NEW immutable component for speech-6 (both rows kept)',
       rows.length === 2 && new Set(rows.map((x) => x.analyzer_bundle_version)).size === 2, `rows=${rows.length}`)
-    check('V3 recording speech-5 did not stamp the inspection epoch',
-      proj.analysis_version !== 'speech-5', String(proj.analysis_version))
+    check('V3 recording speech-6 did not stamp the inspection epoch',
+      proj.analysis_version !== 'speech-6', String(proj.analysis_version))
 
     const { error: upErr } = await admin.from('media_analyses')
       .update({ result: { forged: true } }).eq('id', rows[0].id)

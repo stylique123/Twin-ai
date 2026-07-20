@@ -54,6 +54,8 @@ def main() -> int:
     # deterministic (greedy, temp 0). Pinned by EDITOR_SPEECH_VERSION.
     ap.add_argument("--suppress-non-speech", action="store_true",
                     help="keep Whisper's default non-speech suppression (drops um/uh)")
+    ap.add_argument("--no-disfluency-prompt", action="store_true",
+                    help="A/B evaluation: disable the disfluency-context initial_prompt")
     ap.add_argument("--energy-window-ms", type=int, default=200)
     # Matrix-only deterministic holds so cooperative cancellation can be proven
     # to land in the model-load and mid-transcription windows (the worker kills
@@ -83,7 +85,8 @@ def main() -> int:
     # constant prompt that itself contains fillers makes verbatim um/uh
     # emission likely. Deterministic (constant string + greedy decoding); any
     # prompt leakage into output would trip the invented-word gate in the eval.
-    initial_prompt = "Um, uh, er, hmm... okay, so, um, I was, I was thinking, uh, you know, right."
+    initial_prompt = None if args.no_disfluency_prompt else \
+        "Um, uh, er, hmm... okay, so, um, I was, I was thinking, uh, you know, right."
     segments_iter, info = model.transcribe(
         args.audio,
         word_timestamps=True,

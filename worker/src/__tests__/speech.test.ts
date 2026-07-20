@@ -175,7 +175,10 @@ describe('speech candidate contract (proposals, never removals)', () => {
     const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
     const a = buildSpeechAnalysis(asset, fixtureBridge(), opts) as Record<string, any>
     const sil = a.candidates.filter((c: any) => c.kind === 'silence')
-    expect(sil.map((s: any) => [s.startMs, s.endMs])).toEqual([[1300, 2800], [5600, 7400], [8700, 14759]])
+    // speech-rules-3: removable/dead_air candidates are SHRUNK to the largest
+    // VAD-clear core, so a proposed cut's boundaries can never sit inside VAD
+    // speech (Silero's pads push boundaries AWAY from speech).
+    expect(sil.map((s: any) => [s.startMs, s.endMs])).toEqual([[1400, 2700], [5700, 7300], [8800, 14759]])
     expect(sil.map((s: any) => s.evidence.class)).toEqual(['removable', 'removable', 'dead_air'])
     expect(sil[2].confidence).toBe('high')       // long dead air
     expect(sil[0].confidence).toBe('medium')     // removable
@@ -195,7 +198,7 @@ describe('speech candidate contract (proposals, never removals)', () => {
     expect(first.evidenceCodes).toContain('vad_ambiguous')
   })
 
-  it('detects dead air the ASR bridged: VAD gap with NO word gap (speech-rules-2)', async () => {
+  it('detects dead air the ASR bridged: VAD gap with NO word gap (speech-rules-3)', async () => {
     const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
     const br = fixtureBridge()
     // Whisper stretches 'pineapples.' across a real 2.4s silence: word
@@ -230,6 +233,38 @@ describe('speech candidate contract (proposals, never removals)', () => {
     expect(fs).toHaveLength(1)
     expect(fs[0].evidenceCodes).toContain('vad_pause_between')
     expect(fs[0].evidence.vadPauseMs).toBeGreaterThanOrEqual(150)
+  })
+
+  it('REJECTS a filler token with no acoustic speech at its timestamp (hallucination guard)', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = fixtureBridge()
+    // The prompt (or LM) emits 'Um,' but VAD hears NO speech there: shift VAD
+    // so the um interval (2.8-3.0s) falls in a non-speech gap.
+    br.vad_segments = [
+      { start: 0.3, end: 1.4 }, { start: 3.05, end: 5.7 }, { start: 7.3, end: 8.8 },
+    ]
+    const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
+    expect(a.candidates.filter((c: any) => c.kind === 'filler')).toHaveLength(0)
+    // the word itself is NOT dropped from the transcript — only the candidate
+    expect(a.words[3].normalizedText).toBe('um')
+  })
+
+  it('REJECTS a filler candidate whose token overlaps neighboring lexical speech', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const br = fixtureBridge()
+    // 'Um,' timestamps overlap the following word 'I' by 100ms — removing the
+    // interval could clip real speech, so no candidate may be proposed.
+    br.words[3] = { w: 'Um,', start: 2.8, end: 3.2, p: 0.9 }   // 'I' starts 3.1
+    const a = buildSpeechAnalysis(asset, br, opts) as Record<string, any>
+    expect(a.candidates.filter((c: any) => c.kind === 'filler')).toHaveLength(0)
+  })
+
+  it('acoustically-backed filler carries the vad_speech_at_token evidence code', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const a = buildSpeechAnalysis(asset, fixtureBridge(), opts) as Record<string, any>
+    const f = a.candidates.filter((c: any) => c.kind === 'filler')
+    expect(f).toHaveLength(1)
+    expect(f[0].evidenceCodes).toContain('vad_speech_at_token')
   })
 
   it('disfluency filler (um) is high; low ASR confidence downgrades it', async () => {
@@ -383,7 +418,7 @@ describe('speech energy + payload safety', () => {
     expect(a.provenance).toMatchObject({
       asrEngine: 'faster-whisper', asrModel: 'base', asrComputeType: 'int8', device: 'cpu',
       beamSize: 1, languagePolicy: 'en', vad: 'silero', vadMinSilenceMs: 300, vadSpeechPadMs: 100,
-      silenceMinMs: 700, ruleVersion: 'speech-rules-2',
+      silenceMinMs: 700, ruleVersion: 'speech-rules-3',
     })
   })
 })

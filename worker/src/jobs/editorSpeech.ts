@@ -55,7 +55,7 @@ export interface SpeechBridgeOutput {
 }
 
 // ---- pure contract construction (unit-tested) ------------------------------
-export const SPEECH_RULE_VERSION = 'speech-rules-2'
+export const SPEECH_RULE_VERSION = 'speech-rules-3'
 
 // Clear disfluencies: near-always insertions, not lexical content.
 const DISFLUENCY_FILLERS = new Set(['um', 'uh', 'uhm', 'umm', 'uhh', 'erm', 'er', 'ah', 'hmm', 'mm', 'mmm'])
@@ -244,24 +244,47 @@ export function buildSpeechAnalysis(
     if (last && r.s <= last.e) { last.e = Math.max(last.e, r.e); for (const x of r.src) last.src.add(x) }
     else mergedSil.push(r)
   }
+  const sortedVadAll = [...vadSegments].sort((a, b) => a.startMs - b.startMs)
   for (const r of mergedSil) {
-    const gapMs = r.e - r.s
-    const nonSpeechRatio = 1 - speechOverlapMs(r.s, r.e, vadSegments) / gapMs
-    const energyHere = avgEnergy(r.s, r.e, energy.windowMs, energy.rms)
+    const gapMsRaw = r.e - r.s
+    const nonSpeechRatio = 1 - speechOverlapMs(r.s, r.e, vadSegments) / gapMsRaw
     const vadClear = nonSpeechRatio >= 0.6
+    // For removable/dead_air, SHRINK to the largest VAD-clear core inside the
+    // region so a proposed cut's boundaries can never sit inside VAD speech
+    // (Silero's speech pads push boundaries AWAY from speech, never into it).
+    // A region VAD hears speech in stays `uncertain` at its full extent (low,
+    // never removable). A clear region whose core is shorter than silenceMinMs
+    // is dropped — natural pause.
+    let s = r.s; let e = r.e
     let cls: string; let confidence: 'high' | 'medium' | 'low'; const codes = ['silence_gap', ...r.src]
     if (!vadClear) { cls = 'uncertain'; confidence = 'low'; codes.push('vad_ambiguous') }
-    else if (gapMs >= DEAD_AIR_MS) { cls = 'dead_air'; confidence = 'high'; codes.push('gap_dead_air', 'vad_nonspeech') }
-    else { cls = 'removable'; confidence = 'medium'; codes.push('gap_removable', 'vad_nonspeech') }
+    else {
+      let core: [number, number] | null = null
+      let cursor = r.s
+      for (const v of sortedVadAll) {
+        if (v.endMs <= r.s || v.startMs >= r.e) continue
+        const gEnd = Math.max(cursor, Math.min(v.startMs, r.e))
+        if (gEnd - cursor > (core ? core[1] - core[0] : 0)) core = [cursor, gEnd]
+        cursor = Math.max(cursor, Math.min(v.endMs, r.e))
+      }
+      if (r.e - cursor > (core ? core[1] - core[0] : 0)) core = [cursor, r.e]
+      if (!core || core[1] - core[0] < opts.silenceMinMs) continue // no safe core — natural pause
+      s = core[0]; e = core[1]
+      codes.push('vad_core')
+      if (e - s >= DEAD_AIR_MS) { cls = 'dead_air'; confidence = 'high'; codes.push('gap_dead_air', 'vad_nonspeech') }
+      else { cls = 'removable'; confidence = 'medium'; codes.push('gap_removable', 'vad_nonspeech') }
+    }
+    const gapMs = e - s
+    const energyHere = avgEnergy(s, e, energy.windowMs, energy.rms)
     // prev = last word starting before the region (may OVERLAP it when the ASR
     // bridged the silence); next = first word ending after it.
     let prevIdx = -1
-    for (let i = 0; i < words.length; i++) if (words[i].startMs < r.s) prevIdx = i
+    for (let i = 0; i < words.length; i++) if (words[i].startMs < s) prevIdx = i
     let nextIdx = words.length
-    for (let i = words.length - 1; i >= 0; i--) if (words[i].endMs > r.e) nextIdx = i
+    for (let i = words.length - 1; i >= 0; i--) if (words[i].endMs > e) nextIdx = i
     const position = prevIdx === -1 ? 'leading' : nextIdx === words.length ? 'trailing' : 'internal'
     cands.push({
-      kind: 'silence', startMs: r.s, endMs: r.e, wordIds: [],
+      kind: 'silence', startMs: s, endMs: e, wordIds: [],
       prevWordId: wid(prevIdx), nextWordId: wid(nextIdx), confidence,
       evidenceCodes: codes,
       evidence: { gapMs, position, class: cls, vadNonSpeechRatio: Math.round(nonSpeechRatio * 100) / 100, avgEnergy: energyHere },
@@ -284,19 +307,36 @@ export function buildSpeechAnalysis(
     return Math.max(best, eMs - cursor, 0)
   }
 
+  // ACOUSTIC GUARD for every filler-kind candidate: an ASR token alone is not
+  // sufficient evidence — the disfluency-context prompt (or the LM) could emit
+  // a filler token that was never spoken. A candidate requires (a) independent
+  // acoustic evidence at the claimed timestamp — >=50% Silero-VAD speech
+  // overlap of the token interval (Silero is independent of Whisper) — and
+  // (b) no overlap (> 30ms) with neighboring lexical word intervals, so acting
+  // on it can never clip real speech.
+  const fillerAcousticOk = (startIdx: number, endIdx: number): boolean => {
+    const s = words[startIdx].startMs; const e = words[endIdx].endMs
+    const dur = Math.max(1, e - s)
+    if (speechOverlapMs(s, e, vadSegments) / dur < 0.5) return false
+    const prevOverlap = startIdx > 0 ? words[startIdx - 1].endMs - s : 0
+    const nextOverlap = endIdx < words.length - 1 ? e - words[endIdx + 1].startMs : 0
+    return prevOverlap <= 30 && nextOverlap <= 30
+  }
+
   // Disfluency fillers: runs of um/uh/… — high unless the ASR itself was
   // unsure (a low-confidence "um" may be a mis-heard real word).
   for (let i = 0; i < words.length;) {
     if (!DISFLUENCY_FILLERS.has(norm[i])) { i++; continue }
     let j = i
     while (j + 1 < words.length && DISFLUENCY_FILLERS.has(norm[j + 1])) j++
+    if (!fillerAcousticOk(i, j)) { i = j + 1; continue }
     const run = words.slice(i, j + 1)
     const minConf = Math.min(...run.map((w) => w.confidence))
     cands.push({
       kind: 'filler', startMs: run[0].startMs, endMs: run[run.length - 1].endMs,
       wordIds: run.map((w) => w.id), prevWordId: wid(i - 1), nextWordId: wid(j + 1),
       confidence: minConf >= 0.5 ? 'high' : 'low',
-      evidenceCodes: minConf >= 0.5 ? ['filler_disfluency'] : ['filler_disfluency', 'asr_low_conf'],
+      evidenceCodes: minConf >= 0.5 ? ['filler_disfluency', 'vad_speech_at_token'] : ['filler_disfluency', 'vad_speech_at_token', 'asr_low_conf'],
       evidence: { markerType: 'disfluency', words: run.map((w) => w.text), minAsrConfidence: minConf },
     })
     i = j + 1
@@ -310,11 +350,12 @@ export function buildSpeechAnalysis(
     const boundaryBefore = i === 0 || words[i - 1].endsUnit || /,$/.test(words[i - 1].text)
     const bracketed = gapBefore(i) >= 200 || gapAfter(i) >= 200
     if (!boundaryBefore && !bracketed) continue // fluent, meaningful use — skip
+    if (!fillerAcousticOk(i, i)) continue
     cands.push({
       kind: 'filler', startMs: words[i].startMs, endMs: words[i].endMs,
       wordIds: [words[i].id], prevWordId: wid(i - 1), nextWordId: wid(i + 1),
       confidence: 'low',
-      evidenceCodes: ['ambiguous_discourse_marker'],
+      evidenceCodes: ['ambiguous_discourse_marker', 'vad_speech_at_token'],
       evidence: { markerType: 'discourse', token: words[i].text, boundaryBefore, bracketed },
     })
   }
@@ -324,10 +365,11 @@ export function buildSpeechAnalysis(
     if (norm[i] !== 'you' || norm[i + 1] !== 'know') continue
     const bracketed = gapBefore(i) >= 200 || gapAfter(i + 1) >= 200 || /,$/.test(words[i + 1].text)
     if (!bracketed) continue
+    if (!fillerAcousticOk(i, i + 1)) continue
     cands.push({
       kind: 'filler', startMs: words[i].startMs, endMs: words[i + 1].endMs,
       wordIds: [words[i].id, words[i + 1].id], prevWordId: wid(i - 1), nextWordId: wid(i + 2),
-      confidence: 'low', evidenceCodes: ['ambiguous_discourse_marker'],
+      confidence: 'low', evidenceCodes: ['ambiguous_discourse_marker', 'vad_speech_at_token'],
       evidence: { markerType: 'discourse', token: 'you know', bracketed },
     })
   }

@@ -71,19 +71,28 @@ function werStats(ref, hyp) {
 // report claimed small.)
 const ASR_MODEL = process.env.EDITOR_SPEECH_MODEL || 'small'
 
-async function runBridge(audioAbs) {
+async function runBridge(audioAbs, extraArgs = []) {
   const dir = await mkdtemp(join(tmpdir(), 'speech-eval-'))
   const out = join(dir, 'bridge.json')
   await execFile('python3', [join(REPO, 'worker', 'editor_speech.py'),
     '--audio', audioAbs, '--out', out,
     '--model', ASR_MODEL, '--device', process.env.WHISPER_DEVICE || 'cpu',
-    '--language', process.env.WHISPER_LANGUAGE || 'en', '--beam-size', '1', '--max-seconds', '1800'],
+    '--language', process.env.WHISPER_LANGUAGE || 'en', '--beam-size', '1', '--max-seconds', '1800',
+    ...extraArgs],
     { timeout: 1_200_000 })
   return JSON.parse(await readFile(out, 'utf8'))
 }
 
+// Filler tokens (mirrors the builder's DISFLUENCY set). Used for the dedicated
+// hallucination gate: on clean read speech with ZERO spoken fillers, the
+// shipped config must emit NO filler tokens and NO filler candidates — the
+// global invented-word ratio is NOT an acceptable substitute (a few
+// hallucinated fillers stay under 0.03 while creating unsafe candidates).
+const FILLER_TOKENS = new Set(['um', 'uh', 'uhm', 'umm', 'uhh', 'erm', 'er', 'ah', 'hmm', 'mm', 'mmm'])
+const countFillerTokens = (text) => norm(text).filter((t) => FILLER_TOKENS.has(t)).length
+
 const OPTS = {
-  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-4', asrModel: ASR_MODEL,
+  speechVersion: process.env.EDITOR_SPEECH_VERSION || 'speech-5', asrModel: ASR_MODEL,
   asrComputeType: 'int8', device: 'cpu', beamSize: 1, languagePolicy: process.env.WHISPER_LANGUAGE || 'en',
   silenceMinMs: 700, vadMinSilenceMs: 300, vadSpeechPadMs: 100,
 }
@@ -129,6 +138,7 @@ for (const clip of clips) {
     id: clip.id, category: clip.category, expected: clip.expected,
     wer: wer ? Number(wer.wer.toFixed(3)) : null, missingWords: wer?.del ?? null, inventedWords: wer?.ins ?? null, refWords: wer?.refWords ?? 0,
     fillerCandidates: fillers.length, falseStartCandidates: falseStarts.length, repeatCandidates: repeats.length,
+    fillerTokens: countFillerTokens(a.transcript),
     silenceClasses: silences.map((c) => c.evidence?.class),
     offScriptTotal: off.length, offScriptHeard: offHeard.length, offScriptRemoved: offRemoved.length,
     lowConfWords: words.filter((w) => w.confidence < 0.4).length,
@@ -136,6 +146,48 @@ for (const clip of clips) {
     transcript: a.transcript,
   })
   console.log(`  ${clip.id} [${clip.category}] wer=${wer ? (wer.wer * 100).toFixed(1) + '%' : 'n/a'} filler=${fillers.length} fs=${falseStarts.length} rep=${repeats.length} sil=${silences.length}`)
+}
+
+// ---- A/B: `small` WITH vs WITHOUT the disfluency prompt on the IDENTICAL
+// corpus subset (clean + strict-filler clips). Answers whether the prompt
+// improves GENUINE recall or merely increases emitted filler tokens. The
+// shipped config (prompted) is what the gates judge; this comparison is
+// diagnostic and mandatory.
+const abSubset = clips.filter((c) => c.category === 'clean_natural_speech' || c.category === 'ami_filler_um_uh')
+const promptComparison = { perClip: [], summary: {} }
+for (const clip of abSubset) {
+  const audioAbs = isAbsolute(clip.audio) ? clip.audio : resolve(dirname(manifestPath), clip.audio)
+  try {
+    const b = await runBridge(audioAbs, ['--no-disfluency-prompt'])
+    const a2 = buildSpeechAnalysis({ id: clip.id, content_sha256: 'eval' }, b, OPTS)
+    const withRow = results.find((r) => r.id === clip.id)
+    promptComparison.perClip.push({
+      id: clip.id, category: clip.category,
+      withPrompt: { fillerCandidates: withRow?.fillerCandidates ?? null, fillerTokens: withRow?.fillerTokens ?? null },
+      withoutPrompt: {
+        fillerCandidates: (a2.candidates ?? []).filter((c) => c.kind === 'filler').length,
+        fillerTokens: countFillerTokens(a2.transcript),
+      },
+    })
+  } catch (e) { promptComparison.perClip.push({ id: clip.id, category: clip.category, error: String(e.message).slice(0, 120) }) }
+}
+{
+  const pcOk = promptComparison.perClip.filter((p) => !p.error)
+  const fClips = pcOk.filter((p) => p.category === 'ami_filler_um_uh')
+  const cClips = pcOk.filter((p) => p.category === 'clean_natural_speech')
+  const rec = (get) => prop(fClips.filter((p) => get(p).fillerCandidates > 0).length, fClips.length)
+  promptComparison.summary = {
+    fillerClipRecallWithPrompt: rec((p) => p.withPrompt),
+    fillerClipRecallWithoutPrompt: rec((p) => p.withoutPrompt),
+    cleanFillerTokensWithPrompt: cClips.reduce((s, p) => s + (p.withPrompt.fillerTokens ?? 0), 0),
+    cleanFillerTokensWithoutPrompt: cClips.reduce((s, p) => s + (p.withoutPrompt.fillerTokens ?? 0), 0),
+  }
+  const s = promptComparison.summary
+  s.verdict = (s.cleanFillerTokensWithPrompt > s.cleanFillerTokensWithoutPrompt)
+    ? 'PROMPT HALLUCINATES: it adds filler tokens on clean speech — not genuine recall'
+    : ((s.fillerClipRecallWithPrompt?.value ?? 0) > (s.fillerClipRecallWithoutPrompt?.value ?? 0)
+      ? 'prompt improves genuine recall without adding clean-speech filler tokens'
+      : 'prompt does not improve genuine recall')
 }
 
 const ok = results.filter((r) => !r.error)
@@ -169,6 +221,14 @@ const metrics = {
   offScriptAsrMissRatio: prop(sum(ok, (r) => r.offScriptTotal - r.offScriptHeard), sum(ok, (r) => r.offScriptTotal)),
   fillerPrecision: prop(fillerTP, fillerTP + fillerFP),
   fillerRecall: prop(trueFiller.filter((r) => r.fillerCandidates > 0).length, trueFiller.length),
+  // Exact clip-level confusion counts for the filler feature (reviewer req. 1).
+  fillerCounts: { tp: fillerTP, fp: fillerFP, fn: trueFiller.filter((r) => r.fillerCandidates === 0).length },
+  // DEDICATED hallucination gate (reviewer req. 2): on clean read speech with
+  // zero spoken fillers, the shipped config must produce NO filler tokens in
+  // the transcript and NO filler candidates. The aggregate invented-word ratio
+  // is NOT a substitute — a few hallucinated fillers stay under 0.03 while
+  // creating unsafe removal candidates.
+  fillerHallucinations: sum(clean, (r) => r.fillerTokens) + sum(clean, (r) => r.fillerCandidates),
   falseStartPrecision: prop(fsTP, fsTP + fsFP),
   falseStartRecall: prop(falseStartClips.filter((r) => r.falseStartCandidates > 0).length, falseStartClips.length),
   repetitionPrecision: prop(repTP, repTP + repFP),
@@ -205,11 +265,15 @@ for (const r of results) {
     failures.push({ id: r.id, category: r.category, kind: 'short_pause_over_flagged', silenceClasses: r.silenceClasses })
 }
 
+for (const r of clean) if (r.fillerTokens > 0)
+  failures.push({ id: r.id, category: r.category, kind: 'filler_token_hallucination', tokens: r.fillerTokens, transcript: r.transcript })
+
 const summary = {
   clips: results.length, evaluated: ok.length, errored: results.filter((r) => r.error).length,
   meanWerClean: metrics.meanWerClean, inventedWordRatioClean: metrics.inventedWordRatioClean,
   offScriptRetentionRatio: metrics.offScriptRetentionRatio, offScriptAsrMissRatio: metrics.offScriptAsrMissRatio,
   fillerPrecision: metrics.fillerPrecision, fillerRecall: metrics.fillerRecall,
+  fillerCounts: metrics.fillerCounts, fillerHallucinations: metrics.fillerHallucinations,
   falseStartPrecision: metrics.falseStartPrecision, falseStartRecall: metrics.falseStartRecall,
   repetitionPrecision: metrics.repetitionPrecision, repetitionRecall: metrics.repetitionRecall,
   silenceClassAgreement: metrics.silenceClassAgreement, deadAirDetection: metrics.deadAirDetection,
@@ -222,11 +286,15 @@ const report = {
   definitions: {
     offScriptRetentionRatio: 'GATED (>=0.90, unchanged): of the off-script words the ASR transcribed, the fraction NOT covered by any removal candidate — measures the editor. Split from ASR word-miss approved by the reviewer 2026-07-20 after run 29751818139 decomposition showed all drops were ASR misses and zero were editor removals.',
     offScriptAsrMissRatio: 'REPORTED, ungated: fraction of designated off-script words the ASR never transcribed (WER/model domain).',
+    fillerHallucinations: 'GATED (== 0): total filler TOKENS in transcripts + filler CANDIDATES across the clean set (read speech with zero spoken fillers). Dedicated guard against prompt-induced filler hallucination; the aggregate invented-word ratio is NOT a substitute.',
+    promptComparison: 'A/B on the identical clean+filler subset: shipped (prompted) vs --no-disfluency-prompt. Answers whether the prompt improves GENUINE recall or only increases emitted filler tokens.',
   },
+  promptComparison,
   summary, byCategory, failures, results,
 }
 await writeFile('speech-eval-report.json', JSON.stringify(report, null, 2))
 console.log('\n=== summary ===\n' + JSON.stringify(summary, null, 2))
+console.log('\n=== prompt A/B (identical corpus subset) ===\n' + JSON.stringify(promptComparison.summary, null, 2))
 console.log('\n=== per-category ===\n' + JSON.stringify(byCategory, null, 2))
 if (failures.length) console.log('\n=== failure examples ===\n' + JSON.stringify(failures, null, 2))
 console.log('report → speech-eval-report.json')
@@ -251,9 +319,21 @@ chk('inventedWordRatioClean', metrics.inventedWordRatioClean, '<=', t.maxInvente
 chk('offScriptRetentionRatio', metrics.offScriptRetentionRatio, '>=', t.minOffScriptRetentionRatio)
 chk('fillerPrecision', metrics.fillerPrecision, '>=', t.minFillerPrecision)
 chk('fillerRecall', metrics.fillerRecall, '>=', t.minFillerRecall)
+chk('fillerHallucinations', metrics.fillerHallucinations, '==', t.maxFillerHallucinations)
 chk('falseStartPrecision', metrics.falseStartPrecision, '>=', t.minFalseStartPrecision)
 chk('repetitionPrecision', metrics.repetitionPrecision, '>=', t.minRepetitionPrecision)
 chk('silenceClassAgreement', metrics.silenceClassAgreement, '>=', t.minSilenceClassAgreement)
+chk('shortPausePreservation', metrics.shortPausePreservation, '>=', t.minShortPausePreservation)
 chk('lowConfOnlyRemovalCandidates', lowConfOnlyRemovalCandidates, '==', t.maxLowConfidenceOnlyRemovalCandidates)
-if (fails.length) { console.error('\nTHRESHOLD FAILURES:\n  ' + fails.join('\n  ')); process.exit(1) }
+if (fails.length) {
+  console.error('\nTHRESHOLD FAILURES:\n  ' + fails.join('\n  '))
+  const fillerGateFailed = fails.some((f) => f.startsWith('fillerRecall') || f.startsWith('fillerPrecision') || f.startsWith('fillerHallucinations'))
+  if (fillerGateFailed) {
+    console.error('\nRECORDED FINDING (reviewer stop-rule): if filler recall >=0.50 with precision '
+      + '>=0.80 and ZERO hallucinations is not achievable, stop prompt-tuning — general-purpose '
+      + 'Whisper is insufficient for filler detection and Phase 5 requires a separate, '
+      + 'acoustically grounded disfluency detector.')
+  }
+  process.exit(1)
+}
 console.log('\nall predefined thresholds met (every mandatory metric numeric and passing)')

@@ -85,17 +85,17 @@ imported. This removed the numba teardown crash — but CI then surfaced a
 interpreter teardown, AFTER the corpus is complete. pyarrow is **core to
 `datasets`** and cannot be removed while streaming HF corpora.
 
-Fix, part 2 (process isolation, not masking): `build_corpus.py` runs the
-pyarrow-heavy build in an isolated **child process**; the parent process (the one
-CI invokes) imports **no** datasets/pyarrow, so it **tears down and exits
-normally** — there is **no `os._exit` anywhere**. The broken pyarrow teardown is
-**nondeterministic**: run 29747252159 showed SIGABRT (exit 134), run 29748071316
-showed a **deadlock** (the finished child hung 39 min until the job timeout). So
-the parent handles both: the worker writes a fsync'd `build.done` **sentinel
-only after** every artifact is written, fsync'd and validated in-child; the
-parent polls, and once the sentinel exists grants a short grace then **kills the
-finalizing child** — at that point its only remaining work is interpreter
-finalization. The gate is the **artifact**, not the child's exit code: the parent
+Fix, part 2 (process isolation — described honestly): `build_corpus.py` runs the
+pyarrow-heavy build in an isolated **child process**. The **parent** (the process
+CI invokes) imports no datasets/pyarrow and **exits normally after validating
+the artifacts** — no `os._exit` anywhere in the parent. The **child does NOT
+have clean teardown and we do not claim it does**: its pyarrow finalization is
+broken **nondeterministically** — run 29747252159 SIGABRT'd (exit 134), run
+29748071316 **deadlocked** (the finished child hung 39 min to the job timeout) —
+and after the child writes its fsync'd `build.done` **completion sentinel**
+(only once every artifact is written, fsync'd and validated in-child) the parent
+grants a short grace and then **deliberately terminates the still-finalizing
+child**. The gate is the **artifact**, not the child's exit code: the parent
 independently re-validates it (reopen + schema + SHA-256 + all-12-categories,
 pure stdlib). A build that failed or hung *before* finishing has no sentinel and
 an invalid/absent artifact → the gate fails; a mid-build hang is killed at a
@@ -204,6 +204,44 @@ changes** (gates unchanged, `speech-rules-2`, bundle version `speech-4`):
    survives Silero's 100 ms speech pads.
 
 Unit tests added for the two bridged-timestamp behaviors (22 pass).
+
+## Round-5 (anti-hallucination safeguards — a prompted recall pass is NOT closure)
+
+Reviewer directive: the disfluency-context `initial_prompt` can bias Whisper
+into emitting fillers that were **never spoken**, and the global invented-word
+ratio (≤0.03) cannot catch a handful of hallucinated fillers that still create
+unsafe removal candidates. Safeguards (all landed, `speech-rules-3`, bundle
+`speech-5`):
+
+1. **Exact confusion counts**: filler recall/precision reported with TP/FP/FN.
+2. **Dedicated hallucination gate**: the clean set is now ENFORCED to contain
+   zero spoken fillers (transcript-checked at corpus build); gate
+   `fillerHallucinations == 0` counts filler TOKENS + filler CANDIDATES on it.
+3. **Acoustic evidence required**: every filler candidate needs ≥50% Silero-VAD
+   speech overlap at the claimed timestamp (Silero is independent of Whisper);
+   evidence code `vad_speech_at_token`.
+4. **Neighbor-overlap guard**: no filler candidate whose token interval overlaps
+   an adjacent lexical word by >30ms — acting on it could clip real speech.
+5. **Mandatory A/B**: `small` with vs without the prompt on the identical
+   clean+filler subset; the report states whether the prompt improves GENUINE
+   recall or only increases emitted filler tokens.
+6. WER ≤0.20 / invented ≤0.03 kept, explicitly NOT substitutes for the
+   filler-specific gate.
+7. **Silence-safety gates**: `minShortPausePreservation = 1.0` (a short emphasis
+   pause must never band as removable/dead air), and removable/dead-air
+   candidates are shrunk to the largest **VAD-clear core** so cut boundaries
+   never sit inside VAD speech.
+8. **VPS runtime verification** (required before Phase 6): benchmark `small` on
+   the production VPS — processing ratio, peak RAM, CPU, timeout behavior,
+   cancellation, safe concurrency — executed at the deploy step; PASS evidence
+   must include it.
+
+Strengthened thresholds (never weakened): `minFillerPrecision 0.50 → 0.80`,
+`maxFillerHallucinations 0`, `minShortPausePreservation 1.0`. **Stop-rule** on
+record: if filler recall ≥0.50 with precision ≥0.80 and zero hallucinations is
+not achievable, prompt-tuning stops, general-purpose Whisper is recorded as
+insufficient for filler detection, and Phase 5 requires a separate,
+acoustically grounded disfluency detector.
 
 ## Measurements (published per category + overall)
 
