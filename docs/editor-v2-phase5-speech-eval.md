@@ -325,6 +325,24 @@ authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
    Phase 5 is NOT approved on the indicative CI benchmark alone — the VPS
    `--gate` run must PASS.
 
+   **AUTHORITATIVE VPS RESULT (task #116) — CAPACITY GATE: PASS.** Run by the
+   owner on the production Hetzner VPS (`stylique-vps`, 4 vCPU) inside the real
+   `twinai-worker` image, `small` int8, on a 15.1 s real speech clip. Every
+   predefined limit met with wide margin:
+
+   | Check | Measured | Limit | Verdict |
+   | :--- | :--- | :--- | :--- |
+   | processing ratio (median of 3) | **0.649×** (faster than real time) | ≤ 5.0 | PASS |
+   | peak RSS | **578 MiB** | ≤ 2048 MiB | PASS |
+   | cancellation exit (SIGTERM mid-run) | **0.16 s** | ≤ 12 s | PASS |
+   | timeout kills a run (1 s cap) | **true** | must kill | PASS |
+   | 2× concurrent — both rc=0 | **true** | all rc=0 | PASS |
+   | 2× concurrent — aggregate ratio | **1.205×** | ≤ 12.0 | PASS |
+
+   Serial runs: 0.669× / 0.61× / 0.649× (RSS ~577–578 MiB each). `--gate` exited
+   0. This is the authoritative pre-merge capacity evidence; the box comfortably
+   sustains `small` at real-time-plus speed with two concurrent jobs.
+
 ### Precise meaning of a Phase-5 PASS (per the owner)
 
 - Speech-analysis infrastructure is complete.
