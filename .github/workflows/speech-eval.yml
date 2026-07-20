@@ -73,12 +73,27 @@ jobs:
         env:
           SPEECH_EVAL_MANIFEST: ${{ runner.temp }}/speech-corpus/manifest.json
         run: node scripts/speech-eval/evaluate.mjs
-      - name: Upload evaluation report (provenance + category metrics + failures)
+      - name: Indicative `small` runtime benchmark (CI x86 — NOT the VPS; authoritative gate is task #116)
+        if: always()
+        run: |
+          # Indicative only: GitHub's x86 runner is not the production VPS. The
+          # AUTHORITATIVE processing-ratio / RAM / concurrency numbers must be
+          # produced by running this same script on the VPS before merge (#116).
+          CLIP=$(python -c "import json; m=json.load(open('$RUNNER_TEMP/speech-corpus/manifest.json')); print(next(c['audio'] for c in m['clips'] if c['category']=='clean_natural_speech'))" 2>/dev/null || true)
+          if [ -n "$CLIP" ] && [ -f "$CLIP" ]; then
+            EDITOR_SPEECH_MODEL=small python worker/scripts/bench_speech.py \
+              --audio "$CLIP" --model small --runs 3 --concurrency 2 --label ci-indicative-x86 \
+              || echo "::warning::indicative bench failed (non-blocking)"
+          else
+            echo "::warning::no clean clip available for the indicative benchmark"
+          fi
+      - name: Upload evaluation + benchmark reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: speech-eval-report
           path: |
             speech-eval-report.json
+            speech-bench-report.json
             ${{ runner.temp }}/speech-corpus/provenance.json
           if-no-files-found: warn

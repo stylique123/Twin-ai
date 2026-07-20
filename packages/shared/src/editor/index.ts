@@ -4,3 +4,4 @@
 // recording-timeline adapters or any legacy editor code.
 export * from './contracts'
 export * from './api'
+export * from './features'

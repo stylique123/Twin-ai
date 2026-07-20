@@ -203,9 +203,16 @@ const shortPauseClips = ok.filter((r) => inCat(r, 'short_emphasis_pause'))
 const sum = (arr, f) => arr.reduce((s, r) => s + f(r), 0)
 const REMOVABLE_SIL = (r) => (r.silenceClasses || []).some((c) => c === 'dead_air' || c === 'removable')
 
-// Precision denominators are (correct predictions + false positives on clean).
-const fillerTP = fillerShould.filter((r) => r.fillerCandidates > 0).length
+// ONE coherent binary confusion table for the filler feature (reviewer req. 1
+// — recall and precision MUST derive from the SAME tp/fp/fn):
+//   positives = um/uh clips (a real filler is definitely present)
+//   negatives = clean clips (zero spoken fillers — the hallucination set)
+//   discourse "filler-family" clips are ambiguous -> EXCLUDED from scoring,
+//     their candidate production reported separately (byCategory + informational).
+const fillerTP = trueFiller.filter((r) => r.fillerCandidates > 0).length
+const fillerFN = trueFiller.filter((r) => r.fillerCandidates === 0).length
 const fillerFP = clean.filter((r) => r.fillerCandidates > 0).length
+const discourseFillerFires = fillerShould.filter((r) => !inCat(r, 'ami_filler_um_uh') && r.fillerCandidates > 0).length
 const fsTP = restartRep.filter((r) => r.falseStartCandidates > 0).length
 const fsFP = clean.filter((r) => r.falseStartCandidates > 0).length
 const repTP = restartRep.filter((r) => r.repeatCandidates > 0).length
@@ -219,10 +226,12 @@ const metrics = {
   offScriptRetentionRatio: prop(sum(ok, (r) => r.offScriptHeard - r.offScriptRemoved), sum(ok, (r) => r.offScriptHeard)),
   // REPORTED (ungated): how many off-script words the ASR never transcribed.
   offScriptAsrMissRatio: prop(sum(ok, (r) => r.offScriptTotal - r.offScriptHeard), sum(ok, (r) => r.offScriptTotal)),
+  // BOTH derive from the single {tp,fp,fn} table above, so recall===tp/(tp+fn)
+  // and precision===tp/(tp+fp) by construction (asserted below).
   fillerPrecision: prop(fillerTP, fillerTP + fillerFP),
-  fillerRecall: prop(trueFiller.filter((r) => r.fillerCandidates > 0).length, trueFiller.length),
+  fillerRecall: prop(fillerTP, fillerTP + fillerFN),
   // Exact clip-level confusion counts for the filler feature (reviewer req. 1).
-  fillerCounts: { tp: fillerTP, fp: fillerFP, fn: trueFiller.filter((r) => r.fillerCandidates === 0).length },
+  fillerCounts: { tp: fillerTP, fp: fillerFP, fn: fillerFN, positives: trueFiller.length, negatives: clean.length, discourseFillerFires },
   // DEDICATED hallucination gate (reviewer req. 2): on clean read speech with
   // zero spoken fillers, the shipped config must produce NO filler tokens in
   // the transcript and NO filler candidates. The aggregate invented-word ratio
@@ -238,6 +247,23 @@ const metrics = {
   shortPausePreservation: prop(shortPauseClips.filter((r) => !REMOVABLE_SIL(r)).length, shortPauseClips.length),
   lowConfOnlyRemovalCandidates,
   cleanFalsePositiveClips: fillerFP + fsFP + repFP,
+}
+
+// INVARIANT (reviewer req. 1): reported filler recall/precision MUST equal the
+// published confusion counts — recall === tp/(tp+fn), precision === tp/(tp+fp).
+// A divergence (like the earlier tp:6 vs recall 2/6) is a HARD failure, never
+// silently reported.
+{
+  const { tp, fp, fn } = metrics.fillerCounts
+  const round3 = (x) => Number(x.toFixed(3))
+  const expRecall = tp + fn ? round3(tp / (tp + fn)) : null
+  const expPrec = tp + fp ? round3(tp / (tp + fp)) : null
+  const bad = []
+  if (metrics.fillerRecall.value !== expRecall) bad.push(`recall ${metrics.fillerRecall.value} != tp/(tp+fn)=${expRecall} (tp=${tp}, fn=${fn})`)
+  if (metrics.fillerPrecision.value !== expPrec) bad.push(`precision ${metrics.fillerPrecision.value} != tp/(tp+fp)=${expPrec} (tp=${tp}, fp=${fp})`)
+  if (metrics.fillerRecall.num !== tp || metrics.fillerRecall.den !== tp + fn) bad.push(`recall num/den (${metrics.fillerRecall.num}/${metrics.fillerRecall.den}) != tp/(tp+fn) (${tp}/${tp + fn})`)
+  if (bad.length) { console.error('FILLER ACCOUNTING INVARIANT VIOLATED:\n  ' + bad.join('\n  ')); process.exit(1) }
+  console.log(`filler confusion table OK: tp=${tp} fp=${fp} fn=${fn} → recall ${expRecall} precision ${expPrec} (discourse fires ${metrics.fillerCounts.discourseFillerFires}, excluded from scoring)`)
 }
 
 // Per-category aggregates + honest failure examples.

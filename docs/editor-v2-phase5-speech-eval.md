@@ -274,6 +274,49 @@ No threshold value was weakened — a metric was re-scoped with explicit owner
 authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
 = false` marker.
 
+## Round-7 (four closing items before Phase-5 PASS)
+
+1. **Filler accounting fixed.** The earlier report showed `tp:6` next to
+   `recall 2/6` — two populations conflated. There is now ONE coherent binary
+   confusion table: positives = um/uh clips, negatives = clean clips, ambiguous
+   discourse "filler-family" clips EXCLUDED from scoring (reported separately as
+   `discourseFillerFires`). Recall and precision both derive from the same
+   `{tp,fp,fn}` (tp=2, fp=0, fn=4 → recall 2/6, precision 2/2), and
+   `evaluate.mjs` **asserts the invariant** `recall === tp/(tp+fn)` /
+   `precision === tp/(tp+fp)` — a divergence is a hard failure.
+2. **Same-head evidence.** speech-eval and the Phase 1–5 matrix are green on the
+   same commit (the round-7 commit touches both trigger paths).
+3. **Feature disablement enforced in CODE, not just config.**
+   `@twinai/shared` now exports `EDITOR_FEATURES` (`autoFillerRemoval: false`,
+   frozen) and `selectableRemovalCandidates()` — the single mandatory seam any
+   future Director / EditPlan compiler / renderer MUST use to pick removal
+   candidates. It drops every `filler` candidate while the flag is false;
+   silence / false_start / repetition pass. Unit-tested
+   (`packages/shared/src/editor/__tests__/features.test.ts`, 5 tests): a future
+   phase that forgets the guard fails its own tests the moment it tries to act
+   on filler evidence. Flipping the flag is the deliberate enablement step tied
+   to task #117.
+4. **`small` runtime benchmark before deploy.** `worker/scripts/bench_speech.py`
+   measures processing ratio, peak RSS, timeout, cancellation, and safe
+   concurrency. An **indicative** run executes in CI (x86 GitHub runner — NOT
+   the VPS) and uploads `speech-bench-report.json`. The **authoritative** gate
+   (task #116) is running the same script on the production VPS **before merge**;
+   SSH is owner-side, so the VPS numbers must be produced by the owner and
+   attached to the PASS record.
+
+### Precise meaning of a Phase-5 PASS (per the owner)
+
+- Speech-analysis infrastructure is complete.
+- Silence, false-start, and repetition evidence are **accepted**.
+- Filler evidence **may be stored** (as inert `safeToConsider` evidence).
+- Automatic filler removal is **explicitly unavailable** (enforced in code).
+- Task #117 (acoustic disfluency detector) is **mandatory** before enabling or
+  advertising filler removal.
+- Private user recordings (task #115) remain **mandatory** before beta.
+
+PR #191 stays draft and Phase 6 unauthorized until items 1–4 close **and** the
+VPS benchmark (#116) is recorded.
+
 ## Measurements (published per category + overall)
 
 WER (token Levenshtein), missing-word count (deletions), invented-word count
