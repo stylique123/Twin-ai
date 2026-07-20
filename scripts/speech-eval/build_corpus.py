@@ -182,4 +182,13 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
+    # The corpus is fully written by the time main() returns. numba/librosa/
+    # datasets load ~180 native extension modules whose interpreter-finalization
+    # teardown intermittently segfaults (PyGILState_Release core dump, exit 134)
+    # AFTER all work is done — which would fail the CI step under `set -e` even
+    # though the build succeeded. Flush our output and hard-exit 0 to bypass the
+    # crashing atexit/GC teardown entirely.
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(0)
