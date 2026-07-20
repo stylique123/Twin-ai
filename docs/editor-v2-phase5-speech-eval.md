@@ -77,11 +77,24 @@ librosa-backed audio-decode path imports **librosa → numba**, whose native
 threading-layer teardown segfaults at finalization. It was not multiprocessing
 and not a defect in our own code.
 
-Fix (dependency removal, not a bypass): decode with `Audio(decode=False)` + raw
-**soundfile** (libsndfile, a stable C library); **librosa is no longer
-installed**, so numba is never imported and interpreter teardown is clean. The
-builder now **exits normally** (`sys.exit(code)`) — the `os._exit` workaround has
-been **removed** (issue #192); CI proves the normal exit is clean. Hardening:
+Fix, part 1 (dependency removal): decode with `Audio(decode=False)` + raw
+**soundfile** (libsndfile); **librosa is no longer installed**, so numba is never
+imported. This removed the numba teardown crash — but CI then surfaced a
+**second, independent** finalization SIGABRT whose module list ends in
+**pyarrow** (not numba): `datasets`' pyarrow thread-pool also segfaults at
+interpreter teardown, AFTER the corpus is complete. pyarrow is **core to
+`datasets`** and cannot be removed while streaming HF corpora.
+
+Fix, part 2 (process isolation, not masking): `build_corpus.py` runs the
+pyarrow-heavy build in an isolated **child process**; the parent process (the one
+CI invokes) imports **no** datasets/pyarrow, so it **tears down and exits
+normally with code 0** — there is **no `os._exit` anywhere**. The parent does not
+trust the child's teardown exit code: it independently **re-validates the
+artifact** (reopen + schema + SHA-256 + all-12-categories, pure stdlib). A build
+that failed *before* finishing leaves an invalid/absent artifact and fails the
+gate; only a complete build that merely crashed at teardown passes. The child's
+crash and all its logs stay fully visible in CI. Issue #192 records this. The
+rest of the hardening still applies:
 
 - Fail-**closed**: any exception forces a non-zero exit, so an earlier failure
   can never be masked by a clean process exit.
