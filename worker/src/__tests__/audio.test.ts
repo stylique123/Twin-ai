@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 process.env.SUPABASE_URL ||= 'https://stub.supabase.co'
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'stub-service-role-key'
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -160,10 +160,14 @@ describe('no-audio contract shape', () => {
   })
 })
 
+// ffmpeg availability — the CI unit-tests job installs it; a bare machine
+// without it self-skips the live fixture (the staging matrix always has it).
+const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status === 0
+
 // Real-ffmpeg end-to-end fixture: 1s silence + 2s half-scale 1 kHz sine + 1s
 // silence. Proves the decode -> scan -> derive -> ebur128 chain with the
 // frozen ±1.0 LU loudness gate and exact-zero clipping (0 false positives).
-describe('ffmpeg fixture (LUFS ±1.0 LU, clipping 0 FP, room tone, SNR)', () => {
+describe.skipIf(!hasFfmpeg)('ffmpeg fixture (LUFS ±1.0 LU, clipping 0 FP, room tone, SNR)', () => {
   const wav = join(dir, 'fixture.wav')
   execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y',
     '-f', 'lavfi', '-i', "aevalsrc=if(between(t\\,1\\,3)\\,0.5*sin(2*PI*1000*t)\\,0):s=48000:d=4",

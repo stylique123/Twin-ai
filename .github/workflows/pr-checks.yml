@@ -45,6 +45,12 @@ jobs:
         # which needs a native WebSocket (Node 22+) — the same reason the worker's
         # Docker image is Node 22.
         with: { node-version: 22 }
+      # ffmpeg: the worker's Phase-6 audio unit tests include a live-ffmpeg
+      # fixture (deterministic PCM decode + ebur128) that proves the frozen
+      # loudness/clipping math against real bytes. Absent ffmpeg the fixture
+      # self-skips (see audio.test.ts), but CI installs it so the gate runs.
+      - name: Install ffmpeg (Phase-6 audio fixture)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
       - name: Install + test @twinai/shared
         run: |
           npm ci
