@@ -26,9 +26,9 @@ import { join } from 'node:path'
 import { db, type Job } from '../db.js'
 import { env } from '../env.js'
 import { PermanentJobError } from '../errors.js'
-import { downloadObject } from '../storage.js'
 import { makeSlowPoint, watchCancellation, type CancelWatch } from './editorCancel.js'
-import { fileSha256, loadEligibleSource, reconcileStorageIntegrity, type AssetRow } from './editorInspect.js'
+import { loadEligibleSource } from './editorInspect.js'
+import { stageDownloadOpts, type VerifiedSourceSession } from './sourceSession.js'
 
 export const SPEECH_ANALYSIS_SCHEMA_VERSION = 1
 
@@ -531,10 +531,18 @@ export function buildSpeechAnalysis(
 }
 
 // ---- subprocesses with process-group termination ----------------------------
-function runGroupProcess(
+// Shared by every real editor stage that spawns a subprocess (speech ASR
+// bridge, Phase-6 visual bridge, PCM decode, ebur128): detached process group,
+// hard timeout, cooperative-cancellation kill, bounded stderr capture. The
+// resolved stderr tail lets callers parse summaries (ebur128) or surface
+// diagnostics; `cancelledError` lets each stage throw ITS cancellation class.
+export function runGroupProcess(
   cmd: string, args: string[], timeoutMs: number, watch: CancelWatch,
   cancelPoint: string, onExit: (code: number | null, stderr: string) => Error | null,
-): Promise<void> {
+  opts: { stderrCap?: number; cancelledError?: (point: string) => Error } = {},
+): Promise<{ stderr: string }> {
+  const cap = opts.stderrCap ?? 2000
+  const cancelled = opts.cancelledError ?? ((p: string) => new SpeechCancelledError(p))
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { detached: true, stdio: ['ignore', 'ignore', 'pipe'] })
     let err = ''
@@ -544,30 +552,30 @@ function runGroupProcess(
       killGroup()
       finish(new Error(`stage_timeout: ${cmd} exceeded ${timeoutMs}ms`))
     }, timeoutMs)
-    const onAbort = () => { killGroup(); finish(new SpeechCancelledError(cancelPoint)) }
+    const onAbort = () => { killGroup(); finish(cancelled(cancelPoint)) }
     watch.signal.addEventListener('abort', onAbort, { once: true })
     function finish(e: Error | null) {
       if (settled) return
       settled = true
       clearTimeout(timer)
       watch.signal.removeEventListener('abort', onAbort)
-      if (e) reject(e); else resolve()
+      if (e) reject(e); else resolve({ stderr: err })
     }
-    child.stderr.on('data', (d) => { err = (err + d).slice(-2000) })
+    child.stderr.on('data', (d) => { err = (err + d).slice(-cap) })
     child.on('error', (e) => finish(e))
     child.on('close', (code) => {
-      if (watch.cancelled()) return finish(new SpeechCancelledError(cancelPoint))
+      if (watch.cancelled()) return finish(cancelled(cancelPoint))
       finish(onExit(code, err))
     })
   })
 }
 
-function extractAudio(srcPath: string, wavPath: string, watch: CancelWatch): Promise<void> {
+async function extractAudio(srcPath: string, wavPath: string, watch: CancelWatch): Promise<void> {
   // Matrix-only: `-re` throttles input reading to real time so the extraction
   // subprocess stays alive long enough to prove a mid-extraction cancel tears
   // down the ffmpeg process group. Never set in production.
   const throttle = env.speechSlowPoint === 'during_extract' ? ['-re'] : []
-  return runGroupProcess(
+  await runGroupProcess(
     'ffmpeg',
     ['-hide_banner', '-loglevel', 'error', '-y', ...throttle, '-i', srcPath, '-vn', '-ac', '1', '-ar', '16000', '-f', 'wav', wavPath],
     env.speechExtractTimeoutMs, watch, 'during_extract',
@@ -576,8 +584,8 @@ function extractAudio(srcPath: string, wavPath: string, watch: CancelWatch): Pro
   )
 }
 
-function runAsrBridge(wavPath: string, outPath: string, watch: CancelWatch): Promise<void> {
-  return runGroupProcess(
+async function runAsrBridge(wavPath: string, outPath: string, watch: CancelWatch): Promise<void> {
+  await runGroupProcess(
     'python3',
     // dist/jobs/editorSpeech.js → ../../editor_speech.py (the worker root,
     // both in the Docker image and when CI runs the built worker in-tree).
@@ -628,17 +636,20 @@ function countCandidates(analysis: Record<string, unknown>): Record<string, numb
   return out
 }
 
-export async function runTranscribingStage(job: Job, projectId: string, dir: string): Promise<SpeechOutcome> {
-  const { proj, asset, meta } = await loadEligibleSource(projectId, 'speech')
+export async function runTranscribingStage(
+  job: Job, projectId: string, dir: string, session: VerifiedSourceSession,
+): Promise<SpeechOutcome> {
+  const { proj, asset } = await loadEligibleSource(projectId, 'speech')
 
   const watch = watchCancellation(projectId)
   try {
     if (proj.cancel_requested_at) throw new SpeechCancelledError('before_speech')
 
     // Integrity FIRST, before the cache lookup — Phase 4's earlier checks (or
-    // its cache hit moments ago) do not authorize the CURRENT bytes.
+    // its cache hit moments ago) do not authorize the CURRENT bytes. Owned by
+    // the attempt-scoped VerifiedSourceSession.
     await slowPoint('before_reconcile', watch)
-    await reconcileStorageIntegrity(asset, meta, 'speech')
+    await session.reconcileRemote('speech')
 
     const { data: cached } = await db
       .from('media_analyses').select('id, result, source_hash')
@@ -659,23 +670,18 @@ export async function runTranscribingStage(job: Job, projectId: string, dir: str
       }
     }
 
-    // Bounded download + SHA-256 — only verified bytes are ever transcribed.
+    // Session-owned bounded download + SHA-256 — only verified bytes are ever
+    // transcribed (mismatch => PERMANENT source_hash_mismatch), and a
+    // same-attempt earlier download is reused instead of re-fetched.
     await slowPoint('before_download', watch)
-    const local = join(dir, 'speech-source')
+    let local: string
     try {
-      await downloadObject(asset.bucket, asset.storage_path, local, {
-        signal: watch.signal,
-        chunkPauseMs: env.speechSlowPoint === 'during_download' ? Math.min(env.speechSlowMs, 500) : 0,
-      })
+      local = await session.localPath(stageDownloadOpts(watch.signal, 'speech'))
     } catch (e) {
       if (watch.cancelled()) throw new SpeechCancelledError('during_download')
       throw e
     }
     if (watch.cancelled()) throw new SpeechCancelledError('during_download')
-    const sha = await fileSha256(local)
-    if (sha !== asset.content_sha256) {
-      throw new PermanentJobError('speech: downloaded bytes do not match validation checksum', 'source_bytes_changed')
-    }
 
     await slowPoint('before_extract', watch)
     const wav = join(dir, 'speech-audio.wav')
@@ -734,39 +740,31 @@ export async function runTranscribingStage(job: Job, projectId: string, dir: str
   }
 }
 
-// ---- the speech portion of `analyzing` --------------------------------------
-// The analyzing stage does not recompute anything: it re-verifies that the
-// durable speech component EXISTS and still matches the project's CURRENT
-// source bytes (fail closed on either), and surfaces its summary. The visual/
-// audio portions of analyzing remain simulated until their phases.
-export interface SpeechVerification {
-  speechVersion: string
-  wordCount: number
-  candidatesTotal: number
-}
-
-export async function verifySpeechComponent(projectId: string): Promise<SpeechVerification> {
-  const { asset } = await loadEligibleSource(projectId, 'speech-verify')
-  const { data: rows, error } = await db
+// ---- strict component loading for `analyzing` -------------------------------
+// The analyzing stage consumes earlier components at EXACTLY the version the
+// project's pinned boot manifest names. There is deliberately NO
+// earlier-version fallback: within one pinned manifest the transcribing run
+// recorded exactly this version, and a mid-project version rollout fails
+// closed at the manifest-equality gate instead of silently mixing versions.
+export async function loadComponentStrict(
+  assetId: string, contentSha256: string, component: string, bundleVersion: string,
+): Promise<Record<string, unknown>> {
+  const { data: row, error } = await db
     .from('media_analyses').select('analyzer_bundle_version, source_hash, result')
-    .eq('source_asset_id', asset.id).eq('component', 'speech')
-    .order('created_at', { ascending: false })
-  if (error) throw new Error(`speech-verify: component read failed: ${error.message}`)
-  // Prefer the current bundle version; accept an earlier one recorded by this
-  // project's transcribing run (a mid-project version rollout must not strand
-  // the project) — but ONLY if its hash matches the current bytes.
-  const match = (rows ?? []).find((r) => r.analyzer_bundle_version === env.speechVersion && r.source_hash === asset.content_sha256)
-    ?? (rows ?? []).find((r) => r.source_hash === asset.content_sha256)
-  if (!match) {
-    if ((rows ?? []).length > 0) {
-      throw new PermanentJobError('speech-verify: recorded component does not match current source bytes', 'source_bytes_changed')
-    }
-    throw new PermanentJobError('speech-verify: no speech component recorded', 'speech_component_missing')
+    .eq('source_asset_id', assetId).eq('component', component)
+    .eq('analyzer_bundle_version', bundleVersion)
+    .is('component_digest', null)
+    .maybeSingle()
+  if (error) throw new Error(`analyze: ${component} component read failed: ${error.message}`)
+  if (!row) {
+    throw new PermanentJobError(
+      `analyze: no ${component} component recorded at version ${bundleVersion}`,
+      `${component}_component_missing`)
   }
-  const r = match.result as Record<string, unknown>
-  return {
-    speechVersion: match.analyzer_bundle_version,
-    wordCount: ((r.words as unknown[]) ?? []).length,
-    candidatesTotal: ((r.candidates as unknown[]) ?? []).length,
+  if (row.source_hash !== contentSha256) {
+    throw new PermanentJobError(
+      `analyze: recorded ${component} component does not match current source bytes`,
+      'source_bytes_changed')
   }
+  return row.result as Record<string, unknown>
 }

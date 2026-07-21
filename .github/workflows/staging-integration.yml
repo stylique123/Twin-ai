@@ -176,3 +176,8 @@ jobs:
       - name: Run Phase 5 integration matrix (real speech transcription)
         # EDITOR_SPEECH_MODEL_PATH is set at job level (all phases drive speech).
         run: node scripts/staging-integration/phase5.mjs
+
+      - name: Run Phase 6 integration matrix (real analyzing — manifest pin, digest components, capacity)
+        # opencv-python-headless is installed by the pinned requirements step
+        # above; the YuNet .onnx + vision manifest are committed in-repo.
+        run: node scripts/staging-integration/phase6.mjs

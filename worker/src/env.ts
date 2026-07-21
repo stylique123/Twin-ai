@@ -169,5 +169,25 @@ export const env = {
   speechBridgeHoldAt: (process.env.EDITOR_SPEECH_BRIDGE_HOLD_AT ?? '').trim(),
   speechBridgeHoldMs: Number(process.env.EDITOR_SPEECH_BRIDGE_HOLD_MS ?? '0'),
 
+  // ---- analysis stage (Phase 6) ----
+  // Component versions/config are FROZEN CONSTANTS (worker/analysis_rules_v1.json
+  // + editorManifest.ts), never env-driven — env here is timeouts + matrix only.
+  // Pinned local YuNet snapshot + manifest (digest-verified by editor_visual.py
+  // before load; identity is part of the visual componentDigest).
+  visionModelPath: (process.env.EDITOR_VISION_MODEL_PATH ?? '').trim(),
+  visionModelManifest: (process.env.EDITOR_VISION_MODEL_MANIFEST ?? '').trim(),
+  // Hard timeouts: the visual bridge decodes bounded sample counts (<=900
+  // coarse + <=360 fine + <=120 face frames); PCM decode + ebur128 are
+  // I/O-bound single passes. All stay far under the 2400s visibility lease.
+  visualTimeoutMs: Number(process.env.EDITOR_VISUAL_TIMEOUT_MS ?? '600000'),
+  audioDecodeTimeoutMs: Number(process.env.EDITOR_AUDIO_DECODE_TIMEOUT_MS ?? '180000'),
+  loudnessTimeoutMs: Number(process.env.EDITOR_LOUDNESS_TIMEOUT_MS ?? '180000'),
+  // Matrix-only boundary holds for the analyzing stage ('before_reconcile' |
+  // 'before_download' | 'during_download' | 'before_visual' | 'during_visual' |
+  // 'before_audio' | 'during_audio' | 'before_hook' | 'before_persist' |
+  // 'after_persist').
+  analyzeSlowPoint: (process.env.EDITOR_ANALYZE_SLOW_POINT ?? '').trim(),
+  analyzeSlowMs: Number(process.env.EDITOR_ANALYZE_SLOW_MS ?? '4000'),
+
   workerId: process.env.FLY_MACHINE_ID ?? process.env.HOSTNAME ?? `worker-${process.pid}`,
 }

@@ -1,0 +1,40 @@
+{
+  "_comment": "Phase-6 vision supply-chain license inventory — exact pins, no placeholders. Committed so the licensing posture of the visual analyzer is reviewable in-repo; the SBOM CI step regenerates dependency lists and compares (it never commits). The YuNet model file is committed at worker/models/face_detection_yunet_2023mar.onnx; its identity is pinned in worker/models/vision.manifest.json.",
+  "generatedFor": "editor-v2 phase 6 (visual-1)",
+  "entries": [
+    {
+      "name": "YuNet face detection model (face_detection_yunet_2023mar.onnx)",
+      "source": "https://github.com/opencv/opencv_zoo",
+      "ref": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+      "path": "models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "sizeBytes": 232589,
+      "license": "MIT",
+      "copyright": "Copyright (c) 2020 Shiqi Yu",
+      "notes": "Per-model LICENSE file in the opencv_zoo model directory. Artifact sha256 equals the repository's Git-LFS pointer oid at the pinned ref (two independent sources agree)."
+    },
+    {
+      "name": "opencv-python-headless (Python wrapper package)",
+      "version": "4.10.0.84",
+      "wheel": "opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+      "wheelSha256": "377d08a7e48a1405b5e84afcbe4798464ce7ee17081c1c23619c8b398ff18295",
+      "license": "MIT",
+      "notes": "The opencv-python packaging project itself is MIT."
+    },
+    {
+      "name": "OpenCV (library bundled inside the wheel)",
+      "version": "4.10.0",
+      "license": "Apache-2.0"
+    },
+    {
+      "name": "FFmpeg (shared libraries bundled inside the manylinux wheel)",
+      "license": "LGPL-2.1-or-later",
+      "notes": "The opencv-python manylinux wheels bundle an LGPL build of FFmpeg plus its dependency libraries (see the opencv-python README license section). Dynamically linked; no static LGPL linkage in TwinAI code."
+    },
+    {
+      "name": "libvpx / libwebp / zlib / libpng / libjpeg-turbo / openjpeg / libtiff (bundled codec/support libs)",
+      "license": "BSD-3-Clause / BSD-3-Clause / Zlib / libpng-2.0 / IJG+BSD / BSD-2-Clause / libtiff",
+      "notes": "Bundled inside the manylinux wheel per the opencv-python third-party inventory; permissive licenses, attribution preserved in the wheel's license files."
+    }
+  ]
+}

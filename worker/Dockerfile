@@ -31,12 +31,25 @@ COPY tsconfig.json ./
 COPY src ./src
 COPY whisper_transcribe.py ./whisper_transcribe.py
 COPY editor_speech.py ./editor_speech.py
+COPY editor_visual.py ./editor_visual.py
 COPY youtube_transcript.py ./youtube_transcript.py
+# Frozen Phase-6 analysis rules — the single numeric authority; its canonical
+# digest is an input to every component digest.
+COPY analysis_rules_v1.json ./analysis_rules_v1.json
 # The speech-7 manifest is a staging-only cache-bump fixture.  Do not bake it
 # into a production image; production contains only the authoritative pin.
 RUN mkdir -p ./models
 COPY models/faster-whisper-small.manifest.json ./models/faster-whisper-small.manifest.json
+# Pinned YuNet face detector: the .onnx is COMMITTED in-repo (232 KB) and its
+# identity manifest travels with it; editor_visual.py digest-verifies the
+# bytes before every load (fail closed, exit 3).
+COPY models/vision.manifest.json ./models/vision.manifest.json
+COPY models/face_detection_yunet_2023mar.onnx ./models/face_detection_yunet_2023mar.onnx
 COPY scripts/fetch_model.py ./scripts/fetch_model.py
+# Boot-manifest build inputs (workerCommit comes from WORKER_GIT_SHA at deploy;
+# Dockerfile + dependency locks are hashed at runtime for provenance).
+COPY Dockerfile ./Dockerfile
+COPY package-lock.json ./package-lock.json
 RUN npm run build
 
 # Pre-download the CAPTION/VOICE pipeline models (whisper_transcribe.py, keyed by

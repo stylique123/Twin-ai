@@ -24,6 +24,16 @@ export function watchCancellation(projectId: string, pollMs = 750): CancelWatch 
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// Cooperative-cancellation error for the Phase-6 analyzing stage (visual/
+// audio/hook). Lives here (not in editorAnalyze) so the component modules and
+// the orchestrator can both import it without a cycle.
+export class AnalyzeCancelledError extends Error {
+  constructor(point: string) {
+    super(`analysis cancelled at ${point}`)
+    this.name = 'AnalyzeCancelledError'
+  }
+}
+
 // Matrix-only hold at a named boundary; throws the stage's cancellation error
 // when the watch tripped while (or before) it slept.
 export function makeSlowPoint(

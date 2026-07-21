@@ -1,7 +1,8 @@
 # Editor v2 — Media inspection (Phase 4)
 
-Phase 4 replaces the simulated `inspecting` stage with real inspection. Every
-later stage (transcribing → validating) remains simulated. The governing rule:
+Phase 4 replaced the simulated `inspecting` stage with real inspection. Since
+then `transcribing` (Phase 5) and `analyzing` (Phase 6) have become real too;
+`directing` → `validating` remain simulated. The governing rule:
 **analyze once and reuse the result** — Phase 1's `validate_source` already
 downloaded, checksummed and ffprobed the recording.
 

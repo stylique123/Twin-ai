@@ -1,0 +1,40 @@
+{
+  "_comment": "FROZEN Phase-6 analysis rules — the single numeric authority for the visual/audio/hook analyzers. boundsSha256 (the digest of this document's canonical JSON, `_comment` excluded) is an input to every componentDigest, so ANY change here changes cache identity and must ship with an analyzer version bump. No analyzer may carry a private copy of these numbers.",
+  "rulesVersion": "analysis-rules-1",
+  "visual": {
+    "coarseIntervalMinMs": 2000,
+    "coarseIntervalRoundMs": 500,
+    "coarseMaxSamples": 900,
+    "fineMaxSamples": 360,
+    "fineSubdivide": 4,
+    "shotCandidateCap": 240,
+    "sceneCutThreshold": 0.3,
+    "sceneMergeWindowMs": 500,
+    "motionDownscaleWidth": 160,
+    "motionDownscaleHeight": 90,
+    "faceMaxSamples": 120,
+    "face": {
+      "inputSize": 320,
+      "scoreThreshold": 0.6,
+      "nmsThreshold": 0.3,
+      "topK": 20
+    }
+  },
+  "audio": {
+    "pcmFormat": "s16le",
+    "sampleRateHz": 48000,
+    "channels": 1,
+    "windowSamples": 4800,
+    "clippingThreshold": 0.9995,
+    "noiseFloorPercentile": 5,
+    "silenceDbFloor": -120,
+    "roomToneMinMs": 800,
+    "roomToneMaxAboveFloorDb": 3,
+    "roomToneCap": 120,
+    "earlyWindowMs": 3000,
+    "earlyEnergyRatioMax": 4
+  },
+  "hook": {
+    "windowMs": 3000
+  }
+}

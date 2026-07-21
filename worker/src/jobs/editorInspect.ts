@@ -19,12 +19,11 @@
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
-import { join } from 'node:path'
 import { db, type Job } from '../db.js'
 import { env } from '../env.js'
 import { PermanentJobError } from '../errors.js'
-import { downloadObject, headObject } from '../storage.js'
 import { makeSlowPoint, sleep, watchCancellation, type CancelWatch } from './editorCancel.js'
+import { stageDownloadOpts, type VerifiedSourceSession } from './sourceSession.js'
 import { assessProbe, extractProbeFacts, type ProbeFacts, type ProbeResult } from './validateSource.js'
 
 export const MEDIA_INSPECTION_SCHEMA_VERSION = 1
@@ -243,35 +242,19 @@ export async function loadEligibleSource(projectId: string, label: string): Prom
   return { proj, asset: asset as AssetRow & { content_sha256: string }, meta }
 }
 
-// Integrity reconciliation, shared: the object in storage must still be the
-// object finalize saw. Runs BEFORE any cache lookup in every real stage — a
-// previously cached analysis must never legitimize changed bytes.
-export async function reconcileStorageIntegrity(
-  asset: AssetRow, meta: Record<string, unknown>, label: string,
-): Promise<{ etag: string | null; sizeBytes: number | null; finalizedEtag: string | undefined }> {
-  const finalizedEtag = (meta as { finalized_etag?: string }).finalized_etag
-  const finalizedBytes = Number((meta as { finalized_bytes?: number }).finalized_bytes ?? 0) || null
-  const head = await headObject(asset.bucket, asset.storage_path)
-  if (!head) throw new PermanentJobError(`${label}: storage object missing`, 'object_missing')
-  if (finalizedEtag && head.etag && head.etag !== finalizedEtag) {
-    throw new PermanentJobError(`${label}: storage bytes changed after finalize`, 'source_bytes_changed')
-  }
-  if (finalizedBytes && head.sizeBytes && head.sizeBytes !== finalizedBytes) {
-    throw new PermanentJobError(`${label}: storage size changed after finalize`, 'source_bytes_changed')
-  }
-  return { etag: head.etag, sizeBytes: head.sizeBytes, finalizedEtag }
-}
-
-export async function runInspectingStage(job: Job, projectId: string, dir: string): Promise<InspectOutcome> {
+export async function runInspectingStage(
+  job: Job, projectId: string, session: VerifiedSourceSession,
+): Promise<InspectOutcome> {
   const { proj, asset, meta } = await loadEligibleSource(projectId, 'inspect')
 
   const watch = watchCancellation(projectId)
   try {
     if (proj.cancel_requested_at) throw new InspectionCancelledError('before_inspection')
 
-    // Integrity reconciliation runs BEFORE the cache lookup, every run (see
-    // reconcileStorageIntegrity — shared with the speech stage).
-    const head = await reconcileStorageIntegrity(asset, meta, 'inspect')
+    // Integrity reconciliation runs BEFORE the cache lookup, every run —
+    // owned by the attempt-scoped VerifiedSourceSession (shared with the
+    // speech and analyzing stages).
+    const head = await session.reconcileRemote('inspect')
     const finalizedEtag = head.finalizedEtag
 
     // Cache: one immutable component per (asset, component, inspector version).
@@ -324,12 +307,12 @@ export async function runInspectingStage(job: Job, projectId: string, dir: strin
       reused = false
       fallback = true
       await slowPoint('before_download', watch)
-      const local = join(dir, 'inspect-source')
+      // Session-owned download: at most one per attempt, sha256-verified
+      // against the validation checksum before the path is returned
+      // (mismatch => PERMANENT source_hash_mismatch).
+      let local: string
       try {
-        await downloadObject(asset.bucket, asset.storage_path, local, {
-          signal: watch.signal,
-          chunkPauseMs: env.inspectSlowPoint === 'during_download' ? Math.min(env.inspectSlowMs, 500) : 0,
-        })
+        local = await session.localPath(stageDownloadOpts(watch.signal, 'inspect'))
       } catch (e) {
         // An abort tripped by the cancellation watcher is a CANCELLATION, not
         // a retryable transfer failure.
@@ -337,11 +320,6 @@ export async function runInspectingStage(job: Job, projectId: string, dir: strin
         throw e
       }
       if (watch.cancelled()) throw new InspectionCancelledError('during_download')
-
-      const sha = await fileSha256(local)
-      if (sha !== asset.content_sha256) {
-        throw new PermanentJobError('inspect: downloaded bytes do not match validation checksum', 'source_bytes_changed')
-      }
 
       await slowPoint('before_probe', watch)
       const probe = await ffprobeFile(local, watch)
