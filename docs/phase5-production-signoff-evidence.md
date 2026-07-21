@@ -534,3 +534,71 @@ PASSES only when `delete_or_all_policies_on_storage_objects = 0`.
 - `check_product_truth` selftest + live (59 files, both roots): **OK**
 - docs-guard, single-deploy, vps-diag-authority, vps-signoff: **OK**
 - root typecheck (all workspaces) + `web:build`: clean; both workflow YAMLs parse.
+
+---
+
+# A1/A2 CLOSED — live production gate verification (run 29829091202)
+
+## Bootstrap path (resolving the circular release condition)
+
+The hardened `verify-prod-gate.yml` is main-only, but it was bundled in this PR
+alongside deploy-triggering paths. It was therefore split out and landed first
+via audited **PR #197** (branch `bootstrap/verify-prod-gate`, squash-merged as
+**`main@79e0362c5afeea5a42a3853d676587347de12add`**), carrying only the workflow,
+`scripts/ci/gate_probe_assert.mjs` (48-case hostile suite: strict JSON
+`code === "editor_not_available"` predicate, login-200 gate, file-based
+capture, no secrets in argv), and the `gate-probe-assert` CI job. Audit rounds
+on #197 additionally established:
+
+- **External Git integrations are not governed by Actions path filters**: Vercel
+  built previews for every #197 head. The operator applied Vercel's official
+  **Ignored Build Step** (`git diff --quiet HEAD^ HEAD -- apps/web
+  packages/shared package.json package-lock.json vercel.json`), verified by an
+  empty commit (`06b0b50`) and by the #197 merge commit itself — both reported
+  **"Canceled by Ignored Build Step"** (no build, no deploy).
+- Only `pr-checks.yml` ran on the merge commit (verified via `runs?head_sha=`).
+
+## Fail-closed proof (run 29827536668)
+
+First dispatch, before the production-environment secrets existed: the run
+**failed closed** at the mandatory authenticated leg
+(`missing required secret(s): PROD_PROBE_EMAIL, PROD_PROBE_PASSWORD`) — the leg
+cannot be silently skipped. Bracketing snapshots showed **zero delta** and zero
+Auth activity (no sign-in ever occurred). The 401 wall step itself passed.
+
+## Live verification (run 29829091202) — ACCEPTED
+
+Operator configured the probe identity (`gate-probe-editor-v2@twinai.internal`)
+and environment secrets, and attached required-reviewer protection (the dispatch
+held in `waiting` until human approval — verified). Then, dispatched from
+`main@79e0362`:
+
+- **Unauthenticated: exact HTTP 401** (platform JWT wall) — tested predicate.
+- **Login: exact HTTP 200** before token consumption — tested predicate.
+- **Authenticated: exact HTTP 503 with top-level JSON `code === "editor_not_available"`** — tested predicate.
+- **`EDITOR_V2_START_ENABLED` absent** from production secrets (name listing).
+- Run: completed **success**; independently log-verified by the reviewer.
+
+## Zero-delta bracket (BEFORE 2026-07-21T12:11:19Z → AFTER 12:30:25Z)
+
+Identical snapshot query both sides; **every** surface unchanged in count AND
+max-created watermark: `edit_projects` 0, `editor_v2` jobs 0, all jobs 107,
+`media_analyses` 0, `edit_plans` 0, `edit_events` 0, `media_assets` 0, storage
+`takes` 17 / `edits` 67 (only buckets), `credit_events` 41, `billing_events` 0,
+`subscriptions` 0, profiles credit sum 540, generations-with-source-asset 0.
+
+**Expected Auth side effect (separate surface, per the workflow's declared
+side-effect accounting):** probe user sessions 0→1, refresh tokens 0→1,
+`last_sign_in_at` null→2026-07-21T12:22:26Z (inside the run window); totals
+sessions 31→32, refresh tokens 62→63, audit entries 0→0. Nothing else.
+
+Baseline note: profiles credit sum moved 510→540 **between** the fail-closed and
+live brackets — the operator-created probe user's profile receiving the standard
+30 free-tier signup credits; outside both brackets, not probe activity.
+
+## Updated closure state
+
+1. ~~operator secrets + verify-prod-gate run~~ **DONE** (run 29829091202, above).
+2. ~~zero-delta bracket around the authenticated probe~~ **DONE** (above).
+3. Independent reviewer acceptance of the full evidence set — the only item
+   remaining to close this PR.
