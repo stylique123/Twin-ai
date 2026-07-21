@@ -127,7 +127,6 @@ export type EditEventMessageCode =
   | 'job_reenqueued'         // reconciler healed a queued project's lost job
   | 'inspection_recorded'    // Phase 4: the inspection component was recorded/reused
   | 'speech_recorded'        // Phase 5: the speech component was recorded/reused
-  | 'speech_analysis_verified' // Phase 5: analyzing re-verified the speech component
   | 'manifest_pinned'          // Phase 6: boot manifest + script snapshot pinned (dedupe pin:<sha>)
   | 'analysis_component_recorded' // Phase 6: a visual/audio/hook component was computed + recorded
   | 'analysis_component_reused'   // Phase 6: an existing digest-matched component was reused

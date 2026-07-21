@@ -394,12 +394,18 @@ async function main() {
 
     const ev = await getEvents(pid)
     const rec = ev.find((e) => e.message_code === 'speech_recorded')
-    const ver = ev.find((e) => e.message_code === 'speech_analysis_verified')
     check('S15 speech_recorded event: fresh ASR, no cache',
       rec?.details?.cache_hit === false && rec?.details?.asr_performed === true && rec?.details?.word_count === words.length,
       JSON.stringify(rec?.details))
-    check('S16 analyzing re-verified the durable component',
-      ver?.details?.word_count === words.length && ver?.details?.speech_version === 'speech-6', JSON.stringify(ver?.details))
+    // Phase 6: `analyzing` no longer emits speech_analysis_verified — it
+    // STRICTLY loads the durable speech component at the pinned version
+    // (fail-closed if missing/mismatched) and records the visual/audio/hook
+    // evidence. The three analysis_component_recorded events are the
+    // observable proof that analyzing ran and consumed the speech component.
+    const recorded = ev.filter((e) => e.message_code === 'analysis_component_recorded')
+      .map((e) => e.details?.component)
+    check('S16 analyzing consumed speech + recorded visual/audio/hook evidence',
+      ['visual', 'audio', 'hook'].every((c) => recorded.includes(c)), recorded.join(','))
     const job = await waitJobSettled(pid)
     check('S17 job result carries the speech summary', job?.result?.speech?.asrPerformed === true, JSON.stringify(job?.result?.speech))
     check('S18 provenance pins engine/model/vad', r.provenance?.asrEngine === 'faster-whisper' && r.provenance?.vad === 'silero')
