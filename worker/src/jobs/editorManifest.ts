@@ -253,18 +253,22 @@ export function normalizeSnapshotString(s: string): string {
   return s.normalize('NFC').replace(/\s+/g, ' ').trim()
 }
 
+interface SceneTimelineShape {
+  hook?: unknown
+  scenes?: Array<{
+    scene_number?: unknown
+    scene_type?: unknown
+    dialogue?: unknown
+    show_in_teleprompter?: unknown
+  }>
+}
+
 interface GenerationScriptRow {
   id: string
-  selected_hook: string | null
-  scene_timeline: {
-    hook?: unknown
-    scenes?: Array<{
-      scene_number?: unknown
-      scene_type?: unknown
-      dialogue?: unknown
-      show_in_teleprompter?: unknown
-    }>
-  } | null
+  // Read defensively: the column may be absent on an older deployment (the
+  // worker selects `*`), so the value can be undefined/null/any shape.
+  selected_hook?: string | null
+  scene_timeline?: unknown
 }
 
 export interface BuiltSnapshot {
@@ -280,8 +284,10 @@ export interface BuiltSnapshot {
 // Fails closed (`script_snapshot_too_large`) when the canonical form exceeds
 // SCRIPT_SNAPSHOT_MAX_BYTES.
 export function buildScriptSnapshot(gen: GenerationScriptRow): BuiltSnapshot {
-  const tl = gen.scene_timeline
-  const rawHook = tl && typeof tl.hook === 'string' ? tl.hook : gen.selected_hook
+  const tl = (gen.scene_timeline && typeof gen.scene_timeline === 'object'
+    ? gen.scene_timeline as SceneTimelineShape
+    : null)
+  const rawHook = tl && typeof tl.hook === 'string' ? tl.hook : gen.selected_hook ?? null
   const hook = typeof rawHook === 'string' && normalizeSnapshotString(rawHook) !== ''
     ? normalizeSnapshotString(rawHook)
     : null

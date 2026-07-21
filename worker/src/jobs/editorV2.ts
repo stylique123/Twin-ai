@@ -109,12 +109,18 @@ async function pinManifest(
   const manifest = await buildBootManifest({
     inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
   })
+  // select('*') (not a fixed column list) so the snapshot degrades gracefully
+  // on a deployment that predates a script column (e.g. scene_timeline from
+  // 0050): buildScriptSnapshot reads scene_timeline/selected_hook defensively,
+  // an absent column simply yields a null/empty snapshot ("no script"), never
+  // a hard PostgREST "column does not exist" failure.
   const { data: gen, error: genErr } = await db
-    .from('generations').select('id, selected_hook, scene_timeline')
+    .from('generations').select('*')
     .eq('id', generationId).maybeSingle()
   if (genErr) throw new Error(`pin: generation read failed: ${genErr.message}`)
   if (!gen) throw new PermanentJobError(`pin: generation ${generationId} missing`, 'generation_missing')
-  const snapshot = buildScriptSnapshot(gen) // throws script_snapshot_too_large (fail closed)
+  const snapshot = buildScriptSnapshot(gen as { id: string; selected_hook?: string | null; scene_timeline?: unknown })
+  // throws script_snapshot_too_large (fail closed)
   const { data, error } = await db.rpc('editor_pin_manifest', {
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_manifest: manifest.manifest, p_manifest_sha: manifest.manifestSha,
