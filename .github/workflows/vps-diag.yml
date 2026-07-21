@@ -5,11 +5,14 @@ jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      # READ-ONLY health snapshot of the worker box. This workflow must never
-      # mutate the container or its env — deploy-worker.yml is the single source
-      # of truth for how the container is created. (An earlier version of this
-      # file ran a base64-obfuscated script that recreated the container with
-      # different resource limits — reviewable plain text only from now on.)
+      # READ-ONLY health + Phase-5 sign-off snapshot of the worker box. This
+      # workflow must never mutate the container or its env — deploy-worker.yml
+      # is the single source of truth for how the container is created. (An
+      # earlier version of this file ran a base64-obfuscated script that
+      # recreated the container with different resource limits — reviewable
+      # plain text only from now on.) Every command below is a read: docker
+      # ps/inspect/logs/exec-printenv, git rev-parse, a --verify-only model
+      # re-hash, and listener/env greps. Nothing is created, changed, or removed.
       - env: { VPS_SSH_KEY: "${{ secrets.VPS_SSH_KEY }}" }
         run: |
           mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
@@ -18,10 +21,50 @@ jobs:
           set +e
           echo "== containers =="
           docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
-          echo "== worker env (job types) =="
-          docker exec twinai-worker printenv WORKER_JOB_TYPES 2>/dev/null || echo "(worker not running)"
-          echo "== worker logs (last 30) =="
-          docker logs --tail 30 twinai-worker 2>&1
+
+          echo "== [A4.1] deployed source SHA (must match main head) =="
+          git -C /opt/twinai-worker-src rev-parse HEAD 2>/dev/null || echo "(no src checkout)"
+          git -C /opt/twinai-worker-src log -1 --format='%H %ci %s' 2>/dev/null
+
+          echo "== [A4.2] container image / status / restart count (no restart loop) =="
+          docker inspect twinai-worker \
+            --format 'name={{.Name}} image={{.Config.Image}} imageID={{.Image}} status={{.State.Status}} running={{.State.Running}} restarts={{.RestartCount}} startedAt={{.State.StartedAt}}' \
+            2>/dev/null || echo "(worker not running)"
+
+          echo "== [A4.3] ACTIVE job registry (runtime-observed 'worker up' log) =="
+          docker logs twinai-worker 2>&1 | grep '"msg":"worker up"' | tail -1 || echo "(no worker-up log line yet)"
+          echo -n "WORKER_JOB_TYPES override on box = "
+          docker exec twinai-worker printenv WORKER_JOB_TYPES 2>/dev/null || echo "(unset — worker/src/env.ts canonical registry applies)"
+
+          echo "== [A4.4] in-container model identity verifier (no test-manifest override) =="
+          docker exec twinai-worker printenv EDITOR_SPEECH_MODEL_PATH 2>/dev/null
+          echo "-- baked manifest identity --"
+          docker exec twinai-worker python3 -c "import json;m=json.load(open('models/faster-whisper-small.manifest.json'));print('manifest repo/revision/bundle:', m['repository'], m['revision'], m['analyzerBundle'])" 2>&1
+          echo "-- re-hash loaded model dir against the manifest (fetch_model --verify-only) --"
+          docker exec twinai-worker python3 scripts/fetch_model.py --verify-only \
+            --manifest models/faster-whisper-small.manifest.json \
+            --dest /opt/models/faster-whisper-small 2>&1
+          echo "-- test-manifest override MUST be absent (both empty) --"
+          docker exec twinai-worker sh -c 'echo "EDITOR_ALLOW_TEST_MODEL_MANIFEST=[$EDITOR_ALLOW_TEST_MODEL_MANIFEST] EDITOR_SPEECH_MODEL_MANIFEST=[$EDITOR_SPEECH_MODEL_MANIFEST]"' 2>/dev/null
+
+          echo "== [A5.1] Revideo container / image / network absence =="
+          docker ps -a --format '{{.Names}} {{.Image}}' | grep -i revideo || echo "no revideo container"
+          docker images --format '{{.Repository}}:{{.Tag}}' | grep -i revideo || echo "no revideo image"
+          docker network ls --format '{{.Name}}' | grep -i revideo || echo "no revideo network"
+
+          echo "== [A5.2] port 4500 listener absence =="
+          if command -v ss >/dev/null 2>&1; then
+            ss -ltnH 2>/dev/null | grep -E '[:.]4500([^0-9]|$)' || echo "no :4500 listener (ss)"
+          elif command -v netstat >/dev/null 2>&1; then
+            netstat -ltn 2>/dev/null | grep -E '[:.]4500([^0-9]|$)' || echo "no :4500 listener (netstat)"
+          else
+            grep -qiE ':1194 .* 0A ' /proc/net/tcp /proc/net/tcp6 2>/dev/null && echo "PORT 4500 LISTENER PRESENT (/proc)" || echo "no :4500 listener (/proc)"
+          fi
+
+          echo "== [A5.3] legacy editor/Revideo env absence (container + box env file) =="
+          docker exec twinai-worker printenv 2>/dev/null | grep -iE '^(REVIDEO_|EDIT_|PEXELS_API_KEY|MUSIC_BED_URL)' || echo "no legacy editor/revideo env in container"
+          grep -iE '^(REVIDEO_|EDIT_|PEXELS_API_KEY|MUSIC_BED_URL)' /opt/twinai-worker.env 2>/dev/null || echo "no legacy editor/revideo env in box env file"
+
           echo "== disk =="
           df -h / /tmp 2>/dev/null | tail -n +1
           echo "== tmp leftovers =="

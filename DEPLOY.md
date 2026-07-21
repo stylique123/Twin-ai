@@ -45,7 +45,9 @@ sudo nano /opt/twinai-worker.env
 #   SUPABASE_SERVICE_ROLE_KEY=xxx
 #   GEMINI_API_KEY=xxx
 #   APIFY_TOKEN=xxx            # YouTube + Instagram transcripts (yt-dlp is bot-blocked there)
-#   WORKER_JOB_TYPES=ingest,build_voice,scrape_dna
+#   # Leave WORKER_JOB_TYPES UNSET on the shared worker: worker/src/env.ts is the
+#   # canonical registry (ingest,build_voice,scrape_dna,validate_source,editor_v2).
+#   # Only set it to split types across dedicated pools (see worker/SCALING.md).
 #   WHISPER_MODEL=base         # drop to tiny on a small box
 #   WORKER_MAX_MEDIA_SECS=900
 # (The old editor's toggles — PEXELS/MUSIC_BED/EDIT_*/REVIDEO_* — are gone with
@@ -72,9 +74,12 @@ cd discovery && sudo bash deploy-vps.sh
 cd postiz && docker compose up -d
 ```
 
-> **Alt host (optional): Fly.io.** A `worker/fly.toml` is kept for convenience.
-> `cd worker && fly launch --no-deploy && fly secrets set SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… GEMINI_API_KEY=… && fly deploy`.
-> The VPS path above is the supported production deployment.
+> **Deployment path.** The VPS + Docker path above (`worker/deploy-vps.sh`,
+> driven by `.github/workflows/deploy-worker.yml`) is the **single supported
+> production deployment**. There is no Fly/Railway/Render path — a CI guard
+> (`scripts/ci/check_single_deploy_path.mjs`) fails the build if a second
+> deployment manifest or a retired `autoedit`/`transcribe` job-type override
+> reappears.
 
 ## 4. Seed the first super-admin (SQL console / service role only)
 ```sql

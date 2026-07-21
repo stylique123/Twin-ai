@@ -1,31 +1,34 @@
 # Post-merge production verification for the editor-v2 launch gate.
-# Two walls, both fail-closed:
+# Two walls, both fail-closed AND both MANDATORY (neither leg can be skipped):
 #   unauthenticated → 401 at the platform JWT wall (endpoint unreachable
 #                     without a session — proven by the first probe)
 #   authenticated   → 503 editor_not_available from the in-function gate
 #                     (no EDITOR_V2_START_ENABLED secret exists in production
-#                     until Phase-3 rollout — proven by the second probe)
+#                     until the editor is intentionally enabled — proven by
+#                     the second probe with a real signed-in user)
+#
 # SAFETY ENVELOPE (read-only production probe):
 #   * workflow_dispatch ONLY; refuses any ref except main
 #   * environment: production (attach required-reviewer protection in repo
 #     settings so a human approves each run — the kill switch)
+#   * credentials are PROTECTED PRODUCTION-ENVIRONMENT SECRETS, never
+#     workflow-dispatch inputs (inputs are attacker-supplied + logged). They
+#     are passed to the shell ONLY through `env:` and consumed with
+#     `jq --arg` — no GitHub-expression interpolation into shell or JSON.
 #   * creates NOTHING durable: two HTTP probes + a secrets-name listing
 #   * least privilege: the authenticated probe uses ONLY the committed public
 #     anon key + a pre-existing probe user's own session; the CLI uses the
 #     management token to LIST secret NAMES (values are masked in output)
 #   * pinned CLI (no mutable @latest)
+#
+# REQUIRED production-environment secrets (repo Settings → Environments →
+# production): PROD_PROBE_EMAIL, PROD_PROBE_PASSWORD (a throwaway
+# gate-probe-*@twinai.internal user), SUPABASE_ACCESS_TOKEN (management token,
+# used only to LIST secret names). The authenticated leg fails closed if the
+# probe secrets are absent — it can never be silently skipped.
 name: Verify production editor gate
 on:
-  workflow_dispatch:
-    inputs:
-      probe_email:
-        description: 'Throwaway probe user email (authenticated fail-closed probe)'
-        required: false
-        default: ''
-      probe_password:
-        description: 'Throwaway probe user password'
-        required: false
-        default: ''
+  workflow_dispatch: {}
 
 # Kill switch / no overlap: one production probe at a time.
 concurrency:
@@ -46,6 +49,7 @@ jobs:
 
       - name: Unauthenticated callers cannot reach the endpoint (401 wall)
         run: |
+          set -euo pipefail
           RESP=$(curl -s -w '\n%{http_code}' -X POST \
             "https://jmdecibuytznsonrasxw.supabase.co/functions/v1/start-editor-v2" \
             -H 'Content-Type: application/json' -d '{}')
@@ -54,35 +58,56 @@ jobs:
           echo "unauthenticated status=$CODE body=$BODY"
           [ "$CODE" = "401" ] || { echo "EXPECTED PLATFORM 401 FOR UNAUTHENTICATED"; exit 1; }
 
-      # Optional authenticated probe (workflow_dispatch inputs). The gate fires
-      # before auth, but the release checklist requires proving fail-closed for
-      # a signed-in, otherwise-valid request too. The anon key is read from the
-      # committed public web env (it ships in every browser bundle).
-      - name: Authenticated fail-closed probe
-        if: ${{ inputs.probe_email != '' }}
+      # MANDATORY authenticated leg. The gate fires before auth, but the
+      # release checklist requires proving fail-closed for a signed-in,
+      # otherwise-valid request too. Credentials come from protected
+      # production-environment secrets (never inputs) and are consumed with
+      # jq --arg — nothing is interpolated into the shell or the JSON body.
+      - name: Authenticated fail-closed probe (mandatory)
+        env:
+          PROBE_EMAIL: ${{ secrets.PROD_PROBE_EMAIL }}
+          PROBE_PASSWORD: ${{ secrets.PROD_PROBE_PASSWORD }}
         run: |
+          set -euo pipefail
+          if [ -z "${PROBE_EMAIL:-}" ] || [ -z "${PROBE_PASSWORD:-}" ]; then
+            echo "::error::PROD_PROBE_EMAIL / PROD_PROBE_PASSWORD must be set as production-environment secrets — the authenticated leg is mandatory and cannot be skipped"
+            exit 1
+          fi
+          BASE="https://jmdecibuytznsonrasxw.supabase.co"
           ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
-          TOKEN=$(curl -sS -X POST "https://jmdecibuytznsonrasxw.supabase.co/auth/v1/token?grant_type=password" \
+          # Build the sign-in body with jq --arg: the credentials never touch
+          # the shell command line or a double-quoted string.
+          LOGIN_BODY=$(jq -n --arg email "$PROBE_EMAIL" --arg password "$PROBE_PASSWORD" '{email:$email,password:$password}')
+          TOKEN=$(curl -sS -X POST "$BASE/auth/v1/token?grant_type=password" \
             -H "apikey: $ANON" -H 'Content-Type: application/json' \
-            -d "{\"email\":\"${{ inputs.probe_email }}\",\"password\":\"${{ inputs.probe_password }}\"}" | jq -r .access_token)
+            --data "$LOGIN_BODY" | jq -r .access_token)
+          echo "::add-mask::$TOKEN"
           [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
+          REQ_BODY=$(jq -n '{
+            generation_id:"00000000-0000-4000-8000-000000000000",
+            source_asset_id:"00000000-0000-4000-8000-000000000001",
+            idempotency_key:"00000000-0000-4000-8000-000000000002"
+          }')
           RESP=$(curl -s -w '\n%{http_code}' -X POST \
-            "https://jmdecibuytznsonrasxw.supabase.co/functions/v1/start-editor-v2" \
+            "$BASE/functions/v1/start-editor-v2" \
             -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-            -d '{"generation_id":"00000000-0000-4000-8000-000000000000","source_asset_id":"00000000-0000-4000-8000-000000000001","idempotency_key":"00000000-0000-4000-8000-000000000002"}')
+            --data "$REQ_BODY")
           BODY=$(echo "$RESP" | head -1)
           CODE=$(echo "$RESP" | tail -1)
           echo "authenticated status=$CODE body=$BODY"
-          [ "$CODE" = "503" ] && echo "$BODY" | grep -q 'editor_not_available' \
+          { [ "$CODE" = "503" ] && echo "$BODY" | grep -q 'editor_not_available'; } \
             || { echo "AUTHENTICATED PROBE: GATE NOT FAIL-CLOSED"; exit 1; }
 
       - name: Verify EDITOR_V2_START_ENABLED is absent from production secrets
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          curl -sS -o /dev/null -w '' https://example.com || true
+          set -euo pipefail
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN must be set as a production-environment secret"; exit 1
+          fi
           npx --yes supabase@2.109.1 secrets list --project-ref jmdecibuytznsonrasxw > /tmp/secrets.txt
-          cat /tmp/secrets.txt | sed 's/|.*$/| (value digest hidden)/'
+          sed 's/|.*$/| (value digest hidden)/' /tmp/secrets.txt
           grep -q 'EDITOR_V2_START_ENABLED' /tmp/secrets.txt \
             && { echo "EDITOR_V2_START_ENABLED IS SET IN PRODUCTION"; exit 1; } \
             || echo "confirmed absent"

@@ -8,31 +8,31 @@
 # SAFETY ENVELOPE (this workflow touches production):
 #   * workflow_dispatch ONLY — no push/PR/schedule/repository_dispatch
 #   * refuses to run from any ref except main (no arbitrary-ref execution)
-#   * inputs are ONLY probe credentials + a pre-created generation uuid
-#     (validated); target URL, function names, bucket and paths are pinned —
-#     nothing caller-provided reaches them
+#   * probe CREDENTIALS are PROTECTED PRODUCTION-ENVIRONMENT SECRETS
+#     (PROD_PROBE_EMAIL / PROD_PROBE_PASSWORD), never workflow-dispatch inputs.
+#     The only caller-supplied input is a pre-created generation uuid, which is
+#     validated and passed to the shell ONLY through `env:` — nothing
+#     caller-provided is interpolated into a shell command or a JSON body.
+#     Credentials + JSON bodies are assembled with `jq --arg`.
 #   * least privilege: uses ONLY the public anon key from the committed web
-#     env + the probe user's own session; no repository secrets at all — it
-#     CANNOT read service keys, set EDITOR_V2_START_ENABLED, apply
-#     migrations, or deploy anything
+#     env + the probe user's own session; no service keys — it CANNOT read
+#     service keys, set EDITOR_V2_START_ENABLED, apply migrations, or deploy.
 #   * access token and signed upload URL are masked before first use; error
 #     paths print redacted bodies only
 #   * probe identity uses the fixed gate-probe-* prefix; cleanup of the probe
 #     user/generation runs operator-side through the sanctioned retention
 #     path (this job creates nothing durable beyond the one probe asset, and
 #     its runner scratch dies with the runner)
+#
+# REQUIRED production-environment secrets (repo Settings → Environments →
+# production): PROD_PROBE_EMAIL, PROD_PROBE_PASSWORD (a throwaway
+# gate-probe-*@twinai.internal user). The smoke fails closed if absent.
 name: Production source-validation smoke
 on:
   workflow_dispatch:
     inputs:
-      probe_email:
-        description: 'Throwaway probe user email (gate-probe-* prefix)'
-        required: true
-      probe_password:
-        description: 'Throwaway probe user password'
-        required: true
       generation_id:
-        description: 'Pre-created probe generation id (uuid)'
+        description: 'Pre-created probe generation id (uuid, owned by the probe user)'
         required: true
 
 # Kill switch / no overlap: one production smoke at a time. Attach
@@ -47,6 +47,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 10
+    env:
+      # Caller-supplied uuid + protected secrets reach the shell ONLY here.
+      GEN_ID: ${{ inputs.generation_id }}
+      PROBE_EMAIL: ${{ secrets.PROD_PROBE_EMAIL }}
+      PROBE_PASSWORD: ${{ secrets.PROD_PROBE_PASSWORD }}
     steps:
       - name: Refuse non-main refs
         run: |
@@ -54,12 +59,17 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Validate inputs
+      - name: Validate inputs and required secrets
         run: |
-          echo '${{ inputs.generation_id }}' | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
+          set -euo pipefail
+          if [ -z "${PROBE_EMAIL:-}" ] || [ -z "${PROBE_PASSWORD:-}" ]; then
+            echo "::error::PROD_PROBE_EMAIL / PROD_PROBE_PASSWORD must be set as production-environment secrets"; exit 1
+          fi
+          # Validate via env vars (grep -q never prints them) — no interpolation.
+          printf '%s' "$GEN_ID" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
             || { echo "::error::generation_id is not a uuid"; exit 1; }
-          echo '${{ inputs.probe_email }}' | grep -Eq '^gate-probe-[a-z0-9-]+@twinai\.internal$' \
-            || { echo "::error::probe_email must use the fixed gate-probe-*@twinai.internal prefix"; exit 1; }
+          printf '%s' "$PROBE_EMAIL" | grep -Eq '^gate-probe-[a-z0-9-]+@twinai\.internal$' \
+            || { echo "::error::PROD_PROBE_EMAIL must use the fixed gate-probe-*@twinai.internal prefix"; exit 1; }
 
       - name: Install ffmpeg (fixture generation only)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
@@ -75,9 +85,11 @@ jobs:
           SIZE=$(stat -c%s /tmp/probe.webm)
           echo "fixture bytes=$SIZE"
 
+          # Sign-in body via jq --arg — credentials never reach the command line.
+          LOGIN_BODY=$(jq -n --arg email "$PROBE_EMAIL" --arg password "$PROBE_PASSWORD" '{email:$email,password:$password}')
           TOKEN=$(curl -sS -X POST "$BASE/auth/v1/token?grant_type=password" \
             -H "apikey: $ANON" -H 'Content-Type: application/json' \
-            -d "{\"email\":\"${{ inputs.probe_email }}\",\"password\":\"${{ inputs.probe_password }}\"}" | jq -r .access_token)
+            --data "$LOGIN_BODY" | jq -r .access_token)
           [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
           echo "::add-mask::$TOKEN"
           # Export creds so the ALWAYS-run cleanup step can delete the object
@@ -89,9 +101,11 @@ jobs:
           } >> "$GITHUB_ENV"
 
           ATTEMPT=$(uuidgen)
+          CREATE_BODY=$(jq -n --arg gen "$GEN_ID" --arg att "$ATTEMPT" --argjson size "$SIZE" \
+            '{action:"create",generation_id:$gen,recording_attempt_id:$att,content_type:"video/webm",size_bytes:$size}')
           CREATE=$(curl -sS -X POST "$BASE/functions/v1/source-asset" \
             -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-            -d "{\"action\":\"create\",\"generation_id\":\"${{ inputs.generation_id }}\",\"recording_attempt_id\":\"$ATTEMPT\",\"content_type\":\"video/webm\",\"size_bytes\":$SIZE}")
+            --data "$CREATE_BODY")
           ASSET=$(echo "$CREATE" | jq -r .assetId)
           SIGNED=$(echo "$CREATE" | jq -r .signedUrl)
           if [ -z "$ASSET" ] || [ "$ASSET" = "null" ]; then
@@ -105,9 +119,10 @@ jobs:
             -H 'x-upsert: true' -H 'content-type: video/webm' --data-binary @/tmp/probe.webm)
           [ "$PUT" -lt 300 ] || { echo "signed PUT failed: $PUT"; exit 1; }
 
+          FIN_BODY=$(jq -n --arg asset "$ASSET" '{action:"finalize",asset_id:$asset}')
           FIN=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/functions/v1/source-asset" \
             -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-            -d "{\"action\":\"finalize\",\"asset_id\":\"$ASSET\"}")
+            --data "$FIN_BODY")
           [ "$FIN" = "200" ] || { echo "finalize failed: $FIN"; exit 1; }
 
           # Poll via the probe user's OWN RLS-scoped read until the production
@@ -144,7 +159,7 @@ jobs:
           # poll briefly instead of racing the gap (same as the staging matrix).
           PTR=""
           for i in $(seq 1 20); do
-            PTR=$(curl -sS "$BASE/rest/v1/generations?id=eq.${{ inputs.generation_id }}&select=source_asset_id" \
+            PTR=$(curl -sS "$BASE/rest/v1/generations?id=eq.$GEN_ID&select=source_asset_id" \
               -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq -r '.[0].source_asset_id')
             [ "$PTR" = "$ASSET" ] && break
             sleep 2

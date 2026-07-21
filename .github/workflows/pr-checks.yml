@@ -107,3 +107,7 @@ jobs:
             exit 1
           fi
           echo "clean: worker registry has no autoedit handler"
+      - name: Single deployment path (no second Fly/PaaS manifest; no retired job-type override)
+        run: |
+          node scripts/ci/check_single_deploy_path.mjs --selftest
+          node scripts/ci/check_single_deploy_path.mjs

@@ -7,7 +7,7 @@ ingestion + transcription** — the fix for the premortem's #1 finding (we now
 
 ## What it does today
 - Atomically claims jobs (`claim_job` → `FOR UPDATE SKIP LOCKED`; safe to run N replicas).
-- `ingest` / `transcribe`: `yt-dlp` pulls **audio only** from an **allow-listed**
+- `ingest`: `yt-dlp` pulls **audio only** from an **allow-listed**
   social URL → `faster-whisper` produces a word-timestamped transcript → persisted
   to `public.transcripts`. Raw media is **discarded** after analysis.
 - Retries with backoff + dead-letter; crashed jobs reclaimed via visibility timeout;
@@ -30,19 +30,24 @@ npm run dev
 ```
 
 ## Docker / deploy
+The **VPS + Docker** path is the single supported production deployment —
+`sudo bash worker/deploy-vps.sh` (driven by `.github/workflows/deploy-worker.yml`).
+See `DEPLOY.md` and `worker/SCALING.md`. Do **not** add a second deployment
+manifest (Fly/Railway/Render); a CI guard rejects one.
 ```bash
 docker build -t twinai-worker worker/
-# Fly.io:
-fly launch --no-deploy
-fly secrets set SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... GEMINI_API_KEY=...
-fly deploy
-fly scale count 2     # more replicas = more throughput, no collisions
+# more throughput later: run additional containers with distinct HOSTNAME, or
+# the same image on another box — they share one queue (SKIP LOCKED).
 ```
+
+Leave `WORKER_JOB_TYPES` **unset** on the shared worker: `worker/src/env.ts` is
+the canonical registry — `ingest, build_voice, scrape_dna, validate_source,
+editor_v2`. Only set it to carve out dedicated pools (see `worker/SCALING.md`).
 
 ## Enqueue a job (from an edge function / service role)
 ```sql
 insert into public.jobs (owner_id, type, payload)
-values ('<user-uuid>', 'transcribe', '{"url":"https://www.tiktok.com/@user/video/123","platform":"tiktok"}');
+values ('<user-uuid>', 'ingest', '{"url":"https://www.tiktok.com/@user/video/123","platform":"tiktok"}');
 ```
 
 ## Next on this worker

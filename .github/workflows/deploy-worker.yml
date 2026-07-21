@@ -64,10 +64,11 @@ jobs:
             # Old-editor cleanup: drop Revideo wiring from the box env, remove the
             # Revideo container + image, and drop the retired job types (autoedit,
             # transcribe) from the box's WORKER_JOB_TYPES override so the box config
-            # matches the code registry {ingest, build_voice, scrape_dna}. transcribe
-            # was retired (ingest-reference enqueues 'ingest'); autoedit was removed
-            # with the old editor. Neither has a handler, so a stale override would
-            # only make the worker claim jobs it can't run.
+            # matches the canonical code registry in worker/src/env.ts:
+            # {ingest, build_voice, scrape_dna, validate_source, editor_v2}.
+            # transcribe was retired (ingest-reference enqueues 'ingest'); autoedit
+            # was removed with the old editor. Neither has a handler, so a stale
+            # override would only make the worker claim jobs it can't run.
             sed -i '/^REVIDEO_/d;/^PEXELS_API_KEY/d;/^MUSIC_BED_URL/d;/^EDIT_/d' /opt/twinai-worker.env || true
             # Drop the box's WORKER_JOB_TYPES override entirely: the code default in
             # worker/src/env.ts is the single source of truth for job types now.
