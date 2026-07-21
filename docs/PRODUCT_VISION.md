@@ -1,6 +1,24 @@
 # TwinAI Creative Studio — Product Vision & UX Principles
 _Single source of guidance for the Creative Studio redesign. Practical and buildable — not theory._
 
+> ⚠️ **HISTORICAL / ASPIRATIONAL for the EDITOR — not current architecture.**
+> Sections below describe one legacy **Scene Timeline** that directly drives
+> editor cuts, captions, B-roll, music/effects and the final video, plus an
+> "auto-edited review/tweak" flow. **That is NOT how Editor v2 works.** The old
+> auto-edit pipeline was removed; the editor is being rebuilt as ONE gated loop
+> and is **not shipped** (no Director, EditPlan, renderer, output, or production
+> start yet). The recording Scene Timeline is now **recording-only** metadata;
+> it does not drive any editor.
+>
+> **Authoritative current editor architecture (one loop):**
+> `source asset → immutable analyses (inspection, speech, …) → Director → ONE
+> canonical EditPlan → compiler → ONE FFmpeg renderer → validation → finished
+> asset`. The recording script/scene metadata is deliberately SEPARATE from the
+> single canonical EditPlan; the old/manual timeline-driven editing path is
+> forbidden. For current truth see **`ARCHITECTURE.md`**,
+> **`docs/ai-editor-rebuild-status.md`**, and **`docs/editor-v2-speech-analysis.md`**.
+> Treat the editor/timeline passages here as product vision, not a build spec.
+
 ---
 
 ## 1. Product positioning

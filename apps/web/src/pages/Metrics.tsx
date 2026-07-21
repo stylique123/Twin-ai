@@ -106,7 +106,7 @@ export default function Metrics() {
           const steps = [
             { label: 'Signed up', v: f.signup }, { label: 'Onboarded', v: f.onboarded },
             { label: 'Built a voice', v: f.voice }, { label: 'Made a blueprint', v: f.blueprint },
-            { label: 'Rendered an edit', v: f.edit }, { label: 'Logged a post', v: f.post },
+            { label: 'Rendered an edit (editor rebuilding)', v: f.edit }, { label: 'Logged a post', v: f.post },
           ]
           const base = Math.max(1, f.signup)
           return (

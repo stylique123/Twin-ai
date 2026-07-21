@@ -9,8 +9,8 @@ import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 import { EASE } from '../components/motion'
 
-const FREE_PERKS = ['3 free remixes', 'Script in your voice, record + edit in one place', 'No card required']
-const PAID_PERKS = ['Script in your voice, record + edit in one place', 'No watermark on your exports', 'Cancel any time']
+const FREE_PERKS = ['3 free remixes', 'Script in your voice, record in one place', 'No card required']
+const PAID_PERKS = ['Script in your voice, record in one place', 'No watermark once AI editing ships (coming soon)', 'Cancel any time']
 
 // Where we remember the plan the user picked on the pricing page, so the choice
 // survives signup + email confirmation and reaches onboarding / billing later.
@@ -188,7 +188,7 @@ export default function Auth() {
               ))}
             </ul>
           </div>
-          <p className="relative z-10 text-xs text-sand">Paste a reference. Get a finished video in your voice.</p>
+          <p className="relative z-10 text-xs text-sand">Paste a reference. Get a script &amp; shot list in your voice.</p>
         </div>
 
         {/* Right, form */}

@@ -4,8 +4,10 @@ Two independent gates:
 
 1. **Engineering gate (this doc)** — a permissively-licensed PUBLIC human-speech
    corpus proves the pipeline works on real (not synthetic) speech. Closes the
-   Phase 5 engineering gate only if (a) the final `cc1a447` Phase 1–5 rerun is
-   green AND (b) the baseline meets the **predefined thresholds below**.
+   Phase 5 engineering gate only if (a) the Phase 1–5 rerun on the authoritative
+   final PR #191 head `1dd9f693d3c361d7fe1da13482e30b7bb693132e` is green —
+   satisfied by successful runs **29777273332 / 29777272833 / 29777271613** —
+   AND (b) the baseline meets the **predefined thresholds below**.
 2. **Pre-beta gate (mandatory, separate)** — public-corpus success is NOT proof
    of target-user quality. Before beta, ~12 short, **privately consented**
    recordings from representative TwinAI users must pass the same harness.
@@ -399,11 +401,19 @@ authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
    passing BOTH the capacity limits and the runtime-observed model-identity check
    on an image built from that exact commit.
 
-   **Task #116 (speech-6 candidate-image gate): PENDING.** It is closed only when
-   the owner runs `vps_bench.sh --sha <exact speech-6 commit>` and the report
-   passes BOTH the capacity limits AND the full runtime-observed model identity
-   (repository/revision/model.bin sha/manifest sha/loadedFromPath/verified/
-   analyzerBundle=speech-6) plus the candidate SHA. Until then it is NOT closed.
+   **Task #116 (speech-6 candidate-image gate): CLOSED.** The owner ran
+   `vps_bench.sh --sha 1dd9f693d3c361d7fe1da13482e30b7bb693132e` on the
+   production Hetzner VPS (`stylique-vps`, 4 vCPU) against an image built from
+   that exact candidate commit. Final line:
+   `RESULT: CAPACITY + MODEL IDENTITY GATE PASSED (rc=0)` — ALL identity checks
+   pass (repository / revision / artifact_sha256 / manifest_sha256 /
+   analyzer_bundle=speech-6 / candidate_sha_is_40hex; runtime `verified=True`
+   for `Systran/faster-whisper-small@536b0662742c02347bc0e980a01041f333bce120`)
+   AND all predefined capacity limits pass: processing ratio median **0.55×**
+   (≤ 5.0), peak RSS **569.6 MiB** (≤ 2048), cancel exit **0.11 s** (≤ 12),
+   timeout kills **true**, 2× concurrent both rc=0 with aggregate **1.202×**
+   (≤ 12.0). Full record: `docs/phase5-production-signoff-evidence.md` →
+   "Authoritative VPS benchmark — CLOSED".
 
    **Historical pre-pin capacity baseline (NOT task #116 closure, NOT speech-6).**
    An earlier run on the production Hetzner VPS (`stylique-vps`, 4 vCPU), inside
@@ -434,8 +444,10 @@ authorization. The eval report carries a `featureStatus.autoFillerRemovalShipped
   advertising filler removal.
 - Private user recordings (task #115) remain **mandatory** before beta.
 
-PR #191 stays draft and Phase 6 unauthorized until items 1–4 close **and** the
-VPS benchmark (#116) is recorded.
+The VPS benchmark (#116) is now **recorded and CLOSED** (see above; PR #191 has
+since merged as `f6e4cb7`). Phase 6 remains unauthorized: the pre-beta private
+recordings gate (task #115) and the filler-removal blockers (tasks #117 /
+issues #194–#195, `autoFillerRemoval=false`) are still MANDATORY and open.
 
 ## Measurements (published per category + overall)
 

@@ -1,5 +1,14 @@
 # AI Editor Rebuild — Status
 
+> ⚠️ **HISTORICAL SNAPSHOT — describes the state right after the OLD editor was
+> removed.** Some statements below (e.g. an early three-type job registry, the
+> `take_path` future-seam) are superseded. Current truth: the registry is the
+> **five** types in `worker/src/env.ts`
+> (`ingest, build_voice, scrape_dna, validate_source, editor_v2`); the durable
+> input is the `media_assets` source asset, not `take_path`; the rebuilt editor
+> is the gated `editor_v2` loop. See **`ARCHITECTURE.md`** and
+> **`docs/editor-v2-speech-analysis.md`** for current state.
+
 Branch: `rebuild/one-click-ai-editor`
 
 ## Where things stand
@@ -93,8 +102,10 @@ rendered" reads 0 for new activity until the new editor ships.
   cannot construct an editor call (removed exports absent), recording/playback
   primitives present, and `buildTimeline` still turns a blueprint into recordable
   teleprompter scenes.
-- `worker/src/__tests__/registry.test.ts` — the job registry is exactly
-  `{ingest, build_voice, scrape_dna}` (no `autoedit`) and editor env flags are gone.
+- `worker/src/__tests__/registry.test.ts` — asserts the job registry has no
+  `autoedit` handler and editor env flags are gone. (The registry has since
+  grown to the current five types — `ingest, build_voice, scrape_dna,
+  validate_source, editor_v2` — see `worker/src/env.ts`.)
 - Both run in CI (`pr-checks.yml` → `unit-tests`), alongside the `no-legacy-editor`
   grep guard.
 

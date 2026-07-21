@@ -45,7 +45,9 @@ sudo nano /opt/twinai-worker.env
 #   SUPABASE_SERVICE_ROLE_KEY=xxx
 #   GEMINI_API_KEY=xxx
 #   APIFY_TOKEN=xxx            # YouTube + Instagram transcripts (yt-dlp is bot-blocked there)
-#   WORKER_JOB_TYPES=ingest,build_voice,scrape_dna
+#   # Leave WORKER_JOB_TYPES UNSET on the shared worker: worker/src/env.ts is the
+#   # canonical registry (ingest,build_voice,scrape_dna,validate_source,editor_v2).
+#   # Only set it to split types across dedicated pools (see worker/SCALING.md).
 #   WHISPER_MODEL=base         # drop to tiny on a small box
 #   WORKER_MAX_MEDIA_SECS=900
 # (The old editor's toggles — PEXELS/MUSIC_BED/EDIT_*/REVIDEO_* — are gone with
@@ -72,9 +74,38 @@ cd discovery && sudo bash deploy-vps.sh
 cd postiz && docker compose up -d
 ```
 
-> **Alt host (optional): Fly.io.** A `worker/fly.toml` is kept for convenience.
-> `cd worker && fly launch --no-deploy && fly secrets set SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… GEMINI_API_KEY=… && fly deploy`.
-> The VPS path above is the supported production deployment.
+> **Deployment path.** The VPS + Docker path above (`worker/deploy-vps.sh`,
+> driven by `.github/workflows/deploy-worker.yml`) is the **single supported
+> production deployment**. There is no Fly/Railway/Render path — a CI guard
+> (`scripts/ci/check_single_deploy_path.mjs`) fails the build if a second
+> deployment manifest or a retired `autoedit`/`transcribe` job-type override
+> reappears.
+
+### Pinning the VPS host key (one-time, required)
+
+The deploy + diagnostic workflows SSH to the VPS with a **pinned host key** and
+strict verification (no first-contact trust), so a network attacker cannot
+impersonate the box. This needs one repository secret, `VPS_KNOWN_HOSTS`. Until
+it is set, `deploy-worker` and `vps-diag` **fail closed** (they refuse to SSH).
+
+> **Set this BEFORE deploying — and before merging any PR that touches
+> `worker/**`.** A push/merge to `main` under `worker/**` triggers
+> `deploy-worker` automatically; if `VPS_KNOWN_HOSTS` is absent that run fails
+> closed. Configure (and verify with a `vps-diag` dispatch) first.
+
+**One safe setup step** — run this **on the VPS itself** (where you already
+trust the machine), then paste the single line it prints into a new secret:
+
+```sh
+# On the VPS (SSH in the way you normally do), run:
+echo "138.201.119.239 $(awk '{print $1, $2}' /etc/ssh/ssh_host_ed25519_key.pub)"
+```
+
+Copy the printed line (looks like `138.201.119.239 ssh-ed25519 AAAA…`) and add
+it in **GitHub → repo Settings → Secrets and variables → Actions → New
+repository secret**: name `VPS_KNOWN_HOSTS`, value = that line. (Reading the key
+on the VPS itself avoids the man-in-the-middle risk of fetching it over the
+network.) Never paste your **private** key here — only this public host line.
 
 ## 4. Seed the first super-admin (SQL console / service role only)
 ```sql

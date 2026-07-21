@@ -8,31 +8,39 @@
 # SAFETY ENVELOPE (this workflow touches production):
 #   * workflow_dispatch ONLY — no push/PR/schedule/repository_dispatch
 #   * refuses to run from any ref except main (no arbitrary-ref execution)
-#   * inputs are ONLY probe credentials + a pre-created generation uuid
-#     (validated); target URL, function names, bucket and paths are pinned —
-#     nothing caller-provided reaches them
+#   * probe CREDENTIALS are PROTECTED PRODUCTION-ENVIRONMENT SECRETS
+#     (PROD_PROBE_EMAIL / PROD_PROBE_PASSWORD), never workflow-dispatch inputs.
+#     The only caller-supplied input is a pre-created generation uuid, which is
+#     validated and passed to the shell ONLY through `env:` — nothing
+#     caller-provided is interpolated into a shell command or a JSON body.
+#     Credentials are read by jq FROM THE ENVIRONMENT (`env.PROBE_*`), never as
+#     `jq --arg` (which would place them in world-readable argv). Non-secret
+#     JSON bodies (generation_id, attempt id, size) use `jq --arg`.
 #   * least privilege: uses ONLY the public anon key from the committed web
-#     env + the probe user's own session; no repository secrets at all — it
-#     CANNOT read service keys, set EDITOR_V2_START_ENABLED, apply
-#     migrations, or deploy anything
+#     env + the probe user's own session; no service keys — it CANNOT read
+#     service keys, set EDITOR_V2_START_ENABLED, apply migrations, or deploy.
 #   * access token and signed upload URL are masked before first use; error
 #     paths print redacted bodies only
-#   * probe identity uses the fixed gate-probe-* prefix; cleanup of the probe
-#     user/generation runs operator-side through the sanctioned retention
-#     path (this job creates nothing durable beyond the one probe asset, and
-#     its runner scratch dies with the runner)
+#   * probe identity uses the fixed gate-probe-* prefix. This job DOES create
+#     durable production rows: a public.media_assets row, a
+#     generations.source_asset_id pointer, a Storage object, and service-side
+#     validate_source job/event state. It is NOT self-cleaning: the `takes`
+#     bucket has NO DELETE policy (proven by check_takes_delete_policy.mjs), so
+#     the probe user cannot delete its own object. The final step OBSERVES every
+#     artifact (never claiming a deletion it did not observe) and FAILS CLOSED
+#     with a recoverable-artifact report — the probe user/generation must then be
+#     removed via the sanctioned operator retention cleanup. Do not run this
+#     workflow without that plan.
+#
+# REQUIRED production-environment secrets (repo Settings → Environments →
+# production): PROD_PROBE_EMAIL, PROD_PROBE_PASSWORD (a throwaway
+# gate-probe-*@twinai.internal user). The smoke fails closed if absent.
 name: Production source-validation smoke
 on:
   workflow_dispatch:
     inputs:
-      probe_email:
-        description: 'Throwaway probe user email (gate-probe-* prefix)'
-        required: true
-      probe_password:
-        description: 'Throwaway probe user password'
-        required: true
       generation_id:
-        description: 'Pre-created probe generation id (uuid)'
+        description: 'Pre-created probe generation id (uuid, owned by the probe user)'
         required: true
 
 # Kill switch / no overlap: one production smoke at a time. Attach
@@ -47,6 +55,11 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     timeout-minutes: 10
+    env:
+      # Caller-supplied uuid + protected secrets reach the shell ONLY here.
+      GEN_ID: ${{ inputs.generation_id }}
+      PROBE_EMAIL: ${{ secrets.PROD_PROBE_EMAIL }}
+      PROBE_PASSWORD: ${{ secrets.PROD_PROBE_PASSWORD }}
     steps:
       - name: Refuse non-main refs
         run: |
@@ -54,129 +67,93 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - name: Validate inputs
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }   # residue_flow.mjs uses global fetch (Node 18+)
+
+      - name: Validate inputs and required secrets
         run: |
-          echo '${{ inputs.generation_id }}' | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
+          set -euo pipefail
+          if [ -z "${PROBE_EMAIL:-}" ] || [ -z "${PROBE_PASSWORD:-}" ]; then
+            echo "::error::PROD_PROBE_EMAIL / PROD_PROBE_PASSWORD must be set as production-environment secrets"; exit 1
+          fi
+          # Validate via env vars (grep -q never prints them) — no interpolation.
+          printf '%s' "$GEN_ID" | grep -Eq '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' \
             || { echo "::error::generation_id is not a uuid"; exit 1; }
-          echo '${{ inputs.probe_email }}' | grep -Eq '^gate-probe-[a-z0-9-]+@twinai\.internal$' \
-            || { echo "::error::probe_email must use the fixed gate-probe-*@twinai.internal prefix"; exit 1; }
+          printf '%s' "$PROBE_EMAIL" | grep -Eq '^gate-probe-[a-z0-9-]+@twinai\.internal$' \
+            || { echo "::error::PROD_PROBE_EMAIL must use the fixed gate-probe-*@twinai.internal prefix"; exit 1; }
 
       - name: Install ffmpeg (fixture generation only)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
 
-      - name: Run the real source chain and verify preserved metadata
+      - name: Generate probe fixture (ffmpeg)
         run: |
           set -euo pipefail
-          BASE="https://jmdecibuytznsonrasxw.supabase.co"
-          ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
-
           ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30:duration=2 \
             -f lavfi -i sine=frequency=440:duration=2 -c:v libvpx -b:v 200k -c:a libvorbis -shortest /tmp/probe.webm
           SIZE=$(stat -c%s /tmp/probe.webm)
           echo "fixture bytes=$SIZE"
+          { echo "SIZE=$SIZE"; echo "FIXTURE=/tmp/probe.webm"; } >> "$GITHUB_ENV"
 
-          TOKEN=$(curl -sS -X POST "$BASE/auth/v1/token?grant_type=password" \
-            -H "apikey: $ANON" -H 'Content-Type: application/json' \
-            -d "{\"email\":\"${{ inputs.probe_email }}\",\"password\":\"${{ inputs.probe_password }}\"}" | jq -r .access_token)
-          [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
-          echo "::add-mask::$TOKEN"
-          # Export creds so the ALWAYS-run cleanup step can delete the object
-          # even if a later assertion in this step fails. (TOKEN is masked.)
-          {
-            echo "PROBE_BASE=$BASE"
-            echo "PROBE_ANON=$ANON"
-            echo "PROBE_TOKEN=$TOKEN"
-          } >> "$GITHUB_ENV"
-
-          ATTEMPT=$(uuidgen)
-          CREATE=$(curl -sS -X POST "$BASE/functions/v1/source-asset" \
-            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-            -d "{\"action\":\"create\",\"generation_id\":\"${{ inputs.generation_id }}\",\"recording_attempt_id\":\"$ATTEMPT\",\"content_type\":\"video/webm\",\"size_bytes\":$SIZE}")
-          ASSET=$(echo "$CREATE" | jq -r .assetId)
-          SIGNED=$(echo "$CREATE" | jq -r .signedUrl)
-          if [ -z "$ASSET" ] || [ "$ASSET" = "null" ]; then
-            echo "create failed: $(echo "$CREATE" | jq 'del(.signedUrl, .token)')"; exit 1
-          fi
-          echo "::add-mask::$SIGNED"
-          echo "asset=$ASSET"
-          echo "PROBE_ASSET=$ASSET" >> "$GITHUB_ENV"
-
-          PUT=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "$SIGNED" \
-            -H 'x-upsert: true' -H 'content-type: video/webm' --data-binary @/tmp/probe.webm)
-          [ "$PUT" -lt 300 ] || { echo "signed PUT failed: $PUT"; exit 1; }
-
-          FIN=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/functions/v1/source-asset" \
-            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-            -d "{\"action\":\"finalize\",\"asset_id\":\"$ASSET\"}")
-          [ "$FIN" = "200" ] || { echo "finalize failed: $FIN"; exit 1; }
-
-          # Poll via the probe user's OWN RLS-scoped read until the production
-          # worker validates it.
-          STATUS=""
-          for i in $(seq 1 60); do
-            ROW=$(curl -sS "$BASE/rest/v1/media_assets?id=eq.$ASSET&select=status,storage_path,content_sha256,duration_ms,width,height,rotation,has_audio,metadata" \
-              -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq '.[0]')
-            STATUS=$(echo "$ROW" | jq -r .status)
-            [ "$STATUS" = "ready" ] && break
-            [ "$STATUS" = "rejected" ] && { echo "REJECTED: $(echo "$ROW" | jq .metadata)"; exit 1; }
-            sleep 3
-          done
-          [ "$STATUS" = "ready" ] || { echo "asset never became ready (last: $STATUS)"; exit 1; }
-          echo "ready row (facts + metadata keys):"
-          echo "$ROW" | jq '{status, duration_ms, width, height, rotation, has_audio, sha_len: (.content_sha256|length), meta_keys: (.metadata|keys), probe_facts: .metadata.probe_facts, container: .metadata.container, video_codec: .metadata.video_codec, audio_codec: .metadata.audio_codec, editor_eligible: .metadata.editor_eligible, has_finalized_etag: (.metadata.finalized_etag != null), finalized_bytes: .metadata.finalized_bytes}'
-
-          echo "$ROW" | jq -e '
-            .status == "ready"
-            and .metadata.finalized_etag != null
-            and (.metadata.finalized_bytes | tonumber) > 0
-            and .metadata.probe_facts.frame_rate != null
-            and .metadata.container != null
-            and .metadata.video_codec != null
-            and .metadata.audio_codec != null
-            and .metadata.editor_eligible == true
-            and (.content_sha256 | length) == 64
-            and .duration_ms > 1500 and .has_audio == true
-            and .width == 320 and .height == 240 and .rotation == 0
-          ' > /dev/null || { echo "METADATA MERGE VERIFICATION FAILED"; exit 1; }
-
-          # Generation pointer must link to the probe asset (RLS-scoped read).
-          # The ready flip and the link are consecutive worker statements —
-          # poll briefly instead of racing the gap (same as the staging matrix).
-          PTR=""
-          for i in $(seq 1 20); do
-            PTR=$(curl -sS "$BASE/rest/v1/generations?id=eq.${{ inputs.generation_id }}&select=source_asset_id" \
-              -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq -r '.[0].source_asset_id')
-            [ "$PTR" = "$ASSET" ] && break
-            sleep 2
-          done
-          [ "$PTR" = "$ASSET" ] || { echo "GENERATION POINTER NOT LINKED (got $PTR)"; exit 1; }
-          echo "generation pointer linked — metadata merge preserved all finalization + probe facts — PASS"
-
-      # GUARANTEED SUPPORTED-API CLEANUP — runs even if the chain above failed
-      # (if: always()), so a partial run never leaves an orphaned probe object.
-      # Deletes THROUGH the Storage API with the probe user's OWN session (RLS
-      # allows owners to delete their own objects), which removes the metadata
-      # row AND the backend blob together while the row still exists. Never
-      # delete storage.objects rows by SQL: that strips the row's version
-      # pointer and orphans the backend blob.
-      - name: Cleanup the probe object via the Storage API (always)
-        if: always()
+      # STAGE 1 — FUNCTIONAL CHAIN. Runs the SAME executable module the harness
+      # exercises (scripts/prod-smoke/smoke_chain.mjs): sign in → persist recovery
+      # ids BEFORE create → create → parse → persist asset → signed PUT → finalize
+      # → poll ready → verify preserved metadata merge → poll generation pointer.
+      # The module persists all recovery state to $GITHUB_ENV (so the always-run
+      # residue step can account even if this fails) and PROBE_FUNCTIONAL_CHAIN
+      # = pass|fail:<stage>. A PASS here is the functional-chain evidence; it is a
+      # SEPARATE signal from the overall workflow conclusion (which the residue
+      # accounting will intentionally turn RED — see the protocol below).
+      - name: 'Stage 1 — functional chain (create → ready → metadata → pointer)'
+        id: chain
+        env:
+          PROBE_BASE_URL: https://jmdecibuytznsonrasxw.supabase.co
         run: |
-          set -uo pipefail
-          [ -n "${PROBE_ASSET:-}" ] || { echo "no probe asset created — nothing to clean"; exit 0; }
-          OBJPATH=$(curl -sS "$PROBE_BASE/rest/v1/media_assets?id=eq.$PROBE_ASSET&select=storage_path" \
-            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" | jq -r '.[0].storage_path // empty')
-          if [ -z "$OBJPATH" ]; then echo "no storage_path (asset row absent) — nothing to clean"; exit 0; fi
-          PATH_ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$OBJPATH")
-          DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-            "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
-            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN")
-          echo "cleanup delete status=$DEL"
-          GONE=$(curl -sS -o /dev/null -w '%{http_code}' \
-            "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
-            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN")
-          echo "post-cleanup object fetch status=$GONE (expect 400/404)"
-          case "$GONE" in
-            400|404) echo "object cleaned via supported API — no orphan left" ;;
-            *) echo "::error::OBJECT STILL PRESENT AFTER DELETE ($GONE) — recoverable probe object $OBJPATH left for operator; do NOT SQL-delete its row"; exit 1 ;;
-          esac
+          set -euo pipefail
+          # anon key from the committed web env; passed to the node process via a
+          # per-command env var (not argv). Credentials come from job env.PROBE_*.
+          ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
+          PROBE_ANON_KEY="$ANON" node scripts/prod-smoke/smoke_chain.mjs
+
+      # HONEST RESIDUE ACCOUNTING — runs even if the chain above failed
+      # (if: always()). It runs the SAME control-flow module the failure-injection
+      # harness exercises (scripts/prod-smoke/residue_flow.mjs) so behaviour is
+      # unit-tested, not hand-copied shell. That module implements the three cases
+      # (A: no create → clean; B: create attempted, no assetId → all UNKNOWN, fail
+      # closed; C: assetId known → OBSERVE each artifact) and the honest
+      # observation truth table: only a documented, unambiguous missing result
+      # (Storage 404, a valid empty PostgREST array) yields `false`; a 400 / 401 /
+      # 403 / 5xx / network error / malformed body yields "unknown", never false.
+      # This step is NOT self-cleaning: the `takes` bucket has NO DELETE policy
+      # (proven by scripts/ci/check_takes_delete_policy.mjs), so the probe user
+      # cannot delete its own take object — the DELETE is best-effort and its
+      # result is OBSERVED, not assumed. The media_assets row, the
+      # generations.source_asset_id pointer, and the service-side
+      # validate_source job/event state are also NOT client-removable. Any
+      # PRESENT-or-UNKNOWN artifact FAILS CLOSED with a RECOVERABLE-ARTIFACT
+      # REPORT → sanctioned operator retention. (Never SQL-delete storage.objects.)
+      - name: Account for probe residue and fail closed (always)
+        id: residue
+        if: always()
+        run: node scripts/prod-smoke/residue_flow.mjs
+
+      # TWO-STAGE PROTOCOL VERDICT (always). This workflow is EXPECTED to end
+      # RED: the residue step fails closed because validation_job_events is never
+      # client-observable, so an attempted-create smoke can never be "clean". A
+      # red conclusion is therefore NOT a failed functional smoke — the pass
+      # signal is PROBE_FUNCTIONAL_CHAIN=pass emitted by Stage 1. See
+      # docs/prod-source-smoke-protocol.md for the full operational protocol:
+      #   Stage 1 functional-chain evidence (this marker = pass)
+      #   → Stage 2 recoverable-artifact report (intentionally nonzero)
+      #   → sanctioned operator retention cleanup
+      #   → supported zero-delta verification (A2 query).
+      # Verdict derived from the ACTUAL step outcomes (not an unconditional
+      # print) + the persisted recovery state. protocol_verdict.mjs fails closed:
+      # an attempted-create run whose residue step did NOT fail is a protocol
+      # violation and exits nonzero, so the workflow can never conclude green
+      # after a create while its summary claims otherwise.
+      - name: Two-stage protocol verdict (always)
+        if: always()
+        env:
+          CHAIN_OUTCOME: ${{ steps.chain.outcome }}
+          RESIDUE_OUTCOME: ${{ steps.residue.outcome }}
+        run: node scripts/prod-smoke/protocol_verdict.mjs

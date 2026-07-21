@@ -107,6 +107,32 @@ jobs:
             exit 1
           fi
           echo "clean: worker registry has no autoedit handler"
+      - name: Single deployment path (no second Fly/PaaS manifest; no retired job-type override)
+        run: |
+          node scripts/ci/check_single_deploy_path.mjs --selftest
+          node scripts/ci/check_single_deploy_path.mjs
+      - name: VPS sign-off assertion logic (offline selftest — bad states must fail)
+        run: bash worker/scripts/vps_signoff_assert.sh --selftest
+      - name: VPS-diag authority (no caller SHA override; pinned strict host key)
+        run: |
+          node scripts/ci/check_vps_diag_authority.mjs --selftest
+          node scripts/ci/check_vps_diag_authority.mjs
+      - name: Canonical docs free of stale legacy claims (Fly/Revideo/autoedit/3-type registry)
+        run: |
+          node scripts/ci/check_docs_no_stale_claims.mjs --selftest
+          node scripts/ci/check_docs_no_stale_claims.mjs
+      - name: Probe-residue classifier (partial/complete cleanup cannot silently pass)
+        run: node scripts/prod-smoke/probe_residue_report.mjs --selftest
+      - name: Takes storage-policy inventory (no client DELETE-capable policy; migration-derived)
+        run: |
+          node scripts/ci/check_takes_delete_policy.mjs --selftest
+          node scripts/ci/check_takes_delete_policy.mjs
+      - name: Prod-smoke residue failure-injection harness (real flow + observation truth table)
+        run: node scripts/prod-smoke/residue_harness.mjs --selftest
+      - name: Product-truth (no shipped-editor claims while the production editor is disabled)
+        run: |
+          node scripts/ci/check_product_truth.mjs --selftest
+          node scripts/ci/check_product_truth.mjs
 
   # Offline hostile suite for the production gate-probe predicates
   # (scripts/ci/gate_probe_assert.mjs — the exact module verify-prod-gate.yml
