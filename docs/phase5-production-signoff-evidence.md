@@ -1,6 +1,6 @@
 # Editor v2 Phase 5 — Production Sign-off Evidence
 
-**Branch:** `hardening/phase5-production-signoff` · **Base:** `main` @ `f6e4cb7d058f6d16e26e820ee1ba216710a9d1c0` (the Phase 5 merge, #191)
+**Branch:** `hardening/phase5-production-signoff` · **Integrated base:** `main` @ `79e0362c5afeea5a42a3853d676587347de12add` (the audited PR #197 bootstrap merge; merged into this branch). Historical original base was the Phase 5 merge `f6e4cb7…` (#191). **Current candidate head:** the latest commit on this branch (see PR #196 head).
 **Status:** DRAFT — does NOT merge, deploy, enable the editor, or start Phase 6.
 **Standing holds (unchanged):** editor start disabled (`EDITOR_V2_START_ENABLED` unset in prod), `autoFillerRemoval=false`, Phase 6 unauthorized, production otherwise untouched.
 
@@ -81,19 +81,27 @@ select
 ```
 Every column must be **identical** before and after the bracketed probe (global editor rows stay 0; the probe identity's assets, generation pointers, edits-bucket objects, credit balance, and credit-event count unchanged). Columns are the verified live schema: `generations.user_id`, `profiles.credits`, `credit_events(user_id)`, `media_assets.owner_id`, `storage.objects(owner_id text, path_tokens)`.
 
-> **Operator sequence to CLOSE A1 + A2 (none of it executable from this session — needs secrets + human approval). ORDER MATTERS — do the secrets BEFORE the merge:**
->
-> ⚠️ **This PR changes `worker/deploy-vps.sh` and `deploy-worker.yml`, so merging it to `main` TRIGGERS the `deploy-worker` workflow (it deploys the worker to the VPS).** Because `deploy-worker` now requires a pinned host key, it will **fail closed** if `VPS_KNOWN_HOSTS` is not already set. So configure that secret first.
->
-> 1. **BEFORE merge — add the `VPS_KNOWN_HOSTS` repository secret** (one-time; see `DEPLOY.md → Pinning the VPS host key`) and **verify it** by dispatching the read-only `vps-diag` from this branch — it must reach the VPS under strict host verification and pass. (`vps-diag` and `deploy-worker` fail closed until this exists — by design.)
-> 2. **BEFORE merge — configure protected `Environments → production` secrets**: `PROD_PROBE_EMAIL`, `PROD_PROBE_PASSWORD`, `SUPABASE_ACCESS_TOKEN`.
-> 3. **Capture BEFORE counts** with the query above for the probe identity.
-> 4. **Merge** this hardening branch to `main` (this fires `deploy-worker` → VPS deploy; it now succeeds because step 1's secret is present).
-> 5. **Dispatch `Verify production editor gate` from `main`** and approve the environment gate → unauth `401`, authenticated `503 editor_not_available`, `EDITOR_V2_START_ENABLED` absent.
-> 6. **Capture AFTER counts** with the same query.
-> 7. **Prove every delta is zero** (global editor rows stay 0; probe-scoped counts + credit balance unchanged).
->
-> Only after step 7 may A1/A2 (and the reopened sign-off) be called complete. **`prod-source-smoke` is a separate, mutating workflow — it creates a probe `media_assets` row + generation pointer + Storage object and its in-workflow cleanup does NOT fully remove them (it reports residue and fails closed for sanctioned operator retention). It must NOT be run as part of this fail-closed check — only under its own separate authorization.**
+> **HISTORICAL — COMPLETED (record of the executed closure, past tense).** The
+> A1/A2 closure was performed on 2026-07-21, in a variant of the originally
+> planned order: the hardened `verify-prod-gate` reached `main` first through
+> the audited **PR #197 bootstrap split** (merged as `main@79e0362`, without
+> merging this PR), the operator then configured `VPS_KNOWN_HOSTS`, the
+> production-environment secrets (`PROD_PROBE_EMAIL`, `PROD_PROBE_PASSWORD`,
+> `SUPABASE_ACCESS_TOKEN`), the `gate-probe-editor-v2@twinai.internal` identity,
+> and required-reviewer environment protection. BEFORE counts were captured
+> (2026-07-21T12:11:19Z), `Verify production editor gate` was dispatched from
+> `main` and human-approved (run **`29829091202`**: exact `401`, login `200`,
+> exact `503` + top-level `code === "editor_not_available"`,
+> `EDITOR_V2_START_ENABLED` absent), AFTER counts were captured (12:30:25Z),
+> and every delta was proven zero (with the expected Auth login side effect
+> reported separately). A prior dispatch without secrets (run
+> **`29827536668`**) failed closed, proving the mandatory leg cannot be
+> skipped. Full record: the **"A1/A2 CLOSED"** chapter below.
+
+**Current cautions (still in force):**
+
+- ⚠️ **`prod-source-smoke` is a separate, mutating workflow** — it creates a probe `media_assets` row + generation pointer + Storage object and its in-workflow cleanup does NOT fully remove them (it reports residue and fails closed for sanctioned operator retention). It must NOT be run as part of any fail-closed check — only under its own separate authorization (see `docs/prod-source-smoke-protocol.md`).
+- ⚠️ **Merging this PR to `main` still TRIGGERS `deploy-worker`** (it touches `worker/**`) and a production Vercel deploy of the changed web copy — both must be explicitly owned by the merge decision.
 
 ## A3 — Migration 0085 production evidence *(captured, complete)*
 

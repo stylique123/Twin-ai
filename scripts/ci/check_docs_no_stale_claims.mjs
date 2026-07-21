@@ -70,6 +70,31 @@ const CONTRADICTIONS = [
     open: /Task #116[^\n]{0,80}\bPENDING\b|until[^.\n]{0,80}benchmark \(#116\) is recorded/i,
     why: 'task #116 recorded CLOSED but a #116-pending claim remains',
   },
+  // R-audit semantic stale cases (exact current text):
+  {
+    file: 'docs/phase5-production-signoff-evidence.md',
+    closed: /# A1\/A2 CLOSED/,
+    open: /Operator sequence to CLOSE A1 \+ A2|Only after step 7 may A1\/A2/,
+    why: 'A1/A2 recorded CLOSED but the current-tense operator closure sequence ("Operator sequence to CLOSE A1 + A2" / "Only after step 7") remains',
+  },
+  {
+    file: 'docs/phase5-production-signoff-evidence.md',
+    closed: /# A1\/A2 CLOSED/,
+    open: /\*\*Base:\*\* `main` @ `f6e4cb7/,
+    why: 'A1/A2 recorded CLOSED but the current metadata still claims base main@f6e4cb7 (integrated base is main@79e0362)',
+  },
+  {
+    file: 'docs/editor-v2-phase5-speech-eval.md',
+    closed: /1dd9f693d3c361d7fe1da13482e30b7bb693132e/,
+    open: /cc1a447/,
+    why: 'authoritative final head 1dd9f693… recorded but a stale cc1a447 gate condition remains',
+  },
+  {
+    file: 'docs/phase5-production-signoff-evidence.md',
+    closed: /GATE PASSED \(rc=0\)/,
+    open: /benchmark[^\n]{0,80}\bPENDING\b/i,
+    why: 'benchmark PASS recorded but a benchmark-PENDING claim remains',
+  },
 ]
 
 // PURE decision over a { path: content|null } map (null = missing/unreadable).
@@ -129,6 +154,13 @@ function selftest() {
     ['benchmark CLOSED + PENDING contradiction fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nAuthoritative VPS benchmark — CLOSED\nbenchmark: PENDING'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
     ['speech-eval #116 CLOSED + PENDING contradiction fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nAuthoritative VPS benchmark — CLOSED'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 (gate): CLOSED.\nTask #116 (gate): PENDING.'; return f })(), false],
     ['evidence CLOSED only (no open claims) passes', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nAuthoritative VPS benchmark — CLOSED\npre-beta task #115 remains MANDATORY; filler removal #194/#195 open.'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED. Task #115 remains mandatory before beta.'; return f })(), true],
+    // R-audit semantic stale cases:
+    ['CLOSED + current "Operator sequence to CLOSE A1 + A2" fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\n> **Operator sequence to CLOSE A1 + A2 (do the secrets BEFORE the merge):**'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
+    ['CLOSED + "Only after step 7 may A1/A2" fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nOnly after step 7 may A1/A2 (and the reopened sign-off) be called complete.'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
+    ['CLOSED + stale base metadata f6e4cb7 fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '**Base:** `main` @ `f6e4cb7d058f6d16e26e820ee1ba216710a9d1c0`\n# A1/A2 CLOSED'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
+    ['authoritative 1dd9f69 head + stale cc1a447 gate condition fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nAuthoritative VPS benchmark — CLOSED'; f['docs/editor-v2-phase5-speech-eval.md'] = 'final head 1dd9f693d3c361d7fe1da13482e30b7bb693132e recorded.\ngate only if the final cc1a447 Phase 1-5 rerun is green'; return f })(), false],
+    ['benchmark PASS + PENDING fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nRESULT: CAPACITY + MODEL IDENTITY GATE PASSED (rc=0)\nthe benchmark is PENDING'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
+    ['coherent fully-closed fixture passes', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '**Integrated base:** `main` @ `79e0362c5afeea5a42a3853d676587347de12add`\n# A1/A2 CLOSED\nAuthoritative VPS benchmark — CLOSED\nRESULT: CAPACITY + MODEL IDENTITY GATE PASSED (rc=0)\nHISTORICAL — COMPLETED record in past tense.\npre-beta task #115 remains MANDATORY; filler removal #194/#195 open.'; f['docs/editor-v2-phase5-speech-eval.md'] = 'authoritative final PR #191 head 1dd9f693d3c361d7fe1da13482e30b7bb693132e; runs 29777273332 / 29777272833 / 29777271613 green.\nTask #116 gate: CLOSED. Task #115 remains mandatory before beta.'; return f })(), true],
     ['evidence OPEN only (never closed) passes', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '## A2 — OPEN (operator-run; not complete)'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: PENDING.'; return f })(), true],
     ['missing evidence doc fails (consistency cannot skip)', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = null; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
   ]

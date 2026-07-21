@@ -4,8 +4,10 @@ Two independent gates:
 
 1. **Engineering gate (this doc)** — a permissively-licensed PUBLIC human-speech
    corpus proves the pipeline works on real (not synthetic) speech. Closes the
-   Phase 5 engineering gate only if (a) the final `cc1a447` Phase 1–5 rerun is
-   green AND (b) the baseline meets the **predefined thresholds below**.
+   Phase 5 engineering gate only if (a) the Phase 1–5 rerun on the authoritative
+   final PR #191 head `1dd9f693d3c361d7fe1da13482e30b7bb693132e` is green —
+   satisfied by successful runs **29777273332 / 29777272833 / 29777271613** —
+   AND (b) the baseline meets the **predefined thresholds below**.
 2. **Pre-beta gate (mandatory, separate)** — public-corpus success is NOT proof
    of target-user quality. Before beta, ~12 short, **privately consented**
    recordings from representative TwinAI users must pass the same harness.
