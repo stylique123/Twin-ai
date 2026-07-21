@@ -629,7 +629,7 @@ function HowItWorksSection() {
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-teal/[0.03] to-transparent" />
       <div className="mx-auto max-w-content px-5">
         <Reveal className="text-center">
-          <p className="eyebrow">One link in · a posted video out</p>
+          <p className="eyebrow">One link in · your script &amp; shot list out</p>
           <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
             The entire workflow, in one place.
           </h2>
@@ -882,7 +882,7 @@ function ValueStack() {
       <Reveal className="text-center">
         <p className="eyebrow">What one link gets you</p>
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
-          One link in. A finished, on-brand video out, <span className="gradient-text">end to end.</span>
+          One link in. Your script, shot list &amp; teleprompter out, <span className="gradient-text">ready to record.</span>
         </h2>
         <p className="mx-auto mt-4 max-w-lg text-sand">Four jobs you'd normally hire a team for — strategist, writer, producer, copywriter — handled from a single paste, in minutes. The AI editor is being rebuilt — coming soon.</p>
       </Reveal>
@@ -1410,7 +1410,7 @@ function Footer() {
             <li><a href="/#pricing" className="hover:text-cream transition-colors">Agency plan</a></li>
           </ul>
           <p className="mt-6 text-xs leading-relaxed text-stone">
-            Reference in.<br />Finished video out.
+            Reference in.<br />Script &amp; shot list out.
           </p>
         </div>
       </div>

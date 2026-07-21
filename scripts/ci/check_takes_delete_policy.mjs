@@ -93,22 +93,33 @@ export function buildTakesInventory(sqlBySource) {
       }
     }
   }
-  const takesPolicies = [...live.values()].filter((p) => p.table === 'storage.objects' && p.targetsTakes)
-  const deleteCapable = takesPolicies.filter((p) => DELETE_CAPABLE.has(p.command))
+  const storageObjPolicies = [...live.values()].filter((p) => p.table === 'storage.objects')
+  const takesPolicies = storageObjPolicies.filter((p) => p.targetsTakes) // reporting only
+  // R8-4: the SOUND gate. A predicate-text/name match for "takes" is NOT
+  // authoritative — an indirect predicate (e.g. a SECURITY DEFINER helper like
+  // `for delete using (public.can_delete_take(name, auth.uid()))`) references no
+  // literal 'takes' yet can still delete a takes object. Since the repo has NO
+  // DELETE/ALL policy on storage.objects at all, the gate requires ZERO
+  // DELETE-capable policies on storage.objects, regardless of how the predicate
+  // is written. This cannot be evaded by hiding the bucket behind a function.
+  const deleteCapableOnStorage = storageObjPolicies.filter((p) => DELETE_CAPABLE.has(p.command))
   const has = (cmd) => takesPolicies.some((p) => p.command === cmd)
   return {
+    storageObjPolicies,
     takesPolicies,
-    deleteCapable,
+    deleteCapableOnStorage,
     insertPresent: has('insert') || has('all'),
     selectPresent: has('select') || has('all'),
-    deletePolicyPresent: deleteCapable.length > 0,
+    deletePolicyPresent: deleteCapableOnStorage.length > 0,
   }
 }
 
 export function evaluate(sqlBySource) {
   const inv = buildTakesInventory(sqlBySource)
   const reasons = []
-  if (inv.deletePolicyPresent) for (const p of inv.deleteCapable) reasons.push(`DELETE-capable takes policy present: "${p.name}" on ${p.table} (for ${p.command})`)
+  // Sound gate: ANY DELETE/ALL policy on storage.objects fails (can't prove an
+  // arbitrary/indirect predicate excludes the takes bucket).
+  if (inv.deletePolicyPresent) for (const p of inv.deleteCapableOnStorage) reasons.push(`DELETE-capable policy on storage.objects present: "${p.name}" (for ${p.command}) — no client DELETE/ALL policy on storage.objects is permitted`)
   if (!inv.insertPresent) reasons.push('expected takes INSERT policy is missing')
   if (!inv.selectPresent) reasons.push('expected takes SELECT policy is missing')
   return { ok: reasons.length === 0, reasons, inventory: inv }
@@ -131,7 +142,14 @@ function selftest() {
     ['alt-format multiline DELETE → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "weird"\n  on storage.objects\n  as permissive\n  for   delete\n  to authenticated\n  using ( bucket_id = 'takes' );` }, false],
     ['FOR omitted defaults ALL → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "implicit all takes" on storage.objects to authenticated using (bucket_id = 'takes');` }, false],
     ['created-then-dropped DELETE (same table) → ok', { a: INSERT + '\n' + SELECT + '\n' + DELETE_TAKES, b: `drop policy if exists "twinai takes delete" on storage.objects;` }, true],
-    ['delete on another bucket → ok', { a: INSERT + '\n' + SELECT + `\ncreate policy "edits delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');` }, true],
+    // R8-4: the sound gate rejects ANY DELETE/ALL on storage.objects — a
+    // predicate for another bucket cannot be authoritatively proven to exclude
+    // takes, so it must fail (repo has none).
+    ['delete on another bucket (storage.objects) → fail (sound gate)', { a: INSERT + '\n' + SELECT + `\ncreate policy "edits delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');` }, false],
+    // R8-4 indirect-function predicate — no literal 'takes', still a DELETE on
+    // storage.objects → must FAIL (previously passed via text heuristic).
+    ['indirect-function DELETE predicate → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "deleter" on storage.objects for delete to authenticated using (public.can_delete_take(name, auth.uid()));` }, false],
+    ['delete on a NON-storage table → ok (not storage.objects)', { a: INSERT + '\n' + SELECT + `\ncreate policy "gen delete" on public.generations for delete to authenticated using (true);` }, true],
     ['missing insert → fail', { a: SELECT }, false],
     // R7-1 adversarial fixtures — all THREE must FAIL (previously passed):
     ['storage DELETE + same-name DROP on ANOTHER table → fail', { a: DELETE_TAKES + '\n' + INSERT + '\n' + SELECT, b: `drop policy if exists "twinai takes delete" on public.generations;` }, false],
@@ -155,10 +173,10 @@ if (isMain) {
   if (process.argv.includes('--selftest')) selftest()
   else {
     const { ok, reasons, inventory } = evaluate(readMigrations())
-    console.log('takes storage policy inventory:', JSON.stringify(inventory.takesPolicies))
-    console.log(`insert=${inventory.insertPresent} select=${inventory.selectPresent} deleteCapable=${inventory.deletePolicyPresent}`)
+    console.log('storage.objects policies:', JSON.stringify(inventory.storageObjPolicies.map((p) => ({ name: p.name, command: p.command }))))
+    console.log(`insert=${inventory.insertPresent} select=${inventory.selectPresent} deleteCapableOnStorageObjects=${inventory.deleteCapableOnStorage.length}`)
     console.log('NOTE: migration-derived; authoritative posture = live pg_policies (scripts/prod-smoke/verify_takes_policy_live.sql)')
     if (!ok) { for (const r of reasons) console.error(`::error::${r}`); process.exit(1) }
-    console.log('takes-delete-policy guard: OK (no client DELETE-capable takes policy; insert+select present)')
+    console.log('takes-delete-policy guard: OK (ZERO DELETE/ALL policy on storage.objects; insert+select present)')
   }
 }

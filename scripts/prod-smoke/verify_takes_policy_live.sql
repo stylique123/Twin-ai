@@ -1,40 +1,39 @@
--- R7-1: AUTHORITATIVE live verification of the `takes` storage-policy posture.
+-- R7-1 / hardened R8-4: AUTHORITATIVE live verification of the storage-object
+-- delete posture. This is the authoritative check (the migration-derived guard
+-- scripts/ci/check_takes_delete_policy.mjs is supporting evidence only). Run it
+-- read-only as part of the sign-off sequence BEFORE claiming the posture.
 --
--- The migration-derived guard (scripts/ci/check_takes_delete_policy.mjs) is
--- SUPPORTING evidence only. This query is the AUTHORITATIVE check of the real
--- production posture and MUST be run (read-only) as part of the sign-off
--- sequence — BEFORE claiming that a client cannot delete its own `takes` object.
+-- Why this shape: a predicate-text / policy-name match for the literal 'takes'
+-- is NOT authoritative — an indirect predicate such as
+--   create policy "deleter" on storage.objects
+--     for delete using (public.can_delete_take(name, auth.uid()));
+-- references no literal 'takes' yet can still delete a takes object. The repo has
+-- NO DELETE/ALL policy on storage.objects at all, so the authoritative gate is
+-- simply: ZERO live DELETE-or-ALL policies on storage.objects. We also enumerate
+-- every policy's command, roles, and predicates as evidence.
 --
--- Run it against production (read-only) with a service-role/DB connection, e.g.:
---   supabase (MCP execute_sql) or psql "$SUPABASE_DB_URL" -f this-file.sql
+-- Run (read-only), e.g. supabase MCP execute_sql or:
+--   psql "$SUPABASE_DB_URL" -f scripts/prod-smoke/verify_takes_policy_live.sql
 --
--- PASS criteria (all three):
---   1. delete_capable_takes_policies = 0   (no FOR DELETE and no FOR ALL policy
---      on storage.objects whose predicate references the `takes` bucket)
---   2. has_insert = true                   (owner INSERT policy present)
---   3. has_select = true                   (owner SELECT policy present)
--- Any nonzero delete_capable count fails the posture and BLOCKS sign-off.
+-- PASS criteria (all):
+--   1. delete_or_all_policies_on_storage_objects = 0
+--   2. has_insert = true
+--   3. has_select = true
+-- Any nonzero delete/all count fails the posture and BLOCKS sign-off.
 
-with takes_policies as (
-  select
-    policyname,
-    cmd,                                   -- SELECT | INSERT | UPDATE | DELETE | ALL
-    coalesce(qual, '') || ' ' || coalesce(with_check, '') as predicate
-  from pg_policies
-  where schemaname = 'storage'
-    and tablename = 'objects'
-    and (
-      coalesce(qual, '')       ilike '%''takes''%'
-      or coalesce(with_check, '') ilike '%''takes''%'
-      or policyname ilike '%takes%'
-    )
-)
 select
-  count(*) filter (where cmd in ('DELETE', 'ALL')) as delete_capable_takes_policies,
-  bool_or(cmd = 'INSERT' or cmd = 'ALL')           as has_insert,
-  bool_or(cmd = 'SELECT' or cmd = 'ALL')           as has_select,
-  coalesce(
-    jsonb_agg(jsonb_build_object('policy', policyname, 'cmd', cmd) order by policyname),
-    '[]'::jsonb
-  )                                                as all_takes_policies
-from takes_policies;
+  count(*) filter (where cmd in ('DELETE', 'ALL'))               as delete_or_all_policies_on_storage_objects,
+  bool_or(cmd in ('INSERT', 'ALL'))                              as has_insert,
+  bool_or(cmd in ('SELECT', 'ALL'))                              as has_select,
+  -- Evidence: every DELETE/ALL policy with its roles + predicates (should be []).
+  coalesce(jsonb_agg(
+    jsonb_build_object('policy', policyname, 'cmd', cmd, 'roles', roles,
+                       'qual', qual, 'with_check', with_check)
+    order by policyname
+  ) filter (where cmd in ('DELETE', 'ALL')), '[]'::jsonb)        as delete_or_all_detail,
+  -- Evidence: full policy roster on storage.objects.
+  coalesce(jsonb_agg(
+    jsonb_build_object('policy', policyname, 'cmd', cmd) order by policyname
+  ), '[]'::jsonb)                                                as all_storage_objects_policies
+from pg_policies
+where schemaname = 'storage' and tablename = 'objects';

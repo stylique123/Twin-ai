@@ -19,6 +19,7 @@ import { readdirSync, readFileSync } from 'node:fs'
 import { classify } from './probe_residue_report.mjs'
 import { runResidueAccounting, runResidueMain, observeStorageObject, observeRow, observePointer } from './residue_flow.mjs'
 import { runSmokeChain } from './smoke_chain.mjs'
+import { evaluateProtocol } from './protocol_verdict.mjs'
 import { evaluate as evalTakesPolicy, buildTakesInventory } from '../ci/check_takes_delete_policy.mjs'
 
 const ASSET = 'aaaaaaaa-1111-2222-3333-444444444444'
@@ -146,6 +147,34 @@ async function runSmoke(mutate) {
   ok(b.res.exitCode === 1 && b.res.stage === 'metadata', 'metadata-merge mismatch ⇒ exit 1 at stage metadata')
   const c = await runSmoke((s) => { s.ptr = { status: 200, body: JSON.stringify([{ source_asset_id: 'other' }]) } })
   ok(c.res.exitCode === 1 && c.res.stage === 'pointer', 'pointer not linked ⇒ exit 1 at stage pointer')
+}
+
+// R8-1: non-2xx responses with valid-LOOKING bodies must NOT advance the chain.
+{
+  const login500 = await runSmoke((s) => { s.login = { status: 500, body: JSON.stringify({ access_token: 'tok' }) } })
+  ok(login500.res.exitCode === 1 && login500.res.stage === 'login', 'login HTTP 500 (valid body) ⇒ exit 1 at login (body not consumed)')
+  const create500 = await runSmoke((s) => { s.create = { status: 500, body: JSON.stringify({ assetId: ASSET, signedUrl: 'https://signed/put' }) } })
+  ok(create500.res.exitCode === 1 && create500.res.stage === 'create', 'create HTTP 500 (valid body) ⇒ exit 1 at create (body not consumed)')
+  ok(!create500.store.has('PROBE_ASSET'), 'create HTTP 500 ⇒ no asset persisted')
+  const ready500 = await runSmoke((s) => { s.ready = { status: 500, body: JSON.stringify([READY_ROW]) } })
+  ok(ready500.res.exitCode === 1 && ready500.res.stage === 'ready', 'ready HTTP 500 (valid ready row) ⇒ exit 1 at ready (body not consumed)')
+  const ptr500 = await runSmoke((s) => { s.ptr = { status: 500, body: JSON.stringify([{ source_asset_id: ASSET }]) } })
+  ok(ptr500.res.exitCode === 1 && ptr500.res.stage === 'pointer', 'pointer HTTP 500 (expected pointer) ⇒ exit 1 at pointer (body not consumed)')
+}
+
+// R8-2: two-stage protocol verdict decision (testable module).
+{
+  const p = (o) => evaluateProtocol(o)
+  const expected = p({ chainOutcome: 'success', residueOutcome: 'failure', functionalChain: 'pass', createAttempted: '1' })
+  ok(expected.exitCode === 0 && expected.functionalEvidence === true && expected.verdict === 'functional-pass-residue-red', 'protocol: attempted + chain pass + residue red ⇒ exit 0, functional evidence accepted')
+  const violation = p({ chainOutcome: 'success', residueOutcome: 'success', functionalChain: 'pass', createAttempted: '1' })
+  ok(violation.exitCode === 1 && violation.verdict === 'protocol-violation', 'protocol: attempted-create run with GREEN residue ⇒ protocol violation exit 1 (unexpected-residue-success)')
+  const disagree = p({ chainOutcome: 'success', residueOutcome: 'failure', functionalChain: 'not-run', createAttempted: '1' })
+  ok(disagree.functionalEvidence === false, 'protocol: chain green but PROBE_FUNCTIONAL_CHAIN≠pass ⇒ NOT functional evidence (summary/outcome disagreement)')
+  const ff = p({ chainOutcome: 'failure', residueOutcome: 'failure', functionalChain: 'fail:create', createAttempted: '1' })
+  ok(ff.verdict === 'functional-failure' && !ff.functionalEvidence, 'protocol: functional failure distinguished from expected residue red')
+  ok(p({ chainOutcome: 'failure', residueOutcome: 'success', functionalChain: 'fail:login', createAttempted: '0' }).exitCode === 0, 'protocol: no-create + residue clean ⇒ exit 0')
+  ok(p({ chainOutcome: 'failure', residueOutcome: 'failure', functionalChain: 'fail:login', createAttempted: '0' }).exitCode === 1, 'protocol: no-create + unexpected residue failure ⇒ exit 1')
 }
 
 // ── Section C: residue classifier / reporter / exit boundaries ───────────────

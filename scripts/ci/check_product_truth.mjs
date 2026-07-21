@@ -19,10 +19,13 @@
 //
 //   node scripts/ci/check_product_truth.mjs            # PR guard
 //   node scripts/ci/check_product_truth.mjs --selftest # unit-test the logic
-import { readdirSync, readFileSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const ROOT = 'apps/web/src'
+// R8-3: audit the RENDERED user story — scan both the web source AND the shared
+// capability copy (packages/shared/src) that the web app imports (e.g. BRAND),
+// so an editor-output claim living in an imported constant is caught too.
+const ROOTS = ['apps/web/src', 'packages/shared/src']
 
 // Present-tense editor-OUTPUT claims (matched against JSX-NORMALIZED text).
 const FORBIDDEN = [
@@ -43,6 +46,13 @@ const FORBIDDEN = [
   { re: /\beditor\b[^.\n]{0,80}\ball\s+done\b/i, why: '"editor … all done" — the editor is listed among jobs claimed as shipped/done' },
   { re: /all\s+done\s+from\s+a\s+single\s+paste/i, why: '"all done from a single paste" — full pipeline (incl. editor) claimed as shipped' },
   { re: /\bedit it\b[\s,]*\bpost it\b/i, why: '"edit it, post it" — present-tense editing claimed as shipped' },
+  // R8-3 rendered "finished video out" family (incl. imported BRAND copy):
+  { re: /\bfinished\b[,\s][^.\n]{0,25}\bvideo out\b/i, why: '"finished … video out" — finished editor output claimed as shipped' },
+  { re: /\bposted video out\b/i, why: '"posted video out" — finished posted video claimed as shipped' },
+  { re: /\bget a finished video\b/i, why: '"get a finished video" — finished editor output claimed as shipped' },
+  { re: /\brecord\s*\+\s*edit\b/i, why: '"record + edit" — in-app editing claimed as shipped' },
+  { re: /whole loop in one window/i, why: '"the whole loop in one window" — full edit loop claimed as shipped' },
+  { re: /no watermark on your exports/i, why: '"no watermark on your exports" — editor export claimed as shipped' },
 ]
 
 // Structural completion-marker check (runs on RAW source, not normalized).
@@ -114,6 +124,18 @@ function selftest() {
     ['"Paste it, edit it, post it" fails', { 'a.tsx': "Paste it, edit it, post it — tonight, from one app." }, false],
     ['corrected four-jobs copy (editor coming soon) passes', { 'a.tsx': "Four jobs you'd normally hire a team for — strategist, writer, producer, copywriter — handled from a single paste, in minutes. The AI editor is being rebuilt — coming soon." }, true],
     ['corrected paste/script/record copy passes', { 'a.tsx': "Paste it, script it, record it — tonight, from one app. AI editing is coming soon." }, true],
+    // R8-3 exact imported-BRAND + web claims must fail:
+    ['brand oneLiner "finished, on-brand video out" fails', { 'brand.ts': "oneLiner: 'One link in. A finished, on-brand video out.'" }, false],
+    ['brand subLine "whole loop in one window" fails', { 'brand.ts': "subLine: 'Script, teleprompter and captions — the whole loop in one window.'" }, false],
+    ['"One link in · a posted video out" fails', { 'a.tsx': 'One link in · a posted video out' }, false],
+    ['"Reference in. Finished video out." fails', { 'a.tsx': 'Reference in.<br />Finished video out.' }, false],
+    ['Auth "Get a finished video" fails', { 'a.tsx': 'Paste a reference. Get a finished video in your voice.' }, false],
+    ['Auth "record + edit in one place" fails', { 'a.tsx': "'Script in your voice, record + edit in one place'" }, false],
+    ['Auth "No watermark on your exports" fails', { 'a.tsx': "'No watermark on your exports'" }, false],
+    // corrected versions pass:
+    ['corrected brand oneLiner passes', { 'brand.ts': "oneLiner: 'One link in. Your script, hooks and shot list out — ready to record. AI editing coming soon.'" }, true],
+    ['corrected "script & shot list out" passes', { 'a.tsx': 'Reference in. Script & shot list out.' }, true],
+    ['corrected "record in one place" passes', { 'a.tsx': "'Script in your voice, record in one place'" }, true],
     // marker near a single non-editor status is fine (clipboard/post status):
     ['Check near "caption copied · ready to post" passes', { 'a.tsx': '<Check/> Caption copied · ready to post; Add to your niche gallery; Log what you ship' }, true],
   ]
@@ -142,9 +164,9 @@ if (isMain) {
   if (process.argv.includes('--selftest')) selftest()
   else {
     let files = {}
-    try { files = walk(ROOT) } catch (e) { console.error(`::error::cannot scan ${ROOT}: ${e.message}`); process.exit(1) }
+    try { for (const root of ROOTS) if (existsSync(root)) walk(root, files) } catch (e) { console.error(`::error::cannot scan roots: ${e.message}`); process.exit(1) }
     const { ok, reasons } = evaluate(files)
-    console.log(`product-truth guard: ${ok ? 'OK' : 'FAIL'} (scanned ${Object.keys(files).length} files under ${ROOT})`)
+    console.log(`product-truth guard: ${ok ? 'OK' : 'FAIL'} (scanned ${Object.keys(files).length} files under ${ROOTS.join(', ')})`)
     if (!ok) { for (const r of reasons) console.error(`::error::${r}`); process.exit(1) }
   }
 }

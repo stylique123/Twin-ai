@@ -1,11 +1,11 @@
 // Brand & GTM constants, single source of truth, mirrors the cheat sheet.
 
 export const BRAND = {
-  oneLiner: 'One link in. A finished, on-brand video out.',
-  subLine: 'Script, teleprompter and captions — the whole loop in one window.',
+  oneLiner: 'One link in. Your script, hooks and shot list out — ready to record. AI editing coming soon.',
+  subLine: 'Script, teleprompter and recording — in one window. AI captions and editing coming soon.',
   category: 'Reference-based creation, not a clipper.',
   positioning:
-    'For creators, founders & agencies who know a reel works but can’t make their own fast enough, TwinAI turns any proven reference into a personalized hook, script, shot list, edit and schedule. Others clip your footage; we make the references you admire shootable in your voice.',
+    'For creators, founders & agencies who know a reel works but can’t make their own fast enough, TwinAI turns any proven reference into a personalized hook, script, shot list and schedule — ready to record in your voice (AI editing coming soon). Others clip your footage; we make the references you admire shootable in your voice.',
   // Voice guardrails from the cheat sheet
   use: ['remix', 'reference', 'blueprint', 'shootable', 'your voice', 'momentum'],
   avoid: ['copy / steal', 'guaranteed viral', 'synergy', '10x overnight'],

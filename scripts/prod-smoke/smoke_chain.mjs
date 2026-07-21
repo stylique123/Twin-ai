@@ -24,6 +24,10 @@ async function readJson(res) {
   return { status: res.status, text, json: safeJson(text) }
 }
 function safeJson(t) { try { return JSON.parse(t) } catch { return null } }
+// R8-1: a response body is consumed ONLY when the HTTP status is a success. A
+// non-2xx (e.g. 500) response whose body merely *looks* valid must never advance
+// the functional chain. GET reads expect 200; create/login accept any 2xx.
+function ok2xx(status) { return status >= 200 && status < 300 }
 
 export function verifyReadyRow(row) {
   if (!row || typeof row !== 'object') return false
@@ -61,7 +65,8 @@ export async function runSmokeChain(cfg, deps = {}) {
       method: 'POST', headers: { apikey: anon, 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: cfg.PROBE_EMAIL, password: cfg.PROBE_PASSWORD }),
     }))
-    token = (r.json && r.json.access_token) || ''
+    token = (ok2xx(r.status) && r.json && r.json.access_token) || ''
+    if (!ok2xx(r.status)) log(`sign-in HTTP ${r.status} — refusing to consume body`)
   } catch { token = '' }
   if (!token) { log('probe sign-in failed (no token; body suppressed)'); return done(1, 'login') }
   mask(token)
@@ -81,8 +86,8 @@ export async function runSmokeChain(cfg, deps = {}) {
       method: 'POST', headers: H(token),
       body: JSON.stringify({ action: 'create', generation_id: cfg.GEN_ID, recording_attempt_id: attempt, content_type: 'video/webm', size_bytes: Number(cfg.SIZE) }),
     }))
-    assetId = (r.json && r.json.assetId) || ''
-    signedUrl = (r.json && r.json.signedUrl) || ''
+    if (ok2xx(r.status) && r.json) { assetId = r.json.assetId || ''; signedUrl = r.json.signedUrl || '' }
+    else log(`create HTTP ${r.status} — refusing to consume body`)
   } catch { /* response lost / network / parse failure → assetId stays empty */ }
   if (!assetId) {
     log('create returned no assetId (may have committed server-side) — residue step will report UNKNOWN residue keyed by generation/attempt')
@@ -114,7 +119,7 @@ export async function runSmokeChain(cfg, deps = {}) {
   for (let i = 0; i < readyTries; i++) {
     try {
       const r = await readJson(await fetchImpl(`${base}/rest/v1/media_assets?id=eq.${assetId}&select=${sel}`, { headers: H(token) }))
-      row = r.json && r.json[0]
+      row = (r.status === 200 && r.json) ? r.json[0] : null // only a 200 read is trusted
     } catch { row = null }
     if (row && row.status === 'ready') break
     if (row && row.status === 'rejected') { log('REJECTED by worker'); return done(1, 'ready') }
@@ -130,7 +135,7 @@ export async function runSmokeChain(cfg, deps = {}) {
   for (let i = 0; i < ptrTries; i++) {
     try {
       const r = await readJson(await fetchImpl(`${base}/rest/v1/generations?id=eq.${cfg.GEN_ID}&select=source_asset_id`, { headers: H(token) }))
-      ptr = (r.json && r.json[0] && r.json[0].source_asset_id) || ''
+      ptr = (r.status === 200 && r.json && r.json[0] && r.json[0].source_asset_id) || '' // only a 200 read is trusted
     } catch { ptr = '' }
     if (ptr === assetId) break
     await sleep(2000)

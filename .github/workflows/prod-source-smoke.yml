@@ -104,6 +104,7 @@ jobs:
       # SEPARATE signal from the overall workflow conclusion (which the residue
       # accounting will intentionally turn RED — see the protocol below).
       - name: 'Stage 1 — functional chain (create → ready → metadata → pointer)'
+        id: chain
         env:
           PROBE_BASE_URL: https://jmdecibuytznsonrasxw.supabase.co
         run: |
@@ -131,6 +132,7 @@ jobs:
       # PRESENT-or-UNKNOWN artifact FAILS CLOSED with a RECOVERABLE-ARTIFACT
       # REPORT → sanctioned operator retention. (Never SQL-delete storage.objects.)
       - name: Account for probe residue and fail closed (always)
+        id: residue
         if: always()
         run: node scripts/prod-smoke/residue_flow.mjs
 
@@ -144,13 +146,14 @@ jobs:
       #   → Stage 2 recoverable-artifact report (intentionally nonzero)
       #   → sanctioned operator retention cleanup
       #   → supported zero-delta verification (A2 query).
+      # Verdict derived from the ACTUAL step outcomes (not an unconditional
+      # print) + the persisted recovery state. protocol_verdict.mjs fails closed:
+      # an attempted-create run whose residue step did NOT fail is a protocol
+      # violation and exits nonzero, so the workflow can never conclude green
+      # after a create while its summary claims otherwise.
       - name: Two-stage protocol verdict (always)
         if: always()
-        run: |
-          echo "## Prod-source-smoke — two-stage verdict" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Stage 1 (functional chain): **${PROBE_FUNCTIONAL_CHAIN:-not-run}**" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Stage 2 (residue accounting): **RED by design** — recoverable-artifact handoff, not a functional failure." >> "$GITHUB_STEP_SUMMARY"
-          echo "- A green functional chain WITH a red residue step is the expected outcome; see docs/prod-source-smoke-protocol.md." >> "$GITHUB_STEP_SUMMARY"
-          if [ "${PROBE_FUNCTIONAL_CHAIN:-}" != "pass" ]; then
-            echo "::warning::functional chain did NOT pass (${PROBE_FUNCTIONAL_CHAIN:-not-run}); this is a real smoke failure, not the expected residue-only red."
-          fi
+        env:
+          CHAIN_OUTCOME: ${{ steps.chain.outcome }}
+          RESIDUE_OUTCOME: ${{ steps.residue.outcome }}
+        run: node scripts/prod-smoke/protocol_verdict.mjs

@@ -450,3 +450,87 @@ the invariant: functional chain green + residue accounting red.
 - `check_product_truth` selftest (22 cases) + live (44 files): **OK**
 - docs-guard, single-deploy, vps-diag-authority, vps-signoff, residue classifier: **OK**
 - `@twinai/web` typecheck: clean; both workflow YAMLs parse; live-policy SQL present.
+
+---
+
+# Round 8 — independent-audit correction (HTTP-status gating, outcome-derived verdict, rendered-copy sweep, authoritative delete gate)
+
+Round 8 closes four false-pass paths found in Round 7. PR #196 remains **DRAFT**;
+nothing merged/deployed/enabled; `EDITOR_V2_START_ENABLED` unset,
+`autoFillerRemoval=false`; `enqueue-autoedit` 410 tombstone intact;
+`prod-source-smoke` NOT run against production.
+
+## What Round 7 got wrong (now fixed)
+
+1. `smoke_chain.mjs` consumed a response body whenever it *looked* valid,
+   ignoring the HTTP status — a 500 with a valid-looking body advanced the chain.
+2. The workflow's verdict step printed "Stage 2 RED by design" unconditionally
+   and never read the actual residue-step outcome — an unexpected residue exit 0
+   could make the workflow green while the summary claimed red.
+3. The product-truth guard scanned only `apps/web/src`, missing imported BRAND
+   copy in `packages/shared/src` and several live disabled-editor claims.
+4. `verify_takes_policy_live.sql` (and the migration checker) matched DELETE/ALL
+   policies by the literal text "takes", so an indirect predicate
+   (`using (public.can_delete_take(...))`) was omitted and passed.
+
+## Changed files (round 8)
+
+| File | Blocker | Change |
+|---|---|---|
+| `scripts/prod-smoke/smoke_chain.mjs` | R8-1 | Every response body is consumed ONLY on a success HTTP status (login/create require 2xx; ready/pointer reads require 200). A non-2xx never advances the chain. |
+| `scripts/prod-smoke/protocol_verdict.mjs` (new) | R8-2 | Testable verdict: functional evidence accepted only when Stage 1 outcome=success AND `PROBE_FUNCTIONAL_CHAIN=pass`; an attempted-create run whose residue outcome≠failure is a PROTOCOL VIOLATION (exit 1); functional failure reported distinctly from expected residue red. |
+| `.github/workflows/prod-source-smoke.yml` | R8-2 | Stage 1 `id: chain`, Stage 2 `id: residue`; verdict step runs `protocol_verdict.mjs` with the real `steps.*.outcome` — no unconditional "RED by design". |
+| `scripts/ci/check_product_truth.mjs` | R8-3 | Scans BOTH `apps/web/src` and `packages/shared/src`; adds patterns + the exact flagged strings as fixtures. |
+| `packages/shared/src/brand.ts` | R8-3 | oneLiner/subLine/positioning corrected (no "finished video out", "whole loop", "edit"). |
+| `apps/web/src/pages/Landing.tsx` | R8-3 | "posted video out", "a finished, on-brand video out, end to end", footer "Finished video out." corrected. |
+| `apps/web/src/pages/Auth.tsx` | R8-3 | "record + edit in one place", "No watermark on your exports", "Get a finished video" corrected. |
+| `scripts/ci/check_takes_delete_policy.mjs` | R8-4 | Sound gate: ZERO DELETE/ALL policy on `storage.objects` (bucket-agnostic). Adds indirect-function-predicate fixture (now fails) + non-storage-table fixture (ok). |
+| `scripts/prod-smoke/verify_takes_policy_live.sql` | R8-4 | Authoritative live gate = zero live DELETE/ALL policies on storage.objects; enumerates roles + qual + with_check for evidence; no literal-"takes" filter. |
+| `scripts/prod-smoke/residue_harness.mjs` | R8-1, R8-2 | Adds the four non-2xx-valid-body fixtures + the protocol-verdict tests (unexpected-residue-success, summary/outcome disagreement). |
+
+## Blocker 1 — HTTP-status gating (hostile fixtures)
+
+`residue_harness.mjs --selftest`:
+- `login HTTP 500 (valid body) ⇒ exit 1 at login (body not consumed)`
+- `create HTTP 500 (valid body) ⇒ exit 1 at create (body not consumed)` + no asset persisted
+- `ready HTTP 500 (valid ready row) ⇒ exit 1 at ready`
+- `pointer HTTP 500 (expected pointer) ⇒ exit 1 at pointer`
+
+## Blocker 2 — outcome-derived verdict (hostile fixtures)
+
+`protocol_verdict.mjs` via the harness:
+- attempted + chain pass + residue red ⇒ exit 0, functional evidence accepted (expected two-stage)
+- **attempted-create run with GREEN residue ⇒ protocol violation, exit 1** (the unexpected-residue-success path)
+- chain green but `PROBE_FUNCTIONAL_CHAIN≠pass` ⇒ NOT functional evidence (summary/outcome disagreement)
+- functional failure distinguished from expected residue red
+- no-create + residue clean ⇒ exit 0; no-create + unexpected residue failure ⇒ exit 1
+
+The workflow verdict derives from `steps.chain.outcome` + `steps.residue.outcome`
++ recovery state; an attempted-create run can never conclude conventionally green.
+
+## Blocker 3 — rendered-copy sweep
+
+Corrected: brand.ts oneLiner/subLine/positioning; Landing "posted video out" /
+"finished, on-brand video out, end to end" / footer "Finished video out.";
+Auth "record + edit in one place" / "No watermark on your exports" / "Get a
+finished video". Guard now scans `apps/web/src` + `packages/shared/src` (59
+files, live OK); the seven exact strings are failing fixtures; legitimate
+finished-asset review/playback wording was left intact.
+
+## Blocker 4 — authoritative delete gate
+
+Both the migration checker and the live SQL now require **zero DELETE/ALL
+policies on `storage.objects`** (bucket-agnostic), which cannot be evaded by an
+indirect function predicate. Migration selftest: `indirect-function DELETE
+predicate → fail`, `delete on another bucket (storage.objects) → fail`,
+`delete on a NON-storage table → ok`. Live: `deleteCapableOnStorageObjects=0`.
+`verify_takes_policy_live.sql` enumerates roles/qual/with_check as evidence and
+PASSES only when `delete_or_all_policies_on_storage_objects = 0`.
+
+## Verification (this head, local)
+
+- `check_takes_delete_policy` selftest (14 fixtures incl. indirect-function + adversarial) + live: **OK** (deleteCapableOnStorageObjects=0)
+- `residue_harness` selftest: smoke-chain boundaries + HTTP-status gating + protocol verdict + observation truth table: **all passed**
+- `check_product_truth` selftest + live (59 files, both roots): **OK**
+- docs-guard, single-deploy, vps-diag-authority, vps-signoff: **OK**
+- root typecheck (all workspaces) + `web:build`: clean; both workflow YAMLs parse.
