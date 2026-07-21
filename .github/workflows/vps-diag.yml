@@ -1,11 +1,9 @@
 name: VPS diagnostic (read-only, fail-closed sign-off)
-on:
-  workflow_dispatch:
-    inputs:
-      expected_sha:
-        description: 'Expected deployed worker SHA (default: current origin/main head)'
-        required: false
-        default: ''
+# NO workflow_dispatch inputs on purpose: the expected deployed SHA must derive
+# ONLY from origin/main. A caller-supplied expected_sha could pin a stale
+# deployed commit and make drift pass, which would defeat the whole fail-closed
+# authority. (scripts/ci/check_vps_diag_authority.mjs enforces this in CI.)
+on: { workflow_dispatch: {} }
 env:
   VPS_HOST: 138.201.119.239
   # The canonical five-type registry (worker/src/env.ts). The single-deploy CI
@@ -18,42 +16,62 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Expected values are derived from the repo (not hand-typed): the deployed
-      # worker tracks main, and the pinned model identity is the committed
-      # manifest. This makes the assertions self-updating and drift-proof.
-      - name: Resolve expected SHA + model identity
+      # Expected values are derived from the repo (never hand-typed or caller
+      # supplied): deployed SHA == origin/main head (validated 40-hex, fail
+      # closed); the pinned model identity is the committed manifest; the load
+      # path is the committed Dockerfile ENV. Self-updating and drift-proof.
+      - name: Resolve expected SHA + model identity (from origin/main + committed manifest)
         run: |
           set -euo pipefail
-          EXP_SHA="${{ inputs.expected_sha }}"
-          [ -n "$EXP_SHA" ] || EXP_SHA=$(git ls-remote origin main | head -1 | cut -f1)
-          [ -n "$EXP_SHA" ] || { echo "::error::could not resolve expected SHA"; exit 1; }
-          EXP_REVISION=$(jq -r .revision worker/models/faster-whisper-small.manifest.json)
-          EXP_BUNDLE=$(jq -r .analyzerBundle worker/models/faster-whisper-small.manifest.json)
-          [ -n "$EXP_REVISION" ] && [ "$EXP_REVISION" != "null" ] || { echo "::error::no manifest revision"; exit 1; }
-          [ -n "$EXP_BUNDLE" ] && [ "$EXP_BUNDLE" != "null" ] || { echo "::error::no manifest bundle"; exit 1; }
+          M=worker/models/faster-whisper-small.manifest.json
+          EXP_SHA=$(git ls-remote origin main | head -1 | cut -f1)
+          printf '%s' "$EXP_SHA" | grep -Eq '^[0-9a-f]{40}$' \
+            || { echo "::error::origin/main SHA is not 40 hex chars: '$EXP_SHA'"; exit 1; }
+          EXP_REPOSITORY=$(jq -r .repository "$M")
+          EXP_REVISION=$(jq -r .revision "$M")
+          EXP_BUNDLE=$(jq -r .analyzerBundle "$M")
+          EXP_MANIFEST_SHA=$(sha256sum "$M" | cut -d' ' -f1)
+          EXP_MODEL_PATH=$(grep -oE 'EDITOR_SPEECH_MODEL_PATH=[^[:space:]]+' worker/Dockerfile | head -1 | cut -d= -f2)
+          for v in EXP_REPOSITORY EXP_REVISION EXP_BUNDLE EXP_MODEL_PATH; do
+            val="${!v}"; [ -n "$val" ] && [ "$val" != "null" ] || { echo "::error::$v empty"; exit 1; }
+          done
+          printf '%s' "$EXP_MANIFEST_SHA" | grep -Eq '^[0-9a-f]{64}$' || { echo "::error::EXP_MANIFEST_SHA not sha256"; exit 1; }
           {
             echo "EXP_SHA=$EXP_SHA"
+            echo "EXP_REPOSITORY=$EXP_REPOSITORY"
             echo "EXP_REVISION=$EXP_REVISION"
             echo "EXP_BUNDLE=$EXP_BUNDLE"
+            echo "EXP_MANIFEST_SHA=$EXP_MANIFEST_SHA"
+            echo "EXP_MODEL_PATH=$EXP_MODEL_PATH"
           } >> "$GITHUB_ENV"
-          echo "expected: sha=$EXP_SHA revision=$EXP_REVISION bundle=$EXP_BUNDLE registry=$EXP_REGISTRY"
+          echo "expected: sha=$EXP_SHA repo=$EXP_REPOSITORY revision=$EXP_REVISION bundle=$EXP_BUNDLE path=$EXP_MODEL_PATH manifestSha=${EXP_MANIFEST_SHA:0:12}…"
 
-      # READ-ONLY capture over SSH. Every command is a read (docker
-      # ps/inspect/logs/exec-printenv, git rev-parse, --verify-only re-hash,
-      # listener/env greps) — nothing is created, changed, or removed. Captures
-      # are DEFENSIVE (|| true) so the block always emits a COMPLETE OBS_* fact
-      # set; the fail-closed decision is made afterwards by
-      # worker/scripts/vps_signoff_assert.sh, NOT by echo fallbacks here. Only
-      # OBS_* lines go to stdout (→ facts.env); the human-readable snapshot goes
-      # to stderr (visible in the Actions log).
-      - name: Capture VPS facts
+      # READ-ONLY capture over SSH with a PINNED host key (strict verification,
+      # fail-closed). No ssh-keyscan / StrictHostKeyChecking=no — those trust
+      # whatever host answers on first contact, so a MITM could spoof the VPS
+      # facts. The host key comes from the protected VPS_KNOWN_HOSTS secret and
+      # SSH must match it (StrictHostKeyChecking=yes). Neither key is printed.
+      # Captures are DEFENSIVE (|| true) so the block always emits a COMPLETE
+      # OBS_* set; the fail-closed DECISION is made afterwards by
+      # worker/scripts/vps_signoff_assert.sh, never by an echo fallback here.
+      - name: Capture VPS facts (pinned host key)
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" bash -s > facts.env <<'DIAG'
+          if [ -z "${VPS_SSH_KEY:-}" ]; then echo "::error::VPS_SSH_KEY secret not set"; exit 1; fi
+          if [ -z "${VPS_KNOWN_HOSTS:-}" ]; then
+            echo "::error::VPS_KNOWN_HOSTS secret not set — refusing to SSH without a pinned host key (MITM risk). See DEPLOY.md → 'Pinning the VPS host key'."
+            exit 1
+          fi
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts_vps"; chmod 600 "$HOME/.ssh/known_hosts_vps"
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" \
+            root@"$VPS_HOST" bash -s > facts.env <<'DIAG'
           set -uo pipefail
           C=twinai-worker
           emit() { printf '%s=%q\n' "$1" "${2:-}"; }
@@ -70,9 +88,13 @@ jobs:
           registry=$(printf '%s' "$upline" | sed -n 's/.*"types":\[\([^]]*\)\].*/\1/p' | tr -d '"' | tr ',' '\n' | sed '/^[[:space:]]*$/d' | sort | paste -sd, - || true)
           override=$(docker exec "$C" printenv WORKER_JOB_TYPES 2>/dev/null || true)
 
-          mident=$(docker exec "$C" python3 -c "import json;m=json.load(open('models/faster-whisper-small.manifest.json'));print(m['revision']+'|'+m['analyzerBundle'])" 2>/dev/null || true)
-          revision=${mident%%|*}; bundle=${mident#*|}; [ "$mident" = "$revision" ] && bundle=""
-          docker exec "$C" python3 scripts/fetch_model.py --verify-only --manifest models/faster-whisper-small.manifest.json --dest /opt/models/faster-whisper-small >/dev/null 2>&1 && vrc=0 || vrc=$?
+          mident=$(docker exec "$C" python3 -c "import json;m=json.load(open('models/faster-whisper-small.manifest.json'));print(m['repository']+'|'+m['revision']+'|'+m['analyzerBundle'])" 2>/dev/null || true)
+          repository=$(printf '%s' "$mident" | cut -d'|' -f1)
+          revision=$(printf '%s' "$mident" | cut -d'|' -f2)
+          bundle=$(printf '%s' "$mident" | cut -d'|' -f3)
+          manifest_sha=$(docker exec "$C" python3 -c "import hashlib;print(hashlib.sha256(open('models/faster-whisper-small.manifest.json','rb').read()).hexdigest())" 2>/dev/null || true)
+          model_path=$(docker exec "$C" printenv EDITOR_SPEECH_MODEL_PATH 2>/dev/null || true)
+          docker exec "$C" python3 scripts/fetch_model.py --verify-only --manifest models/faster-whisper-small.manifest.json --dest "${model_path:-/opt/models/faster-whisper-small}" >/dev/null 2>&1 && vrc=0 || vrc=$?
           test_allow=$(docker exec "$C" printenv EDITOR_ALLOW_TEST_MODEL_MANIFEST 2>/dev/null || true)
           test_manifest=$(docker exec "$C" printenv EDITOR_SPEECH_MODEL_MANIFEST 2>/dev/null || true)
 
@@ -87,8 +109,8 @@ jobs:
 
           {
             echo "OBS snapshot: sha=$sha status=$status health=$health restarts=$restarts"
-            echo "  registry=[$registry] override=[$override] revision=$revision bundle=$bundle verify_rc=$vrc"
-            echo "  test_allow=[$test_allow] test_manifest=[$test_manifest] revideo=$revideo port4500=$port4500 legacy_env=$legacy_env"
+            echo "  repo=$repository revision=$revision bundle=$bundle path=$model_path manifestSha=${manifest_sha:0:12} verify_rc=$vrc"
+            echo "  registry=[$registry] override=[$override] test_allow=[$test_allow] test_manifest=[$test_manifest] revideo=$revideo port4500=$port4500 legacy_env=$legacy_env"
           } >&2
 
           emit OBS_SHA "$sha"
@@ -97,8 +119,11 @@ jobs:
           emit OBS_RESTARTS "$restarts"
           emit OBS_REGISTRY "$registry"
           emit OBS_JOBTYPES_OVERRIDE "$override"
+          emit OBS_REPOSITORY "$repository"
           emit OBS_REVISION "$revision"
           emit OBS_BUNDLE "$bundle"
+          emit OBS_MANIFEST_SHA "$manifest_sha"
+          emit OBS_MODEL_PATH "$model_path"
           emit OBS_VERIFY_RC "$vrc"
           emit OBS_TEST_ALLOW "$test_allow"
           emit OBS_TEST_MANIFEST "$test_manifest"

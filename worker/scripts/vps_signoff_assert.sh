@@ -19,10 +19,17 @@ run_assertions() {
   local fails=0
   _f() { echo "  ASSERT FAIL: $*" >&2; fails=$((fails + 1)); }
 
-  [ -n "${EXP_SHA:-}" ]      || _f "EXP_SHA not provided"
-  [ -n "${EXP_REVISION:-}" ] || _f "EXP_REVISION not provided"
-  [ -n "${EXP_BUNDLE:-}" ]   || _f "EXP_BUNDLE not provided"
-  [ -n "${EXP_REGISTRY:-}" ] || _f "EXP_REGISTRY not provided"
+  [ -n "${EXP_SHA:-}" ]        || _f "EXP_SHA not provided"
+  [ -n "${EXP_REVISION:-}" ]   || _f "EXP_REVISION not provided"
+  [ -n "${EXP_BUNDLE:-}" ]     || _f "EXP_BUNDLE not provided"
+  [ -n "${EXP_REGISTRY:-}" ]   || _f "EXP_REGISTRY not provided"
+  [ -n "${EXP_REPOSITORY:-}" ] || _f "EXP_REPOSITORY not provided"
+  [ -n "${EXP_MODEL_PATH:-}" ] || _f "EXP_MODEL_PATH not provided"
+  [ -n "${EXP_MANIFEST_SHA:-}" ] || _f "EXP_MANIFEST_SHA not provided"
+  # Authority: expected SHA must be a real 40-hex commit (derived from
+  # origin/main), never an arbitrary/short/caller-pinnable value.
+  printf '%s' "${EXP_SHA:-}" | grep -Eq '^[0-9a-f]{40}$' \
+      || _f "EXP_SHA '${EXP_SHA:-}' is not a 40-hex commit (authority must derive from origin/main)"
 
   [ "${OBS_SHA:-}" = "${EXP_SHA:-}" ]        || _f "deployed SHA '${OBS_SHA:-}' != expected '${EXP_SHA:-}'"
   [ "${OBS_STATUS:-}" = "running" ]          || _f "container status '${OBS_STATUS:-}' != running"
@@ -31,8 +38,13 @@ run_assertions() {
   [ "$(_norm "${OBS_REGISTRY:-}")" = "$(_norm "${EXP_REGISTRY:-}")" ] \
       || _f "active registry [$(_norm "${OBS_REGISTRY:-}")] != expected [$(_norm "${EXP_REGISTRY:-}")]"
   [ -z "${OBS_JOBTYPES_OVERRIDE:-}" ]        || _f "WORKER_JOB_TYPES override present on box: '${OBS_JOBTYPES_OVERRIDE:-}'"
+  # Full model identity: repository + revision + bundle + load path + committed
+  # manifest SHA-256, plus the in-container verify-only re-hash success.
+  [ "${OBS_REPOSITORY:-}" = "${EXP_REPOSITORY:-}" ] || _f "model repository '${OBS_REPOSITORY:-}' != expected '${EXP_REPOSITORY:-}'"
   [ "${OBS_REVISION:-}" = "${EXP_REVISION:-}" ] || _f "model revision '${OBS_REVISION:-}' != expected '${EXP_REVISION:-}'"
   [ "${OBS_BUNDLE:-}" = "${EXP_BUNDLE:-}" ]  || _f "analyzer bundle '${OBS_BUNDLE:-}' != expected '${EXP_BUNDLE:-}'"
+  [ "${OBS_MODEL_PATH:-}" = "${EXP_MODEL_PATH:-}" ] || _f "model load path '${OBS_MODEL_PATH:-}' != expected '${EXP_MODEL_PATH:-}'"
+  [ "${OBS_MANIFEST_SHA:-}" = "${EXP_MANIFEST_SHA:-}" ] || _f "committed manifest sha256 '${OBS_MANIFEST_SHA:-}' != expected '${EXP_MANIFEST_SHA:-}'"
   [ "${OBS_VERIFY_RC:-}" = "0" ]             || _f "fetch_model --verify-only rc '${OBS_VERIFY_RC:-}' != 0"
   [ -z "${OBS_TEST_ALLOW:-}" ]               || _f "EDITOR_ALLOW_TEST_MODEL_MANIFEST set (test override): '${OBS_TEST_ALLOW:-}'"
   [ -z "${OBS_TEST_MANIFEST:-}" ]            || _f "EDITOR_SPEECH_MODEL_MANIFEST set (test override): '${OBS_TEST_MANIFEST:-}'"
@@ -44,12 +56,16 @@ run_assertions() {
 }
 
 _good_env() {
-  export EXP_SHA=abc123 EXP_REVISION=rev1 EXP_BUNDLE=speech-6
+  local SHA40=0123456789abcdef0123456789abcdef01234567
+  local MSHA=$(printf 'a%.0s' $(seq 1 64))   # 64 'a' chars — a valid sha256 shape
+  export EXP_SHA=$SHA40 EXP_REVISION=rev1 EXP_BUNDLE=speech-6
+  export EXP_REPOSITORY=Systran/faster-whisper-small EXP_MODEL_PATH=/opt/models/faster-whisper-small EXP_MANIFEST_SHA=$MSHA
   export EXP_REGISTRY="ingest,build_voice,scrape_dna,validate_source,editor_v2"
-  export OBS_SHA=abc123 OBS_STATUS=running OBS_HEALTH=healthy OBS_RESTARTS=0
+  export OBS_SHA=$SHA40 OBS_STATUS=running OBS_HEALTH=healthy OBS_RESTARTS=0
   # deliberately different order + JSON quoting to prove order/quote-insensitivity:
   export OBS_REGISTRY='"editor_v2","ingest","scrape_dna","build_voice","validate_source"'
   export OBS_JOBTYPES_OVERRIDE="" OBS_REVISION=rev1 OBS_BUNDLE=speech-6 OBS_VERIFY_RC=0
+  export OBS_REPOSITORY=Systran/faster-whisper-small OBS_MODEL_PATH=/opt/models/faster-whisper-small OBS_MANIFEST_SHA=$MSHA
   export OBS_TEST_ALLOW="" OBS_TEST_MANIFEST="" OBS_REVIDEO=0 OBS_PORT4500=0 OBS_LEGACY_ENV=0
 }
 
@@ -64,11 +80,15 @@ selftest() {
     "OBS_STATUS=exited|container not running"
     "OBS_HEALTH=unhealthy|container unhealthy"
     "OBS_RESTARTS=4|restart loop"
+    "EXP_SHA=abc123|EXP_SHA not 40-hex (authority weakened)"
     "OBS_REGISTRY=ingest,build_voice|registry missing types"
     "OBS_REGISTRY=ingest,build_voice,scrape_dna,validate_source,editor_v2,render_v2|registry has extra type"
     "OBS_JOBTYPES_OVERRIDE=ingest,transcribe|WORKER_JOB_TYPES override present"
+    "OBS_REPOSITORY=evil/whisper|wrong model repository"
     "OBS_REVISION=badrev|wrong model revision"
     "OBS_BUNDLE=speech-7|wrong analyzer bundle"
+    "OBS_MODEL_PATH=/tmp/model|wrong model load path"
+    "OBS_MANIFEST_SHA=deadbeef|wrong committed manifest sha256"
     "OBS_VERIFY_RC=1|verify-only failed"
     "OBS_TEST_ALLOW=true|test-manifest override allowed"
     "OBS_TEST_MANIFEST=/tmp/x.json|test-manifest override set"

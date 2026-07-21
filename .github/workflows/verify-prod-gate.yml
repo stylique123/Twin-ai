@@ -13,8 +13,9 @@
 #     settings so a human approves each run — the kill switch)
 #   * credentials are PROTECTED PRODUCTION-ENVIRONMENT SECRETS, never
 #     workflow-dispatch inputs (inputs are attacker-supplied + logged). They
-#     are passed to the shell ONLY through `env:` and consumed with
-#     `jq --arg` — no GitHub-expression interpolation into shell or JSON.
+#     are passed to the shell ONLY through `env:` and read by jq FROM THE
+#     ENVIRONMENT (`env.PROBE_*`) — never as jq `--arg` (which would place them
+#     in world-readable argv) and never interpolated into shell or JSON.
 #   * creates NOTHING durable: two HTTP probes + a secrets-name listing
 #   * least privilege: the authenticated probe uses ONLY the committed public
 #     anon key + a pre-existing probe user's own session; the CLI uses the
@@ -62,7 +63,8 @@ jobs:
       # release checklist requires proving fail-closed for a signed-in,
       # otherwise-valid request too. Credentials come from protected
       # production-environment secrets (never inputs) and are consumed with
-      # jq --arg — nothing is interpolated into the shell or the JSON body.
+      # jq reading env.PROBE_* — nothing is interpolated into the shell or the
+      # JSON body, and no secret ever appears in argv.
       - name: Authenticated fail-closed probe (mandatory)
         env:
           PROBE_EMAIL: ${{ secrets.PROD_PROBE_EMAIL }}

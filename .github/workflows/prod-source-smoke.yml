@@ -13,7 +13,9 @@
 #     The only caller-supplied input is a pre-created generation uuid, which is
 #     validated and passed to the shell ONLY through `env:` — nothing
 #     caller-provided is interpolated into a shell command or a JSON body.
-#     Credentials + JSON bodies are assembled with `jq --arg`.
+#     Credentials are read by jq FROM THE ENVIRONMENT (`env.PROBE_*`), never as
+#     `jq --arg` (which would place them in world-readable argv). Non-secret
+#     JSON bodies (generation_id, attempt id, size) use `jq --arg`.
 #   * least privilege: uses ONLY the public anon key from the committed web
 #     env + the probe user's own session; no service keys — it CANNOT read
 #     service keys, set EDITOR_V2_START_ENABLED, apply migrations, or deploy.

@@ -44,16 +44,25 @@ jobs:
       - name: Deploy to VPS over SSH
         env:
           VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
         run: |
           if [ -z "$VPS_SSH_KEY" ]; then
             echo "::error::VPS_SSH_KEY secret is not set — add it in repo Settings → Secrets → Actions."
             exit 1
           fi
-          mkdir -p ~/.ssh
+          # Pinned host key, strict verification, fail-closed (no ssh-keyscan /
+          # StrictHostKeyChecking=no — those trust a possibly-spoofed host). The
+          # host key comes from the protected VPS_KNOWN_HOSTS secret. Never printed.
+          if [ -z "$VPS_KNOWN_HOSTS" ]; then
+            echo "::error::VPS_KNOWN_HOSTS secret is not set — refusing to SSH without a pinned host key (MITM risk). See DEPLOY.md → 'Pinning the VPS host key'."
+            exit 1
+          fi
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
           printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" 'bash -se' <<'REMOTE'
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts_vps"
+          chmod 600 "$HOME/.ssh/known_hosts_vps"
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" root@"$VPS_HOST" 'bash -se' <<'REMOTE'
             set -euo pipefail
             cd /opt/twinai-worker-src
             # Reset to the JUST-FETCHED main (FETCH_HEAD), not the remote-tracking

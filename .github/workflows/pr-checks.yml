@@ -113,3 +113,7 @@ jobs:
           node scripts/ci/check_single_deploy_path.mjs
       - name: VPS sign-off assertion logic (offline selftest — bad states must fail)
         run: bash worker/scripts/vps_signoff_assert.sh --selftest
+      - name: VPS-diag authority (no caller SHA override; pinned strict host key)
+        run: |
+          node scripts/ci/check_vps_diag_authority.mjs --selftest
+          node scripts/ci/check_vps_diag_authority.mjs
