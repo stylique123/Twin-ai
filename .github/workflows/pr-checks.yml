@@ -123,7 +123,11 @@ jobs:
           node scripts/ci/check_docs_no_stale_claims.mjs
       - name: Probe-residue classifier (partial/complete cleanup cannot silently pass)
         run: node scripts/prod-smoke/probe_residue_report.mjs --selftest
-      - name: Prod-smoke residue failure-injection harness (branches + takes-DELETE policy from migrations)
+      - name: Takes storage-policy inventory (no client DELETE-capable policy; migration-derived)
+        run: |
+          node scripts/ci/check_takes_delete_policy.mjs --selftest
+          node scripts/ci/check_takes_delete_policy.mjs
+      - name: Prod-smoke residue failure-injection harness (real flow + observation truth table)
         run: node scripts/prod-smoke/residue_harness.mjs --selftest
       - name: Product-truth (no shipped-editor claims while the production editor is disabled)
         run: |

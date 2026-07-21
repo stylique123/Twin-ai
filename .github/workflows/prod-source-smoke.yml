@@ -24,11 +24,13 @@
 #   * probe identity uses the fixed gate-probe-* prefix. This job DOES create
 #     durable production rows: a public.media_assets row, a
 #     generations.source_asset_id pointer, a Storage object, and service-side
-#     validate_source job/event state. Its in-workflow step can only delete the
-#     Storage object (owner-RLS); it is NOT self-cleaning. The final step
-#     enumerates every artifact and FAILS CLOSED with a recoverable-artifact
-#     report — the probe user/generation must then be removed via the sanctioned
-#     operator retention cleanup. Do not run this workflow without that plan.
+#     validate_source job/event state. It is NOT self-cleaning: the `takes`
+#     bucket has NO DELETE policy (proven by check_takes_delete_policy.mjs), so
+#     the probe user cannot delete its own object. The final step OBSERVES every
+#     artifact (never claiming a deletion it did not observe) and FAILS CLOSED
+#     with a recoverable-artifact report — the probe user/generation must then be
+#     removed via the sanctioned operator retention cleanup. Do not run this
+#     workflow without that plan.
 #
 # REQUIRED production-environment secrets (repo Settings → Environments →
 # production): PROD_PROBE_EMAIL, PROD_PROBE_PASSWORD (a throwaway
@@ -65,6 +67,9 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }   # residue_flow.mjs uses global fetch (Node 18+)
+
       - name: Validate inputs and required secrets
         run: |
           set -euo pipefail
@@ -100,8 +105,12 @@ jobs:
             --data "$LOGIN_BODY" | jq -r '.access_token // empty')
           [ -n "$TOKEN" ] || { echo "probe sign-in failed (no token; body suppressed)"; exit 1; }
           echo "::add-mask::$TOKEN"
-          # Export creds so the ALWAYS-run cleanup step can delete the object
-          # even if a later assertion in this step fails. (TOKEN is masked.)
+          # Export creds so the ALWAYS-run residue-accounting step can OBSERVE
+          # each artifact even if a later assertion in this step fails. These
+          # credentials enable residue OBSERVATION / ACCOUNTING ONLY — the `takes`
+          # bucket has NO DELETE policy (proven by scripts/ci/check_takes_delete_policy.mjs),
+          # so the probe user cannot delete its object; the accounting step reports
+          # what it OBSERVES and never claims a deletion. (TOKEN is masked.)
           {
             echo "PROBE_BASE=$BASE"
             echo "PROBE_ANON=$ANON"
@@ -186,74 +195,22 @@ jobs:
           echo "generation pointer linked — metadata merge preserved all finalization + probe facts — PASS"
 
       # HONEST RESIDUE ACCOUNTING — runs even if the chain above failed
-      # (if: always()). This step is NOT self-cleaning and NEVER claims a
-      # deletion it did not observe. The `takes` bucket has ONLY INSERT+SELECT
-      # policies (NO DELETE — verified from migrations), so the probe user CANNOT
-      # delete its own take object; the DELETE attempt below is best-effort and
-      # its result is OBSERVED, not assumed. The media_assets row, the
+      # (if: always()). It runs the SAME control-flow module the failure-injection
+      # harness exercises (scripts/prod-smoke/residue_flow.mjs) so behaviour is
+      # unit-tested, not hand-copied shell. That module implements the three cases
+      # (A: no create → clean; B: create attempted, no assetId → all UNKNOWN, fail
+      # closed; C: assetId known → OBSERVE each artifact) and the honest
+      # observation truth table: only a documented, unambiguous missing result
+      # (Storage 404, a valid empty PostgREST array) yields `false`; a 400 / 401 /
+      # 403 / 5xx / network error / malformed body yields "unknown", never false.
+      # This step is NOT self-cleaning: the `takes` bucket has NO DELETE policy
+      # (proven by scripts/ci/check_takes_delete_policy.mjs), so the probe user
+      # cannot delete its own take object — the DELETE is best-effort and its
+      # result is OBSERVED, not assumed. The media_assets row, the
       # generations.source_asset_id pointer, and the service-side
-      # validate_source job/event state are also NOT client-removable. Each
-      # artifact is reported as present(true) / absent(false, only when OBSERVED
-      # via a supported-API result) / "unknown". Any present-or-unknown artifact
-      # FAILS CLOSED with a RECOVERABLE-ARTIFACT REPORT → sanctioned operator
-      # retention. (Never SQL-delete storage.objects rows.)
+      # validate_source job/event state are also NOT client-removable. Any
+      # PRESENT-or-UNKNOWN artifact FAILS CLOSED with a RECOVERABLE-ARTIFACT
+      # REPORT → sanctioned operator retention. (Never SQL-delete storage.objects.)
       - name: Account for probe residue and fail closed (always)
         if: always()
-        run: |
-          set -uo pipefail
-          # Case A: no create was ever attempted → nothing was created.
-          if [ "${PROBE_CREATE_ATTEMPTED:-}" != "1" ]; then
-            echo "no create was attempted — nothing was created; nothing to clean"; exit 0
-          fi
-          GID="${PROBE_GEN_ID:-unknown}"; ATT="${PROBE_ATTEMPT:-unknown}"
-
-          # Case B: a create WAS attempted but no asset id reached us (response
-          # lost / malformed). The create may have committed server-side → every
-          # artifact is UNKNOWN, keyed by generation + attempt. Fail closed.
-          if [ -z "${PROBE_ASSET:-}" ]; then
-            export PROBE_RESIDUE_JSON=$(jq -n --arg gid "$GID" --arg att "$ATT" '[
-              {name:"storage_object",        id:("gen="+$gid+" attempt="+$att), present:"unknown"},
-              {name:"media_assets_row",      id:("gen="+$gid+" attempt="+$att), present:"unknown"},
-              {name:"generation_pointer",    id:("gen="+$gid),                  present:"unknown"},
-              {name:"validation_job_events", id:("gen="+$gid),                  present:"unknown"}
-            ]')
-            echo "create attempted but assetId unknown — reporting UNKNOWN residue keyed by generation/attempt"
-            node scripts/prod-smoke/probe_residue_report.mjs; exit $?
-          fi
-
-          # Case C: asset id known. Observe each artifact; never assume deletion.
-          OBJPATH=$(curl -sS "$PROBE_BASE/rest/v1/media_assets?id=eq.$PROBE_ASSET&select=storage_path" \
-            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" | jq -r '.[0].storage_path // empty')
-          OBJ_STATE=unknown
-          if [ -n "$OBJPATH" ]; then
-            PATH_ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$OBJPATH")
-            # Best-effort delete (RLS-denied for takes — no DELETE policy), then OBSERVE.
-            curl -sS -o /dev/null -X DELETE "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
-              -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" || true
-            GONE=$(curl -sS -o /dev/null -w '%{http_code}' "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
-              -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" || echo "000")
-            case "$GONE" in 400|404) OBJ_STATE=false ;; 200) OBJ_STATE=true ;; *) OBJ_STATE=unknown ;; esac
-            echo "storage object re-fetch after delete attempt = HTTP $GONE → state=$OBJ_STATE"
-          else
-            OBJ_STATE=unknown   # storage_path unreadable → cannot confirm absence
-          fi
-
-          ROW=$(curl -sS "$PROBE_BASE/rest/v1/media_assets?id=eq.$PROBE_ASSET&select=id" \
-            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" | jq -r 'length' 2>/dev/null || echo "")
-          PTR=$(curl -sS "$PROBE_BASE/rest/v1/generations?id=eq.$GID&select=source_asset_id" \
-            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" | jq -r '.[0].source_asset_id // empty' 2>/dev/null || echo "")
-          if   [ -z "$ROW" ]; then ROW_STATE=unknown; elif [ "$ROW" -gt 0 ] 2>/dev/null; then ROW_STATE=true; else ROW_STATE=false; fi
-          if   [ "$PTR" = "$PROBE_ASSET" ]; then PTR_STATE=true; elif [ -z "$PTR" ]; then PTR_STATE=false; else PTR_STATE=true; fi
-
-          tri() { case "$1" in true) echo true ;; false) echo false ;; *) echo '"unknown"' ;; esac; }
-          export PROBE_RESIDUE_JSON=$(jq -n \
-            --argjson obj "$(tri "$OBJ_STATE")" --arg objid "${OBJPATH:-n/a}" \
-            --argjson row "$(tri "$ROW_STATE")" --arg rowid "$PROBE_ASSET" \
-            --argjson ptr "$(tri "$PTR_STATE")" --arg genid "$GID" \
-            '[
-              {name:"storage_object",         id:$objid, present:$obj},
-              {name:"media_assets_row",       id:$rowid, present:$row},
-              {name:"generation_pointer",     id:$genid, present:$ptr},
-              {name:"validation_job_events",  id:"service-side validate_source job + events for this generation", present:"unknown"}
-            ]')
-          node scripts/prod-smoke/probe_residue_report.mjs
+        run: node scripts/prod-smoke/residue_flow.mjs

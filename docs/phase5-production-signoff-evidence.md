@@ -259,3 +259,101 @@ output:
 
 The product-truth guard (live) confirms **0** shipped-editor-output claims across
 44 scanned files.
+
+---
+
+# Round 6 — independent-audit correction (residue harness honesty + observation truth table)
+
+Round 6 corrects claims that Round 5 had not truly earned. PR #196 remains
+**DRAFT**; nothing merged/deployed/enabled; `EDITOR_V2_START_ENABLED` unset,
+`autoFillerRemoval=false`; `enqueue-autoedit` 410 tombstone intact;
+`prod-source-smoke` NOT run against production.
+
+## What Round 5 claimed vs. what was actually true
+
+- Round 5's `residue_harness.mjs` asserted over a **static `SCEN` array** of
+  hand-written artifact states — it validated the pure classifier but did **not
+  execute the workflow's real observation/control-flow**. That is now fixed.
+- The workflow's inline shell mapped a storage re-fetch of **`400|404` → false**
+  (confirmed absent). A `400` is **not** proof of absence; that was a real
+  observation bug. Fixed: only a documented `404` (or a valid empty PostgREST
+  array) yields `false`.
+
+## Changed files (round 6)
+
+| File | Blocker | Change |
+|---|---|---|
+| `scripts/prod-smoke/residue_flow.mjs` (new) | R6-1, R6-2 | The REAL A/B/C residue control flow as an importable, fetch-injected module. The workflow runs it; the harness drives the SAME functions. Pure observation mappers `observeStorageObject` / `observeRow` / `observePointer` capture HTTP status **separately per query**. |
+| `scripts/prod-smoke/residue_harness.mjs` (rewritten) | R6-1, R6-2 | Imports `runResidueAccounting` and injects a fake `fetch` per scenario: create-response-loss (after commit), malformed response, PUT failure, finalize failure, denied DELETE, observation HTTP failures (401/403/5xx), network failure, malformed bodies, classifier/report failure. Records the calls the flow issued to PROVE it ran the real observation sequence. Adds a full per-observation truth table. |
+| `scripts/prod-smoke/probe_residue_report.mjs` | R6-2 | Unchanged classifier (clean iff every artifact confirmed absent); now fed by the tested flow. |
+| `scripts/ci/check_takes_delete_policy.mjs` (new) | R6-4 | Migration-derived policy **inventory** (strip comments → find every `create/drop policy` clause, incl. inside `do $$ … $$` blocks → resolve live set → classify by command + bucket). DELETE-capable = `delete` OR `all`. Selftest plants a DELETE policy, a FOR-ALL policy, alt-formatting, FOR-omitted, drop-then-recreate, other-bucket, missing-insert. |
+| `.github/workflows/prod-source-smoke.yml` | R6-1, R6-3 | Residue step now runs the unified `residue_flow.mjs` (deletes ~60 lines of hand-copied shell). Lines that described credentials as enabling object **deletion** now describe **observation/accounting only**. Header + safety-envelope comments corrected. Adds `setup-node`. |
+| `scripts/ci/check_product_truth.mjs` | R6-5 | JSX-normalization before phrase matching (catches JSX-split claims); adversarial paraphrase patterns ("editing … gone", "scripting + editing, gone/done"); structural completion-marker check (✓/Check/"done" next to an editor-output list without a coming-soon qualifier). |
+| `apps/web/src/pages/Landing.tsx` | R6-5 | Post-step preview: the `Captions / Jump cuts / B-roll` chips no longer render a green ✓ "done" marker — relabelled under an **"AI edit — coming soon"** header with a muted Clock icon. Benefit stat changed from "~2 hrs saved … scripting + editing, gone" to "~1 hr saved … scripting + recording — AI editing coming soon". |
+| `.github/workflows/pr-checks.yml` | R6-4 | Wires `check_takes_delete_policy.mjs` (selftest + live); relabels the harness step. |
+
+## Harness proof it executes the real control flow
+
+`residue_harness.mjs` calls `runResidueAccounting(env, { fetchImpl })` — the exact
+function the workflow runs. For every Case-C scenario it asserts the injected
+fetch received `DELETE storage:delete`, `GET storage:get`, `GET rest:row`,
+`GET rest:ptr` — i.e. the real delete-attempt + re-fetch + row + pointer
+observation sequence, not a static table. Every attempted-create scenario
+(Cases B and C) asserts the classifier verdict is **not clean** (fail closed).
+Note: Case C can never be clean because `validation_job_events` has no supported
+client read path (always `"unknown"`) — proven by the "best-case observation
+still fails" scenario.
+
+## Per-observation truth table (only confirmed absence ⇒ `false`)
+
+| Observer | Input | Result |
+|---|---|---|
+| storage object | HTTP 200 | `true` (present) |
+| storage object | HTTP **404** (documented "Object not found") | `false` |
+| storage object | HTTP 400 / 401 / 403 / 5xx / network | `unknown` |
+| media_assets row | HTTP 200 + valid **empty** array | `false` |
+| media_assets row | HTTP 200 + non-empty array | `true` |
+| media_assets row | HTTP 200 + malformed / non-array body | `unknown` |
+| media_assets row | HTTP 400 / 401 / 403 / 5xx / network | `unknown` |
+| generation pointer | HTTP 200 + `source_asset_id === asset` | `true` |
+| generation pointer | HTTP 200 + `null` / different id / empty result | `false` |
+| generation pointer | HTTP 200 + malformed body | `unknown` |
+| generation pointer | HTTP 400 / 401 / 5xx / network | `unknown` |
+| validation_job_events | (no supported client read) | `unknown` always |
+
+The harness additionally asserts that any `false` result corresponds to a
+documented-absence input (404 / empty / null / other / gone), never a guess.
+
+## Migration-policy guard results (`check_takes_delete_policy.mjs`)
+
+Live inventory of `storage.objects` policies targeting the `takes` bucket:
+`twinai takes insert` (for **insert**) and `twinai takes read` (for **select**) —
+`insert=true select=true deleteCapable=false`. These are defined inside the
+idempotent `do $$ … $$` block in `0006_autoedit.sql` (which the previous bounded
+regex could miss); `0057` drops+recreates the SELECT policy (still select-only).
+Selftest fixtures prove the inventory FAILS on a planted `for delete` policy, a
+`for all` policy, alternate multiline formatting, and a FOR-omitted (defaults to
+ALL) policy — and PASSES a delete policy that is created-then-dropped or scoped
+to a different bucket. This is real migration-derived evidence, not a comment.
+
+## prod-source-smoke residue posture (unified module)
+
+The always-run residue step now executes `residue_flow.mjs`:
+
+| Case | Condition | Outcome |
+|---|---|---|
+| A | no create attempted | clean, exit 0 (nothing created) |
+| B | create attempted, no assetId (response lost / malformed) | all artifacts `unknown`, fail closed |
+| C | assetId known | observe object (404⇒absent / 200⇒present / else unknown), row + pointer (per truth table), job/events always unknown → fail closed unless all confirmed absent (never, due to job/events) |
+
+Credentials exported to `$GITHUB_ENV` enable **residue observation/accounting
+only**; the `takes` bucket has no DELETE policy, so no client deletion is
+possible or claimed.
+
+## Verification (this head, local)
+
+- `check_takes_delete_policy` selftest (8 fixtures incl. planted DELETE/ALL, alt-format, drop-recreate) + live: **OK**
+- `residue_harness` selftest: real-flow injection (11 scenarios) + observation truth table (25 rows) + migration policy: **all passed**
+- `probe_residue_report` selftest: **OK**; `check_product_truth` selftest (18 cases incl. JSX-split + marker) + live (44 files): **OK**
+- docs-guard, single-deploy, vps-diag-authority, vps-signoff: **OK**
+- `@twinai/web` typecheck + `web:build`: **clean**; both workflow YAMLs parse.

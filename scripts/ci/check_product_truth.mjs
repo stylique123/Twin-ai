@@ -1,11 +1,21 @@
-// CI guard (R5-7): while the production editor is DISABLED (no Director /
-// EditPlan / renderer / output / production start), public product copy must not
-// claim shipped editor OUTCOMES in the present tense. Current capabilities
-// (script, hooks, shot list, teleprompter, recording, upload) may be stated;
-// editor results must read "coming soon / being rebuilt". This guard scans the
-// user-facing web app for the specific present-tense editor-output claims and
-// FAILS if any is present. (B-roll as SHOT-LIST guidance for what to record is
-// fine; only editor-OUTPUT claims are forbidden.)
+// CI guard (R5-7 / hardened R6-5): while the production editor is DISABLED (no
+// Director / EditPlan / renderer / output / production start), public product
+// copy must not claim shipped editor OUTCOMES in the present tense. Current
+// capabilities (script, hooks, shot list, teleprompter, recording, upload) may
+// be stated; editor RESULTS must read "coming soon / being rebuilt".
+//
+// R6-5 hardening — the old guard only matched exact phrases on raw source, so an
+// equivalent claim split across JSX elements, or a checkmarked "done" list, slid
+// through. This version:
+//   1. NORMALIZES JSX (strips tags/entities, collapses whitespace) before phrase
+//      matching, so a claim split across <span>s is caught the same as inline.
+//   2. Adds adversarial PARAPHRASE patterns for the editor-output claims.
+//   3. Adds a STRUCTURAL completion-marker check: a ✓/Check/"done"/"complete"
+//      marker rendered next to an editor-output list (jump cuts, B-roll, pacing,
+//      captions) WITHOUT a "coming soon / being rebuilt" qualifier fails —
+//      catching the "captions ✓ jump cuts ✓ b-roll ✓" affordance.
+// (B-roll as SHOT-LIST guidance for what to record is fine; only editor-OUTPUT
+// claims are forbidden.)
 //
 //   node scripts/ci/check_product_truth.mjs            # PR guard
 //   node scripts/ci/check_product_truth.mjs --selftest # unit-test the logic
@@ -14,7 +24,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = 'apps/web/src'
 
-// Specific present-tense editor-OUTPUT claims (unambiguous "it's shipped").
+// Present-tense editor-OUTPUT claims (matched against JSX-NORMALIZED text).
 const FORBIDDEN = [
   { re: /edits it for you/i, why: '"edits it for you" — editor output claimed as shipped' },
   { re: /fully edits it\b/i, why: '"fully edits it" — editor output claimed as shipped' },
@@ -25,14 +35,50 @@ const FORBIDDEN = [
   { re: /\bedit\s*\+\s*render\b/i, why: '"edit + render" shipped step' },
   { re: /captions[,\s]+b-?roll[,\s]+pacing\s*[—–-]\s*done/i, why: '"captions, B-roll, pacing — done" — editor output claimed as shipped' },
   { re: /\bb-?roll\b(?![^.\n]*\b(coming soon|being rebuilt|shot|record|film|capture)\b)[^.\n]*\bdone\b/i, why: 'B-roll claimed as a shipped/done editor output' },
+  // R6-5 adversarial paraphrases of "scripting + editing, gone":
+  { re: /\bediting\b[\s,;:.–—-]{1,4}\bgone\b/i, why: '"editing … gone" — editing claimed as a shipped, eliminated step' },
+  { re: /scripting\s*\+\s*editing[\s,;:.–—-]{0,4}\b(gone|done|handled|automated|finished)\b/i, why: '"scripting + editing, gone/done" — editing claimed as shipped' },
+  { re: /\bediting\b[^.\n]{0,15}\b(is\s+)?(gone|handled for you|fully automated|done for you)\b/i, why: 'editing claimed as a shipped/eliminated outcome' },
 ]
+
+// Structural completion-marker check (runs on RAW source, not normalized).
+const MARKER = /<Check\b|[✓✔]|\bdone\b|\bcomplete\b/ig
+const STRONG = [/\bjump[\s-]?cuts?\b/i, /\bb-?roll\b/i, /\bdead air\b/i, /\bbeat-timed\b/i, /\bpacing\b/i]
+const QUALIFIER = /coming soon|being rebuilt|rebuilt|\bsoon\b|waitlist|not yet|\bcoming\b|disabled|in progress/i
+
+function normalizeJsx(s) {
+  return s
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, ' ') // {/* jsx comments */}
+    .replace(/<[^>]*>/g, ' ')              // strip JSX/HTML tags → joins split copy
+    .replace(/&[a-z]+;/gi, ' ')            // decode entities to space
+    .replace(/\s+/g, ' ')                  // collapse whitespace
+}
+
+function markerHits(path, raw) {
+  const reasons = []
+  let m
+  MARKER.lastIndex = 0
+  while ((m = MARKER.exec(raw))) {
+    const win = raw.slice(Math.max(0, m.index - 240), Math.min(raw.length, m.index + 240))
+    const text = normalizeJsx(win)
+    const strong = STRONG.filter((r) => r.test(text)).length
+    const hasCaptions = /\bcaptions?\b/i.test(text)
+    const nearEditorList = strong >= 2 || (strong >= 1 && hasCaptions)
+    if (nearEditorList && !QUALIFIER.test(win)) {
+      reasons.push(`${path}: completion marker ("${m[0]}") rendered next to an editor-output list with no coming-soon qualifier`)
+    }
+  }
+  return reasons
+}
 
 export function evaluate(files) {
   const reasons = []
   for (const [path, content] of Object.entries(files)) {
+    const norm = normalizeJsx(content)
     for (const { re, why } of FORBIDDEN) {
-      if (re.test(content)) reasons.push(`${path}: ${why} (/${re.source}/)`)
+      if (re.test(norm)) reasons.push(`${path}: ${why} (/${re.source}/)`)
     }
+    reasons.push(...markerHits(path, content))
   }
   return { ok: reasons.length === 0, reasons }
 }
@@ -48,6 +94,19 @@ function selftest() {
     ['exported ready to post fails', { 'a.tsx': 'exported ready to post' }, false],
     ['edit + render fails', { 'a.tsx': 'Edit + render' }, false],
     ['captions, B-roll, pacing — done fails', { 'a.tsx': 'Captions, B-roll, pacing — done.' }, false],
+    // R6-5 adversarial paraphrases:
+    ['"scripting + editing, gone" fails', { 'a.tsx': "sub: 'scripting + editing, gone'" }, false],
+    ['"editing, gone" fails', { 'a.tsx': 'Your editing, gone.' }, false],
+    ['scripting + recording, editing coming soon passes', { 'a.tsx': "sub: 'scripting + recording — AI editing coming soon'" }, true],
+    // R6-5 JSX-split (claim spread across tags) must be caught after normalize:
+    ['JSX-split "editing, gone" fails', { 'a.tsx': 'scripting + editing,</span><span> gone' }, false],
+    ['JSX-split captions/b-roll/pacing done fails', { 'a.tsx': 'Captions,</b> B-roll, <i>pacing</i> — done' }, false],
+    // R6-5 completion-marker structural check:
+    ['checkmarked editor-output list fails', { 'a.tsx': "['Captions','Jump cuts','B-roll'].map(t => <span><Check/>{t}</span>)" }, false],
+    ['checkmarked list WITH coming-soon qualifier passes', { 'a.tsx': "AI edit — coming soon ['Captions','Jump cuts','B-roll'].map(t => <span><Clock/>{t}</span>)" }, true],
+    ['unicode ✓ near jump cuts + b-roll fails', { 'a.tsx': '✓ Jump cuts ✓ B-roll' }, false],
+    // marker near a single non-editor status is fine (clipboard/post status):
+    ['Check near "caption copied · ready to post" passes', { 'a.tsx': '<Check/> Caption copied · ready to post; Add to your niche gallery; Log what you ship' }, true],
   ]
   let failed = 0
   for (const [name, files, exp] of cases) {

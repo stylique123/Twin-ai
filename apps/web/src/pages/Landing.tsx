@@ -107,7 +107,7 @@ const FEATURES = [
 ]
 
 const BENEFITS = [
-  { icon: Clock, big: '~2 hrs', label: 'saved per video', sub: 'scripting + editing, gone' },
+  { icon: Clock, big: '~1 hr', label: 'saved per video', sub: 'scripting + recording — AI editing coming soon' },
   { icon: TrendingUp, big: '4×', label: 'more posts shipped', sub: 'same effort, more shots on goal' },
   { icon: Eye, big: '100%', label: 'from what worked', sub: 'rebuilt, never copied' },
 ]
@@ -1313,12 +1313,15 @@ function LoopScreen({ index }: { index: number }) {
             post <span className="text-amber">smarter</span>
           </span>
         </div>
-        <div className="grid grid-cols-3 gap-1.5 text-[9px] text-sand">
-          {['Captions', 'Jump cuts', 'B-roll'].map((t) => (
-            <span key={t} className="flex items-center gap-1 rounded-md border border-white/8 bg-white/[0.03] px-1.5 py-1">
-              <Check className="h-3 w-3 text-teal" />{t}
-            </span>
-          ))}
+        <div className="flex flex-col gap-1.5">
+          <div className="text-[9px] uppercase tracking-wider text-stone">AI edit — coming soon</div>
+          <div className="grid grid-cols-3 gap-1.5 text-[9px] text-stone">
+            {['Captions', 'Jump cuts', 'B-roll'].map((t) => (
+              <span key={t} className="flex items-center gap-1 rounded-md border border-white/8 bg-white/[0.03] px-1.5 py-1">
+                <Clock className="h-3 w-3 text-stone" />{t}
+              </span>
+            ))}
+          </div>
         </div>
       </div>
     )
