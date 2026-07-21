@@ -357,3 +357,96 @@ possible or claimed.
 - `probe_residue_report` selftest: **OK**; `check_product_truth` selftest (18 cases incl. JSX-split + marker) + live (44 files): **OK**
 - docs-guard, single-deploy, vps-diag-authority, vps-signoff: **OK**
 - `@twinai/web` typecheck + `web:build`: **clean**; both workflow YAMLs parse.
+
+---
+
+# Round 7 — independent-audit correction (sound policy check + full-chain harness + honest protocol)
+
+Round 7 corrects claims Round 6 had not truly earned. PR #196 remains **DRAFT**;
+nothing merged/deployed/enabled; `EDITOR_V2_START_ENABLED` unset,
+`autoFillerRemoval=false`; `enqueue-autoedit` 410 tombstone intact;
+`prod-source-smoke` NOT run against production.
+
+## What Round 6 claimed vs. what was actually true
+
+- The policy checker keyed its live map by **policy name only**; its DROP parser
+  ignored the target table; it ignored **ALTER POLICY**. Three adversarial
+  lifecycles wrongly passed. Fixed with **(table, name)** keys, table-qualified
+  DROP, and ALTER handling.
+- The harness was authoritative only for `residue_flow.mjs`. **create / upload /
+  finalize stayed inline shell** in the workflow, so "response lost", "PUT
+  failure", "finalize failure" never exercised the real branches or their
+  `$GITHUB_ENV` export. The whole chain is now executable code the harness drives.
+- Two misleading Landing lines ("… editor … all done from a single paste" and
+  "Paste it, edit it, post it") passed the guard.
+
+## Changed files (round 7)
+
+| File | Blocker | Change |
+|---|---|---|
+| `scripts/ci/check_takes_delete_policy.mjs` | R7-1 | (table,name)-keyed inventory; table-qualified DROP; ALTER POLICY (retarget + rename); DELETE-capable = delete OR all. Adds the 3 exact adversarial fixtures (same-name DROP/CREATE on another table; ALTER from another bucket → takes) — all now FAIL. |
+| `scripts/prod-smoke/verify_takes_policy_live.sql` (new) | R7-1 | Authoritative live `pg_policies` catalog query for the sign-off sequence (migration parsing is supporting evidence only). |
+| `scripts/prod-smoke/smoke_chain.mjs` (new) | R7-2 | The COMPLETE functional chain as executable code: login → persist recovery ids → create → parse → persist asset → signed PUT → finalize → poll ready → verify metadata merge → poll pointer. All I/O injected; returns `{exitCode, stage, functionalChainPass}`; persists recovery state + `PROBE_FUNCTIONAL_CHAIN`. |
+| `scripts/prod-smoke/residue_flow.mjs` | R7-2 | Adds testable `runResidueMain(env, deps)` returning the exit code (classifier/reporter/exit boundaries injectable; any throw ⇒ exit 1 fail-closed). |
+| `scripts/prod-smoke/residue_harness.mjs` (rewritten) | R7-2, R7-4 | Drives BOTH modules. Injects failures at create / parse / PUT / finalize / classifier / reporter / exit; asserts exit codes AND persisted recovery state; composes persisted state into residue and asserts fail-closed; asserts the two-stage protocol invariant. |
+| `.github/workflows/prod-source-smoke.yml` | R7-2, R7-4 | Stage 1 runs `smoke_chain.mjs` (inline shell chain removed); adds a two-stage protocol verdict step; documents red-by-design. |
+| `apps/web/src/pages/Landing.tsx` | R7-3 | "Five jobs … editor … all done from a single paste" → "Four jobs … copywriter — handled … The AI editor is being rebuilt — coming soon." "Paste it, edit it, post it" → "Paste it, script it, record it … AI editing is coming soon." |
+| `scripts/ci/check_product_truth.mjs` | R7-3 | Adds the two exact strings as failing fixtures + patterns ("editor … all done", "all done from a single paste", "edit it, post it"). |
+| `docs/prod-source-smoke-protocol.md` (new) | R7-4 | The two-stage operational protocol + exact functional-chain pass evidence. |
+
+## Blocker 1 — policy checker soundness (adversarial fixtures now FAIL)
+
+`check_takes_delete_policy.mjs --selftest` (all pass), including the three that
+previously passed:
+- `storage DELETE + same-name DROP on ANOTHER table → fail`
+- `storage DELETE + same-name CREATE on ANOTHER table → fail`
+- `storage DELETE altered from another bucket to takes → fail`
+
+Live migration inventory: `twinai takes insert` (insert) + `twinai takes read`
+(select), `deleteCapable=false`. **Authoritative** posture check =
+`scripts/prod-smoke/verify_takes_policy_live.sql` against live `pg_policies`,
+added to the sign-off sequence (operator-run; PASS = `delete_capable_takes_policies = 0`,
+`has_insert`, `has_select`).
+
+## Blocker 2 — full-chain harness (real branches + recovery state)
+
+`residue_harness.mjs --selftest` drives `runSmokeChain` and asserts, at the real
+boundaries:
+
+| Injected boundary | Result | Persisted recovery state | Composed residue |
+|---|---|---|---|
+| login fails | exit 1 @ `login` | no `PROBE_CREATE_ATTEMPTED` | — |
+| create response lost (network) | exit 1 @ `create` | attempted+gen, **no asset** | Case B all-unknown → exit 1 |
+| malformed create body | exit 1 @ `create` | no asset | Case B → exit 1 |
+| PUT failure | exit 1 @ `put` | **asset persisted** | Case C object present → exit 1 |
+| finalize failure | exit 1 @ `finalize` | asset persisted | Case C → exit 1 |
+| never ready / metadata mismatch / pointer unlinked | exit 1 @ `ready`/`metadata`/`pointer` | — | — |
+| classifier throws | — | — | exit 1 (fail closed) |
+| reporter throws | — | — | exit 1 (fail closed) |
+| no create | — | — | exit 0 (only clean exit) |
+
+## Blocker 3 — product copy
+
+`check_product_truth.mjs --selftest` now fails on the exact strings
+"…strategist, writer, producer, editor, copywriter — all done from a single
+paste…" and "Paste it, edit it, post it — tonight, from one app.", and passes the
+corrected copy. Live: 44 files clean.
+
+## Blocker 4 — two-stage protocol (a red workflow is not a passing smoke)
+
+`docs/prod-source-smoke-protocol.md` defines: Stage 1 functional-chain evidence
+(the pass signal, `PROBE_FUNCTIONAL_CHAIN=pass` + `verifyReadyRow` + linked
+pointer) → Stage 2 recoverable-artifact report (intentionally nonzero) → Stage 3
+operator retention cleanup → Stage 4 supported zero-delta verification. The
+workflow's overall RED conclusion is **by design** (validation_job_events is
+never client-observable) and is explicitly NOT a functional failure; a Stage-1
+non-pass emits a `::warning::` distinguishing a real failure. The harness asserts
+the invariant: functional chain green + residue accounting red.
+
+## Verification (this head, local)
+
+- `check_takes_delete_policy` selftest (12 fixtures incl. 3 adversarial) + live: **OK**
+- `residue_harness` selftest: full smoke-chain + residue boundary injection + protocol + truth table: **all passed**
+- `check_product_truth` selftest (22 cases) + live (44 files): **OK**
+- docs-guard, single-deploy, vps-diag-authority, vps-signoff, residue classifier: **OK**
+- `@twinai/web` typecheck: clean; both workflow YAMLs parse; live-policy SQL present.

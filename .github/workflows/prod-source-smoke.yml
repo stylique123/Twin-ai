@@ -85,114 +85,33 @@ jobs:
       - name: Install ffmpeg (fixture generation only)
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
 
-      - name: Run the real source chain and verify preserved metadata
+      - name: Generate probe fixture (ffmpeg)
         run: |
           set -euo pipefail
-          BASE="https://jmdecibuytznsonrasxw.supabase.co"
-          ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
-
           ffmpeg -hide_banner -loglevel error -f lavfi -i testsrc=size=320x240:rate=30:duration=2 \
             -f lavfi -i sine=frequency=440:duration=2 -c:v libvpx -b:v 200k -c:a libvorbis -shortest /tmp/probe.webm
           SIZE=$(stat -c%s /tmp/probe.webm)
           echo "fixture bytes=$SIZE"
+          { echo "SIZE=$SIZE"; echo "FIXTURE=/tmp/probe.webm"; } >> "$GITHUB_ENV"
 
-          # Sign-in body via jq reading credentials from the ENVIRONMENT
-          # (env.PROBE_*): never on a command line (argv) nor interpolated.
-          LOGIN_BODY=$(jq -n '{email: env.PROBE_EMAIL, password: env.PROBE_PASSWORD}')
-          # Never echo the auth response body (it carries access_token).
-          TOKEN=$(curl -sS -X POST "$BASE/auth/v1/token?grant_type=password" \
-            -H "apikey: $ANON" -H 'Content-Type: application/json' \
-            --data "$LOGIN_BODY" | jq -r '.access_token // empty')
-          [ -n "$TOKEN" ] || { echo "probe sign-in failed (no token; body suppressed)"; exit 1; }
-          echo "::add-mask::$TOKEN"
-          # Export creds so the ALWAYS-run residue-accounting step can OBSERVE
-          # each artifact even if a later assertion in this step fails. These
-          # credentials enable residue OBSERVATION / ACCOUNTING ONLY — the `takes`
-          # bucket has NO DELETE policy (proven by scripts/ci/check_takes_delete_policy.mjs),
-          # so the probe user cannot delete its object; the accounting step reports
-          # what it OBSERVES and never claims a deletion. (TOKEN is masked.)
-          {
-            echo "PROBE_BASE=$BASE"
-            echo "PROBE_ANON=$ANON"
-            echo "PROBE_TOKEN=$TOKEN"
-          } >> "$GITHUB_ENV"
-
-          ATTEMPT=$(uuidgen)
-          # PERSIST the durable identifiers BEFORE the create request. A create
-          # can commit server-side while the curl/response/jq fails before an
-          # assetId ever reaches us — the always-run residue step must then still
-          # be able to report UNKNOWN residue keyed by generation + attempt.
-          {
-            echo "PROBE_GEN_ID=$GEN_ID"
-            echo "PROBE_ATTEMPT=$ATTEMPT"
-            echo "PROBE_CREATE_ATTEMPTED=1"
-          } >> "$GITHUB_ENV"
-          CREATE_BODY=$(jq -n --arg gen "$GEN_ID" --arg att "$ATTEMPT" --argjson size "$SIZE" \
-            '{action:"create",generation_id:$gen,recording_attempt_id:$att,content_type:"video/webm",size_bytes:$size}')
-          CREATE=$(curl -sS -X POST "$BASE/functions/v1/source-asset" \
-            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-            --data "$CREATE_BODY")
-          ASSET=$(echo "$CREATE" | jq -r .assetId)
-          SIGNED=$(echo "$CREATE" | jq -r .signedUrl)
-          if [ -z "$ASSET" ] || [ "$ASSET" = "null" ]; then
-            echo "create returned no assetId (may have committed server-side) — residue step will report UNKNOWN residue keyed by generation/attempt"
-            echo "create response: $(echo "$CREATE" | jq -c 'del(.signedUrl, .token)' 2>/dev/null || echo '<unparseable>')"; exit 1
-          fi
-          echo "::add-mask::$SIGNED"
-          echo "asset=$ASSET"
-          echo "PROBE_ASSET=$ASSET" >> "$GITHUB_ENV"
-
-          PUT=$(curl -sS -o /dev/null -w '%{http_code}' -X PUT "$SIGNED" \
-            -H 'x-upsert: true' -H 'content-type: video/webm' --data-binary @/tmp/probe.webm)
-          [ "$PUT" -lt 300 ] || { echo "signed PUT failed: $PUT"; exit 1; }
-
-          FIN_BODY=$(jq -n --arg asset "$ASSET" '{action:"finalize",asset_id:$asset}')
-          FIN=$(curl -sS -o /dev/null -w '%{http_code}' -X POST "$BASE/functions/v1/source-asset" \
-            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-            --data "$FIN_BODY")
-          [ "$FIN" = "200" ] || { echo "finalize failed: $FIN"; exit 1; }
-
-          # Poll via the probe user's OWN RLS-scoped read until the production
-          # worker validates it.
-          STATUS=""
-          for i in $(seq 1 60); do
-            ROW=$(curl -sS "$BASE/rest/v1/media_assets?id=eq.$ASSET&select=status,storage_path,content_sha256,duration_ms,width,height,rotation,has_audio,metadata" \
-              -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq '.[0]')
-            STATUS=$(echo "$ROW" | jq -r .status)
-            [ "$STATUS" = "ready" ] && break
-            [ "$STATUS" = "rejected" ] && { echo "REJECTED: $(echo "$ROW" | jq .metadata)"; exit 1; }
-            sleep 3
-          done
-          [ "$STATUS" = "ready" ] || { echo "asset never became ready (last: $STATUS)"; exit 1; }
-          echo "ready row (facts + metadata keys):"
-          echo "$ROW" | jq '{status, duration_ms, width, height, rotation, has_audio, sha_len: (.content_sha256|length), meta_keys: (.metadata|keys), probe_facts: .metadata.probe_facts, container: .metadata.container, video_codec: .metadata.video_codec, audio_codec: .metadata.audio_codec, editor_eligible: .metadata.editor_eligible, has_finalized_etag: (.metadata.finalized_etag != null), finalized_bytes: .metadata.finalized_bytes}'
-
-          echo "$ROW" | jq -e '
-            .status == "ready"
-            and .metadata.finalized_etag != null
-            and (.metadata.finalized_bytes | tonumber) > 0
-            and .metadata.probe_facts.frame_rate != null
-            and .metadata.container != null
-            and .metadata.video_codec != null
-            and .metadata.audio_codec != null
-            and .metadata.editor_eligible == true
-            and (.content_sha256 | length) == 64
-            and .duration_ms > 1500 and .has_audio == true
-            and .width == 320 and .height == 240 and .rotation == 0
-          ' > /dev/null || { echo "METADATA MERGE VERIFICATION FAILED"; exit 1; }
-
-          # Generation pointer must link to the probe asset (RLS-scoped read).
-          # The ready flip and the link are consecutive worker statements —
-          # poll briefly instead of racing the gap (same as the staging matrix).
-          PTR=""
-          for i in $(seq 1 20); do
-            PTR=$(curl -sS "$BASE/rest/v1/generations?id=eq.$GEN_ID&select=source_asset_id" \
-              -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" | jq -r '.[0].source_asset_id')
-            [ "$PTR" = "$ASSET" ] && break
-            sleep 2
-          done
-          [ "$PTR" = "$ASSET" ] || { echo "GENERATION POINTER NOT LINKED (got $PTR)"; exit 1; }
-          echo "generation pointer linked — metadata merge preserved all finalization + probe facts — PASS"
+      # STAGE 1 — FUNCTIONAL CHAIN. Runs the SAME executable module the harness
+      # exercises (scripts/prod-smoke/smoke_chain.mjs): sign in → persist recovery
+      # ids BEFORE create → create → parse → persist asset → signed PUT → finalize
+      # → poll ready → verify preserved metadata merge → poll generation pointer.
+      # The module persists all recovery state to $GITHUB_ENV (so the always-run
+      # residue step can account even if this fails) and PROBE_FUNCTIONAL_CHAIN
+      # = pass|fail:<stage>. A PASS here is the functional-chain evidence; it is a
+      # SEPARATE signal from the overall workflow conclusion (which the residue
+      # accounting will intentionally turn RED — see the protocol below).
+      - name: 'Stage 1 — functional chain (create → ready → metadata → pointer)'
+        env:
+          PROBE_BASE_URL: https://jmdecibuytznsonrasxw.supabase.co
+        run: |
+          set -euo pipefail
+          # anon key from the committed web env; passed to the node process via a
+          # per-command env var (not argv). Credentials come from job env.PROBE_*.
+          ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
+          PROBE_ANON_KEY="$ANON" node scripts/prod-smoke/smoke_chain.mjs
 
       # HONEST RESIDUE ACCOUNTING — runs even if the chain above failed
       # (if: always()). It runs the SAME control-flow module the failure-injection
@@ -214,3 +133,24 @@ jobs:
       - name: Account for probe residue and fail closed (always)
         if: always()
         run: node scripts/prod-smoke/residue_flow.mjs
+
+      # TWO-STAGE PROTOCOL VERDICT (always). This workflow is EXPECTED to end
+      # RED: the residue step fails closed because validation_job_events is never
+      # client-observable, so an attempted-create smoke can never be "clean". A
+      # red conclusion is therefore NOT a failed functional smoke — the pass
+      # signal is PROBE_FUNCTIONAL_CHAIN=pass emitted by Stage 1. See
+      # docs/prod-source-smoke-protocol.md for the full operational protocol:
+      #   Stage 1 functional-chain evidence (this marker = pass)
+      #   → Stage 2 recoverable-artifact report (intentionally nonzero)
+      #   → sanctioned operator retention cleanup
+      #   → supported zero-delta verification (A2 query).
+      - name: Two-stage protocol verdict (always)
+        if: always()
+        run: |
+          echo "## Prod-source-smoke — two-stage verdict" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Stage 1 (functional chain): **${PROBE_FUNCTIONAL_CHAIN:-not-run}**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Stage 2 (residue accounting): **RED by design** — recoverable-artifact handoff, not a functional failure." >> "$GITHUB_STEP_SUMMARY"
+          echo "- A green functional chain WITH a red residue step is the expected outcome; see docs/prod-source-smoke-protocol.md." >> "$GITHUB_STEP_SUMMARY"
+          if [ "${PROBE_FUNCTIONAL_CHAIN:-}" != "pass" ]; then
+            echo "::warning::functional chain did NOT pass (${PROBE_FUNCTIONAL_CHAIN:-not-run}); this is a real smoke failure, not the expected residue-only red."
+          fi

@@ -39,6 +39,10 @@ const FORBIDDEN = [
   { re: /\bediting\b[\s,;:.–—-]{1,4}\bgone\b/i, why: '"editing … gone" — editing claimed as a shipped, eliminated step' },
   { re: /scripting\s*\+\s*editing[\s,;:.–—-]{0,4}\b(gone|done|handled|automated|finished)\b/i, why: '"scripting + editing, gone/done" — editing claimed as shipped' },
   { re: /\bediting\b[^.\n]{0,15}\b(is\s+)?(gone|handled for you|fully automated|done for you)\b/i, why: 'editing claimed as a shipped/eliminated outcome' },
+  // R7-3 rendered user-story claims (audit the whole sentence, not a phrase):
+  { re: /\beditor\b[^.\n]{0,80}\ball\s+done\b/i, why: '"editor … all done" — the editor is listed among jobs claimed as shipped/done' },
+  { re: /all\s+done\s+from\s+a\s+single\s+paste/i, why: '"all done from a single paste" — full pipeline (incl. editor) claimed as shipped' },
+  { re: /\bedit it\b[\s,]*\bpost it\b/i, why: '"edit it, post it" — present-tense editing claimed as shipped' },
 ]
 
 // Structural completion-marker check (runs on RAW source, not normalized).
@@ -105,6 +109,11 @@ function selftest() {
     ['checkmarked editor-output list fails', { 'a.tsx': "['Captions','Jump cuts','B-roll'].map(t => <span><Check/>{t}</span>)" }, false],
     ['checkmarked list WITH coming-soon qualifier passes', { 'a.tsx': "AI edit — coming soon ['Captions','Jump cuts','B-roll'].map(t => <span><Clock/>{t}</span>)" }, true],
     ['unicode ✓ near jump cuts + b-roll fails', { 'a.tsx': '✓ Jump cuts ✓ B-roll' }, false],
+    // R7-3 exact rendered user-story examples must fail:
+    ['"strategist … editor … all done from a single paste" fails', { 'a.tsx': "Five jobs you'd normally hire a team for — strategist, writer, producer, editor, copywriter — all done from a single paste, in minutes." }, false],
+    ['"Paste it, edit it, post it" fails', { 'a.tsx': "Paste it, edit it, post it — tonight, from one app." }, false],
+    ['corrected four-jobs copy (editor coming soon) passes', { 'a.tsx': "Four jobs you'd normally hire a team for — strategist, writer, producer, copywriter — handled from a single paste, in minutes. The AI editor is being rebuilt — coming soon." }, true],
+    ['corrected paste/script/record copy passes', { 'a.tsx': "Paste it, script it, record it — tonight, from one app. AI editing is coming soon." }, true],
     // marker near a single non-editor status is fine (clipboard/post status):
     ['Check near "caption copied · ready to post" passes', { 'a.tsx': '<Check/> Caption copied · ready to post; Add to your niche gallery; Log what you ship' }, true],
   ]

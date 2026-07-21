@@ -138,18 +138,33 @@ export async function runResidueAccounting(env, deps = {}) {
   }
 }
 
+// Testable entry point: runs the flow, classifies, reports, and RETURNS the
+// process exit code (0/1) instead of calling process.exit — so the harness can
+// inject failures at the classifier / reporter / exit boundaries and assert the
+// code. Any throw anywhere (accounting, classifier, or reporter) is caught and
+// mapped to exit 1 (fail closed).
+export async function runResidueMain(env, deps = {}) {
+  const classifyFn = deps.classify || classify
+  const emit = deps.emit || ((s) => console.log(s))
+  const fail = deps.fail || ((s) => console.error(s))
+  try {
+    const result = await runResidueAccounting(env, deps)
+    if (result.case === 'A') { emit('no create was attempted — nothing was created; nothing to clean'); return 0 }
+    const { clean, report } = classifyFn(result.artifacts)
+    emit(`residue case=${result.case}`)
+    emit(report)
+    if (!clean) {
+      fail('::error::probe cleanup left PRESENT/UNKNOWN residue — sanctioned operator retention required (see report above)')
+      return 1
+    }
+    return 0
+  } catch (e) {
+    fail(`::error::residue accounting failed — treating as residue and failing closed: ${e && e.message}`)
+    return 1
+  }
+}
+
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]
 if (isMain) {
-  const result = await runResidueAccounting(process.env)
-  if (result.case === 'A') {
-    console.log('no create was attempted — nothing was created; nothing to clean')
-    process.exit(0)
-  }
-  const { clean, report } = classify(result.artifacts)
-  console.log(`residue case=${result.case}`)
-  console.log(report)
-  if (!clean) {
-    console.error('::error::probe cleanup left PRESENT/UNKNOWN residue — sanctioned operator retention required (see report above)')
-    process.exit(1)
-  }
+  process.exit(await runResidueMain(process.env))
 }

@@ -1,78 +1,99 @@
-// R6-4: robust, migration-derived proof of the `takes` storage-policy posture.
+// R6-4 / hardened R7-1: migration-derived proof of the `takes` storage-policy
+// posture, with SOUND, TABLE-QUALIFIED policy lifecycle handling.
 //
 // The prod-source-smoke residue accounting depends on ONE fact: a client cannot
-// delete its own `takes` object, because the `takes` bucket has no DELETE-capable
-// storage.objects policy. The previous evidence was a single bounded regex over
-// all migrations concatenated together — brittle against alternate formatting and
-// statement order. This module instead builds a real policy INVENTORY:
+// delete its own `takes` object, because `storage.objects` has no DELETE-capable
+// policy targeting the `takes` bucket. This module builds a real policy INVENTORY
+// keyed by (TABLE, policy name) — not by name alone — and models the full
+// lifecycle: CREATE / DROP / ALTER, each qualified by its target table.
 //
-//   1. strip SQL comments,
-//   2. split into statements on `;`,
-//   3. parse every `create policy` / `drop policy` on `storage.objects`,
-//   4. resolve the live set (a drop removes an earlier create by name),
-//   5. classify each live policy by command and whether it targets the `takes`
-//      bucket, where DELETE-CAPABLE = command is `delete` OR `all`.
+//   * A DROP removes a policy only on its OWN table (a same-name drop on another
+//     table must NOT remove a storage.objects policy).
+//   * A same-name CREATE on another table is a SEPARATE policy (must not shadow
+//     the storage.objects one).
+//   * An ALTER POLICY … ON <table> USING/ WITH CHECK (…) can retarget a policy's
+//     bucket. Postgres ALTER POLICY cannot change the FOR command, so command is
+//     fixed at CREATE; the bucket target is updated conservatively (a policy is
+//     treated as targeting `takes` if EITHER its create clause OR any alter
+//     clause references `'takes'` — fail-closed).
 //
-// A takes-bucket policy that is DELETE-capable is a hard failure. We also assert
-// the expected INSERT and SELECT policies exist (posture sanity), so silently
-// dropping them is caught too.
+// DELETE-CAPABLE = command is `delete` OR `all`. A DELETE-capable policy on
+// storage.objects targeting `takes` is a hard failure.
+//
+// IMPORTANT — migration text is SUPPORTING evidence only. The AUTHORITATIVE
+// production posture check is a live pg_policies catalog query (see
+// scripts/prod-smoke/verify_takes_policy_live.sql), run as part of the sign-off
+// sequence before claiming the production posture.
 //
 //   node scripts/ci/check_takes_delete_policy.mjs            # live: read migrations
-//   node scripts/ci/check_takes_delete_policy.mjs --selftest # fixtures incl. a planted DELETE policy
+//   node scripts/ci/check_takes_delete_policy.mjs --selftest # fixtures incl. adversarial cases
 import { readdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 const DELETE_CAPABLE = new Set(['delete', 'all'])
+const norm = (t) => t.replace(/"/g, '').toLowerCase()
 
 function stripComments(sql) {
   return sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ')
 }
 
-// Parse policy statements from one SQL source. Robust to newlines/formatting/
-// clause order AND to policies nested inside `do $$ … $$` blocks (the codebase
-// creates its storage policies inside an idempotent DO block). We scan for every
-// `create policy … ;` / `drop policy … ;` clause WHEREVER it appears — not only
-// at the start of a `;`-delimited statement — and read each clause's own text up
-// to its terminating `;`. Results are returned in positional order so a later
-// drop-then-recreate resolves correctly.
+// Parse CREATE / DROP / ALTER policy ops from one SQL source, each qualified by
+// its target table. Robust to newlines/formatting/clause order and to policies
+// nested inside `do $$ … $$` blocks; returned in positional order.
 export function parsePolicyStatements(sql) {
   const clean = stripComments(sql)
-  const found = []
+  const ops = []
   let m
-  const createRe = /create\s+policy\s+("([^"]+)"|[a-zA-Z0-9_]+)[\s\S]*?;/gi
+  const createRe = /create\s+policy\s+("([^"]+)"|[\w]+)\s+on\s+([\w".]+)([\s\S]*?);/gi
   while ((m = createRe.exec(clean))) {
-    const stmt = m[0]
-    const name = (m[2] || m[1]).replace(/^"|"$/g, '')
-    const onStorage = /\bon\s+storage\.objects\b/i.test(stmt)
-    const cmd = /\bfor\s+(all|select|insert|update|delete)\b/i.exec(stmt)
-    // Postgres default when FOR is omitted is ALL (all commands, incl. delete).
-    const command = cmd ? cmd[1].toLowerCase() : 'all'
-    // Bucket targeting: a `'takes'` literal anywhere in the predicate, or the
-    // bucket named in the policy name (the codebase convention: "twinai takes …").
-    const targetsTakes = /'takes'/i.test(stmt) || /\btakes\b/i.test(name)
-    found.push({ at: m.index, kind: 'create', name, onStorage, command, targetsTakes })
+    const name = norm(m[2] || m[1]); const table = norm(m[3]); const rest = m[4]
+    const cmd = /\bfor\s+(all|select|insert|update|delete)\b/i.exec(rest)
+    const command = cmd ? cmd[1].toLowerCase() : 'all' // Postgres default FOR is ALL
+    const targetsTakes = /'takes'/i.test(rest) || /\btakes\b/i.test(name)
+    ops.push({ at: m.index, kind: 'create', name, table, command, targetsTakes })
   }
-  const dropRe = /drop\s+policy\s+(?:if\s+exists\s+)?("([^"]+)"|[a-zA-Z0-9_]+)[\s\S]*?;/gi
+  const dropRe = /drop\s+policy\s+(?:if\s+exists\s+)?("([^"]+)"|[\w]+)\s+on\s+([\w".]+)/gi
   while ((m = dropRe.exec(clean))) {
-    const name = (m[2] || m[1]).replace(/^"|"$/g, '')
-    found.push({ at: m.index, kind: 'drop', name })
+    ops.push({ at: m.index, kind: 'drop', name: norm(m[2] || m[1]), table: norm(m[3]) })
   }
-  return found.sort((a, b) => a.at - b.at).map(({ at, ...rest }) => rest)
+  const alterRe = /alter\s+policy\s+("([^"]+)"|[\w]+)\s+on\s+([\w".]+)([\s\S]*?);/gi
+  while ((m = alterRe.exec(clean))) {
+    const rest = m[4]
+    // A RENAME TO changes the policy's name; capture the new name so later ops
+    // that reference it resolve correctly.
+    const rename = /rename\s+to\s+("([^"]+)"|[\w]+)/i.exec(rest)
+    ops.push({
+      at: m.index, kind: 'alter', name: norm(m[2] || m[1]), table: norm(m[3]),
+      renameTo: rename ? norm(rename[2] || rename[1]) : null,
+      // Only treat as retargeting when a USING/WITH CHECK clause is present.
+      clauseTargetsTakes: /\b(using|with\s+check)\b[\s\S]*'takes'/i.test(rest) ? true
+        : (/\b(using|with\s+check)\b/i.test(rest) ? false : null),
+    })
+  }
+  return ops.sort((a, b) => a.at - b.at)
 }
 
-// Build the LIVE inventory across an ordered map of {source: sql}. Later drops
-// remove earlier creates by name; a re-create after a drop wins.
+// Build the LIVE inventory across an ordered map of {source: sql}. Keys are
+// TABLE-qualified: `${table}::${name}`.
 export function buildTakesInventory(sqlBySource) {
-  const live = new Map() // name → {command, onStorage, targetsTakes}
+  const live = new Map()
+  const key = (table, name) => `${table}::${name}`
   for (const sql of Object.values(sqlBySource)) {
-    for (const st of parsePolicyStatements(sql)) {
-      if (st.kind === 'drop') live.delete(st.name)
-      else live.set(st.name, { command: st.command, onStorage: st.onStorage, targetsTakes: st.targetsTakes })
+    for (const op of parsePolicyStatements(sql)) {
+      const k = key(op.table, op.name)
+      if (op.kind === 'create') {
+        live.set(k, { table: op.table, name: op.name, command: op.command, targetsTakes: op.targetsTakes })
+      } else if (op.kind === 'drop') {
+        live.delete(k) // table-qualified: a same-name drop on another table does nothing here
+      } else if (op.kind === 'alter') {
+        const cur = live.get(k)
+        if (!cur) continue
+        if (op.clauseTargetsTakes !== null) cur.targetsTakes = cur.targetsTakes || op.clauseTargetsTakes
+        if (op.renameTo && op.renameTo !== op.name) { live.delete(k); cur.name = op.renameTo; live.set(key(op.table, op.renameTo), cur) }
+      }
     }
   }
-  const takesPolicies = [...live.entries()]
-    .map(([name, p]) => ({ name, ...p }))
-    .filter((p) => p.onStorage && p.targetsTakes)
+  const takesPolicies = [...live.values()].filter((p) => p.table === 'storage.objects' && p.targetsTakes)
   const deleteCapable = takesPolicies.filter((p) => DELETE_CAPABLE.has(p.command))
   const has = (cmd) => takesPolicies.some((p) => p.command === cmd)
   return {
@@ -87,9 +108,7 @@ export function buildTakesInventory(sqlBySource) {
 export function evaluate(sqlBySource) {
   const inv = buildTakesInventory(sqlBySource)
   const reasons = []
-  if (inv.deletePolicyPresent) {
-    for (const p of inv.deleteCapable) reasons.push(`DELETE-capable takes policy present: "${p.name}" (for ${p.command})`)
-  }
+  if (inv.deletePolicyPresent) for (const p of inv.deleteCapable) reasons.push(`DELETE-capable takes policy present: "${p.name}" on ${p.table} (for ${p.command})`)
   if (!inv.insertPresent) reasons.push('expected takes INSERT policy is missing')
   if (!inv.selectPresent) reasons.push('expected takes SELECT policy is missing')
   return { ok: reasons.length === 0, reasons, inventory: inv }
@@ -102,26 +121,25 @@ function readMigrations(dir = 'supabase/migrations') {
 }
 
 function selftest() {
-  const cases = []
   const INSERT = `create policy "twinai takes insert" on storage.objects for insert to authenticated with check (bucket_id = 'takes');`
   const SELECT = `create policy "twinai takes read" on storage.objects for select to authenticated using (bucket_id = 'takes');`
-  // 1. allowed posture: insert + select only, no delete
-  cases.push(['insert+select only → ok', { a: INSERT + '\n' + SELECT }, true])
-  // 2. planted FOR DELETE policy → fail
-  cases.push(['planted FOR DELETE → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "twinai takes delete" on storage.objects for delete to authenticated using (bucket_id = 'takes');` }, false])
-  // 3. planted FOR ALL policy (grants delete) → fail
-  cases.push(['planted FOR ALL → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "takes all" on storage.objects for all to authenticated using (bucket_id = 'takes');` }, false])
-  // 4. alternate formatting / newlines / reordered clauses → still detected
-  cases.push(['alt-format multiline DELETE → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "weird"\n  on storage.objects\n  as permissive\n  for   delete\n  to authenticated\n  using ( bucket_id = 'takes' );` }, false])
-  // 5. FOR omitted (defaults to ALL) targeting takes → delete-capable → fail
-  cases.push(['FOR omitted defaults ALL → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "implicit all takes" on storage.objects to authenticated using (bucket_id = 'takes');` }, false])
-  // 6. DELETE policy created then dropped → live set is clean → ok
-  cases.push(['created-then-dropped DELETE → ok', { a: INSERT + '\n' + SELECT + `\ncreate policy "tmp del" on storage.objects for delete to authenticated using (bucket_id = 'takes');`, b: `drop policy if exists "tmp del" on storage.objects;` }, true])
-  // 7. DELETE policy for a DIFFERENT bucket → not a takes delete → ok
-  cases.push(['delete on another bucket → ok', { a: INSERT + '\n' + SELECT + `\ncreate policy "edits delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');` }, true])
-  // 8. missing insert → fail (posture sanity)
-  cases.push(['missing insert → fail', { a: SELECT }, false])
-
+  const DELETE_TAKES = `create policy "twinai takes delete" on storage.objects for delete to authenticated using (bucket_id = 'takes');`
+  const cases = [
+    ['insert+select only → ok', { a: INSERT + '\n' + SELECT }, true],
+    ['planted FOR DELETE → fail', { a: INSERT + '\n' + SELECT + '\n' + DELETE_TAKES }, false],
+    ['planted FOR ALL → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "takes all" on storage.objects for all to authenticated using (bucket_id = 'takes');` }, false],
+    ['alt-format multiline DELETE → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "weird"\n  on storage.objects\n  as permissive\n  for   delete\n  to authenticated\n  using ( bucket_id = 'takes' );` }, false],
+    ['FOR omitted defaults ALL → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "implicit all takes" on storage.objects to authenticated using (bucket_id = 'takes');` }, false],
+    ['created-then-dropped DELETE (same table) → ok', { a: INSERT + '\n' + SELECT + '\n' + DELETE_TAKES, b: `drop policy if exists "twinai takes delete" on storage.objects;` }, true],
+    ['delete on another bucket → ok', { a: INSERT + '\n' + SELECT + `\ncreate policy "edits delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');` }, true],
+    ['missing insert → fail', { a: SELECT }, false],
+    // R7-1 adversarial fixtures — all THREE must FAIL (previously passed):
+    ['storage DELETE + same-name DROP on ANOTHER table → fail', { a: DELETE_TAKES + '\n' + INSERT + '\n' + SELECT, b: `drop policy if exists "twinai takes delete" on public.generations;` }, false],
+    ['storage DELETE + same-name CREATE on ANOTHER table → fail', { a: DELETE_TAKES + '\n' + INSERT + '\n' + SELECT, b: `create policy "twinai takes delete" on public.generations for select to authenticated using (true);` }, false],
+    ['storage DELETE altered from another bucket to takes → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "twinai takes delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');`, b: `alter policy "twinai takes delete" on storage.objects using (bucket_id = 'takes');` }, false],
+    // ALTER that retargets AWAY from takes stays fail-closed (conservative) — documents the posture:
+    ['ALTER add rename keeps takes delete tracked → fail', { a: INSERT + '\n' + SELECT + '\n' + DELETE_TAKES, b: `alter policy "twinai takes delete" on storage.objects rename to "renamed del";` }, false],
+  ]
   let failed = 0
   for (const [name, sqlBySource, expOk] of cases) {
     const { ok } = evaluate(sqlBySource)
@@ -139,6 +157,7 @@ if (isMain) {
     const { ok, reasons, inventory } = evaluate(readMigrations())
     console.log('takes storage policy inventory:', JSON.stringify(inventory.takesPolicies))
     console.log(`insert=${inventory.insertPresent} select=${inventory.selectPresent} deleteCapable=${inventory.deletePolicyPresent}`)
+    console.log('NOTE: migration-derived; authoritative posture = live pg_policies (scripts/prod-smoke/verify_takes_policy_live.sql)')
     if (!ok) { for (const r of reasons) console.error(`::error::${r}`); process.exit(1) }
     console.log('takes-delete-policy guard: OK (no client DELETE-capable takes policy; insert+select present)')
   }

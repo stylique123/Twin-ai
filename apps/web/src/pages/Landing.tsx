@@ -884,7 +884,7 @@ function ValueStack() {
         <h2 className="mx-auto mt-3 max-w-2xl font-display text-3xl leading-tight sm:text-5xl">
           One link in. A finished, on-brand video out, <span className="gradient-text">end to end.</span>
         </h2>
-        <p className="mx-auto mt-4 max-w-lg text-sand">Five jobs you'd normally hire a team for — strategist, writer, producer, editor, copywriter — all done from a single paste, in minutes.</p>
+        <p className="mx-auto mt-4 max-w-lg text-sand">Four jobs you'd normally hire a team for — strategist, writer, producer, copywriter — handled from a single paste, in minutes. The AI editor is being rebuilt — coming soon.</p>
       </Reveal>
 
       <div className="glass mx-auto mt-12 max-w-2xl overflow-hidden p-0">
@@ -1105,7 +1105,7 @@ function CTASection() {
             Your next viral video is already in your saved folder.
           </h2>
           <p className="mx-auto mt-4 max-w-lg text-sm text-sand sm:text-base">
-            You've watched it ten times. Stop wishing you'd made it. Paste it, edit it, post it — tonight, from one app.
+            You've watched it ten times. Stop wishing you'd made it. Paste it, script it, record it — tonight, from one app. AI editing is coming soon.
             <span className="hidden sm:inline"> No link in mind? Start from what's already working in your niche.</span>
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3 sm:mt-10">
