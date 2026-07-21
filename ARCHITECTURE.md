@@ -129,7 +129,7 @@ and **enqueues jobs** for heavy work. In `supabase/functions/`:
 | Function | Role |
 |---|---|
 | `generate-blueprint` | Calls Gemini with DNA + transcript → Scene Timeline; spends a credit |
-| `ingest-reference` | Validates a reference URL, enqueues `transcribe`/`ingest` |
+| `ingest-reference` | Validates a reference URL, enqueues `ingest` (the only top-level ingest job; `transcribe` was retired) |
 | `start-dna` / `dna-poll` | Kick off + advance a creator-DNA scan |
 | `billing` / `billing-webhook` | Stripe checkout + webhook |
 | `review` / `social` / `brand-logo` / `referral` | Approval flow, publishing glue, assets, referrals |
@@ -204,7 +204,7 @@ The seam between the synchronous and asynchronous planes. Defined in
    worker scrapes the handle (Apify / yt-dlp) and runs `build_voice` → `brand_voices`
    goes `building → ready`; `dna-poll` advances it.
 2. **Blueprint generation** — Studio pastes a reference → `ingest-reference` enqueues
-   `transcribe` (real audio → `transcripts`) → `generate-blueprint` calls Gemini with
+   `ingest` (real audio → `transcripts`) → `generate-blueprint` calls Gemini with
    DNA + transcript → one master **Scene Timeline** persisted to `generations`;
    `spend_credits` debits atomically and auto-refunds on failure.
 3. **Record → take saved** — the V2 flow records scene-by-scene against the timeline;

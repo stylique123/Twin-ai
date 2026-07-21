@@ -2,11 +2,14 @@
 // VPS + Docker via worker/deploy-vps.sh, driven by
 // .github/workflows/deploy-worker.yml. This guard fails the build if:
 //
-//   1. A SECOND deployment manifest for the WORKER reappears
+//      1. A SECOND deployment manifest for the WORKER reappears
 //      (Fly/Railway/Render/Heroku) at ANY worker-deploy path — the repo root
 //      or ANY path containing a `worker` segment (worker/, infra/worker/,
-//      deploy/worker/, …). Manifests owned by known UNRELATED services
-//      (postiz/, discovery/, apps/, …) are left alone.
+//      deploy/worker/, apps/worker/, packages/worker/, …). There is NO
+//      whole-directory exemption: only a manifest with NO `worker` segment and
+//      not at the repo root (e.g. postiz/fly.toml, discovery/render.yaml,
+//      apps/web/Procfile) is another service's concern and is left alone.
+//      Note: apps/ is NOT wholesale-exempt — apps/worker/… IS caught.
 //   2. ANY committed WORKER_JOB_TYPES runtime override exists outside the
 //      allowlisted docs/tests/example files. The shared worker MUST run with
 //      WORKER_JOB_TYPES unset (worker/src/env.ts is the canonical registry);
@@ -138,6 +141,13 @@ function selftest() {
   assert(isWorkerDeployPath('packages/worker/render.yaml'), 'isWorkerDeployPath packages/worker (was bypass)')
   assert(!isWorkerDeployPath('postiz/fly.toml'), 'isWorkerDeployPath postiz not worker')
   assert(!isWorkerDeployPath('apps/web/Procfile'), 'isWorkerDeployPath apps/web allowed')
+  // Drift guard (R5-6): this file's own comments must NOT re-claim a wholesale
+  // apps/ (or packages/) exemption — implementation catches apps/worker.
+  try {
+    const selfText = readFileSync(new URL(import.meta.url), 'utf8')
+    assert(!/\(postiz\/,\s*discovery\/,\s*apps\/,/.test(selfText), 'header does not wholesale-exempt apps/ (comment matches implementation)')
+    assert(/apps\/worker\/… IS caught|apps\/worker\/ IS caught|apps\/worker\/\.\.\. IS caught/i.test(selfText) || /apps\/worker\/… IS caught/.test(selfText) || /apps\/ is NOT wholesale-exempt/i.test(selfText), 'header states apps/ is not wholesale-exempt')
+  } catch (e) { assert(false, 'drift-guard could not read self: ' + e.message) }
   assert(isRuntimeOverrideAssignment('WORKER_JOB_TYPES=ingest'), 'assignment env form')
   assert(isRuntimeOverrideAssignment('  ENV WORKER_JOB_TYPES=a,b'), 'assignment Dockerfile ENV')
   assert(isRuntimeOverrideAssignment('  WORKER_JOB_TYPES: ingest'), 'assignment yaml form')

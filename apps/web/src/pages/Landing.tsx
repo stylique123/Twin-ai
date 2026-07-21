@@ -84,7 +84,7 @@ const PAIN = [
     n: '03',
     t: 'One video eats your whole night across five apps',
     d: 'Script in one tab, record on your phone, edit in CapCut, captions somewhere else, then schedule in yet another tool. So you post less, and the algorithm forgets you.',
-    fix: 'With TwinAI it\'s one window: paste → script → record → fully edit → render → post. You never switch apps. Minutes, not nights.',
+    fix: 'With TwinAI it\'s one window: paste → script → record → publish. One-click AI editing (captions, cuts, export) is being rebuilt — coming soon. You never switch apps.',
     accent: 'teal',
   },
 ]
@@ -93,8 +93,8 @@ const LOOP = [
   { icon: FileText, k: 'Paste', t: 'Paste any link', d: 'Paste any video link or upload your own.' },
   { icon: FileText, k: 'Get your script', t: 'Get your script', d: 'We pull the hook, beats, and payoffs into a script.' },
   { icon: Mic, k: 'Record', t: 'Record', d: 'Record your voice — on cam or just voice.' },
-  { icon: Scissors, k: 'Edit + render', t: 'Edit + render', d: 'TwinAI edits it for you. Captions, B-roll, pacing — done.' },
-  { icon: Upload, k: 'Post', t: 'Post', d: 'Export and post. TwinAI handles the rest.' },
+  { icon: Scissors, k: 'AI edit (soon)', t: 'AI edit — coming soon', d: 'One-click AI editing (captions, cuts, pacing) is being rebuilt. Coming soon.' },
+  { icon: Upload, k: 'Post', t: 'Post', d: 'Export your recording and post to your socials.' },
 ]
 
 const FEATURES = [
@@ -124,7 +124,7 @@ const FAQ = [
   { q: 'Do you copy other people\'s videos?', a: 'No. We read the structure (hook shape, pacing, retention beats) and rebuild it as an original in your voice. We never clip or repost footage. The idea stays yours; the format becomes yours too.' },
   { q: 'Will this make me go viral?', a: 'No honest tool can promise that. We give you a proven structure and a fast, repeatable way to ship, with more quality shots on goal, in less time. That\'s the real edge.' },
   { q: 'How is this different from a clipper?', a: 'Clippers chop footage you already have. TwinAI takes a reference you admire and makes it shootable as something new, in your voice, from scratch, with a full script, shot list, edit and post.' },
-  { q: 'What do I actually get from one link?', a: 'A complete script (hooks, script, shot list, edit checklist, caption pack, 20-minute plan), an in-app teleprompter to record it, a one-click edit, and publishing. The whole loop in one window.' },
+  { q: 'What do I actually get from one link?', a: 'A complete script (hooks, script, shot list, edit checklist, caption pack, 20-minute plan) and an in-app teleprompter to record it. One-click AI editing and auto-publishing are being rebuilt — coming soon.' },
   { q: 'How does it learn my voice?', a: 'You paste your @handle. We read your recent public posts, including captions, hooks and your spoken audio, then synthesise a voice profile you confirm and can edit. It sharpens as you create more.' },
   { q: 'Can I use it for clients?', a: 'Yes. The Agency plan gives you 15 brand voices, one per client, plus multi-brand workspaces. Switch context in one tap, batch a week of content in an afternoon, ship consistent quality across every account.' },
 ]
@@ -228,9 +228,9 @@ function HeroSection() {
             >
               {/* Phones get the short pitch; the full feature run-on only where
                   there's room to read it (sm+). Same message, less wall-of-words. */}
-              Paste any video you wish you'd made. TwinAI rebuilds it in your voice, fully edits it, and
-              posts it<span className="hidden sm:inline"> — <span className="text-cream">script, teleprompter, real editing, render, caption,
-              hashtags and one-tap posting, all without leaving the app</span></span>.{' '}
+              Paste any video you wish you'd made. TwinAI rebuilds it in your voice — a shootable script
+              you record in-app<span className="hidden sm:inline">. <span className="text-cream">Script, teleprompter, shot list and caption pack today;
+              one-click AI editing and one-tap posting are being rebuilt — coming soon</span></span>.{' '}
               The video that took a pro a full day takes you minutes.
             </motion.p>
 
@@ -634,7 +634,7 @@ function HowItWorksSection() {
             The entire workflow, in one place.
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-sand">
-            Paste, script, record, edit + render, post. No tab-juggling, no agency, no two-hour edit.
+            Paste, script, record — today. One-click AI edit + auto-post are being rebuilt, coming soon. No tab-juggling, no agency.
           </p>
         </Reveal>
         <LoopSequence />
@@ -874,7 +874,7 @@ function ValueStack() {
     { icon: Wand2, t: 'A full breakdown of why it worked', s: 'Hook, pacing and the retention beats — decoded, not guessed.', who: 'Strategist', price: '$200' },
     { icon: FileText, t: '5 hooks + a full script in your voice', s: 'A shootable script with delivery notes, not just a caption.', who: 'Ghostwriter', price: '$150' },
     { icon: Clapperboard, t: 'Shot list + a 20-minute shoot plan', s: 'Walk in, hit record, walk out. Zero guesswork.', who: 'Producer', price: '$40' },
-    { icon: Scissors, t: 'One-click edit — captions, cuts, b-roll, vertical', s: 'Dead air gone, beat-timed cuts, exported ready to post.', who: 'Editor', price: '$75' },
+    { icon: Scissors, t: 'One-click AI edit — being rebuilt', s: 'Captions, cuts and vertical export in one tap — coming soon.', who: 'Editor', price: '$75' },
     { icon: Send, t: 'A caption pack tuned per platform', s: 'On-brand copy and hashtags, ready to paste and post.', who: 'Copywriter', price: '$25' },
   ]
   return (

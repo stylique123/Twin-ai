@@ -172,3 +172,90 @@ Snapshot observed on the fail-closed run (dispatch again on the new head to re-c
 1. Add production-environment secrets `PROD_PROBE_EMAIL`, `PROD_PROBE_PASSWORD`, `SUPABASE_ACCESS_TOKEN`; run **Verify production editor gate** from `main` (approve the environment) → capture `401` + `503 editor_not_available` + `EDITOR_V2_START_ENABLED` absent.
 2. Bracket that authenticated probe with the A2 zero-delta query for the probe identity.
 3. Independent reviewer accepts every item above. **Not "fully verified" until then.**
+
+---
+
+# Round 5 — independent-audit correction (8 blockers)
+
+All eight round-5 blockers were closed in ONE correction round on branch
+`hardening/phase5-production-signoff`. PR #196 remains **DRAFT**; nothing was
+merged, deployed, enabled (`EDITOR_V2_START_ENABLED` still unset,
+`autoFillerRemoval=false`), and `prod-source-smoke` was **not** run against
+production. The `enqueue-autoedit` 410 tombstone is untouched.
+
+## Changed files (round 5)
+
+| File | Blocker | Change |
+|---|---|---|
+| `ARCHITECTURE.md` | R5-1 | Ingest row + prose say `ingest` only; note `transcribe` retired. No retired job named as a top-level job anywhere. |
+| `scripts/ci/check_docs_no_stale_claims.mjs` | R5-2, R5-8 | Fail-closed: 5 REQUIRED canonical docs (missing/empty ⇒ fail). Added `transcribe/ingest` ordering + `enqueues…transcribe` semantic + quoted/`transcribe job` + 3-type registry + Scene-Timeline-drives-editor patterns. 16-case selftest incl. missing-file. |
+| `scripts/prod-smoke/probe_residue_report.mjs` | R5-4 | `present ∈ {true,false,"unknown"}`; residue = anything not proven `false`; clean only if ALL false. Distinguishes PRESENT vs UNKNOWN. ESM main-guard fixed so import doesn't self-run. |
+| `scripts/prod-smoke/residue_harness.mjs` (new) | R5-5 | Workflow-level failure-injection over 7 branches; asserts no attempted-create branch is clean while residue present/unknown; storage object never falsely "deleted"; `migrationsHaveNoTakesDelete()` verifies policy from migrations, not comments. |
+| `.github/workflows/prod-source-smoke.yml` | R5-3, R5-4 | Persists `PROBE_GEN_ID`/`PROBE_ATTEMPT`/`PROBE_CREATE_ATTEMPTED=1` to `$GITHUB_ENV` **before** the create request. Residue: Case A (no create ⇒ clean), Case B (created, no assetId ⇒ all UNKNOWN, fail closed), Case C (assetId ⇒ observe object via delete-attempt+refetch, never claim unobserved deletion). |
+| `scripts/ci/check_single_deploy_path.mjs` | R5-6 | Header comment corrected (apps/ is NOT wholesale-exempt; any `worker` segment is caught). Added drift-guard selftest that reads its own header and fails if it wholesale-exempts apps/. |
+| `scripts/ci/check_product_truth.mjs` (new) | R5-7 | Fail-closed guard scanning `apps/web/src` for present-tense editor-OUTPUT claims; 9-case selftest; live scans 44 files. |
+| `apps/web/src/pages/Landing.tsx` | R5-7 | Editor-output claims → "coming soon / being rebuilt" (hero, LOOP, FAQ, pricing card, pitch). |
+| `apps/web/src/pages/Metrics.tsx` | R5-7 | Funnel label `'Rendered an edit'` → `'Rendered an edit (editor rebuilding)'`. |
+| `docs/PRODUCT_VISION.md` | R5-8 | HISTORICAL/ASPIRATIONAL banner: legacy Scene-Timeline-drives-editing is NOT current; states the authoritative one-loop Editor v2 flow; links ARCHITECTURE + rebuild-status + speech-analysis. |
+| `.github/workflows/pr-checks.yml` | R5-2,4,5,7 | Wires docs-guard, residue classifier `--selftest`, residue harness `--selftest`, product-truth guard into the `no-legacy-editor` job. |
+
+## Guard outputs (this head, local)
+
+- `check_docs_no_stale_claims --selftest`: all cases passed; live: **OK (5 required canonical docs)**
+- `check_single_deploy_path --selftest` + live: **OK** (registry `{ingest,build_voice,scrape_dna,validate_source,editor_v2}`)
+- `check_product_truth --selftest`: all cases passed; live: **OK (44 files clean)**
+- `probe_residue_report --selftest`: all cases passed (partial/unknown cleanup cannot silently pass)
+- `residue_harness --selftest`: **all branches + migration policy check passed** (storage object never falsely confirmed-deleted; report-path failure stays fail-closed)
+- `check_vps_diag_authority --selftest` + live: **OK**
+- `vps_signoff_assert --selftest`: all cases passed
+- `@twinai/web` typecheck: clean; both workflow YAMLs parse.
+
+## Migration / policy inventory — `takes` DELETE posture (R5-4)
+
+The workflow's residue logic assumes **there is no client-usable DELETE on the
+`takes` bucket**, verified directly from migrations (not comments):
+
+| Migration | Policy on `storage.objects` for `takes` |
+|---|---|
+| `0006_autoedit.sql:17` | `create policy "twinai takes insert" … for insert to authenticated` |
+| `0006_autoedit.sql:21` | `create policy "twinai takes read" … for select to authenticated` |
+| `0057_agency_shared_media_approvals.sql:22-23` | drops + recreates the **select** policy (still select-only) |
+
+`grep -niE delete supabase/migrations/*.sql | grep -i takes` ⇒ **NONE**. There
+is **no DELETE policy** for the `takes` bucket. Accordingly the smoke workflow
+**observes** whether an object is gone (delete-attempt mapped 400/404 ⇒ absent,
+200 ⇒ present, anything else ⇒ unknown) and **never claims** a deletion it did
+not observe via a supported API. No broad client DELETE policy was added to make
+the smoke green (explicitly forbidden by the blocker). `residue_harness.mjs`
+encodes this by asserting `storage_object` is never reported confirmed-deleted.
+
+## prod-source-smoke — branch-by-branch residue posture (R5-3)
+
+| # | Branch | GITHUB_ENV state | Residue report | Exit |
+|---|---|---|---|---|
+| 1 | No create attempted | `PROBE_CREATE_ATTEMPTED` unset | Case A → **clean** (nothing was created) | 0 |
+| 2 | Create attempted, response lost (no assetId) | `PROBE_GEN_ID`+`PROBE_ATTEMPT` set, no assetId | Case B → all artifacts **UNKNOWN** keyed by gen/attempt | **fail-closed (≠0)** |
+| 3 | Malformed assetId in response | gen/attempt set | treated as no usable assetId → Case B UNKNOWN | fail-closed |
+| 4 | Upload failure after create | gen/attempt set | Case C observe: object likely absent, row/pointer observed, jobs "unknown" → residue if any ≠false | fail-closed if residue |
+| 5 | Finalize failure | gen/attempt set | Case C observe as above | fail-closed if residue |
+| 6 | Object present, DELETE denied (no policy) | assetId known | Case C: delete-attempt non-2xx→200 refetch ⇒ **present**; report residue honestly | fail-closed |
+| 7 | Object gone (400/404 on refetch) but DB row/pointer remain | assetId known | object=false, row/pointer/jobs not proven false ⇒ **not clean** | fail-closed |
+
+`validation_job_events` is always reported `"unknown"` (no supported client read
+path), so a run is **never** declared clean on the strength of an unobserved
+artifact.
+
+## Repository-wide user-facing copy sweep (R5-7)
+
+Every present-tense editor-OUTPUT claim in `apps/web/src` was corrected to
+"coming soon / being rebuilt". Remaining "ready to post" strings were classified
+and **left as-is** because they are publishing-workflow status, not editor
+output:
+
+| Location | String | Classification | Action |
+|---|---|---|---|
+| `Landing.tsx:1330` | "Caption copied · ready to post" | caption-copy / clipboard status | keep |
+| `History.tsx:117` | "drafts, ready to post, and published" | post pipeline status (draft/ready/published) | keep |
+
+The product-truth guard (live) confirms **0** shipped-editor-output claims across
+44 scanned files.
