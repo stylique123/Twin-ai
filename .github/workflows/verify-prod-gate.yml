@@ -1,31 +1,57 @@
 # Post-merge production verification for the editor-v2 launch gate.
-# Two walls, both fail-closed:
+# Two walls, both fail-closed AND both MANDATORY (neither leg can be skipped):
 #   unauthenticated → 401 at the platform JWT wall (endpoint unreachable
 #                     without a session — proven by the first probe)
-#   authenticated   → 503 editor_not_available from the in-function gate
+#   authenticated   → 503 whose JSON body carries top-level
+#                     code === "editor_not_available" from the in-function gate
 #                     (no EDITOR_V2_START_ENABLED secret exists in production
-#                     until Phase-3 rollout — proven by the second probe)
-# SAFETY ENVELOPE (read-only production probe):
+#                     until the editor is intentionally enabled — proven by
+#                     the second probe with a real signed-in user)
+#
+# The pass/fail predicates live in scripts/ci/gate_probe_assert.mjs, which is
+# unit-tested offline (--selftest) against hostile inputs (wrong statuses with
+# valid-looking bodies, misleading substrings in other JSON fields, similar
+# codes, malformed/multiline/HTML/empty bodies, missing secrets, skipped
+# execution). The workflow performs the read-only probes and pipes the observed
+# status + body FILE into that same module, so what CI proves offline is exactly
+# what runs against production. Bodies and statuses are captured SEPARATELY
+# (curl -o <file> -w '%{http_code}') — never parsed with head/tail line-splitting.
+#
+# SAFETY ENVELOPE (read-only gate probe — deploys NOTHING):
 #   * workflow_dispatch ONLY; refuses any ref except main
 #   * environment: production (attach required-reviewer protection in repo
 #     settings so a human approves each run — the kill switch)
-#   * creates NOTHING durable: two HTTP probes + a secrets-name listing
+#   * serialized (concurrency group) — one production probe at a time
+#   * credentials are PROTECTED PRODUCTION-ENVIRONMENT SECRETS, never
+#     workflow-dispatch inputs (inputs are attacker-supplied + logged). No
+#     email, password, login JSON, or bearer token ever appears in process
+#     argv: the login body is built by jq READING THE ENVIRONMENT into a
+#     permission-restricted temp file (umask 077) sent via --data @file, and
+#     the bearer token reaches curl through a 0600 curl CONFIG file (-K). A
+#     cleanup trap removes all secret-bearing temp files on exit. The login
+#     response (which carries the access_token) is never printed — only fixed
+#     strings on failure.
+#   * SIDE-EFFECT ACCOUNTING (precise — not "zero writes"): the sign-in
+#     request MAY update Supabase Auth state for the probe user (session /
+#     refresh-token rows, auth audit-log metadata) — that is inherent to any
+#     authenticated probe. Beyond that the probe performs two HTTP POSTs that
+#     are rejected at the wall/gate and one secrets-NAME listing: it creates
+#     NO editor project, NO job, NO analysis, NO event, NO output, NO storage
+#     object, and NO billing mutation, and it cannot deploy, migrate, write
+#     storage, create application rows, or enable the editor.
 #   * least privilege: the authenticated probe uses ONLY the committed public
 #     anon key + a pre-existing probe user's own session; the CLI uses the
 #     management token to LIST secret NAMES (values are masked in output)
 #   * pinned CLI (no mutable @latest)
+#
+# REQUIRED production-environment secrets (repo Settings → Environments →
+# production): PROD_PROBE_EMAIL, PROD_PROBE_PASSWORD (a throwaway
+# gate-probe-*@twinai.internal user), SUPABASE_ACCESS_TOKEN (management token,
+# used only to LIST secret names). The authenticated leg fails closed if the
+# probe secrets are absent — it can never be silently skipped.
 name: Verify production editor gate
 on:
-  workflow_dispatch:
-    inputs:
-      probe_email:
-        description: 'Throwaway probe user email (authenticated fail-closed probe)'
-        required: false
-        default: ''
-      probe_password:
-        description: 'Throwaway probe user password'
-        required: false
-        default: ''
+  workflow_dispatch: {}
 
 # Kill switch / no overlap: one production probe at a time.
 concurrency:
@@ -44,45 +70,101 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }   # gate_probe_assert.mjs is plain ESM, no deps
+
       - name: Unauthenticated callers cannot reach the endpoint (401 wall)
         run: |
-          RESP=$(curl -s -w '\n%{http_code}' -X POST \
+          set -euo pipefail
+          umask 077
+          WORK=$(mktemp -d)
+          trap 'rm -rf "$WORK"' EXIT
+          # Body → file, status → variable. No head/tail line-splitting.
+          CODE=$(curl -sS -o "$WORK/unauth_body" -w '%{http_code}' -X POST \
             "https://jmdecibuytznsonrasxw.supabase.co/functions/v1/start-editor-v2" \
             -H 'Content-Type: application/json' -d '{}')
-          BODY=$(echo "$RESP" | head -1)
-          CODE=$(echo "$RESP" | tail -1)
-          echo "unauthenticated status=$CODE body=$BODY"
-          [ "$CODE" = "401" ] || { echo "EXPECTED PLATFORM 401 FOR UNAUTHENTICATED"; exit 1; }
+          echo "unauthenticated status=$CODE"
+          cat "$WORK/unauth_body"; echo
+          GATE_STATUS="$CODE" node scripts/ci/gate_probe_assert.mjs --check unauth
 
-      # Optional authenticated probe (workflow_dispatch inputs). The gate fires
-      # before auth, but the release checklist requires proving fail-closed for
-      # a signed-in, otherwise-valid request too. The anon key is read from the
-      # committed public web env (it ships in every browser bundle).
-      - name: Authenticated fail-closed probe
-        if: ${{ inputs.probe_email != '' }}
+      # MANDATORY authenticated leg. The gate fires before auth, but the
+      # release checklist requires proving fail-closed for a signed-in,
+      # otherwise-valid request too. Credentials come from protected
+      # production-environment secrets (never inputs). The login JSON is
+      # written by jq READING env.PROBE_* into a 0600 temp file and sent with
+      # --data @file; the bearer token reaches curl only via a 0600 curl
+      # config file (-K). Neither credentials, login JSON, nor token ever
+      # appear in any process argv, and the login response body (which carries
+      # the access_token) is never printed.
+      - name: Authenticated fail-closed probe (mandatory)
+        env:
+          PROBE_EMAIL: ${{ secrets.PROD_PROBE_EMAIL }}
+          PROBE_PASSWORD: ${{ secrets.PROD_PROBE_PASSWORD }}
         run: |
+          set -euo pipefail
+          umask 077
+          WORK=$(mktemp -d)
+          trap 'rm -rf "$WORK"' EXIT
+          # Missing credentials FAIL here (the tested secrets predicate) — the
+          # authenticated leg can never be silently skipped. Values reach node
+          # via the environment, not argv.
+          GATE_EMAIL="$PROBE_EMAIL" GATE_PASSWORD="$PROBE_PASSWORD" \
+            node scripts/ci/gate_probe_assert.mjs --check secrets
+          BASE="https://jmdecibuytznsonrasxw.supabase.co"
           ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
-          TOKEN=$(curl -sS -X POST "https://jmdecibuytznsonrasxw.supabase.co/auth/v1/token?grant_type=password" \
+
+          # Login body: jq reads credentials from the ENVIRONMENT (env.PROBE_*)
+          # and writes straight to a 0600 file — the JSON never touches argv.
+          jq -n '{email: env.PROBE_EMAIL, password: env.PROBE_PASSWORD}' > "$WORK/login_body"
+          # Login response → 0600 file (NEVER printed: it carries the token);
+          # status → variable. Token is consumed ONLY after the tested login
+          # predicate confirms an exact HTTP 200.
+          LOGIN_CODE=$(curl -sS -o "$WORK/login_resp" -w '%{http_code}' -X POST \
+            "$BASE/auth/v1/token?grant_type=password" \
             -H "apikey: $ANON" -H 'Content-Type: application/json' \
-            -d "{\"email\":\"${{ inputs.probe_email }}\",\"password\":\"${{ inputs.probe_password }}\"}" | jq -r .access_token)
-          [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
-          RESP=$(curl -s -w '\n%{http_code}' -X POST \
-            "https://jmdecibuytznsonrasxw.supabase.co/functions/v1/start-editor-v2" \
-            -H "apikey: $ANON" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-            -d '{"generation_id":"00000000-0000-4000-8000-000000000000","source_asset_id":"00000000-0000-4000-8000-000000000001","idempotency_key":"00000000-0000-4000-8000-000000000002"}')
-          BODY=$(echo "$RESP" | head -1)
-          CODE=$(echo "$RESP" | tail -1)
-          echo "authenticated status=$CODE body=$BODY"
-          [ "$CODE" = "503" ] && echo "$BODY" | grep -q 'editor_not_available' \
-            || { echo "AUTHENTICATED PROBE: GATE NOT FAIL-CLOSED"; exit 1; }
+            --data @"$WORK/login_body")
+          echo "login status=$LOGIN_CODE (body suppressed)"
+          GATE_STATUS="$LOGIN_CODE" node scripts/ci/gate_probe_assert.mjs --check login
+          TOKEN=$(jq -r '.access_token // empty' < "$WORK/login_resp")
+          [ -n "$TOKEN" ] || { echo "login 200 but no access_token in response (body suppressed)"; exit 1; }
+          echo "::add-mask::$TOKEN"
+          # Bearer token → 0600 curl CONFIG file; curl reads it with -K so the
+          # token never appears in argv. (printf is a shell builtin — no
+          # external process sees the value either.)
+          printf 'header = "Authorization: Bearer %s"\n' "$TOKEN" > "$WORK/auth_cfg"
+
+          jq -n '{
+            generation_id:"00000000-0000-4000-8000-000000000000",
+            source_asset_id:"00000000-0000-4000-8000-000000000001",
+            idempotency_key:"00000000-0000-4000-8000-000000000002"
+          }' > "$WORK/req_body"
+          # Gate response body → file, status → variable (no head/tail).
+          CODE=$(curl -sS -o "$WORK/gate_body" -w '%{http_code}' -X POST \
+            "$BASE/functions/v1/start-editor-v2" \
+            -K "$WORK/auth_cfg" \
+            -H "apikey: $ANON" -H 'Content-Type: application/json' \
+            --data @"$WORK/req_body")
+          echo "authenticated status=$CODE"
+          cat "$WORK/gate_body"; echo   # gate error body only — carries no secrets
+          # Strict, tested predicate: exact 503 + JSON object with top-level
+          # code === "editor_not_available". Substrings elsewhere, similar
+          # codes, malformed bodies, or right-body-wrong-status all fail.
+          GATE_STATUS="$CODE" GATE_BODY_FILE="$WORK/gate_body" \
+            node scripts/ci/gate_probe_assert.mjs --check auth
 
       - name: Verify EDITOR_V2_START_ENABLED is absent from production secrets
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
-          curl -sS -o /dev/null -w '' https://example.com || true
-          npx --yes supabase@2.109.1 secrets list --project-ref jmdecibuytznsonrasxw > /tmp/secrets.txt
-          cat /tmp/secrets.txt | sed 's/|.*$/| (value digest hidden)/'
-          grep -q 'EDITOR_V2_START_ENABLED' /tmp/secrets.txt \
+          set -euo pipefail
+          umask 077
+          WORK=$(mktemp -d)
+          trap 'rm -rf "$WORK"' EXIT
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "::error::SUPABASE_ACCESS_TOKEN must be set as a production-environment secret"; exit 1
+          fi
+          npx --yes supabase@2.109.1 secrets list --project-ref jmdecibuytznsonrasxw > "$WORK/secrets.txt"
+          sed 's/|.*$/| (value digest hidden)/' "$WORK/secrets.txt"
+          grep -q 'EDITOR_V2_START_ENABLED' "$WORK/secrets.txt" \
             && { echo "EDITOR_V2_START_ENABLED IS SET IN PRODUCTION"; exit 1; } \
             || echo "confirmed absent"

@@ -107,3 +107,16 @@ jobs:
             exit 1
           fi
           echo "clean: worker registry has no autoedit handler"
+
+  # Offline hostile suite for the production gate-probe predicates
+  # (scripts/ci/gate_probe_assert.mjs — the exact module verify-prod-gate.yml
+  # calls for every pass/fail decision). Runs entirely offline: no network, no
+  # secrets, no production contact.
+  gate-probe-assert:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Gate-probe predicates (hostile selftest)
+        run: node scripts/ci/gate_probe_assert.mjs --selftest
