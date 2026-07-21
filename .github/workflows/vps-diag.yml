@@ -1,73 +1,116 @@
-name: VPS diagnostic (read-only)
-on: { workflow_dispatch: {} }
-env: { VPS_HOST: 138.201.119.239 }
+name: VPS diagnostic (read-only, fail-closed sign-off)
+on:
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: 'Expected deployed worker SHA (default: current origin/main head)'
+        required: false
+        default: ''
+env:
+  VPS_HOST: 138.201.119.239
+  # The canonical five-type registry (worker/src/env.ts). The single-deploy CI
+  # guard already enforces env.ts == this set; here we assert the RUNNING worker
+  # matches it too.
+  EXP_REGISTRY: 'ingest,build_voice,scrape_dna,validate_source,editor_v2'
 jobs:
   diag:
     runs-on: ubuntu-latest
     steps:
-      # READ-ONLY health + Phase-5 sign-off snapshot of the worker box. This
-      # workflow must never mutate the container or its env — deploy-worker.yml
-      # is the single source of truth for how the container is created. (An
-      # earlier version of this file ran a base64-obfuscated script that
-      # recreated the container with different resource limits — reviewable
-      # plain text only from now on.) Every command below is a read: docker
-      # ps/inspect/logs/exec-printenv, git rev-parse, a --verify-only model
-      # re-hash, and listener/env greps. Nothing is created, changed, or removed.
-      - env: { VPS_SSH_KEY: "${{ secrets.VPS_SSH_KEY }}" }
+      - uses: actions/checkout@v4
+
+      # Expected values are derived from the repo (not hand-typed): the deployed
+      # worker tracks main, and the pinned model identity is the committed
+      # manifest. This makes the assertions self-updating and drift-proof.
+      - name: Resolve expected SHA + model identity
         run: |
+          set -euo pipefail
+          EXP_SHA="${{ inputs.expected_sha }}"
+          [ -n "$EXP_SHA" ] || EXP_SHA=$(git ls-remote origin main | head -1 | cut -f1)
+          [ -n "$EXP_SHA" ] || { echo "::error::could not resolve expected SHA"; exit 1; }
+          EXP_REVISION=$(jq -r .revision worker/models/faster-whisper-small.manifest.json)
+          EXP_BUNDLE=$(jq -r .analyzerBundle worker/models/faster-whisper-small.manifest.json)
+          [ -n "$EXP_REVISION" ] && [ "$EXP_REVISION" != "null" ] || { echo "::error::no manifest revision"; exit 1; }
+          [ -n "$EXP_BUNDLE" ] && [ "$EXP_BUNDLE" != "null" ] || { echo "::error::no manifest bundle"; exit 1; }
+          {
+            echo "EXP_SHA=$EXP_SHA"
+            echo "EXP_REVISION=$EXP_REVISION"
+            echo "EXP_BUNDLE=$EXP_BUNDLE"
+          } >> "$GITHUB_ENV"
+          echo "expected: sha=$EXP_SHA revision=$EXP_REVISION bundle=$EXP_BUNDLE registry=$EXP_REGISTRY"
+
+      # READ-ONLY capture over SSH. Every command is a read (docker
+      # ps/inspect/logs/exec-printenv, git rev-parse, --verify-only re-hash,
+      # listener/env greps) — nothing is created, changed, or removed. Captures
+      # are DEFENSIVE (|| true) so the block always emits a COMPLETE OBS_* fact
+      # set; the fail-closed decision is made afterwards by
+      # worker/scripts/vps_signoff_assert.sh, NOT by echo fallbacks here. Only
+      # OBS_* lines go to stdout (→ facts.env); the human-readable snapshot goes
+      # to stderr (visible in the Actions log).
+      - name: Capture VPS facts
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
           mkdir -p ~/.ssh; printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$VPS_HOST" >> ~/.ssh/known_hosts 2>/dev/null
-          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" bash -s <<'DIAG'
-          set +e
-          echo "== containers =="
-          docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}'
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=no root@"$VPS_HOST" bash -s > facts.env <<'DIAG'
+          set -uo pipefail
+          C=twinai-worker
+          emit() { printf '%s=%q\n' "$1" "${2:-}"; }
 
-          echo "== [A4.1] deployed source SHA (must match main head) =="
-          git -C /opt/twinai-worker-src rev-parse HEAD 2>/dev/null || echo "(no src checkout)"
-          git -C /opt/twinai-worker-src log -1 --format='%H %ci %s' 2>/dev/null
+          echo "== raw containers ==" >&2
+          docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Image}}' >&2 || true
 
-          echo "== [A4.2] container image / status / restart count (no restart loop) =="
-          docker inspect twinai-worker \
-            --format 'name={{.Name}} image={{.Config.Image}} imageID={{.Image}} status={{.State.Status}} running={{.State.Running}} restarts={{.RestartCount}} startedAt={{.State.StartedAt}}' \
-            2>/dev/null || echo "(worker not running)"
+          sha=$(git -C /opt/twinai-worker-src rev-parse HEAD 2>/dev/null || true)
+          status=$(docker inspect "$C" --format '{{.State.Status}}' 2>/dev/null || true)
+          health=$(docker inspect "$C" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || true)
+          restarts=$(docker inspect "$C" --format '{{.RestartCount}}' 2>/dev/null || true)
 
-          echo "== [A4.3] ACTIVE job registry (runtime-observed 'worker up' log) =="
-          docker logs twinai-worker 2>&1 | grep '"msg":"worker up"' | tail -1 || echo "(no worker-up log line yet)"
-          echo -n "WORKER_JOB_TYPES override on box = "
-          docker exec twinai-worker printenv WORKER_JOB_TYPES 2>/dev/null || echo "(unset — worker/src/env.ts canonical registry applies)"
+          upline=$(docker logs "$C" 2>&1 | grep '"msg":"worker up"' | tail -1 || true)
+          registry=$(printf '%s' "$upline" | sed -n 's/.*"types":\[\([^]]*\)\].*/\1/p' | tr -d '"' | tr ',' '\n' | sed '/^[[:space:]]*$/d' | sort | paste -sd, - || true)
+          override=$(docker exec "$C" printenv WORKER_JOB_TYPES 2>/dev/null || true)
 
-          echo "== [A4.4] in-container model identity verifier (no test-manifest override) =="
-          docker exec twinai-worker printenv EDITOR_SPEECH_MODEL_PATH 2>/dev/null
-          echo "-- baked manifest identity --"
-          docker exec twinai-worker python3 -c "import json;m=json.load(open('models/faster-whisper-small.manifest.json'));print('manifest repo/revision/bundle:', m['repository'], m['revision'], m['analyzerBundle'])" 2>&1
-          echo "-- re-hash loaded model dir against the manifest (fetch_model --verify-only) --"
-          docker exec twinai-worker python3 scripts/fetch_model.py --verify-only \
-            --manifest models/faster-whisper-small.manifest.json \
-            --dest /opt/models/faster-whisper-small 2>&1
-          echo "-- test-manifest override MUST be absent (both empty) --"
-          docker exec twinai-worker sh -c 'echo "EDITOR_ALLOW_TEST_MODEL_MANIFEST=[$EDITOR_ALLOW_TEST_MODEL_MANIFEST] EDITOR_SPEECH_MODEL_MANIFEST=[$EDITOR_SPEECH_MODEL_MANIFEST]"' 2>/dev/null
+          mident=$(docker exec "$C" python3 -c "import json;m=json.load(open('models/faster-whisper-small.manifest.json'));print(m['revision']+'|'+m['analyzerBundle'])" 2>/dev/null || true)
+          revision=${mident%%|*}; bundle=${mident#*|}; [ "$mident" = "$revision" ] && bundle=""
+          docker exec "$C" python3 scripts/fetch_model.py --verify-only --manifest models/faster-whisper-small.manifest.json --dest /opt/models/faster-whisper-small >/dev/null 2>&1 && vrc=0 || vrc=$?
+          test_allow=$(docker exec "$C" printenv EDITOR_ALLOW_TEST_MODEL_MANIFEST 2>/dev/null || true)
+          test_manifest=$(docker exec "$C" printenv EDITOR_SPEECH_MODEL_MANIFEST 2>/dev/null || true)
 
-          echo "== [A5.1] Revideo container / image / network absence =="
-          docker ps -a --format '{{.Names}} {{.Image}}' | grep -i revideo || echo "no revideo container"
-          docker images --format '{{.Repository}}:{{.Tag}}' | grep -i revideo || echo "no revideo image"
-          docker network ls --format '{{.Name}}' | grep -i revideo || echo "no revideo network"
+          rv1=$(docker ps -a --format '{{.Names}} {{.Image}}' | grep -ci revideo || true)
+          rv2=$(docker images --format '{{.Repository}}' | grep -ci revideo || true)
+          rv3=$(docker network ls --format '{{.Name}}' | grep -ci revideo || true)
+          revideo=$((rv1 + rv2 + rv3))
+          port4500=$({ ss -ltnH 2>/dev/null || netstat -ltn 2>/dev/null; } | grep -cE '[:.]4500([^0-9]|$)' || true)
+          le1=$(docker exec "$C" printenv 2>/dev/null | grep -ciE '^(REVIDEO_|EDIT_|PEXELS_API_KEY|MUSIC_BED_URL)' || true)
+          le2=$(grep -ciE '^(REVIDEO_|EDIT_|PEXELS_API_KEY|MUSIC_BED_URL)' /opt/twinai-worker.env 2>/dev/null || true)
+          legacy_env=$((le1 + le2))
 
-          echo "== [A5.2] port 4500 listener absence =="
-          if command -v ss >/dev/null 2>&1; then
-            ss -ltnH 2>/dev/null | grep -E '[:.]4500([^0-9]|$)' || echo "no :4500 listener (ss)"
-          elif command -v netstat >/dev/null 2>&1; then
-            netstat -ltn 2>/dev/null | grep -E '[:.]4500([^0-9]|$)' || echo "no :4500 listener (netstat)"
-          else
-            grep -qiE ':1194 .* 0A ' /proc/net/tcp /proc/net/tcp6 2>/dev/null && echo "PORT 4500 LISTENER PRESENT (/proc)" || echo "no :4500 listener (/proc)"
-          fi
+          {
+            echo "OBS snapshot: sha=$sha status=$status health=$health restarts=$restarts"
+            echo "  registry=[$registry] override=[$override] revision=$revision bundle=$bundle verify_rc=$vrc"
+            echo "  test_allow=[$test_allow] test_manifest=[$test_manifest] revideo=$revideo port4500=$port4500 legacy_env=$legacy_env"
+          } >&2
 
-          echo "== [A5.3] legacy editor/Revideo env absence (container + box env file) =="
-          docker exec twinai-worker printenv 2>/dev/null | grep -iE '^(REVIDEO_|EDIT_|PEXELS_API_KEY|MUSIC_BED_URL)' || echo "no legacy editor/revideo env in container"
-          grep -iE '^(REVIDEO_|EDIT_|PEXELS_API_KEY|MUSIC_BED_URL)' /opt/twinai-worker.env 2>/dev/null || echo "no legacy editor/revideo env in box env file"
-
-          echo "== disk =="
-          df -h / /tmp 2>/dev/null | tail -n +1
-          echo "== tmp leftovers =="
-          ls -lh /tmp/twinai-* 2>/dev/null | head -20 || echo "(none)"
-          echo "== done =="
+          emit OBS_SHA "$sha"
+          emit OBS_STATUS "$status"
+          emit OBS_HEALTH "$health"
+          emit OBS_RESTARTS "$restarts"
+          emit OBS_REGISTRY "$registry"
+          emit OBS_JOBTYPES_OVERRIDE "$override"
+          emit OBS_REVISION "$revision"
+          emit OBS_BUNDLE "$bundle"
+          emit OBS_VERIFY_RC "$vrc"
+          emit OBS_TEST_ALLOW "$test_allow"
+          emit OBS_TEST_MANIFEST "$test_manifest"
+          emit OBS_REVIDEO "$revideo"
+          emit OBS_PORT4500 "$port4500"
+          emit OBS_LEGACY_ENV "$legacy_env"
           DIAG
+          echo "---- captured facts.env ----"
+          cat facts.env
+
+      - name: Assert sign-off snapshot (fail-closed)
+        run: |
+          set -euo pipefail
+          set -a; . ./facts.env; set +a
+          bash worker/scripts/vps_signoff_assert.sh

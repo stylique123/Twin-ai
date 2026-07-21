@@ -85,12 +85,14 @@ jobs:
           SIZE=$(stat -c%s /tmp/probe.webm)
           echo "fixture bytes=$SIZE"
 
-          # Sign-in body via jq --arg — credentials never reach the command line.
-          LOGIN_BODY=$(jq -n --arg email "$PROBE_EMAIL" --arg password "$PROBE_PASSWORD" '{email:$email,password:$password}')
+          # Sign-in body via jq reading credentials from the ENVIRONMENT
+          # (env.PROBE_*): never on a command line (argv) nor interpolated.
+          LOGIN_BODY=$(jq -n '{email: env.PROBE_EMAIL, password: env.PROBE_PASSWORD}')
+          # Never echo the auth response body (it carries access_token).
           TOKEN=$(curl -sS -X POST "$BASE/auth/v1/token?grant_type=password" \
             -H "apikey: $ANON" -H 'Content-Type: application/json' \
-            --data "$LOGIN_BODY" | jq -r .access_token)
-          [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
+            --data "$LOGIN_BODY" | jq -r '.access_token // empty')
+          [ -n "$TOKEN" ] || { echo "probe sign-in failed (no token; body suppressed)"; exit 1; }
           echo "::add-mask::$TOKEN"
           # Export creds so the ALWAYS-run cleanup step can delete the object
           # even if a later assertion in this step fails. (TOKEN is masked.)

@@ -2,17 +2,21 @@
 // VPS + Docker via worker/deploy-vps.sh, driven by
 // .github/workflows/deploy-worker.yml. This guard fails the build if:
 //
-//   1. A SECOND deployment manifest reappears (Fly/Railway/Render/Heroku/GAE) —
-//      a stale second path is how the box config drifted from the code registry
-//      (the removed worker/fly.toml still claimed retired `transcribe` and
-//      omitted validate_source/editor_v2).
+//   1. A SECOND deployment manifest for the WORKER reappears
+//      (Fly/Railway/Render/Heroku) at a worker-deploy path (repo root or
+//      worker/). Manifests belonging to UNRELATED services (e.g. postiz/,
+//      discovery/) are NOT the worker's deploy path and are left alone.
 //   2. A committed WORKER_JOB_TYPES override resurrects a RETIRED job type
 //      (`autoedit` removed with the old editor; `transcribe` folded into
-//      `ingest`). worker/src/env.ts is the single canonical registry.
-//   3. The canonical registry stops being a clean singleton set: `editor_v2`
-//      must appear EXACTLY once, and any future `render`/`editplan` job type at
-//      most once — preserving one editor_v2 job type, one canonical EditPlan,
-//      and one renderer (never two competing paths).
+//      `ingest`).
+//   3. The canonical registry in worker/src/env.ts is not EXACTLY the five
+//      allowed job types (order-insensitive, no extras, no duplicates):
+//      ingest, build_voice, scrape_dna, validate_source, editor_v2.
+//      Strict set-equality — not per-name counting — so a bypass name like
+//      `render_v2` or `edit_plan` is caught as an extra. Preserves one
+//      editor_v2 loop; future EditPlan/renderer stages live INSIDE editor_v2,
+//      not as competing top-level job types. Update this list deliberately
+//      when a new top-level job type is genuinely added.
 //
 //   node scripts/ci/check_single_deploy_path.mjs            # PR guard
 //   node scripts/ci/check_single_deploy_path.mjs --selftest # unit-test the logic
@@ -21,55 +25,77 @@ import { readFileSync } from 'node:fs'
 
 const SELF = 'scripts/ci/check_single_deploy_path.mjs'
 const ENV = 'worker/src/env.ts'
+const ALLOWED_REGISTRY = ['ingest', 'build_voice', 'scrape_dna', 'validate_source', 'editor_v2']
 
-// Second-deploy-path manifests. Vercel (web app) is intentionally NOT here —
-// it deploys the frontend, not the worker.
+// Second-deploy manifests. Vercel (web app) is intentionally NOT here.
 const FORBIDDEN_MANIFEST = [
   /(^|\/)fly\.toml$/,
   /(^|\/)railway\.(toml|json)$/,
   /(^|\/)render\.ya?ml$/,
   /(^|\/)Procfile$/,
   /(^|\/)heroku\.yml$/,
-  /(^|\/)app\.yaml$/,
 ]
 
+// A worker-deploy path is the repo root (no directory) or under worker/.
+// Anything under another service dir (postiz/, discovery/, apps/, …) is that
+// service's concern, not the worker's, and is never flagged here.
+export function isWorkerDeployPath(p) {
+  if (p.startsWith('worker/')) return true
+  return !p.includes('/')
+}
+export function scopedManifests(tracked) {
+  return tracked.filter((p) => isWorkerDeployPath(p) && FORBIDDEN_MANIFEST.some((re) => re.test(p)))
+}
+export function registryDiff(reg) {
+  const extras = reg.filter((t) => !ALLOWED_REGISTRY.includes(t))
+  const missing = ALLOWED_REGISTRY.filter((t) => !reg.includes(t))
+  const dupes = [...new Set(reg.filter((t, i) => reg.indexOf(t) !== i))]
+  return { extras, missing, dupes, equal: extras.length === 0 && missing.length === 0 && dupes.length === 0 }
+}
+
 // PURE decision, unit-tested. `state` fields:
-//   manifests:   array of forbidden deploy-manifest paths found (tracked)
-//   badOverrides:array of "file:line value" WORKER_JOB_TYPES overrides that
-//                name a retired type
-//   editorV2Count, renderCount, editplanCount: occurrences in the canonical
-//                registry default; hasAutoedit/hasTranscribe: retired types in it
+//   tracked:      array of tracked file paths
+//   badOverrides: array of "file:line value" WORKER_JOB_TYPES overrides naming a retired type
+//   registry:     array of job types parsed from the canonical env.ts default
 // Returns { ok, reasons }.
 export function evaluate(s) {
   const reasons = []
-  if (s.manifests.length) {
-    reasons.push(`second deployment manifest present (VPS+Docker is the only supported path): ${s.manifests.join(', ')}`)
+  const manifests = scopedManifests(s.tracked)
+  if (manifests.length) {
+    reasons.push(`second WORKER deployment manifest present (VPS+Docker is the only supported worker path): ${manifests.join(', ')}`)
   }
   if (s.badOverrides.length) {
     reasons.push(`WORKER_JOB_TYPES override names a retired job type: ${s.badOverrides.join(' ; ')}`)
   }
-  if (s.hasAutoedit) reasons.push('canonical registry (worker/src/env.ts) still lists retired `autoedit`')
-  if (s.hasTranscribe) reasons.push('canonical registry (worker/src/env.ts) still lists retired `transcribe`')
-  if (s.editorV2Count !== 1) reasons.push(`canonical registry must list \`editor_v2\` exactly once (found ${s.editorV2Count})`)
-  if (s.renderCount > 1) reasons.push(`more than one renderer job type in the canonical registry (found ${s.renderCount})`)
-  if (s.editplanCount > 1) reasons.push(`more than one EditPlan job type in the canonical registry (found ${s.editplanCount})`)
+  const d = registryDiff(s.registry)
+  if (!d.equal) {
+    const bits = []
+    if (d.extras.length) bits.push(`unexpected: ${d.extras.join(',')}`)
+    if (d.missing.length) bits.push(`missing: ${d.missing.join(',')}`)
+    if (d.dupes.length) bits.push(`duplicated: ${d.dupes.join(',')}`)
+    reasons.push(`canonical registry (worker/src/env.ts) must equal exactly {${ALLOWED_REGISTRY.join(',')}} — ${bits.join('; ')}`)
+  }
   return { ok: reasons.length === 0, reasons }
 }
 
 function selftest() {
-  const base = { manifests: [], badOverrides: [], hasAutoedit: false, hasTranscribe: false, editorV2Count: 1, renderCount: 0, editplanCount: 0 }
+  const R = [...ALLOWED_REGISTRY]
   const cases = [
-    ['clean singleton registry, no extra manifest', base, true],
-    ['fly.toml reintroduced', { ...base, manifests: ['worker/fly.toml'] }, false],
-    ['render.yaml reintroduced', { ...base, manifests: ['render.yaml'] }, false],
-    ['WORKER_JOB_TYPES override resurrects transcribe', { ...base, badOverrides: ['worker/fly.toml:12 ingest,transcribe'] }, false],
-    ['registry still lists autoedit', { ...base, hasAutoedit: true }, false],
-    ['registry still lists transcribe', { ...base, hasTranscribe: true }, false],
-    ['editor_v2 missing from registry', { ...base, editorV2Count: 0 }, false],
-    ['editor_v2 duplicated', { ...base, editorV2Count: 2 }, false],
-    ['two renderers', { ...base, renderCount: 2 }, false],
-    ['two editplan types', { ...base, editplanCount: 2 }, false],
-    ['one renderer + one editplan is allowed', { ...base, renderCount: 1, editplanCount: 1 }, true],
+    ['clean: exact five + no manifest', { tracked: ['worker/Dockerfile', 'package.json'], badOverrides: [], registry: R }, true],
+    ['worker/fly.toml reintroduced', { tracked: ['worker/fly.toml'], badOverrides: [], registry: R }, false],
+    ['root fly.toml reintroduced', { tracked: ['fly.toml'], badOverrides: [], registry: R }, false],
+    ['root render.yaml reintroduced', { tracked: ['render.yaml'], badOverrides: [], registry: R }, false],
+    // UNRELATED-service manifests must NOT trip the worker guard:
+    ['postiz/fly.toml is unrelated (allowed)', { tracked: ['postiz/fly.toml'], badOverrides: [], registry: R }, true],
+    ['discovery/render.yaml is unrelated (allowed)', { tracked: ['discovery/render.yaml'], badOverrides: [], registry: R }, true],
+    ['apps/web/vercel Procfile-elsewhere unrelated', { tracked: ['apps/web/Procfile'], badOverrides: [], registry: R }, true],
+    ['WORKER_JOB_TYPES override resurrects transcribe', { tracked: [], badOverrides: ['worker/fly.toml:12 ingest,transcribe'], registry: R }, false],
+    // Strict set-equality catches bypass names that per-name counting missed:
+    ['bypass name render_v2 as extra', { tracked: [], badOverrides: [], registry: [...R, 'render_v2'] }, false],
+    ['bypass name edit_plan as extra', { tracked: [], badOverrides: [], registry: [...R, 'edit_plan'] }, false],
+    ['retired autoedit as extra', { tracked: [], badOverrides: [], registry: [...R, 'autoedit'] }, false],
+    ['editor_v2 missing', { tracked: [], badOverrides: [], registry: R.filter((t) => t !== 'editor_v2') }, false],
+    ['editor_v2 duplicated', { tracked: [], badOverrides: [], registry: [...R, 'editor_v2'] }, false],
   ]
   let failed = 0
   for (const [name, state, exp] of cases) {
@@ -84,10 +110,7 @@ function selftest() {
 function trackedFiles() {
   return execSync('git ls-files', { encoding: 'utf8' }).split('\n').filter(Boolean)
 }
-
 function registryDefault() {
-  // Parse the default string from:
-  //   jobTypes: (process.env.WORKER_JOB_TYPES ?? 'a,b,c').split(',')...
   const m = readFileSync(ENV, 'utf8').match(/jobTypes:\s*\(process\.env\.WORKER_JOB_TYPES\s*\?\?\s*'([^']*)'/)
   if (!m) return null
   return m[1].split(',').map((t) => t.trim()).filter(Boolean)
@@ -95,7 +118,6 @@ function registryDefault() {
 
 function main() {
   const tracked = trackedFiles()
-  const manifests = tracked.filter((p) => FORBIDDEN_MANIFEST.some((re) => re.test(p)))
 
   // WORKER_JOB_TYPES *assignments* (not prose) whose VALUE names a retired type.
   const badOverrides = []
@@ -107,25 +129,15 @@ function main() {
     if (/\b(autoedit|transcribe)\b/.test(value)) badOverrides.push(line.trim())
   }
 
-  const reg = registryDefault()
-  if (!reg) {
+  const registry = registryDefault()
+  if (!registry) {
     console.error(`::error::could not parse the canonical job registry from ${ENV}`)
     process.exit(1)
   }
-  const count = (t) => reg.filter((x) => x === t).length
-  const state = {
-    manifests,
-    badOverrides,
-    hasAutoedit: reg.includes('autoedit'),
-    hasTranscribe: reg.includes('transcribe'),
-    editorV2Count: count('editor_v2'),
-    renderCount: count('render'),
-    editplanCount: count('editplan'),
-  }
 
+  const state = { tracked, badOverrides, registry }
   console.log('single-deploy-path state: ' + JSON.stringify({
-    manifests: state.manifests, badOverrides: state.badOverrides,
-    registry: reg, editorV2Count: state.editorV2Count,
+    workerManifests: scopedManifests(tracked), badOverrides, registry,
   }))
 
   const { ok, reasons } = evaluate(state)

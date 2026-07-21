@@ -111,3 +111,5 @@ jobs:
         run: |
           node scripts/ci/check_single_deploy_path.mjs --selftest
           node scripts/ci/check_single_deploy_path.mjs
+      - name: VPS sign-off assertion logic (offline selftest — bad states must fail)
+        run: bash worker/scripts/vps_signoff_assert.sh --selftest

@@ -75,14 +75,18 @@ jobs:
           fi
           BASE="https://jmdecibuytznsonrasxw.supabase.co"
           ANON=$(grep '^VITE_SUPABASE_ANON_KEY=' apps/web/.env.production | cut -d= -f2)
-          # Build the sign-in body with jq --arg: the credentials never touch
-          # the shell command line or a double-quoted string.
-          LOGIN_BODY=$(jq -n --arg email "$PROBE_EMAIL" --arg password "$PROBE_PASSWORD" '{email:$email,password:$password}')
+          # Build the sign-in body with jq reading the credentials from the
+          # process ENVIRONMENT (env.PROBE_*). They are never passed as jq
+          # arguments (argv, world-readable in /proc) nor interpolated into a
+          # shell string.
+          LOGIN_BODY=$(jq -n '{email: env.PROBE_EMAIL, password: env.PROBE_PASSWORD}')
+          # Capture the token WITHOUT ever echoing the auth response body (it
+          # carries the access_token). On failure we print a fixed string only.
           TOKEN=$(curl -sS -X POST "$BASE/auth/v1/token?grant_type=password" \
             -H "apikey: $ANON" -H 'Content-Type: application/json' \
-            --data "$LOGIN_BODY" | jq -r .access_token)
+            --data "$LOGIN_BODY" | jq -r '.access_token // empty')
+          [ -n "$TOKEN" ] || { echo "probe sign-in failed (no token; body suppressed)"; exit 1; }
           echo "::add-mask::$TOKEN"
-          [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ] || { echo "probe sign-in failed"; exit 1; }
           REQ_BODY=$(jq -n '{
             generation_id:"00000000-0000-4000-8000-000000000000",
             source_asset_id:"00000000-0000-4000-8000-000000000001",
