@@ -58,8 +58,8 @@ The `jobs` table is the seam between them.
         │  Vite + React 18 SPA         │           │  Docker host                      │
         │  (anon key, RLS-guarded)     │           │  ┌──────────────────────────────┐ │
         └───────┬──────────────┬───────┘           │  │ worker  (job-queue drainer)  │ │
-                │ direct        │ privileged        │  │  ingest/transcribe/build_    │ │
-                │ reads/writes  │ calls             │  │  voice/scrape_dna            │ │
+                │ direct        │ privileged        │  │  ingest/build_voice/scrape_  │ │
+                │ reads/writes  │ calls             │  │  dna/validate_source/editor_v2│ │
                 ▼               ▼                   │  │  Node/TS + Python + ffmpeg   │ │
    ┌───────────────────────────────────────────┐  │  └──────────────────────────────┘ │
    │                 SUPABASE                   │  │  ┌──────────┐ ┌──────────┐         │
@@ -141,11 +141,17 @@ and **enqueues jobs** for heavy work. In `supabase/functions/`:
   / `fail_job` (exponential backoff) → idle backoff. Graceful shutdown; structured
   JSON logs; **hard per-job timeout** kept under the lease so a hung child frees the
   worker instead of wedging it.
-- **Handlers (`worker/src/jobs/index.ts`):**
-  `ingest` → `transcribe.ts` (yt-dlp audio-only + faster-whisper);
-  `build_voice` → `voice.ts` (voice-from-audio DNA); `scrape_dna` → `scrapeDna.ts`.
-  (`autoedit` was removed with the old AI editor; the rebuilt editor registers its
-  own job type here.)
+- **Handlers (`worker/src/jobs/index.ts`) — the canonical five job types
+  (`worker/src/env.ts` `jobTypes`):**
+  `ingest` → `transcribe.ts` (yt-dlp audio-only + faster-whisper reference
+  transcript); `build_voice` → `voice.ts` (voice-from-audio DNA);
+  `scrape_dna` → `scrapeDna.ts`; `validate_source` → `validateSource.ts`
+  (validates an uploaded recording); `editor_v2` → `editorV2.ts` (the rebuilt
+  editor's orchestration loop — one loop with internal stages, gated OFF in
+  production; see `docs/editor-v2-speech-analysis.md`). The old AI editor's
+  auto-edit job type and premium renderer were removed and must not return
+  (CI guard `scripts/ci/check_single_deploy_path.mjs`). Historical removal
+  detail lives in `docs/ai-editor-removal-inventory.md`.
 - **Python helpers:** `whisper_transcribe.py`, `youtube_transcript.py`. ffmpeg and
   faster-whisper stay in the image — the rebuilt editor reuses them.
 - **Stateless & horizontally scalable:** run N containers with distinct

@@ -22,6 +22,13 @@ Phase 5 code is merged and the worker is healthy, but production sign-off is **n
 5. **Stale `jq --arg` comments** corrected in both workflows (code reads `env.PROBE_*`).
 6. **VPS host key pinned** (strict verification, fail-closed, never printed) in `vps-diag` and `deploy-worker` via the `VPS_KNOWN_HOSTS` secret — owner setup step in `DEPLOY.md → Pinning the VPS host key`.
 
+### Round-4 reviewer fixes applied (re-audit)
+1. **Release order corrected**: the operator sequence (above) and `DEPLOY.md` now require `VPS_KNOWN_HOSTS` to be configured + verified **before** merge, and state explicitly that merging this PR triggers `deploy-worker` (the worker deployment).
+2. **Stale-docs sweep**: `ARCHITECTURE.md` (worker box + handler list) corrected to the five current job types with `editor_v2` registered; `worker/README.md` de-enumerated; `BUILD_PLAN.md`, `docs/ai-editor-rebuild-status.md`, `docs/manual-editor-remnant-inventory.md` carry unmistakable **HISTORICAL/OBSOLETE banners** linking to canonical current docs, and their specific stale claims (old three-type registry, `take_path` future-seam) are corrected. New CI guard `scripts/ci/check_docs_no_stale_claims.mjs` (+ selftest) blocks Fly/Railway/Render, Revideo, `autoedit`, top-level `transcribe`, and the three-type registry from returning to the canonical docs.
+3. **Deploy-guard bypass fixed**: `check_single_deploy_path.mjs` no longer exempts broad top-level dirs — `apps/worker/fly.toml` and `packages/worker/render.yaml` now fail (negative selftests added); true unrelated services (`apps/web`, `postiz`) still pass.
+4. **`deploy-worker.yml` setup header** corrected to require BOTH `VPS_SSH_KEY` and `VPS_KNOWN_HOSTS` (fail-closed strict host verification).
+5. **`prod-source-smoke` honest cleanup**: the false "no orphan left" claim is removed. The final step deletes the Storage object best-effort, then **enumerates every residual artifact** (object, `media_assets` row, generation pointer, service-side validation job/events) and **fails closed with a recoverable-artifact report** requiring sanctioned operator retention. Classifier `scripts/prod-smoke/probe_residue_report.mjs` (+ selftest) proves partial and complete states cannot silently pass with unreported residue.
+
 ---
 
 ## A1 — Formal production-evidence workflow hardening
@@ -74,16 +81,19 @@ select
 ```
 Every column must be **identical** before and after the bracketed probe (global editor rows stay 0; the probe identity's assets, generation pointers, edits-bucket objects, credit balance, and credit-event count unchanged). Columns are the verified live schema: `generations.user_id`, `profiles.credits`, `credit_events(user_id)`, `media_assets.owner_id`, `storage.objects(owner_id text, path_tokens)`.
 
-> **Operator sequence to CLOSE A1 + A2 (none of it executable from this session — needs production-environment secrets + human approval):**
-> 1. Merge this hardening branch to `main`.
-> 2. Add the `VPS_KNOWN_HOSTS` repository secret (one-time; see `DEPLOY.md → Pinning the VPS host key`). Until it exists, `vps-diag` and `deploy-worker` fail closed by design.
-> 3. Configure protected **Environments → production** secrets: `PROD_PROBE_EMAIL`, `PROD_PROBE_PASSWORD`, `SUPABASE_ACCESS_TOKEN`.
-> 4. **Capture BEFORE counts** with the query above for the probe identity.
-> 4. **Dispatch `Verify production editor gate` from `main`** and approve the environment gate → unauth `401`, authenticated `503 editor_not_available`, `EDITOR_V2_START_ENABLED` absent.
-> 5. **Capture AFTER counts** with the same query.
-> 6. **Prove every delta is zero** (global editor rows stay 0; probe-scoped counts + credit balance unchanged).
+> **Operator sequence to CLOSE A1 + A2 (none of it executable from this session — needs secrets + human approval). ORDER MATTERS — do the secrets BEFORE the merge:**
 >
-> Only after step 6 may A1/A2 (and the reopened sign-off) be called complete. **`prod-source-smoke` is a separate, mutating workflow (it creates a probe asset) and must NOT be run as part of this fail-closed check — only under its own separate authorization.**
+> ⚠️ **This PR changes `worker/deploy-vps.sh` and `deploy-worker.yml`, so merging it to `main` TRIGGERS the `deploy-worker` workflow (it deploys the worker to the VPS).** Because `deploy-worker` now requires a pinned host key, it will **fail closed** if `VPS_KNOWN_HOSTS` is not already set. So configure that secret first.
+>
+> 1. **BEFORE merge — add the `VPS_KNOWN_HOSTS` repository secret** (one-time; see `DEPLOY.md → Pinning the VPS host key`) and **verify it** by dispatching the read-only `vps-diag` from this branch — it must reach the VPS under strict host verification and pass. (`vps-diag` and `deploy-worker` fail closed until this exists — by design.)
+> 2. **BEFORE merge — configure protected `Environments → production` secrets**: `PROD_PROBE_EMAIL`, `PROD_PROBE_PASSWORD`, `SUPABASE_ACCESS_TOKEN`.
+> 3. **Capture BEFORE counts** with the query above for the probe identity.
+> 4. **Merge** this hardening branch to `main` (this fires `deploy-worker` → VPS deploy; it now succeeds because step 1's secret is present).
+> 5. **Dispatch `Verify production editor gate` from `main`** and approve the environment gate → unauth `401`, authenticated `503 editor_not_available`, `EDITOR_V2_START_ENABLED` absent.
+> 6. **Capture AFTER counts** with the same query.
+> 7. **Prove every delta is zero** (global editor rows stay 0; probe-scoped counts + credit balance unchanged).
+>
+> Only after step 7 may A1/A2 (and the reopened sign-off) be called complete. **`prod-source-smoke` is a separate, mutating workflow — it creates a probe `media_assets` row + generation pointer + Storage object and its in-workflow cleanup does NOT fully remove them (it reports residue and fails closed for sanctioned operator retention). It must NOT be run as part of this fail-closed check — only under its own separate authorization.**
 
 ## A3 — Migration 0085 production evidence *(captured, complete)*
 
@@ -134,7 +144,7 @@ Snapshot observed on the fail-closed run (dispatch again on the new head to re-c
 - **Removed `worker/fly.toml`** — a stale second deployment path that claimed retired `transcribe` and omitted `validate_source`/`editor_v2`. The VPS + Docker path (`worker/deploy-vps.sh` + `deploy-worker.yml`) is the single supported production deployment.
 - **`worker/deploy-vps.sh` now performs the same idempotent env scrub as `deploy-worker.yml`** — strips `WORKER_JOB_TYPES` and any `REVIDEO_`/`EDIT_`/`PEXELS_API_KEY`/`MUSIC_BED_URL` lines from `/opt/twinai-worker.env` and removes any leftover Revideo container/image before `docker run`, so the manual deploy path cannot drift from the CI path.
 - **Docs updated** so `WORKER_JOB_TYPES` stays **unset** on the shared worker and `worker/src/env.ts` is the canonical five-type registry: `DEPLOY.md`, `worker/README.md`, `worker/deploy-vps.sh`, `worker/.env.example`, `worker/SCALING.md`, `deploy-worker.yml` comments. Fly wording and the retired-`transcribe` job type removed; `worker/README.md` now documents **all five** current job types and frames future editor stages (Director/EditPlan/renderer) as **internal stages of the one `editor_v2` loop**, not competing top-level job types.
-- **New CI guard `scripts/ci/check_single_deploy_path.mjs`** (wired into `pr-checks.yml`, with `--selftest`): (1) fails a second **worker** deploy manifest (Fly/Railway/Render/Heroku) scoped to worker-deploy paths (repo root or `worker/`) so unrelated services (`postiz/`, `discovery/`) are not blocked; (2) fails a retired `autoedit`/`transcribe` `WORKER_JOB_TYPES` override; (3) asserts the registry equals **exactly** `{ingest,build_voice,scrape_dna,validate_source,editor_v2}` by **strict set-equality** (order-insensitive, no extras/dupes) — so a bypass name like `render_v2`/`edit_plan` is caught as an extra. Selftest includes unrelated-manifest and bypass-name cases; live guard passes and a reintroduced `worker/fly.toml` was proven to trip it.
+- **New CI guard `scripts/ci/check_single_deploy_path.mjs`** (wired into `pr-checks.yml`, with `--selftest`): (1) fails a second **worker** deploy manifest (Fly/Railway/Render/Heroku) at the repo root OR **any path containing a `worker` segment** — `worker/`, `infra/worker/`, `deploy/worker/`, `apps/worker/`, `packages/worker/` — with **no broad top-level exemption** (a prior version exempted whole dirs like `apps`/`packages`, which let `apps/worker/fly.toml` slip through); true unrelated services with no `worker` segment (`postiz/`, `discovery/`, `apps/web/…`) are allowed; (2) fails **any** committed `WORKER_JOB_TYPES` runtime override outside allowlisted docs/tests/examples (the shared worker must be unset); (3) asserts the registry equals **exactly** `{ingest,build_voice,scrape_dna,validate_source,editor_v2}` by **strict set-equality** (order-insensitive, no extras/dupes) — a bypass name like `render_v2`/`edit_plan` is caught as an extra. Selftest covers the `apps/worker`/`packages/worker` bypass, unrelated-manifest, override, and bypass-name cases.
 
 > The reviewer's prepared cleanup at `/tmp/twinai-audit.qaiUK9` (`a1b876c4`) was **not present** in this environment (the container had restarted, wiping `/tmp`). Per instruction ("inspect it, do not blindly trust it, and implement equivalent changes"), equivalent changes were implemented from scratch and independently verified here.
 
@@ -152,7 +162,7 @@ Snapshot observed on the fail-closed run (dispatch again on the new head to re-c
 - shared: typecheck clean, **23/23** tests
 - worker: typecheck clean, **58/58** tests
 - python model-pin offline tests: all pass
-- CI guards: `check_single_deploy_path` (selftest incl. override/worker-path/bypass cases + live) OK, `vps_signoff_assert --selftest` (good + 19 bad states) OK, `check_vps_diag_authority --selftest` + live OK, `check_model_pin_coupling` selftest OK
+- CI guards: `check_single_deploy_path` (selftest incl. apps/worker+packages/worker bypass + override cases + live) OK, `vps_signoff_assert --selftest` (good + 19 bad states) OK, `check_vps_diag_authority --selftest` + live OK, `check_docs_no_stale_claims --selftest` + live OK, `probe_residue_report --selftest` OK, `check_model_pin_coupling` selftest OK
 - A2 bracket query proven to parse + run READ-ONLY in production (all zeros)
 - `npm audit --omit=dev`: **0 vulnerabilities**
 - all workflow YAML parses; `deploy-vps.sh` + `vps_signoff_assert.sh` pass `bash -n`

@@ -1,5 +1,12 @@
 # Manual / Timeline Editor Remnant Inventory
 
+> ⚠️ **HISTORICAL SNAPSHOT — do not treat as current guidance.** Captured before
+> the editor rebuild. The `take_path`-as-future-input-"seam" and the "`editor_v2`
+> must register a NEW type" items below are **already done**: `editor_v2` is a
+> registered job type and the durable input is the `media_assets` source asset
+> (Editor v2 Phase 1), not `take_path`. Current state: **`ARCHITECTURE.md`** +
+> **`docs/editor-v2-speech-analysis.md`**.
+
 Branch: `rebuild/remove-manual-editor-remnants` · Base: `cc41395` (post Part-1 removal).
 
 Focused discovery + cleanup pass run **before** building the new one-click editor,

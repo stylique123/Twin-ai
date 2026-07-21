@@ -45,8 +45,9 @@ npm run dev
 ## Docker / deploy
 The **VPS + Docker** path is the single supported production deployment —
 `sudo bash worker/deploy-vps.sh` (driven by `.github/workflows/deploy-worker.yml`).
-See `DEPLOY.md` and `worker/SCALING.md`. Do **not** add a second deployment
-manifest (Fly/Railway/Render); a CI guard rejects one.
+See `DEPLOY.md` and `worker/SCALING.md`. Do **not** add a second worker
+deployment manifest to any other host; a CI guard
+(`scripts/ci/check_single_deploy_path.mjs`) rejects one.
 ```bash
 docker build -t twinai-worker worker/
 # more throughput later: run additional containers with distinct HOSTNAME, or

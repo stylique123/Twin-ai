@@ -117,3 +117,9 @@ jobs:
         run: |
           node scripts/ci/check_vps_diag_authority.mjs --selftest
           node scripts/ci/check_vps_diag_authority.mjs
+      - name: Canonical docs free of stale legacy claims (Fly/Revideo/autoedit/3-type registry)
+        run: |
+          node scripts/ci/check_docs_no_stale_claims.mjs --selftest
+          node scripts/ci/check_docs_no_stale_claims.mjs
+      - name: Probe-residue classifier (partial/complete cleanup cannot silently pass)
+        run: node scripts/prod-smoke/probe_residue_report.mjs --selftest

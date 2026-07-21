@@ -88,6 +88,11 @@ strict verification (no first-contact trust), so a network attacker cannot
 impersonate the box. This needs one repository secret, `VPS_KNOWN_HOSTS`. Until
 it is set, `deploy-worker` and `vps-diag` **fail closed** (they refuse to SSH).
 
+> **Set this BEFORE deploying — and before merging any PR that touches
+> `worker/**`.** A push/merge to `main` under `worker/**` triggers
+> `deploy-worker` automatically; if `VPS_KNOWN_HOSTS` is absent that run fails
+> closed. Configure (and verify with a `vps-diag` dispatch) first.
+
 **One safe setup step** — run this **on the VPS itself** (where you already
 trust the machine), then paste the single line it prints into a new secret:
 

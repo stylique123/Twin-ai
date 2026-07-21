@@ -3,10 +3,15 @@
 # on every push that touches worker/, this SSHes to the VPS, pulls the repo,
 # rebuilds the image, and recreates the container with the existing env file.
 #
-# One-time setup — repo Settings → Secrets and variables → Actions:
-#   VPS_SSH_KEY  — a private SSH key whose PUBLIC key is in the VPS's
-#                  /root/.ssh/authorized_keys (a dedicated deploy key).
-# (Host + container env live on the box; nothing else secret is needed here.)
+# One-time setup — repo Settings → Secrets and variables → Actions (BOTH
+# secrets are REQUIRED; this workflow fails closed without either):
+#   VPS_SSH_KEY      — a private SSH key whose PUBLIC key is in the VPS's
+#                      /root/.ssh/authorized_keys (a dedicated deploy key).
+#   VPS_KNOWN_HOSTS  — the VPS's pinned SSH host key line, for STRICT host
+#                      verification (StrictHostKeyChecking=yes). Without it the
+#                      deploy refuses to SSH (MITM protection). Get it via
+#                      DEPLOY.md → "Pinning the VPS host key".
+# (Container env lives on the box; these two secrets are all that's needed here.)
 
 name: Deploy worker
 on:

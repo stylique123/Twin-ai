@@ -36,18 +36,17 @@ const FORBIDDEN_MANIFEST = [
   /(^|\/)Procfile$/,
   /(^|\/)heroku\.yml$/,
 ]
-// Known non-worker top-level service/dirs. A manifest whose FIRST path segment
-// is one of these is that service's concern, never the worker's.
-const UNRELATED_TOPLEVEL = new Set(['postiz', 'discovery', 'apps', 'packages', 'supabase', 'docs', 'eval'])
 
-// A worker-deploy path = repo root, OR any path with a `worker` segment that
-// isn't under a known unrelated top-level dir. Catches infra/worker/fly.toml,
-// deploy/worker/render.yaml, worker/fly.toml — but not postiz/fly.toml.
+// A worker-deploy path = the repo ROOT, OR ANY path that has a `worker`
+// segment — worker/, infra/worker/, deploy/worker/, apps/worker/,
+// packages/worker/, … There is deliberately NO broad top-level exemption: a
+// prior version exempted whole dirs like `apps`/`packages` up front, which let
+// apps/worker/fly.toml and packages/worker/render.yaml slip through. A manifest
+// with NO worker segment and not at the root (postiz/fly.toml, apps/web/…) is
+// that service's concern and is left alone.
 export function isWorkerDeployPath(p) {
   const seg = p.split('/')
-  if (seg.length === 1) return true
-  if (UNRELATED_TOPLEVEL.has(seg[0])) return false
-  return seg.includes('worker')
+  return seg.length === 1 || seg.includes('worker')
 }
 export function scopedManifests(tracked) {
   return tracked.filter((p) => isWorkerDeployPath(p) && FORBIDDEN_MANIFEST.some((re) => re.test(p)))
@@ -113,9 +112,12 @@ function selftest() {
     ['root fly.toml', { ...base, tracked: ['fly.toml'] }, false],
     ['infra/worker/fly.toml (worker-named anywhere)', { ...base, tracked: ['infra/worker/fly.toml'] }, false],
     ['deploy/worker/render.yaml (worker-named anywhere)', { ...base, tracked: ['deploy/worker/render.yaml'] }, false],
+    ['apps/worker/fly.toml (no top-level exemption bypass)', { ...base, tracked: ['apps/worker/fly.toml'] }, false],
+    ['packages/worker/render.yaml (no top-level exemption bypass)', { ...base, tracked: ['packages/worker/render.yaml'] }, false],
     ['postiz/fly.toml unrelated (allowed)', { ...base, tracked: ['postiz/fly.toml'] }, true],
     ['discovery/render.yaml unrelated (allowed)', { ...base, tracked: ['discovery/render.yaml'] }, true],
     ['apps/web/Procfile unrelated (allowed)', { ...base, tracked: ['apps/web/Procfile'] }, true],
+    ['apps/web/vercel.json-adjacent Procfile allowed', { ...base, tracked: ['apps/web/config/Procfile'] }, true],
     ['any committed override (even incomplete)', { ...base, overrides: ['deploy/worker.env:3 WORKER_JOB_TYPES=ingest'] }, false],
     ['retired-type override', { ...base, overrides: ['x.env:1 WORKER_JOB_TYPES=ingest,transcribe'] }, false],
     ['registry extra render_v2', { ...base, registry: [...R, 'render_v2'] }, false],
@@ -132,7 +134,10 @@ function selftest() {
   // classifier unit checks
   const assert = (cond, msg) => { if (!cond) { console.error(`SELFTEST FAIL: ${msg}`); failed++ } else console.log(`  ok: ${msg}`) }
   assert(isWorkerDeployPath('infra/worker/fly.toml'), 'isWorkerDeployPath infra/worker')
+  assert(isWorkerDeployPath('apps/worker/fly.toml'), 'isWorkerDeployPath apps/worker (was bypass)')
+  assert(isWorkerDeployPath('packages/worker/render.yaml'), 'isWorkerDeployPath packages/worker (was bypass)')
   assert(!isWorkerDeployPath('postiz/fly.toml'), 'isWorkerDeployPath postiz not worker')
+  assert(!isWorkerDeployPath('apps/web/Procfile'), 'isWorkerDeployPath apps/web allowed')
   assert(isRuntimeOverrideAssignment('WORKER_JOB_TYPES=ingest'), 'assignment env form')
   assert(isRuntimeOverrideAssignment('  ENV WORKER_JOB_TYPES=a,b'), 'assignment Dockerfile ENV')
   assert(isRuntimeOverrideAssignment('  WORKER_JOB_TYPES: ingest'), 'assignment yaml form')

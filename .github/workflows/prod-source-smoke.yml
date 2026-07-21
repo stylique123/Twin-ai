@@ -21,10 +21,14 @@
 #     service keys, set EDITOR_V2_START_ENABLED, apply migrations, or deploy.
 #   * access token and signed upload URL are masked before first use; error
 #     paths print redacted bodies only
-#   * probe identity uses the fixed gate-probe-* prefix; cleanup of the probe
-#     user/generation runs operator-side through the sanctioned retention
-#     path (this job creates nothing durable beyond the one probe asset, and
-#     its runner scratch dies with the runner)
+#   * probe identity uses the fixed gate-probe-* prefix. This job DOES create
+#     durable production rows: a public.media_assets row, a
+#     generations.source_asset_id pointer, a Storage object, and service-side
+#     validate_source job/event state. Its in-workflow step can only delete the
+#     Storage object (owner-RLS); it is NOT self-cleaning. The final step
+#     enumerates every artifact and FAILS CLOSED with a recoverable-artifact
+#     report — the probe user/generation must then be removed via the sanctioned
+#     operator retention cleanup. Do not run this workflow without that plan.
 #
 # REQUIRED production-environment secrets (repo Settings → Environments →
 # production): PROD_PROBE_EMAIL, PROD_PROBE_PASSWORD (a throwaway
@@ -171,31 +175,54 @@ jobs:
           [ "$PTR" = "$ASSET" ] || { echo "GENERATION POINTER NOT LINKED (got $PTR)"; exit 1; }
           echo "generation pointer linked — metadata merge preserved all finalization + probe facts — PASS"
 
-      # GUARANTEED SUPPORTED-API CLEANUP — runs even if the chain above failed
-      # (if: always()), so a partial run never leaves an orphaned probe object.
-      # Deletes THROUGH the Storage API with the probe user's OWN session (RLS
-      # allows owners to delete their own objects), which removes the metadata
-      # row AND the backend blob together while the row still exists. Never
-      # delete storage.objects rows by SQL: that strips the row's version
-      # pointer and orphans the backend blob.
-      - name: Cleanup the probe object via the Storage API (always)
+      # HONEST RESIDUE ACCOUNTING — runs even if the chain above failed
+      # (if: always()). This step is NOT self-cleaning: the probe user's own
+      # session can delete only the Storage object (owner-RLS). The
+      # public.media_assets row, the generations.source_asset_id pointer, and
+      # the service-side validate_source job/event state are NOT client-removable
+      # and require the sanctioned operator retention cleanup. So this step:
+      # deletes the object best-effort, then ENUMERATES every remaining artifact
+      # and FAILS CLOSED with a RECOVERABLE-ARTIFACT REPORT — it never claims
+      # "no orphan left". (Never SQL-delete storage.objects rows: that strips the
+      # version pointer and orphans the blob.)
+      - name: Account for probe residue and fail closed (always)
         if: always()
         run: |
           set -uo pipefail
-          [ -n "${PROBE_ASSET:-}" ] || { echo "no probe asset created — nothing to clean"; exit 0; }
+          if [ -z "${PROBE_ASSET:-}" ]; then echo "no probe asset created — nothing to clean"; exit 0; fi
+
           OBJPATH=$(curl -sS "$PROBE_BASE/rest/v1/media_assets?id=eq.$PROBE_ASSET&select=storage_path" \
             -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" | jq -r '.[0].storage_path // empty')
-          if [ -z "$OBJPATH" ]; then echo "no storage_path (asset row absent) — nothing to clean"; exit 0; fi
-          PATH_ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$OBJPATH")
-          DEL=$(curl -sS -o /dev/null -w '%{http_code}' -X DELETE \
-            "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
-            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN")
-          echo "cleanup delete status=$DEL"
-          GONE=$(curl -sS -o /dev/null -w '%{http_code}' \
-            "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
-            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN")
-          echo "post-cleanup object fetch status=$GONE (expect 400/404)"
-          case "$GONE" in
-            400|404) echo "object cleaned via supported API — no orphan left" ;;
-            *) echo "::error::OBJECT STILL PRESENT AFTER DELETE ($GONE) — recoverable probe object $OBJPATH left for operator; do NOT SQL-delete its row"; exit 1 ;;
-          esac
+          OBJ_PRESENT=false
+          if [ -n "$OBJPATH" ]; then
+            PATH_ENC=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote(sys.argv[1]))" "$OBJPATH")
+            curl -sS -o /dev/null -X DELETE "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
+              -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" || true
+            GONE=$(curl -sS -o /dev/null -w '%{http_code}' "$PROBE_BASE/storage/v1/object/takes/$PATH_ENC" \
+              -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN")
+            case "$GONE" in 400|404) OBJ_PRESENT=false ;; *) OBJ_PRESENT=true ;; esac
+          fi
+
+          # Observe DB residue via the probe user's OWN RLS-scoped reads.
+          ROW=$(curl -sS "$PROBE_BASE/rest/v1/media_assets?id=eq.$PROBE_ASSET&select=id" \
+            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" | jq -r 'length')
+          PTR=$(curl -sS "$PROBE_BASE/rest/v1/generations?id=eq.$GEN_ID&select=source_asset_id" \
+            -H "apikey: $PROBE_ANON" -H "Authorization: Bearer $PROBE_TOKEN" | jq -r '.[0].source_asset_id // empty')
+          ROW_PRESENT=false; [ "${ROW:-0}" -gt 0 ] 2>/dev/null && ROW_PRESENT=true
+          PTR_PRESENT=false; [ -n "$PTR" ] && PTR_PRESENT=true
+
+          # validation_job_events is service-side and NOT client-observable/removable,
+          # so it is always reported as requiring operator retention.
+          export PROBE_RESIDUE_JSON=$(jq -n \
+            --argjson obj "$OBJ_PRESENT" --arg objid "${OBJPATH:-n/a}" \
+            --argjson row "$ROW_PRESENT" --arg rowid "$PROBE_ASSET" \
+            --argjson ptr "$PTR_PRESENT" --arg genid "$GEN_ID" \
+            '[
+              {name:"storage_object",         id:$objid, present:$obj},
+              {name:"media_assets_row",       id:$rowid, present:$row},
+              {name:"generation_pointer",     id:$genid, present:$ptr},
+              {name:"validation_job_events",  id:"service-side validate_source job + events for this generation", present:true}
+            ]')
+          # Classifier prints the RECOVERABLE-ARTIFACT REPORT and exits non-zero
+          # while ANY artifact remains — the run cannot silently pass with residue.
+          node scripts/prod-smoke/probe_residue_report.mjs

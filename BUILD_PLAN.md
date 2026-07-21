@@ -1,5 +1,14 @@
 # TwinAI — Complete Build Plan (macro + micro)
 
+> ⚠️ **HISTORICAL / OBSOLETE — do NOT follow this as current guidance.** This is
+> the original build plan. Parts are superseded: the worker deploys **only** to
+> the VPS + Docker (no Fly/Railway/Render), the Revideo renderer and the
+> auto-edit/`autoedit` job type were **removed**, and the editor was rebuilt as
+> the gated `editor_v2` loop. For the current architecture and job registry see
+> **`ARCHITECTURE.md`**; for deploy see **`DEPLOY.md`**; for the editor rebuild
+> see **`docs/editor-v2-speech-analysis.md`** and **`docs/ai-editor-rebuild-status.md`**.
+
+
 The objective: a creator inputs a viral reference (link or gallery) → TwinAI understands their brand DNA from their own handle → generates hooks + script + edit steps in their voice → they record in-app (teleprompter) or upload clips → auto-edit + captions → save to their gallery → publish to their socials → analytics. **One flow, charged once, posting included. Credits are invisible and the credit↔video rate is server-adjustable and never exposed.**
 
 ---
