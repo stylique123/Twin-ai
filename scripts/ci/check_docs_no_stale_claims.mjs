@@ -44,6 +44,34 @@ const FORBIDDEN = [
   { re: /scene timeline[^.\n]*\b(drives?|drive)\b[^.\n]*\b(editor|cuts?|captions?|b-?roll)\b/i, why: 'legacy "Scene Timeline drives the editor" model (Editor v2 uses one canonical EditPlan)' },
 ]
 
+// EVIDENCE CONSISTENCY (Phase-5 closure): once a doc records an item as CLOSED,
+// it must not simultaneously carry the matching OPEN/pending claim. Each rule
+// fires ONLY when BOTH the closed marker AND the open marker are present in the
+// same file (a contradiction) — deliberately-open blockers (pre-beta recordings
+// task #115, filler-removal #117/#194/#195) are untouched by these patterns.
+// The listed files are REQUIRED: a missing one fails (the check cannot skip).
+const EVIDENCE_FILES = ['docs/phase5-production-signoff-evidence.md', 'docs/editor-v2-phase5-speech-eval.md']
+const CONTRADICTIONS = [
+  {
+    file: 'docs/phase5-production-signoff-evidence.md',
+    closed: /# A1\/A2 CLOSED/,
+    open: /OPEN \(operator-run|Remaining to fully close \(operator|Not "fully verified" until|operator-run-pending|is therefore \*\*not closed/,
+    why: 'A1/A2 recorded CLOSED but an operator-pending/OPEN claim remains',
+  },
+  {
+    file: 'docs/phase5-production-signoff-evidence.md',
+    closed: /Authoritative VPS benchmark — CLOSED/,
+    open: /benchmark[^\n]{0,80}\bPENDING\b/i,
+    why: 'VPS benchmark recorded CLOSED but a benchmark-PENDING claim remains',
+  },
+  {
+    file: 'docs/editor-v2-phase5-speech-eval.md',
+    closed: /Task #116[^\n]{0,80}\bCLOSED\b/,
+    open: /Task #116[^\n]{0,80}\bPENDING\b|until[^.\n]{0,80}benchmark \(#116\) is recorded/i,
+    why: 'task #116 recorded CLOSED but a #116-pending claim remains',
+  },
+]
+
 // PURE decision over a { path: content|null } map (null = missing/unreadable).
 // Returns { ok, reasons }.
 export function evaluate(files) {
@@ -56,6 +84,20 @@ export function evaluate(files) {
     }
     for (const { re, why } of FORBIDDEN) {
       if (re.test(content)) reasons.push(`${path}: stale claim — ${why} (/${re.source}/)`)
+    }
+  }
+  for (const path of EVIDENCE_FILES) {
+    if (!(path in files)) continue // caller may run canonical-only maps (selftest fixtures)
+    const content = files[path]
+    if (content == null || content.trim() === '') {
+      reasons.push(`${path}: REQUIRED evidence doc is missing/unreadable/empty (consistency check cannot skip)`)
+      continue
+    }
+    for (const c of CONTRADICTIONS) {
+      if (c.file !== path) continue
+      if (c.closed.test(content) && c.open.test(content)) {
+        reasons.push(`${path}: CONTRADICTORY evidence — ${c.why} (closed=/${c.closed.source}/ open=/${c.open.source}/)`)
+      }
     }
   }
   return { ok: reasons.length === 0, reasons }
@@ -81,6 +123,14 @@ function selftest() {
     ['three-type registry returns', withClaim('registry is {ingest, build_voice, scrape_dna}'), false],
     ['legacy scene-timeline-drives-editor returns', withClaim('the Scene Timeline drives editor cuts and captions and B-roll'), false],
     ['clean removal prose allowed', withClaim('the old auto-edit job and premium renderer were removed; `transcribe` was retired'), true],
+    // Evidence OPEN/CLOSED consistency (contradiction = fail; either alone = pass):
+    ['evidence CLOSED + operator-OPEN contradiction fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\n## A2 — OPEN (operator-run; not complete)'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
+    ['evidence CLOSED + "Remaining to fully close (operator" fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\n## Remaining to fully close (operator/reviewer)'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
+    ['benchmark CLOSED + PENDING contradiction fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nAuthoritative VPS benchmark — CLOSED\nbenchmark: PENDING'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
+    ['speech-eval #116 CLOSED + PENDING contradiction fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nAuthoritative VPS benchmark — CLOSED'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 (gate): CLOSED.\nTask #116 (gate): PENDING.'; return f })(), false],
+    ['evidence CLOSED only (no open claims) passes', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\nAuthoritative VPS benchmark — CLOSED\npre-beta task #115 remains MANDATORY; filler removal #194/#195 open.'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED. Task #115 remains mandatory before beta.'; return f })(), true],
+    ['evidence OPEN only (never closed) passes', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '## A2 — OPEN (operator-run; not complete)'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: PENDING.'; return f })(), true],
+    ['missing evidence doc fails (consistency cannot skip)', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = null; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
   ]
   let failed = 0
   for (const [name, files, exp] of cases) {
@@ -95,10 +145,10 @@ function selftest() {
 if (process.argv.includes('--selftest')) selftest()
 else {
   const files = {}
-  for (const p of CANONICAL) {
+  for (const p of [...CANONICAL, ...EVIDENCE_FILES]) {
     try { files[p] = readFileSync(p, 'utf8') } catch { files[p] = null } // null → REQUIRED-file failure
   }
   const { ok, reasons } = evaluate(files)
-  console.log(`docs-no-stale-claims guard: ${ok ? 'OK' : 'FAIL'} (required canonical docs: ${CANONICAL.length})`)
+  console.log(`docs-no-stale-claims guard: ${ok ? 'OK' : 'FAIL'} (required canonical docs: ${CANONICAL.length}; evidence-consistency docs: ${EVIDENCE_FILES.length})`)
   if (!ok) { for (const r of reasons) console.error(`::error::${r}`); process.exit(1) }
 }

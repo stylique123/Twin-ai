@@ -38,11 +38,11 @@ Phase 5 code is merged and the worker is healthy, but production sign-off is **n
 - Probe **credentials moved from `workflow_dispatch` inputs to protected production-environment secrets**: `PROD_PROBE_EMAIL`, `PROD_PROBE_PASSWORD` (both workflows), plus the existing `SUPABASE_ACCESS_TOKEN`. `prod-source-smoke.yml` keeps only the per-run `generation_id` as an input.
 - **No GitHub-expression interpolation into shell or JSON**, and **no secrets on any command line (argv).** Credentials reach the shell only via `env:` and are read into the JSON body by **jq from the environment** (`jq -n '{email: env.PROBE_EMAIL, password: env.PROBE_PASSWORD}'`) — never passed as `jq --arg` (which would place them in world-readable `/proc/<pid>/cmdline`). Auth-failure paths print a fixed string only and **never echo the token-bearing response body** (`jq -r '.access_token // empty'`). The caller-supplied `generation_id` reaches the shell only through `env: GEN_ID`, validated with `grep -Eq` (never echoed).
 
-> **Operator action required to RUN the live probe (not executable from this session):** add `PROD_PROBE_EMAIL` / `PROD_PROBE_PASSWORD` (a throwaway `gate-probe-*@twinai.internal` user) and `SUPABASE_ACCESS_TOKEN` to the repo **Environments → production** secrets, then dispatch **Verify production editor gate** from `main` and approve the environment gate. Expected: unauth `401`, authenticated `503 editor_not_available`, and `EDITOR_V2_START_ENABLED` confirmed absent.
+> **DONE.** The operator configured `PROD_PROBE_EMAIL` / `PROD_PROBE_PASSWORD` (`gate-probe-editor-v2@twinai.internal`) and `SUPABASE_ACCESS_TOKEN` as production-environment secrets with required-reviewer protection, and live run **`29829091202`** (dispatched from `main@79e0362`, human-approved) captured exact `401`, login `200`, exact `503` with top-level `code === "editor_not_available"`, and `EDITOR_V2_START_ENABLED` absent. See the **"A1/A2 CLOSED"** chapter below.
 
-## A2 — Fail-closed + zero-delta bracketing — **OPEN (operator-run; not complete)**
+## A2 — Fail-closed + zero-delta bracketing — **CLOSED (runs 29827536668 + 29829091202; see the "A1/A2 CLOSED" chapter)**
 
-`verify-prod-gate` proves the HTTP fail-closed walls but has **no built-in before/after DB counters**. A2 is therefore **not closed by this branch** — it requires the operator sequence below. Do **not** call A1, A2, or the reopened sign-off complete until it is done.
+`verify-prod-gate` proves the HTTP fail-closed walls but has **no built-in before/after DB counters** — the bracketing was executed as external snapshot queries around the live run (zero delta on every editor/storage/billing surface, watermarks included; the expected Auth login side effect reported separately). Historical context below is preserved as originally written.
 
 **Production baseline captured for reference (operator SQL, `2026-07-21`).** The editor-v2 pipeline has created **zero** rows anywhere; a fail-closed probe cannot change these because the gate returns before any write:
 
@@ -167,11 +167,11 @@ Snapshot observed on the fail-closed run (dispatch again on the new head to re-c
 - `npm audit --omit=dev`: **0 vulnerabilities**
 - all workflow YAML parses; `deploy-vps.sh` + `vps_signoff_assert.sh` pass `bash -n`
 
-## Remaining to fully close (operator/reviewer)
+## Closure status (updated — see the "A1/A2 CLOSED" chapter for full evidence)
 
-1. Add production-environment secrets `PROD_PROBE_EMAIL`, `PROD_PROBE_PASSWORD`, `SUPABASE_ACCESS_TOKEN`; run **Verify production editor gate** from `main` (approve the environment) → capture `401` + `503 editor_not_available` + `EDITOR_V2_START_ENABLED` absent.
-2. Bracket that authenticated probe with the A2 zero-delta query for the probe identity.
-3. Independent reviewer accepts every item above. **Not "fully verified" until then.**
+1. ~~Production-environment secrets + live gate run~~ **DONE** — run **`29829091202`** from `main@79e0362` (human-approved environment gate): exact `401`, login `200`, exact `503` + top-level `code === "editor_not_available"`, `EDITOR_V2_START_ENABLED` absent. Fail-closed proof: run **`29827536668`** (missing secrets ⇒ mandatory leg failed closed, zero delta, zero auth activity).
+2. ~~Zero-delta bracket around the authenticated probe~~ **DONE** — BEFORE 2026-07-21T12:11:19Z / AFTER 12:30:25Z, every editor/storage/billing surface unchanged (counts + max-created watermarks); expected Auth side effect reported separately.
+3. Independent reviewer acceptance of the full evidence set — the only remaining item.
 
 ---
 
@@ -602,3 +602,50 @@ live brackets — the operator-created probe user's profile receiving the standa
 2. ~~zero-delta bracket around the authenticated probe~~ **DONE** (above).
 3. Independent reviewer acceptance of the full evidence set — the only item
    remaining to close this PR.
+
+## Authoritative VPS benchmark — CLOSED (speech-6 candidate-image gate, task #116)
+
+The owner ran `worker/scripts/vps_bench.sh --sha <candidate>` on the production
+Hetzner VPS (`stylique-vps`, 4 vCPU), inside a worker image built from the exact
+candidate commit. Final line:
+
+```
+RESULT: CAPACITY + MODEL IDENTITY GATE PASSED (rc=0) for candidate 1dd9f693d3c361d7fe1da13482e30b7bb693132e.
+```
+
+**Benchmark identity (runtime-observed, all identity checks `pass: true`):**
+`repository`, `revision`, `artifact_sha256`, `manifest_sha256`,
+`analyzer_bundle`, `candidate_sha_is_40hex` — i.e. the runtime-loaded model was
+verified as `Systran/faster-whisper-small@536b0662742c02347bc0e980a01041f333bce120`,
+analyzer bundle `speech-6`, load path `/opt/models/faster-whisper-small`,
+`verified=True`, for candidate SHA `1dd9f693d3c361d7fe1da13482e30b7bb693132e`.
+The same identity was later re-confirmed **in the deployed production container**
+by the fail-closed `vps-diag` snapshot (A4: in-container
+`fetch_model --verify-only` → `model verified: Systran/faster-whisper-small@536b0662…bce120`,
+`analyzer_bundle: speech-6`).
+
+**Capacity measurements vs the PREDEFINED limits** (fixed in
+`worker/scripts/bench_thresholds.json` before the run — no post-hoc tuning):
+
+| Check | Measured | Limit | Pass |
+|---|---:|---|---|
+| processing ratio (median) | **0.55×** | ≤ 5.0 | ✅ |
+| peak RSS | **569.6 MiB** | ≤ 2048 MiB | ✅ |
+| cancellation exit (SIGTERM mid-run) | **0.11 s** | ≤ 12 s | ✅ |
+| timeout kills a run | **true** | must kill | ✅ |
+| 2× concurrent — both rc=0 | **true** | all rc=0 | ✅ |
+| 2× concurrent — aggregate ratio | **1.202×** | ≤ 12.0 | ✅ |
+
+This supersedes the earlier **pre-pin indicative baseline** (0.649× / 578 MiB —
+recorded in `docs/editor-v2-phase5-speech-eval.md` as explicitly non-authoritative).
+Task #116 is **CLOSED** by this run; the historical PENDING wording in the
+speech-eval doc has been updated accordingly.
+
+## Blockers that REMAIN OPEN (deliberately preserved — not closed by any of the above)
+
+- **Pre-beta gate (task #115 / issue #193):** the ~12 privately-consented Twin AI
+  user recordings eval remains **MANDATORY before beta**. Unchanged.
+- **Filler removal (issues #194/#195):** `autoFillerRemoval=false` stays enforced;
+  the acoustic disfluency detector (#194) and the compiler-level rejection (#195)
+  are **mandatory before enabling or advertising filler removal**. Unchanged.
+- Independent reviewer acceptance of this evidence set (closes the PR).
