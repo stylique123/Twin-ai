@@ -671,7 +671,7 @@ export async function runTranscribingStage(
     }
 
     // Session-owned bounded download + SHA-256 — only verified bytes are ever
-    // transcribed (mismatch => PERMANENT source_hash_mismatch), and a
+    // transcribed (mismatch => PERMANENT source_bytes_changed), and a
     // same-attempt earlier download is reused instead of re-fetched.
     await slowPoint('before_download', watch)
     let local: string

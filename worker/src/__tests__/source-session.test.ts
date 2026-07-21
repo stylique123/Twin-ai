@@ -66,27 +66,27 @@ describe('VerifiedSourceSession', () => {
     expect(log.filter((l) => l.method === 'GET')).toHaveLength(1)
   })
 
-  it('a byte mismatch is the PERMANENT source_hash_mismatch', async () => {
+  it('a byte mismatch is the PERMANENT source_bytes_changed', async () => {
     stubFetch({ body: Buffer.from('tampered bytes') })
     const s = new VerifiedSourceSession(asset(), {}, newDir())
     let err: unknown
     try { await s.localPath() } catch (e) { err = e }
     expect(err).toBeInstanceOf(PermanentJobError)
-    expect((err as PermanentJobError).code).toBe('source_hash_mismatch')
+    expect((err as PermanentJobError).code).toBe('source_bytes_changed')
   })
 
-  it('reconcileRemote: etag drift => source_changed; size drift => source_changed; missing => object_missing', async () => {
+  it('reconcileRemote: etag drift => source_bytes_changed; size drift => source_bytes_changed; missing => object_missing', async () => {
     stubFetch({ etag: '"tag-2"' })
     const meta = { finalized_etag: '"tag-1"', finalized_bytes: BYTES.length }
     let err: unknown
     try { await new VerifiedSourceSession(asset(), meta, newDir()).reconcileRemote('t') } catch (e) { err = e }
-    expect((err as PermanentJobError).code).toBe('source_changed')
+    expect((err as PermanentJobError).code).toBe('source_bytes_changed')
 
     vi.unstubAllGlobals()
     stubFetch({ etag: '"tag-1"', size: BYTES.length + 5 })
     err = undefined
     try { await new VerifiedSourceSession(asset(), meta, newDir()).reconcileRemote('t') } catch (e) { err = e }
-    expect((err as PermanentJobError).code).toBe('source_changed')
+    expect((err as PermanentJobError).code).toBe('source_bytes_changed')
 
     vi.unstubAllGlobals()
     stubFetch({ headOk: false })

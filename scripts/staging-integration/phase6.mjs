@@ -587,11 +587,12 @@ async function main() {
     await tamperObject(TM.asset, Buffer.concat([fixTamper, Buffer.from('x')]))
     const proj = await waitSettled(pid, 90_000, 'F-tamper')
     stopWorker(w)
-    check('F1 analyzing failed closed on changed bytes (source_changed)',
-      proj.status === 'failed' && proj.failure_code === 'source_changed',
+    check('F1 analyzing failed closed on changed bytes (source_bytes_changed)',
+      proj.status === 'failed' && proj.failure_code === 'source_bytes_changed',
       `${proj.status}/${proj.failure_code}`)
     const ev = await getEvents(pid)
-    check('F2 source_changed event recorded', ev.some((e) => e.message_code === 'source_changed'))
+    check('F2 analysis_failed event names the integrity code',
+      ev.some((e) => e.message_code === 'analysis_failed' && e.details?.code === 'source_bytes_changed'))
     check('F3 no analysis components were recorded for the tampered run',
       (await componentRows(TM.assetId, 'visual')).length === 0)
   }

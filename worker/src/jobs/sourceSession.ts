@@ -7,10 +7,15 @@
 //  * localPath() performs AT MOST ONE download per attempt, memoized —
 //    concurrent/serial callers share the same verified file.
 //  * Every download is immediately sha256-verified against the asset's
-//    validation checksum; a mismatch is the PERMANENT `source_hash_mismatch`.
+//    validation checksum; a mismatch is the PERMANENT `source_bytes_changed`.
 //  * reconcileRemote() is CHEAP (HEAD etag+size vs the finalize reference) and
 //    is called before any cache acceptance and at stage boundaries; drifted
-//    bytes are the PERMANENT `source_changed`.
+//    bytes are the PERMANENT `source_bytes_changed`.
+//
+// Both integrity failures use the ESTABLISHED `source_bytes_changed` code
+// (shipped since Phase 4, asserted by the Phase-4/5 gates and documented) —
+// one code for "the bytes are not the validated bytes", consistent with the
+// cached-component-mismatch checks in the inspect/speech/analyze stages.
 //  * A stage that consumes no bytes (full component reuse, hook-only work)
 //    causes ZERO downloads — it simply never calls localPath().
 //  * dispose() is exactly-once: further byte access is a programming error.
@@ -64,10 +69,10 @@ export class VerifiedSourceSession {
     const head = await headObject(this.asset.bucket, this.asset.storage_path)
     if (!head) throw new PermanentJobError(`${label}: storage object missing`, 'object_missing')
     if (finalizedEtag && head.etag && head.etag !== finalizedEtag) {
-      throw new PermanentJobError(`${label}: storage bytes changed after finalize`, 'source_changed')
+      throw new PermanentJobError(`${label}: storage bytes changed after finalize`, 'source_bytes_changed')
     }
     if (finalizedBytes && head.sizeBytes && head.sizeBytes !== finalizedBytes) {
-      throw new PermanentJobError(`${label}: storage size changed after finalize`, 'source_changed')
+      throw new PermanentJobError(`${label}: storage size changed after finalize`, 'source_bytes_changed')
     }
     return { etag: head.etag, sizeBytes: head.sizeBytes, finalizedEtag }
   }
@@ -88,7 +93,7 @@ export class VerifiedSourceSession {
         const sha = await fileSha256(target)
         if (sha !== this.asset.content_sha256) {
           throw new PermanentJobError(
-            'downloaded bytes do not match the validation checksum', 'source_hash_mismatch')
+            'downloaded bytes do not match the validation checksum', 'source_bytes_changed')
         }
         return target
       })()

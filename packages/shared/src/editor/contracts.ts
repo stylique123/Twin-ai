@@ -131,10 +131,8 @@ export type EditEventMessageCode =
   | 'manifest_pinned'          // Phase 6: boot manifest + script snapshot pinned (dedupe pin:<sha>)
   | 'analysis_component_recorded' // Phase 6: a visual/audio/hook component was computed + recorded
   | 'analysis_component_reused'   // Phase 6: an existing digest-matched component was reused
-  | 'analysis_failed'          // Phase 6: a component build failed (stable code in details)
+  | 'analysis_failed'          // Phase 6: a component build failed (stable code in details, e.g. source_bytes_changed)
   | 'teardown_failed'          // Phase 6: subprocess/scratch teardown failed (never masked)
-  | 'source_changed'           // Phase 6: storage bytes no longer match the finalize reference
-  | 'source_hash_mismatch'     // Phase 6: downloaded bytes failed sha256 verification
   | 'manifest_mismatch'        // Phase 6: computed manifest differs from the pinned one
   | 'project_completed'
   | 'project_failed'

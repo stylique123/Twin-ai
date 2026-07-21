@@ -64,10 +64,10 @@ One session per job attempt, shared by inspecting / transcribing / analyzing:
 
 * `reconcileRemote()` — cheap HEAD etag+size vs the finalize reference; runs
   before any cache acceptance and at stage boundaries; drift is the PERMANENT
-  `source_changed`.
+  `source_bytes_changed` (the established Phase-4/5 integrity code).
 * `localPath()` — memoized: AT MOST ONE download per attempt, sha256-verified
   against the validation checksum before any consumer sees the path; a
-  mismatch is the PERMANENT `source_hash_mismatch`.
+  mismatch is the PERMANENT `source_bytes_changed`.
 * `dispose()` — exactly once at attempt end; later byte access is a bug.
 
 **Download truth table** (asserted in staging from evented metrics —
@@ -135,9 +135,10 @@ backstops the disk.
 ## Event codes (Phase 6)
 
 `manifest_pinned`, `analysis_component_recorded`, `analysis_component_reused`,
-`analysis_failed`, `teardown_failed`, `source_changed`,
-`source_hash_mismatch`, `manifest_mismatch` — plus `source_downloads` and the
-per-component recorded/reused summary on the `project_completed` details.
+`analysis_failed` (its `details.code` names the specific failure, e.g. the
+established integrity code `source_bytes_changed`), `teardown_failed`,
+`manifest_mismatch` — plus `source_downloads` and the per-component
+recorded/reused summary on the `project_completed` details.
 
 ## Activation safety (unchanged posture)
 

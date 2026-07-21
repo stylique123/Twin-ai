@@ -309,7 +309,7 @@ export async function runInspectingStage(
       await slowPoint('before_download', watch)
       // Session-owned download: at most one per attempt, sha256-verified
       // against the validation checksum before the path is returned
-      // (mismatch => PERMANENT source_hash_mismatch).
+      // (mismatch => PERMANENT source_bytes_changed).
       let local: string
       try {
         local = await session.localPath(stageDownloadOpts(watch.signal, 'inspect'))

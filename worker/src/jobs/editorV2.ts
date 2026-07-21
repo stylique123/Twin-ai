@@ -333,12 +333,13 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         } catch (err) {
           if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
           if (!isLeaseLost(err)) {
-            // Durable failure marker with the stable code; the specific
-            // integrity codes get their own event code, everything else is
-            // analysis_failed. Best-effort append (lease loss still aborts).
+            // Durable failure marker with the stable code: a manifest
+            // divergence gets its own event code; every other failure
+            // (integrity `source_bytes_changed`, bounds, payload, provider…)
+            // is `analysis_failed` with the code in details. Best-effort
+            // append (a lease-loss refusal still aborts the caller).
             const code = err instanceof PermanentJobError ? err.code : 'analysis_error'
-            const evCode = ['source_changed', 'source_hash_mismatch', 'manifest_mismatch'].includes(code)
-              ? code : 'analysis_failed'
+            const evCode = code === 'manifest_mismatch' ? 'manifest_mismatch' : 'analysis_failed'
             await appendEvent(job, projectId, evCode, { code })
           }
           throw err
