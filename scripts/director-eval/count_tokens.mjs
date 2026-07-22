@@ -18,30 +18,50 @@
 //   node scripts/director-eval/count_tokens.mjs --selftest # offline: port parity + conservative bound only
 
 // ---- frozen constants (must equal packages/shared/src/editor/director.ts) ----
-const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563096
+const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563014
 const DIRECTOR_INPUT_MAX_BYTES = 819200
 const PROVIDER_TOKEN_CEILING = 838860 // floor(1048576 * 0.8)
 const UPSTREAM_SPEECH_BUDGET_BYTES = 1_000_000
 const MAX_COMPAT_WORDS = 234
-const MAX_COMPAT_WORD_TEXT_CHARS = 2006
+const MAX_COMPAT_WORD_TEXT_CHARS = 2005
 const MAX_COMPAT_CANDIDATES = 100
 const MAX_COMPAT_REFS_PER_CANDIDATE = 16
 const MAX_COMPAT_BOUNDARIES = 100
 const MAX_SCRIPT_BYTES = 65536
 const MAX_SUMMARY_BYTES = 16384
+const DIRECTOR_VERSION = 'director-1'
+const DIRECTOR_PROVIDER = 'google'
+const DIRECTOR_MODEL = 'gemini-3.5-flash'
 const MODEL = 'gemini-3.5-flash'
 const HEX64 = 'f'.repeat(64)
 const UUID0 = '00000000-0000-0000-0000-000000000000'
 const ENC = new TextEncoder()
 const b = (s) => ENC.encode(s).length
 
+// STRICT canonical JSON (byte-identical to director.ts canonicalJson).
+function isPlainObject(v) {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false
+  const p = Object.getPrototypeOf(v)
+  return p === Object.prototype || p === null
+}
 function canonicalJson(v) {
-  if (v === null || typeof v === 'number' || typeof v === 'boolean') return JSON.stringify(v)
+  if (v === null) return 'null'
+  if (typeof v === 'number') {
+    if (!Number.isFinite(v)) throw new Error('non-finite')
+    return JSON.stringify(v)
+  }
+  if (typeof v === 'boolean') return v ? 'true' : 'false'
   if (typeof v === 'string') return JSON.stringify(v)
-  if (Array.isArray(v)) return `[${v.map(canonicalJson).join(',')}]`
+  if (Array.isArray(v)) {
+    return `[${v.map((el) => { if (el === undefined) throw new Error('undef elem'); return canonicalJson(el) }).join(',')}]`
+  }
   if (typeof v === 'object') {
-    return `{${Object.keys(v).sort().filter((k) => v[k] !== undefined)
-      .map((k) => `${JSON.stringify(k)}:${canonicalJson(v[k])}`).join(',')}}`
+    if (!isPlainObject(v)) throw new Error('non-plain')
+    const parts = Object.keys(v).sort().map((k) => {
+      if (v[k] === undefined) throw new Error('undef prop')
+      return `${JSON.stringify(k)}:${canonicalJson(v[k])}`
+    })
+    return `{${parts.join(',')}}`
   }
   throw new Error('unsupported')
 }
@@ -58,11 +78,11 @@ function buildMaxLegalSpeechComponent() {
     const base = 1 + (i % 13) * 16
     const refs = Array.from({ length: MAX_COMPAT_REFS_PER_CANDIDATE }, (_, r) => `w${base + r}`)
     return {
-      id: `c${i}`, kind: 'filler', startMs: 0, endMs: 1,
+      id: `c${i}`, kind: 'repetition', startMs: 0, endMs: 1,
       wordIds: refs, prevWordId: `w${base - 1}`,
       nextWordId: base + 16 < MAX_COMPAT_WORDS ? `w${base + 16}` : null,
-      confidence: 'low', safeToConsider: true,
-      evidenceCodes: ['filler_disfluency'], evidence: {}, ruleVersion: 'speech-rules-3',
+      confidence: 'medium', safeToConsider: true,
+      evidenceCodes: ['immediate_repeat'], evidence: {}, ruleVersion: 'speech-rules-3',
     }
   })
   const boundaries = Array.from({ length: MAX_COMPAT_BOUNDARIES }, (_, i) => ({
@@ -78,9 +98,11 @@ function buildMaxLegalSpeechComponent() {
   return { ...component, serializedBytes }
 }
 
-// Port of projectSpeechToEnvelope (director.ts).
+// Port of projectSpeechToEnvelope (director.ts) — enriched candidate tuple.
 const KINDS = ['silence', 'filler', 'false_start', 'repetition']
 const BKINDS = ['punctuation_sentence', 'asr_segment', 'pause_utterance']
+const CONF = ['low', 'medium', 'high']
+const SILCLASS = ['none', 'uncertain', 'removable', 'dead_air']
 const widx = (id, n) => {
   if (id === null || id === undefined) return -1
   const i = Number(id.slice(1))
@@ -90,8 +112,15 @@ const widx = (id, n) => {
 function project(comp) {
   const n = comp.words.length
   return {
-    words: comp.words.map((w) => [w.text, Math.round(w.startMs / 10), Math.max(0, Math.min(100, Math.round(w.confidence * 100)))]),
-    candidates: comp.candidates.map((c) => [KINDS.indexOf(c.kind), widx(c.prevWordId, n), widx(c.nextWordId, n), c.wordIds.map((id) => widx(id, n))]),
+    words: comp.words.map((w) => [w.text, Math.round(w.startMs / 10), Math.round(w.confidence * 100)]),
+    candidates: comp.candidates.map((c) => {
+      const k = KINDS.indexOf(c.kind)
+      const startCs = Math.round(c.startMs / 10), endCs = Math.round(c.endMs / 10)
+      const conf = CONF.indexOf(c.confidence)
+      const sil = c.kind === 'silence' ? SILCLASS.indexOf(c.evidence.class) : 0
+      const sel = c.kind === 'filler' ? 0 : 1
+      return [k, startCs, endCs, conf, sil, sel, c.wordIds.map((id) => widx(id, n))]
+    }),
     boundaries: comp.boundaries.map((x) => [BKINDS.indexOf(x.kind), widx(x.startWordId, n), widx(x.endWordId, n)]),
   }
 }
@@ -107,7 +136,7 @@ function buildFixture() {
   const max64 = 'v'.repeat(64)
   return {
     schemaVersion: 1, pipelineEpoch: 2,
-    bundle: { version: max64, provider: max64, model: max64, promptSha256: HEX64, schemaSha256: HEX64, configSha256: HEX64 },
+    bundle: { version: DIRECTOR_VERSION, provider: DIRECTOR_PROVIDER, model: DIRECTOR_MODEL, promptSha256: HEX64, schemaSha256: HEX64, configSha256: HEX64 },
     identity: {
       projectId: UUID0, generationId: UUID0, sourceAssetId: UUID0,
       sourceChecksum: HEX64, bootManifestSha: HEX64, scriptSnapshotSha: HEX64,

@@ -7,7 +7,8 @@ import {
   MIN_COMPACT_BOUNDARY_BYTES, MAX_WORDS, MAX_CANDIDATES, MAX_BOUNDARIES, MAX_TIME_CS,
   DIRECTOR_INPUT_MAX_BYTES, EXPECTED_MAX_COMPAT_ENVELOPE_BYTES, PROVIDER_TOKEN_CEILING,
   PROVIDER_CONTEXT_TOKENS, ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES, IDENTITY_BUNDLE_MAX_BYTES,
-  PIPELINE_EPOCH_V2, type DirectorEnvelope,
+  PIPELINE_EPOCH_V2, SPEECH_CANDIDATE_KINDS, CANDIDATE_CONFIDENCE_CODES, SILENCE_CLASS_CODES,
+  kindSelectionEnabled, type DirectorEnvelope,
 } from '../director'
 
 // ===========================================================================
@@ -28,6 +29,55 @@ describe('Gate 0: bounds derived from the Phase-5 contract', () => {
     expect(DIRECTOR_INPUT_MAX_BYTES).toBeLessThanOrEqual(PROVIDER_TOKEN_CEILING)
     expect(PROVIDER_TOKEN_CEILING).toBe(Math.floor(PROVIDER_CONTEXT_TOKENS * 0.8))
   })
+  it('feature safety: filler is NEVER selectable; every other kind is', () => {
+    expect(kindSelectionEnabled('filler')).toBe(0)
+    expect(kindSelectionEnabled('silence')).toBe(1)
+    expect(kindSelectionEnabled('false_start')).toBe(1)
+    expect(kindSelectionEnabled('repetition')).toBe(1)
+  })
+})
+
+// ===========================================================================
+// GATE 0 — the enriched candidate tuple is DECISION-SUFFICIENT: two pure-
+// silence candidates ([]-refs) with different spans/classes must project to
+// DIFFERENT tuples. (The old [k,prev,next,refs] tuple made them identical.)
+// ===========================================================================
+describe('Gate 0: enriched candidate tuple preserves silence decision info', () => {
+  it('two []-ref silence candidates with different spans/classes differ', () => {
+    const words = [
+      { id: 'w0', text: 'a', startMs: 0, confidence: 0.9 },
+      { id: 'w1', text: 'b', startMs: 20000, confidence: 0.9 },
+      { id: 'w2', text: 'c', startMs: 60000, confidence: 0.9 },
+    ]
+    const candidates = [
+      { id: 'c0', kind: 'silence', wordIds: [] as string[], prevWordId: 'w0', nextWordId: 'w1',
+        startMs: 3000, endMs: 8000, confidence: 'medium', evidence: { class: 'removable' } },
+      { id: 'c1', kind: 'silence', wordIds: [] as string[], prevWordId: 'w1', nextWordId: 'w2',
+        startMs: 30000, endMs: 55000, confidence: 'high', evidence: { class: 'dead_air' } },
+    ]
+    const proj = projectSpeechToEnvelope({ words, candidates, boundaries: [] })
+    const [a, b] = proj.candidates
+    // Both are silence, both []-refs, yet fully distinguishable:
+    expect(a[6]).toEqual([]) // refs
+    expect(b[6]).toEqual([])
+    expect(a).not.toEqual(b)
+    // c0: [silence, 300cs, 800cs, medium, removable, sel=1, []]
+    expect(a).toEqual([0, 300, 800, CANDIDATE_CONFIDENCE_CODES.indexOf('medium'), SILENCE_CLASS_CODES.indexOf('removable'), 1, []])
+    // c1: [silence, 3000cs, 5500cs, high, dead_air, sel=1, []]
+    expect(b).toEqual([0, 3000, 5500, CANDIDATE_CONFIDENCE_CODES.indexOf('high'), SILENCE_CLASS_CODES.indexOf('dead_air'), 1, []])
+  })
+
+  it('a filler candidate projects to selectionEnabled=0 (auto filler removal off)', () => {
+    const words = [{ id: 'w0', text: 'um', startMs: 0, confidence: 0.4 }]
+    const proj = projectSpeechToEnvelope({
+      words,
+      candidates: [{ id: 'c0', kind: 'filler', wordIds: ['w0'], prevWordId: null, nextWordId: null,
+        startMs: 0, endMs: 100, confidence: 'low', evidence: {} }],
+      boundaries: [],
+    })
+    expect(proj.candidates[0][0]).toBe(SPEECH_CANDIDATE_KINDS.indexOf('filler'))
+    expect(proj.candidates[0][5]).toBe(0) // selectionEnabled MUST be 0 for filler
+  })
 })
 
 // ===========================================================================
@@ -41,13 +91,22 @@ describe('Gate 0: maximum upstream-compatible fixture', () => {
 
   it('the source component is LEGAL: within the Phase-5 byte budget', () => {
     expect(comp.serializedBytes).toBeLessThanOrEqual(UPSTREAM_SPEECH_BUDGET_BYTES)
-    // and near-saturating (>= 99% of the budget), so this is a max-class input
     expect(comp.serializedBytes).toBeGreaterThanOrEqual(UPSTREAM_SPEECH_BUDGET_BYTES * 0.99)
   })
 
   it('serializes to the EXACT frozen byte count (no approximation)', () => {
     expect(bytes).toBe(EXPECTED_MAX_COMPAT_ENVELOPE_BYTES)
     expect(new TextEncoder().encode(serializeDirectorEnvelope(env)).length).toBe(EXPECTED_MAX_COMPAT_ENVELOPE_BYTES)
+  })
+
+  it('exercises SELECTABLE non-filler candidates (selection semantics)', () => {
+    // The fixture uses `repetition` (selectable), not filler — so it actually
+    // tests the shipped selection path.
+    for (const c of env.candidates) {
+      expect(c[0]).toBe(SPEECH_CANDIDATE_KINDS.indexOf('repetition'))
+      expect(c[5]).toBe(1)
+      expect(c[4]).toBe(0) // non-silence => class none
+    }
   })
 
   it('fits the byte cap with >= 20% headroom and stays under the analytic bound', () => {
@@ -73,17 +132,37 @@ describe('Gate 0: maximum upstream-compatible fixture', () => {
     expect(idBytes).toBeLessThanOrEqual(IDENTITY_BUNDLE_MAX_BYTES)
   })
 
-  it('projection is LOSSLESS in evidence identity (ids, anchors, full ref runs)', () => {
+  it('projection is DECISION-SUFFICIENT: positional ids + full ref runs kept', () => {
     const proj = projectSpeechToEnvelope(comp)
     expect(proj.words.length).toBe(comp.words.length)
-    // every candidate keeps its anchors and its complete ref run
     for (let i = 0; i < comp.candidates.length; i++) {
       const c = comp.candidates[i]
       const t = proj.candidates[i]
-      expect(t[3].length).toBe(c.wordIds.length)
-      expect(t[1]).toBe(c.prevWordId === null ? -1 : Number(c.prevWordId.slice(1)))
-      expect(t[2]).toBe(c.nextWordId === null ? -1 : Number(c.nextWordId.slice(1)))
+      expect(t[6].length).toBe(c.wordIds.length) // full ref run preserved
+      expect(t[1]).toBe(Math.round(c.startMs / 10)) // span carried directly
+      expect(t[2]).toBe(Math.round(c.endMs / 10))
     }
+  })
+})
+
+// ===========================================================================
+// GATE 0 — the STRICT canonical serializer refuses to coerce.
+// ===========================================================================
+describe('Gate 0: strict canonicalJson', () => {
+  it('throws on non-finite numbers, undefined, and non-plain objects', () => {
+    expect(() => canonicalJson(NaN)).toThrow()
+    expect(() => canonicalJson(Infinity)).toThrow()
+    expect(() => canonicalJson(-Infinity)).toThrow()
+    expect(() => canonicalJson({ a: NaN })).toThrow()
+    expect(() => canonicalJson([undefined])).toThrow()
+    expect(() => canonicalJson({ a: undefined })).toThrow()
+    expect(() => canonicalJson(new Date(0))).toThrow()
+    expect(() => canonicalJson({ d: new Date(0) })).toThrow()
+    expect(() => canonicalJson(new (class { x = 1 })())).toThrow()
+  })
+  it('serializes plain values with sorted keys', () => {
+    expect(canonicalJson({ b: 1, a: 2 })).toBe('{"a":2,"b":1}')
+    expect(canonicalJson([1, 'x', true, null])).toBe('[1,"x",true,null]')
   })
 })
 
@@ -112,7 +191,10 @@ describe('Gate 0: hostile validator (untrusted-input boundary)', () => {
     ['pipelineEpoch mismatch', (e) => { e.pipelineEpoch = 1 }, 'director_envelope_epoch_mismatch'],
     ['bundle not object', (e) => { e.bundle = 'x' }, 'director_envelope_bad_bundle'],
     ['bundle unknown key', (e) => { (e.bundle as Record<string, unknown>).x = 1 }, 'director_envelope_unknown_key'],
-    ['bundle version over 64 bytes', (e) => { (e.bundle as Record<string, unknown>).version = 'v'.repeat(65) }, 'director_envelope_bad_string'],
+    ['bundle version not director-1', (e) => { (e.bundle as Record<string, unknown>).version = 'director-2' }, 'director_envelope_bad_bundle'],
+    ['bundle version padded (vvvv...) rejected', (e) => { (e.bundle as Record<string, unknown>).version = 'v'.repeat(64) }, 'director_envelope_bad_bundle'],
+    ['bundle provider not google', (e) => { (e.bundle as Record<string, unknown>).provider = 'openai' }, 'director_envelope_bad_bundle'],
+    ['bundle model not gemini-3.5-flash', (e) => { (e.bundle as Record<string, unknown>).model = 'gpt' }, 'director_envelope_bad_bundle'],
     ['bundle promptSha not 64-hex', (e) => { (e.bundle as Record<string, unknown>).promptSha256 = 'xyz' }, 'director_envelope_bad_string'],
     ['identity bad uuid', (e) => { (e.identity as Record<string, unknown>).projectId = 'not-a-uuid' }, 'director_envelope_bad_string'],
     ['identity oversized string field', (e) => { (e.identity as Record<string, unknown>).sourceChecksum = 'f'.repeat(6000) }, 'director_envelope_bad_string'],
@@ -128,25 +210,36 @@ describe('Gate 0: hostile validator (untrusted-input boundary)', () => {
     ['word startCs above 30-minute cap', (e) => { e.words = [['a', MAX_TIME_CS + 1, 9]] }, 'director_envelope_bad_word'],
     ['word confPct non-integer', (e) => { e.words = [['a', 0, 99.5]] }, 'director_envelope_bad_word'],
     ['word confPct above 100', (e) => { e.words = [['a', 0, 101]] }, 'director_envelope_bad_word'],
+    ['word starts NOT nondecreasing', (e) => { e.words = [['a', 10, 9], ['b', 5, 9]] }, 'director_envelope_bad_word'],
     ['candidates not an array', (e) => { e.candidates = 'nope' }, 'director_envelope_bad_candidate'],
-    ['candidate tuple too short', (e) => { e.candidates = [[0, -1, -1]] }, 'director_envelope_bad_candidate'],
-    ['candidate tuple extra field', (e) => { e.candidates = [[0, -1, -1, [], 'x']] }, 'director_envelope_bad_candidate'],
-    ['candidate kind out of range', (e) => { e.candidates = [[9, -1, -1, []]] }, 'director_envelope_bad_candidate'],
-    ['candidate prevIdx below -1', (e) => { e.candidates = [[0, -2, -1, []]] }, 'director_envelope_bad_candidate'],
-    ['candidate refs not an array', (e) => { e.candidates = [[0, -1, -1, 'w1']] }, 'director_envelope_bad_candidate'],
-    ['candidate refs out of range', (e) => { e.candidates = [[0, -1, -1, [99]]] }, 'director_envelope_bad_candidate'],
-    ['candidate refs descending', (e) => { e.candidates = [[0, -1, -1, [1, 0]]] }, 'director_envelope_bad_candidate'],
-    ['candidate refs duplicate', (e) => { e.candidates = [[0, -1, -1, [1, 1]]] }, 'director_envelope_bad_candidate'],
+    ['candidate tuple too short (old 4-tuple)', (e) => { e.candidates = [[0, -1, -1, []]] }, 'director_envelope_bad_candidate'],
+    ['candidate tuple extra field', (e) => { e.candidates = [[3, 0, 0, 1, 0, 1, [], 9]] }, 'director_envelope_bad_candidate'],
+    ['candidate kind out of range', (e) => { e.candidates = [[9, 0, 0, 1, 0, 1, []]] }, 'director_envelope_bad_candidate'],
+    ['candidate startCs > endCs', (e) => { e.candidates = [[3, 100, 0, 1, 0, 1, []]] }, 'director_envelope_bad_candidate'],
+    ['candidate startCs above cap', (e) => { e.candidates = [[3, MAX_TIME_CS + 1, MAX_TIME_CS + 1, 1, 0, 1, []]] }, 'director_envelope_bad_candidate'],
+    ['candidate confidenceCode out of range', (e) => { e.candidates = [[3, 0, 0, 9, 0, 1, []]] }, 'director_envelope_bad_candidate'],
+    ['candidate silenceClass out of range', (e) => { e.candidates = [[0, 0, 0, 1, 9, 1, []]] }, 'director_envelope_bad_candidate'],
+    ['silence with class none', (e) => { e.candidates = [[0, 0, 0, 1, 0, 1, []]] }, 'director_envelope_bad_candidate'],
+    ['non-silence with a silence class', (e) => { e.candidates = [[3, 0, 0, 1, 2, 1, []]] }, 'director_envelope_bad_candidate'],
+    ['selectionEnabled out of range', (e) => { e.candidates = [[3, 0, 0, 1, 0, 2, []]] }, 'director_envelope_bad_candidate'],
+    ['FILLER marked selection-enabled', (e) => { e.candidates = [[1, 0, 0, 1, 0, 1, []]] }, 'director_envelope_filler_selectable'],
+    ['candidate refs not an array', (e) => { e.candidates = [[3, 0, 0, 1, 0, 1, 'w1']] }, 'director_envelope_bad_candidate'],
+    ['candidate refs out of range', (e) => { e.candidates = [[3, 0, 0, 1, 0, 1, [99]]] }, 'director_envelope_bad_candidate'],
+    ['candidate refs descending', (e) => { e.candidates = [[3, 0, 0, 1, 0, 1, [1, 0]]] }, 'director_envelope_bad_candidate'],
+    ['candidate refs duplicate', (e) => { e.candidates = [[3, 0, 0, 1, 0, 1, [1, 1]]] }, 'director_envelope_bad_candidate'],
     ['boundaries not an array', (e) => { e.boundaries = null }, 'director_envelope_bad_boundary'],
     ['boundary tuple shape', (e) => { e.boundaries = [[1, 0]] }, 'director_envelope_bad_boundary'],
     ['boundary REVERSED (start > end)', (e) => { e.boundaries = [[1, 1, 0]] }, 'director_envelope_bad_boundary'],
     ['boundary word out of range', (e) => { e.boundaries = [[1, 0, 42]] }, 'director_envelope_bad_boundary'],
     ['too many words', (e) => { e.words = new Array(MAX_WORDS + 1).fill(['a', 0, 9]) }, 'director_input_too_many_words'],
-    ['too many candidates', (e) => { e.candidates = new Array(MAX_CANDIDATES + 1).fill([0, -1, -1, []]) }, 'director_input_too_many_candidates'],
+    ['too many candidates', (e) => { e.candidates = new Array(MAX_CANDIDATES + 1).fill([3, 0, 0, 1, 0, 1, []]) }, 'director_input_too_many_candidates'],
     ['too many boundaries', (e) => { e.boundaries = new Array(MAX_BOUNDARIES + 1).fill([1, 0, 0]) }, 'director_input_too_many_boundaries'],
     ['oversized script', (e) => { e.script = { pad: 'a'.repeat(70000) } }, 'director_script_too_large'],
     ['oversized summaries', (e) => { e.summaries = { pad: 'a'.repeat(20000) } }, 'director_summaries_too_large'],
     ['unsupported value in summaries (function)', (e) => { e.summaries = { f: () => 1 } }, 'director_envelope_unserializable'],
+    ['NaN in summaries', (e) => { e.summaries = { x: NaN } }, 'director_envelope_unserializable'],
+    ['Infinity in script', (e) => { e.script = { x: Infinity } }, 'director_envelope_unserializable'],
+    ['Date instance in summaries', (e) => { e.summaries = { d: new Date(0) } }, 'director_envelope_unserializable'],
   ]
   for (const [name, mutate, code] of cases) {
     it(`${name} => ${code}`, () => {
@@ -168,21 +261,42 @@ describe('Gate 0: hostile validator (untrusted-input boundary)', () => {
     const env = baseEnvelope()
     expect(() => validateDirectorEnvelope(JSON.parse(JSON.stringify(env)))).not.toThrow()
   })
+})
 
-  it('projection rejects malformed / out-of-range / non-positional word ids', () => {
-    const words = [{ id: 'w0', text: 'a', startMs: 0, confidence: 0.9 }]
-    const bad = [
-      { words: [{ ...words[0], id: 'x0' }], candidates: [], boundaries: [] },
-      { words, candidates: [{ id: 'c0', kind: 'filler', wordIds: ['w9'], prevWordId: null, nextWordId: null }], boundaries: [] },
-      { words, candidates: [{ id: 'c0', kind: 'mystery', wordIds: [], prevWordId: null, nextWordId: null }], boundaries: [] },
-    ]
-    for (const s of bad) {
-      let err: unknown
-      try { projectSpeechToEnvelope(s as never) } catch (x) { err = x }
-      expect(err).toBeInstanceOf(DirectorEnvelopeError)
-      expect((err as DirectorEnvelopeError).code).toBe('director_projection_bad_ref')
-    }
-  })
+// ===========================================================================
+// GATE 0 — projection REJECTS (never clamps/coerces) malformed component input.
+// ===========================================================================
+describe('Gate 0: projection rejects malformed input', () => {
+  const okWords = [
+    { id: 'w0', text: 'a', startMs: 0, confidence: 0.9 },
+    { id: 'w1', text: 'b', startMs: 20, confidence: 0.8 },
+  ]
+  const okCand = { id: 'c0', kind: 'repetition', wordIds: ['w0', 'w1'], prevWordId: null, nextWordId: null, startMs: 0, endMs: 10, confidence: 'medium', evidence: {} }
+  const okBound = { id: 'u0', kind: 'asr_segment', startWordId: 'w0', endWordId: 'w1' }
+  const expectReject = (speech: unknown) => {
+    let err: unknown
+    try { projectSpeechToEnvelope(speech as never) } catch (x) { err = x }
+    expect(err).toBeInstanceOf(DirectorEnvelopeError)
+    expect((err as DirectorEnvelopeError).code).toBe('director_projection_bad_ref')
+  }
+  const cases: Array<[string, unknown]> = [
+    ['non-positional word id', { words: [{ ...okWords[0], id: 'x0' }], candidates: [], boundaries: [] }],
+    ['word non-finite startMs', { words: [{ ...okWords[0], startMs: NaN }], candidates: [], boundaries: [] }],
+    ['word startMs beyond cap', { words: [{ ...okWords[0], startMs: 2_000_000 }], candidates: [], boundaries: [] }],
+    ['word confidence out of [0,1]', { words: [{ ...okWords[0], confidence: 1.5 }], candidates: [], boundaries: [] }],
+    ['non-positional candidate id', { words: okWords, candidates: [{ ...okCand, id: 'c9' }], boundaries: [] }],
+    ['unknown candidate kind', { words: okWords, candidates: [{ ...okCand, kind: 'mystery' }], boundaries: [] }],
+    ['candidate span reversed', { words: okWords, candidates: [{ ...okCand, startMs: 100, endMs: 0 }], boundaries: [] }],
+    ['candidate invalid confidence', { words: okWords, candidates: [{ ...okCand, confidence: 'bogus' }], boundaries: [] }],
+    ['candidate ref out of range', { words: okWords, candidates: [{ ...okCand, wordIds: ['w9'] }], boundaries: [] }],
+    ['silence missing class', { words: okWords, candidates: [{ id: 'c0', kind: 'silence', wordIds: [], prevWordId: null, nextWordId: null, startMs: 0, endMs: 10, confidence: 'low', evidence: {} }], boundaries: [] }],
+    ['silence invalid class', { words: okWords, candidates: [{ id: 'c0', kind: 'silence', wordIds: [], prevWordId: null, nextWordId: null, startMs: 0, endMs: 10, confidence: 'low', evidence: { class: 'bogus' } }], boundaries: [] }],
+    ['non-positional boundary id', { words: okWords, candidates: [], boundaries: [{ ...okBound, id: 'u9' }] }],
+    ['boundary reversed', { words: okWords, candidates: [], boundaries: [{ ...okBound, startWordId: 'w1', endWordId: 'w0' }] }],
+  ]
+  for (const [name, speech] of cases) {
+    it(`rejects: ${name}`, () => expectReject(speech))
+  }
 })
 
 function baseEnvelope(): DirectorEnvelope {
@@ -200,8 +314,13 @@ function baseEnvelope(): DirectorEnvelope {
     },
     script: { schemaVersion: 1, generationId: UUID0, hook: null, scenes: [] },
     summaries: {},
+    // word starts nondecreasing (0 <= 10)
     words: [['hello', 0, 99], ['world', 10, 87]],
-    candidates: [[0, -1, 1, []], [1, 0, -1, [1]]],
+    // c0: silence [removable] []-refs, selectable; c1: repetition, ref [1]
+    candidates: [
+      [0, 0, 100, CANDIDATE_CONFIDENCE_CODES.indexOf('medium'), SILENCE_CLASS_CODES.indexOf('removable'), 1, []],
+      [3, 0, 10, CANDIDATE_CONFIDENCE_CODES.indexOf('medium'), 0, 1, [1]],
+    ],
     boundaries: [[1, 0, 1]],
   }
 }
