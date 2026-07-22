@@ -159,6 +159,8 @@ jobs:
         run: |
           node scripts/ci/check_quality_gate_digest.mjs --selftest
           node scripts/ci/check_quality_gate_digest.mjs
+      - name: Phase-7 ci-bootstrap secret-key selection (fail-closed, no byte leak)
+        run: node scripts/ci/check_ci_bootstrap_keyselect.mjs
 
   # Offline hostile suite for the production gate-probe predicates
   # (scripts/ci/gate_probe_assert.mjs — the exact module verify-prod-gate.yml

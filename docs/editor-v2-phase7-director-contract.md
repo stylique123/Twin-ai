@@ -116,7 +116,12 @@ Cross-tenant/id-fabrication is structurally impossible: the worker loads the env
    those identities FROM THE LEDGER, not the caller (`director_response_mismatch`
    / `_model_mismatch` / `_provider_mismatch`). Phase-7 case D truth table.
 4. **Staging credential path.** `ci-bootstrap` is version-controlled
-   (`supabase/functions/ci-bootstrap`) and hands out a new-format secret key
-   (`CI_STAGING_SECRET_KEY`) after the JWT signing-key rotation; one operator
-   step in `docs/staging-ci-bootstrap.md`. No blind retries around invalid
-   credentials; earlier matrices unchanged.
+   (`supabase/functions/ci-bootstrap`) and, after the JWT signing-key rotation,
+   hands out a new-format secret key (`sb_secret_…`) selected from the
+   auto-injected `SUPABASE_SECRET_KEYS` dictionary — no operator step, no minted
+   custom secret, no legacy `service_role` fallback. Missing/malformed/empty/
+   non-`sb_secret_`/ambiguous ⇒ fail closed 503, logging only the key source
+   (never bytes). Selection proven offline by
+   `scripts/ci/check_ci_bootstrap_keyselect.mjs`; details in
+   `docs/staging-ci-bootstrap.md`. No blind retries around invalid credentials;
+   earlier matrices unchanged.

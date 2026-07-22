@@ -19,11 +19,15 @@
 // with "unrecognized JWT kid <nil> for algorithm ES256". The fix is to hand out
 // a NEW-FORMAT secret key (sb_secret_...), which the gateway maps to service_role
 // without JWT verification (exactly as the anon path already uses the publishable
-// sb_publishable_... key). This function therefore prefers the operator-set
-// function secret CI_STAGING_SECRET_KEY (a fresh sb_secret_... key) and only
-// falls back to the legacy injected key when it is unset — so deploying this is
-// a no-op until the operator provisions the secret, and never weakens the gate.
+// sb_publishable_... key). Hosted Edge Functions are AUTOMATICALLY injected with
+// SUPABASE_SECRET_KEYS — a JSON dictionary of the project's new sb_secret_... keys
+// — so NO operator step (no minted/pasted custom secret) is required. This function
+// selects the "default" (or sole valid) sb_secret_ value from that dictionary and
+// FAILS CLOSED (503) if none is present. The legacy service_role fallback is
+// removed entirely: on this rotated project it is a dead credential, so silently
+// handing it out would only reintroduce the JWT failure.
 import * as jose from 'https://esm.sh/jose@5.9.6'
+import { selectSecretKey } from './keyselect.mjs'
 
 const ISSUER = 'https://token.actions.githubusercontent.com'
 const AUDIENCE = 'twinai-staging-integration'
@@ -38,9 +42,11 @@ function refuse(reason: string, detail: Record<string, unknown> = {}) {
   return new Response(JSON.stringify({ error: `verification failed: ${reason}` }), { status: 403 })
 }
 
-// Prefer the post-rotation secret key; fall back to the legacy injected key.
-function serviceCredential(): string | undefined {
-  return Deno.env.get('CI_STAGING_SECRET_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+// Select the post-rotation secret key from the auto-injected SUPABASE_SECRET_KEYS
+// dictionary. Returns { key?, source } where `source` names only the outcome /
+// key NAME (never key bytes), so callers can log it safely. No legacy fallback.
+function serviceCredential(): { key?: string; source: string } {
+  return selectSecretKey(Deno.env.get('SUPABASE_SECRET_KEYS'))
 }
 
 Deno.serve(async (req: Request) => {
@@ -62,16 +68,31 @@ Deno.serve(async (req: Request) => {
     if (repo !== REPOSITORY) return refuse('wrong repository', { repo })
     if (!workflowRef.startsWith(`${REPOSITORY}/${WORKFLOW_PATH}@`)) return refuse('wrong workflow', { workflowRef })
     if (!REF_ALLOWED.test(ref)) return refuse('ref not approved for phase gates', { ref })
+    // Resolve the staging secret key AFTER the identity gate passes, and FAIL
+    // CLOSED (503) with a non-secret error if the rotated project exposes no
+    // valid sb_secret_ key — never fall back to the dead legacy service_role JWT.
+    const cred = serviceCredential()
+    if (!cred.key) {
+      console.log(JSON.stringify({
+        event: 'ci_bootstrap_no_credential', repo, ref, workflowRef,
+        run_id: payload.run_id ?? null, actor: payload.actor ?? null,
+        key_source: cred.source,
+      }))
+      return new Response(
+        JSON.stringify({ error: `staging credential unavailable: ${cred.source}` }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      )
+    }
     console.log(JSON.stringify({
       event: 'ci_bootstrap_granted', repo, ref, workflowRef,
       run_id: payload.run_id ?? null, actor: payload.actor ?? null,
-      key_source: Deno.env.get('CI_STAGING_SECRET_KEY') ? 'secret_key' : 'legacy_service_role',
+      key_source: cred.source,
     }))
     return new Response(
       JSON.stringify({
         url: Deno.env.get('SUPABASE_URL'),
         anonKey: Deno.env.get('SUPABASE_ANON_KEY'),
-        serviceRoleKey: serviceCredential(),
+        serviceRoleKey: cred.key,
       }),
       { headers: { 'Content-Type': 'application/json' } },
     )
