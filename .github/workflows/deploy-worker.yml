@@ -97,7 +97,11 @@ jobs:
             # Keep the last-good image so a boot-crashing build can roll back
             # instead of leaving NOTHING running (the old rm-then-run had no net).
             docker tag twinai-worker twinai-worker:prev 2>/dev/null || true
-            docker build -t twinai-worker worker/
+            # Inject the EXACT deployed commit as build provenance. The boot
+            # manifest requires a 40-hex WORKER_GIT_SHA (editor_pin_manifest
+            # rejects a hollow manifest), so a build without it fails closed.
+            DEPLOY_SHA="$(git rev-parse HEAD)"
+            docker build --build-arg WORKER_GIT_SHA="$DEPLOY_SHA" -t twinai-worker worker/
             docker rm -f twinai-worker 2>/dev/null || true
             docker run -d --name twinai-worker --restart unless-stopped \
               --env-file /opt/twinai-worker.env twinai-worker

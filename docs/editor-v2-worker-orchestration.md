@@ -1,10 +1,13 @@
-# Editor v2 — Worker orchestration (Phase 3)
+# Editor v2 — Worker orchestration
 
-Phase 3 registers the `editor_v2` job type in the worker and makes the
-orchestration around the edit pipeline durable and safe. **Every stage handler
-is simulated** — no Whisper, media analysis, Gemini Director, EditPlan
-compilation, FFmpeg, captions, zooms, music, or output rendering exists yet.
-Those arrive in later phases *inside* the contract this phase proves.
+Phase 3 registered the `editor_v2` job type in the worker and made the
+orchestration around the edit pipeline durable and safe. Since then the real
+stages have landed inside that contract: **`inspecting` (Phase 4),
+`transcribing` (Phase 5) and `analyzing` (Phase 6: visual/audio/hook evidence,
+see docs/editor-v2-analysis.md) are REAL**; `directing`, `compiling`,
+`rendering` and `validating` remain simulated — no Gemini Director, EditPlan
+compilation, or output rendering exists yet. Those arrive in later phases
+*inside* the same contract.
 
 ## State machine
 
@@ -21,8 +24,10 @@ any active stage → cancelled
 completed | failed | cancelled → (immutable, forever)
 ```
 
-A simulated run completes with `output_asset_id = null` — rendering is a later
-phase; nothing is charged and no output exists.
+A run still completes with `output_asset_id = null` — rendering is a later
+phase; nothing is charged and no output exists. `completed` with a NULL output
+is a SCAFFOLD state, never a product success (the fail-closed launch gate in
+start-editor-v2 stays off until rendering is real).
 
 ## Fencing (duplicate-worker prevention)
 
@@ -60,7 +65,8 @@ fenced writes cannot deadlock against each other.
 State lives in the project row, not in worker memory. A reclaimed job's new
 owner reads `edit_projects.status` and re-enters the pipeline **at the
 persisted stage** (re-running the interrupted stage; stage handlers must be
-idempotent — the simulated ones trivially are), recording a `resumed` event.
+idempotent — the real ones converge on their immutable cached components, the
+remaining simulated ones trivially are), recording a `resumed` event.
 A project found already terminal (cancelled while queued, reconciled) makes
 the job a fenced no-op.
 
@@ -136,15 +142,16 @@ claim finds the project terminal and no-ops the job), during lease renewal,
 and during cleanup. The invariant: re-running the persisted stage is always
 safe, stages are never skipped, terminal events are never duplicated.
 
-Simulated stages are trivially idempotent; the real ones must carry their own
-idempotency keys when they land, because "re-run the interrupted stage" stays
-the resume contract:
+Simulated stages are trivially idempotent; each real stage carries its own
+idempotency key, because "re-run the interrupted stage" stays the resume
+contract:
 
-| Future stage | Idempotency key (planned) |
+| Stage | Idempotency key |
 |---|---|
-| transcription | `(source_hash, transcriber_version)` — write-once cache |
-| media analysis | `(source_hash, analyzer_bundle_version)` — already unique in `media_analyses` (0078) |
-| directing (LLM) | `(edit_project_id, plan version)` — one plan row per version, unique in `edit_plans` |
+| inspection (SHIPPED) | `(source_asset_id, 'inspection', inspectorVersion)` — write-once component (0082) |
+| transcription (SHIPPED) | `(source_asset_id, 'speech', speechVersion)` — write-once component (0082) |
+| analysis (SHIPPED) | `(source_asset_id, component, componentDigest)` — digest-keyed write-once component (0086); events deduped by `edit_events.dedupe_key` |
+| directing (LLM, future) | `(edit_project_id, plan version)` — one plan row per version, unique in `edit_plans` |
 | compiling | deterministic from the plan: keyed by `plan_hash` |
 | rendering | `(edit_project_id, plan_hash)` — the output asset's storage path derives from it, so a re-render overwrites its own object, never duplicates |
 | billing finalize | one reservation row per project; finalize/release transition that row exactly once |

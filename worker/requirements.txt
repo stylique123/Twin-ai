@@ -26,6 +26,12 @@ numpy==2.4.6             # RMS energy math
 requests==2.33.1         # imported by faster_whisper.utils (not always
                          # transitive on a clean Python 3.12 environment)
 
+# ---- Editor visual analysis (Phase 6): pinned YuNet runtime -----------------
+# opencv-python-headless is pinned SEPARATELY in requirements-opencv.txt and
+# installed with `pip --require-hashes`, so the exact wheel SHA-256 is ENFORCED
+# at install time (not merely recorded). It is NOT listed here — installing it
+# here would skip the hash check. See the Dockerfile + staging-integration.yml.
+
 # ---- Reference ingestion (unchanged behaviour) -----------------------------
 # yt-dlp is intentionally kept on a floor, not an exact pin: YouTube's
 # anti-bot changes break older releases within weeks, so the ingestion path

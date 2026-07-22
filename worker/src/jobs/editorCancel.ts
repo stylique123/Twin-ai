@@ -24,13 +24,39 @@ export function watchCancellation(projectId: string, pollMs = 750): CancelWatch 
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// A sleep that resolves EARLY when the cancellation signal aborts. Used by the
+// matrix holds so a cancel requested during a hold is observed promptly
+// (production intent: cancellation tears down at once), instead of only after
+// the full artificial hold elapses. A non-cancel hold (e.g. widening a window
+// for a tamper test, which never aborts) sleeps the full duration unchanged.
+export function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve()
+    const timer = setTimeout(done, ms)
+    const onAbort = () => { clearTimeout(timer); done() }
+    function done() { signal.removeEventListener('abort', onAbort); resolve() }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+}
+
+// Cooperative-cancellation error for the Phase-6 analyzing stage (visual/
+// audio/hook). Lives here (not in editorAnalyze) so the component modules and
+// the orchestrator can both import it without a cycle.
+export class AnalyzeCancelledError extends Error {
+  constructor(point: string) {
+    super(`analysis cancelled at ${point}`)
+    this.name = 'AnalyzeCancelledError'
+  }
+}
+
 // Matrix-only hold at a named boundary; throws the stage's cancellation error
-// when the watch tripped while (or before) it slept.
+// when the watch tripped while (or before) it slept. The hold is ABORTABLE, so
+// a cancel requested during it is observed promptly (not after the full hold).
 export function makeSlowPoint(
   configuredPoint: string, holdMs: number, cancelledError: (point: string) => Error,
 ) {
   return async (point: string, watch: CancelWatch): Promise<void> => {
-    if (configuredPoint === point) await sleep(holdMs)
+    if (configuredPoint === point) await abortableSleep(holdMs, watch.signal)
     if (watch.cancelled()) throw cancelledError(point)
   }
 }

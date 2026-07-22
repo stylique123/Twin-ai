@@ -1,0 +1,18 @@
+{
+  "_comment": "PINNED YuNet face-detection model for the IMMUTABLE Phase-6 visual component. The .onnx is COMMITTED at worker/models/face_detection_yunet_2023mar.onnx (232589 bytes) and this manifest pins its exact upstream identity: the opencv_zoo commit, the in-repo path, and the artifact sha256 (verified to equal the repo's Git-LFS pointer oid). editor_visual.py re-hashes the loaded file against `files` and FAILS CLOSED (exit 3) on any mismatch. Changing repository/ref/digest requires bumping the analyzer bundle (VISUAL_ANALYSIS_VERSION) — the artifact hash is an input to the visual componentDigest.",
+  "repository": "opencv/opencv_zoo",
+  "ref": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+  "path": "models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+  "license": "MIT",
+  "licenseCopyright": "Copyright (c) 2020 Shiqi Yu",
+  "analyzerBundle": "visual-1",
+  "files": {
+    "face_detection_yunet_2023mar.onnx": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
+  },
+  "runtime": {
+    "package": "opencv-python-headless",
+    "version": "4.10.0.84",
+    "wheel": "opencv_python_headless-4.10.0.84-cp37-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+    "wheelSha256": "377d08a7e48a1405b5e84afcbe4798464ce7ee17081c1c23619c8b398ff18295"
+  }
+}

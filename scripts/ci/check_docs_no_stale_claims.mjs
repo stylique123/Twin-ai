@@ -23,7 +23,11 @@
 import { readFileSync } from 'node:fs'
 
 // Required current-guidance docs. A missing one is a FAILURE, not a skip.
-const CANONICAL = ['ARCHITECTURE.md', 'README.md', 'ROADMAP.md', 'worker/README.md', 'worker/SCALING.md']
+// The editor-v2 stage docs are canonical guidance too (Phase 6): they must
+// never re-claim that a now-real stage is simulated.
+const CANONICAL = ['ARCHITECTURE.md', 'README.md', 'ROADMAP.md', 'worker/README.md', 'worker/SCALING.md',
+  'docs/editor-v2-worker-orchestration.md', 'docs/editor-v2-media-inspection.md',
+  'docs/editor-v2-speech-analysis.md', 'docs/editor-v2-analysis.md']
 
 const FORBIDDEN = [
   { re: /\brevideo\b/i, why: 'Revideo renderer (removed with the old editor)' },
@@ -42,6 +46,11 @@ const FORBIDDEN = [
   { re: /\{\s*ingest,\s*build_voice,\s*scrape_dna\s*\}/, why: 'old three-type registry (missing validate_source/editor_v2)' },
   // legacy editor architecture (Editor v2 uses one canonical EditPlan):
   { re: /scene timeline[^.\n]*\b(drives?|drive)\b[^.\n]*\b(editor|cuts?|captions?|b-?roll)\b/i, why: 'legacy "Scene Timeline drives the editor" model (Editor v2 uses one canonical EditPlan)' },
+  // Phase-6 staleness: analyzing is REAL now — docs may not re-claim otherwise.
+  { re: /\banalyzing\b[^.\n;]{0,50}\b(stays?|remains?|is)\s+simulated\b/i, why: 'claim that the analyzing stage is simulated (it is real since Phase 6)' },
+  { re: /\b(visual|audio)\s*(\/\s*(audio|visual))?\s+portions?\b[^.\n]{0,60}\bsimulated\b/i, why: 'claim that the visual/audio portions of analyzing are simulated (real since Phase 6)' },
+  { re: /every stage handler\s+is simulated/i, why: 'claim that every stage handler is simulated (inspecting/transcribing/analyzing are real)' },
+  { re: /no Whisper, (no )?media analysis/i, why: 'claim that no Whisper/media analysis exists (both are real)' },
 ]
 
 // EVIDENCE CONSISTENCY (Phase-5 closure): once a doc records an item as CLOSED,
@@ -148,6 +157,12 @@ function selftest() {
     ['three-type registry returns', withClaim('registry is {ingest, build_voice, scrape_dna}'), false],
     ['legacy scene-timeline-drives-editor returns', withClaim('the Scene Timeline drives editor cuts and captions and B-roll'), false],
     ['clean removal prose allowed', withClaim('the old auto-edit job and premium renderer were removed; `transcribe` was retired'), true],
+    // Phase-6 staleness:
+    ['analyzing-is-simulated claim fails', withClaim('the analyzing stage remains simulated until Phase 6'), false],
+    ['visual/audio portions simulated claim fails', withClaim('The visual/audio portions of analyzing stay simulated until their phases.'), false],
+    ['every-stage-simulated claim fails', withClaim('Every stage handler is simulated in this phase.'), false],
+    ['no-Whisper claim fails', withClaim('no Whisper, no media analysis, no Gemini Director'), false],
+    ['real-analyzing prose allowed', withClaim('analyzing is REAL (Phase 6); directing, compiling, rendering and validating remain simulated'), true],
     // Evidence OPEN/CLOSED consistency (contradiction = fail; either alone = pass):
     ['evidence CLOSED + operator-OPEN contradiction fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\n## A2 — OPEN (operator-run; not complete)'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],
     ['evidence CLOSED + "Remaining to fully close (operator" fails', (() => { const f = okFiles(); f['docs/phase5-production-signoff-evidence.md'] = '# A1/A2 CLOSED\n## Remaining to fully close (operator/reviewer)'; f['docs/editor-v2-phase5-speech-eval.md'] = 'Task #116 gate: CLOSED.'; return f })(), false],

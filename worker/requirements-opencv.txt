@@ -1,0 +1,12 @@
+# Phase-6 pinned OpenCV runtime — installed with `pip install --require-hashes`
+# so the exact wheel SHA-256 is ENFORCED at install (a substituted wheel fails
+# the install, not just an after-the-fact record). numpy (opencv's dependency)
+# is installed FIRST from requirements.txt and already satisfies opencv's
+# requirement, so --require-hashes needs no hash for it here.
+#
+# The hash MUST equal worker/models/vision.manifest.json (runtime.wheelSha256)
+# and worker/licenses.lock.json. Bump ONLY together with VISUAL_ANALYSIS_VERSION
+# (the wheel bundles OpenCV's decoders; a moved runtime can change the visual
+# component). The wheel is the manylinux2014 x86_64 cp37-abi3 build.
+opencv-python-headless==4.10.0.84 \
+    --hash=sha256:377d08a7e48a1405b5e84afcbe4798464ce7ee17081c1c23619c8b398ff18295

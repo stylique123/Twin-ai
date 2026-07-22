@@ -394,12 +394,18 @@ async function main() {
 
     const ev = await getEvents(pid)
     const rec = ev.find((e) => e.message_code === 'speech_recorded')
-    const ver = ev.find((e) => e.message_code === 'speech_analysis_verified')
     check('S15 speech_recorded event: fresh ASR, no cache',
       rec?.details?.cache_hit === false && rec?.details?.asr_performed === true && rec?.details?.word_count === words.length,
       JSON.stringify(rec?.details))
-    check('S16 analyzing re-verified the durable component',
-      ver?.details?.word_count === words.length && ver?.details?.speech_version === 'speech-6', JSON.stringify(ver?.details))
+    // Phase 6: `analyzing` no longer emits speech_analysis_verified — it
+    // STRICTLY loads the durable speech component at the pinned version
+    // (fail-closed if missing/mismatched) and records the visual/audio/hook
+    // evidence. The three analysis_component_recorded events are the
+    // observable proof that analyzing ran and consumed the speech component.
+    const recorded = ev.filter((e) => e.message_code === 'analysis_component_recorded')
+      .map((e) => e.details?.component)
+    check('S16 analyzing consumed speech + recorded visual/audio/hook evidence',
+      ['visual', 'audio', 'hook'].every((c) => recorded.includes(c)), recorded.join(','))
     const job = await waitJobSettled(pid)
     check('S17 job result carries the speech summary', job?.result?.speech?.asrPerformed === true, JSON.stringify(job?.result?.speech))
     check('S18 provenance pins engine/model/vad', r.provenance?.asrEngine === 'faster-whisper' && r.provenance?.vad === 'silero')
@@ -736,8 +742,12 @@ async function main() {
     const { data: comps } = await admin.from('media_analyses')
       .select('component').in('source_asset_id', runAssets)
     const kinds = new Set((comps ?? []).map((c) => c.component))
-    check('B1 only inspection+speech components exist (visual/audio/hook = 0)',
-      [...kinds].every((k) => ['inspection', 'speech'].includes(k)) && kinds.has('speech'), [...kinds].join(','))
+    // Phase 6 made `analyzing` real: a completed project also records the
+    // visual/audio/hook evidence components. The five analysis components are
+    // the whole legal namespace; speech (this phase's subject) must be present.
+    const SANCTIONED = ['inspection', 'speech', 'visual', 'audio', 'hook']
+    check('B1 only sanctioned analysis components exist; speech present',
+      [...kinds].every((k) => SANCTIONED.includes(k)) && kinds.has('speech'), [...kinds].join(','))
     const count = async (t) => (await admin.from(t).select('id', { count: 'exact', head: true })).count ?? 0
     check('B2 zero edit_plans (no Director/EditPlan — later phases)', (await count('edit_plans')) === 0)
     const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true }).eq('kind', 'output')
@@ -749,12 +759,12 @@ async function main() {
     const { count: transcripts } = await admin.from('transcripts')
       .select('id', { count: 'exact', head: true }).in('owner_id', [uA.id, uB.id])
     check('B5 zero legacy transcript rows (speech lives only in media_analyses)', (transcripts ?? 0) === 0)
-    // No Gemini Director in this phase: a completed speech project reaches
-    // `completed` with only speech evidence; no plan/analysis rows beyond the
-    // two sanctioned components exist (B1+B2), which is the observable proof
-    // that no Director/EditPlan generation ran.
-    check('B6 no analysis beyond the two sanctioned components (no Gemini Director output)',
-      (comps ?? []).every((c) => ['inspection', 'speech'].includes(c.component)))
+    // No Gemini Director in this phase: a completed project reaches
+    // `completed` with only ANALYSIS evidence (inspection/speech/visual/audio/
+    // hook); no plan rows (B2) and no output pointer exist, which is the
+    // observable proof that no Director/EditPlan generation or render ran.
+    check('B6 no analysis beyond the five sanctioned components (no Gemini Director output)',
+      (comps ?? []).every((c) => SANCTIONED.includes(c.component)))
 
     // Temp hygiene: every attempt dir belonging to THIS run's jobs is gone —
     // except the deliberately SIGKILLed crash attempt (G-d), which the age

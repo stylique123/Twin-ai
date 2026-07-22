@@ -10,8 +10,11 @@
 // has_audio, editor_eligible, generation match) → active-project quota →
 // atomic editor_start_project() (one project + one queued editor_v2 job).
 //
-// Phase-2 boundary: the job stays queued — no worker handler exists yet
-// (Phase 3), no AI provider or renderer is called, no credit is charged.
+// Boundary: the queued job is drained by the worker's editor_v2 handler
+// (inspecting/transcribing/analyzing are real; directing→validating are still
+// simulated, so `completed` has output_asset_id NULL — a SCAFFOLD state). No
+// renderer output exists and no credit is charged; the launch gate below
+// stays fail-closed in production until rendering is real.
 //
 // Product rule (documented): only the OWNER starts an edit on their
 // generation. Workspace peers can VIEW projects/events via RLS but cannot
@@ -40,12 +43,14 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
 
-  // FAIL-CLOSED launch gate. Production has no editor_v2 worker handler until
-  // Phase 3 — an authenticated caller must not be able to park jobs in a queue
-  // nothing drains. The switch is SERVER environment only (missing/anything
-  // but 'true' = disabled); no request field can influence it. Staging sets it
-  // to true for the gate matrices; production stays disabled until Phase 3's
-  // controlled rollout.
+  // FAIL-CLOSED launch gate. The pipeline is a SCAFFOLD (no rendering, no
+  // output) — an authenticated caller must not be able to start edits that can
+  // never produce a video. The switch is SERVER environment only (missing/
+  // anything but 'true' = disabled); no request field can influence it.
+  // Staging sets it to true for the gate matrices; production stays disabled
+  // until rendering is real and a controlled rollout re-proves the gate
+  // (current flag/code probe + zero-delta bracket at that time — run
+  // 29829091202 is historical evidence, not permanent authority).
   if ((Deno.env.get('EDITOR_V2_START_ENABLED') ?? '').trim().toLowerCase() !== 'true') {
     return json({ error: 'AI editing is not available yet.', code: 'editor_not_available' }, 503)
   }

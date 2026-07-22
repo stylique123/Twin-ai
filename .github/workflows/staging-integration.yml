@@ -41,6 +41,11 @@ jobs:
     # `runner` context is NOT available in job-level env — use github.workspace.
     env:
       EDITOR_SPEECH_MODEL_PATH: ${{ github.workspace }}/.pinned-model
+      # Phase-6 build provenance: the boot manifest requires a 40-hex commit
+      # (editor_pin_manifest rejects a hollow manifest). The staging workers run
+      # the built dist/ directly (not the Docker image), so inject the exact
+      # head commit here — every spawned worker inherits it via process.env.
+      WORKER_GIT_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
 
@@ -64,6 +69,9 @@ jobs:
         # in CI and on the VPS.
         run: |
           pip install --quiet -r worker/requirements.txt
+          # OpenCV runtime with ENFORCED wheel SHA-256 (same as the Docker build):
+          # --require-hashes fails the install if the wheel bytes don't match.
+          pip install --quiet --require-hashes -r worker/requirements-opencv.txt
           # Offline verifier guard (mirror of the build): a digest mismatch must fail.
           python worker/scripts/test_fetch_model.py
           python worker/scripts/test_editor_speech_pin.py
@@ -176,3 +184,8 @@ jobs:
       - name: Run Phase 5 integration matrix (real speech transcription)
         # EDITOR_SPEECH_MODEL_PATH is set at job level (all phases drive speech).
         run: node scripts/staging-integration/phase5.mjs
+
+      - name: Run Phase 6 integration matrix (real analyzing — manifest pin, digest components, capacity)
+        # opencv-python-headless is installed by the pinned requirements step
+        # above; the YuNet .onnx + vision manifest are committed in-repo.
+        run: node scripts/staging-integration/phase6.mjs

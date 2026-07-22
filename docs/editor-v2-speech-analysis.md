@@ -4,13 +4,15 @@ Phase 5 makes the `transcribing` stage REAL: Faster-Whisper word-level
 transcription of the validated recording, Silero-VAD and audio-energy
 evidence, and silence/filler/false-start/repetition **candidates** — persisted
 as one immutable, versioned `speech` component per source asset. The
-`analyzing` stage gains its real speech portion: re-verifying the durable
-component against the current bytes. Everything downstream (visual analysis,
-music/beat, hook selection, Gemini Director, EditPlan, FFmpeg cutting,
-captions, zooms, audio cleanup, output rendering, charging) remains
-simulated/absent — later phases.
+`analyzing` stage consumes the durable component strictly at the version the
+project's pinned boot manifest names (Phase 6 — see
+`editor-v2-analysis.md` for the real visual/audio/hook evidence components).
+Everything downstream (Gemini Director, EditPlan, FFmpeg cutting, captions,
+zooms, audio cleanup, output rendering, charging) remains simulated/absent —
+later phases.
 
-Related: `editor-v2-media-inspection.md` (Phase 4), `editor-v2-worker-orchestration.md` (Phase 3).
+Related: `editor-v2-media-inspection.md` (Phase 4),
+`editor-v2-analysis.md` (Phase 6), `editor-v2-worker-orchestration.md`.
 
 ## The contract
 

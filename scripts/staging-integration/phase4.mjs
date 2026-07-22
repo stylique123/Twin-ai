@@ -525,12 +525,15 @@ async function main() {
   // =================================================================
   console.log('\n== K. Phase-4 boundary + hygiene ==')
   {
-    // Phase 5 made `transcribing` real: completing Phase-4 projects now also
-    // record a speech component. Anything beyond inspection+speech stays a
-    // later phase.
-    const { count: beyondSpeech } = await admin.from('media_analyses')
-      .select('id', { count: 'exact', head: true }).not('component', 'in', '("inspection","speech")')
-    check('K1 zero components beyond inspection+speech (visual/audio/hook are later phases)', (beyondSpeech ?? 0) === 0)
+    // Phase 5/6 made transcribing/analyzing real: completing projects now
+    // also record speech + visual/audio/hook components. The five sanctioned
+    // analysis components are the whole legal namespace (also DB-enforced);
+    // anything BEYOND them would be a defect. Plans/outputs/credits stay the
+    // real downstream boundary (checked below).
+    const { count: beyondAnalysis } = await admin.from('media_analyses')
+      .select('id', { count: 'exact', head: true })
+      .not('component', 'in', '("inspection","speech","visual","audio","hook")')
+    check('K1 zero components beyond the five sanctioned analysis components', (beyondAnalysis ?? 0) === 0)
     const { count: transcripts } = await admin.from('transcripts')
       .select('id', { count: 'exact', head: true }).in('owner_id', [uA.id, uB.id])
     check('K2 zero legacy transcript rows for this run (speech lives in media_analyses)', (transcripts ?? 0) === 0)

@@ -282,8 +282,11 @@ async function main() {
 
     const job = await waitEditorJobSettled(projectId)
     check('A5 job done in one attempt', job?.status === 'done' && job?.attempts === 1, `status=${job?.status} attempts=${job?.attempts}`)
-    check('A6 job result reports all 7 simulated stages + temp-dir cleanup',
-      job?.result?.simulated === true && job?.result?.stages_ran?.length === 7 && job?.result?.temp_dir_cleaned === true)
+    // Phase 6: inspecting/transcribing/analyzing are real; the completion
+    // payload's scaffold marker is `simulated_after_analysis` (directing→
+    // validating remain simulated). All 7 stages still run + temp cleanup.
+    check('A6 job result reports all 7 stages (scaffold after analysis) + temp-dir cleanup',
+      job?.result?.simulated_after_analysis === true && job?.result?.stages_ran?.length === 7 && job?.result?.temp_dir_cleaned === true)
 
     const ev = await getEvents(projectId)
     const seqs = ev.map((e) => e.seq)
@@ -544,18 +547,22 @@ async function main() {
   {
     const { gen, asset } = s2[3]
     const projectId = await startProject(c2, gen, asset)
+    // Inject at `directing` — a still-SIMULATED stage. (analyzing became real
+    // in Phase 6, so EDITOR_SIM_FAIL_STAGE no longer influences it.) Attempt 1
+    // runs the real inspecting/transcribing/analyzing, then fails retryably at
+    // directing; attempt 2 resumes at the persisted `directing` stage.
     const w = startWorker('p3-retry', {
-      EDITOR_SIM_FAIL_STAGE: 'analyzing', EDITOR_SIM_FAIL_MODE: 'retryable', EDITOR_SIM_FAIL_ATTEMPTS: '1',
+      EDITOR_SIM_FAIL_STAGE: 'directing', EDITOR_SIM_FAIL_MODE: 'retryable', EDITOR_SIM_FAIL_ATTEMPTS: '1',
     })
-    const proj = await waitProject(projectId, isSettled, 90_000, 'retry')
+    const proj = await waitProject(projectId, isSettled, 150_000, 'retry')
     stopWorker(w)
     const job = await getEditorJob(projectId)
     const ev = await getEvents(projectId)
     check('G1 completed on the second attempt', proj.status === 'completed' && job?.attempts === 2, `p=${proj.status} attempts=${job?.attempts}`)
     check('G2 retry was recorded before the job requeued',
       ev.some((e) => e.message_code === 'stage_retry_scheduled' && /simulated retryable/.test(e.details?.error ?? '')))
-    check('G3 project state was durable across the retry (resumed at analyzing)',
-      ev.some((e) => e.message_code === 'resumed' && e.details?.from_stage === 'analyzing'))
+    check('G3 project state was durable across the retry (resumed at directing)',
+      ev.some((e) => e.message_code === 'resumed' && e.details?.from_stage === 'directing'))
   }
 
   // =================================================================
@@ -759,12 +766,14 @@ async function main() {
   console.log('\n== K. Phase-3 boundary: orchestration only, no downstream side effects ==')
   {
     const count = async (t) => (await admin.from(t).select('id', { count: 'exact', head: true })).count ?? 0
-    // Phase 4 made `inspecting` real and Phase 5 made `transcribing` real:
-    // inspection + speech components are the sanctioned analysis writes.
-    // Anything beyond those stays a later phase.
-    const { count: beyondSpeech } = await admin.from('media_analyses')
-      .select('id', { count: 'exact', head: true }).not('component', 'in', '("inspection","speech")')
-    check('K1 zero analysis rows beyond inspection+speech (visual/audio/hook are later phases)', (beyondSpeech ?? 0) === 0)
+    // Phase 4/5/6 made inspecting/transcribing/analyzing real: inspection,
+    // speech, visual, audio and hook are ALL sanctioned analysis writes now.
+    // Anything beyond those five (an unbounded namespace) would be a defect —
+    // the media_analyses component check constraint also enforces this.
+    const { count: beyondAnalysis } = await admin.from('media_analyses')
+      .select('id', { count: 'exact', head: true })
+      .not('component', 'in', '("inspection","speech","visual","audio","hook")')
+    check('K1 zero analysis rows beyond the five sanctioned components', (beyondAnalysis ?? 0) === 0)
     check('K2 zero edit_plans rows (planning is a later phase)', (await count('edit_plans')) === 0)
     const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true }).eq('kind', 'output')
     check('K3 zero output assets rendered', (outputs ?? 0) === 0)

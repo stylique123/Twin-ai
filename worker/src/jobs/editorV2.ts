@@ -1,8 +1,17 @@
-// editor_v2 — the Phase-3 orchestration handler. Drives an edit_project
-// through the full stage pipeline with SIMULATED stage work (no Whisper, no
-// media analysis, no Gemini Director, no EditPlan compilation, no FFmpeg, no
-// captions/zooms/music, no output rendering — those are later phases; each
-// stage here just proves the orchestration contract around it).
+// editor_v2 — the orchestration handler. Drives an edit_project through the
+// full stage pipeline. inspecting (Phase 4), transcribing (Phase 5) and
+// analyzing (Phase 6: visual/audio/hook evidence) are REAL; directing,
+// compiling, rendering and validating remain SIMULATED (no Gemini Director,
+// no EditPlan compilation, no output rendering — those are later phases), so
+// a `completed` project still has output_asset_id NULL and is a SCAFFOLD
+// state, never a product success.
+//
+// Phase-6 additions:
+//   * boot-artifact manifest + recording-script snapshot pinned (fenced,
+//     set-once) BEFORE the first queued->inspecting transition; a divergent
+//     manifest on resume fails closed (manifest_mismatch)
+//   * one attempt-scoped VerifiedSourceSession owns the source bytes across
+//     all real stages: at most ONE verified download per attempt
 //
 // What IS real, and under test:
 //   * durable state transitions — every advance is a fenced, atomic DB call
@@ -24,11 +33,15 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { db, renewJobLease, type Job } from '../db.js'
 import { env } from '../env.js'
-import { LeaseLostError, PermanentJobError, isLeaseLost } from '../errors.js'
+import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost } from '../errors.js'
 import { queueSafeError, sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
-import { InspectionCancelledError, runInspectingStage } from './editorInspect.js'
-import { SpeechCancelledError, runTranscribingStage, verifySpeechComponent } from './editorSpeech.js'
+import { AnalyzeCancelledError } from './editorCancel.js'
+import { InspectionCancelledError, loadEligibleSource, runInspectingStage } from './editorInspect.js'
+import { SpeechCancelledError, runTranscribingStage } from './editorSpeech.js'
+import { runAnalyzingStage, type AnalyzeOutcome } from './editorAnalyze.js'
+import { buildBootManifest, buildScriptSnapshot, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
+import { VerifiedSourceSession } from './sourceSession.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
@@ -42,13 +55,17 @@ interface EditProjectRow {
 // Every call carries (job id, worker id, attempt) — the attempt observed at
 // claim time is the immutable fencing token; the database rejects any write
 // from a run whose claim has been superseded, even by the same worker id.
+// Stages whose work is REAL (not simulated). Everything after `analyzing`
+// stays simulated until its phase lands.
+const REAL_STAGES: ReadonlySet<EditorStage> = new Set(['inspecting', 'transcribing', 'analyzing'])
+
 async function advanceStage(job: Job, projectId: string, to: EditorStage): Promise<EditProjectRow> {
   const { data, error } = await db.rpc('editor_advance_stage', {
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_to: to, p_pct: stagePct(to), p_message_code: 'stage_started',
-    p_details: { attempt: job.attempts, simulated: true },
+    p_details: { attempt: job.attempts, simulated: !REAL_STAGES.has(to) },
   })
-  if (error) throw toClassifiedError(error.message)
+  if (error) throw classifyDbError(error.message)
   // PostgREST returns a composite either bare or single-element depending on
   // client version — normalize.
   return (Array.isArray(data) ? data[0] : data) as EditProjectRow
@@ -62,7 +79,7 @@ async function finishProject(
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_status: status, p_failure_code: failureCode ?? null, p_details: details,
   })
-  if (error) throw toClassifiedError(error.message)
+  if (error) throw classifyDbError(error.message)
 }
 
 async function appendEvent(
@@ -80,12 +97,46 @@ async function appendEvent(
   }
 }
 
-// The DB raises typed messages; map them back onto the worker's error classes
-// so the queue loop settles the job correctly.
-function toClassifiedError(message: string): Error {
-  if (/lease_lost/.test(message)) return new LeaseLostError(message)
-  if (/project_terminal|not found/.test(message)) return new PermanentJobError(message, 'project_state')
-  return new Error(message)
+// ---- boot-manifest pinning --------------------------------------------------
+// Fenced, set-once: called on EVERY attempt before the stage loop. First call
+// pins; an identical recomputation is an idempotent 'already_pinned'; a
+// DIVERGENT manifest (different worker build / rules / models mid-project)
+// fails closed as the PERMANENT manifest_mismatch — versions are never mixed
+// within one project.
+async function pinManifest(
+  job: Job, projectId: string, generationId: string,
+): Promise<{ manifest: BuiltManifest; snapshot: BuiltSnapshot; pin: string }> {
+  const manifest = await buildBootManifest({
+    inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
+  })
+  // Read the REQUIRED script columns explicitly. If a required column is
+  // absent (schema drift / an un-migrated deployment), PostgREST returns a
+  // "column ... does not exist" error — fail CLOSED with a stable
+  // schema-drift code rather than silently degrading to "no script". A
+  // legitimately NULL scene_timeline is fine (buildScriptSnapshot then
+  // produces the documented empty-scenes snapshot); only a MISSING column is
+  // the error.
+  const { data: gen, error: genErr } = await db
+    .from('generations').select('id, selected_hook, scene_timeline')
+    .eq('id', generationId).maybeSingle()
+  if (genErr) {
+    if (/column .*does not exist|scene_timeline|selected_hook/i.test(genErr.message)) {
+      throw new PermanentJobError(
+        `pin: generations schema is missing a required script column (deployment drift): ${genErr.message}`,
+        'script_schema_drift')
+    }
+    throw new Error(`pin: generation read failed: ${genErr.message}`)
+  }
+  if (!gen) throw new PermanentJobError(`pin: generation ${generationId} missing`, 'generation_missing')
+  const snapshot = buildScriptSnapshot(gen as { id: string; selected_hook: string | null; scene_timeline: unknown })
+  // throws script_snapshot_too_large (fail closed)
+  const { data, error } = await db.rpc('editor_pin_manifest', {
+    p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
+    p_manifest: manifest.manifest, p_manifest_sha: manifest.manifestSha,
+    p_snapshot: snapshot.snapshot, p_snapshot_sha: snapshot.snapshotSha,
+  })
+  if (error) throw classifyDbError(error.message)
+  return { manifest, snapshot, pin: String(data ?? '') }
 }
 
 // ---- background lease renewal ----------------------------------------------
@@ -184,10 +235,11 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
   const lease = startLeaseRenewal(job)
   const ranStages: string[] = []
   let currentStage: EditorStage | null = null
+  let session: VerifiedSourceSession | null = null
   try {
     const { data: proj, error } = await db
       .from('edit_projects')
-      .select('id,status,cancel_requested_at')
+      .select('id,status,cancel_requested_at,generation_id')
       .eq('id', projectId)
       .maybeSingle()
     if (error) throw new Error(`project read failed: ${error.message}`)
@@ -210,9 +262,19 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // NOTE (Phase-3 billing boundary, design-only): the billing reservation
     // will be taken HERE — at worker claim, before the first stage — and
     // finalized/released in editor_finish_project. No reservation or charge
-    // exists in Phase 3; see docs/editor-v2-worker-orchestration.md.
+    // exists yet; see docs/editor-v2-worker-orchestration.md.
+
+    // Phase 6: pin the boot-artifact manifest + recording-script snapshot
+    // BEFORE the first queued->inspecting transition (idempotent on resume;
+    // fails closed on divergence). Then open the attempt-scoped source
+    // session every real stage shares.
+    const pinned = await pinManifest(job, projectId, String(proj.generation_id))
+    const src = await loadEligibleSource(projectId, 'session')
+    session = new VerifiedSourceSession(src.asset, src.meta, dir)
+
     let inspect: Record<string, unknown> | null = null
     let speech: Record<string, unknown> | null = null
+    let analysis: AnalyzeOutcome | null = null
     for (const stage of stagesFrom(proj.status)) {
       if (lease.lost()) throw new LeaseLostError(`lease lost before stage ${stage}`)
       maybeCrash(`before_stage:${stage}`, job)
@@ -229,7 +291,8 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       // A cooperative mid-stage cancellation (watcher-tripped abort) settles
       // the project as cancelled — shared by every real stage.
       const cancelledMidStage = async (err: unknown): Promise<boolean> => {
-        if (err instanceof InspectionCancelledError || err instanceof SpeechCancelledError) {
+        if (err instanceof InspectionCancelledError || err instanceof SpeechCancelledError
+            || err instanceof AnalyzeCancelledError) {
           await finishProject(job, projectId, 'cancelled', undefined, { at_stage: stage })
           return true
         }
@@ -240,7 +303,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // Phase 4: reuses Phase-1 validation facts (or the cached component)
         // and only downloads/reprobes as a bounded upgrade.
         try {
-          const out = await runInspectingStage(job, projectId, dir)
+          const out = await runInspectingStage(job, projectId, session)
           inspect = { ...out }
           await appendEvent(job, projectId, 'inspection_recorded', {
             cache_hit: out.cacheHit,
@@ -256,7 +319,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // Phase 5: the real speech analysis — integrity-verified download,
         // Faster-Whisper, VAD/energy evidence, candidates; immutable component.
         try {
-          const out = await runTranscribingStage(job, projectId, dir)
+          const out = await runTranscribingStage(job, projectId, dir, session)
           speech = { ...out }
           await appendEvent(job, projectId, 'speech_recorded', {
             cache_hit: out.cacheHit,
@@ -271,34 +334,49 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           throw err
         }
       } else if (stage === 'analyzing') {
-        // Phase 5: the SPEECH portion of analyzing is real — re-verify the
-        // durable component against the current bytes (fail closed). The
-        // visual/audio portions stay simulated until their phases.
+        // Phase 6: the REAL analyzing stage — strict-version speech/inspection
+        // consumption, digest-keyed visual/audio/hook evidence components,
+        // fenced recording with recorded/reused event accounting.
         try {
-          const v = await verifySpeechComponent(projectId)
-          await appendEvent(job, projectId, 'speech_analysis_verified', {
-            speech_version: v.speechVersion,
-            word_count: v.wordCount,
-            candidates_total: v.candidatesTotal,
-          })
+          analysis = await runAnalyzingStage(job, projectId, dir, session, pinned)
         } catch (err) {
           if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          if (!isLeaseLost(err)) {
+            // Durable failure marker with the stable code: a manifest
+            // divergence gets its own event code; every other failure
+            // (integrity `source_bytes_changed`, bounds, payload, provider…)
+            // is `analysis_failed` with the code in details. Best-effort
+            // append (a lease-loss refusal still aborts the caller).
+            const code = err instanceof PermanentJobError ? err.code : 'analysis_error'
+            const evCode = code === 'manifest_mismatch' ? 'manifest_mismatch' : 'analysis_failed'
+            await appendEvent(job, projectId, evCode, { code })
+          }
           throw err
         }
-        await runStageWithTimeout(stage, job, dir)
       } else {
         await runStageWithTimeout(stage, job, dir)
       }
       ranStages.push(stage)
     }
 
-    await finishProject(job, projectId, 'completed', undefined, { simulated_after_speech: true })
+    await finishProject(job, projectId, 'completed', undefined, {
+      // Scaffold marker: directing/compiling/rendering/validating are still
+      // simulated and output_asset_id stays NULL — never a product success.
+      simulated_after_analysis: true,
+      manifest_sha: pinned.manifest.manifestSha,
+      source_downloads: session.downloadsPerformed,
+      components: analysis ? {
+        visual: analysis.visual, audio: analysis.audio, hook: analysis.hook,
+      } : null,
+    })
     maybeCrash('after_finish', job) // project settled, job not yet acknowledged
     return {
-      simulated: true, // directing/compiling/rendering/validating are still simulated
+      simulated_after_analysis: true, // directing/compiling/rendering/validating are still simulated
       stages_ran: ranStages,
       inspection: inspect,
       speech,
+      analysis: analysis as unknown as Record<string, unknown> | null,
+      source_downloads: session.downloadsPerformed,
       swept_orphan_dirs: sweptOrphans,
       temp_dir_cleaned: true, // the finally below removes it before we return
     }
@@ -336,6 +414,18 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     throw queueSafeError(err, safe)
   } finally {
     lease.stop()
-    await rm(dir, { recursive: true, force: true }).catch(() => { /* best-effort; the orphan sweep backstops */ })
+    session?.dispose()
+    try {
+      await rm(dir, { recursive: true, force: true })
+    } catch (teardownErr) {
+      // NEVER masked: the orphan sweep backstops the disk, but the failure is
+      // announced durably (best-effort — a lost lease here just logs).
+      try {
+        await appendEvent(job, projectId, 'teardown_failed', {
+          message: String(teardownErr).slice(0, 200),
+        })
+      } catch { /* fenced refusal — the container log still has the error */ }
+      console.warn(`[editor_v2 ${projectId}] temp-dir teardown failed:`, teardownErr)
+    }
   }
 }

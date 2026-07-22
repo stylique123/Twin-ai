@@ -45,6 +45,12 @@ jobs:
         # which needs a native WebSocket (Node 22+) — the same reason the worker's
         # Docker image is Node 22.
         with: { node-version: 22 }
+      # ffmpeg: the worker's Phase-6 audio unit tests include a live-ffmpeg
+      # fixture (deterministic PCM decode + ebur128) that proves the frozen
+      # loudness/clipping math against real bytes. Absent ffmpeg the fixture
+      # self-skips (see audio.test.ts), but CI installs it so the gate runs.
+      - name: Install ffmpeg (Phase-6 audio fixture)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
       - name: Install + test @twinai/shared
         run: |
           npm ci
@@ -72,6 +78,8 @@ jobs:
           python worker/scripts/test_fetch_model.py
           python worker/scripts/test_editor_speech_pin.py
           python worker/scripts/test_editor_speech_offline.py
+      - name: Visual bridge pin verification + canonical-json parity (offline, no cv2)
+        run: python worker/scripts/test_editor_visual_offline.py
       - name: Model-pin / analyzer-version coupling (selftest + PR guard)
         run: |
           node scripts/ci/check_model_pin_coupling.mjs --selftest
@@ -133,6 +141,18 @@ jobs:
         run: |
           node scripts/ci/check_product_truth.mjs --selftest
           node scripts/ci/check_product_truth.mjs
+      - name: Activation gate (fail-closed flag, no web caller, scaffold completion, no premature output constraint)
+        run: |
+          node scripts/ci/check_activation_gate.mjs --selftest
+          node scripts/ci/check_activation_gate.mjs
+      - name: Analysis-layer consistency (face* naming, strict versions, partial ON CONFLICT predicates)
+        run: |
+          node scripts/ci/check_analysis_consistency.mjs --selftest
+          node scripts/ci/check_analysis_consistency.mjs
+      - name: Build provenance (Docker npm-ci/lockfile, no dev deps, WORKER_GIT_SHA injection, OpenCV wheel hash)
+        run: |
+          node scripts/ci/check_build_provenance.mjs --selftest
+          node scripts/ci/check_build_provenance.mjs
 
   # Offline hostile suite for the production gate-probe predicates
   # (scripts/ci/gate_probe_assert.mjs — the exact module verify-prod-gate.yml
