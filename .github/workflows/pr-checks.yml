@@ -153,6 +153,12 @@ jobs:
         run: |
           node scripts/ci/check_build_provenance.mjs --selftest
           node scripts/ci/check_build_provenance.mjs
+      - name: Phase-7 Gate 0 — Director envelope fits one inference (exact bytes + conservative token bound)
+        run: node scripts/director-eval/count_tokens.mjs --selftest
+      - name: Phase-7 Director quality-gate digest is immutable
+        run: |
+          node scripts/ci/check_quality_gate_digest.mjs --selftest
+          node scripts/ci/check_quality_gate_digest.mjs
 
   # Offline hostile suite for the production gate-probe predicates
   # (scripts/ci/gate_probe_assert.mjs — the exact module verify-prod-gate.yml
