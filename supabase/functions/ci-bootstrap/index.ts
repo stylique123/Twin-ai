@@ -93,6 +93,10 @@ Deno.serve(async (req: Request) => {
         url: Deno.env.get('SUPABASE_URL'),
         anonKey: Deno.env.get('SUPABASE_ANON_KEY'),
         serviceRoleKey: cred.key,
+        // Non-secret observability: the SELECTION OUTCOME / key NAME only
+        // (e.g. secret_key:default). Never key bytes. Lets the CI harness log
+        // which credential source answered without exposing the credential.
+        keySource: cred.source,
       }),
       { headers: { 'Content-Type': 'application/json' } },
     )

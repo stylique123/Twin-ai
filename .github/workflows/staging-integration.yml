@@ -122,6 +122,13 @@ jobs:
           if [ -z "$SERVICE" ] || [ "$SERVICE" = "null" ]; then
             echo "bootstrap failed: $(echo "$RESP" | jq -r '.error // "no error field"')"; exit 1
           fi
+          # NON-SECRET credential diagnostic: the selection source (key NAME only)
+          # and the literal, non-secret key PREFIX (sb_secret_ / sb_publishable_ /
+          # eyJhbGciOi… for a JWT) — the first 10 chars are a fixed format marker,
+          # never the random secret body. Bisects "wrong key selected" vs
+          # "sb_secret_ rejected by GoTrue" without exposing any credential.
+          echo "credential source: $(echo "$RESP" | jq -r '.keySource // "none"')"
+          echo "credential head:   ${SERVICE:0:10}"
           echo "::add-mask::$SERVICE"
           {
             echo "STAGING_URL=$URL"
