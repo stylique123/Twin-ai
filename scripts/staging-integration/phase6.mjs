@@ -518,7 +518,7 @@ async function main() {
     const coexist = await admin.from('media_analyses').insert({
       owner_id: uA.id, source_asset_id: M.assetId, source_hash: M.asset.content_sha256,
       schema_version: 1, analyzer_bundle_version: 'visual-1', component: 'visual',
-      component_digest: '8'.repeat(64), manifest_sha: SH,
+      component_digest: '8'.repeat(64), manifest_sha: SH, result: { probe: 1 },
     })
     const rowsM = await componentRows(M.assetId, 'visual')
     check('C8 two DIFFERENT digests coexist for the same (asset, component)',
@@ -566,6 +566,11 @@ async function main() {
 
     // HOSTILE pin validation (0087): a SECOND, never-pinned scratch project so
     // each rejected pin leaves boot_manifest NULL (set-once is not consumed).
+    // Retire pidX first — all its tests (C1-C13) are done, and only ONE active
+    // (non-terminal) project may exist per source asset
+    // (edit_projects_active_source_uniq), so the new scratch project on the same
+    // asset needs pidX out of the active set.
+    await admin.from('edit_projects').update({ status: 'cancelled' }).eq('id', pidX)
     const genI = await newGen(uA.id, SCENE_TIMELINE, HOOK_LINE)
     const pidI = await scratchProject(uA.id, genI, M.assetId)
     const leaseI = await fabricateLease(uA.id, pidI)
