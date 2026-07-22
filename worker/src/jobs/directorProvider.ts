@@ -46,10 +46,16 @@ export interface DirectorProviderResult {
 // One call. Returns the parsed JSON body + the exact response text (for the
 // response hash). Throws DirectorProviderError with a stable code on any
 // non-2xx, timeout, empty, or unparseable response — never retries.
+//
+// `cancelSignal` (the directing stage's cooperative-cancellation signal) aborts
+// the in-flight fetch: a cancel during the request maps to `director_cancelled`
+// (distinct from `director_provider_timeout`), so the caller can treat delivery
+// as UNCERTAIN and never permit a second call.
 export async function callDirectorOnce(
   system: string,
   prompt: string,
   timeoutMs: number,
+  cancelSignal?: AbortSignal,
 ): Promise<DirectorProviderResult> {
   if (!env.geminiKey) throw new DirectorProviderError('GEMINI_API_KEY not configured', 'director_no_credentials')
   const body = JSON.stringify({
@@ -64,7 +70,13 @@ export async function callDirectorOnce(
     },
   })
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  let timedOut = false
+  const timer = setTimeout(() => { timedOut = true; ctrl.abort() }, timeoutMs)
+  const onCancel = () => ctrl.abort()
+  if (cancelSignal) {
+    if (cancelSignal.aborted) ctrl.abort()
+    else cancelSignal.addEventListener('abort', onCancel, { once: true })
+  }
   try {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${DIRECTOR_MODEL}:generateContent`,
@@ -82,9 +94,12 @@ export async function callDirectorOnce(
     return { raw, responseText }
   } catch (e) {
     if (e instanceof DirectorProviderError) throw e
-    if (ctrl.signal.aborted) throw new DirectorProviderError('director provider timeout', 'director_provider_timeout')
+    // Cancellation wins over timeout: charge/delivery is uncertain.
+    if (cancelSignal?.aborted) throw new DirectorProviderError('director cancelled in-flight', 'director_cancelled')
+    if (timedOut || ctrl.signal.aborted) throw new DirectorProviderError('director provider timeout', 'director_provider_timeout')
     throw new DirectorProviderError(`director provider error: ${(e as Error).message}`, 'director_provider_http')
   } finally {
     clearTimeout(timer)
+    if (cancelSignal) cancelSignal.removeEventListener('abort', onCancel)
   }
 }

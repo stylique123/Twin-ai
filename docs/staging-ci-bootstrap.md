@@ -39,3 +39,36 @@ Any one of:
 
 Rotating the staging service-role key (Supabase dashboard) additionally
 invalidates anything previously handed out.
+
+## Credential path after a JWT signing-key rotation
+
+The function code lives in `supabase/functions/ci-bootstrap/index.ts` (deployed
+ONLY to staging). When the staging project migrates to the new asymmetric JWT
+signing keys (ES256), the **legacy HS256 `service_role` JWT** that Supabase
+injects as `SUPABASE_SERVICE_ROLE_KEY` is rejected by GoTrue's admin API — the
+harness's `admin.auth.admin.createUser` then fails, intermittently at first
+(rotation in progress across nodes), with:
+
+```
+invalid JWT: … unrecognized JWT kid <nil> for algorithm ES256
+```
+
+The anon path already dodges this by using the new **publishable** key
+(`sb_publishable_…`). The service path must do the same with a new **secret**
+key (`sb_secret_…`), which the API gateway maps to `service_role` without JWT
+verification. `ci-bootstrap` therefore hands out
+`CI_STAGING_SECRET_KEY` when set, falling back to the legacy injected key
+otherwise (so the deploy is a no-op until provisioned, and never weakens the
+gate). The `ci_bootstrap_granted` log line records `key_source`
+(`secret_key` vs `legacy_service_role`).
+
+**One operator step (staging only, no repo change) to complete the repair:**
+1. Supabase dashboard → the **staging** project → *Project Settings → API Keys*
+   → create a **secret key** (`sb_secret_…`).
+2. Set it as the `ci-bootstrap` function secret **`CI_STAGING_SECRET_KEY`**
+   (`supabase secrets set CI_STAGING_SECRET_KEY=sb_secret_… --project-ref
+   otgzjsagybpgtwweuptj`).
+
+Do this on staging only — production is a different project and must not be
+touched. Once set, every phase's `createUser` uses the new secret key and the
+Phase 1–7 matrices run without the intermittent JWT failure.

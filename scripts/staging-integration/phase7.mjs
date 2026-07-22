@@ -242,6 +242,7 @@ async function main() {
   const D1 = await mintReady(cA, uA.id, await makeFixture(dir, 'rpc1'))
   const D2 = await mintReady(cA, uA.id, await makeFixture(dir, 'rpc2'))
   const D3 = await mintReady(cA, uA.id, await makeFixture(dir, 'rpc3'))
+  const D4 = await mintReady(cA, uA.id, await makeFixture(dir, 'rpc4'))
   stopWorker(validator)
 
   // ---- A. happy path -----------------------------------------------------
@@ -290,29 +291,46 @@ async function main() {
     check('D2 second begin => indeterminate (no second provider call)', b2.data === 'indeterminate', JSON.stringify(b2.error || b2.data))
     check('D3 call row is now state=unknown', (await directorCalls(p1))[0]?.state === 'unknown')
 
-    // D-filler-guard: a decision selecting a filler candidate is rejected by the DB.
+    // D-source-mismatch: begin naming a DIFFERENT asset than the project's source.
+    const p4 = await scratchProject(uA.id, D4.gen, D4.assetId)
+    const l4 = await fabricateLease(uA.id, p4)
+    await advanceTo(p4, l4, ['inspecting', 'transcribing', 'analyzing', 'directing'])
+    const bSrc = await dirBegin(p4, l4, randomUUID()) // a foreign/mismatched source asset
+    check('D4 begin with a mismatched source asset => director_source_mismatch', !!bSrc.error && /director_source_mismatch/.test(bSrc.error.message), JSON.stringify(bSrc.error))
+    check('D5 no call row written for the source-mismatch attempt', (await directorCalls(p4)).length === 0)
+
+    // D-ledger-binding: begin -> receive; then succeed must MATCH the ledger.
     const p2 = await scratchProject(uA.id, D2.gen, D2.assetId)
     const l2 = await fabricateLease(uA.id, p2)
     await advanceTo(p2, l2, ['inspecting', 'transcribing', 'analyzing', 'directing'])
     await dirBegin(p2, l2, D2.assetId)
-    await admin.rpc('editor_director_receive', { p_project: p2, p_job: l2.jobId, p_worker: l2.worker, p_attempt: l2.attempt, p_response_sha256: sha256('r2') })
-    const fillerDecision = { schemaVersion: 1, selections: [{ candidateIndex: 0, kind: 'filler', selectionEnabled: 1, startCs: 0, endCs: 1 }], keptBoundaries: [], summary: '' }
-    const s2 = await admin.rpc('editor_director_succeed', {
+    const recvSha = sha256('r2')
+    await admin.rpc('editor_director_receive', { p_project: p2, p_job: l2.jobId, p_worker: l2.worker, p_attempt: l2.attempt, p_response_sha256: recvSha })
+    const okDecision = { schemaVersion: 1, selections: [], keptBoundaries: [], summary: '' }
+    const succeed = (over) => admin.rpc('editor_director_succeed', {
       p_project: p2, p_job: l2.jobId, p_worker: l2.worker, p_attempt: l2.attempt, p_schema_version: 1,
-      p_response_sha256: sha256('r2'), p_decision: fillerDecision, p_decision_sha256: sha256('d2'), p_model: 'gemini-3.5-flash', p_provider: 'google',
+      p_response_sha256: recvSha, p_decision: okDecision, p_decision_sha256: sha256('d2'), p_model: 'gemini-3.5-flash', p_provider: 'google', ...over,
     })
-    check('D4 DB rejects a filler selection (director_filler_disabled)', !!s2.error && /director_filler_disabled/.test(s2.error.message), JSON.stringify(s2.error))
-    check('D5 no decision row was written for the filler attempt', (await directorDecisions(p2)).length === 0)
+    const sHash = await succeed({ p_response_sha256: sha256('WRONG') })
+    check('D6 succeed with wrong response hash => director_response_mismatch', !!sHash.error && /director_response_mismatch/.test(sHash.error.message), JSON.stringify(sHash.error))
+    const sModel = await succeed({ p_model: 'gpt-4' })
+    check('D7 succeed with wrong model => director_model_mismatch', !!sModel.error && /director_model_mismatch/.test(sModel.error.message), JSON.stringify(sModel.error))
+    const sProv = await succeed({ p_provider: 'openai' })
+    check('D8 succeed with wrong provider => director_provider_mismatch', !!sProv.error && /director_provider_mismatch/.test(sProv.error.message), JSON.stringify(sProv.error))
+    // D-filler-guard: a decision selecting a filler candidate is rejected by the DB.
+    const sFiller = await succeed({ p_decision: { schemaVersion: 1, selections: [{ candidateIndex: 0, kind: 'filler', selectionEnabled: 1, startCs: 0, endCs: 1 }], keptBoundaries: [], summary: '' } })
+    check('D9 DB rejects a filler selection (director_filler_disabled)', !!sFiller.error && /director_filler_disabled/.test(sFiller.error.message), JSON.stringify(sFiller.error))
+    check('D10 zero decision rows across all rejected succeed attempts', (await directorDecisions(p2)).length === 0)
 
     // D-wrong-attempt: fenced begin with a stale attempt => lease_lost.
     const bWrong = await dirBegin(p2, l2, D2.assetId, 999)
-    check('D6 wrong attempt => lease_lost', !!bWrong.error && /lease_lost/.test(bWrong.error.message), JSON.stringify(bWrong.error))
+    check('D11 wrong attempt => lease_lost', !!bWrong.error && /lease_lost/.test(bWrong.error.message), JSON.stringify(bWrong.error))
 
     // D-wrong-stage: a project not at directing => director_wrong_stage.
     const p3 = await scratchProject(uA.id, D3.gen, D3.assetId)
     const l3 = await fabricateLease(uA.id, p3)
     const bStage = await dirBegin(p3, l3, D3.assetId)
-    check('D7 begin before directing => director_wrong_stage', !!bStage.error && /director_wrong_stage/.test(bStage.error.message), JSON.stringify(bStage.error))
+    check('D12 begin before directing => director_wrong_stage', !!bStage.error && /director_wrong_stage/.test(bStage.error.message), JSON.stringify(bStage.error))
   }
 
   // ---- E. fail-closed credentials ----------------------------------------
@@ -322,8 +340,8 @@ async function main() {
     const proj = await runToSettled('p7-nocreds', pid, { EDITOR_DIRECTOR_ENABLED: 'true', GEMINI_API_KEY: '' })
     check('E1 project FAILED (fail closed)', proj.status === 'failed', proj.status)
     check('E2 failure_code is director_no_credentials', proj.failure_code === 'director_no_credentials', String(proj.failure_code))
-    check('E3 no decision row leaked', (await directorDecisions(pid)).length === 0)
-    check('E4 call row (if any) is failed, never succeeded', (await directorCalls(pid)).every((c) => c.state === 'failed'))
+    check('E3 ZERO decision rows (no ledger mutation)', (await directorDecisions(pid)).length === 0)
+    check('E4 ZERO call rows — credential check precedes any ledger mutation', (await directorCalls(pid)).length === 0)
   }
 
   // ---- F. zero-delta boundary (flag unset => simulated) ------------------

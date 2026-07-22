@@ -94,3 +94,29 @@ Cross-tenant/id-fabrication is structurally impossible: the worker loads the env
 - Gate-0 real `countTokens` remains mandatory in the Phase-7 step.
 
 **Definition of done:** frozen contract implemented in one batch; shared+worker typecheck+tests green (incl. new parity + decision tests); migration `0088` reviewed (applied on staging, not production); `phase7.mjs` wired; full Phase 1–7 staging regression on the exact final head; one consolidated evidence report; PR draft; production untouched.
+
+---
+
+## Correction addendum (post-audit hardening)
+
+1. **No-credentials FIRST.** The `!env.geminiKey` check runs in `runDirectingStage`
+   BEFORE `editor_director_begin` — zero call rows, zero decisions, stable
+   `director_no_credentials` (Phase-7 case E asserts zero call rows).
+2. **Cooperative cancellation into the provider.** `callDirectorOnce` takes the
+   stage cancel signal and aborts the in-flight fetch (`director_cancelled`,
+   distinct from `director_provider_timeout`). Conservative ledger outcome:
+   before dispatch → `fail(cancelled_before_call)` (no charge); in-flight and
+   after-response-before-persist → `editor_director_mark_unknown` (delivery/charge
+   uncertain, never a second call, no decision persisted); after persist → the
+   immutable decision remains as evidence. Deterministic tests: `director-cancel.test.ts`.
+3. **DB authority binding (migration 0089).** `editor_director_begin` rejects a
+   source asset that is not `edit_projects.source_asset_id`
+   (`director_source_mismatch`); `editor_director_succeed` requires the caller
+   response-hash/model/provider to match the received ledger row and PERSISTS
+   those identities FROM THE LEDGER, not the caller (`director_response_mismatch`
+   / `_model_mismatch` / `_provider_mismatch`). Phase-7 case D truth table.
+4. **Staging credential path.** `ci-bootstrap` is version-controlled
+   (`supabase/functions/ci-bootstrap`) and hands out a new-format secret key
+   (`CI_STAGING_SECRET_KEY`) after the JWT signing-key rotation; one operator
+   step in `docs/staging-ci-bootstrap.md`. No blind retries around invalid
+   credentials; earlier matrices unchanged.

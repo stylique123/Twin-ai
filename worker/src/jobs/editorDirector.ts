@@ -2,10 +2,16 @@
 //
 //  * INTEGRITY BEFORE WORK: the session's cheap remote reconciliation runs
 //    before the speech component is consumed.
+//  * NO-CREDENTIALS FIRST: a missing GEMINI_API_KEY fails BEFORE any ledger or
+//    state mutation — zero call rows, zero decisions.
 //  * ONE PINNED CALL: exactly one gemini-3.5-flash generateContent per eligible
 //    project, driven by the fenced edit_director_calls state machine
 //    (started -> received -> succeeded|failed; `unknown` on indeterminate
-//    resume). No retry, no second pass.
+//    resume OR cancellation-after-dispatch). No retry, no second pass.
+//  * COOPERATIVE CANCELLATION: the cancel signal aborts the in-flight fetch;
+//    the ledger outcome is conservative (fail-clean before dispatch; `unknown`
+//    once delivery/charge is uncertain), and a cancel after persist keeps the
+//    immutable decision as intended evidence.
 //  * SERVER AUTHORITY: the model returns only candidate INDICES; every index is
 //    re-resolved against the pinned envelope. Fabricated / non-selectable /
 //    filler selections are rejected; model timestamps/ids are ignored.
@@ -26,7 +32,7 @@ import {
   validateDirectorDecision, validateDirectorEnvelope,
   type DirectorEnvelope, type SpeechBoundaryLike, type SpeechCandidateLike, type SpeechWordLike,
 } from './directorContract.js'
-import { callDirectorOnce, DirectorProviderError } from './directorProvider.js'
+import { callDirectorOnce, DirectorProviderError, type DirectorProviderResult } from './directorProvider.js'
 
 export interface DirectorOutcome {
   reused: boolean            // a prior succeeded decision was reused (no call)
@@ -67,8 +73,6 @@ function buildEnvelope(
   })
   const versions = (pinned.manifest.manifest as { componentVersions: Record<string, string> }).componentVersions
   const digests = pinned.manifest.componentDigests
-  // Bundle provenance hashes (any 64-hex is contract-valid; these fingerprint
-  // the exact prompt/schema/config that produced the call).
   const promptSha256 = sha256Hex(SYSTEM_PROMPT)
   const schemaSha256 = sha256Hex(canonicalJson(directorResponseSchema()))
   const configSha256 = sha256Hex(canonicalJson({ model: DIRECTOR_MODEL, provider: DIRECTOR_PROVIDER, temperature: 0.2, maxOutputTokens: 16384, decisionSchemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION }))
@@ -86,8 +90,134 @@ function buildEnvelope(
     summaries: {},
     words: proj.words, candidates: proj.candidates, boundaries: proj.boundaries,
   }
-  // Self-check as untrusted input (fail closed if we ever build an illegal one).
   return validateDirectorEnvelope(JSON.parse(JSON.stringify(env0)))
+}
+
+// ---------------------------------------------------------------------------
+// The pure, injectable call driver. All DB and provider effects go through the
+// injected `ledger` and `callProvider` so the crash/cancellation windows are
+// deterministically unit-testable (director-cancel.test.ts) without a live DB.
+// ---------------------------------------------------------------------------
+export type DirectorDirective = 'started' | 'already_succeeded' | 'indeterminate' | 'failed'
+export interface DirectorLedger {
+  begin(): Promise<DirectorDirective>
+  receive(responseSha256: string): Promise<void>
+  succeed(decisionJson: unknown, decisionSha256: string, responseSha256: string): Promise<void>
+  fail(code: string): Promise<void>
+  markUnknown(reason: string): Promise<void>
+  event(code: string, details: Record<string, unknown>): Promise<void>
+  priorSelections(): Promise<number>
+}
+export interface DriveCtx {
+  ledger: DirectorLedger
+  callProvider: (signal: AbortSignal) => Promise<DirectorProviderResult>
+  cancelled: () => boolean
+  signal: AbortSignal
+  envelope: DirectorEnvelope
+  envelopeSha256: string
+}
+
+export async function driveDirectorCall(ctx: DriveCtx): Promise<DirectorOutcome> {
+  const directive = await ctx.ledger.begin()
+  if (directive === 'already_succeeded') {
+    return { reused: true, selections: await ctx.ledger.priorSelections(), decisionSha256: null, envelopeSha256: ctx.envelopeSha256 }
+  }
+  if (directive === 'indeterminate') throw new PermanentJobError('director call is indeterminate (crash/cancel window) — failing closed', 'director_call_indeterminate')
+  if (directive === 'failed') throw new PermanentJobError('director call previously failed — not retrying', 'director_call_failed')
+
+  await ctx.ledger.event('director_started', { envelope_sha256: ctx.envelopeSha256, candidates: ctx.envelope.candidates.length })
+
+  // (a) before dispatch: no provider call made -> clean fail (no charge).
+  if (ctx.cancelled()) {
+    await ctx.ledger.fail('cancelled_before_call')
+    throw new DirectorCancelledError('before_call')
+  }
+
+  let result: DirectorProviderResult
+  try {
+    result = await ctx.callProvider(ctx.signal)
+  } catch (e) {
+    // (b) in-flight cancellation: delivery/charge UNCERTAIN -> unknown, never re-call.
+    if (e instanceof DirectorProviderError && e.code === 'director_cancelled') {
+      await ctx.ledger.markUnknown('cancelled_in_flight')
+      throw new DirectorCancelledError('in_flight')
+    }
+    const code = e instanceof DirectorProviderError ? e.code : 'director_provider_http'
+    await ctx.ledger.fail(code)
+    throw new PermanentJobError(`director provider failed: ${code}`, code)
+  }
+
+  const responseSha256 = sha256Hex(result.responseText)
+  await ctx.ledger.receive(responseSha256)
+  await ctx.ledger.event('director_received', { response_sha256: responseSha256 })
+
+  // (c) after response, before persist: charge KNOWN, no decision yet -> unknown.
+  // Never persist a decision from a cancelled run; never re-call.
+  if (ctx.cancelled()) {
+    await ctx.ledger.markUnknown('cancelled_after_response')
+    throw new DirectorCancelledError('after_response')
+  }
+
+  let decision
+  try {
+    decision = validateDirectorDecision(result.raw, ctx.envelope)
+  } catch (e) {
+    const code = (e as { code?: string }).code ?? 'director_decision_invalid'
+    await ctx.ledger.fail(code)
+    throw new PermanentJobError(`director decision rejected: ${code}`, code)
+  }
+
+  const decisionJson = { schemaVersion: decision.schemaVersion, selections: decision.selections, keptBoundaries: decision.keptBoundaries, summary: decision.summary }
+  const decisionSha256 = sha256Hex(canonicalJson(decisionJson))
+  await ctx.ledger.succeed(decisionJson, decisionSha256, responseSha256)
+  await ctx.ledger.event('director_succeeded', { decision_sha256: decisionSha256, selections: decision.selections.length })
+
+  // (d) after persist: the decision is immutable. A cancel now settles the
+  // project in the OUTER loop; the decision REMAINS as intended evidence.
+  return { reused: false, selections: decision.selections.length, decisionSha256, envelopeSha256: ctx.envelopeSha256 }
+}
+
+// Real DB-backed ledger (fenced RPCs; every op carries job/worker/attempt).
+function dbLedger(job: Job, projectId: string, sourceAssetId: string, envelopeSha256: string): DirectorLedger {
+  const base = { p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts }
+  return {
+    async begin() {
+      // The begin RPC binds the source asset to the project server-side.
+      const { data, error } = await db.rpc('editor_director_begin', {
+        ...base, p_source_asset: sourceAssetId, p_envelope_sha256: envelopeSha256, p_model: DIRECTOR_MODEL, p_provider: DIRECTOR_PROVIDER,
+      })
+      if (error) throw classifyDirectorDbError(error.message)
+      return data as DirectorDirective
+    },
+    async receive(responseSha256) {
+      const { error } = await db.rpc('editor_director_receive', { ...base, p_response_sha256: responseSha256 })
+      if (error) throw classifyDirectorDbError(error.message)
+    },
+    async succeed(decisionJson, decisionSha256, responseSha256) {
+      const { error } = await db.rpc('editor_director_succeed', {
+        ...base, p_schema_version: DIRECTOR_DECISION_SCHEMA_VERSION, p_response_sha256: responseSha256,
+        p_decision: decisionJson, p_decision_sha256: decisionSha256, p_model: DIRECTOR_MODEL, p_provider: DIRECTOR_PROVIDER,
+      })
+      if (error) throw classifyDirectorDbError(error.message)
+    },
+    async fail(code) {
+      const { error } = await db.rpc('editor_director_fail', { ...base, p_failure_code: code })
+      if (error) throw classifyDirectorDbError(error.message)
+    },
+    async markUnknown(reason) {
+      const { error } = await db.rpc('editor_director_mark_unknown', { ...base, p_reason: reason })
+      if (error) throw classifyDirectorDbError(error.message)
+    },
+    async event(code, details) {
+      const { error } = await db.rpc('editor_append_event', { ...base, p_message_code: code, p_pct: null, p_details: details })
+      if (error && /lease_lost/.test(error.message)) throw classifyDirectorDbError(error.message)
+    },
+    async priorSelections() {
+      const { data } = await db.from('edit_director_decisions').select('decision').eq('edit_project_id', projectId).maybeSingle()
+      const sels = (data?.decision as { selections?: unknown[] } | undefined)?.selections
+      return Array.isArray(sels) ? sels.length : 0
+    },
+  }
 }
 
 export async function runDirectingStage(
@@ -107,96 +237,27 @@ export async function runDirectingStage(
     const serialized = serializeDirectorEnvelope(envelope)
     const envelopeSha256 = sha256Hex(serialized)
 
-    // Fenced begin: idempotency + crash-window authority live in the DB.
-    const { data: directive, error: beginErr } = await db.rpc('editor_director_begin', {
-      p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
-      p_source_asset: asset.id, p_envelope_sha256: envelopeSha256,
-      p_model: DIRECTOR_MODEL, p_provider: DIRECTOR_PROVIDER,
+    // NO-CREDENTIALS INVARIANT: fail BEFORE any ledger/state mutation (begin).
+    if (!env.geminiKey) {
+      throw new PermanentJobError('director: GEMINI_API_KEY not configured', 'director_no_credentials')
+    }
+
+    return await driveDirectorCall({
+      ledger: dbLedger(job, projectId, asset.id, envelopeSha256),
+      callProvider: (signal) => callDirectorOnce(SYSTEM_PROMPT, serialized, env.editorDirectorTimeoutMs, signal),
+      cancelled: () => watch.cancelled(),
+      signal: watch.signal,
+      envelope,
+      envelopeSha256,
     })
-    if (beginErr) throw classifyDirectorDbError(beginErr.message)
-
-    if (directive === 'already_succeeded') {
-      const prior = await loadDecision(projectId)
-      return { reused: true, selections: prior, decisionSha256: null, envelopeSha256 }
-    }
-    if (directive === 'indeterminate') {
-      throw new PermanentJobError('director call is indeterminate (crash window) — failing closed', 'director_call_indeterminate')
-    }
-    if (directive === 'failed') {
-      throw new PermanentJobError('director call previously failed — not retrying', 'director_call_failed')
-    }
-    // directive === 'started': make THE single provider call.
-    await appendDirectorEvent(job, projectId, 'director_started', { envelope_sha256: envelopeSha256, candidates: envelope.candidates.length })
-
-    if (watch.cancelled()) throw new DirectorCancelledError('before_call')
-
-    let result
-    try {
-      result = await callDirectorOnce(SYSTEM_PROMPT, serialized, env.editorDirectorTimeoutMs)
-    } catch (e) {
-      const code = e instanceof DirectorProviderError ? e.code : 'director_provider_http'
-      await directorFail(job, projectId, code)
-      throw new PermanentJobError(`director provider failed: ${code}`, code)
-    }
-
-    const responseSha256 = sha256Hex(result.responseText)
-    const { error: recvErr } = await db.rpc('editor_director_receive', {
-      p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts, p_response_sha256: responseSha256,
-    })
-    if (recvErr) throw classifyDirectorDbError(recvErr.message)
-    await appendDirectorEvent(job, projectId, 'director_received', { response_sha256: responseSha256 })
-
-    // Re-resolve against the pinned envelope (server authority).
-    let decision
-    try {
-      decision = validateDirectorDecision(result.raw, envelope)
-    } catch (e) {
-      const code = (e as { code?: string }).code ?? 'director_decision_invalid'
-      await directorFail(job, projectId, code)
-      throw new PermanentJobError(`director decision rejected: ${code}`, code)
-    }
-
-    const decisionJson = { schemaVersion: decision.schemaVersion, selections: decision.selections, keptBoundaries: decision.keptBoundaries, summary: decision.summary }
-    const decisionSha256 = sha256Hex(canonicalJson(decisionJson))
-    const { error: okErr } = await db.rpc('editor_director_succeed', {
-      p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
-      p_schema_version: DIRECTOR_DECISION_SCHEMA_VERSION, p_response_sha256: responseSha256,
-      p_decision: decisionJson, p_decision_sha256: decisionSha256, p_model: DIRECTOR_MODEL, p_provider: DIRECTOR_PROVIDER,
-    })
-    if (okErr) throw classifyDirectorDbError(okErr.message)
-    await appendDirectorEvent(job, projectId, 'director_succeeded', { decision_sha256: decisionSha256, selections: decision.selections.length })
-
-    return { reused: false, selections: decision.selections.length, decisionSha256, envelopeSha256 }
   } finally {
     watch.stop()
   }
 }
 
-async function loadDecision(projectId: string): Promise<number> {
-  const { data } = await db.from('edit_director_decisions').select('decision').eq('edit_project_id', projectId).maybeSingle()
-  const sels = (data?.decision as { selections?: unknown[] } | undefined)?.selections
-  return Array.isArray(sels) ? sels.length : 0
-}
-
-async function directorFail(job: Job, projectId: string, code: string): Promise<void> {
-  const { error } = await db.rpc('editor_director_fail', {
-    p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts, p_failure_code: code,
-  })
-  // Best-effort: a lease-loss here still surfaces via the thrown error below.
-  if (error) throw classifyDirectorDbError(error.message)
-}
-
-async function appendDirectorEvent(job: Job, projectId: string, code: string, details: Record<string, unknown>): Promise<void> {
-  const { error } = await db.rpc('editor_append_event', {
-    p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
-    p_message_code: code, p_pct: null, p_details: details,
-  })
-  if (error && /lease_lost/.test(error.message)) throw classifyDirectorDbError(error.message)
-}
-
 // Director RPC error strings -> permanent/lease errors (retryable stays plain).
-function classifyDirectorDbError(message: string): Error {
-  if (/director_wrong_stage|director_state|director_call_/.test(message)) {
+export function classifyDirectorDbError(message: string): Error {
+  if (/director_wrong_stage|director_state|director_call_|director_source_mismatch|director_response_mismatch|director_model_mismatch|director_provider_mismatch|director_filler_disabled/.test(message)) {
     return new PermanentJobError(message, (message.split(':')[0] || 'director_state').trim())
   }
   return classifyDbError(message)
