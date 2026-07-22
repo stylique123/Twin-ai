@@ -85,8 +85,12 @@ if (process.argv.includes('--selftest')) process.exit(0)
 
 const key = process.env.GEMINI_API_KEY
 if (!key) {
-  console.log('countTokens SKIPPED: GEMINI_API_KEY absent — the rigorous conservative bound above governs Gate 0.')
-  process.exit(0)
+  // MANDATORY real evidence: a live-run without credentials FAILS CLOSED. Gate 0
+  // requires an actual provider countTokens result on the exact maximum fixture;
+  // the conservative bound alone is not accepted as the live evidence. (Offline
+  // port-parity is a separate `--selftest` step.)
+  console.error('::error::GEMINI_API_KEY is required for the mandatory Gate-0 real countTokens evidence — failing closed.')
+  process.exit(1)
 }
 const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:countTokens`
 const resp = await fetch(url, {
