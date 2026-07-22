@@ -1,19 +1,68 @@
 // Editor v2 — Phase 7 Director: the PURE canonical input-envelope contract.
 //
-// GATE 0 SCOPE ONLY: this file is the deterministic envelope serializer, the
-// legal-input sub-cap validators, and the maximum-legal-envelope fixture. It
-// contains NO provider call, NO database access, NO directing-stage logic —
-// those land only after Gate 0 passes.
+// GATE 0 SCOPE ONLY: envelope serializer, projection, untrusted-input
+// validators, and fixtures. NO provider call, NO database access, NO
+// directing-stage logic — those land only after Gate 0 passes audit.
 //
-// The Director consumes an IMMUTABLE, COMPACT projection of the pinned Phase
-// 1–6 evidence. Representation is deliberately compact — tuples with IMPLICIT
-// positional integer IDs and no duplicated text — so the worst-case 30-minute
-// envelope provably fits ONE inference under the provider context with margin.
+// -----------------------------------------------------------------------------
+// UPSTREAM-DERIVED BOUNDS (Phase-5 compatibility theorem)
+// -----------------------------------------------------------------------------
+// The ONLY size invariant Phase 5 enforces on a speech component that reaches
+// `directing` is the serialized-byte budget (worker editorSpeech.ts):
+//     bytes(component) <= UPSTREAM_SPEECH_BUDGET_BYTES = 1_000_000
+// (fail-closed `speech_component_too_large` after compaction). Every Director
+// bound below is DERIVED from that contract — none is a new product limit, and
+// no eligible component can ever be rejected here:
 //
-// Determinism: the SAME canonical serializer used for every digest in the
-// pipeline (sorted keys, no insignificant whitespace, JSON.stringify for
-// scalars). Byte length is measured in UTF-8 via TextEncoder so the bound is
-// identical in Node (worker) and the browser (web).
+//   * Element-count caps: each compact element costs at least its structural
+//     skeleton (every real emission only ADDS bytes):
+//       word     {confidence,endMs,id,startMs,text}                  >= 59 B
+//       candidate{confidence,endMs,evidence,evidenceCodes,id,kind,
+//                 nextWordId,prevWordId,ruleVersion,safeToConsider,
+//                 startMs,wordIds}                                   >= 204 B
+//       boundary {endMs,endWordId,evidence,id,kind,startMs,
+//                 startWordId}                                       >= 105 B
+//     (bytes include the array separator; the worker unit test re-derives these
+//     minima from the literal compact shapes and asserts equality.) Therefore
+//     N_words <= floor(1e6/59) = 16949, N_candidates <= floor(1e6/204) = 4901,
+//     N_boundaries <= floor(1e6/105) = 9523. The caps below are exactly those
+//     floors: defense-in-depth that a LEGAL component can never trip.
+//
+//   * Time cap: source eligibility rejects duration > SOURCE_MAX_DURATION_MS
+//     (validate_source `too_long`, default 30*60*1000), and Phase-5 word times
+//     are clamped into [0, durationMs] — so envelope centiseconds <= 180000.
+//
+//   * BYTE-DOMINATION THEOREM (the one-inference proof). The compact component
+//     serializes word text TWICE (per-word `text` + the always-retained
+//     `transcript`), and every envelope tuple is coefficient-wise dominated by
+//     its compact counterpart:
+//       word tuple  [text,cs,conf]   <= Lesc + 15      vs compact Lesc + 59
+//       cand tuple  [k,p,n,[refs]]   <= 18 + (D+1)/ref vs >= 204 + (D+4)/ref
+//       bound tuple [k,sw,ew]        <= 17             vs >= 105
+//     With the Phase-5 bridge-corruption backstop (`speech_transcript_mismatch`
+//     in editorSpeech.ts: sum of per-word serialized text bytes <= transcript
+//     bytes + 2N + 1024 — true for every real ASR output, since words ARE the
+//     transcript's tokens), per-word text contributes at most HALF its compact
+//     cost, and the worst remaining per-term ratio is the candidate ref ratio
+//     (D+1)/(D+4) <= 6/9 = 2/3 (D <= 5 digits since indexes <= 16948).
+//     Hence for ANY legal component C <= 1e6:
+//       envelope_speech <= (2/3)*C + 512 <= 667179 bytes
+//       envelope_total  <= 667179 + MAX_SCRIPT_BYTES + MAX_SUMMARY_BYTES
+//                          + IDENTITY_BUNDLE_MAX_BYTES + wrapper(<=224)
+//                       <= ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES = 751371
+//     and since a provider token spans >= 1 UTF-8 byte:
+//       tokens <= bytes <= DIRECTOR_INPUT_MAX_BYTES (819200)
+//              <= PROVIDER_TOKEN_CEILING (838860 = 80% of 1048576).
+//     One inference covers EVERY eligible <=30-minute component — no
+//     truncation, sampling, chunking, second call, or new rejection.
+//
+// WHAT THE TWO PROOF LAYERS ESTABLISH (kept distinct):
+//   * The conservative byte bound (tokens <= bytes) proves UNIVERSALLY,
+//     tokenizer-independently: any envelope passing the DIRECTOR_INPUT_MAX_BYTES
+//     fail-closed guard fits under 80% of the provider context.
+//   * A recorded real countTokens number on the max-compat fixture is
+//     CONFIRMATORY EVIDENCE of actual tokenizer behavior on that one fixture;
+//     it proves nothing universal and is never load-bearing for the guarantee.
 
 // ---------------------------------------------------------------------------
 // Frozen versions + provider bundle identity
@@ -24,38 +73,30 @@ export const DIRECTOR_DECISION_SCHEMA_VERSION = 1
 export const PIPELINE_EPOCH_V2 = 2 // Phase 7 bumps the boot-manifest epoch 1 -> 2
 
 // ---------------------------------------------------------------------------
-// Frozen envelope sub-caps (each fails closed if exceeded — NEVER truncated).
-// The worst-case envelope built at ALL of these caps is proven <= the byte cap
-// with >=20% headroom, and (via tokens <= bytes) < 80% of the provider context.
+// Derived bounds (see theorem above). Never hand-tuned — tests re-derive them.
 // ---------------------------------------------------------------------------
-export const MAX_WORDS = 10800 // 30 min * 6 words/s (beyond human sustained)
-export const MAX_WORD_TEXT_SERIALIZED_BYTES = 28 // escaped serialized UTF-8 bytes (excludes the 2 quotes)
-export const MAX_CANDIDATES = 1200
-export const MAX_WORD_REFS_PER_CANDIDATE = 8
-export const MAX_BOUNDARIES = 1800
-export const MAX_SCRIPT_BYTES = 65536 // == SCRIPT_SNAPSHOT_MAX_BYTES (pinned snapshot, once)
-export const MAX_SUMMARY_BYTES = 16384
+export const UPSTREAM_SPEECH_BUDGET_BYTES = 1_000_000
+export const MIN_COMPACT_WORD_BYTES = 59
+export const MIN_COMPACT_CANDIDATE_BYTES = 204
+export const MIN_COMPACT_BOUNDARY_BYTES = 105
+export const MAX_WORDS = 16949 // floor(1e6 / 59)
+export const MAX_CANDIDATES = 4901 // floor(1e6 / 204) — SPEECH CANDIDATES (c*)
+export const MAX_BOUNDARIES = 9523 // floor(1e6 / 105) — SPEECH UNITS (u*), distinct from candidates
+export const MAX_TIME_CS = 180000 // SOURCE_MAX_DURATION_MS / 10 (30 min)
+export const MAX_SCRIPT_BYTES = 65536 // == SCRIPT_SNAPSHOT_MAX_BYTES (pinned once)
+export const MAX_SUMMARY_BYTES = 16384 // our own summary builder's enforced cap
+export const IDENTITY_BUNDLE_MAX_BYTES = 2048 // serialized identity+bundle cap
+export const ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES = 751371 // 667179+65536+16384+2048+224
 
-// Time unit inside the envelope: CENTISECONDS (0..180000 for 30 min). Integer.
-// Phase 8 deterministically derives every millisecond; the model never authors
-// a time — it only references IDs.
-export const ENVELOPE_TIME_UNIT = 'centiseconds' as const
-export const MAX_TIME_CS = 180000 // 30 min
-
-// Provider context ceiling used in the headroom proof (gemini-3.5-flash).
+// Provider context (gemini-3.5-flash) and the enforced input byte cap.
 export const PROVIDER_CONTEXT_TOKENS = 1048576
 export const PROVIDER_TOKEN_CEILING = Math.floor(PROVIDER_CONTEXT_TOKENS * 0.8) // 838860
+export const DIRECTOR_INPUT_MAX_BYTES = 819200 // > analytic max, <= token ceiling
 
-// The enforced input byte cap. Frozen AFTER measuring the max fixture (see
-// director.test.ts): it is >= 1.2 * EXPECTED_MAX_ENVELOPE_BYTES (>=20% headroom
-// over the true max) AND <= PROVIDER_TOKEN_CEILING, so — because a token spans
-// >= 1 UTF-8 byte — ANY envelope passing the byte cap has tokens < 80% context.
-export const DIRECTOR_INPUT_MAX_BYTES = 819200 // 800 KiB
-
-// The exact measured serialized size of buildMaxLegalEnvelope(), frozen by the
-// Gate-0 test (the test recomputes it from the real serializer and asserts
-// equality — never "approximately").
-export const EXPECTED_MAX_ENVELOPE_BYTES = 662692
+// The exact measured serialized size of buildMaxUpstreamCompatFixture(), frozen
+// by the Gate-0 tests (recomputed from the real serializer and asserted for
+// byte EQUALITY — never approximate).
+export const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563096
 
 // Kind legends (index == kindCode in the compact tuples).
 export const SPEECH_CANDIDATE_KINDS = ['silence', 'filler', 'false_start', 'repetition'] as const
@@ -65,11 +106,18 @@ export type SpeechCandidateKindName = (typeof SPEECH_CANDIDATE_KINDS)[number]
 // ---------------------------------------------------------------------------
 // Compact envelope types (canonical, sorted-key serialization)
 // ---------------------------------------------------------------------------
-// word:      [text, startCs, confidence2dp]         index == word id
-// candidate: [kindCode, [wordIndex, ...]]           index == candidate id
-// boundary:  [kindCode, startWordIndex, endWordIndex]   index == boundary id
+// word:      [textJson, startCs, confPct]                index == word id
+//            confPct: INTEGER 0..100 (= round(confidence*100)); startCs:
+//            INTEGER 0..180000 (= round(startMs/10)). Documented projection:
+//            endMs and float confidence stay in the pinned component; Phase 8
+//            derives every millisecond from IDs against that component.
+// candidate: [kindCode, prevIdx, nextIdx, [wordIdx...]]  index == candidate id
+//            prevIdx/nextIdx: word index or -1 (upstream null anchor).
+//            refs: strictly ascending in-range word indexes (upstream wordIds
+//            are consecutive ascending runs; silence candidates have []).
+// boundary:  [kindCode, startWordIdx, endWordIdx] with start <= end.
 export type EnvWord = [string, number, number]
-export type EnvCandidate = [number, number[]]
+export type EnvCandidate = [number, number, number, number[]]
 export type EnvBoundary = [number, number, number]
 
 export interface DirectorEnvelopeIdentity {
@@ -84,21 +132,21 @@ export interface DirectorEnvelopeIdentity {
 }
 
 export interface DirectorBundleIdentity {
-  version: string // DIRECTOR_VERSION
-  provider: string // 'google'
-  model: string // 'gemini-3.5-flash'
+  version: string
+  provider: string
+  model: string
   promptSha256: string
   schemaSha256: string
   configSha256: string
 }
 
 export interface DirectorEnvelope {
-  schemaVersion: number // DIRECTOR_ENVELOPE_SCHEMA_VERSION
-  pipelineEpoch: number // PIPELINE_EPOCH_V2
+  schemaVersion: number
+  pipelineEpoch: number
   bundle: DirectorBundleIdentity
   identity: DirectorEnvelopeIdentity
-  script: unknown // the pinned RecordingScriptSnapshot (canonical, once, <= MAX_SCRIPT_BYTES)
-  summaries: unknown // bounded visual/audio/hook numeric summaries (<= MAX_SUMMARY_BYTES)
+  script: unknown
+  summaries: unknown
   words: EnvWord[]
   candidates: EnvCandidate[]
   boundaries: EnvBoundary[]
@@ -128,7 +176,6 @@ export function utf8ByteLength(s: string): number {
   return ENC.encode(s).length
 }
 
-// The serialized envelope EXACTLY as transmitted to the provider.
 export function serializeDirectorEnvelope(env: DirectorEnvelope): string {
   return canonicalJson(env)
 }
@@ -136,24 +183,17 @@ export function envelopeByteLength(env: DirectorEnvelope): number {
   return utf8ByteLength(serializeDirectorEnvelope(env))
 }
 
-// The serialized contribution of a word-text token = escaped length minus the
-// two surrounding quotes. This is the MATHEMATICALLY ENFORCEABLE bound: it
-// accounts for worst-case JSON escaping / multi-byte UTF-8 directly, since it
-// measures the exact bytes the token adds to the envelope.
-export function wordTextSerializedBytes(text: string): number {
-  return utf8ByteLength(JSON.stringify(text)) - 2
-}
-
-// Conservative, provider-agnostic token upper bound: every token spans >= 1
-// UTF-8 byte, so tokenCount <= serialized UTF-8 byte length. (A reproducible
-// real countTokens measurement is recorded separately as CI evidence.)
+// Conservative, tokenizer-independent bound: every provider token spans >= 1
+// UTF-8 byte, so tokenCount <= serialized UTF-8 byte length.
 export function conservativeTokenBound(env: DirectorEnvelope): number {
   return envelopeByteLength(env)
 }
 
 // ---------------------------------------------------------------------------
-// Legal-input validation (sub-caps). Fails CLOSED with a stable code; never
-// truncates, samples, or chunks.
+// Untrusted-input validation. Accepts `unknown`; every malformed case fails
+// with a STABLE DirectorEnvelopeError code (never an incidental TypeError or
+// JSON coercion). Unknown-key policy: the top level, bundle, identity and its
+// sub-objects allow EXACTLY the declared keys — anything else is rejected.
 // ---------------------------------------------------------------------------
 export class DirectorEnvelopeError extends Error {
   code: string
@@ -164,147 +204,317 @@ export class DirectorEnvelopeError extends Error {
   }
 }
 
-export function validateDirectorEnvelope(env: DirectorEnvelope): void {
-  if (env.schemaVersion !== DIRECTOR_ENVELOPE_SCHEMA_VERSION) {
-    throw new DirectorEnvelopeError('envelope schemaVersion mismatch', 'director_envelope_schema_mismatch')
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const HEX64_RE = /^[0-9a-f]{64}$/
+
+function fail(message: string, code: string): never {
+  throw new DirectorEnvelopeError(message, code)
+}
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+function requireKeys(obj: Record<string, unknown>, keys: readonly string[], where: string): void {
+  for (const k of keys) {
+    if (!(k in obj)) fail(`${where}: missing key ${k}`, 'director_envelope_missing_key')
   }
-  if (env.pipelineEpoch !== PIPELINE_EPOCH_V2) {
-    throw new DirectorEnvelopeError('envelope pipelineEpoch mismatch', 'director_envelope_epoch_mismatch')
+  for (const k of Object.keys(obj)) {
+    if (!keys.includes(k)) fail(`${where}: unknown key ${k}`, 'director_envelope_unknown_key')
   }
-  if (env.words.length > MAX_WORDS) {
-    throw new DirectorEnvelopeError(`words ${env.words.length} > ${MAX_WORDS}`, 'director_input_too_many_words')
+}
+function requireIntIn(v: unknown, lo: number, hi: number, where: string, code: string): number {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < lo || v > hi) {
+    fail(`${where}: expected integer in [${lo},${hi}]`, code)
   }
-  if (env.candidates.length > MAX_CANDIDATES) {
-    throw new DirectorEnvelopeError(`candidates ${env.candidates.length} > ${MAX_CANDIDATES}`, 'director_input_too_many_candidates')
+  return v as number
+}
+function requireShortString(v: unknown, maxBytes: number, where: string): string {
+  if (typeof v !== 'string' || v.length === 0 || utf8ByteLength(v) > maxBytes) {
+    fail(`${where}: expected non-empty string <= ${maxBytes} bytes`, 'director_envelope_bad_string')
   }
-  if (env.boundaries.length > MAX_BOUNDARIES) {
-    throw new DirectorEnvelopeError(`boundaries ${env.boundaries.length} > ${MAX_BOUNDARIES}`, 'director_input_too_many_boundaries')
+  return v
+}
+function requireMatch(v: unknown, re: RegExp, where: string): string {
+  if (typeof v !== 'string' || !re.test(v)) fail(`${where}: malformed`, 'director_envelope_bad_string')
+  return v
+}
+// Serialize a sub-document safely: cyclic / unsupported values become a stable
+// code instead of a raw TypeError/RangeError escaping the serializer.
+function safeCanonicalBytes(v: unknown, where: string): number {
+  try {
+    return utf8ByteLength(canonicalJson(v))
+  } catch {
+    fail(`${where}: not canonically serializable`, 'director_envelope_unserializable')
   }
-  const n = env.words.length
+}
+
+const TOP_KEYS = ['schemaVersion', 'pipelineEpoch', 'bundle', 'identity', 'script', 'summaries', 'words', 'candidates', 'boundaries'] as const
+const BUNDLE_KEYS = ['version', 'provider', 'model', 'promptSha256', 'schemaSha256', 'configSha256'] as const
+const IDENTITY_KEYS = ['projectId', 'generationId', 'sourceAssetId', 'sourceChecksum', 'bootManifestSha', 'scriptSnapshotSha', 'componentVersions', 'componentDigests'] as const
+
+export function validateDirectorEnvelope(input: unknown): DirectorEnvelope {
+  if (!isPlainObject(input)) fail('envelope: not a plain object', 'director_envelope_not_object')
+  requireKeys(input, TOP_KEYS, 'envelope')
+
+  if (input.schemaVersion !== DIRECTOR_ENVELOPE_SCHEMA_VERSION) {
+    fail('envelope schemaVersion mismatch', 'director_envelope_schema_mismatch')
+  }
+  if (input.pipelineEpoch !== PIPELINE_EPOCH_V2) {
+    fail('envelope pipelineEpoch mismatch', 'director_envelope_epoch_mismatch')
+  }
+
+  const bundle = input.bundle
+  if (!isPlainObject(bundle)) fail('bundle: not an object', 'director_envelope_bad_bundle')
+  requireKeys(bundle, BUNDLE_KEYS, 'bundle')
+  requireShortString(bundle.version, 64, 'bundle.version')
+  requireShortString(bundle.provider, 64, 'bundle.provider')
+  requireShortString(bundle.model, 64, 'bundle.model')
+  requireMatch(bundle.promptSha256, HEX64_RE, 'bundle.promptSha256')
+  requireMatch(bundle.schemaSha256, HEX64_RE, 'bundle.schemaSha256')
+  requireMatch(bundle.configSha256, HEX64_RE, 'bundle.configSha256')
+
+  const identity = input.identity
+  if (!isPlainObject(identity)) fail('identity: not an object', 'director_envelope_bad_identity')
+  requireKeys(identity, IDENTITY_KEYS, 'identity')
+  requireMatch(identity.projectId, UUID_RE, 'identity.projectId')
+  requireMatch(identity.generationId, UUID_RE, 'identity.generationId')
+  requireMatch(identity.sourceAssetId, UUID_RE, 'identity.sourceAssetId')
+  requireMatch(identity.sourceChecksum, HEX64_RE, 'identity.sourceChecksum')
+  requireMatch(identity.bootManifestSha, HEX64_RE, 'identity.bootManifestSha')
+  requireMatch(identity.scriptSnapshotSha, HEX64_RE, 'identity.scriptSnapshotSha')
+  const cv = identity.componentVersions
+  if (!isPlainObject(cv)) fail('identity.componentVersions: not an object', 'director_envelope_bad_identity')
+  requireKeys(cv, ['inspection', 'speech'], 'identity.componentVersions')
+  requireShortString(cv.inspection, 64, 'componentVersions.inspection')
+  requireShortString(cv.speech, 64, 'componentVersions.speech')
+  const cd = identity.componentDigests
+  if (!isPlainObject(cd)) fail('identity.componentDigests: not an object', 'director_envelope_bad_identity')
+  requireKeys(cd, ['visual', 'audio', 'hook'], 'identity.componentDigests')
+  requireMatch(cd.visual, HEX64_RE, 'componentDigests.visual')
+  requireMatch(cd.audio, HEX64_RE, 'componentDigests.audio')
+  requireMatch(cd.hook, HEX64_RE, 'componentDigests.hook')
+  const idBytes = safeCanonicalBytes({ bundle, identity }, 'identity+bundle')
+  if (idBytes > IDENTITY_BUNDLE_MAX_BYTES) {
+    fail(`identity+bundle ${idBytes} > ${IDENTITY_BUNDLE_MAX_BYTES}`, 'director_identity_too_large')
+  }
+
+  const words = input.words
+  if (!Array.isArray(words)) fail('words: not an array', 'director_envelope_bad_word')
+  if (words.length > MAX_WORDS) fail(`words ${words.length} > ${MAX_WORDS}`, 'director_input_too_many_words')
+  const n = words.length
   for (let i = 0; i < n; i++) {
-    const [t, s, c] = env.words[i]
-    if (wordTextSerializedBytes(t) > MAX_WORD_TEXT_SERIALIZED_BYTES) {
-      throw new DirectorEnvelopeError(`word ${i} text serialized bytes exceed ${MAX_WORD_TEXT_SERIALIZED_BYTES}`, 'director_word_text_too_long')
-    }
-    if (!Number.isInteger(s) || s < 0 || s > MAX_TIME_CS) {
-      throw new DirectorEnvelopeError(`word ${i} startCs out of range`, 'director_envelope_invalid')
-    }
-    if (typeof c !== 'number' || c < 0 || c > 1) {
-      throw new DirectorEnvelopeError(`word ${i} confidence out of range`, 'director_envelope_invalid')
-    }
+    const w = words[i]
+    if (!Array.isArray(w) || w.length !== 3) fail(`word ${i}: tuple shape`, 'director_envelope_bad_word')
+    if (typeof w[0] !== 'string') fail(`word ${i}: text not a string`, 'director_envelope_bad_word')
+    requireIntIn(w[1], 0, MAX_TIME_CS, `word ${i} startCs`, 'director_envelope_bad_word')
+    requireIntIn(w[2], 0, 100, `word ${i} confPct`, 'director_envelope_bad_word')
   }
-  for (let i = 0; i < env.candidates.length; i++) {
-    const [k, refs] = env.candidates[i]
-    if (!Number.isInteger(k) || k < 0 || k >= SPEECH_CANDIDATE_KINDS.length) {
-      throw new DirectorEnvelopeError(`candidate ${i} kindCode invalid`, 'director_envelope_invalid')
-    }
-    if (refs.length > MAX_WORD_REFS_PER_CANDIDATE) {
-      throw new DirectorEnvelopeError(`candidate ${i} refs ${refs.length} > ${MAX_WORD_REFS_PER_CANDIDATE}`, 'director_input_too_many_refs')
-    }
+
+  const candidates = input.candidates
+  if (!Array.isArray(candidates)) fail('candidates: not an array', 'director_envelope_bad_candidate')
+  if (candidates.length > MAX_CANDIDATES) {
+    fail(`candidates ${candidates.length} > ${MAX_CANDIDATES}`, 'director_input_too_many_candidates')
+  }
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i]
+    if (!Array.isArray(c) || c.length !== 4) fail(`candidate ${i}: tuple shape`, 'director_envelope_bad_candidate')
+    requireIntIn(c[0], 0, SPEECH_CANDIDATE_KINDS.length - 1, `candidate ${i} kind`, 'director_envelope_bad_candidate')
+    requireIntIn(c[1], -1, n - 1, `candidate ${i} prevIdx`, 'director_envelope_bad_candidate')
+    requireIntIn(c[2], -1, n - 1, `candidate ${i} nextIdx`, 'director_envelope_bad_candidate')
+    const refs = c[3]
+    if (!Array.isArray(refs)) fail(`candidate ${i}: refs not an array`, 'director_envelope_bad_candidate')
+    let prev = -1
     for (const r of refs) {
-      if (!Number.isInteger(r) || r < 0 || r >= n) {
-        throw new DirectorEnvelopeError(`candidate ${i} references out-of-range word ${r}`, 'director_envelope_invalid')
-      }
+      requireIntIn(r, 0, n - 1, `candidate ${i} ref`, 'director_envelope_bad_candidate')
+      if ((r as number) <= prev) fail(`candidate ${i}: refs not strictly ascending`, 'director_envelope_bad_candidate')
+      prev = r as number
     }
   }
-  for (let i = 0; i < env.boundaries.length; i++) {
-    const [k, sw, ew] = env.boundaries[i]
-    if (!Number.isInteger(k) || k < 0 || k >= BOUNDARY_KINDS.length) {
-      throw new DirectorEnvelopeError(`boundary ${i} kindCode invalid`, 'director_envelope_invalid')
-    }
-    if (!Number.isInteger(sw) || sw < 0 || sw >= n || !Number.isInteger(ew) || ew < 0 || ew >= n) {
-      throw new DirectorEnvelopeError(`boundary ${i} references out-of-range word`, 'director_envelope_invalid')
-    }
+
+  const boundaries = input.boundaries
+  if (!Array.isArray(boundaries)) fail('boundaries: not an array', 'director_envelope_bad_boundary')
+  if (boundaries.length > MAX_BOUNDARIES) {
+    fail(`boundaries ${boundaries.length} > ${MAX_BOUNDARIES}`, 'director_input_too_many_boundaries')
   }
-  const scriptBytes = utf8ByteLength(canonicalJson(env.script))
-  if (scriptBytes > MAX_SCRIPT_BYTES) {
-    throw new DirectorEnvelopeError(`script ${scriptBytes} > ${MAX_SCRIPT_BYTES}`, 'director_script_too_large')
+  for (let i = 0; i < boundaries.length; i++) {
+    const b = boundaries[i]
+    if (!Array.isArray(b) || b.length !== 3) fail(`boundary ${i}: tuple shape`, 'director_envelope_bad_boundary')
+    requireIntIn(b[0], 0, BOUNDARY_KINDS.length - 1, `boundary ${i} kind`, 'director_envelope_bad_boundary')
+    const sw = requireIntIn(b[1], 0, n - 1, `boundary ${i} startWordIdx`, 'director_envelope_bad_boundary')
+    const ew = requireIntIn(b[2], 0, n - 1, `boundary ${i} endWordIdx`, 'director_envelope_bad_boundary')
+    if (sw > ew) fail(`boundary ${i}: start > end`, 'director_envelope_bad_boundary')
   }
-  const summaryBytes = utf8ByteLength(canonicalJson(env.summaries))
-  if (summaryBytes > MAX_SUMMARY_BYTES) {
-    throw new DirectorEnvelopeError(`summaries ${summaryBytes} > ${MAX_SUMMARY_BYTES}`, 'director_summaries_too_large')
-  }
+
+  const scriptBytes = safeCanonicalBytes(input.script, 'script')
+  if (scriptBytes > MAX_SCRIPT_BYTES) fail(`script ${scriptBytes} > ${MAX_SCRIPT_BYTES}`, 'director_script_too_large')
+  const summaryBytes = safeCanonicalBytes(input.summaries, 'summaries')
+  if (summaryBytes > MAX_SUMMARY_BYTES) fail(`summaries ${summaryBytes} > ${MAX_SUMMARY_BYTES}`, 'director_summaries_too_large')
+
+  const env = input as unknown as DirectorEnvelope
   const total = envelopeByteLength(env)
   if (total > DIRECTOR_INPUT_MAX_BYTES) {
-    throw new DirectorEnvelopeError(`envelope ${total} > ${DIRECTOR_INPUT_MAX_BYTES}`, 'director_input_too_large')
+    fail(`envelope ${total} > ${DIRECTOR_INPUT_MAX_BYTES}`, 'director_input_too_large')
   }
+  return env
 }
 
 // ---------------------------------------------------------------------------
-// buildMaxLegalEnvelope — the deterministic WORST-CASE envelope: every sub-cap
-// saturated with maximum-length fields, exercising worst-case serialization.
+// The real projection: Phase-5 speech component -> compact envelope arrays.
+// LOSSLESS in evidence identity: every word, candidate (incl. its prev/next
+// anchors and full ref run) and boundary keeps its positional id; only the
+// documented field projections apply (confidence -> integer percent, startMs
+// -> centiseconds; endMs/float confidence remain in the pinned component that
+// Phase 8 reads by id).
+// ---------------------------------------------------------------------------
+export interface SpeechWordLike { id: string; text: string; startMs: number; confidence: number }
+export interface SpeechCandidateLike {
+  id: string; kind: string; wordIds: string[]
+  prevWordId: string | null; nextWordId: string | null
+}
+export interface SpeechBoundaryLike { id: string; kind: string; startWordId: string; endWordId: string }
+
+function widIndex(id: string | null | undefined, n: number, where: string): number {
+  if (id === null || id === undefined) return -1
+  const m = /^w(\d+)$/.exec(id)
+  if (!m) fail(`${where}: malformed word id ${id}`, 'director_projection_bad_ref')
+  const i = Number(m[1])
+  if (!Number.isInteger(i) || i < 0 || i >= n) fail(`${where}: word id ${id} out of range`, 'director_projection_bad_ref')
+  return i
+}
+
+export function projectSpeechToEnvelope(speech: {
+  words: SpeechWordLike[]
+  candidates: SpeechCandidateLike[]
+  boundaries: SpeechBoundaryLike[]
+}): { words: EnvWord[]; candidates: EnvCandidate[]; boundaries: EnvBoundary[] } {
+  const n = speech.words.length
+  const words: EnvWord[] = speech.words.map((w, i) => {
+    if (w.id !== `w${i}`) fail(`word ${i}: positional id mismatch (${w.id})`, 'director_projection_bad_ref')
+    return [w.text, Math.round(w.startMs / 10), Math.max(0, Math.min(100, Math.round(w.confidence * 100)))]
+  })
+  const candidates: EnvCandidate[] = speech.candidates.map((c, i) => {
+    const k = SPEECH_CANDIDATE_KINDS.indexOf(c.kind as SpeechCandidateKindName)
+    if (k < 0) fail(`candidate ${i}: unknown kind ${c.kind}`, 'director_projection_bad_ref')
+    return [k, widIndex(c.prevWordId, n, `candidate ${i} prev`), widIndex(c.nextWordId, n, `candidate ${i} next`),
+      c.wordIds.map((id) => widIndex(id, n, `candidate ${i} ref`))]
+  })
+  const boundaries: EnvBoundary[] = speech.boundaries.map((b, i) => {
+    const k = BOUNDARY_KINDS.indexOf(b.kind as (typeof BOUNDARY_KINDS)[number])
+    if (k < 0) fail(`boundary ${i}: unknown kind ${b.kind}`, 'director_projection_bad_ref')
+    return [k, widIndex(b.startWordId, n, `boundary ${i} start`), widIndex(b.endWordId, n, `boundary ${i} end`)]
+  })
+  return { words, candidates, boundaries }
+}
+
+// ---------------------------------------------------------------------------
+// Fixtures — two DISTINCT things (never conflated):
+//
+// (a) buildMaxUpstreamCompatFixture — the MAXIMUM UPSTREAM-COMPATIBLE fixture:
+//     a deterministic synthetic Phase-5 component saturating the 1,000,000-byte
+//     budget with an adversarial, envelope-maximizing composition (ref-heavy
+//     candidates: the worst domination ratio 2/3), projected by the REAL
+//     projection, with maximum-length identity/bundle strings, a full 64-KiB
+//     script and full summaries. Its measured bytes freeze
+//     EXPECTED_MAX_COMPAT_ENVELOPE_BYTES. It is NOT the simultaneous saturation
+//     of every envelope sub-cap — those are jointly infeasible for a legal
+//     component (which is the point of the derivation).
+// (b) DIRECTOR_INPUT_MAX_BYTES — an INDEPENDENT global fail-closed guard,
+//     proven unreachable by any legal component (analytic bound), and <= the
+//     token ceiling so passing it implies < 80% context.
 // ---------------------------------------------------------------------------
 const HEX64 = 'f'.repeat(64)
+const UUID0 = '00000000-0000-0000-0000-000000000000'
 
-// A word-text token whose ESCAPED serialized contribution is EXACTLY
-// MAX_WORD_TEXT_SERIALIZED_BYTES. Backslash escapes to two bytes (\\), so we
-// pack the worst case with escape-expanding characters and pad to the exact
-// bound — proving the escaped-byte limit, not a raw-length assumption.
-function maxWordText(): string {
-  // '\\' -> serialized '\\\\' (2 bytes each). 14 backslashes => 28 escaped bytes.
-  const half = Math.floor(MAX_WORD_TEXT_SERIALIZED_BYTES / 2)
-  let t = '\\'.repeat(half)
-  // Pad with single-byte non-escaping chars if the cap is odd.
-  while (wordTextSerializedBytes(t) < MAX_WORD_TEXT_SERIALIZED_BYTES) t += 'a'
-  return t
+// Deterministic composition (counts frozen; legality asserted at build).
+// This is the ENVELOPE-MAXIMIZING legal direction: because the component
+// carries word text twice (text + transcript), long-text words approach the
+// worst domination ratio 1/2, beating ref-heavy candidates (~0.28 after their
+// 204-byte skeleton). 234 words x 2006 chars + 100 ref-heavy candidates +
+// 100 boundaries saturates the budget at 999,537 of 1,000,000 bytes.
+export const MAX_COMPAT_WORDS = 234
+export const MAX_COMPAT_WORD_TEXT_CHARS = 2006
+export const MAX_COMPAT_CANDIDATES = 100
+export const MAX_COMPAT_REFS_PER_CANDIDATE = 16
+export const MAX_COMPAT_BOUNDARIES = 100
+
+export interface MaxLegalSpeechComponent {
+  words: Array<{ id: string; text: string; startMs: number; endMs: number; confidence: number }>
+  candidates: Array<SpeechCandidateLike & {
+    startMs: number; endMs: number; confidence: string; safeToConsider: boolean
+    evidenceCodes: string[]; evidence: Record<string, unknown>; ruleVersion: string
+  }>
+  boundaries: Array<SpeechBoundaryLike & { startMs: number; endMs: number; evidence: string[] }>
+  transcript: string
+  serializedBytes: number
 }
 
-export function buildMaxLegalEnvelope(): DirectorEnvelope {
-  const t = maxWordText()
-  const words: EnvWord[] = new Array(MAX_WORDS)
-  for (let i = 0; i < MAX_WORDS; i++) words[i] = [t, MAX_TIME_CS, 0.99]
-
-  const maxRefs: number[] = new Array(MAX_WORD_REFS_PER_CANDIDATE).fill(MAX_WORDS - 1)
-  const candidates: EnvCandidate[] = new Array(MAX_CANDIDATES)
-  for (let i = 0; i < MAX_CANDIDATES; i++) {
-    candidates[i] = [SPEECH_CANDIDATE_KINDS.length - 1, maxRefs.slice()]
+export function buildMaxLegalSpeechComponent(): MaxLegalSpeechComponent {
+  const words = Array.from({ length: MAX_COMPAT_WORDS }, (_, i) => ({
+    id: `w${i}`, text: 'a'.repeat(MAX_COMPAT_WORD_TEXT_CHARS),
+    startMs: Math.min(2 * i, 1_800_000), endMs: Math.min(2 * i + 1, 1_800_000),
+    confidence: 0.99,
+  }))
+  const transcript = words.map((w) => w.text).join(' ')
+  const candidates = Array.from({ length: MAX_COMPAT_CANDIDATES }, (_, i) => {
+    // 16 strictly-ascending in-range refs (indexes < MAX_COMPAT_WORDS).
+    const base = 1 + (i % 13) * 16
+    const refs = Array.from({ length: MAX_COMPAT_REFS_PER_CANDIDATE }, (_, r) => `w${base + r}`)
+    return {
+      id: `c${i}`, kind: 'filler', startMs: 0, endMs: 1,
+      wordIds: refs, prevWordId: `w${base - 1}`,
+      nextWordId: base + 16 < MAX_COMPAT_WORDS ? `w${base + 16}` : null,
+      confidence: 'low', safeToConsider: true,
+      evidenceCodes: ['filler_disfluency'], evidence: {} as Record<string, unknown>,
+      ruleVersion: 'speech-rules-3',
+    }
+  })
+  const boundaries = Array.from({ length: MAX_COMPAT_BOUNDARIES }, (_, i) => ({
+    id: `u${i}`, kind: 'asr_segment',
+    startWordId: `w${i % (MAX_COMPAT_WORDS - 1)}`, endWordId: `w${i % (MAX_COMPAT_WORDS - 1) + 1}`,
+    startMs: 0, endMs: 1, evidence: ['trailing'],
+  }))
+  const component = { words, candidates, boundaries, transcript }
+  const serializedBytes = utf8ByteLength(JSON.stringify(component))
+  if (serializedBytes > UPSTREAM_SPEECH_BUDGET_BYTES) {
+    throw new Error(`buildMaxLegalSpeechComponent: ${serializedBytes} exceeds the upstream budget`)
   }
+  return { ...component, serializedBytes }
+}
 
-  const boundaries: EnvBoundary[] = new Array(MAX_BOUNDARIES)
-  for (let i = 0; i < MAX_BOUNDARIES; i++) {
-    boundaries[i] = [BOUNDARY_KINDS.length - 1, MAX_WORDS - 1, MAX_WORDS - 1]
-  }
+export function buildMaxUpstreamCompatFixture(): DirectorEnvelope {
+  const comp = buildMaxLegalSpeechComponent()
+  const proj = projectSpeechToEnvelope(comp)
 
   // Script padded to EXACTLY MAX_SCRIPT_BYTES canonical bytes.
-  const scriptSkeleton = { generationId: HEX64, hook: '', scenes: [] as unknown[], schemaVersion: 1 }
-  const base = utf8ByteLength(canonicalJson(scriptSkeleton))
-  scriptSkeleton.hook = 'a'.repeat(MAX_SCRIPT_BYTES - base)
-  if (utf8ByteLength(canonicalJson(scriptSkeleton)) !== MAX_SCRIPT_BYTES) {
-    throw new Error('buildMaxLegalEnvelope: script padding miscomputed')
+  const script = { generationId: UUID0, hook: '', scenes: [] as unknown[], schemaVersion: 1 }
+  script.hook = 'a'.repeat(MAX_SCRIPT_BYTES - utf8ByteLength(canonicalJson(script)))
+  if (utf8ByteLength(canonicalJson(script)) !== MAX_SCRIPT_BYTES) {
+    throw new Error('buildMaxUpstreamCompatFixture: script padding miscomputed')
+  }
+  // Summaries padded to EXACTLY MAX_SUMMARY_BYTES canonical bytes.
+  const summaries = { pad: '' }
+  summaries.pad = 'a'.repeat(MAX_SUMMARY_BYTES - utf8ByteLength(canonicalJson(summaries)))
+  if (utf8ByteLength(canonicalJson(summaries)) !== MAX_SUMMARY_BYTES) {
+    throw new Error('buildMaxUpstreamCompatFixture: summary padding miscomputed')
   }
 
-  const summarySkeleton = { pad: '' }
-  const sbase = utf8ByteLength(canonicalJson(summarySkeleton))
-  summarySkeleton.pad = 'a'.repeat(MAX_SUMMARY_BYTES - sbase)
-  if (utf8ByteLength(canonicalJson(summarySkeleton)) !== MAX_SUMMARY_BYTES) {
-    throw new Error('buildMaxLegalEnvelope: summary padding miscomputed')
-  }
-
+  const max64 = 'v'.repeat(64)
   return {
     schemaVersion: DIRECTOR_ENVELOPE_SCHEMA_VERSION,
     pipelineEpoch: PIPELINE_EPOCH_V2,
     bundle: {
-      version: DIRECTOR_VERSION,
-      provider: 'google',
-      model: 'gemini-3.5-flash',
-      promptSha256: HEX64,
-      schemaSha256: HEX64,
-      configSha256: HEX64,
+      version: max64, provider: max64, model: max64,
+      promptSha256: HEX64, schemaSha256: HEX64, configSha256: HEX64,
     },
     identity: {
-      projectId: '00000000-0000-0000-0000-000000000000',
-      generationId: '00000000-0000-0000-0000-000000000000',
-      sourceAssetId: '00000000-0000-0000-0000-000000000000',
-      sourceChecksum: HEX64,
-      bootManifestSha: HEX64,
-      scriptSnapshotSha: HEX64,
-      componentVersions: { inspection: 'inspection-1', speech: 'speech-6' },
+      projectId: UUID0, generationId: UUID0, sourceAssetId: UUID0,
+      sourceChecksum: HEX64, bootManifestSha: HEX64, scriptSnapshotSha: HEX64,
+      componentVersions: { inspection: max64, speech: max64 },
       componentDigests: { visual: HEX64, audio: HEX64, hook: HEX64 },
     },
-    script: scriptSkeleton,
-    summaries: summarySkeleton,
-    words,
-    candidates,
-    boundaries,
+    script,
+    summaries,
+    words: proj.words,
+    candidates: proj.candidates,
+    boundaries: proj.boundaries,
   }
 }
