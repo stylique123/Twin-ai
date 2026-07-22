@@ -46,6 +46,12 @@ jobs:
       # the built dist/ directly (not the Docker image), so inject the exact
       # head commit here — every spawned worker inherits it via process.env.
       WORKER_GIT_SHA: ${{ github.sha }}
+      # Phase-7: the REAL directing stage makes one pinned gemini-3.5-flash call.
+      # The spawned staging worker (EDITOR_DIRECTOR_ENABLED=true, set per-worker
+      # in phase7.mjs) inherits this key via process.env; Gate 0's real
+      # countTokens uses it too. Absent => Gate 0 self-tests offline and the
+      # Phase-7 fail-closed case still passes.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -189,3 +195,10 @@ jobs:
         # opencv-python-headless is installed by the pinned requirements step
         # above; the YuNet .onnx + vision manifest are committed in-repo.
         run: node scripts/staging-integration/phase6.mjs
+
+      - name: Run Phase 7 integration matrix (real directing — Director call, decision, filler guards)
+        # Requires migration 0088 (edit_director_calls/decisions + RPCs) applied
+        # to staging. EDITOR_DIRECTOR_ENABLED is set PER-WORKER inside phase7.mjs
+        # (never a Supabase secret) so production stays simulated. GEMINI_API_KEY
+        # is threaded via job env above.
+        run: node scripts/staging-integration/phase7.mjs

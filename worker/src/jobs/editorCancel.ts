@@ -49,6 +49,14 @@ export class AnalyzeCancelledError extends Error {
   }
 }
 
+// Cooperative-cancellation error for the Phase-7 directing stage.
+export class DirectorCancelledError extends Error {
+  constructor(point: string) {
+    super(`directing cancelled at ${point}`)
+    this.name = 'DirectorCancelledError'
+  }
+}
+
 // Matrix-only hold at a named boundary; throws the stage's cancellation error
 // when the watch tripped while (or before) it slept. The hold is ABORTABLE, so
 // a cancel requested during it is observed promptly (not after the full hold).

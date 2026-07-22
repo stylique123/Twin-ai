@@ -634,3 +634,134 @@ export function buildMaxUpstreamCompatFixture(): DirectorEnvelope {
     boundaries: proj.boundaries,
   }
 }
+
+// ===========================================================================
+// DIRECTOR DECISION (provider OUTPUT) contract.
+//
+// The provider returns ONLY indices + bounded text — never authoritative
+// timestamps or ids. validateDirectorDecision re-resolves every index against
+// the pinned envelope (server-side authority), rejects fabricated / out-of-
+// range refs, rejects non-selectable and filler selections, and IGNORES any
+// timestamps the model emits (span authority = the pinned envelope tuple).
+// Bounded free-text is stored as INERT data, never interpreted — the model
+// cannot widen its own authority (prompt-injection containment).
+// ===========================================================================
+export const MAX_DECISION_SELECTIONS = MAX_CANDIDATES // one per candidate, at most
+export const MAX_DECISION_SUMMARY_CHARS = 2000
+export const MAX_DECISION_REASON_CHARS = 500
+
+// Raw provider output shape (what generateContent must return under the strict
+// responseSchema). Only these fields are consumed.
+export interface RawDirectorDecision {
+  selections: Array<{ candidateIndex: number; reason?: string }>
+  keptBoundaries?: number[]
+  summary?: string
+}
+
+// The persisted, re-resolved decision. kind/selectionEnabled/span are copied
+// FROM the pinned envelope so a DB trigger can independently re-verify the
+// filler guard without trusting the model.
+export interface DirectorSelection {
+  candidateIndex: number
+  kind: SpeechCandidateKindName
+  selectionEnabled: 0 | 1
+  startCs: number
+  endCs: number
+}
+export interface DirectorDecision {
+  schemaVersion: number
+  selections: DirectorSelection[]
+  keptBoundaries: number[]
+  summary: string
+}
+
+export class DirectorDecisionError extends Error {
+  code: string
+  constructor(message: string, code: string) {
+    super(message)
+    this.name = 'DirectorDecisionError'
+    this.code = code
+  }
+}
+function failDecision(message: string, code: string): never {
+  throw new DirectorDecisionError(message, code)
+}
+
+// The JSON schema handed to generateContent (Gemini structured output). Kept
+// here so the worker duplicate is pinned by the parity test.
+export function directorResponseSchema(): Record<string, unknown> {
+  return {
+    type: 'object',
+    properties: {
+      selections: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            candidateIndex: { type: 'integer' },
+            reason: { type: 'string' },
+          },
+          required: ['candidateIndex'],
+        },
+      },
+      keptBoundaries: { type: 'array', items: { type: 'integer' } },
+      summary: { type: 'string' },
+    },
+    required: ['selections'],
+  }
+}
+
+export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelope): DirectorDecision {
+  if (!isPlainObject(raw)) failDecision('decision: not a plain object', 'director_decision_not_object')
+  if (!('selections' in raw) || !Array.isArray(raw.selections)) {
+    failDecision('decision: selections missing/not array', 'director_decision_bad_selections')
+  }
+  const sels = raw.selections as unknown[]
+  if (sels.length > MAX_DECISION_SELECTIONS) failDecision('decision: too many selections', 'director_decision_too_large')
+  const seen = new Set<number>()
+  const selections: DirectorSelection[] = sels.map((s) => {
+    if (!isPlainObject(s)) failDecision('selection: not an object', 'director_decision_bad_selections')
+    const idx = s.candidateIndex
+    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= envelope.candidates.length) {
+      failDecision(`selection: candidateIndex ${String(idx)} out of range`, 'director_decision_bad_ref')
+    }
+    if (seen.has(idx)) failDecision(`selection: duplicate candidateIndex ${idx}`, 'director_decision_duplicate')
+    seen.add(idx)
+    if ('reason' in s && s.reason !== undefined) {
+      if (typeof s.reason !== 'string' || s.reason.length > MAX_DECISION_REASON_CHARS) {
+        failDecision('selection: reason too long / not a string', 'director_decision_bad_summary')
+      }
+    }
+    // AUTHORITY = the pinned envelope tuple, never the model.
+    const tuple = envelope.candidates[idx]
+    const kindCode = tuple[0]
+    const kind = SPEECH_CANDIDATE_KINDS[kindCode]
+    const selectionEnabled = tuple[5] as 0 | 1
+    // Filler is checked FIRST so the dedicated filler-disabled code surfaces
+    // (filler tuples always carry selectionEnabled=0 too).
+    if (kind === 'filler') failDecision(`selection ${idx}: filler is disabled`, 'director_decision_filler')
+    if (selectionEnabled !== 1) failDecision(`selection ${idx}: not selection-enabled`, 'director_decision_not_selectable')
+    return { candidateIndex: idx, kind, selectionEnabled, startCs: tuple[1], endCs: tuple[2] }
+  })
+
+  let keptBoundaries: number[] = []
+  if ('keptBoundaries' in raw && raw.keptBoundaries !== undefined) {
+    if (!Array.isArray(raw.keptBoundaries)) failDecision('keptBoundaries: not an array', 'director_decision_bad_boundary')
+    keptBoundaries = (raw.keptBoundaries as unknown[]).map((b) => {
+      if (typeof b !== 'number' || !Number.isInteger(b) || b < 0 || b >= envelope.boundaries.length) {
+        failDecision(`keptBoundaries: index ${String(b)} out of range`, 'director_decision_bad_boundary')
+      }
+      return b
+    })
+  }
+
+  let summary = ''
+  if ('summary' in raw && raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string' || raw.summary.length > MAX_DECISION_SUMMARY_CHARS) {
+      failDecision('summary too long / not a string', 'director_decision_bad_summary')
+    }
+    summary = raw.summary
+  }
+
+  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary }
+}

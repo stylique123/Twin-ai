@@ -8,7 +8,9 @@ import {
   DIRECTOR_INPUT_MAX_BYTES, EXPECTED_MAX_COMPAT_ENVELOPE_BYTES, PROVIDER_TOKEN_CEILING,
   PROVIDER_CONTEXT_TOKENS, ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES, IDENTITY_BUNDLE_MAX_BYTES,
   PIPELINE_EPOCH_V2, SPEECH_CANDIDATE_KINDS, CANDIDATE_CONFIDENCE_CODES, SILENCE_CLASS_CODES,
-  kindSelectionEnabled, type DirectorEnvelope,
+  kindSelectionEnabled, validateDirectorDecision, DirectorDecisionError,
+  directorResponseSchema, DIRECTOR_DECISION_SCHEMA_VERSION, MAX_DECISION_SUMMARY_CHARS,
+  type DirectorEnvelope,
 } from '../director'
 
 // ===========================================================================
@@ -297,6 +299,73 @@ describe('Gate 0: projection rejects malformed input', () => {
   for (const [name, speech] of cases) {
     it(`rejects: ${name}`, () => expectReject(speech))
   }
+})
+
+// ===========================================================================
+// GATE-7 — Director DECISION contract: re-resolve against the pinned envelope,
+// reject fabricated ids / non-selectable / filler / raw-timestamp authority.
+// ===========================================================================
+describe('Phase 7: validateDirectorDecision (server-side re-resolution)', () => {
+  // envelope with candidates: 0=silence(removable,selectable), 1=filler(sel=0), 2=repetition(selectable)
+  function env(): DirectorEnvelope {
+    const e = baseEnvelope()
+    e.words = [['a', 0, 90], ['b', 10, 90], ['c', 20, 90]]
+    e.candidates = [
+      [0, 30, 80, 1, 2, 1, []],            // silence removable, selectable
+      [1, 0, 5, 0, 0, 0, [0]],             // filler, NOT selectable
+      [3, 0, 10, 1, 0, 1, [1, 2]],         // repetition, selectable
+    ]
+    e.boundaries = [[1, 0, 1], [1, 1, 2]]
+    return e
+  }
+  const expectCode = (raw: unknown, code: string) => {
+    let err: unknown
+    try { validateDirectorDecision(raw, env()) } catch (e) { err = e }
+    expect(err).toBeInstanceOf(DirectorDecisionError)
+    expect((err as DirectorDecisionError).code).toBe(code)
+  }
+
+  it('re-resolves selectable candidates and copies span/kind FROM the envelope', () => {
+    const d = validateDirectorDecision({
+      selections: [{ candidateIndex: 0 }, { candidateIndex: 2, reason: 'stutter' }],
+      keptBoundaries: [0], summary: 'trim dead air + a repeat',
+    }, env())
+    expect(d.schemaVersion).toBe(DIRECTOR_DECISION_SCHEMA_VERSION)
+    expect(d.selections[0]).toEqual({ candidateIndex: 0, kind: 'silence', selectionEnabled: 1, startCs: 30, endCs: 80 })
+    expect(d.selections[1]).toEqual({ candidateIndex: 2, kind: 'repetition', selectionEnabled: 1, startCs: 0, endCs: 10 })
+    expect(d.keptBoundaries).toEqual([0])
+  })
+
+  it('IGNORES model-supplied timestamps/ids (uses envelope authority)', () => {
+    const d = validateDirectorDecision({
+      selections: [{ candidateIndex: 0, startCs: 999999, endCs: 0, id: 'evil', kind: 'filler' } as never],
+      summary: '',
+    }, env())
+    // span comes from the envelope (30,80), NOT the model's 999999/0
+    expect(d.selections[0].startCs).toBe(30)
+    expect(d.selections[0].endCs).toBe(80)
+    expect(d.selections[0].kind).toBe('silence')
+  })
+
+  const cases: Array<[string, unknown, string]> = [
+    ['not an object', 42, 'director_decision_not_object'],
+    ['selections missing', { summary: 'x' }, 'director_decision_bad_selections'],
+    ['fabricated candidateIndex', { selections: [{ candidateIndex: 99 }] }, 'director_decision_bad_ref'],
+    ['negative candidateIndex', { selections: [{ candidateIndex: -1 }] }, 'director_decision_bad_ref'],
+    ['non-integer candidateIndex', { selections: [{ candidateIndex: 1.5 }] }, 'director_decision_bad_ref'],
+    ['selecting a FILLER candidate', { selections: [{ candidateIndex: 1 }] }, 'director_decision_filler'],
+    ['duplicate selection', { selections: [{ candidateIndex: 0 }, { candidateIndex: 0 }] }, 'director_decision_duplicate'],
+    ['keptBoundaries out of range', { selections: [], keptBoundaries: [9] }, 'director_decision_bad_boundary'],
+    ['summary too long', { selections: [], summary: 'a'.repeat(MAX_DECISION_SUMMARY_CHARS + 1) }, 'director_decision_bad_summary'],
+    ['reason too long', { selections: [{ candidateIndex: 0, reason: 'a'.repeat(600) }] }, 'director_decision_bad_summary'],
+  ]
+  for (const [name, raw, code] of cases) it(`${name} => ${code}`, () => expectCode(raw, code))
+
+  it('response schema is a well-formed object schema requiring selections', () => {
+    const s = directorResponseSchema() as { type: string; required: string[] }
+    expect(s.type).toBe('object')
+    expect(s.required).toContain('selections')
+  })
 })
 
 function baseEnvelope(): DirectorEnvelope {
