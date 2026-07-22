@@ -189,9 +189,16 @@ export function buildInputs(root = WORKER_ROOT): {
   const fileSha = (p: string): string | null =>
     existsSync(p) ? sha256Hex(readFileSync(p)) : null
   const dockerfileSha256 = fileSha(join(root, 'Dockerfile'))
-  const lock = fileSha(join(root, 'package-lock.json'))
-  const reqs = fileSha(join(root, 'requirements.txt'))
-  const dependencyLockSha256 = lock && reqs ? sha256Hex(`${lock}\n${reqs}\n`) : (lock ?? reqs)
+  // The dependency lock covers the full pinned closure: npm lockfile + the two
+  // Python requirement files (base + hash-pinned OpenCV).
+  const parts = [
+    fileSha(join(root, 'package-lock.json')),
+    fileSha(join(root, 'requirements.txt')),
+    fileSha(join(root, 'requirements-opencv.txt')),
+  ]
+  const dependencyLockSha256 = parts.every((p) => p != null)
+    ? sha256Hex(parts.join('\n') + '\n')
+    : null
   return { workerCommit, dockerfileSha256, dependencyLockSha256 }
 }
 
@@ -221,6 +228,18 @@ export async function buildBootManifest(opts: {
   const { rules, boundsSha256 } = loadAnalysisRules()
   const speech = speechModelIdentity()
   const face = faceDetectorIdentity()
+  // Real, non-null build provenance is REQUIRED to pin a manifest: an exact
+  // 40-hex deployed commit (WORKER_GIT_SHA injected at build) plus the
+  // Dockerfile and dependency-lock digests. Missing any of these means the
+  // image cannot prove what it is — fail closed rather than pin a hollow
+  // manifest. (editor_pin_manifest re-enforces this at the database.)
+  const build = buildInputs()
+  if (!build.workerCommit || !/^[0-9a-f]{40}$/.test(build.workerCommit)
+      || !build.dockerfileSha256 || !build.dependencyLockSha256) {
+    throw new PermanentJobError(
+      'boot manifest build provenance missing: need a 40-hex WORKER_GIT_SHA plus Dockerfile + dependency-lock digests',
+      'build_provenance_missing')
+  }
   const digests = {
     visual: componentDigest(VISUAL_ANALYSIS_VERSION, visualEffectiveConfig(rules),
       { faceDetector: face.artifactSha256 }, boundsSha256),
@@ -239,7 +258,7 @@ export async function buildBootManifest(opts: {
     },
     componentDigests: digests,
     modelArtifacts: { speech, faceDetector: face },
-    build: buildInputs(),
+    build,
     ffmpeg: { versionBannerSha256: await ffmpegBannerSha256() },
     rules: { rulesVersion: rules.rulesVersion, boundsSha256 },
   }
@@ -265,10 +284,11 @@ interface SceneTimelineShape {
 
 interface GenerationScriptRow {
   id: string
-  // Read defensively: the column may be absent on an older deployment (the
-  // worker selects `*`), so the value can be undefined/null/any shape.
-  selected_hook?: string | null
-  scene_timeline?: unknown
+  // The caller selects these columns EXPLICITLY (a missing column fails closed
+  // upstream as a schema-drift error). The VALUES may still be null — a null
+  // scene_timeline yields the documented empty-scenes snapshot below.
+  selected_hook: string | null
+  scene_timeline: unknown
 }
 
 export interface BuiltSnapshot {

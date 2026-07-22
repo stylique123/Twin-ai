@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 
 process.env.SUPABASE_URL ||= 'https://stub.supabase.co'
 process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'stub-service-role-key'
@@ -168,10 +168,16 @@ const hasFfmpeg = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status 
 // silence. Proves the decode -> scan -> derive -> ebur128 chain with the
 // frozen ±1.0 LU loudness gate and exact-zero clipping (0 false positives).
 describe.skipIf(!hasFfmpeg)('ffmpeg fixture (LUFS ±1.0 LU, clipping 0 FP, room tone, SNR)', () => {
+  // Build fixtures in beforeAll — NOT in the describe body. A skipped describe
+  // (bare machine, no ffmpeg) never runs beforeAll, so the ffmpeg calls only
+  // happen when ffmpeg is actually present. (In the describe body they would
+  // run at COLLECTION time, before skipIf takes effect, and crash a bare box.)
   const wav = join(dir, 'fixture.wav')
-  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y',
-    '-f', 'lavfi', '-i', "aevalsrc=if(between(t\\,1\\,3)\\,0.5*sin(2*PI*1000*t)\\,0):s=48000:d=4",
-    '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', wav])
+  beforeAll(() => {
+    execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'lavfi', '-i', "aevalsrc=if(between(t\\,1\\,3)\\,0.5*sin(2*PI*1000*t)\\,0):s=48000:d=4",
+      '-ar', '48000', '-ac', '1', '-c:a', 'pcm_s16le', wav])
+  })
 
   it('windowed stats + derived evidence match the analytic values', async () => {
     const pcm = join(dir, 'fixture.pcm')

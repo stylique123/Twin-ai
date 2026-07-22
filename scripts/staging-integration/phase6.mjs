@@ -436,58 +436,94 @@ async function main() {
     const gen = await newGen(uA.id, SCENE_TIMELINE, HOOK_LINE)
     const pidX = await scratchProject(uA.id, gen, M.assetId)
     const lease = await fabricateLease(uA.id, pidX)
-    const rpcPin = (sha, snapSha, man = { schemaVersion: 1, probe: sha }) =>
+
+    // The digests + versions the pinned manifest AUTHORIZES for this project.
+    const DV = 'a'.repeat(64), DA = 'b'.repeat(64), DH = 'c'.repeat(64)
+    const SH = 'd'.repeat(64)
+    // A STRUCTURALLY VALID boot manifest (0087 validates the shape at pin).
+    const validManifest = (over = {}) => ({
+      schemaVersion: 1, manifestEpoch: 1,
+      componentVersions: { inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-1', audio: 'audio-1', hook: 'hook-1' },
+      componentDigests: { visual: DV, audio: DA, hook: DH },
+      modelArtifacts: { speech: { artifactSha256: 'e'.repeat(64) }, faceDetector: { artifactSha256: '9'.repeat(64) } },
+      build: { workerCommit: '0'.repeat(40), dockerfileSha256: '1'.repeat(64), dependencyLockSha256: '2'.repeat(64) },
+      ffmpeg: { versionBannerSha256: '3'.repeat(64) },
+      rules: { rulesVersion: 'analysis-rules-1', boundsSha256: '4'.repeat(64) },
+      ...over,
+    })
+    const validSnap = { schemaVersion: 1, generationId: gen, hook: null, scenes: [] }
+    const rpcPin = (man, sha, snap = validSnap, snapSha = '5'.repeat(64)) =>
       admin.rpc('editor_pin_manifest', {
         p_project: pidX, p_job: lease.jobId, p_worker: lease.worker, p_attempt: lease.attempt,
-        p_manifest: man, p_manifest_sha: sha, p_snapshot: { schemaVersion: 1, hook: null, scenes: [], generationId: gen }, p_snapshot_sha: snapSha,
+        p_manifest: man, p_manifest_sha: sha, p_snapshot: snap, p_snapshot_sha: snapSha,
       })
-    const D1 = 'a'.repeat(64); const D2 = 'b'.repeat(64)
-    const SH = 'c'.repeat(64); const SNAP = 'd'.repeat(64)
-    const rpcRecord = (component, digest, over = {}) =>
+    const rpcRecord = (component, digest, bundle, over = {}) =>
       admin.rpc('editor_record_analysis', {
         p_project: pidX, p_job: lease.jobId, p_worker: lease.worker, p_attempt: lease.attempt,
-        p_component: component, p_schema_version: 1, p_bundle_version: `${component}-1`,
+        p_component: component, p_schema_version: 1, p_bundle_version: bundle,
         p_component_digest: digest, p_source_hash: M.asset.content_sha256,
         p_result: { probe: true }, ...over,
       })
 
-    const noPin = await rpcRecord('visual', D1)
+    const noPin = await rpcRecord('visual', DV, 'visual-1')
     check('C1 recording under an UNPINNED project fails closed (manifest_mismatch)',
       !!noPin.error && /manifest_mismatch/.test(noPin.error.message), noPin.error?.message)
 
-    const p1 = await rpcPin(SH, SNAP)
-    const p2 = await rpcPin(SH, SNAP)
-    const p3 = await rpcPin('e'.repeat(64), SNAP)
+    const p1 = await rpcPin(validManifest(), SH)
+    const p2 = await rpcPin(validManifest(), SH)
+    const p3 = await rpcPin(validManifest(), 'aa'.repeat(32))
     check('C2 pin: pinned -> already_pinned -> DIFFERENT sha fails (manifest_mismatch)',
       p1.data === 'pinned' && p2.data === 'already_pinned'
       && !!p3.error && /manifest_mismatch/.test(p3.error.message),
       JSON.stringify({ p1: p1.data ?? p1.error?.message, p2: p2.data ?? p2.error?.message, p3: p3.error?.message }))
 
-    const badDigest = await rpcRecord('visual', 'not-a-digest')
+    const badDigest = await rpcRecord('visual', 'not-a-digest', 'visual-1')
     check('C3 malformed digest rejected', !!badDigest.error, badDigest.error?.message)
-    const badHash = await rpcRecord('visual', D1, { p_source_hash: 'f'.repeat(64) })
+    // HOSTILE: a well-formed digest that is NOT the one the manifest pinned.
+    const wrongDigest = await rpcRecord('visual', '7'.repeat(64), 'visual-1')
+    check('C3b digest not matching the pinned manifest rejected (manifest_mismatch)',
+      !!wrongDigest.error && /manifest_mismatch/.test(wrongDigest.error.message), wrongDigest.error?.message)
+    // HOSTILE: the pinned digest but a bundle version the manifest did not pin.
+    const wrongVer = await rpcRecord('visual', DV, 'visual-2')
+    check('C3c bundle version not matching the pinned manifest rejected (manifest_mismatch)',
+      !!wrongVer.error && /manifest_mismatch/.test(wrongVer.error.message), wrongVer.error?.message)
+
+    const badHash = await rpcRecord('visual', DV, 'visual-1', { p_source_hash: 'f'.repeat(64) })
     check('C4 wrong source hash rejected (checksum_mismatch)',
       !!badHash.error && /checksum_mismatch/.test(badHash.error.message), badHash.error?.message)
-    const tooBig = await rpcRecord('hook', D1, { p_result: { pad: 'x'.repeat(17000) } })
+    const tooBig = await rpcRecord('hook', DH, 'hook-1', { p_result: { pad: 'x'.repeat(17000) } })
     check('C5 hook payload over 16384 rejected at the DB (component_too_large)',
       !!tooBig.error && /component_too_large/.test(tooBig.error.message), tooBig.error?.message)
 
-    const r1 = await rpcRecord('visual', D1)
-    const r2 = await rpcRecord('visual', D1)
-    const r3 = await rpcRecord('visual', D1)
-    check('C6 same digest converges: recorded then reused (idempotent)',
+    // EXACT-MATCH success across all three components + idempotent converge.
+    const r1 = await rpcRecord('visual', DV, 'visual-1')
+    const r2 = await rpcRecord('visual', DV, 'visual-1')
+    const r3 = await rpcRecord('visual', DV, 'visual-1')
+    check('C6 exact-match visual: recorded then reused (idempotent)',
       r1.data?.recorded === true && r2.data?.recorded === false && r3.data?.recorded === false,
       JSON.stringify({ r1: r1.data, r2: r2.data, e: r1.error?.message ?? r2.error?.message }))
+    const ra = await rpcRecord('audio', DA, 'audio-1')
+    const rh = await rpcRecord('hook', DH, 'hook-1')
+    check('C6b exact-match audio + hook recorded',
+      ra.data?.recorded === true && rh.data?.recorded === true,
+      JSON.stringify({ a: ra.data ?? ra.error?.message, h: rh.data ?? rh.error?.message }))
     const evX = await getEvents(pidX)
     check('C7 event accounting deduped: exactly one recorded + one reused event despite three calls',
-      evX.filter((e) => e.dedupe_key === `analysis:visual:${D1}:recorded`).length === 1
-      && evX.filter((e) => e.dedupe_key === `analysis:visual:${D1}:reused`).length === 1)
+      evX.filter((e) => e.dedupe_key === `analysis:visual:${DV}:recorded`).length === 1
+      && evX.filter((e) => e.dedupe_key === `analysis:visual:${DV}:reused`).length === 1)
 
-    const rB = await rpcRecord('visual', D2)
+    // Two DIFFERENT digests coexist for the same (asset, component): a second
+    // digest row (direct insert, since the RPC only accepts the pinned digest)
+    // is accepted by the partial index alongside the RPC-recorded DV row.
+    const coexist = await admin.from('media_analyses').insert({
+      owner_id: uA.id, source_asset_id: M.assetId, source_hash: M.asset.content_sha256,
+      schema_version: 1, analyzer_bundle_version: 'visual-1', component: 'visual',
+      component_digest: '8'.repeat(64), manifest_sha: SH,
+    })
     const rowsM = await componentRows(M.assetId, 'visual')
     check('C8 two DIFFERENT digests coexist for the same (asset, component)',
-      rB.data?.recorded === true && rowsM.filter((r) => r.component_digest).length === 2,
-      `rows=${rowsM.length}`)
+      !coexist.error && rowsM.filter((r) => r.component_digest).length >= 2,
+      `err=${coexist.error?.message} rows=${rowsM.length}`)
 
     // Direct index truth: legacy idempotency + digest uniqueness (23505).
     const legacyRow = {
@@ -498,7 +534,9 @@ async function main() {
     const l2 = await admin.from('media_analyses').insert(legacyRow)
     check('C9 legacy identity intact: duplicate (asset, component, version) rejected by the partial index',
       !l1.error && !!l2.error && /duplicate key|23505/.test(l2.error.message), l2.error?.message)
-    const d1 = await admin.from('media_analyses').insert({ ...legacyRow, analyzer_bundle_version: 'visual-1', component_digest: D1, manifest_sha: SH })
+    // DV was RPC-recorded above for (M.assetId, visual); a second row with the
+    // SAME (asset, component, digest) must be rejected by the digest partial index.
+    const d1 = await admin.from('media_analyses').insert({ ...legacyRow, analyzer_bundle_version: 'visual-1', component_digest: DV, manifest_sha: SH })
     check('C10 duplicate digest row rejected by the digest partial index',
       !!d1.error && /duplicate key|23505/.test(d1.error.message), d1.error?.message)
 
@@ -507,12 +545,12 @@ async function main() {
     check('C11 tenant isolation: user B reads ZERO of user A component rows', (crossRows ?? []).length === 0)
     const denied1 = await cB.rpc('editor_pin_manifest', {
       p_project: pidX, p_job: lease.jobId, p_worker: lease.worker, p_attempt: 1,
-      p_manifest: {}, p_manifest_sha: SH, p_snapshot: {}, p_snapshot_sha: SNAP,
+      p_manifest: {}, p_manifest_sha: SH, p_snapshot: {}, p_snapshot_sha: '5'.repeat(64),
     })
     const denied2 = await cB.rpc('editor_record_analysis', {
       p_project: pidX, p_job: lease.jobId, p_worker: lease.worker, p_attempt: 1,
       p_component: 'visual', p_schema_version: 1, p_bundle_version: 'visual-1',
-      p_component_digest: D1, p_source_hash: M.asset.content_sha256, p_result: {},
+      p_component_digest: DV, p_source_hash: M.asset.content_sha256, p_result: {},
     })
     check('C12 authenticated clients cannot execute the fenced writers',
       !!denied1.error && !!denied2.error, `${denied1.error?.message} | ${denied2.error?.message}`)
@@ -521,11 +559,49 @@ async function main() {
     const stale = await admin.rpc('editor_record_analysis', {
       p_project: pidX, p_job: lease.jobId, p_worker: lease.worker, p_attempt: 99,
       p_component: 'audio', p_schema_version: 1, p_bundle_version: 'audio-1',
-      p_component_digest: D2, p_source_hash: M.asset.content_sha256, p_result: {},
+      p_component_digest: DA, p_source_hash: M.asset.content_sha256, p_result: {},
     })
     check('C13 stale attempt token refused (lease_lost)',
       !!stale.error && /lease_lost/.test(stale.error.message), stale.error?.message)
 
+    // HOSTILE pin validation (0087): a SECOND, never-pinned scratch project so
+    // each rejected pin leaves boot_manifest NULL (set-once is not consumed).
+    const genI = await newGen(uA.id, SCENE_TIMELINE, HOOK_LINE)
+    const pidI = await scratchProject(uA.id, genI, M.assetId)
+    const leaseI = await fabricateLease(uA.id, pidI)
+    const snapI = { schemaVersion: 1, generationId: genI, hook: null, scenes: [] }
+    const pinI = (man, snap = snapI) => admin.rpc('editor_pin_manifest', {
+      p_project: pidI, p_job: leaseI.jobId, p_worker: leaseI.worker, p_attempt: leaseI.attempt,
+      p_manifest: man, p_manifest_sha: SH, p_snapshot: snap, p_snapshot_sha: '5'.repeat(64),
+    })
+    // C14: structurally invalid manifest (componentDigests not an object).
+    const badShape = await pinI(validManifest({ componentDigests: 'nope' }))
+    check('C14 structurally invalid manifest rejected at pin (manifest_invalid)',
+      !!badShape.error && /manifest_invalid/.test(badShape.error.message), badShape.error?.message)
+    // C14b: a component digest that is not 64-hex.
+    const badDigestShape = await pinI(validManifest({ componentDigests: { visual: 'zz', audio: DA, hook: DH } }))
+    check('C14b non-64-hex component digest rejected at pin (manifest_invalid)',
+      !!badDigestShape.error && /manifest_invalid/.test(badDigestShape.error.message), badDigestShape.error?.message)
+    // C15: build.workerCommit not an exact 40-hex commit (hollow provenance).
+    const badCommit = await pinI(validManifest({ build: { workerCommit: 'not-a-commit', dockerfileSha256: '1'.repeat(64), dependencyLockSha256: '2'.repeat(64) } }))
+    check('C15 non-40-hex worker commit rejected at pin (manifest_invalid)',
+      !!badCommit.error && /manifest_invalid/.test(badCommit.error.message), badCommit.error?.message)
+    // C16: snapshot generationId != the project's generation_id.
+    const badGen = await pinI(validManifest(), { schemaVersion: 1, generationId: gen, hook: null, scenes: [] })
+    check('C16 snapshot generation not matching the project rejected (snapshot_generation_mismatch)',
+      !!badGen.error && /snapshot_generation_mismatch/.test(badGen.error.message), badGen.error?.message)
+    // C17: after all rejections the invalid project was NEVER pinned (set-once intact).
+    const { data: projI } = await admin.from('edit_projects')
+      .select('boot_manifest_sha, boot_manifest').eq('id', pidI).single()
+    check('C17 rejected pins leave the project unpinned (boot_manifest still NULL)',
+      projI?.boot_manifest_sha === null && projI?.boot_manifest === null,
+      JSON.stringify({ sha: projI?.boot_manifest_sha }))
+    // A VALID pin on this project now succeeds (proves rejections were validation, not a dead project).
+    const okI = await pinI(validManifest())
+    check('C17b a structurally valid pin on the same project then succeeds',
+      okI.data === 'pinned', okI.data ?? okI.error?.message)
+
+    await admin.from('jobs').update({ status: 'done', locked_at: null, locked_by: null }).eq('id', leaseI.jobId)
     await admin.from('jobs').update({ status: 'done', locked_at: null, locked_by: null }).eq('id', lease.jobId)
   }
 

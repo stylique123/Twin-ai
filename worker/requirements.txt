@@ -26,14 +26,11 @@ numpy==2.4.6             # RMS energy math
 requests==2.33.1         # imported by faster_whisper.utils (not always
                          # transitive on a clean Python 3.12 environment)
 
-# ---- Editor visual analysis (Phase 6): sampling + pinned YuNet --------------
-# Headless build (no GUI libs) running the pinned YuNet .onnx committed at
-# worker/models/face_detection_yunet_2023mar.onnx. Bump ONLY together with
-# VISUAL_ANALYSIS_VERSION — the wheel bundles OpenCV's decoders, so a moved
-# runtime can change the persisted `visual` component. The exact manylinux
-# x86_64 wheel sha256 is recorded in worker/models/vision.manifest.json and
-# worker/licenses.lock.json (MIT wrapper, Apache-2.0 OpenCV, LGPL FFmpeg).
-opencv-python-headless==4.10.0.84
+# ---- Editor visual analysis (Phase 6): pinned YuNet runtime -----------------
+# opencv-python-headless is pinned SEPARATELY in requirements-opencv.txt and
+# installed with `pip --require-hashes`, so the exact wheel SHA-256 is ENFORCED
+# at install time (not merely recorded). It is NOT listed here — installing it
+# here would skip the hash check. See the Dockerfile + staging-integration.yml.
 
 # ---- Reference ingestion (unchanged behaviour) -----------------------------
 # yt-dlp is intentionally kept on a floor, not an exact pin: YouTube's

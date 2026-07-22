@@ -3,6 +3,10 @@ import { beforeAll, describe, expect, it } from 'vitest'
 beforeAll(() => {
   process.env.SUPABASE_URL ||= 'https://stub.supabase.co'
   process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'stub-service-role-key'
+  // A 40-hex commit stands in for the deploy-injected WORKER_GIT_SHA so
+  // buildBootManifest has the required build provenance (worker/Dockerfile +
+  // dependency locks exist in the repo, so their digests are non-null).
+  process.env.WORKER_GIT_SHA ||= '0123456789abcdef0123456789abcdef01234567'
 })
 
 import {
@@ -91,6 +95,31 @@ describe('boot manifest', () => {
     // Face model hash is an input to the VISUAL digest specifically.
     expect(m.modelArtifacts.faceDetector.artifactSha256)
       .toBe('8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4')
+    // Real, non-null build provenance: exact 40-hex commit + Dockerfile +
+    // dependency-lock digests.
+    expect(m.build.workerCommit).toMatch(/^[0-9a-f]{40}$/)
+    expect(m.build.dockerfileSha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(m.build.dependencyLockSha256).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('fails closed when the deployed commit provenance is missing/invalid', async () => {
+    const saved = process.env.WORKER_GIT_SHA
+    const savedGit = process.env.GIT_SHA
+    try {
+      for (const bad of ['', 'not-a-commit', 'abc123']) {
+        process.env.WORKER_GIT_SHA = bad
+        process.env.GIT_SHA = ''
+        let err: unknown
+        try {
+          await buildBootManifest({ inspectorVersion: 'inspect-1', speechVersion: 'speech-6' })
+        } catch (e) { err = e }
+        expect(err).toBeInstanceOf(PermanentJobError)
+        expect((err as PermanentJobError).code).toBe('build_provenance_missing')
+      }
+    } finally {
+      process.env.WORKER_GIT_SHA = saved
+      process.env.GIT_SHA = savedGit
+    }
   })
 })
 

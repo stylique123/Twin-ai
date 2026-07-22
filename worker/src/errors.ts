@@ -42,6 +42,8 @@ export function classifyDbError(message: string): Error {
   const permanentCodes: Array<[RegExp, string]> = [
     [/project_terminal|not found/, 'project_state'],
     [/manifest_mismatch/, 'manifest_mismatch'],
+    [/manifest_invalid/, 'manifest_invalid'],
+    [/snapshot_generation_mismatch/, 'snapshot_generation_mismatch'],
     [/checksum_mismatch/, 'checksum_mismatch'],
     [/script_snapshot_too_large/, 'script_snapshot_too_large'],
     [/component_too_large/, 'component_too_large'],

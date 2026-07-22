@@ -149,6 +149,10 @@ jobs:
         run: |
           node scripts/ci/check_analysis_consistency.mjs --selftest
           node scripts/ci/check_analysis_consistency.mjs
+      - name: Build provenance (Docker npm-ci/lockfile, no dev deps, WORKER_GIT_SHA injection, OpenCV wheel hash)
+        run: |
+          node scripts/ci/check_build_provenance.mjs --selftest
+          node scripts/ci/check_build_provenance.mjs
 
   # Offline hostile suite for the production gate-probe predicates
   # (scripts/ci/gate_probe_assert.mjs — the exact module verify-prod-gate.yml
