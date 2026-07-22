@@ -34,7 +34,10 @@ concurrency:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Phase 1-6 consume ~40 min; Phase 7 (7 fixtures + 4 full-pipeline runs +
+    # a crash-resume + the RPC truth table) adds ~12 min. The old 45-min budget
+    # cancelled Phase 7 mid-run, so give the full Phase 1-7 regression headroom.
+    timeout-minutes: 70
     # Phases 3-5 all drive the REAL speech stage, which now loads the PINNED
     # snapshot from this path offline (fetched + digest-verified in the install
     # step). Job-level so EVERY phase inherits it, not just Phase 5. NOTE: the
