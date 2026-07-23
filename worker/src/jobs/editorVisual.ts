@@ -37,6 +37,7 @@ export interface VisualBridgeOutput {
   fineSamples: number
   faceSamples: number
   motion: Array<{ timeMs: number; diff: number }>
+  lumaCurve: Array<{ timeMs: number; luma: number }>
   shotBoundaries: Array<{ timeMs: number; score: number; evidenceCodes: string[] }>
   faces: Array<{ timeMs: number; detections: Array<{ x: number; y: number; width: number; height: number; score: number }> }>
   faceCoverage: { samplesWithFace: number; samplesTotal: number }
@@ -55,6 +56,57 @@ export interface VisualFacts {
   displayWidth: number
   displayHeight: number
   rotation: 0 | 90 | 180 | 270
+}
+
+// visual-2: merge per-sample near-black / frozen coarse samples into blank
+// intervals — EVIDENCE of visual waste (dead air, held/black frames), never a
+// cut. A coarse sample is "blank" when its mean luma is at/below nearBlackLuma
+// (near-black) OR its motion diff to the previous sample is at/below
+// frozenMotionMax (frozen). Consecutive blank samples merge; a run is kept only
+// when it spans at least minBlankDurationMs. Deterministic and bounded by
+// blankCandidateCap (excess is dropped — logged, never truncated silently by
+// the byte cap). Interval duration = last blank sample − first (no padding), so
+// a lone blank sample never qualifies.
+export function computeBlankIntervals(
+  lumaCurve: Array<{ timeMs: number; luma: number }>,
+  motion: Array<{ timeMs: number; diff: number }>,
+  rules: AnalysisRules,
+): { intervals: Array<{ startMs: number; endMs: number; evidenceCodes: string[] }>; dropped: number } {
+  const R = rules.visual
+  const diffAt = new Map<number, number>()
+  for (const m of motion) diffAt.set(m.timeMs, m.diff)
+  const samples = [...lumaCurve].sort((a, b) => a.timeMs - b.timeMs)
+
+  type Run = { startMs: number; endMs: number; count: number; nearBlack: boolean; frozen: boolean }
+  let run: Run | null = null
+  const runs: Run[] = []
+  const closeRun = () => {
+    if (run && run.count >= 2 && run.endMs - run.startMs >= R.minBlankDurationMs) runs.push(run)
+    run = null
+  }
+  for (const s of samples) {
+    const nearBlack = s.luma <= R.nearBlackLuma
+    const d = diffAt.get(s.timeMs)
+    const frozen = d !== undefined && d <= R.frozenMotionMax
+    if (nearBlack || frozen) {
+      if (run) {
+        run.endMs = s.timeMs; run.count += 1
+        run.nearBlack = run.nearBlack || nearBlack; run.frozen = run.frozen || frozen
+      } else {
+        run = { startMs: s.timeMs, endMs: s.timeMs, count: 1, nearBlack, frozen }
+      }
+    } else {
+      closeRun()
+    }
+  }
+  closeRun()
+
+  const all = runs.map((r) => ({
+    startMs: r.startMs, endMs: r.endMs,
+    evidenceCodes: [...(r.nearBlack ? ['near_black'] : []), ...(r.frozen ? ['frozen'] : [])],
+  }))
+  const intervals = all.slice(0, R.blankCandidateCap)
+  return { intervals, dropped: all.length - intervals.length }
 }
 
 // Pure contract construction (unit-tested with synthetic bridge output).
@@ -93,6 +145,8 @@ export function buildVisualAnalysis(
     },
     shotBoundaries: bridge.shotBoundaries,
     motion: bridge.motion,
+    lumaCurve: bridge.lumaCurve,
+    blankIntervals: computeBlankIntervals(bridge.lumaCurve ?? [], bridge.motion, opts.rules).intervals,
     faces: bridge.faces,
     faceCoverage: bridge.faceCoverage,
     provenance: {

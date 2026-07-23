@@ -315,13 +315,19 @@ async function main() {
       sha256(canonicalize(proj.script_snapshot)) === proj.script_snapshot_sha
       && proj.script_snapshot?.hook === HOOK_LINE
       && (proj.script_snapshot?.scenes ?? []).length === 2)
-    check('A4 manifest epoch + versions + model artifacts pinned',
-      manifest.manifestEpoch === 1
-      && manifest.componentVersions?.visual === 'visual-1'
+    check('A4 manifest epoch-2 + versions + model artifacts + v2 pins',
+      manifest.manifestEpoch === 2
+      && manifest.componentVersions?.visual === 'visual-2'
       && manifest.componentVersions?.audio === 'audio-1'
       && manifest.componentVersions?.hook === 'hook-1'
       && /^[0-9a-f]{64}$/.test(manifest.modelArtifacts?.faceDetector?.artifactSha256 ?? '')
-      && /^[0-9a-f]{64}$/.test(manifest.rules?.boundsSha256 ?? ''))
+      && /^[0-9a-f]{64}$/.test(manifest.rules?.boundsSha256 ?? '')
+      // Boot Manifest v2 pins: bounded brand snapshot SHA (always present),
+      // capture-manifest SHA (64-hex for a new-era source, null only for legacy),
+      // and the frozen creative-half feature flags.
+      && /^[0-9a-f]{64}$/.test(manifest.brandSnapshotSha ?? '')
+      && (manifest.captureManifestSha === null || /^[0-9a-f]{64}$/.test(manifest.captureManifestSha))
+      && manifest.features?.autoFillerRemoval === false)
 
     const events = await getEvents(pid)
     const pinEv = events.filter((e) => e.message_code === 'manifest_pinned')

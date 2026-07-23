@@ -25,8 +25,11 @@ import { PermanentJobError } from '../errors.js'
 
 // Analyzer bundle versions — frozen constants, never env-driven. Bumping one
 // is a code change that also changes the component digest via `version`.
-export const PIPELINE_EPOCH = 1
-export const VISUAL_ANALYSIS_VERSION = 'visual-1'
+// Boot Manifest v2 (Phase 7 exit): epoch 1 -> 2. The v2 manifest additionally
+// pins the bounded brand snapshot SHA, the source's capture-manifest SHA, and
+// the frozen feature flags — so no stage rereads live brand/feature settings.
+export const PIPELINE_EPOCH = 2
+export const VISUAL_ANALYSIS_VERSION = 'visual-2' // v2: + per-sample luma + near-black/frozen blank intervals
 export const AUDIO_ANALYSIS_VERSION = 'audio-1'
 export const HOOK_EVIDENCE_VERSION = 'hook-1'
 export const VISUAL_ANALYSIS_SCHEMA_VERSION = 1
@@ -80,6 +83,11 @@ export interface AnalysisRules {
     motionDownscaleWidth: number
     motionDownscaleHeight: number
     faceMaxSamples: number
+    // visual-2 near-black/frozen blank-interval detection.
+    nearBlackLuma: number
+    frozenMotionMax: number
+    minBlankDurationMs: number
+    blankCandidateCap: number
     face: { inputSize: number; scoreThreshold: number; nmsThreshold: number; topK: number }
   }
   audio: {
@@ -224,6 +232,8 @@ export interface BuiltManifest {
 export async function buildBootManifest(opts: {
   inspectorVersion: string
   speechVersion: string
+  brandSnapshotSha: string
+  captureManifestSha: string | null
 }): Promise<BuiltManifest> {
   const { rules, boundsSha256 } = loadAnalysisRules()
   const speech = speechModelIdentity()
@@ -261,6 +271,11 @@ export async function buildBootManifest(opts: {
     build,
     ffmpeg: { versionBannerSha256: await ffmpegBannerSha256() },
     rules: { rulesVersion: rules.rulesVersion, boundsSha256 },
+    // Boot Manifest v2 pins: bounded brand snapshot SHA, source capture-manifest
+    // SHA (null only for a true legacy source), and frozen feature flags.
+    brandSnapshotSha: opts.brandSnapshotSha,
+    captureManifestSha: opts.captureManifestSha,
+    features: { autoFillerRemoval: false },
   }
   return { manifest, manifestSha: sha256Hex(canonicalJson(manifest)), componentDigests: digests }
 }

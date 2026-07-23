@@ -191,6 +191,7 @@ def main() -> int:
     # ---- coarse sequential pass ----
     frame_targets = [round(t * fps / 1000.0) for t in targets]
     motion = []          # [{timeMs, diff}]
+    luma_curve = []      # [{timeMs, luma}] mean display luma per coarse sample, 0..1 (visual-2)
     face_samples = []    # [{timeMs, detections}]
     coarse_grays = []    # small grays per coarse sample (for fine bracketing)
     prev_small = None
@@ -214,6 +215,9 @@ def main() -> int:
             break
         sg = small_gray(disp)
         coarse_grays.append(sg)
+        # visual-2: per-sample mean luma (0..1) on the same downscaled gray used
+        # for motion — raw evidence for near-black/blank detection in the worker.
+        luma_curve.append({"timeMs": targets[k], "luma": round(float(np.mean(sg)) / 255.0, 4)})
         if prev_small is not None:
             diff = round(float(np.mean(np.abs(sg.astype(np.int16) - prev_small.astype(np.int16)))) / 255.0, 4)
             motion.append({"timeMs": targets[k], "diff": diff})
@@ -289,6 +293,7 @@ def main() -> int:
         "fineSamples": fine_used,
         "faceSamples": len(face_samples),
         "motion": motion,
+        "lumaCurve": luma_curve,
         "shotBoundaries": merged,
         "faces": face_samples,
         "faceCoverage": {"samplesWithFace": with_face, "samplesTotal": len(face_samples)},

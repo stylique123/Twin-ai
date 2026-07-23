@@ -42,6 +42,7 @@ import { SpeechCancelledError, runTranscribingStage } from './editorSpeech.js'
 import { runAnalyzingStage, type AnalyzeOutcome } from './editorAnalyze.js'
 import { runDirectingStage, type DirectorOutcome } from './editorDirector.js'
 import { buildBootManifest, buildScriptSnapshot, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
+import { projectBrandSnapshot, brandSnapshotSha256 } from './brandSnapshot.js'
 import { VerifiedSourceSession } from './sourceSession.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -104,24 +105,53 @@ async function appendEvent(
 // DIVERGENT manifest (different worker build / rules / models mid-project)
 // fails closed as the PERMANENT manifest_mismatch — versions are never mixed
 // within one project.
+// Project the owner's DEFAULT brand voice into the bounded snapshot SHA. Read
+// fails closed on schema drift; an absent/unready default voice yields a stable
+// snapshot-of-empty-inputs SHA (never a silent skip / null).
+async function pinBrandSnapshotSha(ownerId: string): Promise<string> {
+  const { data: voice, error } = await db
+    .from('brand_voices').select('profile, brand_kit')
+    .eq('owner_id', ownerId).eq('is_default', true).maybeSingle()
+  if (error) {
+    if (/column .*does not exist|profile|brand_kit|is_default/i.test(error.message)) {
+      throw new PermanentJobError(
+        `pin: brand_voices schema is missing a required column (deployment drift): ${error.message}`,
+        'brand_schema_drift')
+    }
+    throw new Error(`pin: brand voice read failed: ${error.message}`)
+  }
+  const profile = (voice?.profile ?? null) as Parameters<typeof projectBrandSnapshot>[0]
+  const kit = (voice?.brand_kit ?? null) as Parameters<typeof projectBrandSnapshot>[1]
+  return brandSnapshotSha256(projectBrandSnapshot(profile, kit))
+}
+
+// The normalized capture-manifest SHA for THIS source asset. null ONLY for a
+// true legacy source (no capture contract). A new-era source without a manifest
+// cannot be `ready` (0091 ready-guard), so at pin time a marked source has one.
+async function pinCaptureManifestSha(sourceAssetId: string): Promise<string | null> {
+  const { data, error } = await db
+    .from('source_capture_manifests').select('manifest_sha256')
+    .eq('source_asset_id', sourceAssetId).maybeSingle()
+  if (error) throw new Error(`pin: capture manifest read failed: ${error.message}`)
+  const sha = (data?.manifest_sha256 ?? null) as string | null
+  return sha
+}
+
 async function pinManifest(
-  job: Job, projectId: string, generationId: string,
+  job: Job, projectId: string, generationId: string, sourceAssetId: string,
 ): Promise<{ manifest: BuiltManifest; snapshot: BuiltSnapshot; pin: string }> {
-  const manifest = await buildBootManifest({
-    inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
-  })
-  // Read the REQUIRED script columns explicitly. If a required column is
-  // absent (schema drift / an un-migrated deployment), PostgREST returns a
-  // "column ... does not exist" error — fail CLOSED with a stable
-  // schema-drift code rather than silently degrading to "no script". A
-  // legitimately NULL scene_timeline is fine (buildScriptSnapshot then
-  // produces the documented empty-scenes snapshot); only a MISSING column is
-  // the error.
+  // Read the REQUIRED script columns explicitly, plus user_id (the owner) so we
+  // can project the bounded brand snapshot. If a required column is absent
+  // (schema drift / an un-migrated deployment), PostgREST returns a "column ...
+  // does not exist" error — fail CLOSED with a stable schema-drift code rather
+  // than silently degrading to "no script". A legitimately NULL scene_timeline
+  // is fine (buildScriptSnapshot then produces the documented empty-scenes
+  // snapshot); only a MISSING column is the error.
   const { data: gen, error: genErr } = await db
-    .from('generations').select('id, selected_hook, scene_timeline')
+    .from('generations').select('id, user_id, selected_hook, scene_timeline')
     .eq('id', generationId).maybeSingle()
   if (genErr) {
-    if (/column .*does not exist|scene_timeline|selected_hook/i.test(genErr.message)) {
+    if (/column .*does not exist|scene_timeline|selected_hook|user_id/i.test(genErr.message)) {
       throw new PermanentJobError(
         `pin: generations schema is missing a required script column (deployment drift): ${genErr.message}`,
         'script_schema_drift')
@@ -129,6 +159,24 @@ async function pinManifest(
     throw new Error(`pin: generation read failed: ${genErr.message}`)
   }
   if (!gen) throw new PermanentJobError(`pin: generation ${generationId} missing`, 'generation_missing')
+  const ownerId = (gen as { user_id?: string | null }).user_id
+  if (!ownerId) throw new PermanentJobError(`pin: generation ${generationId} has no owner`, 'generation_missing')
+
+  // Boot Manifest v2 pin inputs (epoch 2), both read fail-closed:
+  //  * brandSnapshotSha — the owner's DEFAULT brand voice profile + kit,
+  //    projected through the SAME bounded projection the shared contract uses
+  //    (parity-pinned). Absent/unready brand → snapshot of empty inputs (a
+  //    stable, non-null SHA); never a silent skip.
+  //  * captureManifestSha — the normalized source capture manifest for THIS
+  //    source asset. null ONLY for a true legacy source (no capture contract);
+  //    a new-era source without a manifest cannot reach `ready` (0091 guard), so
+  //    by pin time it exists.
+  const brandSnapshotSha = await pinBrandSnapshotSha(ownerId)
+  const captureManifestSha = await pinCaptureManifestSha(sourceAssetId)
+  const manifest = await buildBootManifest({
+    inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
+    brandSnapshotSha, captureManifestSha,
+  })
   const snapshot = buildScriptSnapshot(gen as { id: string; selected_hook: string | null; scene_timeline: unknown })
   // throws script_snapshot_too_large (fail closed)
   const { data, error } = await db.rpc('editor_pin_manifest', {
@@ -240,7 +288,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
   try {
     const { data: proj, error } = await db
       .from('edit_projects')
-      .select('id,status,cancel_requested_at,generation_id')
+      .select('id,status,cancel_requested_at,generation_id,source_asset_id')
       .eq('id', projectId)
       .maybeSingle()
     if (error) throw new Error(`project read failed: ${error.message}`)
@@ -269,7 +317,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // BEFORE the first queued->inspecting transition (idempotent on resume;
     // fails closed on divergence). Then open the attempt-scoped source
     // session every real stage shares.
-    const pinned = await pinManifest(job, projectId, String(proj.generation_id))
+    const pinned = await pinManifest(job, projectId, String(proj.generation_id), String(proj.source_asset_id))
     const src = await loadEligibleSource(projectId, 'session')
     session = new VerifiedSourceSession(src.asset, src.meta, dir)
 
