@@ -5,8 +5,9 @@
 // Bundled by run.sh with esbuild.
 import {
   buildStoredIntent, canonicalCaptureIntent, canonicalCaptureIntentInput, captureIntentSha256,
-  type SourceCaptureIntentInputV1,
+  sha256Hex, type SourceCaptureIntentInputV1,
 } from '../../../packages/shared/src/editor/capture'
+import { buildRecordingScriptSnapshot } from '../../../packages/shared/src/editor/scriptSnapshot'
 
 const GEN = '11111111-1111-1111-1111-111111111111'
 const ASSET = '22222222-2222-2222-2222-222222222222'
@@ -42,5 +43,49 @@ const inputs = [uploadInput, teleInput]
   const teleInts = buildStoredIntent(teleInput, { sourceAssetId: ASSET, recordedAt: R })
   const dbStoredRaw = JSON.stringify(teleInts).replace('"startMs":0,', '"startMs":0.0,').replace('"endMs":2000,', '"endMs":2000.0,')
   out.push({ numericNorm: true, dbStoredRaw, canonical: canonicalCaptureIntent(teleInts) })
+
+  // ---- ONE canonical recording-script snapshot: DB↔TS byte parity ----
+  // Each fixture is a scene_timeline (jsonb) + selected_hook fed VERBATIM to the DB
+  // editor_recording_script_canonical(gen, scene_timeline, selected_hook), and the
+  // same inputs to shared buildRecordingScriptSnapshot. Hostile strings prove the
+  // NFC + WhiteSpace-collapse (JS \s) normalization matches byte-for-byte.
+  const NBSP = ' ', EMSP = ' ', IDSP = '　', BOM = '﻿'
+  const scriptFixtures: Array<{ label: string; sceneTimeline: unknown; selectedHook: string | null }> = [
+    { label: 'basic', selectedHook: 'col hook',
+      sceneTimeline: { hook: 'Hello there', scenes: [
+        { scene_number: 1, scene_type: 'talking_head', dialogue: 'Hello world', show_in_teleprompter: true },
+      ] } },
+    { label: 'hook-from-selected (no timeline hook)', selectedHook: 'Fallback   hook',
+      sceneTimeline: { scenes: [
+        { scene_number: 1, scene_type: 'talking_head', dialogue: 'one', show_in_teleprompter: true },
+      ] } },
+    { label: 'hostile whitespace + NFC + noncontiguous + hidden', selectedHook: null,
+      sceneTimeline: { hook: `  Big${NBSP}${NBSP}news${EMSP}today\t\n `, scenes: [
+        // NFC: e + combining acute (U+0301) must fold to é, matching normalize(...,NFC)
+        { scene_number: 1, scene_type: 'talking_head', dialogue: `Café${IDSP}time${BOM}`, show_in_teleprompter: true },
+        { scene_number: 3, scene_type: 'b_roll', dialogue: null, show_in_teleprompter: false },
+        { scene_number: 7, scene_type: 'cta', dialogue: '  trailing\r\nspace  ', show_in_teleprompter: true },
+      ] } },
+    { label: 'empty timeline (null scene_timeline path)', selectedHook: null, sceneTimeline: null },
+    { label: 'missing scene_number falls back to index', selectedHook: 'h',
+      sceneTimeline: { hook: 'h', scenes: [
+        { scene_type: 'talking_head', dialogue: 'a', show_in_teleprompter: true },
+        { scene_number: 1.5, scene_type: 'talking_head', dialogue: 'b', show_in_teleprompter: true },
+      ] } },
+  ]
+  for (const f of scriptFixtures) {
+    const tl = (f.sceneTimeline && typeof f.sceneTimeline === 'object') ? f.sceneTimeline as { hook?: unknown; scenes?: unknown[] } : null
+    const built = buildRecordingScriptSnapshot({
+      generationId: GEN,
+      hook: tl?.hook,
+      selectedHook: f.selectedHook,
+      scenes: (tl?.scenes ?? []) as { scene_number?: unknown; scene_type?: unknown; dialogue?: unknown; show_in_teleprompter?: unknown }[],
+    })
+    out.push({
+      scriptSnap: true, label: f.label, generationId: GEN,
+      sceneTimeline: f.sceneTimeline, selectedHook: f.selectedHook,
+      canonical: built.canonical, sha: await sha256Hex(built.canonical),
+    })
+  }
   process.stdout.write(JSON.stringify(out))
 })()

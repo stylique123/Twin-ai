@@ -43,32 +43,66 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // marker, and open/quota/descriptor policy — the edge builds no intent, computes
 // no hash, and enforces no cost policy. There is NO second create path.
 // ---------------------------------------------------------------------------
-interface CaptureSegmentIn { scene_number?: unknown; start_ms?: unknown; end_ms?: unknown; intended_dialogue_sha256?: unknown }
-
-// The ONE MIME boundary: strip a MediaRecorder codec suffix
-// (video/webm;codecs=vp9,opus) to the frozen base MIME the RPC accepts. Mirrors
-// shared normalizeSourceMime (packages/shared/src/editor/capture.ts, tested).
-function normalizeSourceMime(contentType: unknown): { baseMime: string; ext: string } | null {
-  const base = (typeof contentType === 'string' ? contentType : '').split(';')[0].trim().toLowerCase()
+// ---- edge-core (INLINED verbatim from packages/shared/src/editor/sourceCreate.ts
+// + capture.ts; Deno cannot import shared at deploy time). Shared is the single
+// source of truth; edge-source-parity.test.ts asserts these bodies never drift.
+// >>> EDGE-CORE-BEGIN
+export function normalizeSourceMime(contentType: string | null | undefined): { baseMime: string; ext: 'webm' | 'mp4' } | null {
+  const base = (contentType ?? '').split(';')[0].trim().toLowerCase()
   if (base === 'video/webm') return { baseMime: 'video/webm', ext: 'webm' }
   if (base === 'video/mp4') return { baseMime: 'video/mp4', ext: 'mp4' }
   if (base === 'video/quicktime') return { baseMime: 'video/quicktime', ext: 'mp4' }
   return null
 }
 
-// Map the RPC's stable exception codes to an HTTP status + user-safe message.
-function createErrorStatus(msg: string): number {
+export function safeSizeBytes(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : (typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN)
+  if (!Number.isFinite(n) || !Number.isSafeInteger(n) || n < 0) return null
+  return n
+}
+
+export function buildCreateInput(
+  capture: Record<string, unknown>,
+  ctx: { generationId: string; clientAttemptId: string },
+): Record<string, unknown> {
+  const rawSegs = capture.accepted_segments
+  const input: Record<string, unknown> = {
+    schemaVersion: 1,
+    origin: capture.origin,
+    generationId: ctx.generationId,
+    clientAttemptId: ctx.clientAttemptId,
+    recorderClock: capture.recorder_clock,
+    acceptedSegments: Array.isArray(rawSegs)
+      ? rawSegs.map((s) => {
+          const seg = s as Record<string, unknown>
+          return {
+            sceneNumber: seg.scene_number,
+            startMs: seg.start_ms,
+            endMs: seg.end_ms,
+            intendedDialogueSha256: seg.intended_dialogue_sha256,
+          }
+        })
+      : rawSegs,
+  }
+  if (Object.prototype.hasOwnProperty.call(capture, 'recording_script_sha256')) {
+    input.recordingScriptSha256 = capture.recording_script_sha256
+  }
+  return input
+}
+
+export function createErrorStatus(msg: string): number {
   if (msg.includes('source_generation_not_owned')) return 404
   if (msg.includes('source_too_many_open')) return 429
   if (msg.includes('source_quota_exceeded')) return 413
-  if (msg.includes('source_attempt_conflict') || msg.includes('capture_intent_conflict')) return 409
+  if (msg.includes('source_asset_rejected') || msg.includes('source_attempt_conflict') || msg.includes('capture_intent_conflict')) return 409
   if (msg.includes('source_policy_') || msg.includes('capture_intent_')) return 400
   return 500
 }
-function mapCreateError(msg: string): string {
+export function mapCreateError(msg: string): string {
   if (msg.includes('source_generation_not_owned')) return 'Generation not found'
   if (msg.includes('source_too_many_open')) return 'Too many recordings are still processing — give them a moment to finish.'
   if (msg.includes('source_quota_exceeded')) return 'Your storage is full — delete some older videos first.'
+  if (msg.includes('source_asset_rejected')) return 'This recording was rejected — please record a new take.'
   if (msg.includes('source_attempt_conflict')) return 'This recording attempt already exists with different details.'
   if (msg.includes('capture_intent_conflict')) return 'A different capture already exists for this recording.'
   if (msg.includes('source_policy_mime')) return 'Unsupported video type — record or pick an MP4/MOV/WebM.'
@@ -77,6 +111,7 @@ function mapCreateError(msg: string): string {
   if (msg.includes('capture_intent_')) return 'The capture data was invalid — please re-record.'
   return 'Could not start the upload — try again.'
 }
+// <<< EDGE-CORE-END
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -136,9 +171,13 @@ Deno.serve(async (req: Request) => {
   if (body.action === 'create') {
     const generationId = (body.generation_id ?? '').trim()
     const attemptId = (body.recording_attempt_id ?? '').trim().toLowerCase()
-    const sizeBytes = Number(body.size_bytes ?? 0)
     if (!generationId) return json({ error: 'generation_id is required' }, 400)
     if (!UUID_RE.test(attemptId)) return json({ error: 'recording_attempt_id (uuid) is required' }, 400)
+    // Wire hygiene: parse only a finite/safe/integral size for the bigint arg;
+    // malformed/unsafe never reaches the RPC. The DB is the sole min/max/quota
+    // authority (source_policy_size / source_quota_exceeded).
+    const sizeBytes = safeSizeBytes(body.size_bytes)
+    if (sizeBytes === null) return json({ error: 'That recording is empty or too large — please re-record.' }, 400)
 
     // The ONE MIME boundary (Constitution §10D): MediaRecorder reports a
     // codec-suffixed type (video/webm;codecs=vp9,opus); normalize to the frozen
@@ -152,29 +191,12 @@ Deno.serve(async (req: Request) => {
     if (!body.capture || typeof body.capture !== 'object') {
       return json({ error: 'capture provenance is required' }, 400)
     }
-    const cap = body.capture
-
     // Map the client's snake_case capture payload to the camelCase
-    // SourceCaptureIntentInputV1 the RPC validates. The edge does NOT build,
+    // SourceCaptureIntentInputV1 the RPC validates (missing recording_script_sha256
+    // key stays MISSING, never manufactured to null). The edge does NOT build,
     // hash, or persist the intent, and does NOT enforce open/quota/descriptor
     // policy — the single atomic RPC owns all of that. No alternate create path.
-    const rawSegs = (cap as { accepted_segments?: unknown }).accepted_segments
-    const input = {
-      schemaVersion: 1,
-      origin: (cap as { origin?: unknown }).origin,
-      generationId,
-      recordingScriptSha256: (cap as { recording_script_sha256?: unknown }).recording_script_sha256 ?? null,
-      clientAttemptId: attemptId,
-      recorderClock: (cap as { recorder_clock?: unknown }).recorder_clock,
-      acceptedSegments: Array.isArray(rawSegs)
-        ? rawSegs.map((s) => ({
-            sceneNumber: (s as CaptureSegmentIn).scene_number,
-            startMs: (s as CaptureSegmentIn).start_ms,
-            endMs: (s as CaptureSegmentIn).end_ms,
-            intendedDialogueSha256: (s as CaptureSegmentIn).intended_dialogue_sha256,
-          }))
-        : rawSegs,
-    }
+    const input = buildCreateInput(body.capture, { generationId, clientAttemptId: attemptId })
 
     const { data, error } = await admin.rpc('editor_create_source_asset', {
       p_owner: user.id,

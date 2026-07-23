@@ -13,7 +13,12 @@ drop table if exists public.source_capture_intents cascade;
 drop table if exists public.media_assets cascade;
 drop table if exists public.generations cascade;
 
-create table public.generations (id uuid primary key default gen_random_uuid(), user_id uuid not null);
+create table public.generations (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null,
+  selected_hook text,
+  scene_timeline jsonb
+);
 
 create table public.media_assets (
   id uuid primary key default gen_random_uuid(),
@@ -81,4 +86,16 @@ create table public.source_capture_manifests (
   created_at timestamptz not null default now()
 );
 create trigger source_capture_manifests_immutable before update or delete on public.source_capture_manifests
+  for each row execute function public.editor_capture_no_mutate();
+
+-- 0091 source-bound recording-script snapshot (subset: table + append-only trigger).
+create table public.source_script_snapshots (
+  source_asset_id uuid primary key references public.media_assets(id) on delete cascade,
+  owner_id uuid not null,
+  generation_id uuid,
+  snapshot jsonb not null,
+  snapshot_sha text not null check (snapshot_sha ~ '^[0-9a-f]{64}$'),
+  created_at timestamptz not null default now()
+);
+create trigger source_script_snapshots_immutable before update or delete on public.source_script_snapshots
   for each row execute function public.editor_capture_no_mutate();

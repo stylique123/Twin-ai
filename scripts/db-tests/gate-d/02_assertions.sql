@@ -196,6 +196,102 @@ begin
   perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','%s',%L::jsonb,'takes','video/webm',1048576)$q$, att, inp::text), 'capture_intent_conflict');
 end $$;
 
+\echo == round-3: unknown keys (input + stored) fail closed ==
+do $$
+declare base jsonb := (select tel from v); up jsonb := (select up from v); stored jsonb;
+begin
+  -- unknown TOP-LEVEL key rejected by the input validator
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base||'{"evil":1}')::text), 'capture_intent_unknown_key');
+  -- unknown SEGMENT key rejected
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base||'{"acceptedSegments":[{"sceneNumber":1,"startMs":0,"endMs":2000,"intendedDialogueSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","evil":1}]}')::text), 'capture_intent_unknown_segment_key');
+  -- unknown key rejected THROUGH the create RPC (fail-closed before any write)
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','33333333-3333-3333-3333-333333333333',%L::jsonb,'takes','video/webm',1048576)$q$, (up||'{"evil":1}')::text), 'capture_intent_unknown_key');
+  -- STORED form: server keys allowed, but any OTHER unknown key still rejected
+  stored := public.editor_build_stored_intent(up, gen_random_uuid(), '11111111-1111-1111-1111-111111111111', '33333333-3333-3333-3333-333333333333', '2026-07-23T11:00:00.000Z');
+  perform public.editor_validate_capture_input(stored, null, null, true); -- baseline passes (sourceAssetId/recordedAt allowed)
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb, null, null, true)$q$, (stored||'{"evil":1}')::text), 'capture_intent_unknown_key');
+end $$;
+
+\echo == round-3: marker v2 rejected + exact-path binding (not a suffix match) ==
+do $$
+declare marker_att uuid := 'b1b1b1b1-0000-0000-0000-000000000001';
+  marker_aid uuid := 'b3b3b3b3-0000-0000-0000-000000000003';
+  path_att uuid := 'b2b2b2b2-0000-0000-0000-000000000002';
+  path_aid uuid := 'bbbb0000-0000-0000-0000-000000000002';
+  up jsonb := (select up from v);
+begin
+  truncate public.source_capture_intents, public.media_assets cascade;
+  -- MARKER v2: an unsupported capture_contract_version fails closed. The live
+  -- CHECK forbids inserting one, so drop it, seed a marker=2 row, prove the RPC
+  -- rejects it, clean up, and RESTORE the CHECK (the invariant still holds). The
+  -- seeded row has an OTHERWISE-VALID descriptor (correct derived path/mime/size)
+  -- so the MARKER guard is the sole thing that can reject — this lets the negative
+  -- control (mutation of just the marker guard) isolate it.
+  alter table public.media_assets drop constraint media_assets_capture_contract_version_check;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (marker_aid,'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111',marker_att,'source','takes','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/11111111-1111-1111-1111-111111111111/'||marker_aid::text||'.webm','video/webm',1048576,'uploading',2);
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','%s',%L::jsonb,'takes','video/webm',1048576)$q$,
+    marker_att, (up||jsonb_build_object('clientAttemptId', marker_att::text))::text), 'source_attempt_conflict');
+  delete from public.media_assets where recording_attempt_id = marker_att;
+  alter table public.media_assets add constraint media_assets_capture_contract_version_check check (capture_contract_version is null or capture_contract_version = 1);
+
+  -- EXACT-PATH BINDING: an in-flight marker=1 row whose storage_path has the
+  -- correct `.webm` SUFFIX but a WRONG body (id) is NOT reused — a naive suffix
+  -- match would wrongly accept it; the RPC compares the FULL derived path.
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (path_aid,'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111',path_att,'source','takes','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/11111111-1111-1111-1111-111111111111/DIFFERENT.webm','video/webm',1048576,'uploading',1);
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','%s',%L::jsonb,'takes','video/webm',1048576)$q$,
+    path_att, (up||jsonb_build_object('clientAttemptId', path_att::text))::text), 'source_attempt_conflict');
+end $$;
+
+\echo == round-3: source-bound recording-script snapshot (verify + persist) ==
+do $$
+declare
+  own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  g uuid := 'c0c0c0c0-0000-0000-0000-0000000000c0';
+  att uuid := 'c1c1c1c1-0000-0000-0000-000000000001';
+  tl jsonb := '{"hook":"Hey there","scenes":[{"scene_number":1,"scene_type":"talking_head","dialogue":"Hello world","show_in_teleprompter":true},{"scene_number":2,"scene_type":"b_roll","dialogue":null,"show_in_teleprompter":false}]}'::jsonb;
+  ssha text; dsha text; r record; persisted text; inp jsonb;
+begin
+  truncate public.source_capture_intents, public.media_assets cascade;
+  -- selected_hook differs from the timeline hook on purpose: the snapshot prefers
+  -- the timeline hook, so the persisted sha must bind to "Hey there", not the column.
+  insert into public.generations(id, user_id, selected_hook, scene_timeline) values (g, own, 'column hook', tl);
+  ssha := public.editor_recording_script_sha256(g, tl, 'column hook');
+  dsha := encode(digest(convert_to(normalize('Hello world', NFC), 'UTF8'), 'sha256'), 'hex');
+
+  -- CORRECT teleprompter input: asserted script sha + dialogue sha match the script.
+  inp := jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,
+    'recordingScriptSha256',ssha,'clientAttemptId',att::text,'recorderClock','mediarecorder-active-time-ms',
+    'acceptedSegments', jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',dsha)));
+  select * into r from public.editor_create_source_asset(own,g,att,inp,'takes','video/webm',1048576);
+  perform pg_temp.expect_true(r.created, 'script: teleprompter create ok');
+  -- snapshot persisted, source-bound, sha == the server-recomputed canonical.
+  select snapshot_sha into persisted from public.source_script_snapshots where source_asset_id = r.asset_id;
+  perform pg_temp.expect_true(persisted = ssha, 'script: persisted snapshot sha == canonical');
+  perform pg_temp.expect_true((select snapshot->>'hook' from public.source_script_snapshots where source_asset_id=r.asset_id) = 'Hey there', 'script: snapshot hook from timeline');
+  -- idempotent retry re-uses the same asset + snapshot (no second snapshot row).
+  select * into r from public.editor_create_source_asset(own,g,att,inp,'takes','video/webm',1048576);
+  perform pg_temp.expect_true(not r.created, 'script: idempotent retry');
+  perform pg_temp.expect_true((select count(*) from public.source_script_snapshots)=1, 'script: one snapshot');
+
+  -- WRONG script sha → capture_script_sha_mismatch (fresh attempt, no orphan).
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','c2c2c2c2-0000-0000-0000-000000000002',%L::jsonb,'takes','video/webm',1048576)$q$,
+    own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',repeat('a',64),'clientAttemptId','c2c2c2c2-0000-0000-0000-000000000002','recorderClock','mediarecorder-active-time-ms','acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',dsha)))::text),
+    'capture_script_sha_mismatch');
+  -- WRONG dialogue sha (script sha correct) → capture_dialogue_sha_mismatch.
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','c3c3c3c3-0000-0000-0000-000000000003',%L::jsonb,'takes','video/webm',1048576)$q$,
+    own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId','c3c3c3c3-0000-0000-0000-000000000003','recorderClock','mediarecorder-active-time-ms','acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',repeat('b',64))))::text),
+    'capture_dialogue_sha_mismatch');
+  -- segment for a scene NOT in the script → fail closed.
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','c4c4c4c4-0000-0000-0000-000000000004',%L::jsonb,'takes','video/webm',1048576)$q$,
+    own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId','c4c4c4c4-0000-0000-0000-000000000004','recorderClock','mediarecorder-active-time-ms','acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',9,'startMs',0,'endMs',2000,'intendedDialogueSha256',dsha)))::text),
+    'capture_dialogue_sha_mismatch');
+  -- the three rejected attempts left NO orphan (only the one good asset remains).
+  perform pg_temp.expect_true((select count(*) from public.media_assets where generation_id=g)=1, 'script: rejects left no orphan');
+  perform pg_temp.expect_true((select count(*) from public.source_script_snapshots)=1, 'script: rejects persisted no snapshot');
+end $$;
+
 \echo == grant posture (service_role only; anon/authenticated denied) ==
 do $$
 declare fns text[] := array[
@@ -203,8 +299,13 @@ declare fns text[] := array[
   'public.editor_capture_intent_input_canonical(jsonb)',
   'public.editor_capture_intent_canonical(jsonb)',
   'public.editor_capture_intent_sha256(jsonb)',
-  'public.editor_validate_capture_input(jsonb, uuid, uuid)',
+  'public.editor_validate_capture_input(jsonb, uuid, uuid, boolean)',
   'public.editor_build_stored_intent(jsonb, uuid, uuid, uuid, text)',
+  'public.editor_snapshot_normalize(text)',
+  'public.editor_recording_script_canonical(uuid, jsonb, text)',
+  'public.editor_recording_script_sha256(uuid, jsonb, text)',
+  'public.editor_verify_capture_dialogue_shas(jsonb, jsonb)',
+  'public.editor_persist_script_binding(uuid, uuid, uuid, text, text, text, text, jsonb, jsonb)',
   'public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint)'];
   f text;
 begin

@@ -318,6 +318,12 @@ export interface BuiltSnapshot {
 //  * scene_timeline absent  -> hook = selected_hook (or null), scenes = [].
 // Fails closed (`script_snapshot_too_large`) when the canonical form exceeds
 // SCRIPT_SNAPSHOT_MAX_BYTES.
+//
+// This is the ONE canonical Recording-Script snapshot — byte-identical to shared
+// buildRecordingScriptSnapshot (@twinai/shared editor/scriptSnapshot) and the DB
+// editor_recording_script_canonical (0091). The worker can't import shared at
+// runtime, so this is a pinned mirror; script-snapshot-parity.test.ts fails if it
+// drifts. Capture computes the same SHA, so a take binds to exactly its script.
 export function buildScriptSnapshot(gen: GenerationScriptRow): BuiltSnapshot {
   const tl = (gen.scene_timeline && typeof gen.scene_timeline === 'object'
     ? gen.scene_timeline as SceneTimelineShape

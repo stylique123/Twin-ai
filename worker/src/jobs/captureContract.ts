@@ -85,6 +85,10 @@ function fail(message: string, code: string): never {
 
 const HEX64_RE = /^[0-9a-f]{64}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+// Frozen allowed key sets (mirror shared): unknown keys FAIL closed.
+const SEGMENT_KEYS = new Set(['sceneNumber', 'startMs', 'endMs', 'intendedDialogueSha256'])
+const INPUT_TOP_KEYS = new Set(['schemaVersion', 'origin', 'generationId', 'recordingScriptSha256', 'clientAttemptId', 'recorderClock', 'acceptedSegments'])
+const STORED_TOP_KEYS = new Set([...INPUT_TOP_KEYS, 'sourceAssetId', 'recordedAt'])
 
 function utf8Len(s: string): number {
   return Buffer.byteLength(s, 'utf8')
@@ -125,8 +129,11 @@ function validateCommonIntentFields(o: Record<string, unknown>): CommonIntentFie
   const seenScenes = new Set<number>()
   let prevEnd = -1
   const acceptedSegments: IntentAcceptedSegment[] = segs.map((raw, i) => {
-    if (typeof raw !== 'object' || raw === null) fail(`segment ${i}: not an object`, 'capture_intent_bad_segments')
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) fail(`segment ${i}: not an object`, 'capture_intent_bad_segments')
     const s = raw as Record<string, unknown>
+    for (const k of Object.keys(s)) {
+      if (!SEGMENT_KEYS.has(k)) fail(`segment ${i}: unknown key ${k}`, 'capture_intent_unknown_segment_key')
+    }
     const sceneNumber = s.sceneNumber
     if (typeof sceneNumber !== 'number' || !Number.isSafeInteger(sceneNumber) || sceneNumber < 1 || sceneNumber > CAPTURE_MAX_INT) fail(`segment ${i}: sceneNumber`, 'capture_intent_bad_scene')
     if (seenScenes.has(sceneNumber)) fail(`segment ${i}: duplicate sceneNumber`, 'capture_intent_dup_scene')
@@ -154,6 +161,9 @@ function validateCommonIntentFields(o: Record<string, unknown>): CommonIntentFie
 // Validate the browser INPUT document (no server-authority fields).
 export function validateCaptureIntentInput(input: unknown): SourceCaptureIntentInputV1 {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
+  for (const k of Object.keys(input as Record<string, unknown>)) {
+    if (!INPUT_TOP_KEYS.has(k)) fail(`intent: unknown key ${k}`, 'capture_intent_unknown_key')
+  }
   const c = validateCommonIntentFields(input as Record<string, unknown>)
   const intent: SourceCaptureIntentInputV1 = {
     schemaVersion: CAPTURE_SCHEMA_VERSION,
@@ -173,6 +183,9 @@ export function validateCaptureIntentInput(input: unknown): SourceCaptureIntentI
 export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
   const o = input as Record<string, unknown>
+  for (const k of Object.keys(o)) {
+    if (!STORED_TOP_KEYS.has(k)) fail(`intent: unknown key ${k}`, 'capture_intent_unknown_key')
+  }
   const c = validateCommonIntentFields(o)
   if (typeof o.sourceAssetId !== 'string' || !UUID_RE.test(o.sourceAssetId)) fail('intent: sourceAssetId', 'capture_intent_bad_id')
   if (typeof o.recordedAt !== 'string' || !RECORDED_AT_RE.test(o.recordedAt)) fail('intent: recordedAt', 'capture_intent_bad_recorded_at')

@@ -29,6 +29,8 @@ import {
   teleprompterScenes,
   estimateDurationSec,
   sceneTimeCapSec,
+  keepBeforeScene,
+  projectAcceptedSegments,
 } from '../../lib/timeline'
 
 // The single scene-by-scene recorder — served at BOTH the live `/record/:id`
@@ -397,19 +399,34 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     // silently strip provenance and recreate the retake defect.
     const segs = segmentsRef.current
     if (!segs.length) throw new Error('No recorded scenes to save — record at least one scene.')
+    // The recording-script SHA is the ONE canonical snapshot (scriptSnapshot.ts),
+    // computed from the FULL, UNFILTERED script (every scene, incl. hidden b-roll) —
+    // the SAME canonical the server recomputes from generations.scene_timeline and
+    // Boot later pins. NOT the filtered teleprompter subset.
     const scriptSha = await captureScriptSha256({
       generation_id: genId,
       hook: timeline.hook,
-      scenes: scenes.map((s) => ({ scene_number: s.scene_number, dialogue: s.dialogue, show_in_teleprompter: s.show_in_teleprompter })),
+      scenes: timeline.scenes.map((s) => ({
+        scene_number: s.scene_number, scene_type: s.scene_type,
+        dialogue: s.dialogue, show_in_teleprompter: s.show_in_teleprompter,
+      })),
     })
+    // Project the recorded windows onto the teleprompter scenes through the ONE
+    // shared authority: it pairs window k ↔ scene k, verifies the windows are
+    // ordered + non-overlapping (rejected bytes fall in the gaps) and the scene
+    // numbers unique, and fails closed on any misalignment — so we never upload
+    // provenance that doesn't match the take.
+    const projected = projectAcceptedSegments(
+      segs.map((s) => ({ startMs: Math.round(s.start * 1000), endMs: Math.round(s.end * 1000) })),
+      scenes,
+    )
     const accepted_segments = []
-    for (let idx = 0; idx < segs.length; idx++) {
+    for (let idx = 0; idx < projected.length; idx++) {
       const scene = scenes[idx]
-      if (!scene) throw new Error('Could not match a recorded scene to the script — please re-record.')
       accepted_segments.push({
-        scene_number: scene.scene_number,
-        start_ms: Math.round(segs[idx].start * 1000),
-        end_ms: Math.round(segs[idx].end * 1000),
+        scene_number: projected[idx].sceneNumber,
+        start_ms: projected[idx].startMs,
+        end_ms: projected[idx].endMs,
         intended_dialogue_sha256: await sha256Hex(normalizeDialogue(scene.dialogue ?? '')),
       })
     }
@@ -481,27 +498,31 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   }
 
   const continueNext = () => { setBetween(false); setI((v) => v + 1) }
-  // Step back one scene. If the scene we're returning to was already committed
-  // (its boundary/window/line are recorded), pop those trailing entries exactly
-  // like retakeScene does — otherwise re-recording it would APPEND a duplicate
-  // window and the scene would appear twice in the take's records.
+  // Truncate the recorded-scene provenance to entries strictly before `target`
+  // through the ONE shared authority (keepBeforeScene), applied identically to all
+  // parallel accumulators so they stay 1:1 with the teleprompter scenes.
+  const truncateRecordedTo = (target: number) => {
+    segmentsRef.current = keepBeforeScene(segmentsRef.current, target)
+    boundsRef.current = keepBeforeScene(boundsRef.current, target)
+    linesRef.current = keepBeforeScene(linesRef.current, target)
+  }
+  // Step back to scene `i-1`. Re-recording the target re-appends it, and any scenes
+  // recorded AFTER the target's now-discarded take are orphaned, so discard the
+  // target scene's window AND every window after it — NOT just the last one (the old
+  // pop-one left the target's stale window in place, duplicating a scene at save).
+  // The recorder clock is never rewound: the flubbed bytes stay in the single blob.
   const goPrevScene = () => {
     if (i === 0 || recording) return
-    if (boundsRef.current.length >= i) {
-      segmentsRef.current.pop()
-      boundsRef.current.pop()
-      linesRef.current.pop()
-    }
+    const target = i - 1
+    truncateRecordedTo(target)
     setBetween(false)
-    setI((v) => v - 1)
+    setI(target)
   }
-  // Retake the scene we just finished: drop its kept window (the flubbed read stays
-  // in the blob) and re-open the SAME scene. The next startScene reopens the window
-  // past the bad read.
+  // Retake the scene we just finished: same truncation with the target set to the
+  // last recorded scene (drops its kept window; the flubbed read stays in the blob).
+  // The next startScene reopens the window past the bad read.
   const retakeScene = () => {
-    segmentsRef.current.pop()
-    boundsRef.current.pop()
-    linesRef.current.pop()
+    truncateRecordedTo(segmentsRef.current.length - 1)
     setBetween(false)
   }
 

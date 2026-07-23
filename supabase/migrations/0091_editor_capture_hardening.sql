@@ -182,6 +182,30 @@ create policy source_capture_manifests_owner_read
   using (owner_id = auth.uid() or owner_id in (select public.workspace_peers()));
 
 -- ---------------------------------------------------------------------------
+-- 4b. SOURCE-BOUND recording-script snapshot (Constitution §5.1 / Boot).
+--     The ONE canonical Recording-Script snapshot, captured at CREATE time and
+--     bound to the source asset — so Boot pins the script the take was recorded
+--     against, NEVER the current (possibly-since-edited) generation script.
+--     Append-only + set-once per source; owner-scoped read RLS.
+-- ---------------------------------------------------------------------------
+create table if not exists public.source_script_snapshots (
+  source_asset_id uuid primary key references public.media_assets(id) on delete cascade,
+  owner_id uuid not null,
+  generation_id uuid,
+  snapshot jsonb not null,
+  snapshot_sha text not null check (snapshot_sha ~ '^[0-9a-f]{64}$'),
+  created_at timestamptz not null default now()
+);
+alter table public.source_script_snapshots enable row level security;
+drop trigger if exists source_script_snapshots_immutable on public.source_script_snapshots;
+create trigger source_script_snapshots_immutable before update or delete on public.source_script_snapshots
+  for each row execute function public.editor_capture_no_mutate();
+drop policy if exists source_script_snapshots_owner_read on public.source_script_snapshots;
+create policy source_script_snapshots_owner_read
+  on public.source_script_snapshots for select
+  using (owner_id = auth.uid() or owner_id in (select public.workspace_peers()));
+
+-- ---------------------------------------------------------------------------
 -- 5. Gate-D (Constitution §10D): ONE server-authoritative, transactional
 --    source-create RPC + its helpers. Everything between the extraction markers
 --    is SELF-CONTAINED (media_assets / generations / source_capture_intents +
@@ -253,21 +277,120 @@ returns text language sql immutable as $$
   select encode(digest(convert_to(public.editor_capture_intent_canonical(p), 'UTF8'), 'sha256'), 'hex')
 $$;
 
+-- ---- ONE canonical Recording-Script snapshot (Constitution §5.1 / Boot) --------
+-- Byte-identical to shared buildRecordingScriptSnapshot: NFC-normalize strings,
+-- collapse every run of WhiteSpace ∪ LineTerminator (JS `\s`: all Unicode Zs plus
+-- TAB/LF/VT/FF/CR and U+FEFF — the class is spelled out so the bytes match) to a
+-- single space, then trim.
+create or replace function public.editor_snapshot_normalize(s text)
+returns text language sql immutable as $$
+  select btrim(regexp_replace(
+    normalize(s, NFC),
+    '[\u0009\u000A\u000B\u000C\u000D\u0020\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000\uFEFF]+',
+    ' ', 'g'))
+$$;
+
+-- Canonical of the FULL, unfiltered recording script from a generation's
+-- scene_timeline + selected_hook. Keys sorted (generationId, hook, scenes,
+-- schemaVersion); each scene sorted (dialogue, sceneNumber, sceneType,
+-- showInTeleprompter). Matches shared canonicalJson exactly.
+create or replace function public.editor_recording_script_canonical(
+  p_generation uuid, p_scene_timeline jsonb, p_selected_hook text
+) returns text language sql immutable as $$
+  with tl as (
+    select case when jsonb_typeof(p_scene_timeline) = 'object' then p_scene_timeline else null end as t
+  ),
+  hk as (
+    select case
+      when (select jsonb_typeof(t->'hook') from tl) = 'string' then (select t->>'hook' from tl)
+      else p_selected_hook end as raw
+  ),
+  hook_norm as (
+    select case when raw is not null and public.editor_snapshot_normalize(raw) <> ''
+      then public.editor_snapshot_normalize(raw) else null end as hn from hk
+  ),
+  body as (
+    select coalesce((
+      select string_agg(
+        '{"dialogue":' || (case when jsonb_typeof(s->'dialogue') = 'string'
+                                then to_jsonb(public.editor_snapshot_normalize(s->>'dialogue'))::text else 'null' end)
+        || ',"sceneNumber":' || (case when jsonb_typeof(s->'scene_number') = 'number'
+                                        and (s->>'scene_number')::numeric = trunc((s->>'scene_number')::numeric)
+                                      then trunc((s->>'scene_number')::numeric)::text else ord::text end)
+        || ',"sceneType":' || (case when jsonb_typeof(s->'scene_type') = 'string'
+                                    then to_jsonb(public.editor_snapshot_normalize(s->>'scene_type'))::text else '"talking_head"' end)
+        || ',"showInTeleprompter":' || (case when (s->'show_in_teleprompter') is distinct from to_jsonb(false) then 'true' else 'false' end)
+        || '}', ',' order by ord)
+      from tl, lateral jsonb_array_elements(coalesce((select t->'scenes' from tl), '[]'::jsonb)) with ordinality as e(s, ord)
+    ), '') as scenes
+  )
+  select '{'
+    || '"generationId":' || to_jsonb(p_generation::text)::text || ','
+    || '"hook":' || (select case when hn is null then 'null' else to_jsonb(hn)::text end from hook_norm) || ','
+    || '"scenes":[' || (select scenes from body) || '],'
+    || '"schemaVersion":1'
+    || '}'
+$$;
+
+create or replace function public.editor_recording_script_sha256(
+  p_generation uuid, p_scene_timeline jsonb, p_selected_hook text
+) returns text language sql immutable as $$
+  select encode(digest(convert_to(
+    public.editor_recording_script_canonical(p_generation, p_scene_timeline, p_selected_hook), 'UTF8'), 'sha256'), 'hex')
+$$;
+
+-- Verify every accepted segment's intendedDialogueSha256 == sha256(NFC(dialogue))
+-- for the scene with that scene_number in scene_timeline (dialogue normalization is
+-- NFC-only, matching shared normalizeDialogue; a missing/null dialogue hashes '').
+-- A segment whose scene_number is absent from the script fails closed.
+create or replace function public.editor_verify_capture_dialogue_shas(
+  p_scene_timeline jsonb, p_segments jsonb
+) returns void language plpgsql immutable as $$
+declare seg jsonb; sc numeric; dlg text; found_scene boolean; want text;
+begin
+  for seg in select value from jsonb_array_elements(coalesce(p_segments, '[]'::jsonb)) loop
+    sc := (seg->>'sceneNumber')::numeric;
+    select true, s->>'dialogue' into found_scene, dlg
+    from jsonb_array_elements(coalesce(p_scene_timeline->'scenes', '[]'::jsonb)) as s
+    where jsonb_typeof(s->'scene_number') = 'number' and (s->>'scene_number')::numeric = sc
+    limit 1;
+    if not coalesce(found_scene, false) then
+      raise exception 'capture_dialogue_sha_mismatch: scene % not in script', sc using errcode = 'raise_exception';
+    end if;
+    want := encode(digest(convert_to(normalize(coalesce(dlg, ''), NFC), 'UTF8'), 'sha256'), 'hex');
+    if (seg->>'intendedDialogueSha256') is distinct from want then
+      raise exception 'capture_dialogue_sha_mismatch: scene %', sc using errcode = 'raise_exception';
+    end if;
+    found_scene := null; dlg := null;
+  end loop;
+end;
+$$;
+
 -- INDEPENDENT full-contract validation of the client SourceCaptureIntentInputV1.
 -- Reads only client-authority keys (server fields ignored, so it also revalidates
 -- a stored doc). Bounded numeric contract: number type + integral + [0, 2^53-1]
 -- (sceneNumber >= 1), checked in `numeric` so a huge value cannot overflow.
 create or replace function public.editor_validate_capture_input(
-  p jsonb, p_uuid_gen uuid default null, p_uuid_attempt uuid default null
+  p jsonb, p_uuid_gen uuid default null, p_uuid_attempt uuid default null, p_allow_server boolean default false
 ) returns void language plpgsql immutable as $$
 declare
-  origin text; segs jsonb; seg jsonb; n int;
+  origin text; segs jsonb; seg jsonb; n int; k text;
   prev_end numeric := -1; seen numeric[] := '{}';
   sc numeric; st numeric; en numeric;
   maxint constant numeric := 9007199254740991; -- 2^53-1
   uuid_re constant text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+  recorded_re constant text := '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$';
+  input_keys constant text[] := array['schemaVersion','origin','generationId','recordingScriptSha256','clientAttemptId','recorderClock','acceptedSegments'];
+  seg_keys constant text[] := array['sceneNumber','startMs','endMs','intendedDialogueSha256'];
 begin
   if p is null or jsonb_typeof(p) <> 'object' then raise exception 'capture_intent_not_object'; end if;
+  -- Unknown top-level keys FAIL (Constitution §5.1). Stored form additionally
+  -- allows the two server-authority keys.
+  for k in select jsonb_object_keys(p) loop
+    if not (k = any(input_keys) or (p_allow_server and k in ('sourceAssetId','recordedAt'))) then
+      raise exception 'capture_intent_unknown_key: %', k;
+    end if;
+  end loop;
   if jsonb_typeof(p->'schemaVersion') <> 'number' or (p->>'schemaVersion')::numeric <> 1 then raise exception 'capture_intent_schema'; end if;
   origin := p->>'origin';
   if origin is null or origin not in ('teleprompter','upload') then raise exception 'capture_intent_bad_origin'; end if;
@@ -301,6 +424,9 @@ begin
   for i in 0 .. n - 1 loop
     seg := segs->i;
     if jsonb_typeof(seg) <> 'object' then raise exception 'capture_intent_bad_segments'; end if;
+    for k in select jsonb_object_keys(seg) loop
+      if not (k = any(seg_keys)) then raise exception 'capture_intent_unknown_segment_key: %', k; end if;
+    end loop;
     if jsonb_typeof(seg->'sceneNumber') <> 'number' then raise exception 'capture_intent_bad_scene'; end if;
     sc := (seg->>'sceneNumber')::numeric;
     if sc <> trunc(sc) or sc < 1 or sc > maxint then raise exception 'capture_intent_bad_scene'; end if;
@@ -316,6 +442,12 @@ begin
     prev_end := en;
     if (seg->>'intendedDialogueSha256') !~ '^[0-9a-f]{64}$' then raise exception 'capture_intent_bad_dialogue_sha'; end if;
   end loop;
+
+  -- Stored form: the server-authority fields must be present + well-formed.
+  if p_allow_server then
+    if (p->>'sourceAssetId') is null or (p->>'sourceAssetId') !~ uuid_re then raise exception 'capture_intent_bad_id'; end if;
+    if (p->>'recordedAt') is null or (p->>'recordedAt') !~ recorded_re then raise exception 'capture_intent_bad_recorded_at'; end if;
+  end if;
 
   -- Byte cap on the INPUT canonical (server fields excluded) — a real value, not
   -- the previous NULL-concatenation no-op.
@@ -342,6 +474,31 @@ create or replace function public.editor_build_stored_intent(
   )
 $$;
 
+-- Verify (teleprompter) + persist the SOURCE-BOUND recording-script snapshot in the
+-- same create transaction. For teleprompter takes the asserted recordingScriptSha256
+-- must equal the server-recomputed snapshot SHA (ONE canonical) and every accepted
+-- segment's intended dialogue SHA must match the script; the canonical is size-capped
+-- exactly like shared. Persist is set-once per source (append-only table).
+create or replace function public.editor_persist_script_binding(
+  p_asset uuid, p_owner uuid, p_generation uuid, p_origin text, p_script_sha text,
+  p_snap_canonical text, p_snap_sha text, p_scene_timeline jsonb, p_segments jsonb
+) returns void language plpgsql as $$
+begin
+  if octet_length(convert_to(p_snap_canonical, 'UTF8')) > 65536 then
+    raise exception 'script_snapshot_too_large' using errcode = 'raise_exception';
+  end if;
+  if p_origin = 'teleprompter' then
+    if p_script_sha is distinct from p_snap_sha then
+      raise exception 'capture_script_sha_mismatch: asserted % vs script %', p_script_sha, p_snap_sha using errcode = 'raise_exception';
+    end if;
+    perform public.editor_verify_capture_dialogue_shas(p_scene_timeline, p_segments);
+  end if;
+  insert into public.source_script_snapshots (source_asset_id, owner_id, generation_id, snapshot, snapshot_sha)
+  values (p_asset, p_owner, p_generation, p_snap_canonical::jsonb, p_snap_sha)
+  on conflict (source_asset_id) do nothing;
+end;
+$$;
+
 create or replace function public.editor_create_source_asset(
   p_owner uuid,
   p_generation uuid,
@@ -359,6 +516,10 @@ declare
   max_open constant int := 5;
   quota constant bigint := 21474836480; -- 20 GB per owner
   gen_owner uuid;
+  gen_scene_timeline jsonb;
+  gen_selected_hook text;
+  snap_canonical text;
+  snap_sha text;
   a public.media_assets;
   existing_intent public.source_capture_intents;
   origin text := p_input->>'origin';
@@ -367,6 +528,7 @@ declare
   recorded_at_str text;
   stored jsonb;
   computed_sha text;
+  -- snap declared above (gen_scene_timeline / snap_canonical / snap_sha)
   new_id uuid;
   new_path text;
   open_count int;
@@ -381,43 +543,63 @@ begin
   -- retries converge AND concurrent DISTINCT attempts cannot both pass a cap.
   perform pg_advisory_xact_lock(hashtextextended(p_owner::text, 0));
 
-  select user_id into gen_owner from public.generations where id = p_generation;
+  select user_id, scene_timeline, selected_hook
+    into gen_owner, gen_scene_timeline, gen_selected_hook
+    from public.generations where id = p_generation;
   if gen_owner is null or gen_owner is distinct from p_owner then
     raise exception 'source_generation_not_owned: % / %', p_owner, p_generation using errcode = 'raise_exception';
   end if;
 
   perform public.editor_validate_capture_input(p_input, p_generation, p_attempt);
 
+  -- ONE canonical recording-script snapshot, bound to THIS source at capture time.
+  -- Computed from the generation's script NOW so Boot later pins the script the take
+  -- was recorded against, never a since-edited generation. The verify (teleprompter
+  -- SHA + dialogue SHAs) and the persist happen ONLY on the two first-persist paths
+  -- below; an idempotent retry converges via the immutable stored-intent comparison
+  -- (so a since-edited generation never breaks a legitimate retry).
+  snap_canonical := public.editor_recording_script_canonical(p_generation, gen_scene_timeline, gen_selected_hook);
+  snap_sha := encode(digest(convert_to(snap_canonical, 'UTF8'), 'sha256'), 'hex');
+
+  -- Row-lock the existing attempt (item 3): serializes this create against the
+  -- validation/ready-completion transaction, so a marker upgrade + intent attach
+  -- cannot race a status flip to `ready` — the ready guard stays authoritative.
   select * into a from public.media_assets
-   where owner_id = p_owner and generation_id = p_generation and recording_attempt_id = p_attempt;
+   where owner_id = p_owner and generation_id = p_generation and recording_attempt_id = p_attempt
+   for update;
 
   if found then
     if a.status in ('rejected','deleted') then
       raise exception 'source_asset_rejected: %', a.id using errcode = 'raise_exception';
     end if;
-    -- The retry's upload descriptor must match the stored asset exactly.
+    -- Marker state machine: only NULL (legacy) or exactly 1 is supported.
+    if a.capture_contract_version is not null and a.capture_contract_version <> 1 then
+      raise exception 'source_attempt_conflict: unsupported capture_contract_version % on %', a.capture_contract_version, a.id using errcode = 'raise_exception';
+    end if;
+    -- EXACT server-derived descriptor equality: bucket, mime, size, and the full
+    -- owner/generation/asset.ext path (not a suffix). Any divergence fails closed
+    -- and leaves the original row unchanged.
     if a.bucket is distinct from p_bucket
        or a.mime_type is distinct from p_mime
        or a.size_bytes is distinct from p_size_bytes
-       or a.storage_path not like ('%.' || ext) then
+       or a.storage_path is distinct from (p_owner::text || '/' || p_generation::text || '/' || a.id::text || '.' || ext) then
       raise exception 'source_attempt_conflict: divergent upload descriptor for %', a.id using errcode = 'raise_exception';
-    end if;
-    -- Marker transition: an eligible in-flight legacy row is atomically upgraded;
-    -- a settled unmarked row must never masquerade as legacy — fail closed.
-    if a.capture_contract_version is null then
-      if a.status in ('uploading','validating') then
-        update public.media_assets set capture_contract_version = 1 where id = a.id;
-        a.capture_contract_version := 1;
-      else
-        raise exception 'source_attempt_conflict: settled legacy asset % cannot be upgraded', a.id using errcode = 'raise_exception';
-      end if;
     end if;
 
     select * into existing_intent from public.source_capture_intents where source_asset_id = a.id;
     if found then
+      -- Row already has an intent. Upgrade a NULL in-flight legacy marker; a
+      -- settled legacy row with an intent is inconsistent → fail closed.
+      if a.capture_contract_version is null then
+        if a.status in ('uploading','validating') then
+          update public.media_assets set capture_contract_version = 1 where id = a.id;
+        else
+          raise exception 'source_attempt_conflict: settled legacy asset % cannot be upgraded', a.id using errcode = 'raise_exception';
+        end if;
+      end if;
       recorded_at_str := existing_intent.intent->>'recordedAt';
       stored := public.editor_build_stored_intent(p_input, a.id, p_generation, p_attempt, recorded_at_str);
-      perform public.editor_validate_capture_input(stored, p_generation, p_attempt);
+      perform public.editor_validate_capture_input(stored, p_generation, p_attempt, true);
       computed_sha := public.editor_capture_intent_sha256(stored);
       -- FULL verify: recomputed sha AND the immutable stored JSON AND every
       -- relational column. A corrupted row whose sha happens to match still fails.
@@ -434,10 +616,20 @@ begin
       return query select a.id, a.storage_path, a.status, existing_intent.intent_sha256, false;
       return;
     end if;
-    -- Just-upgraded / recovery: attach the intent, then RE-READ + fully verify.
+
+    -- No intent yet. Recovery/attach is allowed ONLY for an IN-FLIGHT row (under
+    -- the row lock). A SETTLED row with no intent — legacy OR marker-1 — is an
+    -- inconsistent state and MUST fail closed: never attach provenance after
+    -- ready/rejected/deleted, and never let a marker-1 `ready` source lack it.
+    if a.status not in ('uploading','validating') then
+      raise exception 'source_attempt_conflict: settled asset % has no capture intent', a.id using errcode = 'raise_exception';
+    end if;
+    if a.capture_contract_version is null then
+      update public.media_assets set capture_contract_version = 1 where id = a.id;
+    end if;
     recorded_at_str := to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
     stored := public.editor_build_stored_intent(p_input, a.id, p_generation, p_attempt, recorded_at_str);
-    perform public.editor_validate_capture_input(stored, p_generation, p_attempt);
+    perform public.editor_validate_capture_input(stored, p_generation, p_attempt, true);
     computed_sha := public.editor_capture_intent_sha256(stored);
     insert into public.source_capture_intents
       (source_asset_id, owner_id, generation_id, origin, recording_script_sha256, client_attempt_id, intent, intent_sha256, recorded_at)
@@ -453,6 +645,7 @@ begin
        or existing_intent.client_attempt_id is distinct from p_attempt then
       raise exception 'capture_intent_conflict: a concurrent divergent intent exists for %', a.id using errcode = 'raise_exception';
     end if;
+    perform public.editor_persist_script_binding(a.id, p_owner, p_generation, origin, script_sha, snap_canonical, snap_sha, gen_scene_timeline, p_input->'acceptedSegments');
     return query select a.id, a.storage_path, a.status, existing_intent.intent_sha256, false;
     return;
   end if;
@@ -473,7 +666,7 @@ begin
   new_path := p_owner::text || '/' || p_generation::text || '/' || new_id::text || '.' || ext;
   recorded_at_str := to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
   stored := public.editor_build_stored_intent(p_input, new_id, p_generation, p_attempt, recorded_at_str);
-  perform public.editor_validate_capture_input(stored, p_generation, p_attempt);
+  perform public.editor_validate_capture_input(stored, p_generation, p_attempt, true);
   computed_sha := public.editor_capture_intent_sha256(stored);
 
   insert into public.media_assets
@@ -485,6 +678,8 @@ begin
     (source_asset_id, owner_id, generation_id, origin, recording_script_sha256, client_attempt_id, intent, intent_sha256, recorded_at)
   values (new_id, p_owner, p_generation, origin, script_sha, p_attempt, stored, computed_sha, recorded_at_str::timestamptz);
 
+  perform public.editor_persist_script_binding(new_id, p_owner, p_generation, origin, script_sha, snap_canonical, snap_sha, gen_scene_timeline, p_input->'acceptedSegments');
+
   return query select new_id, new_path, 'uploading'::text, computed_sha, true;
 end;
 $$;
@@ -495,13 +690,23 @@ revoke all on function public.editor_capture_segments_canonical(jsonb) from publ
 revoke all on function public.editor_capture_intent_input_canonical(jsonb) from public, anon, authenticated;
 revoke all on function public.editor_capture_intent_canonical(jsonb) from public, anon, authenticated;
 revoke all on function public.editor_capture_intent_sha256(jsonb) from public, anon, authenticated;
-revoke all on function public.editor_validate_capture_input(jsonb, uuid, uuid) from public, anon, authenticated;
+revoke all on function public.editor_validate_capture_input(jsonb, uuid, uuid, boolean) from public, anon, authenticated;
 revoke all on function public.editor_build_stored_intent(jsonb, uuid, uuid, uuid, text) from public, anon, authenticated;
+revoke all on function public.editor_snapshot_normalize(text) from public, anon, authenticated;
+revoke all on function public.editor_recording_script_canonical(uuid, jsonb, text) from public, anon, authenticated;
+revoke all on function public.editor_recording_script_sha256(uuid, jsonb, text) from public, anon, authenticated;
+revoke all on function public.editor_verify_capture_dialogue_shas(jsonb, jsonb) from public, anon, authenticated;
+revoke all on function public.editor_persist_script_binding(uuid, uuid, uuid, text, text, text, text, jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint) from public, anon, authenticated;
 grant execute on function public.editor_capture_segments_canonical(jsonb) to service_role;
 grant execute on function public.editor_capture_intent_input_canonical(jsonb) to service_role;
 grant execute on function public.editor_capture_intent_canonical(jsonb) to service_role;
 grant execute on function public.editor_capture_intent_sha256(jsonb) to service_role;
-grant execute on function public.editor_validate_capture_input(jsonb, uuid, uuid) to service_role;
+grant execute on function public.editor_validate_capture_input(jsonb, uuid, uuid, boolean) to service_role;
 grant execute on function public.editor_build_stored_intent(jsonb, uuid, uuid, uuid, text) to service_role;
+grant execute on function public.editor_snapshot_normalize(text) to service_role;
+grant execute on function public.editor_recording_script_canonical(uuid, jsonb, text) to service_role;
+grant execute on function public.editor_recording_script_sha256(uuid, jsonb, text) to service_role;
+grant execute on function public.editor_verify_capture_dialogue_shas(jsonb, jsonb) to service_role;
+grant execute on function public.editor_persist_script_binding(uuid, uuid, uuid, text, text, text, text, jsonb, jsonb) to service_role;
 grant execute on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint) to service_role;

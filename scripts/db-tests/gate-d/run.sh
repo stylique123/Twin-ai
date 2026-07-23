@@ -50,15 +50,20 @@ psql -q -f "$HERE/00_schema_subset.sql"
 psql -q -f "$WORK/gate_d_fns.sql"
 # grants live just outside the markers; apply the real revoke/grant statements
 # so the grant-posture assertions exercise the migration's actual posture.
-grep -E '^(revoke|grant) .*editor_(capture|build_stored|create_source|validate_capture)' "$MIG" > "$WORK/grants.sql"
+grep -E '^(revoke|grant) .*public\.editor_(capture_segments|capture_intent|validate_capture|build_stored|snapshot_normalize|recording_script|verify_capture|persist_script|create_source)' "$MIG" > "$WORK/grants.sql"
 psql -q -f "$WORK/grants.sql"
 
 echo "== fail-closed assertions (contract matrix, policy, grants) =="
 psql -q -f "$HERE/02_assertions.sql" | grep -E "ALL-ASSERTIONS-PASSED|=="
 
-# concurrency uses a FRESH owner/generation (untouched by caps pre-seeding).
+# concurrency uses a FRESH owner/generation (untouched by caps pre-seeding). The
+# generation carries a real scene_timeline so the divergent-concurrent teleprompter
+# input below can assert the server-recomputed script SHA (source-bound snapshot).
 OWN='dddddddd-dddd-dddd-dddd-dddddddddddd'; GENC='44444444-4444-4444-4444-444444444444'
-psql -q -c "insert into public.generations(id,user_id) values ('$GENC','$OWN');"
+TL='{"hook":"Hey there","scenes":[{"scene_number":1,"scene_type":"talking_head","dialogue":"Hello world","show_in_teleprompter":true}]}'
+psql -q -c "insert into public.generations(id,user_id,selected_hook,scene_timeline) values ('$GENC','$OWN','col hook','$TL'::jsonb);"
+SNAP_SHA=$(psql -tA -c "select public.editor_recording_script_sha256('$GENC','$TL'::jsonb,'col hook')" | tr -d ' ')
+DLG_SHA=$(psql -tA -c "select encode(digest(convert_to(normalize('Hello world', NFC),'UTF8'),'sha256'),'hex')" | tr -d ' ')
 
 echo "== real 5-way concurrency (same attempt) =="
 ATT='77777777-7777-7777-7777-777777777777'
@@ -95,10 +100,30 @@ OPENCNT=$(psql -tA -c "select count(*) from public.media_assets where owner_id='
 if [ "$SUCC" = "1" ] && [ "$OPENCNT" = "5" ]; then echo "  exactly 1 of 3 distinct attempts passed; owner open-count capped at 5"
 else echo "CAP-RACE FAIL successes=$SUCC open=$OPENCNT"; cat "$WORK"/cap*.txt; exit 1; fi
 
+echo "== owner-scoped QUOTA race: 3 concurrent DISTINCT attempts, room for 1 =="
+OWN3='ffffffff-ffff-ffff-ffff-ffffffffffff'; GENF='66666666-6666-6666-6666-666666666666'
+psql -q -c "insert into public.generations(id,user_id) values ('$GENF','$OWN3');"
+# Pre-seed usage so exactly ONE more 1 MiB (1048576) asset fits under the 20 GB
+# (21474836480) quota: seed 21473336480 used → after one create 21474385056 (ok),
+# a second would be 21475433632 (> quota). status 'ready' so open-cap isn't the gate.
+psql -q -c "insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values (gen_random_uuid(),'$OWN3','$GENF',gen_random_uuid(),'source','takes','x','video/webm',21473336480,'ready',1);"
+for i in 1 2 3; do
+  A="ff00000$i-0000-0000-0000-00000000000$i"
+  J='{"schemaVersion":1,"origin":"upload","generationId":"'"$GENF"'","recordingScriptSha256":null,"clientAttemptId":"'"$A"'","recorderClock":"none","acceptedSegments":[]}'
+  psql -tA -c "select created from public.editor_create_source_asset('$OWN3','$GENF','$A','$J'::jsonb,'takes','video/webm',1048576);" > "$WORK/q$i.txt" 2>&1 &
+done
+wait || true  # over-quota children intentionally error
+QSUCC=$( { grep -l '^t$' "$WORK"/q*.txt 2>/dev/null || true; } | wc -l | tr -d ' ')
+QCONF=$( { grep -ci 'source_quota_exceeded' "$WORK"/q1.txt "$WORK"/q2.txt "$WORK"/q3.txt 2>/dev/null || true; } | awk -F: '{s+=$2} END{print s+0}')
+QUSED=$(psql -tA -c "select coalesce(sum(size_bytes),0) from public.media_assets where owner_id='$OWN3' and status<>'deleted'")
+if [ "$QSUCC" = "1" ] && [ "$QCONF" = "2" ] && [ "$QUSED" -le 21474836480 ]; then
+  echo "  exactly 1 of 3 distinct attempts passed; 2 stable source_quota_exceeded; used<=quota"
+else echo "QUOTA-RACE FAIL succ=$QSUCC conf=$QCONF used=$QUSED"; cat "$WORK"/q*.txt; exit 1; fi
+
 echo "== divergent concurrent input (same fresh attempt) =="
 ATT2='88888888-8888-8888-8888-888888888888'
 UP='{"schemaVersion":1,"origin":"upload","generationId":"'"$GENC"'","recordingScriptSha256":null,"clientAttemptId":"'"$ATT2"'","recorderClock":"none","acceptedSegments":[]}'
-TEL='{"schemaVersion":1,"origin":"teleprompter","generationId":"'"$GENC"'","recordingScriptSha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","clientAttemptId":"'"$ATT2"'","recorderClock":"mediarecorder-active-time-ms","acceptedSegments":[{"sceneNumber":1,"startMs":0,"endMs":2000,"intendedDialogueSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}'
+TEL='{"schemaVersion":1,"origin":"teleprompter","generationId":"'"$GENC"'","recordingScriptSha256":"'"$SNAP_SHA"'","clientAttemptId":"'"$ATT2"'","recorderClock":"mediarecorder-active-time-ms","acceptedSegments":[{"sceneNumber":1,"startMs":0,"endMs":2000,"intendedDialogueSha256":"'"$DLG_SHA"'"}]}'
 psql -tA -c "select created from public.editor_create_source_asset('$OWN','$GENC','$ATT2','$UP'::jsonb,'takes','video/webm',1048576);" > "$WORK/d1.txt" 2>&1 &
 psql -tA -c "select created from public.editor_create_source_asset('$OWN','$GENC','$ATT2','$TEL'::jsonb,'takes','video/webm',1048576);" > "$WORK/d2.txt" 2>&1 &
 wait || true  # some concurrent children intentionally error (cap/conflict)
@@ -121,15 +146,46 @@ echo "== negative controls (harness must FAIL when a guarantee is broken) =="
 psql -q -c "create or replace function public.editor_capture_intent_canonical(p jsonb) returns text language sql immutable as \$\$ select 'BROKEN' \$\$;"
 if node "$HERE/parity_check.mjs" "$WORK/ts.json" >/dev/null 2>&1; then
   echo "NEGATIVE-CONTROL FAIL: broken canonical still passed parity"; exit 1; fi
-echo "  (a) broken canonical → parity correctly FAILED"
-# (b) break the validator (no-op) → the REAL assertion GATE (02_assertions.sql)
-#     must now FAIL (nonzero). This proves the gate has teeth, not just that a
-#     single hostile input slips.
+echo "  (a) broken intent canonical → parity correctly FAILED"
+# (a2) break the RECORDING-SCRIPT canonical → the script-snapshot parity MUST fail.
+psql -q -f "$WORK/gate_d_fns.sql" >/dev/null   # restore intent canonical first
+psql -q -c "create or replace function public.editor_recording_script_canonical(p_generation uuid, p_scene_timeline jsonb, p_selected_hook text) returns text language sql immutable as \$\$ select 'BROKEN' \$\$;"
+if node "$HERE/parity_check.mjs" "$WORK/ts.json" >/dev/null 2>&1; then
+  echo "NEGATIVE-CONTROL FAIL: broken script canonical still passed parity"; exit 1; fi
+echo "  (a2) broken script canonical → parity correctly FAILED"
+psql -q -f "$WORK/gate_d_fns.sql" >/dev/null   # restore
+# (b) break the validator (no-op, SAME 4-arg signature so it REPLACES rather than
+#     overloads) → the REAL assertion GATE (02_assertions.sql) must now FAIL
+#     (nonzero). Proves the gate has teeth, not just that one hostile input slips.
 psql -q -f "$WORK/gate_d_fns.sql" >/dev/null   # restore canonical
-psql -q -c "create or replace function public.editor_validate_capture_input(p jsonb, p_uuid_gen uuid default null, p_uuid_attempt uuid default null) returns void language plpgsql immutable as \$\$ begin return; end \$\$;"
+psql -q -c "create or replace function public.editor_validate_capture_input(p jsonb, p_uuid_gen uuid default null, p_uuid_attempt uuid default null, p_allow_server boolean default false) returns void language plpgsql immutable as \$\$ begin return; end \$\$;"
 if psql -q -f "$HERE/02_assertions.sql" >/dev/null 2>&1; then
   echo "NEGATIVE-CONTROL FAIL: assertion gate PASSED under a no-op validator"; exit 1; fi
 echo "  (b) no-op validator → assertion gate correctly FAILED"
 psql -q -f "$WORK/gate_d_fns.sql" >/dev/null   # restore authoritative
+
+# Mutation controls for the round-3 NEW guarantees: MUTATE the authoritative
+# extracted source (single-line neutralization of one guard), reload, and confirm
+# the REAL gate FAILS. Each mutation targets exactly one guard so all other
+# assertions still pass and the gate fails precisely at the round-3 block.
+mutate_and_expect_fail(){ # $1 = sed expr, $2 = label
+  sed "$1" "$WORK/gate_d_fns.sql" > "$WORK/mutated.sql"
+  if diff -q "$WORK/gate_d_fns.sql" "$WORK/mutated.sql" >/dev/null; then
+    echo "NEGATIVE-CONTROL FAIL: mutation '$2' changed nothing (guard text moved?)"; exit 1; fi
+  psql -q -f "$WORK/mutated.sql" >/dev/null
+  if psql -q -f "$HERE/02_assertions.sql" >/dev/null 2>&1; then
+    echo "NEGATIVE-CONTROL FAIL: gate PASSED with '$2' guard removed"; psql -q -f "$WORK/gate_d_fns.sql" >/dev/null; exit 1; fi
+  echo "  $2"
+  psql -q -f "$WORK/gate_d_fns.sql" >/dev/null   # restore authoritative
+}
+# (c) unknown top-level key guard removed → gate must fail on the unknown-key assertion.
+mutate_and_expect_fail "s/raise exception 'capture_intent_unknown_key: %', k;/null;/" \
+  "(c) unknown-key guard removed → gate correctly FAILED"
+# (d) marker state-machine guard removed → gate must fail on the marker-v2 assertion.
+mutate_and_expect_fail "s/raise exception 'source_attempt_conflict: unsupported capture_contract_version % on %', a.capture_contract_version, a.id using errcode = 'raise_exception';/null;/" \
+  "(d) marker-v2 guard removed → gate correctly FAILED"
+# (e) exact-path descriptor clause neutralized → gate must fail on the exact-path assertion.
+mutate_and_expect_fail "s#or a.storage_path is distinct from (p_owner::text || '/' || p_generation::text || '/' || a.id::text || '.' || ext) then#or false then#" \
+  "(e) exact-path binding removed → gate correctly FAILED"
 
 echo "GATE-D LOCAL VERIFICATION: PASS"

@@ -137,6 +137,23 @@ async function pinCaptureManifestSha(sourceAssetId: string): Promise<string | nu
   return sha
 }
 
+// The SOURCE-BOUND recording-script snapshot persisted by the create RPC (0091) at
+// record time. null ONLY for a true legacy source (pre-0091). The persisted snapshot
+// JSON is the canonical shape (schemaVersion/generationId/hook/scenes) and its sha is
+// over the canonical string — exactly what editor_pin_manifest pins.
+async function readSourceScriptSnapshot(sourceAssetId: string): Promise<BuiltSnapshot | null> {
+  const { data, error } = await db
+    .from('source_script_snapshots').select('snapshot, snapshot_sha')
+    .eq('source_asset_id', sourceAssetId).maybeSingle()
+  if (error) throw new Error(`pin: source script snapshot read failed: ${error.message}`)
+  if (!data) return null
+  return {
+    snapshot: (data as { snapshot: Record<string, unknown> }).snapshot,
+    snapshotSha: (data as { snapshot_sha: string }).snapshot_sha,
+    canonicalBytes: 0,
+  }
+}
+
 async function pinManifest(
   job: Job, projectId: string, generationId: string, sourceAssetId: string,
 ): Promise<{ manifest: BuiltManifest; snapshot: BuiltSnapshot; pin: string }> {
@@ -177,8 +194,16 @@ async function pinManifest(
     inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
     brandSnapshotSha, captureManifestSha,
   })
-  const snapshot = buildScriptSnapshot(gen as { id: string; selected_hook: string | null; scene_timeline: unknown })
-  // throws script_snapshot_too_large (fail closed)
+  // The recording-script snapshot is SOURCE-BOUND: the create RPC (0091) captured
+  // the ONE canonical snapshot at record time and persisted it against this source
+  // asset. Boot pins THAT, so a since-edited generation script can never change what
+  // the take was recorded against. Only a true legacy source (pre-0091, no persisted
+  // row) falls back to rebuilding from the generation.
+  const bound = await readSourceScriptSnapshot(sourceAssetId)
+  const snapshot = bound
+    ?? buildScriptSnapshot(gen as { id: string; selected_hook: string | null; scene_timeline: unknown })
+  // buildScriptSnapshot throws script_snapshot_too_large (fail closed); the create
+  // RPC applied the identical cap before persisting, so a bound snapshot is in-bounds.
   const { data, error } = await db.rpc('editor_pin_manifest', {
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_manifest: manifest.manifest, p_manifest_sha: manifest.manifestSha,

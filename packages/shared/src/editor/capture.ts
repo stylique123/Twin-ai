@@ -15,6 +15,7 @@
 // the pinned RecordingScene.scene_number. Client timestamps are INTENT; only the
 // normalized manifest (validated against measured duration) is authority.
 import { canonicalJson, utf8ByteLength } from './director'
+import { buildRecordingScriptSnapshot } from './scriptSnapshot'
 
 export const CAPTURE_SCHEMA_VERSION = 1
 export const CAPTURE_NORMALIZATION_VERSION = 'capture-1'
@@ -136,6 +137,10 @@ function fail(message: string, code: string): never {
 
 const HEX64_RE = /^[0-9a-f]{64}$/
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+// Frozen allowed key sets (Constitution §5.1): unknown keys FAIL, never ignored.
+const SEGMENT_KEYS = new Set(['sceneNumber', 'startMs', 'endMs', 'intendedDialogueSha256'])
+const INPUT_TOP_KEYS = new Set(['schemaVersion', 'origin', 'generationId', 'recordingScriptSha256', 'clientAttemptId', 'recorderClock', 'acceptedSegments'])
+const STORED_TOP_KEYS = new Set([...INPUT_TOP_KEYS, 'sourceAssetId', 'recordedAt'])
 
 // ---------------------------------------------------------------------------
 // SHA-256 hex via Web Crypto (browser + Node 20+ + vitest all expose it). The
@@ -158,11 +163,16 @@ export function normalizeDialogue(text: string): string {
   return (text ?? '').normalize('NFC')
 }
 
-// Canonical projection of a recording script for the capture-time script SHA.
-// Bounded, deterministic, independent of the worker's edit-project snapshot (the
-// two need not be equal; this records the script AS CAPTURED).
+// Capture-time recording-script SHA. This is the ONE canonical Recording-Script
+// snapshot (see scriptSnapshot.ts): the SAME canonical the worker pins at Boot and
+// the DB recomputes on create. Capture and Boot MUST agree byte-for-byte so a take
+// binds to exactly the script it was recorded against — the previous "two need not
+// be equal" split is gone. The FULL, unfiltered script is hashed (hidden b-roll
+// scenes are part of the script identity), so callers pass every scene, not just the
+// teleprompter subset.
 export interface CaptureScriptSceneLike {
   scene_number: number
+  scene_type?: string
   dialogue: string | null
   show_in_teleprompter?: boolean
 }
@@ -172,16 +182,11 @@ export interface CaptureScriptLike {
   scenes: CaptureScriptSceneLike[]
 }
 export function canonicalCaptureScript(script: CaptureScriptLike): string {
-  return canonicalJson({
-    schemaVersion: CAPTURE_SCHEMA_VERSION,
+  return buildRecordingScriptSnapshot({
     generationId: String(script.generation_id ?? ''),
-    hook: normalizeDialogue(String(script.hook ?? '')),
-    scenes: script.scenes.map((s) => ({
-      sceneNumber: Number(s.scene_number),
-      dialogue: normalizeDialogue(String(s.dialogue ?? '')),
-      showInTeleprompter: s.show_in_teleprompter !== false,
-    })),
-  })
+    hook: script.hook ?? null,
+    scenes: script.scenes,
+  }).canonical
 }
 export async function captureScriptSha256(script: CaptureScriptLike): Promise<string> {
   return sha256Hex(canonicalCaptureScript(script))
@@ -283,8 +288,11 @@ function validateCommonIntentFields(o: Record<string, unknown>): CommonIntentFie
   const seenScenes = new Set<number>()
   let prevEnd = -1
   const acceptedSegments: IntentAcceptedSegment[] = segs.map((raw, i) => {
-    if (typeof raw !== 'object' || raw === null) fail(`segment ${i}: not an object`, 'capture_intent_bad_segments')
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) fail(`segment ${i}: not an object`, 'capture_intent_bad_segments')
     const s = raw as Record<string, unknown>
+    for (const k of Object.keys(s)) {
+      if (!SEGMENT_KEYS.has(k)) fail(`segment ${i}: unknown key ${k}`, 'capture_intent_unknown_segment_key')
+    }
     const sceneNumber = s.sceneNumber
     if (typeof sceneNumber !== 'number' || !Number.isSafeInteger(sceneNumber) || sceneNumber < 1 || sceneNumber > CAPTURE_MAX_INT) {
       fail(`segment ${i}: sceneNumber`, 'capture_intent_bad_scene')
@@ -323,6 +331,9 @@ function validateCommonIntentFields(o: Record<string, unknown>): CommonIntentFie
 // Validate the BROWSER input document (no server-authority fields).
 export function validateCaptureIntentInput(input: unknown): SourceCaptureIntentInputV1 {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
+  for (const k of Object.keys(input as Record<string, unknown>)) {
+    if (!INPUT_TOP_KEYS.has(k)) fail(`intent: unknown key ${k}`, 'capture_intent_unknown_key')
+  }
   const c = validateCommonIntentFields(input as Record<string, unknown>)
   const intent: SourceCaptureIntentInputV1 = {
     schemaVersion: CAPTURE_SCHEMA_VERSION,
@@ -343,6 +354,9 @@ export function validateCaptureIntentInput(input: unknown): SourceCaptureIntentI
 export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
   const o = input as Record<string, unknown>
+  for (const k of Object.keys(o)) {
+    if (!STORED_TOP_KEYS.has(k)) fail(`intent: unknown key ${k}`, 'capture_intent_unknown_key')
+  }
   const c = validateCommonIntentFields(o)
   if (typeof o.sourceAssetId !== 'string' || !UUID_RE.test(o.sourceAssetId)) fail('intent: sourceAssetId', 'capture_intent_bad_id')
   if (typeof o.recordedAt !== 'string' || !RECORDED_AT_RE.test(o.recordedAt)) fail('intent: recordedAt', 'capture_intent_bad_recorded_at')
