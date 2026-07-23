@@ -51,6 +51,10 @@ const USER_QUOTA_BYTES = Number(Deno.env.get('SOURCE_USER_QUOTA_BYTES') ?? Strin
 // ---------------------------------------------------------------------------
 const HEX64_RE = /^[0-9a-f]{64}$/
 const CAPTURE_SCHEMA_VERSION = 1
+// New-era marker stamped on every source this edge creates. A media_assets row
+// carrying it can never become `ready` without a capture manifest (0090 guard),
+// so absence of provenance fails closed instead of masquerading as legacy.
+const CAPTURE_CONTRACT_VERSION = 1
 const CAPTURE_MIN_SEGMENT_MS = 250
 const CAPTURE_MAX_SEGMENTS = 200
 const CAPTURE_INTENT_MAX_BYTES = 65536
@@ -216,6 +220,13 @@ Deno.serve(async (req: Request) => {
     }
     if (sizeBytes > MAX_BYTES) return json({ error: 'That video is too large (600MB max).' }, 400)
 
+    // Capture provenance is MANDATORY for every new source (record OR upload):
+    // the client always sends it, and requiring it server-side is what makes the
+    // new-era marker meaningful — absence can never masquerade as legacy.
+    if (!body.capture || typeof body.capture !== 'object') {
+      return json({ error: 'capture provenance is required' }, 400)
+    }
+
     // Ownership: the generation must belong to the caller (owner-strict; peers
     // can view a workspace's generations but only the owner records onto them).
     const { data: gen } = await admin
@@ -231,7 +242,7 @@ Deno.serve(async (req: Request) => {
     // failure rejects BEFORE any upload token is minted. Insert is idempotent
     // per asset (unique source_asset_id), so a retry of the same attempt is safe.
     async function attachCapture(assetId: string): Promise<Response | null> {
-      if (!body.capture) return null
+      if (!body.capture) return json({ error: 'capture provenance is required' }, 400)
       const built = await buildCaptureIntent(body.capture, { generationId, sourceAssetId: assetId, attemptId })
       if ('error' in built) return json({ error: `capture: ${built.error}` }, 400)
       const { error: capErr } = await admin.from('source_capture_intents').insert({
@@ -244,8 +255,18 @@ Deno.serve(async (req: Request) => {
         intent: built.intent,
         intent_sha256: built.sha,
       })
-      if (capErr && (capErr as { code?: string }).code !== '23505' && !String(capErr.message ?? '').toLowerCase().includes('duplicate')) {
-        return json({ error: 'Could not record capture intent — try again.' }, 500)
+      if (capErr) {
+        const isConflict = (capErr as { code?: string }).code === '23505' || String(capErr.message ?? '').toLowerCase().includes('duplicate')
+        if (!isConflict) return json({ error: 'Could not record capture intent — try again.' }, 500)
+        // An intent already exists for this asset (idempotent retry). Compare the
+        // CANONICAL intent hash: identical is fine; a CONFLICTING payload must
+        // fail closed with a stable code, never be silently ignored.
+        const { data: existing } = await admin
+          .from('source_capture_intents').select('intent_sha256').eq('source_asset_id', assetId).maybeSingle()
+        if (!existing) return json({ error: 'Could not record capture intent — try again.' }, 500)
+        if (existing.intent_sha256 !== built.sha) {
+          return json({ error: 'capture_intent_conflict: a different capture intent already exists for this recording.' }, 409)
+        }
       }
       return null
     }
@@ -310,6 +331,9 @@ Deno.serve(async (req: Request) => {
       mime_type: contentType,
       size_bytes: sizeBytes,
       status: 'uploading',
+      // New-era marker (stamped atomically): this source MUST have a capture
+      // manifest before it can become ready (0090 guard).
+      capture_contract_version: CAPTURE_CONTRACT_VERSION,
     })
     if (insErr) {
       // Unique-index race: another tab/device created this attempt first.
