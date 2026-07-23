@@ -283,13 +283,107 @@ begin
   perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','c3c3c3c3-0000-0000-0000-000000000003',%L::jsonb,'takes','video/webm',1048576)$q$,
     own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId','c3c3c3c3-0000-0000-0000-000000000003','recorderClock','mediarecorder-active-time-ms','acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',repeat('b',64))))::text),
     'capture_dialogue_sha_mismatch');
-  -- segment for a scene NOT in the script → fail closed.
+  -- segment for a scene NOT in the teleprompter script → fail closed.
   perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','c4c4c4c4-0000-0000-0000-000000000004',%L::jsonb,'takes','video/webm',1048576)$q$,
     own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId','c4c4c4c4-0000-0000-0000-000000000004','recorderClock','mediarecorder-active-time-ms','acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',9,'startMs',0,'endMs',2000,'intendedDialogueSha256',dsha)))::text),
-    'capture_dialogue_sha_mismatch');
+    'capture_segment_not_teleprompter');
   -- the three rejected attempts left NO orphan (only the one good asset remains).
   perform pg_temp.expect_true((select count(*) from public.media_assets where generation_id=g)=1, 'script: rejects left no orphan');
   perform pg_temp.expect_true((select count(*) from public.source_script_snapshots)=1, 'script: rejects persisted no snapshot');
+end $$;
+
+\echo == round-4: script-binding hostile matrix (teleprompter policy + upload no-row) ==
+do $$
+declare
+  own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  g uuid := 'd0d0d0d0-0000-0000-0000-0000000000d0';
+  -- two teleprompter scenes (1,3) + a hidden scene 2. noncontiguous, ordered.
+  tl jsonb := '{"hook":"H","scenes":[{"scene_number":1,"scene_type":"talking_head","dialogue":"one","show_in_teleprompter":true},{"scene_number":2,"scene_type":"b_roll","dialogue":null,"show_in_teleprompter":false},{"scene_number":3,"scene_type":"talking_head","dialogue":"three","show_in_teleprompter":true}]}'::jsonb;
+  ssha text; d1 text; d3 text; r record; att uuid;
+begin
+  truncate public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id, user_id, selected_hook, scene_timeline) values (g, own, 'h', tl);
+  ssha := public.editor_recording_script_sha256(g, tl, 'h');
+  d1 := encode(digest(convert_to(normalize('one', NFC),'UTF8'),'sha256'),'hex');
+  d3 := encode(digest(convert_to(normalize('three', NFC),'UTF8'),'sha256'),'hex');
+
+  -- VALID ordered subset [1,3] (gap over hidden scene 2 is fine).
+  att := 'd1d1d1d1-0000-0000-0000-000000000001';
+  select * into r from public.editor_create_source_asset(own,g,att,
+    jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId',att::text,'recorderClock','mediarecorder-active-time-ms',
+      'acceptedSegments',jsonb_build_array(
+        jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',d1),
+        jsonb_build_object('sceneNumber',3,'startMs',2000,'endMs',4000,'intendedDialogueSha256',d3))),
+    'takes','video/webm',1048576);
+  perform pg_temp.expect_true(r.created, 'r4: valid ordered subset [1,3] ok');
+
+  -- HIDDEN scene accepted (scene 2 is not teleprompter) → not_teleprompter.
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','d2d2d2d2-0000-0000-0000-000000000002',%L::jsonb,'takes','video/webm',1048576)$q$,
+    own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId','d2d2d2d2-0000-0000-0000-000000000002','recorderClock','mediarecorder-active-time-ms',
+      'acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',2,'startMs',0,'endMs',2000,'intendedDialogueSha256',d1)))::text),
+    'capture_segment_not_teleprompter');
+
+  -- OUT-OF-ORDER accepted [3,1] → capture_segment_order.
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','d3d3d3d3-0000-0000-0000-000000000003',%L::jsonb,'takes','video/webm',1048576)$q$,
+    own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId','d3d3d3d3-0000-0000-0000-000000000003','recorderClock','mediarecorder-active-time-ms',
+      'acceptedSegments',jsonb_build_array(
+        jsonb_build_object('sceneNumber',3,'startMs',0,'endMs',2000,'intendedDialogueSha256',d3),
+        jsonb_build_object('sceneNumber',1,'startMs',2000,'endMs',4000,'intendedDialogueSha256',d1)))::text),
+    'capture_segment_order');
+
+  -- DUPLICATE teleprompter scene numbers in the generation script → ambiguous.
+  update public.generations set scene_timeline =
+    '{"hook":"H","scenes":[{"scene_number":1,"scene_type":"talking_head","dialogue":"one","show_in_teleprompter":true},{"scene_number":1,"scene_type":"talking_head","dialogue":"dup","show_in_teleprompter":true}]}'::jsonb
+    where id = g;
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','d4d4d4d4-0000-0000-0000-000000000004',%L::jsonb,'takes','video/webm',1048576)$q$,
+    own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',public.editor_recording_script_sha256(g,(select scene_timeline from public.generations where id=g),'h'),'clientAttemptId','d4d4d4d4-0000-0000-0000-000000000004','recorderClock','mediarecorder-active-time-ms',
+      'acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',d1)))::text),
+    'capture_script_ambiguous_scene');
+
+  -- UPLOAD create persists NO source_script_snapshots row (not recorded-against-script).
+  perform pg_temp.expect_true((select count(*) from public.source_script_snapshots where generation_id=g)=1, 'r4: only the valid teleprompter row so far');
+  insert into public.generations(id, user_id) values ('d5d5d5d5-0000-0000-0000-0000000000d5','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa');
+  select * into r from public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','d5d5d5d5-0000-0000-0000-0000000000d5','d6d6d6d6-0000-0000-0000-000000000006',
+    '{"schemaVersion":1,"origin":"upload","generationId":"d5d5d5d5-0000-0000-0000-0000000000d5","recordingScriptSha256":null,"clientAttemptId":"d6d6d6d6-0000-0000-0000-000000000006","recorderClock":"none","acceptedSegments":[]}'::jsonb,'takes','video/webm',1048576);
+  perform pg_temp.expect_true(r.created, 'r4: upload create ok');
+  perform pg_temp.expect_true((select count(*) from public.source_script_snapshots where source_asset_id=r.asset_id)=0, 'r4: upload has NO script binding row');
+
+  -- APPEND-ONLY: a source_script_snapshots row cannot be updated or deleted directly.
+  perform pg_temp.expect_code(format($q$update public.source_script_snapshots set snapshot_sha=%L where source_asset_id=%L$q$, repeat('0',64), (select source_asset_id from public.source_script_snapshots limit 1)::text), 'capture_row_immutable');
+  perform pg_temp.expect_code(format($q$delete from public.source_script_snapshots where source_asset_id=%L$q$, (select source_asset_id from public.source_script_snapshots limit 1)::text), 'capture_row_immutable');
+end $$;
+
+\echo == round-4: oversize recording script fails closed (byte cap) ==
+do $$
+declare
+  own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+  gb uuid := 'e0e0e0e0-0000-0000-0000-0000000000e0';
+  big jsonb;
+begin
+  -- ~700 scenes × 200-char dialogue → canonical well over the 65536-byte cap.
+  big := jsonb_build_object('hook','H','scenes',
+    (select jsonb_agg(jsonb_build_object('scene_number',gs,'scene_type','talking_head','dialogue',repeat('x',200),'show_in_teleprompter',true))
+     from generate_series(1,700) gs));
+  insert into public.generations(id, user_id, selected_hook, scene_timeline) values (gb, own, 'h', big);
+  -- The create reaches editor_persist_script_binding, whose FIRST guard is the byte cap
+  -- → script_snapshot_too_large (before any sha/dialogue check). A dummy 64-hex sha
+  -- passes input validation; the size guard fires first.
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','e1e1e1e1-0000-0000-0000-000000000001',%L::jsonb,'takes','video/webm',1048576)$q$,
+    own, gb, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',gb::text,'recordingScriptSha256',repeat('a',64),'clientAttemptId','e1e1e1e1-0000-0000-0000-000000000001','recorderClock','mediarecorder-active-time-ms',
+      'acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',repeat('b',64))))::text),
+    'script_snapshot_too_large');
+  perform pg_temp.expect_true((select count(*) from public.media_assets where generation_id=gb)=0, 'oversize: no orphan');
+end $$;
+
+\echo == round-4: script-binding grant posture (anon/authenticated cannot write) ==
+do $$
+begin
+  perform pg_temp.expect_true(not has_table_privilege('anon','public.source_script_snapshots','INSERT'), 'anon no insert');
+  perform pg_temp.expect_true(not has_table_privilege('anon','public.source_script_snapshots','UPDATE'), 'anon no update');
+  perform pg_temp.expect_true(not has_table_privilege('anon','public.source_script_snapshots','DELETE'), 'anon no delete');
+  perform pg_temp.expect_true(not has_table_privilege('authenticated','public.source_script_snapshots','INSERT'), 'authenticated no insert');
+  perform pg_temp.expect_true(not has_table_privilege('authenticated','public.source_script_snapshots','UPDATE'), 'authenticated no update');
+  perform pg_temp.expect_true(not has_table_privilege('authenticated','public.source_script_snapshots','DELETE'), 'authenticated no delete');
 end $$;
 
 \echo == grant posture (service_role only; anon/authenticated denied) ==

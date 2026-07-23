@@ -187,5 +187,16 @@ mutate_and_expect_fail "s/raise exception 'source_attempt_conflict: unsupported 
 # (e) exact-path descriptor clause neutralized → gate must fail on the exact-path assertion.
 mutate_and_expect_fail "s#or a.storage_path is distinct from (p_owner::text || '/' || p_generation::text || '/' || a.id::text || '.' || ext) then#or false then#" \
   "(e) exact-path binding removed → gate correctly FAILED"
+# (f) teleprompter-only persist guard neutralized (upload would be recast as script) →
+#     gate must fail on the round-4 upload-no-row / upload-create assertions.
+mutate_and_expect_fail "s/if p_origin <> 'teleprompter' then return; end if;/if false then return; end if;/" \
+  "(f) upload no-captured-script guard removed → gate correctly FAILED"
+# (g) not-teleprompter segment guard neutralized → gate must fail on the hidden-scene
+#     acceptance assertion (a non-teleprompter scene would slip through).
+mutate_and_expect_fail "s/raise exception 'capture_segment_not_teleprompter: scene %', sc using errcode = 'raise_exception';/null;/" \
+  "(g) not-teleprompter guard removed → gate correctly FAILED"
+# (h) script byte-cap guard neutralized → gate must fail on the oversize assertion.
+mutate_and_expect_fail "s/if octet_length(convert_to(p_snap_canonical, 'UTF8')) > 65536 then/if false then/" \
+  "(h) script byte-cap guard removed → gate correctly FAILED"
 
 echo "GATE-D LOCAL VERIFICATION: PASS"

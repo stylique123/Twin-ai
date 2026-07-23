@@ -92,7 +92,7 @@ create trigger source_capture_manifests_immutable before update or delete on pub
 create table public.source_script_snapshots (
   source_asset_id uuid primary key references public.media_assets(id) on delete cascade,
   owner_id uuid not null,
-  generation_id uuid,
+  generation_id uuid not null,
   snapshot jsonb not null,
   snapshot_sha text not null check (snapshot_sha ~ '^[0-9a-f]{64}$'),
   created_at timestamptz not null default now()

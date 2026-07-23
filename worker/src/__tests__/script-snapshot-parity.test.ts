@@ -6,8 +6,11 @@
 // shared (or from the DB copy the DB↔TS parity harness pins), this fails.
 import { describe, it, expect } from 'vitest'
 import { createHash } from 'node:crypto'
-import { buildScriptSnapshot } from '../jobs/editorManifest.js'
-import { buildRecordingScriptSnapshot } from '../../../packages/shared/src/editor/scriptSnapshot'
+import { buildScriptSnapshot, buildNoCapturedScriptSnapshot, reCanonicalizeBoundSnapshot } from '../jobs/editorManifest.js'
+import {
+  buildRecordingScriptSnapshot, buildNoCapturedScriptSnapshot as sharedNoScript,
+  reCanonicalizeBoundSnapshot as sharedReCanon,
+} from '../../../packages/shared/src/editor/scriptSnapshot'
 
 const sha = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex')
 
@@ -53,6 +56,35 @@ describe('recording-script snapshot parity: worker == shared', () => {
       expect(w.snapshotSha).toBe(sha(JSON.stringify(canonicalize(w.snapshot))))
     })
   }
+})
+
+describe('no-captured-script (upload) parity: worker == shared', () => {
+  it('produces identical canonical + sha for the upload form', () => {
+    const w = buildNoCapturedScriptSnapshot('g1')
+    const s = sharedNoScript('g1')
+    expect(JSON.stringify(canonicalize(w.snapshot))).toBe(s.canonical)
+    expect(w.snapshotSha).toBe(sha(s.canonical))
+    expect(w.snapshot).toEqual({ schemaVersion: 1, capturedScript: false, generationId: 'g1' })
+  })
+})
+
+describe('reCanonicalizeBoundSnapshot parity: worker == shared', () => {
+  const built = buildRecordingScriptSnapshot({
+    generationId: 'g1', hook: 'Hook',
+    scenes: [{ scene_number: 1, scene_type: 'talking_head', dialogue: 'Hello', show_in_teleprompter: true }],
+  })
+  it('re-canonicalizes a valid stored snapshot to identical canonical + sha', () => {
+    const stored = JSON.parse(JSON.stringify(built.snapshot))
+    const w = reCanonicalizeBoundSnapshot(stored)
+    expect(JSON.stringify(canonicalize(w.snapshot))).toBe(sharedReCanon(stored).canonical)
+    expect(w.snapshotSha).toBe(sha(built.canonical))
+  })
+  it('both fail closed on the same corrupt shape (worker throws script_binding_shape)', () => {
+    let code: string | undefined
+    try { reCanonicalizeBoundSnapshot({ evil: 1 }) } catch (e) { code = (e as { code?: string }).code }
+    expect(code).toBe('script_binding_shape')
+    expect(() => sharedReCanon({ evil: 1 })).toThrow('script_binding_shape')
+  })
 })
 
 // Local canonical-JSON (sorted keys) so we can compare the worker snapshot OBJECT to

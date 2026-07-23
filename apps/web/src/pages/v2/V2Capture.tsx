@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { loadRecordingScript, setWpm } from '../../lib/api'
+import { loadRecordingScript, setWpm, establishDurableRecordingScriptLive } from '../../lib/api'
 import { buildRecordingScript } from '../../lib/api'
 import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
 import { buildTeleprompterIntent, captureScriptSha256, sha256Hex, normalizeDialogue } from '../../lib/api'
@@ -41,46 +41,63 @@ export default function V2Capture() {
   const [params] = useSearchParams()
   const mode = params.get('mode') === 'upload' ? 'upload' : 'record'
   const nav = useNavigate()
-  const [timeline, setTimeline] = useState<RecordingScript | null>(null)
-  const [loadFailed, setLoadFailed] = useState(false)
-  const [loadNonce, setLoadNonce] = useState(0) // bump to retry the load
-
-  // Load the persisted Recording Script; if there isn't one (e.g. a blueprint made via
-  // the classic Studio flow), synthesize it from the blueprint in-memory so every
-  // generation is recordable here. A throw OR an unresolvable generation flips to
-  // an error card with Retry — never the "Loading…" screen forever.
-  useEffect(() => {
-    let alive = true
-    setLoadFailed(false)
-    ;(async () => {
-      try {
-        let tl = await loadRecordingScript(id)
-        if (!tl) {
-          const g = await getGeneration(id)
-          if (g) tl = buildRecordingScript({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook })
-        }
-        if (!alive) return
-        if (tl) setTimeline(tl)
-        else setLoadFailed(true)
-      } catch {
-        if (alive) setLoadFailed(true)
-      }
-    })()
-    return () => { alive = false }
-  }, [id, loadNonce])
-
   // Back always returns to the plan (Result) — the single plan screen for the flow.
   const onBack = () => nav(`/result/${id}`)
 
+  // Upload is NOT recorded against a script (Constitution §5.1): it must stay usable
+  // even for a legacy generation with a null scene_timeline. So it never establishes
+  // a Recording Script and never blocks on script durability.
+  if (mode === 'upload') return <UploadMode genId={id} onBack={onBack} />
+  return <RecordGate genId={id} onBack={onBack} />
+}
+
+// Record mode gate: establish ONE DURABLE authoritative Recording Script before the
+// teleprompter is usable. Load the persisted script (or synthesize it from the
+// blueprint for a classic-Studio generation), then PERSIST + RE-READ + PROVE the
+// canonical matches (recordingScriptApi.establishDurableRecordingScript). Recording
+// against an in-memory-only or drifted script would deterministically fail the create
+// RPC's capture_script_sha_mismatch (it verifies against the PERSISTED generation),
+// so we fail here — visibly + retryably — and never start a take that can't be saved.
+function RecordGate({ genId, onBack }: { genId: string; onBack: () => void }) {
+  const [timeline, setTimeline] = useState<RecordingScript | null>(null)
+  const [failed, setFailed] = useState<null | 'load' | 'prepare'>(null)
+  const [nonce, setNonce] = useState(0)
+  useEffect(() => {
+    let alive = true
+    setFailed(null); setTimeline(null)
+    ;(async () => {
+      try {
+        let tl = await loadRecordingScript(genId)
+        if (!tl) {
+          const g = await getGeneration(genId)
+          if (g) tl = buildRecordingScript({ generationId: genId, blueprint: g.blueprint, selectedHook: g.selected_hook })
+        }
+        if (!tl) { if (alive) setFailed('load'); return }
+        const durable = await establishDurableRecordingScriptLive(tl)
+        if (!alive) return
+        if (!durable.ok || !durable.script) { setFailed('prepare'); return }
+        setTimeline(durable.script)
+      } catch {
+        if (alive) setFailed('prepare')
+      }
+    })()
+    return () => { alive = false }
+  }, [genId, nonce])
+
   if (!timeline) {
-    if (loadFailed) {
+    if (failed) {
+      const isPrepare = failed === 'prepare'
       return (
         <div className="min-h-[100dvh] grid place-items-center bg-ink text-cream px-6">
           <div className="max-w-sm text-center">
-            <p className="font-semibold">We couldn't load your video plan</p>
-            <p className="mt-1 text-sm text-white/60">Check your connection and try again — your script is safe in your Library.</p>
+            <p className="font-semibold">{isPrepare ? "We couldn't prepare your script for recording" : "We couldn't load your video plan"}</p>
+            <p className="mt-1 text-sm text-white/60">
+              {isPrepare
+                ? 'Your script must be saved before you record so your take is never lost. Check your connection and try again.'
+                : 'Check your connection and try again — your script is safe in your Library.'}
+            </p>
             <div className="mt-4 flex justify-center gap-2">
-              <button onClick={() => setLoadNonce((n) => n + 1)} className="rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Retry</button>
+              <button onClick={() => setNonce((n) => n + 1)} className="rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Retry</button>
               <button onClick={onBack} className="rounded-xl border border-white/20 px-5 py-2 text-sm text-cream">Back</button>
             </div>
           </div>
@@ -89,9 +106,7 @@ export default function V2Capture() {
     }
     return <div className="min-h-[100dvh] grid place-items-center bg-ink text-sand">Loading…</div>
   }
-  return mode === 'upload'
-    ? <UploadMode genId={id} onBack={onBack} />
-    : <Teleprompter genId={id} timeline={timeline} setTimeline={setTimeline} onBack={onBack} />
+  return <Teleprompter genId={genId} timeline={timeline} setTimeline={setTimeline} onBack={onBack} />
 }
 
 function Teleprompter({ genId, timeline, setTimeline, onBack }: {

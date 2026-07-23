@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-  buildRecordingScriptSnapshot, normalizeSnapshotString, SCRIPT_SNAPSHOT_MAX_BYTES,
+  buildRecordingScriptSnapshot, normalizeSnapshotString,
+  buildNoCapturedScriptSnapshot, reCanonicalizeBoundSnapshot,
 } from '../scriptSnapshot'
+import { SCRIPT_SNAPSHOT_MAX_BYTES } from '../contracts'
 import { captureScriptSha256, canonicalCaptureScript, sha256Hex } from '../capture'
 
 describe('scriptSnapshot: normalizeSnapshotString', () => {
@@ -81,5 +83,52 @@ describe('scriptSnapshot: capture ↔ snapshot are ONE canonical', () => {
     const withoutHidden = { generation_id: 'g', hook: 'h', scenes: [withHidden.scenes[0]] }
     // Dropping the hidden scene MUST change the SHA — the full script is the identity.
     expect(await captureScriptSha256(withHidden)).not.toBe(await captureScriptSha256(withoutHidden))
+  })
+})
+
+describe('scriptSnapshot: no-captured-script (upload) form', () => {
+  it('is a distinct discriminated form, NOT a script snapshot', () => {
+    const up = buildNoCapturedScriptSnapshot('g1')
+    expect(up.snapshot).toEqual({ schemaVersion: 1, capturedScript: false, generationId: 'g1' })
+    // canonical keys sorted: capturedScript, generationId, schemaVersion
+    expect(up.canonical).toBe('{"capturedScript":false,"generationId":"g1","schemaVersion":1}')
+    // must NOT collide with a teleprompter EMPTY-script snapshot for the same gen
+    const emptyTele = buildRecordingScriptSnapshot({ generationId: 'g1', scenes: [] }).canonical
+    expect(up.canonical).not.toBe(emptyTele)
+  })
+})
+
+describe('scriptSnapshot: reCanonicalizeBoundSnapshot (Boot re-validation)', () => {
+  const good = buildRecordingScriptSnapshot({
+    generationId: 'g1', hook: 'Hook',
+    scenes: [{ scene_number: 1, scene_type: 'talking_head', dialogue: 'Hello', show_in_teleprompter: true }],
+  })
+  it('re-canonicalizes a valid stored snapshot to the SAME canonical bytes', () => {
+    // parse→object (jsonb round-trip may reorder keys) then re-canonicalize
+    const stored = JSON.parse(JSON.stringify(good.snapshot))
+    expect(reCanonicalizeBoundSnapshot(stored).canonical).toBe(good.canonical)
+    // key order in the stored object is irrelevant — canonical is stable
+    const reordered = { scenes: good.snapshot.scenes, schemaVersion: 1, generationId: 'g1', hook: 'Hook' }
+    expect(reCanonicalizeBoundSnapshot(reordered).canonical).toBe(good.canonical)
+  })
+  it('fails closed on unknown keys / bad types / bad scene shape', () => {
+    const base = () => JSON.parse(JSON.stringify(good.snapshot))
+    expect(() => reCanonicalizeBoundSnapshot({ ...base(), evil: 1 })).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot({ ...base(), schemaVersion: 2 })).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot({ ...base(), generationId: 123 })).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot({ ...base(), hook: 5 })).toThrow('script_binding_shape')
+    const badScene = base(); badScene.scenes = [{ sceneNumber: 1.5, sceneType: 't', dialogue: null, showInTeleprompter: true }]
+    expect(() => reCanonicalizeBoundSnapshot(badScene)).toThrow('script_binding_shape')
+    const extraSceneKey = base(); extraSceneKey.scenes = [{ sceneNumber: 1, sceneType: 't', dialogue: null, showInTeleprompter: true, x: 1 }]
+    expect(() => reCanonicalizeBoundSnapshot(extraSceneKey)).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot([])).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot(null)).toThrow('script_binding_shape')
+    // the no-captured-script (upload) form is NOT a valid bound script snapshot
+    expect(() => reCanonicalizeBoundSnapshot(buildNoCapturedScriptSnapshot('g1').snapshot)).toThrow('script_binding_shape')
+  })
+  it('tampered content re-canonicalizes to DIFFERENT bytes (so a stale SHA is caught)', () => {
+    const tampered = JSON.parse(JSON.stringify(good.snapshot))
+    tampered.scenes[0].dialogue = 'Goodbye'
+    expect(reCanonicalizeBoundSnapshot(tampered).canonical).not.toBe(good.canonical)
   })
 })

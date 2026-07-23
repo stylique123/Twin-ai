@@ -354,3 +354,46 @@ export function buildScriptSnapshot(gen: GenerationScriptRow): BuiltSnapshot {
   }
   return { snapshot, snapshotSha: sha256Hex(canonical), canonicalBytes }
 }
+
+// UPLOAD provenance — the explicit NO-CAPTURED-SCRIPT form (mirror of shared
+// buildNoCapturedScriptSnapshot). An uploaded file was not recorded against a script,
+// so it gets a distinct, deterministic snapshot (discriminated by capturedScript:false)
+// — NEVER a script snapshot and NEVER derived from the live generation.
+export function buildNoCapturedScriptSnapshot(generationId: string): BuiltSnapshot {
+  const snapshot: Record<string, unknown> = { schemaVersion: 1, capturedScript: false, generationId }
+  const canonical = canonicalJson(snapshot)
+  return { snapshot, snapshotSha: sha256Hex(canonical), canonicalBytes: Buffer.byteLength(canonical, 'utf8') }
+}
+
+// Strictly re-validate + re-canonicalize a SOURCE-BOUND recording-script snapshot read
+// back at Boot (mirror of shared reCanonicalizeBoundSnapshot). Trusts NOTHING about the
+// stored jsonb: checks the exact keyset/types/bounds and re-serializes canonically so
+// Boot recomputes the SHA from CONTENT. Any violation throws a PermanentJobError with a
+// stable code (fail closed). jsonb key ordering is not proof — only the bytes are.
+export function reCanonicalizeBoundSnapshot(raw: unknown): BuiltSnapshot {
+  const bad = (m: string): never => { throw new PermanentJobError(`script_binding_shape: ${m}`, 'script_binding_shape') }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) bad('not an object')
+  const o = raw as Record<string, unknown>
+  if (Object.keys(o).sort().join(',') !== 'generationId,hook,scenes,schemaVersion') bad('unexpected keys')
+  if (o.schemaVersion !== 1) bad('bad schemaVersion')
+  if (typeof o.generationId !== 'string' || o.generationId === '') bad('bad generationId')
+  if (!(o.hook === null || typeof o.hook === 'string')) bad('bad hook')
+  if (!Array.isArray(o.scenes)) bad('scenes not an array')
+  const scenes = (o.scenes as unknown[]).map((s) => {
+    if (s === null || typeof s !== 'object' || Array.isArray(s)) bad('scene not an object')
+    const sc = s as Record<string, unknown>
+    if (Object.keys(sc).sort().join(',') !== 'dialogue,sceneNumber,sceneType,showInTeleprompter') bad('bad scene keys')
+    if (!Number.isInteger(sc.sceneNumber)) bad('bad sceneNumber')
+    if (typeof sc.sceneType !== 'string') bad('bad sceneType')
+    if (!(sc.dialogue === null || typeof sc.dialogue === 'string')) bad('bad dialogue')
+    if (typeof sc.showInTeleprompter !== 'boolean') bad('bad showInTeleprompter')
+    return { sceneNumber: sc.sceneNumber, sceneType: sc.sceneType, dialogue: sc.dialogue, showInTeleprompter: sc.showInTeleprompter }
+  })
+  const snapshot: Record<string, unknown> = { schemaVersion: o.schemaVersion, generationId: o.generationId, hook: o.hook, scenes }
+  const canonical = canonicalJson(snapshot)
+  const canonicalBytes = Buffer.byteLength(canonical, 'utf8')
+  if (canonicalBytes > SCRIPT_SNAPSHOT_MAX_BYTES) {
+    throw new PermanentJobError(`bound script snapshot is ${canonicalBytes} bytes (cap ${SCRIPT_SNAPSHOT_MAX_BYTES})`, 'script_snapshot_too_large')
+  }
+  return { snapshot, snapshotSha: sha256Hex(canonical), canonicalBytes }
+}

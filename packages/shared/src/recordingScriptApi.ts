@@ -4,6 +4,7 @@
 
 import { getClient } from './api'
 import { type RecordingScene, type RecordingScript, type WpmPreset, totalDurationSec } from './recordingScript'
+import { buildRecordingScriptSnapshot } from './editor/scriptSnapshot'
 
 export async function loadRecordingScript(generationId: string): Promise<RecordingScript | null> {
   const { data, error } = await getClient()
@@ -50,6 +51,80 @@ export async function patchRecordingScene(
 
 export async function setWpm(t: RecordingScript, wpm: WpmPreset): Promise<RecordingScript> {
   const next: RecordingScript = { ...t, wpm }
+  // wpm is NOT part of the recording-script snapshot (it never feeds provenance),
+  // so best-effort persistence is correct here.
   await saveRecordingScript(next)
   return next
+}
+
+// STRICT persist: unlike saveRecordingScript, this SURFACES failure. Used to
+// establish a DURABLE authoritative Recording Script before recording, so a
+// provenance-feeding script can never continue in-memory-only.
+export async function saveRecordingScriptStrict(t: RecordingScript): Promise<{ ok: boolean; error?: string }> {
+  const next = { ...t, total_duration_sec: totalDurationSec(t.scenes) }
+  try {
+    const { error } = await getClient()
+      .from('generations')
+      .update({ scene_timeline: next })
+      .eq('id', t.generation_id)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  }
+}
+
+// The ONE canonical recording-script SHA-input for a RecordingScript — the FULL,
+// unfiltered scene list (Constitution §5.1). Same canonical the create RPC and Boot
+// recompute; used here to PROVE the persisted script equals the in-memory one.
+export function recordingScriptCanonical(t: RecordingScript): string {
+  return buildRecordingScriptSnapshot({
+    generationId: t.generation_id,
+    hook: t.hook,
+    scenes: t.scenes.map((s) => ({
+      scene_number: s.scene_number, scene_type: s.scene_type,
+      dialogue: s.dialogue, show_in_teleprompter: s.show_in_teleprompter,
+    })),
+  }).canonical
+}
+
+export type DurableFailReason = 'persist_failed' | 'reload_failed' | 'mismatch'
+export interface DurableScriptResult {
+  ok: boolean
+  script?: RecordingScript
+  reason?: DurableFailReason
+}
+export interface DurableScriptDeps {
+  persist: (t: RecordingScript) => Promise<{ ok: boolean; error?: string }>
+  reload: () => Promise<RecordingScript | null>
+}
+
+// Establish ONE durable, authoritative Recording Script BEFORE record mode is usable
+// (Constitution §5.1). Legacy generations (null scene_timeline) and any in-memory
+// scene/dialogue edit whose save failed are made durable here: PERSIST strictly,
+// RE-READ, and PROVE the re-read canonical equals the in-memory canonical. If
+// persistence or equality cannot be proven, record mode fails visibly + retryably —
+// never continues in-memory — so the take's provenance always binds to a script that
+// the create RPC (which verifies against the PERSISTED generation) will accept.
+// Injectable so the four fixtures (synth+persist success, persist denial, drift,
+// reload failure) are unit-testable without a live DB.
+export async function establishDurableRecordingScript(
+  inMemory: RecordingScript, deps: DurableScriptDeps,
+): Promise<DurableScriptResult> {
+  const persisted = await deps.persist(inMemory)
+  if (!persisted.ok) return { ok: false, reason: 'persist_failed' }
+  const reloaded = await deps.reload()
+  if (!reloaded) return { ok: false, reason: 'reload_failed' }
+  if (recordingScriptCanonical(reloaded) !== recordingScriptCanonical(inMemory)) {
+    return { ok: false, reason: 'mismatch' }
+  }
+  return { ok: true, script: reloaded }
+}
+
+// Live wiring: strict persist + re-read against the real client.
+export async function establishDurableRecordingScriptLive(inMemory: RecordingScript): Promise<DurableScriptResult> {
+  return establishDurableRecordingScript(inMemory, {
+    persist: (t) => saveRecordingScriptStrict(t),
+    reload: () => loadRecordingScript(inMemory.generation_id),
+  })
 }

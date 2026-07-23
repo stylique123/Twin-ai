@@ -188,10 +188,13 @@ create policy source_capture_manifests_owner_read
 --     against, NEVER the current (possibly-since-edited) generation script.
 --     Append-only + set-once per source; owner-scoped read RLS.
 -- ---------------------------------------------------------------------------
+-- generation_id is NOT NULL: a row exists ONLY for a teleprompter take, which always
+-- binds to its generation. Uploads get NO row (their provenance is the no-captured-
+-- script form), so this table can never hold a script-less binding.
 create table if not exists public.source_script_snapshots (
   source_asset_id uuid primary key references public.media_assets(id) on delete cascade,
   owner_id uuid not null,
-  generation_id uuid,
+  generation_id uuid not null,
   snapshot jsonb not null,
   snapshot_sha text not null check (snapshot_sha ~ '^[0-9a-f]{64}$'),
   created_at timestamptz not null default now()
@@ -200,10 +203,14 @@ alter table public.source_script_snapshots enable row level security;
 drop trigger if exists source_script_snapshots_immutable on public.source_script_snapshots;
 create trigger source_script_snapshots_immutable before update or delete on public.source_script_snapshots
   for each row execute function public.editor_capture_no_mutate();
+-- Read: owner + workspace peers. Writes: NONE for anon/authenticated (only the
+-- SECURITY DEFINER create RPC writes, as the table owner). No INSERT/UPDATE/DELETE
+-- policy exists, and the direct table grants are revoked, so a client cannot write.
 drop policy if exists source_script_snapshots_owner_read on public.source_script_snapshots;
 create policy source_script_snapshots_owner_read
   on public.source_script_snapshots for select
   using (owner_id = auth.uid() or owner_id in (select public.workspace_peers()));
+revoke insert, update, delete on public.source_script_snapshots from anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 5. Gate-D (Constitution §10D): ONE server-authoritative, transactional
@@ -339,29 +346,52 @@ create or replace function public.editor_recording_script_sha256(
     public.editor_recording_script_canonical(p_generation, p_scene_timeline, p_selected_hook), 'UTF8'), 'sha256'), 'hex')
 $$;
 
--- Verify every accepted segment's intendedDialogueSha256 == sha256(NFC(dialogue))
--- for the scene with that scene_number in scene_timeline (dialogue normalization is
--- NFC-only, matching shared normalizeDialogue; a missing/null dialogue hashes '').
--- A segment whose scene_number is absent from the script fails closed.
+-- Recorder→DB acceptance policy (Constitution §5.1), UNAMBIGUOUS:
+--   * Build the ORDERED teleprompter scene list (array order, show_in_teleprompter
+--     unless explicitly false). A DUPLICATE scene_number among teleprompter scenes is
+--     ambiguous → capture_script_ambiguous_scene (no arbitrary LIMIT 1 pick).
+--   * Each accepted segment must map to a TELEPROMPTER scene (a hidden/non-teleprompter
+--     or absent scene → capture_segment_not_teleprompter), appear in STRICTLY
+--     INCREASING teleprompter order (a documented ordered subset; gaps allowed) →
+--     capture_segment_order otherwise, and its intendedDialogueSha256 must equal
+--     sha256(NFC(dialogue)) (NFC-only, matching shared normalizeDialogue; null→'').
 create or replace function public.editor_verify_capture_dialogue_shas(
   p_scene_timeline jsonb, p_segments jsonb
 ) returns void language plpgsql immutable as $$
-declare seg jsonb; sc numeric; dlg text; found_scene boolean; want text;
+declare
+  s jsonb; sc numeric;
+  tele_nums numeric[] := '{}';
+  tele_dlg text[] := '{}';
+  seg jsonb; pos int; prev_pos int := 0; want text;
 begin
+  for s in select value from jsonb_array_elements(coalesce(p_scene_timeline->'scenes', '[]'::jsonb)) loop
+    if (s->'show_in_teleprompter') is distinct from to_jsonb(false) then
+      if jsonb_typeof(s->'scene_number') <> 'number' then
+        raise exception 'capture_script_ambiguous_scene: non-numeric teleprompter scene_number' using errcode = 'raise_exception';
+      end if;
+      sc := (s->>'scene_number')::numeric;
+      if sc = any(tele_nums) then
+        raise exception 'capture_script_ambiguous_scene: duplicate scene %', sc using errcode = 'raise_exception';
+      end if;
+      tele_nums := tele_nums || sc;
+      tele_dlg := tele_dlg || coalesce(s->>'dialogue', '');
+    end if;
+  end loop;
+
   for seg in select value from jsonb_array_elements(coalesce(p_segments, '[]'::jsonb)) loop
     sc := (seg->>'sceneNumber')::numeric;
-    select true, s->>'dialogue' into found_scene, dlg
-    from jsonb_array_elements(coalesce(p_scene_timeline->'scenes', '[]'::jsonb)) as s
-    where jsonb_typeof(s->'scene_number') = 'number' and (s->>'scene_number')::numeric = sc
-    limit 1;
-    if not coalesce(found_scene, false) then
-      raise exception 'capture_dialogue_sha_mismatch: scene % not in script', sc using errcode = 'raise_exception';
+    pos := array_position(tele_nums, sc);
+    if pos is null then
+      raise exception 'capture_segment_not_teleprompter: scene %', sc using errcode = 'raise_exception';
     end if;
-    want := encode(digest(convert_to(normalize(coalesce(dlg, ''), NFC), 'UTF8'), 'sha256'), 'hex');
+    if pos <= prev_pos then
+      raise exception 'capture_segment_order: scene % out of teleprompter order', sc using errcode = 'raise_exception';
+    end if;
+    prev_pos := pos;
+    want := encode(digest(convert_to(normalize(tele_dlg[pos], NFC), 'UTF8'), 'sha256'), 'hex');
     if (seg->>'intendedDialogueSha256') is distinct from want then
       raise exception 'capture_dialogue_sha_mismatch: scene %', sc using errcode = 'raise_exception';
     end if;
-    found_scene := null; dlg := null;
   end loop;
 end;
 $$;
@@ -474,25 +504,27 @@ create or replace function public.editor_build_stored_intent(
   )
 $$;
 
--- Verify (teleprompter) + persist the SOURCE-BOUND recording-script snapshot in the
--- same create transaction. For teleprompter takes the asserted recordingScriptSha256
--- must equal the server-recomputed snapshot SHA (ONE canonical) and every accepted
--- segment's intended dialogue SHA must match the script; the canonical is size-capped
--- exactly like shared. Persist is set-once per source (append-only table).
+-- Verify + persist the SOURCE-BOUND recording-script snapshot in the same create
+-- transaction — TELEPROMPTER ONLY. An UPLOAD was not recorded against a script, so it
+-- gets NO source_script_snapshots row (Boot builds the explicit no-captured-script
+-- form deterministically). For teleprompter the asserted recordingScriptSha256 must
+-- equal the server-recomputed snapshot SHA (ONE canonical), every accepted segment's
+-- dialogue SHA + teleprompter membership + order must hold, and the canonical is
+-- size-capped exactly like shared. Persist is set-once per source (append-only table).
 create or replace function public.editor_persist_script_binding(
   p_asset uuid, p_owner uuid, p_generation uuid, p_origin text, p_script_sha text,
   p_snap_canonical text, p_snap_sha text, p_scene_timeline jsonb, p_segments jsonb
 ) returns void language plpgsql as $$
 begin
+  -- Upload: NEVER recast as recorded-against-script — no snapshot row at all.
+  if p_origin <> 'teleprompter' then return; end if;
   if octet_length(convert_to(p_snap_canonical, 'UTF8')) > 65536 then
     raise exception 'script_snapshot_too_large' using errcode = 'raise_exception';
   end if;
-  if p_origin = 'teleprompter' then
-    if p_script_sha is distinct from p_snap_sha then
-      raise exception 'capture_script_sha_mismatch: asserted % vs script %', p_script_sha, p_snap_sha using errcode = 'raise_exception';
-    end if;
-    perform public.editor_verify_capture_dialogue_shas(p_scene_timeline, p_segments);
+  if p_script_sha is distinct from p_snap_sha then
+    raise exception 'capture_script_sha_mismatch: asserted % vs script %', p_script_sha, p_snap_sha using errcode = 'raise_exception';
   end if;
+  perform public.editor_verify_capture_dialogue_shas(p_scene_timeline, p_segments);
   insert into public.source_script_snapshots (source_asset_id, owner_id, generation_id, snapshot, snapshot_sha)
   values (p_asset, p_owner, p_generation, p_snap_canonical::jsonb, p_snap_sha)
   on conflict (source_asset_id) do nothing;

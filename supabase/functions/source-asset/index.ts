@@ -9,14 +9,16 @@
 //              every new-flow object provably has a corresponding intent row.
 //   finalize → verify the caller owns the asset, confirm the object actually
 //              exists in storage with a plausible size, then call the atomic
-//              editor_finalize_source() DB function: uploading→validating and
-//              exactly-one validation job (dedup-keyed) in ONE transaction.
-//              Repeats reconcile — a flip that lost its job gets the job
-//              inserted on the next call; valid user media is never deleted or
-//              reset to a misleading state.
+//              editor_finalize_source() DB function.
 //
 // The browser never chooses paths, never marks an asset ready, and never inserts
 // jobs directly. ffprobe validation runs on the worker (validate_source).
+//
+// TRUST BOUNDARY (Constitution §10D): create runs through the shared, injectable
+// authority runSourceCreate — it REJECTS unknown request/capture/segment keys
+// BEFORE mapping (never sanitizes hostile keys into a valid request), parses only a
+// safe size + allowed MIME, then calls EXACTLY ONE atomic RPC
+// (editor_create_source_asset). The edge performs ZERO direct table writes.
 //
 // Deploy:  supabase functions deploy source-asset
 
@@ -34,19 +36,24 @@ function json(body: unknown, status = 200) {
 const BUCKET = 'takes'
 const MAX_BYTES = 600 * 1024 * 1024 // matches the takes bucket cap
 const MIN_BYTES = 2048 // a real few-second take is tens of KB minimum
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // ---------------------------------------------------------------------------
 // Source Capture (Constitution §5.1 / §10D). The edge PARSES, AUTHENTICATES and
 // NORMALIZES, then calls ONE atomic RPC (editor_create_source_asset). That RPC
 // is the sole authority for provenance, canonicalization/hashing, the new-era
-// marker, and open/quota/descriptor policy — the edge builds no intent, computes
-// no hash, and enforces no cost policy. There is NO second create path.
+// marker, open/quota/descriptor policy, and the source-bound script binding — the
+// edge builds no intent, computes no hash, and enforces no cost policy.
 // ---------------------------------------------------------------------------
 // ---- edge-core (INLINED verbatim from packages/shared/src/editor/sourceCreate.ts
 // + capture.ts; Deno cannot import shared at deploy time). Shared is the single
 // source of truth; edge-source-parity.test.ts asserts these bodies never drift.
 // >>> EDGE-CORE-BEGIN
+const SOURCE_BUCKET = 'takes'
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const CREATE_BODY_KEYS = new Set(['action', 'generation_id', 'recording_attempt_id', 'content_type', 'size_bytes', 'capture'])
+const CAPTURE_SNAKE_KEYS = new Set(['origin', 'recording_script_sha256', 'recorder_clock', 'accepted_segments'])
+const SEGMENT_SNAKE_KEYS = new Set(['scene_number', 'start_ms', 'end_ms', 'intended_dialogue_sha256'])
+
 export function normalizeSourceMime(contentType: string | null | undefined): { baseMime: string; ext: 'webm' | 'mp4' } | null {
   const base = (contentType ?? '').split(';')[0].trim().toLowerCase()
   if (base === 'video/webm') return { baseMime: 'video/webm', ext: 'webm' }
@@ -90,26 +97,124 @@ export function buildCreateInput(
   return input
 }
 
+export interface PlanError { status: number; message: string }
+export interface CreateRpcArgs {
+  p_generation: string
+  p_attempt: string
+  p_input: Record<string, unknown>
+  p_bucket: string
+  p_mime: string
+  p_size_bytes: number
+}
+
+export function buildCreatePlan(
+  body: Record<string, unknown>,
+): { error: PlanError } | { rpcArgs: CreateRpcArgs } {
+  for (const k of Object.keys(body)) {
+    if (!CREATE_BODY_KEYS.has(k)) return { error: { status: 400, message: `Unexpected field: ${k}` } }
+  }
+  const generationId = String(body.generation_id ?? '').trim()
+  const attemptId = String(body.recording_attempt_id ?? '').trim().toLowerCase()
+  if (!UUID_RE.test(generationId)) return { error: { status: 400, message: 'generation_id (uuid) is required' } }
+  if (!UUID_RE.test(attemptId)) return { error: { status: 400, message: 'recording_attempt_id (uuid) is required' } }
+
+  const sizeBytes = safeSizeBytes(body.size_bytes)
+  if (sizeBytes === null) return { error: { status: 400, message: 'That recording is empty or too large — please re-record.' } }
+
+  const norm = normalizeSourceMime(body.content_type as string | null | undefined)
+  if (!norm) return { error: { status: 400, message: 'Unsupported video type — record or pick an MP4/MOV/WebM.' } }
+
+  const capture = body.capture
+  if (!capture || typeof capture !== 'object' || Array.isArray(capture)) {
+    return { error: { status: 400, message: 'capture provenance is required' } }
+  }
+  const cap = capture as Record<string, unknown>
+  for (const k of Object.keys(cap)) {
+    if (!CAPTURE_SNAKE_KEYS.has(k)) return { error: { status: 400, message: `Unexpected capture field: ${k}` } }
+  }
+  const segs = cap.accepted_segments
+  if (Array.isArray(segs)) {
+    for (const s of segs) {
+      if (!s || typeof s !== 'object' || Array.isArray(s)) return { error: { status: 400, message: 'Invalid capture segment' } }
+      for (const k of Object.keys(s as Record<string, unknown>)) {
+        if (!SEGMENT_SNAKE_KEYS.has(k)) return { error: { status: 400, message: `Unexpected segment field: ${k}` } }
+      }
+    }
+  }
+
+  return {
+    rpcArgs: {
+      p_generation: generationId,
+      p_attempt: attemptId,
+      p_input: buildCreateInput(cap, { generationId, clientAttemptId: attemptId }),
+      p_bucket: SOURCE_BUCKET,
+      p_mime: norm.baseMime,
+      p_size_bytes: sizeBytes,
+    },
+  }
+}
+
 export function createErrorStatus(msg: string): number {
   if (msg.includes('source_generation_not_owned')) return 404
   if (msg.includes('source_too_many_open')) return 429
   if (msg.includes('source_quota_exceeded')) return 413
-  if (msg.includes('source_asset_rejected') || msg.includes('source_attempt_conflict') || msg.includes('capture_intent_conflict')) return 409
-  if (msg.includes('source_policy_') || msg.includes('capture_intent_')) return 400
+  if (msg.includes('script_snapshot_too_large')) return 413
+  if (msg.includes('source_asset_rejected')
+    || msg.includes('source_attempt_conflict')
+    || msg.includes('capture_intent_conflict')
+    || msg.includes('capture_script_sha_mismatch')
+    || msg.includes('capture_dialogue_sha_mismatch')
+    || msg.includes('capture_script_ambiguous_scene')
+    || msg.includes('capture_segment_not_teleprompter')
+    || msg.includes('capture_segment_order')) return 409
+  if (msg.includes('source_policy_') || msg.includes('capture_')) return 400
   return 500
 }
 export function mapCreateError(msg: string): string {
   if (msg.includes('source_generation_not_owned')) return 'Generation not found'
   if (msg.includes('source_too_many_open')) return 'Too many recordings are still processing — give them a moment to finish.'
   if (msg.includes('source_quota_exceeded')) return 'Your storage is full — delete some older videos first.'
+  if (msg.includes('script_snapshot_too_large')) return 'Your script is too long to record against — shorten it and try again.'
   if (msg.includes('source_asset_rejected')) return 'This recording was rejected — please record a new take.'
   if (msg.includes('source_attempt_conflict')) return 'This recording attempt already exists with different details.'
   if (msg.includes('capture_intent_conflict')) return 'A different capture already exists for this recording.'
+  if (msg.includes('capture_script_sha_mismatch')) return "This take doesn't match the current script — please re-record."
+  if (msg.includes('capture_dialogue_sha_mismatch')) return "A scene's words don't match the script — please re-record."
+  if (msg.includes('capture_script_ambiguous_scene')) return 'This script has duplicate scenes — regenerate it and try again.'
+  if (msg.includes('capture_segment_not_teleprompter')) return 'A recorded scene is not part of the teleprompter script — please re-record.'
+  if (msg.includes('capture_segment_order')) return 'The recorded scenes are out of order — please re-record.'
   if (msg.includes('source_policy_mime')) return 'Unsupported video type — record or pick an MP4/MOV/WebM.'
   if (msg.includes('source_policy_size')) return 'That recording is empty or too large — please re-record.'
   if (msg.includes('source_policy_bucket')) return 'Upload target not allowed.'
-  if (msg.includes('capture_intent_')) return 'The capture data was invalid — please re-record.'
+  if (msg.includes('capture_')) return 'The capture data was invalid — please re-record.'
   return 'Could not start the upload — try again.'
+}
+
+export interface CreateDeps {
+  createSourceAsset(args: CreateRpcArgs & { p_owner: string }): Promise<{ data: unknown; error: { message: string } | null }>
+  signUpload(path: string): Promise<{ token: string; signedUrl: string } | null>
+}
+export interface CreateResult { status: number; body: Record<string, unknown> }
+
+export async function runSourceCreate(
+  body: Record<string, unknown>, ownerId: string, deps: CreateDeps,
+): Promise<CreateResult> {
+  const plan = buildCreatePlan(body)
+  if ('error' in plan) return { status: plan.error.status, body: { error: plan.error.message } }
+
+  const { data, error } = await deps.createSourceAsset({ p_owner: ownerId, ...plan.rpcArgs })
+  if (error) return { status: createErrorStatus(error.message), body: { error: mapCreateError(error.message) } }
+  const row = (Array.isArray(data) ? data[0] : data) as { asset_id?: string; storage_path?: string; status?: string } | null
+  if (!row || !row.asset_id || !row.storage_path || !row.status) {
+    return { status: 500, body: { error: 'Could not start the upload — try again.' } }
+  }
+
+  const base = { assetId: row.asset_id, bucket: SOURCE_BUCKET, path: row.storage_path, status: row.status }
+  if (row.status === 'ready') return { status: 200, body: { ...base, token: null, signedUrl: null } }
+
+  const sign = await deps.signUpload(row.storage_path)
+  if (!sign) return { status: 500, body: { error: 'Could not authorize the upload — try again.' } }
+  return { status: 200, body: { ...base, token: sign.token, signedUrl: sign.signedUrl } }
 }
 // <<< EDGE-CORE-END
 
@@ -157,66 +262,16 @@ Deno.serve(async (req: Request) => {
     return { token: data.token, signedUrl: data.signedUrl }
   }
 
-  function intentResponse(asset: { id: string; storage_path: string; status: string }, sign: { token: string; signedUrl: string } | null) {
-    return json({
-      assetId: asset.id,
-      bucket: BUCKET,
-      path: asset.storage_path,
-      status: asset.status,
-      token: sign?.token ?? null,
-      signedUrl: sign?.signedUrl ?? null,
-    })
-  }
-
   if (body.action === 'create') {
-    const generationId = (body.generation_id ?? '').trim()
-    const attemptId = (body.recording_attempt_id ?? '').trim().toLowerCase()
-    if (!generationId) return json({ error: 'generation_id is required' }, 400)
-    if (!UUID_RE.test(attemptId)) return json({ error: 'recording_attempt_id (uuid) is required' }, 400)
-    // Wire hygiene: parse only a finite/safe/integral size for the bigint arg;
-    // malformed/unsafe never reaches the RPC. The DB is the sole min/max/quota
-    // authority (source_policy_size / source_quota_exceeded).
-    const sizeBytes = safeSizeBytes(body.size_bytes)
-    if (sizeBytes === null) return json({ error: 'That recording is empty or too large — please re-record.' }, 400)
-
-    // The ONE MIME boundary (Constitution §10D): MediaRecorder reports a
-    // codec-suffixed type (video/webm;codecs=vp9,opus); normalize to the frozen
-    // base MIME the create RPC accepts. Mirrors shared normalizeSourceMime
-    // (packages/shared/src/editor/capture.ts, tested there). Fail closed on
-    // anything outside the allowed set.
-    const norm = normalizeSourceMime(body.content_type)
-    if (!norm) return json({ error: 'Unsupported video type — record or pick an MP4/MOV/WebM.' }, 400)
-
-    // Capture provenance is MANDATORY for every new source (record OR upload).
-    if (!body.capture || typeof body.capture !== 'object') {
-      return json({ error: 'capture provenance is required' }, 400)
-    }
-    // Map the client's snake_case capture payload to the camelCase
-    // SourceCaptureIntentInputV1 the RPC validates (missing recording_script_sha256
-    // key stays MISSING, never manufactured to null). The edge does NOT build,
-    // hash, or persist the intent, and does NOT enforce open/quota/descriptor
-    // policy — the single atomic RPC owns all of that. No alternate create path.
-    const input = buildCreateInput(body.capture, { generationId, clientAttemptId: attemptId })
-
-    const { data, error } = await admin.rpc('editor_create_source_asset', {
-      p_owner: user.id,
-      p_generation: generationId,
-      p_attempt: attemptId,
-      p_input: input,
-      p_bucket: BUCKET,
-      p_mime: norm.baseMime,
-      p_size_bytes: sizeBytes,
+    // The ENTIRE create path is the shared injectable authority: it validates the
+    // full keyset (rejecting unknown request/capture/segment keys with a stable 400
+    // BEFORE mapping), calls editor_create_source_asset EXACTLY once, and performs no
+    // direct table writes. Behavior is pinned by sourceCreate handler tests + parity.
+    const result = await runSourceCreate(body as Record<string, unknown>, user.id, {
+      createSourceAsset: (args) => admin.rpc('editor_create_source_asset', args),
+      signUpload,
     })
-    if (error) return json({ error: mapCreateError(error.message) }, createErrorStatus(error.message))
-    const row = Array.isArray(data) ? data[0] : data
-    if (!row) return json({ error: 'Could not start the upload — try again.' }, 500)
-
-    if (row.status === 'ready') {
-      return intentResponse({ id: row.asset_id, storage_path: row.storage_path, status: row.status }, null)
-    }
-    const sign = await signUpload(row.storage_path)
-    if (!sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
-    return intentResponse({ id: row.asset_id, storage_path: row.storage_path, status: row.status }, sign)
+    return json(result.body, result.status)
   }
 
   if (body.action === 'finalize') {
@@ -249,8 +304,7 @@ Deno.serve(async (req: Request) => {
     if (objectBytes > MAX_BYTES) return json({ error: 'The uploaded file is too large.' }, 409)
 
     // Atomic in the DB: uploading→validating + exactly-one dedup-keyed
-    // validation job, in one transaction. Safe to repeat. The size + etag pin
-    // WHICH bytes were finalized — the validator refuses different bytes.
+    // validation job, in one transaction. Safe to repeat.
     const { data: status, error: finErr } = await admin.rpc('editor_finalize_source', {
       p_asset_id: assetId, p_object_bytes: objectBytes, p_object_etag: objectEtag,
     })

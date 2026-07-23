@@ -41,7 +41,8 @@ import { InspectionCancelledError, loadEligibleSource, runInspectingStage } from
 import { SpeechCancelledError, runTranscribingStage } from './editorSpeech.js'
 import { runAnalyzingStage, type AnalyzeOutcome } from './editorAnalyze.js'
 import { runDirectingStage, type DirectorOutcome } from './editorDirector.js'
-import { buildBootManifest, buildScriptSnapshot, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
+import { buildBootManifest, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
+import { resolveBootScriptSnapshot, type SourceProvenanceState } from './bootScriptPolicy.js'
 import { projectBrandSnapshot, brandSnapshotSha256 } from './brandSnapshot.js'
 import { VerifiedSourceSession } from './sourceSession.js'
 
@@ -137,21 +138,37 @@ async function pinCaptureManifestSha(sourceAssetId: string): Promise<string | nu
   return sha
 }
 
-// The SOURCE-BOUND recording-script snapshot persisted by the create RPC (0091) at
-// record time. null ONLY for a true legacy source (pre-0091). The persisted snapshot
-// JSON is the canonical shape (schemaVersion/generationId/hook/scenes) and its sha is
-// over the canonical string — exactly what editor_pin_manifest pins.
-async function readSourceScriptSnapshot(sourceAssetId: string): Promise<BuiltSnapshot | null> {
+// DB readers for the Boot script policy (the pure policy lives in bootScriptPolicy.ts;
+// these supply it real rows). Kept here because they use the module `db` client.
+async function readSourceProvenanceState(sourceAssetId: string): Promise<SourceProvenanceState> {
+  const { data: asset, error: aErr } = await db
+    .from('media_assets').select('capture_contract_version, owner_id, generation_id')
+    .eq('id', sourceAssetId).maybeSingle()
+  if (aErr) throw new Error(`pin: media_asset read failed: ${aErr.message}`)
+  if (!asset) throw new PermanentJobError(`pin: source asset ${sourceAssetId} missing`, 'source_missing')
+  const { data: intent, error: iErr } = await db
+    .from('source_capture_intents').select('origin, recording_script_sha256')
+    .eq('source_asset_id', sourceAssetId).maybeSingle()
+  if (iErr) throw new Error(`pin: capture intent read failed: ${iErr.message}`)
+  const a = asset as { capture_contract_version: number | null; owner_id: string | null; generation_id: string | null }
+  const i = intent as { origin: string; recording_script_sha256: string | null } | null
+  return {
+    marker: a.capture_contract_version, assetOwner: a.owner_id, assetGeneration: a.generation_id,
+    origin: i ? i.origin : null, intentScriptSha: i ? i.recording_script_sha256 : null,
+  }
+}
+
+// The SOURCE-BOUND recording-script snapshot row (teleprompter only) with its linkage
+// columns, so Boot can verify owner/generation binding + re-canonicalize the content.
+async function readSourceScriptSnapshotRow(sourceAssetId: string):
+  Promise<{ snapshot: unknown; snapshotSha: string; ownerId: string; generationId: string } | null> {
   const { data, error } = await db
-    .from('source_script_snapshots').select('snapshot, snapshot_sha')
+    .from('source_script_snapshots').select('snapshot, snapshot_sha, owner_id, generation_id')
     .eq('source_asset_id', sourceAssetId).maybeSingle()
   if (error) throw new Error(`pin: source script snapshot read failed: ${error.message}`)
   if (!data) return null
-  return {
-    snapshot: (data as { snapshot: Record<string, unknown> }).snapshot,
-    snapshotSha: (data as { snapshot_sha: string }).snapshot_sha,
-    canonicalBytes: 0,
-  }
+  const d = data as { snapshot: unknown; snapshot_sha: string; owner_id: string; generation_id: string }
+  return { snapshot: d.snapshot, snapshotSha: d.snapshot_sha, ownerId: d.owner_id, generationId: d.generation_id }
 }
 
 async function pinManifest(
@@ -194,16 +211,16 @@ async function pinManifest(
     inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
     brandSnapshotSha, captureManifestSha,
   })
-  // The recording-script snapshot is SOURCE-BOUND: the create RPC (0091) captured
-  // the ONE canonical snapshot at record time and persisted it against this source
-  // asset. Boot pins THAT, so a since-edited generation script can never change what
-  // the take was recorded against. Only a true legacy source (pre-0091, no persisted
-  // row) falls back to rebuilding from the generation.
-  const bound = await readSourceScriptSnapshot(sourceAssetId)
-  const snapshot = bound
-    ?? buildScriptSnapshot(gen as { id: string; selected_hook: string | null; scene_timeline: unknown })
-  // buildScriptSnapshot throws script_snapshot_too_large (fail closed); the create
-  // RPC applied the identical cap before persisting, so a bound snapshot is in-bounds.
+  // The recording-script snapshot is SOURCE-BOUND under ONE explicit marker/origin
+  // policy (resolveBootScriptSnapshot): teleprompter → the verified persisted binding;
+  // upload → the no-captured-script form; true legacy → the live generation. A new-era
+  // source NEVER falls back to the live generation, and a corrupt/mismatched/missing
+  // binding fails the job permanently rather than silently pinning the wrong script.
+  const snapshot = await resolveBootScriptSnapshot(
+    sourceAssetId, generationId, ownerId,
+    gen as { id: string; selected_hook: string | null; scene_timeline: unknown },
+    { readState: readSourceProvenanceState, readRow: readSourceScriptSnapshotRow },
+  )
   const { data, error } = await db.rpc('editor_pin_manifest', {
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_manifest: manifest.manifest, p_manifest_sha: manifest.manifestSha,
