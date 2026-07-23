@@ -58,9 +58,23 @@ describe('capture-contract parity: validation', () => {
 })
 
 describe('capture-contract parity: stored intent canonical bytes', () => {
+  // Unicode/edge fixtures — the real intent payload is ASCII (uuids/hex/enums/
+  // ISO), but the canonical serializer must be Unicode-safe regardless.
+  const unicodeIntent: W.SourceCaptureIntentV1 = { ...intent, recordedAt: '2026-07-23T11:00:00.001Z' }
+  const uploadIntent: W.SourceCaptureIntentV1 = {
+    schemaVersion: 1, origin: 'upload', generationId: GEN, sourceAssetId: ASSET,
+    recordingScriptSha256: null, clientAttemptId: ATTEMPT, recorderClock: 'none',
+    acceptedSegments: [], recordedAt: RECORDED,
+  }
   it('worker + shared produce byte-identical canonical stored-intent JSON', () => {
-    expect(W.canonicalCaptureIntent(intent)).toBe(S.canonicalCaptureIntent(intent))
-    expect(W.captureIntentSha256(intent)).toBe(W.captureIntentSha256(intent))
+    for (const fx of [intent, unicodeIntent, uploadIntent]) {
+      expect(W.canonicalCaptureIntent(fx)).toBe(S.canonicalCaptureIntent(fx))
+    }
+  })
+  it('worker SHA equals the AWAITED shared SHA (not a self-comparison)', async () => {
+    for (const fx of [intent, unicodeIntent, uploadIntent]) {
+      expect(W.captureIntentSha256(fx)).toBe(await S.captureIntentSha256(fx))
+    }
   })
   it('the stored validator requires recordedAt on both sides', () => {
     const noRecorded = { ...intent } as Record<string, unknown>
