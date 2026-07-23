@@ -353,6 +353,105 @@ begin
   perform pg_temp.expect_code(format($q$delete from public.source_script_snapshots where source_asset_id=%L$q$, (select source_asset_id from public.source_script_snapshots limit 1)::text), 'capture_row_immutable');
 end $$;
 
+\echo == round-4-closure: GLOBAL scene identity (hidden+tele duplicate) ==
+do $$
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f0f0f0f0-0000-0000-0000-0000000000f0';
+  tl jsonb; ssha text;
+begin
+  truncate public.source_capture_intents, public.media_assets cascade;
+  -- hidden scene 1 + teleprompter scene 1 → a duplicate scene_number ACROSS the full
+  -- array (the reproduced auditor control). Must fail capture_script_ambiguous_scene.
+  tl := '{"hook":"H","scenes":[{"scene_number":1,"scene_type":"b_roll","dialogue":null,"show_in_teleprompter":false},{"scene_number":1,"scene_type":"talking_head","dialogue":"one","show_in_teleprompter":true}]}'::jsonb;
+  insert into public.generations(id,user_id,selected_hook,scene_timeline) values (g,own,'h',tl);
+  ssha := public.editor_recording_script_sha256(g, tl, 'h');
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','f1f1f1f1-0000-0000-0000-000000000001',%L::jsonb,'takes','video/webm',1048576)$q$,
+    own, g, jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId','f1f1f1f1-0000-0000-0000-000000000001','recorderClock','mediarecorder-active-time-ms',
+      'acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',encode(digest(convert_to(normalize('one',NFC),'UTF8'),'sha256'),'hex'))))::text),
+    'capture_script_ambiguous_scene');
+end $$;
+
+\echo == round-4-closure: append-only + sanctioned parent-cascade retention ==
+do $$
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f2f2f2f2-0000-0000-0000-0000000000f2';
+  att uuid := 'f3f3f3f3-0000-0000-0000-000000000003'; tl jsonb; ssha text; dsha text; r record;
+begin
+  truncate public.source_capture_intents, public.media_assets cascade;
+  tl := '{"hook":"H","scenes":[{"scene_number":1,"scene_type":"talking_head","dialogue":"one","show_in_teleprompter":true}]}'::jsonb;
+  insert into public.generations(id,user_id,selected_hook,scene_timeline) values (g,own,'h',tl);
+  ssha := public.editor_recording_script_sha256(g, tl, 'h');
+  dsha := encode(digest(convert_to(normalize('one',NFC),'UTF8'),'sha256'),'hex');
+  select * into r from public.editor_create_source_asset(own,g,att,
+    jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId',att::text,'recorderClock','mediarecorder-active-time-ms',
+      'acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',dsha))),
+    'takes','video/webm',1048576);
+  -- DIRECT update/delete on the INTENT (reproduced auditor control) → immutable.
+  perform pg_temp.expect_code(format($q$delete from public.source_capture_intents where source_asset_id=%L$q$, r.asset_id::text), 'capture_row_immutable');
+  perform pg_temp.expect_code(format($q$update public.source_capture_intents set origin='upload' where source_asset_id=%L$q$, r.asset_id::text), 'capture_row_immutable');
+  -- SANCTIONED parent-cascade retention: deleting the media_assets parent cascades to
+  -- intent + script snapshot (no direct-delete block), leaving NO orphan rows.
+  perform pg_temp.expect_true((select count(*) from public.source_capture_intents where source_asset_id=r.asset_id)=1, 'retention: intent present pre-delete');
+  perform pg_temp.expect_true((select count(*) from public.source_script_snapshots where source_asset_id=r.asset_id)=1, 'retention: binding present pre-delete');
+  delete from public.media_assets where id = r.asset_id; -- parent delete → cascade
+  perform pg_temp.expect_true((select count(*) from public.source_capture_intents where source_asset_id=r.asset_id)=0, 'retention: intent cascaded, no orphan');
+  perform pg_temp.expect_true((select count(*) from public.source_script_snapshots where source_asset_id=r.asset_id)=0, 'retention: binding cascaded, no orphan');
+end $$;
+
+\echo == round-4-closure: conflict-verify script binding (no blind do-nothing) ==
+do $$
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f4f4f4f4-0000-0000-0000-0000000000f4';
+  aid uuid := 'f5f5f5f5-0000-0000-0000-000000000005'; att uuid := 'f6f6f6f6-0000-0000-0000-000000000006';
+  tl jsonb; ssha text; dsha text; inp jsonb;
+begin
+  truncate public.source_capture_intents, public.media_assets cascade;
+  tl := '{"hook":"H","scenes":[{"scene_number":1,"scene_type":"talking_head","dialogue":"one","show_in_teleprompter":true}]}'::jsonb;
+  insert into public.generations(id,user_id,selected_hook,scene_timeline) values (g,own,'h',tl);
+  ssha := public.editor_recording_script_sha256(g, tl, 'h');
+  dsha := encode(digest(convert_to(normalize('one',NFC),'UTF8'),'sha256'),'hex');
+  -- Seed an IN-FLIGHT asset + a DIVERGENT pre-existing binding row (same sha, tampered
+  -- JSON). The create's no-intent recovery path must conflict-verify and fail closed.
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (aid,own,g,att,'source','takes',own::text||'/'||g::text||'/'||aid::text||'.webm','video/webm',1048576,'uploading',1);
+  insert into public.source_script_snapshots(source_asset_id,owner_id,generation_id,snapshot,snapshot_sha)
+    values (aid,own,g, (public.editor_recording_script_canonical(g,tl,'h')::jsonb) || '{"junk":1}'::jsonb, ssha);
+  inp := jsonb_build_object('schemaVersion',1,'origin','teleprompter','generationId',g::text,'recordingScriptSha256',ssha,'clientAttemptId',att::text,'recorderClock','mediarecorder-active-time-ms',
+    'acceptedSegments',jsonb_build_array(jsonb_build_object('sceneNumber',1,'startMs',0,'endMs',2000,'intendedDialogueSha256',dsha)));
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('%s','%s','%s',%L::jsonb,'takes','video/webm',1048576)$q$, own, g, att, inp::text), 'script_binding_conflict');
+end $$;
+
+\echo == round-4-closure: 0090→0091 backfill classification ==
+do $$
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f7f7f7f7-0000-0000-0000-0000000000f7';
+  a_tele uuid := 'f8000000-0000-0000-0000-000000000001'; a_up uuid := 'f8000000-0000-0000-0000-000000000002';
+  a_legacy uuid := 'f8000000-0000-0000-0000-000000000003'; a_bad uuid := 'f8000000-0000-0000-0000-000000000004';
+begin
+  truncate public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  -- Pre-0091 rows (marker NULL). Valid teleprompter (intent+manifest, ready) → marker 1;
+  -- valid upload (intent, uploading) → marker 1; true legacy (no intent) → stays NULL.
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values
+    (a_tele,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'ready',null),
+    (a_up,own,g,gen_random_uuid(),'source','takes','y','video/webm',1024,'uploading',null),
+    (a_legacy,own,g,gen_random_uuid(),'source','takes','z','video/webm',1024,'uploading',null);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at) values
+    (a_tele,own,g,'teleprompter',repeat('a',64),gen_random_uuid(),'{}'::jsonb,repeat('a',64),now()),
+    (a_up,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,repeat('b',64),now());
+  insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version) values
+    (a_tele,own,'teleprompter',repeat('a',64),'{}'::jsonb,repeat('a',64),'v1');
+  perform public.editor_backfill_capture_marker();
+  perform pg_temp.expect_true((select capture_contract_version from public.media_assets where id=a_tele)=1, 'backfill: valid teleprompter → 1');
+  perform pg_temp.expect_true((select capture_contract_version from public.media_assets where id=a_up)=1, 'backfill: valid upload → 1');
+  perform pg_temp.expect_true((select capture_contract_version from public.media_assets where id=a_legacy) is null, 'backfill: true legacy stays NULL');
+  -- Idempotent: a second run changes nothing.
+  perform public.editor_backfill_capture_marker();
+  perform pg_temp.expect_true((select count(*) from public.media_assets where capture_contract_version=1)=2, 'backfill: idempotent');
+  -- INCONSISTENT: a ready source with an intent but NO manifest → fails migration closed.
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values
+    (a_bad,own,g,gen_random_uuid(),'source','takes','w','video/webm',1024,'ready',null);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at) values
+    (a_bad,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,repeat('c',64),now());
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+
 \echo == round-4: oversize recording script fails closed (byte cap) ==
 do $$
 declare

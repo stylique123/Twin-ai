@@ -107,29 +107,51 @@ export function buildNoCapturedScriptSnapshot(generationId: string): BuiltNoCapt
   return { snapshot, canonical: canonicalJson(snapshot) }
 }
 
+// Frozen value bounds for a SOURCE-BOUND recording-script snapshot (Constitution §5.1).
+export const SNAPSHOT_MAX_SCENES = 500
+export const SNAPSHOT_MAX_SCENE_NUMBER = 9007199254740991 // 2^53-1 (JS-safe integer)
+export const SNAPSHOT_MAX_HOOK_CHARS = 4096
+export const SNAPSHOT_MAX_DIALOGUE_CHARS = 4096
+export const SNAPSHOT_MAX_SCENETYPE_CHARS = 64
+
 // Strictly re-validate + re-canonicalize a SOURCE-BOUND recording-script snapshot read
-// back at Boot (Constitution §5.1). Trusts NOTHING about the stored jsonb: it checks
-// the exact keyset/types/bounds and re-serializes canonically so Boot can recompute
-// the SHA from CONTENT and compare to the stored SHA and the capture intent. jsonb key
-// ordering is not proof; only the re-canonicalized bytes are. Throws a stable code on
-// any shape/type/bounds violation.
-export function reCanonicalizeBoundSnapshot(raw: unknown): { canonical: string } {
+// back at Boot (Constitution §5.1). Trusts NOTHING about the stored jsonb: it enforces
+// the FULL frozen shape AND value bounds — exact expected generationId, strings ALREADY
+// in normalized (NFC + collapsed-whitespace + trimmed) form, positive JS-safe-integer
+// scene numbers that are GLOBALLY UNIQUE, bounded scene count + string lengths, a
+// bounded sceneType, and the total canonical byte cap — then re-serializes canonically
+// so Boot recomputes the SHA from CONTENT. jsonb key ordering is not proof; only the
+// re-canonicalized bytes are. Throws a stable code on any violation.
+export function reCanonicalizeBoundSnapshot(raw: unknown, expectedGenerationId: string): { canonical: string } {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) reject('script_binding_shape', 'bound snapshot is not an object')
   const o = raw as Record<string, unknown>
   const keys = Object.keys(o).sort()
   if (keys.join(',') !== 'generationId,hook,scenes,schemaVersion') reject('script_binding_shape', `unexpected keys: ${keys.join(',')}`)
   if (o.schemaVersion !== SCRIPT_SNAPSHOT_SCHEMA_VERSION) reject('script_binding_shape', 'bad schemaVersion')
-  if (typeof o.generationId !== 'string' || o.generationId === '') reject('script_binding_shape', 'bad generationId')
-  if (!(o.hook === null || typeof o.hook === 'string')) reject('script_binding_shape', 'bad hook')
+  if (typeof o.generationId !== 'string' || o.generationId !== expectedGenerationId) reject('script_binding_shape', 'generationId does not match the bound source')
+  if (o.hook !== null) {
+    if (typeof o.hook !== 'string') reject('script_binding_shape', 'bad hook')
+    if ((o.hook as string).length > SNAPSHOT_MAX_HOOK_CHARS) reject('script_binding_shape', 'hook too long')
+    if (normalizeSnapshotString(o.hook as string) !== o.hook) reject('script_binding_shape', 'hook is not in normalized form')
+  }
   if (!Array.isArray(o.scenes)) reject('script_binding_shape', 'scenes not an array')
+  if ((o.scenes as unknown[]).length > SNAPSHOT_MAX_SCENES) reject('script_binding_shape', 'too many scenes')
+  const seen = new Set<number>()
   const scenes = (o.scenes as unknown[]).map((s) => {
     if (s === null || typeof s !== 'object' || Array.isArray(s)) reject('script_binding_shape', 'scene not an object')
     const sc = s as Record<string, unknown>
     const sk = Object.keys(sc).sort()
     if (sk.join(',') !== 'dialogue,sceneNumber,sceneType,showInTeleprompter') reject('script_binding_shape', `bad scene keys: ${sk.join(',')}`)
-    if (!Number.isInteger(sc.sceneNumber)) reject('script_binding_shape', 'bad sceneNumber')
-    if (typeof sc.sceneType !== 'string') reject('script_binding_shape', 'bad sceneType')
-    if (!(sc.dialogue === null || typeof sc.dialogue === 'string')) reject('script_binding_shape', 'bad dialogue')
+    if (!Number.isInteger(sc.sceneNumber) || (sc.sceneNumber as number) < 1 || (sc.sceneNumber as number) > SNAPSHOT_MAX_SCENE_NUMBER) reject('script_binding_shape', 'bad sceneNumber')
+    if (seen.has(sc.sceneNumber as number)) reject('script_binding_shape', 'duplicate sceneNumber')
+    seen.add(sc.sceneNumber as number)
+    if (typeof sc.sceneType !== 'string' || sc.sceneType === '' || (sc.sceneType as string).length > SNAPSHOT_MAX_SCENETYPE_CHARS) reject('script_binding_shape', 'bad sceneType')
+    if (normalizeSnapshotString(sc.sceneType as string) !== sc.sceneType) reject('script_binding_shape', 'sceneType is not in normalized form')
+    if (sc.dialogue !== null) {
+      if (typeof sc.dialogue !== 'string') reject('script_binding_shape', 'bad dialogue')
+      if ((sc.dialogue as string).length > SNAPSHOT_MAX_DIALOGUE_CHARS) reject('script_binding_shape', 'dialogue too long')
+      if (normalizeSnapshotString(sc.dialogue as string) !== sc.dialogue) reject('script_binding_shape', 'dialogue is not in normalized form')
+    }
     if (typeof sc.showInTeleprompter !== 'boolean') reject('script_binding_shape', 'bad showInTeleprompter')
     return { sceneNumber: sc.sceneNumber, sceneType: sc.sceneType, dialogue: sc.dialogue, showInTeleprompter: sc.showInTeleprompter }
   })

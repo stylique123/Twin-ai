@@ -128,3 +128,27 @@ export async function establishDurableRecordingScriptLive(inMemory: RecordingScr
     reload: () => loadRecordingScript(inMemory.generation_id),
   })
 }
+
+// The ONE capture-mode preparation seam (Constitution §5.1), injectable + testable.
+// UPLOAD is NOT recorded against a script: it does ZERO script load/build/persist/reload
+// and is always usable (even for a legacy null timeline). RECORD establishes ONE durable
+// authoritative script (load → else synthesize → strict-persist → reload → prove
+// canonical equality); a load miss, or a persistence/drift failure, blocks recording.
+export type CaptureModeResult =
+  | { ready: true; mode: 'upload' }
+  | { ready: true; mode: 'record'; script: RecordingScript }
+  | { ready: false; mode: 'record'; reason: 'load' | DurableFailReason }
+export interface CaptureModeDeps {
+  loadScript: () => Promise<RecordingScript | null>
+  synthScript: () => Promise<RecordingScript | null> // build from blueprint when none persisted
+  establish: (t: RecordingScript) => Promise<DurableScriptResult>
+}
+export async function prepareCaptureMode(mode: 'upload' | 'record', deps: CaptureModeDeps): Promise<CaptureModeResult> {
+  if (mode === 'upload') return { ready: true, mode: 'upload' } // ZERO script work — upload needs no recorded-against script
+  let tl = await deps.loadScript()
+  if (!tl) tl = await deps.synthScript()
+  if (!tl) return { ready: false, mode: 'record', reason: 'load' }
+  const durable = await deps.establish(tl)
+  if (!durable.ok || !durable.script) return { ready: false, mode: 'record', reason: durable.reason ?? 'persist_failed' }
+  return { ready: true, mode: 'record', script: durable.script }
+}

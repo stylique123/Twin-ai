@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
-  establishDurableRecordingScript, recordingScriptCanonical, type DurableScriptDeps,
+  establishDurableRecordingScript, recordingScriptCanonical, prepareCaptureMode,
+  type DurableScriptDeps, type CaptureModeDeps,
 } from '../recordingScriptApi'
 import type { RecordingScript, RecordingScene } from '../recordingScript'
 
@@ -68,5 +69,40 @@ describe('establishDurableRecordingScript: durable authority before recording', 
       reload: vi.fn(async () => script({ scenes: [scene(1, 'DIFFERENT words'), scene(2, null, false)] })),
     }
     expect(await establishDurableRecordingScript(inMemory, deps)).toEqual({ ok: false, reason: 'mismatch' })
+  })
+})
+
+describe('prepareCaptureMode: the ONE mode seam (item 9)', () => {
+  function modeDeps(over: Partial<CaptureModeDeps> = {}) {
+    const loadScript = vi.fn(async () => null as RecordingScript | null)
+    const synthScript = vi.fn(async () => script())
+    const establish = vi.fn(async () => ({ ok: true, script: script() }))
+    return { loadScript, synthScript, establish, ...over }
+  }
+  const n = (f: unknown) => (f as { mock: { calls: unknown[] } }).mock.calls.length
+
+  it('UPLOAD + null timeline: usable with ZERO script load/build/persist/reload', async () => {
+    const d = modeDeps()
+    const r = await prepareCaptureMode('upload', d)
+    expect(r).toEqual({ ready: true, mode: 'upload' })
+    expect(n(d.loadScript)).toBe(0)
+    expect(n(d.synthScript)).toBe(0)
+    expect(n(d.establish)).toBe(0)
+  })
+  it('RECORD + legacy null: synthesize → establish → ready', async () => {
+    const d = modeDeps() // loadScript returns null → synth used
+    const r = await prepareCaptureMode('record', d)
+    expect(r.ready).toBe(true)
+    expect(n(d.loadScript)).toBe(1)
+    expect(n(d.synthScript)).toBe(1)
+    expect(n(d.establish)).toBe(1)
+  })
+  it('RECORD + no script at all → not ready (reason load)', async () => {
+    const d = modeDeps({ synthScript: vi.fn(async () => null) })
+    expect(await prepareCaptureMode('record', d)).toEqual({ ready: false, mode: 'record', reason: 'load' })
+  })
+  it('RECORD + persistence/drift failure → blocks recording (not ready)', async () => {
+    const d = modeDeps({ loadScript: vi.fn(async () => script()), establish: vi.fn(async () => ({ ok: false, reason: 'persist_failed' as const })) })
+    expect(await prepareCaptureMode('record', d)).toEqual({ ready: false, mode: 'record', reason: 'persist_failed' })
   })
 })

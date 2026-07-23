@@ -108,8 +108,12 @@ export interface CreateRpcArgs {
 }
 
 export function buildCreatePlan(
-  body: Record<string, unknown>,
+  raw: unknown,
 ): { error: PlanError } | { rpcArgs: CreateRpcArgs } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: { status: 400, message: 'Invalid request body' } }
+  }
+  const body = raw as Record<string, unknown>
   for (const k of Object.keys(body)) {
     if (!CREATE_BODY_KEYS.has(k)) return { error: { status: 400, message: `Unexpected field: ${k}` } }
   }
@@ -216,6 +220,43 @@ export async function runSourceCreate(
   if (!sign) return { status: 500, body: { error: 'Could not authorize the upload — try again.' } }
   return { status: 200, body: { ...base, token: sign.token, signedUrl: sign.signedUrl } }
 }
+
+const FINALIZE_BODY_KEYS = new Set(['action', 'asset_id'])
+export interface RequestDeps extends CreateDeps {
+  getUser(): Promise<{ id: string } | null>
+  checkRateLimit(ownerId: string): Promise<boolean> // true = allowed
+  finalize(ownerId: string, assetId: string): Promise<CreateResult>
+}
+export async function handleSourceAssetRequest(body: unknown, deps: RequestDeps): Promise<CreateResult> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { status: 400, body: { error: 'Invalid request body' } }
+  }
+  const b = body as Record<string, unknown>
+  const user = await deps.getUser()
+  if (!user) return { status: 401, body: { error: 'Not authenticated' } }
+
+  if (b.action === 'create') {
+    // Validate the FULL keyset FIRST — an unknown/malformed request never reaches the
+    // rate limiter or the create RPC.
+    const plan = buildCreatePlan(b)
+    if ('error' in plan) return { status: plan.error.status, body: { error: plan.error.message } }
+    if (!(await deps.checkRateLimit(user.id))) {
+      return { status: 429, body: { error: 'Too many uploads at once — give it a few seconds.' } }
+    }
+    return runSourceCreate(b, user.id, deps)
+  }
+
+  if (b.action === 'finalize') {
+    for (const k of Object.keys(b)) {
+      if (!FINALIZE_BODY_KEYS.has(k)) return { status: 400, body: { error: `Unexpected field: ${k}` } }
+    }
+    const assetId = String(b.asset_id ?? '').trim()
+    if (!UUID_RE.test(assetId)) return { status: 400, body: { error: 'asset_id (uuid) is required' } }
+    return deps.finalize(user.id, assetId)
+  }
+
+  return { status: 400, body: { error: 'Unknown action' } }
+}
 // <<< EDGE-CORE-END
 
 Deno.serve(async (req: Request) => {
@@ -230,87 +271,57 @@ Deno.serve(async (req: Request) => {
   })
   const admin = createClient(supabaseUrl, serviceKey)
 
-  const { data: { user } } = await userClient.auth.getUser()
-  if (!user) return json({ error: 'Not authenticated' }, 401)
+  let body: unknown
+  try { body = await req.json() } catch { body = null }
 
-  let body: {
-    action?: string
-    generation_id?: string
-    recording_attempt_id?: string
-    content_type?: string
-    size_bytes?: number
-    asset_id?: string
-    capture?: Record<string, unknown>
-  }
-  try {
-    body = await req.json()
-  } catch {
-    return json({ error: 'Invalid JSON body' }, 400)
-  }
-
-  // Bound intent churn (each create is a row + a future validation job).
-  const { data: rateOk } = await admin.rpc('check_rate_limit', {
-    p_user: user.id, p_action: 'source_asset', p_max: 30, p_window_secs: 60,
-  })
-  if (rateOk === false) return json({ error: 'Too many uploads at once — give it a few seconds.' }, 429)
-
-  // Sign an upload token for the asset's exact object. upsert:true so a retry
-  // of the SAME attempt re-uploads the SAME object instead of erroring.
   async function signUpload(path: string): Promise<{ token: string; signedUrl: string } | null> {
     const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: true })
     if (error || !data) return null
     return { token: data.token, signedUrl: data.signedUrl }
   }
 
-  if (body.action === 'create') {
-    // The ENTIRE create path is the shared injectable authority: it validates the
-    // full keyset (rejecting unknown request/capture/segment keys with a stable 400
-    // BEFORE mapping), calls editor_create_source_asset EXACTLY once, and performs no
-    // direct table writes. Behavior is pinned by sourceCreate handler tests + parity.
-    const result = await runSourceCreate(body as Record<string, unknown>, user.id, {
-      createSourceAsset: (args) => admin.rpc('editor_create_source_asset', args),
-      signUpload,
-    })
-    return json(result.body, result.status)
-  }
-
-  if (body.action === 'finalize') {
-    const assetId = (body.asset_id ?? '').trim()
-    if (!assetId) return json({ error: 'asset_id is required' }, 400)
-
+  // The finalize product authority: verify ownership + that the object really exists,
+  // then the atomic uploading→validating + one dedup-keyed job DB RPC.
+  async function finalize(ownerId: string, assetId: string): Promise<{ status: number; body: Record<string, unknown> }> {
     const { data: asset } = await admin
-      .from('media_assets')
-      .select('id, owner_id, generation_id, bucket, storage_path, status')
-      .eq('id', assetId)
-      .eq('owner_id', user.id)
-      .maybeSingle()
-    if (!asset) return json({ error: 'Asset not found' }, 404)
-    // Idempotent: settled assets just report their state.
-    if (asset.status === 'ready') return json({ ok: true, status: 'ready' })
+      .from('media_assets').select('id, owner_id, generation_id, bucket, storage_path, status')
+      .eq('id', assetId).eq('owner_id', ownerId).maybeSingle()
+    if (!asset) return { status: 404, body: { error: 'Asset not found' } }
+    if (asset.status === 'ready') return { status: 200, body: { ok: true, status: 'ready' } }
     if (asset.status === 'rejected' || asset.status === 'deleted') {
-      return json({ error: 'This upload was rejected — please re-record.' }, 409)
+      return { status: 409, body: { error: 'This upload was rejected — please re-record.' } }
     }
-
-    // The object must really exist before we claim anything about it. HEAD via
-    // the authenticated storage endpoint (service role).
     const head = await fetch(
       `${supabaseUrl}/storage/v1/object/${BUCKET}/${asset.storage_path.split('/').map(encodeURIComponent).join('/')}`,
       { method: 'HEAD', headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
     )
-    if (!head.ok) return json({ error: "The upload didn't complete — try again." }, 409)
+    if (!head.ok) return { status: 409, body: { error: "The upload didn't complete — try again." } }
     const objectBytes = Number(head.headers.get('content-length') ?? '0')
     const objectEtag = head.headers.get('etag')
-    if (objectBytes < MIN_BYTES) return json({ error: 'The uploaded file is empty — please re-record.' }, 409)
-    if (objectBytes > MAX_BYTES) return json({ error: 'The uploaded file is too large.' }, 409)
-
-    // Atomic in the DB: uploading→validating + exactly-one dedup-keyed
-    // validation job, in one transaction. Safe to repeat.
+    if (objectBytes < MIN_BYTES) return { status: 409, body: { error: 'The uploaded file is empty — please re-record.' } }
+    if (objectBytes > MAX_BYTES) return { status: 409, body: { error: 'The uploaded file is too large.' } }
     const { data: status, error: finErr } = await admin.rpc('editor_finalize_source', {
       p_asset_id: assetId, p_object_bytes: objectBytes, p_object_etag: objectEtag,
     })
-    if (finErr) return json({ error: 'Could not queue validation — try again.' }, 500)
-    return json({ ok: true, status: status ?? 'validating' })
+    if (finErr) return { status: 500, body: { error: 'Could not queue validation — try again.' } }
+    return { status: 200, body: { ok: true, status: status ?? 'validating' } }
   }
 
-  return json({ error: 'Unknown action' }, 400)
+  // ONE shared request handler routes parse/auth/action/rate/create/finalize. All
+  // product authority (auth, rate limiter, create RPC, storage signing, finalize RPC)
+  // is injected; the edge only wires it. Malformed/unknown requests 400 before any of it.
+  const result = await handleSourceAssetRequest(body, {
+    getUser: async () => {
+      const { data: { user } } = await userClient.auth.getUser()
+      return user ? { id: user.id } : null
+    },
+    checkRateLimit: async (ownerId) => {
+      const { data } = await admin.rpc('check_rate_limit', { p_user: ownerId, p_action: 'source_asset', p_max: 30, p_window_secs: 60 })
+      return data !== false
+    },
+    createSourceAsset: (args) => admin.rpc('editor_create_source_asset', args),
+    signUpload,
+    finalize,
+  })
+  return json(result.body, result.status)
 })

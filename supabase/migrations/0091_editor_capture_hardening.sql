@@ -35,6 +35,33 @@ alter table public.media_assets
   check (capture_contract_version is null or capture_contract_version = 1);
 
 -- ---------------------------------------------------------------------------
+-- 1b. Capture-table immutability WITH sanctioned retention cascade. 0090 blocked
+--     UPDATE and DELETE unconditionally, which ALSO blocks the FK ON DELETE CASCADE
+--     from media_assets/generations (retention). Replace the shared trigger function
+--     (0090 immutable; the function body is forward-corrected here) with the proven
+--     project pattern (edit_events / media_analyses): UPDATE always fails; a DIRECT
+--     DELETE (pg_trigger_depth()=1) fails, but a cascade delete (depth>1, i.e. the
+--     parent row is being deleted) is permitted so retention leaves no orphan. This
+--     one function backs all three capture tables (intents, manifests, snapshots).
+-- ---------------------------------------------------------------------------
+create or replace function public.editor_capture_no_mutate()
+returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if tg_op = 'UPDATE' then
+    raise exception 'capture_row_immutable: % is append-only', tg_table_name using errcode = 'raise_exception';
+  end if;
+  -- DELETE: direct deletes are forbidden; sanctioned parent-cascade retention is allowed.
+  if pg_trigger_depth() = 1 then
+    raise exception 'capture_row_immutable: % direct deletes are not permitted (retention runs via the parent cascade)', tg_table_name using errcode = 'raise_exception';
+  end if;
+  return old;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
 -- 2. Ready-flip guard: a NEW-ERA source (marker not null) can NEVER become
 --    `ready` without its normalized capture manifest — regardless of origin.
 -- ---------------------------------------------------------------------------
@@ -347,9 +374,12 @@ create or replace function public.editor_recording_script_sha256(
 $$;
 
 -- Recorder→DB acceptance policy (Constitution §5.1), UNAMBIGUOUS:
---   * Build the ORDERED teleprompter scene list (array order, show_in_teleprompter
---     unless explicitly false). A DUPLICATE scene_number among teleprompter scenes is
---     ambiguous → capture_script_ambiguous_scene (no arbitrary LIMIT 1 pick).
+--   * GLOBAL scene identity FIRST: every scene in the FULL authoritative array (hidden
+--     AND teleprompter) must have a valid positive-integer scene_number, and scene_number
+--     must be GLOBALLY UNIQUE across the whole array. A hidden scene colliding with a
+--     teleprompter scene is ambiguous → capture_script_ambiguous_scene.
+--   * Then build the ORDERED teleprompter scene list (array order, show_in_teleprompter
+--     unless explicitly false).
 --   * Each accepted segment must map to a TELEPROMPTER scene (a hidden/non-teleprompter
 --     or absent scene → capture_segment_not_teleprompter), appear in STRICTLY
 --     INCREASING teleprompter order (a documented ordered subset; gaps allowed) →
@@ -359,20 +389,26 @@ create or replace function public.editor_verify_capture_dialogue_shas(
   p_scene_timeline jsonb, p_segments jsonb
 ) returns void language plpgsql immutable as $$
 declare
-  s jsonb; sc numeric;
+  s jsonb; sc numeric; maxint constant numeric := 9007199254740991;
+  all_nums numeric[] := '{}';
   tele_nums numeric[] := '{}';
   tele_dlg text[] := '{}';
   seg jsonb; pos int; prev_pos int := 0; want text;
 begin
+  -- Pass 1 — GLOBAL identity across the entire scene array (hidden + teleprompter).
   for s in select value from jsonb_array_elements(coalesce(p_scene_timeline->'scenes', '[]'::jsonb)) loop
+    if jsonb_typeof(s) <> 'object' or jsonb_typeof(s->'scene_number') <> 'number' then
+      raise exception 'capture_script_ambiguous_scene: invalid scene shape' using errcode = 'raise_exception';
+    end if;
+    sc := (s->>'scene_number')::numeric;
+    if sc <> trunc(sc) or sc < 1 or sc > maxint then
+      raise exception 'capture_script_ambiguous_scene: scene_number % out of range', sc using errcode = 'raise_exception';
+    end if;
+    if sc = any(all_nums) then
+      raise exception 'capture_script_ambiguous_scene: duplicate scene %', sc using errcode = 'raise_exception';
+    end if;
+    all_nums := all_nums || sc;
     if (s->'show_in_teleprompter') is distinct from to_jsonb(false) then
-      if jsonb_typeof(s->'scene_number') <> 'number' then
-        raise exception 'capture_script_ambiguous_scene: non-numeric teleprompter scene_number' using errcode = 'raise_exception';
-      end if;
-      sc := (s->>'scene_number')::numeric;
-      if sc = any(tele_nums) then
-        raise exception 'capture_script_ambiguous_scene: duplicate scene %', sc using errcode = 'raise_exception';
-      end if;
       tele_nums := tele_nums || sc;
       tele_dlg := tele_dlg || coalesce(s->>'dialogue', '');
     end if;
@@ -528,6 +564,51 @@ begin
   insert into public.source_script_snapshots (source_asset_id, owner_id, generation_id, snapshot, snapshot_sha)
   values (p_asset, p_owner, p_generation, p_snap_canonical::jsonb, p_snap_sha)
   on conflict (source_asset_id) do nothing;
+  -- CONFLICT-VERIFY (never blind do-nothing): re-read the winning row (this or a
+  -- concurrent writer's) and require it to be byte-for-byte what we intended — source,
+  -- owner, generation, canonical JSON AND sha. Any divergence fails closed in the SAME
+  -- create transaction so a corrupt/mismatched binding can never survive.
+  declare existing public.source_script_snapshots;
+  begin
+    select * into existing from public.source_script_snapshots where source_asset_id = p_asset;
+    if not found
+       or existing.owner_id is distinct from p_owner
+       or existing.generation_id is distinct from p_generation
+       or existing.snapshot_sha is distinct from p_snap_sha
+       or existing.snapshot is distinct from p_snap_canonical::jsonb then
+      raise exception 'script_binding_conflict: a divergent script binding already exists for %', p_asset using errcode = 'raise_exception';
+    end if;
+  end;
+end;
+$$;
+
+-- 0090→0091 CLASSIFICATION: rows created under the applied 0090 predate the marker.
+-- Deterministically classify them (idempotent; only ever sets a NULL marker to 1,
+-- never downgrades):
+--   * a source with a capture intent is capture-aware → marker 1;
+--   * a source WITHOUT a capture intent stays NULL (true legacy);
+--   * inconsistent combinations FAIL the migration closed with stable evidence:
+--       - a `ready` source that has a capture intent but NO manifest (a new-era ready
+--         source must have a manifest — the ready-guard invariant), or
+--       - a manifest whose source has NO capture intent (orphaned provenance).
+create or replace function public.editor_backfill_capture_marker() returns void language plpgsql as $$
+declare bad int;
+begin
+  select count(*) into bad from public.media_assets a
+    join public.source_capture_intents i on i.source_asset_id = a.id
+   where a.kind = 'source' and a.status = 'ready'
+     and not exists (select 1 from public.source_capture_manifests m where m.source_asset_id = a.id);
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % ready source(s) with a capture intent but no manifest', bad using errcode = 'raise_exception';
+  end if;
+  select count(*) into bad from public.source_capture_manifests m
+   where not exists (select 1 from public.source_capture_intents i where i.source_asset_id = m.source_asset_id);
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % manifest(s) without a capture intent', bad using errcode = 'raise_exception';
+  end if;
+  update public.media_assets a set capture_contract_version = 1
+   where a.kind = 'source' and a.capture_contract_version is null
+     and exists (select 1 from public.source_capture_intents i where i.source_asset_id = a.id);
 end;
 $$;
 
@@ -729,6 +810,7 @@ revoke all on function public.editor_recording_script_canonical(uuid, jsonb, tex
 revoke all on function public.editor_recording_script_sha256(uuid, jsonb, text) from public, anon, authenticated;
 revoke all on function public.editor_verify_capture_dialogue_shas(jsonb, jsonb) from public, anon, authenticated;
 revoke all on function public.editor_persist_script_binding(uuid, uuid, uuid, text, text, text, text, jsonb, jsonb) from public, anon, authenticated;
+revoke all on function public.editor_backfill_capture_marker() from public, anon, authenticated;
 revoke all on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint) from public, anon, authenticated;
 grant execute on function public.editor_capture_segments_canonical(jsonb) to service_role;
 grant execute on function public.editor_capture_intent_input_canonical(jsonb) to service_role;
@@ -741,4 +823,26 @@ grant execute on function public.editor_recording_script_canonical(uuid, jsonb, 
 grant execute on function public.editor_recording_script_sha256(uuid, jsonb, text) to service_role;
 grant execute on function public.editor_verify_capture_dialogue_shas(jsonb, jsonb) to service_role;
 grant execute on function public.editor_persist_script_binding(uuid, uuid, uuid, text, text, text, text, jsonb, jsonb) to service_role;
+grant execute on function public.editor_backfill_capture_marker() to service_role;
 grant execute on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint) to service_role;
+
+-- Run the one-time 0090→0091 classification (idempotent; fails the migration closed
+-- on any inconsistent pre-existing row).
+select public.editor_backfill_capture_marker();
+
+-- ---------------------------------------------------------------------------
+-- 7. Explicit privilege posture for the capture tables (defence in depth beyond
+--    RLS): revoke ALL from public/anon/authenticated, then grant authenticated
+--    SELECT only (RLS still filters to owner + workspace peers). service_role (the
+--    edge/worker) keeps full DML. No INSERT/UPDATE/DELETE/TRUNCATE/REFERENCES/TRIGGER
+--    for anon/authenticated — the SECURITY DEFINER RPCs are the only writers.
+-- ---------------------------------------------------------------------------
+revoke all on table public.source_capture_intents from public, anon, authenticated;
+revoke all on table public.source_capture_manifests from public, anon, authenticated;
+revoke all on table public.source_script_snapshots from public, anon, authenticated;
+grant select on table public.source_capture_intents to authenticated;
+grant select on table public.source_capture_manifests to authenticated;
+grant select on table public.source_script_snapshots to authenticated;
+grant select, insert, update, delete on table public.source_capture_intents to service_role;
+grant select, insert, update, delete on table public.source_capture_manifests to service_role;
+grant select, insert, update, delete on table public.source_script_snapshots to service_role;

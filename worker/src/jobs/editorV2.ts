@@ -147,14 +147,24 @@ async function readSourceProvenanceState(sourceAssetId: string): Promise<SourceP
   if (aErr) throw new Error(`pin: media_asset read failed: ${aErr.message}`)
   if (!asset) throw new PermanentJobError(`pin: source asset ${sourceAssetId} missing`, 'source_missing')
   const { data: intent, error: iErr } = await db
-    .from('source_capture_intents').select('origin, recording_script_sha256')
+    .from('source_capture_intents').select('origin, recording_script_sha256, owner_id, generation_id, source_asset_id')
     .eq('source_asset_id', sourceAssetId).maybeSingle()
   if (iErr) throw new Error(`pin: capture intent read failed: ${iErr.message}`)
+  const { count: manifestCount, error: mErr } = await db
+    .from('source_capture_manifests').select('source_asset_id', { count: 'exact', head: true })
+    .eq('source_asset_id', sourceAssetId)
+  if (mErr) throw new Error(`pin: capture manifest count failed: ${mErr.message}`)
+  const { count: bindingCount, error: bErr } = await db
+    .from('source_script_snapshots').select('source_asset_id', { count: 'exact', head: true })
+    .eq('source_asset_id', sourceAssetId)
+  if (bErr) throw new Error(`pin: script binding count failed: ${bErr.message}`)
   const a = asset as { capture_contract_version: number | null; owner_id: string | null; generation_id: string | null }
-  const i = intent as { origin: string; recording_script_sha256: string | null } | null
+  const i = intent as { origin: string; recording_script_sha256: string | null; owner_id: string; generation_id: string | null; source_asset_id: string } | null
   return {
     marker: a.capture_contract_version, assetOwner: a.owner_id, assetGeneration: a.generation_id,
-    origin: i ? i.origin : null, intentScriptSha: i ? i.recording_script_sha256 : null,
+    origin: i ? i.origin : null, intentOwner: i ? i.owner_id : null, intentGeneration: i ? i.generation_id : null,
+    intentSource: i ? i.source_asset_id : null, intentScriptSha: i ? i.recording_script_sha256 : null,
+    hasManifest: (manifestCount ?? 0) > 0, hasBinding: (bindingCount ?? 0) > 0,
   }
 }
 

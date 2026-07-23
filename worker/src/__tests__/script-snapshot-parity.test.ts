@@ -75,15 +75,15 @@ describe('reCanonicalizeBoundSnapshot parity: worker == shared', () => {
   })
   it('re-canonicalizes a valid stored snapshot to identical canonical + sha', () => {
     const stored = JSON.parse(JSON.stringify(built.snapshot))
-    const w = reCanonicalizeBoundSnapshot(stored)
-    expect(JSON.stringify(canonicalize(w.snapshot))).toBe(sharedReCanon(stored).canonical)
+    const w = reCanonicalizeBoundSnapshot(stored, 'g1')
+    expect(JSON.stringify(canonicalize(w.snapshot))).toBe(sharedReCanon(stored, 'g1').canonical)
     expect(w.snapshotSha).toBe(sha(built.canonical))
   })
   it('both fail closed on the same corrupt shape (worker throws script_binding_shape)', () => {
     let code: string | undefined
-    try { reCanonicalizeBoundSnapshot({ evil: 1 }) } catch (e) { code = (e as { code?: string }).code }
+    try { reCanonicalizeBoundSnapshot({ evil: 1 }, 'g1') } catch (e) { code = (e as { code?: string }).code }
     expect(code).toBe('script_binding_shape')
-    expect(() => sharedReCanon({ evil: 1 })).toThrow('script_binding_shape')
+    expect(() => sharedReCanon({ evil: 1 }, 'g1')).toThrow('script_binding_shape')
   })
 })
 

@@ -80,8 +80,12 @@ export interface CreateRpcArgs {
 // the exact RPC args — WITHOUT performing any I/O. Returns a stable PlanError (never
 // throws) OR the RPC args. Unknown keys anywhere fail closed BEFORE mapping.
 export function buildCreatePlan(
-  body: Record<string, unknown>,
+  raw: unknown,
 ): { error: PlanError } | { rpcArgs: CreateRpcArgs } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: { status: 400, message: 'Invalid request body' } }
+  }
+  const body = raw as Record<string, unknown>
   for (const k of Object.keys(body)) {
     if (!CREATE_BODY_KEYS.has(k)) return { error: { status: 400, message: `Unexpected field: ${k}` } }
   }
@@ -196,4 +200,48 @@ export async function runSourceCreate(
   const sign = await deps.signUpload(row.storage_path)
   if (!sign) return { status: 500, body: { error: 'Could not authorize the upload — try again.' } }
   return { status: 200, body: { ...base, token: sign.token, signedUrl: sign.signedUrl } }
+}
+
+// The injectable REQUEST-LEVEL handler the edge's Deno.serve calls (same function,
+// exercised by tests). It routes parse/auth/action/rate/create/finalize WITHOUT
+// duplicating product authority: a malformed body (null/array/primitive), an unknown
+// action, or an unknown create/finalize key returns a stable 400 BEFORE any rate,
+// create, finalize, or storage authority call. A valid create produces EXACTLY one
+// rate check, one create RPC, and no direct table writes. Finalize is delegated to the
+// injected product authority (the DB finalize RPC).
+const FINALIZE_BODY_KEYS = new Set(['action', 'asset_id'])
+export interface RequestDeps extends CreateDeps {
+  getUser(): Promise<{ id: string } | null>
+  checkRateLimit(ownerId: string): Promise<boolean> // true = allowed
+  finalize(ownerId: string, assetId: string): Promise<CreateResult>
+}
+export async function handleSourceAssetRequest(body: unknown, deps: RequestDeps): Promise<CreateResult> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { status: 400, body: { error: 'Invalid request body' } }
+  }
+  const b = body as Record<string, unknown>
+  const user = await deps.getUser()
+  if (!user) return { status: 401, body: { error: 'Not authenticated' } }
+
+  if (b.action === 'create') {
+    // Validate the FULL keyset FIRST — an unknown/malformed request never reaches the
+    // rate limiter or the create RPC.
+    const plan = buildCreatePlan(b)
+    if ('error' in plan) return { status: plan.error.status, body: { error: plan.error.message } }
+    if (!(await deps.checkRateLimit(user.id))) {
+      return { status: 429, body: { error: 'Too many uploads at once — give it a few seconds.' } }
+    }
+    return runSourceCreate(b, user.id, deps)
+  }
+
+  if (b.action === 'finalize') {
+    for (const k of Object.keys(b)) {
+      if (!FINALIZE_BODY_KEYS.has(k)) return { status: 400, body: { error: `Unexpected field: ${k}` } }
+    }
+    const assetId = String(b.asset_id ?? '').trim()
+    if (!UUID_RE.test(assetId)) return { status: 400, body: { error: 'asset_id (uuid) is required' } }
+    return deps.finalize(user.id, assetId)
+  }
+
+  return { status: 400, body: { error: 'Unknown action' } }
 }

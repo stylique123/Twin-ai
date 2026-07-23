@@ -56,6 +56,9 @@ psql -q -f "$WORK/grants.sql"
 echo "== fail-closed assertions (contract matrix, policy, grants) =="
 psql -q -f "$HERE/02_assertions.sql" | grep -E "ALL-ASSERTIONS-PASSED|=="
 
+echo "== identity matrix (RLS owner/peer/outsider/anon/service_role, SET ROLE) =="
+psql -q -f "$HERE/03_identity.sql" | grep -E "IDENTITY-MATRIX-PASSED"
+
 # concurrency uses a FRESH owner/generation (untouched by caps pre-seeding). The
 # generation carries a real scene_timeline so the divergent-concurrent teleprompter
 # input below can assert the server-recomputed script SHA (source-bound snapshot).
@@ -198,5 +201,14 @@ mutate_and_expect_fail "s/raise exception 'capture_segment_not_teleprompter: sce
 # (h) script byte-cap guard neutralized → gate must fail on the oversize assertion.
 mutate_and_expect_fail "s/if octet_length(convert_to(p_snap_canonical, 'UTF8')) > 65536 then/if false then/" \
   "(h) script byte-cap guard removed → gate correctly FAILED"
+# (i) GLOBAL scene-identity dup guard removed → gate must fail on the hidden+tele dup.
+mutate_and_expect_fail "s/raise exception 'capture_script_ambiguous_scene: duplicate scene %', sc using errcode = 'raise_exception';/null;/" \
+  "(i) global scene-dup guard removed → gate correctly FAILED"
+# (j) conflict-verify persist guard removed → gate must fail on the divergent binding.
+mutate_and_expect_fail "s/raise exception 'script_binding_conflict: a divergent script binding already exists for %', p_asset using errcode = 'raise_exception';/null;/" \
+  "(j) conflict-verify persist guard removed → gate correctly FAILED"
+# (k) backfill inconsistency guard removed → gate must fail on the inconsistent row.
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % ready source(s) with a capture intent but no manifest', bad using errcode = 'raise_exception';/null;/" \
+  "(k) backfill inconsistency guard removed → gate correctly FAILED"
 
 echo "GATE-D LOCAL VERIFICATION: PASS"

@@ -5,8 +5,10 @@ create extension if not exists pgcrypto;
 do $$ begin
   if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
   if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
-  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role nologin; end if;
+  -- service_role mirrors Supabase: it BYPASSES RLS (the trusted server identity).
+  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role nologin bypassrls; end if;
 end $$;
+alter role service_role bypassrls;
 
 drop table if exists public.source_capture_manifests cascade;
 drop table if exists public.source_capture_intents cascade;
@@ -69,8 +71,19 @@ create table public.source_capture_intents (
     (origin = 'teleprompter' and recording_script_sha256 is not null)
     or (origin = 'upload' and recording_script_sha256 is null))
 );
+-- Matches 0091's forward-corrected function: UPDATE always fails; a DIRECT delete
+-- fails, but a sanctioned parent-cascade (pg_trigger_depth()>1) is permitted so
+-- retention leaves no orphan rows.
 create or replace function public.editor_capture_no_mutate() returns trigger language plpgsql as $$
-begin raise exception 'capture_row_immutable: % is append-only', tg_table_name; end; $$;
+begin
+  if tg_op = 'UPDATE' then
+    raise exception 'capture_row_immutable: % is append-only', tg_table_name using errcode = 'raise_exception';
+  end if;
+  if pg_trigger_depth() = 1 then
+    raise exception 'capture_row_immutable: % direct deletes are not permitted (retention runs via the parent cascade)', tg_table_name using errcode = 'raise_exception';
+  end if;
+  return old;
+end; $$;
 create trigger source_capture_intents_immutable before update or delete on public.source_capture_intents
   for each row execute function public.editor_capture_no_mutate();
 
@@ -99,3 +112,31 @@ create table public.source_script_snapshots (
 );
 create trigger source_script_snapshots_immutable before update or delete on public.source_script_snapshots
   for each row execute function public.editor_capture_no_mutate();
+
+-- ---- item 7: real RLS identity matrix support -----------------------------
+-- Minimal auth.uid() + workspace_peers() reading GUCs, so the read policies are
+-- exercisable under SET ROLE (mirrors Supabase's auth.uid()).
+create schema if not exists auth;
+create or replace function auth.uid() returns uuid language sql stable as $$
+  select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+$$;
+create or replace function public.workspace_peers() returns setof uuid language sql stable as $$
+  select nullif(current_setting('test.workspace_peer', true), '')::uuid
+   where nullif(current_setting('test.workspace_peer', true), '') is not null
+$$;
+-- Explicit privilege posture (mirrors 0091): revoke ALL from public/anon/authenticated,
+-- grant authenticated SELECT only, service_role full DML. RLS filters reads to owner+peer.
+alter table public.source_capture_intents enable row level security;
+alter table public.source_script_snapshots enable row level security;
+drop policy if exists sci_owner_read on public.source_capture_intents;
+create policy sci_owner_read on public.source_capture_intents for select
+  using (owner_id = auth.uid() or owner_id in (select public.workspace_peers()));
+drop policy if exists sss_owner_read on public.source_script_snapshots;
+create policy sss_owner_read on public.source_script_snapshots for select
+  using (owner_id = auth.uid() or owner_id in (select public.workspace_peers()));
+revoke all on public.source_capture_intents from public, anon, authenticated;
+revoke all on public.source_script_snapshots from public, anon, authenticated;
+grant select on public.source_capture_intents to authenticated;
+grant select on public.source_script_snapshots to authenticated;
+grant select, insert, update, delete on public.source_capture_intents to service_role;
+grant select, insert, update, delete on public.source_script_snapshots to service_role;

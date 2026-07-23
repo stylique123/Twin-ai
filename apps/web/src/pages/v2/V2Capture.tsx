@@ -12,7 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { loadRecordingScript, setWpm, establishDurableRecordingScriptLive } from '../../lib/api'
+import { loadRecordingScript, setWpm, establishDurableRecordingScriptLive, prepareCaptureMode } from '../../lib/api'
 import { buildRecordingScript } from '../../lib/api'
 import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
 import { buildTeleprompterIntent, captureScriptSha256, sha256Hex, normalizeDialogue } from '../../lib/api'
@@ -43,47 +43,50 @@ export default function V2Capture() {
   const nav = useNavigate()
   // Back always returns to the plan (Result) — the single plan screen for the flow.
   const onBack = () => nav(`/result/${id}`)
-
-  // Upload is NOT recorded against a script (Constitution §5.1): it must stay usable
-  // even for a legacy generation with a null scene_timeline. So it never establishes
-  // a Recording Script and never blocks on script durability.
-  if (mode === 'upload') return <UploadMode genId={id} onBack={onBack} />
-  return <RecordGate genId={id} onBack={onBack} />
+  return <CaptureGate genId={id} mode={mode} onBack={onBack} />
 }
 
-// Record mode gate: establish ONE DURABLE authoritative Recording Script before the
-// teleprompter is usable. Load the persisted script (or synthesize it from the
-// blueprint for a classic-Studio generation), then PERSIST + RE-READ + PROVE the
-// canonical matches (recordingScriptApi.establishDurableRecordingScript). Recording
-// against an in-memory-only or drifted script would deterministically fail the create
-// RPC's capture_script_sha_mismatch (it verifies against the PERSISTED generation),
-// so we fail here — visibly + retryably — and never start a take that can't be saved.
-function RecordGate({ genId, onBack }: { genId: string; onBack: () => void }) {
+// The ONE capture-mode gate. Both modes route through the shared prepareCaptureMode
+// seam (recordingScriptApi): UPLOAD is usable immediately and does ZERO script work
+// (Constitution §5.1 — it is not recorded against a script, so a legacy null timeline
+// is fine); RECORD establishes ONE DURABLE authoritative Recording Script (load → else
+// synthesize from the blueprint → strict-persist → reload → prove canonical equality)
+// before the teleprompter is usable. Recording against an in-memory-only or drifted
+// script would deterministically fail the create RPC's capture_script_sha_mismatch, so
+// a prepare failure blocks recording visibly + retryably — never a lost take.
+function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 'record'; onBack: () => void }) {
   const [timeline, setTimeline] = useState<RecordingScript | null>(null)
+  const [uploadReady, setUploadReady] = useState(false)
   const [failed, setFailed] = useState<null | 'load' | 'prepare'>(null)
   const [nonce, setNonce] = useState(0)
   useEffect(() => {
     let alive = true
-    setFailed(null); setTimeline(null)
+    setFailed(null); setTimeline(null); setUploadReady(false)
     ;(async () => {
       try {
-        let tl = await loadRecordingScript(genId)
-        if (!tl) {
-          const g = await getGeneration(genId)
-          if (g) tl = buildRecordingScript({ generationId: genId, blueprint: g.blueprint, selectedHook: g.selected_hook })
-        }
-        if (!tl) { if (alive) setFailed('load'); return }
-        const durable = await establishDurableRecordingScriptLive(tl)
+        const r = await prepareCaptureMode(mode, {
+          loadScript: () => loadRecordingScript(genId),
+          synthScript: async () => {
+            const g = await getGeneration(genId)
+            return g ? buildRecordingScript({ generationId: genId, blueprint: g.blueprint, selectedHook: g.selected_hook }) : null
+          },
+          establish: (t) => establishDurableRecordingScriptLive(t),
+        })
         if (!alive) return
-        if (!durable.ok || !durable.script) { setFailed('prepare'); return }
-        setTimeline(durable.script)
+        if (r.ready && r.mode === 'upload') { setUploadReady(true); return }
+        if (r.ready && r.mode === 'record') { setTimeline(r.script); return }
+        setFailed(r.reason === 'load' ? 'load' : 'prepare')
       } catch {
         if (alive) setFailed('prepare')
       }
     })()
     return () => { alive = false }
-  }, [genId, nonce])
+  }, [genId, mode, nonce])
 
+  if (mode === 'upload') {
+    if (uploadReady) return <UploadMode genId={genId} onBack={onBack} />
+    return <div className="min-h-[100dvh] grid place-items-center bg-ink text-sand">Loading…</div>
+  }
   if (!timeline) {
     if (failed) {
       const isPrepare = failed === 'prepare'

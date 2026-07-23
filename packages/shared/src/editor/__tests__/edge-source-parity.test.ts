@@ -39,8 +39,9 @@ const FUNCS: Array<{ name: string; shared: string }> = [
   { name: 'createErrorStatus', shared: sourceCreateSrc },
   { name: 'mapCreateError', shared: sourceCreateSrc },
   { name: 'runSourceCreate', shared: sourceCreateSrc },
+  { name: 'handleSourceAssetRequest', shared: sourceCreateSrc },
 ]
-const SETS = ['CREATE_BODY_KEYS', 'CAPTURE_SNAKE_KEYS', 'SEGMENT_SNAKE_KEYS']
+const SETS = ['CREATE_BODY_KEYS', 'CAPTURE_SNAKE_KEYS', 'SEGMENT_SNAKE_KEYS', 'FINALIZE_BODY_KEYS']
 
 describe('edge ↔ shared source-invariant parity (no drift)', () => {
   it('the edge inlines each edge-core function byte-identically to shared', () => {

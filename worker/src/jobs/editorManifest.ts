@@ -370,22 +370,41 @@ export function buildNoCapturedScriptSnapshot(generationId: string): BuiltSnapsh
 // stored jsonb: checks the exact keyset/types/bounds and re-serializes canonically so
 // Boot recomputes the SHA from CONTENT. Any violation throws a PermanentJobError with a
 // stable code (fail closed). jsonb key ordering is not proof — only the bytes are.
-export function reCanonicalizeBoundSnapshot(raw: unknown): BuiltSnapshot {
+// Frozen value bounds — identical to shared scriptSnapshot (parity-pinned).
+export const SNAPSHOT_MAX_SCENES = 500
+export const SNAPSHOT_MAX_SCENE_NUMBER = 9007199254740991
+export const SNAPSHOT_MAX_HOOK_CHARS = 4096
+export const SNAPSHOT_MAX_DIALOGUE_CHARS = 4096
+export const SNAPSHOT_MAX_SCENETYPE_CHARS = 64
+export function reCanonicalizeBoundSnapshot(raw: unknown, expectedGenerationId: string): BuiltSnapshot {
   const bad = (m: string): never => { throw new PermanentJobError(`script_binding_shape: ${m}`, 'script_binding_shape') }
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) bad('not an object')
   const o = raw as Record<string, unknown>
   if (Object.keys(o).sort().join(',') !== 'generationId,hook,scenes,schemaVersion') bad('unexpected keys')
   if (o.schemaVersion !== 1) bad('bad schemaVersion')
-  if (typeof o.generationId !== 'string' || o.generationId === '') bad('bad generationId')
-  if (!(o.hook === null || typeof o.hook === 'string')) bad('bad hook')
+  if (typeof o.generationId !== 'string' || o.generationId !== expectedGenerationId) bad('generationId does not match the bound source')
+  if (o.hook !== null) {
+    if (typeof o.hook !== 'string') bad('bad hook')
+    if ((o.hook as string).length > SNAPSHOT_MAX_HOOK_CHARS) bad('hook too long')
+    if (normalizeSnapshotString(o.hook as string) !== o.hook) bad('hook is not in normalized form')
+  }
   if (!Array.isArray(o.scenes)) bad('scenes not an array')
+  if ((o.scenes as unknown[]).length > SNAPSHOT_MAX_SCENES) bad('too many scenes')
+  const seen = new Set<number>()
   const scenes = (o.scenes as unknown[]).map((s) => {
     if (s === null || typeof s !== 'object' || Array.isArray(s)) bad('scene not an object')
     const sc = s as Record<string, unknown>
     if (Object.keys(sc).sort().join(',') !== 'dialogue,sceneNumber,sceneType,showInTeleprompter') bad('bad scene keys')
-    if (!Number.isInteger(sc.sceneNumber)) bad('bad sceneNumber')
-    if (typeof sc.sceneType !== 'string') bad('bad sceneType')
-    if (!(sc.dialogue === null || typeof sc.dialogue === 'string')) bad('bad dialogue')
+    if (!Number.isInteger(sc.sceneNumber) || (sc.sceneNumber as number) < 1 || (sc.sceneNumber as number) > SNAPSHOT_MAX_SCENE_NUMBER) bad('bad sceneNumber')
+    if (seen.has(sc.sceneNumber as number)) bad('duplicate sceneNumber')
+    seen.add(sc.sceneNumber as number)
+    if (typeof sc.sceneType !== 'string' || sc.sceneType === '' || (sc.sceneType as string).length > SNAPSHOT_MAX_SCENETYPE_CHARS) bad('bad sceneType')
+    if (normalizeSnapshotString(sc.sceneType as string) !== sc.sceneType) bad('sceneType is not in normalized form')
+    if (sc.dialogue !== null) {
+      if (typeof sc.dialogue !== 'string') bad('bad dialogue')
+      if ((sc.dialogue as string).length > SNAPSHOT_MAX_DIALOGUE_CHARS) bad('dialogue too long')
+      if (normalizeSnapshotString(sc.dialogue as string) !== sc.dialogue) bad('dialogue is not in normalized form')
+    }
     if (typeof sc.showInTeleprompter !== 'boolean') bad('bad showInTeleprompter')
     return { sceneNumber: sc.sceneNumber, sceneType: sc.sceneType, dialogue: sc.dialogue, showInTeleprompter: sc.showInTeleprompter }
   })

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   normalizeSourceMime, safeSizeBytes, buildCreateInput, createErrorStatus, mapCreateError,
-  buildCreatePlan, runSourceCreate, type CreateDeps,
+  buildCreatePlan, runSourceCreate, handleSourceAssetRequest, type CreateDeps, type RequestDeps,
 } from '../sourceCreate'
 
 const GEN = '11111111-1111-1111-1111-111111111111'
@@ -104,6 +104,86 @@ describe('sourceCreate: buildCreatePlan rejects hostile keysets BEFORE mapping',
     expect(buildCreatePlan(body({ content_type: 'image/png' })).hasOwnProperty('error')).toBe(true)
     const noCap = body(); delete (noCap as Record<string, unknown>).capture
     expect(buildCreatePlan(noCap).hasOwnProperty('error')).toBe(true)
+  })
+  it('is NULL-safe (no TypeError): malformed bodies return a stable 400', () => {
+    expect(buildCreatePlan(null)).toEqual({ error: { status: 400, message: 'Invalid request body' } })
+    expect(buildCreatePlan([])).toEqual({ error: { status: 400, message: 'Invalid request body' } })
+    expect(buildCreatePlan('str')).toEqual({ error: { status: 400, message: 'Invalid request body' } })
+    expect(buildCreatePlan(42)).toEqual({ error: { status: 400, message: 'Invalid request body' } })
+  })
+})
+
+describe('handleSourceAssetRequest: request-level boundaries (item 8)', () => {
+  const OWNER = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+  function deps(over: Partial<RequestDeps> = {}) {
+    const getUser = vi.fn(async () => ({ id: OWNER }))
+    const checkRateLimit = vi.fn(async () => true)
+    const createSourceAsset = vi.fn(async () => ({ data: { asset_id: 'a', storage_path: 'p/q/a.webm', status: 'uploading' }, error: null }))
+    const signUpload = vi.fn(async () => ({ token: 't', signedUrl: 'u' }))
+    const finalize = vi.fn(async () => ({ status: 200, body: { ok: true, status: 'validating' } }))
+    const d: RequestDeps & { _: Record<string, ReturnType<typeof vi.fn>> } = {
+      getUser, checkRateLimit, createSourceAsset, signUpload, finalize,
+      _: { getUser, checkRateLimit, createSourceAsset, signUpload, finalize }, ...over,
+    }
+    return d
+  }
+  const calls = (f: unknown) => (f as { mock: { calls: unknown[] } }).mock.calls.length
+
+  it('malformed body (null/array/primitive) → 400 BEFORE auth/rate/create', async () => {
+    for (const bad of [null, [], 'str', 42]) {
+      const d = deps()
+      const r = await handleSourceAssetRequest(bad, d)
+      expect(r.status).toBe(400)
+      expect(calls(d._.getUser)).toBe(0)
+      expect(calls(d._.checkRateLimit)).toBe(0)
+      expect(calls(d._.createSourceAsset)).toBe(0)
+    }
+  })
+  it('no user → 401', async () => {
+    const d = deps({ getUser: async () => null })
+    expect((await handleSourceAssetRequest(body(), d)).status).toBe(401)
+  })
+  it('unknown action → 400 (no rate/create/finalize)', async () => {
+    const d = deps()
+    const r = await handleSourceAssetRequest({ action: 'nope' }, d)
+    expect(r.status).toBe(400)
+    expect(calls(d._.checkRateLimit)).toBe(0)
+    expect(calls(d._.createSourceAsset)).toBe(0)
+    expect(calls(d._.finalize)).toBe(0)
+  })
+  it('unknown create key → 400 BEFORE rate + create', async () => {
+    const d = deps()
+    const r = await handleSourceAssetRequest(body({ evil: 1 }), d)
+    expect(r.status).toBe(400)
+    expect(calls(d._.checkRateLimit)).toBe(0)
+    expect(calls(d._.createSourceAsset)).toBe(0)
+  })
+  it('valid create → EXACTLY one rate check + one create RPC (+ sign)', async () => {
+    const d = deps()
+    const r = await handleSourceAssetRequest(body(), d)
+    expect(r.status).toBe(200)
+    expect(calls(d._.checkRateLimit)).toBe(1)
+    expect(calls(d._.createSourceAsset)).toBe(1)
+  })
+  it('rate limited → 429, create NEVER called', async () => {
+    const d = deps({ checkRateLimit: async () => false })
+    const r = await handleSourceAssetRequest(body(), d)
+    expect(r.status).toBe(429)
+    expect(calls(d._.createSourceAsset)).toBe(0)
+  })
+  it('finalize unknown key → 400 (finalize authority NOT called)', async () => {
+    const d = deps()
+    const r = await handleSourceAssetRequest({ action: 'finalize', asset_id: '33333333-3333-3333-3333-333333333333', evil: 1 }, d)
+    expect(r.status).toBe(400)
+    expect(calls(d._.finalize)).toBe(0)
+  })
+  it('finalize bad asset_id → 400; valid → delegates once to finalize authority', async () => {
+    const d = deps()
+    expect((await handleSourceAssetRequest({ action: 'finalize', asset_id: 'nope' }, d)).status).toBe(400)
+    expect(calls(d._.finalize)).toBe(0)
+    const r = await handleSourceAssetRequest({ action: 'finalize', asset_id: '33333333-3333-3333-3333-333333333333' }, d)
+    expect(r.status).toBe(200)
+    expect(calls(d._.finalize)).toBe(1)
   })
 })
 

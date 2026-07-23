@@ -104,31 +104,45 @@ describe('scriptSnapshot: reCanonicalizeBoundSnapshot (Boot re-validation)', () 
     scenes: [{ scene_number: 1, scene_type: 'talking_head', dialogue: 'Hello', show_in_teleprompter: true }],
   })
   it('re-canonicalizes a valid stored snapshot to the SAME canonical bytes', () => {
-    // parse→object (jsonb round-trip may reorder keys) then re-canonicalize
     const stored = JSON.parse(JSON.stringify(good.snapshot))
-    expect(reCanonicalizeBoundSnapshot(stored).canonical).toBe(good.canonical)
-    // key order in the stored object is irrelevant — canonical is stable
+    expect(reCanonicalizeBoundSnapshot(stored, 'g1').canonical).toBe(good.canonical)
     const reordered = { scenes: good.snapshot.scenes, schemaVersion: 1, generationId: 'g1', hook: 'Hook' }
-    expect(reCanonicalizeBoundSnapshot(reordered).canonical).toBe(good.canonical)
+    expect(reCanonicalizeBoundSnapshot(reordered, 'g1').canonical).toBe(good.canonical)
+  })
+  it('enforces EXACT expected generationId (binding cannot be moved between generations)', () => {
+    const stored = JSON.parse(JSON.stringify(good.snapshot))
+    expect(() => reCanonicalizeBoundSnapshot(stored, 'g2')).toThrow('script_binding_shape')
   })
   it('fails closed on unknown keys / bad types / bad scene shape', () => {
     const base = () => JSON.parse(JSON.stringify(good.snapshot))
-    expect(() => reCanonicalizeBoundSnapshot({ ...base(), evil: 1 })).toThrow('script_binding_shape')
-    expect(() => reCanonicalizeBoundSnapshot({ ...base(), schemaVersion: 2 })).toThrow('script_binding_shape')
-    expect(() => reCanonicalizeBoundSnapshot({ ...base(), generationId: 123 })).toThrow('script_binding_shape')
-    expect(() => reCanonicalizeBoundSnapshot({ ...base(), hook: 5 })).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot({ ...base(), evil: 1 }, 'g1')).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot({ ...base(), schemaVersion: 2 }, 'g1')).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot({ ...base(), hook: 5 }, 'g1')).toThrow('script_binding_shape')
     const badScene = base(); badScene.scenes = [{ sceneNumber: 1.5, sceneType: 't', dialogue: null, showInTeleprompter: true }]
-    expect(() => reCanonicalizeBoundSnapshot(badScene)).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot(badScene, 'g1')).toThrow('script_binding_shape')
     const extraSceneKey = base(); extraSceneKey.scenes = [{ sceneNumber: 1, sceneType: 't', dialogue: null, showInTeleprompter: true, x: 1 }]
-    expect(() => reCanonicalizeBoundSnapshot(extraSceneKey)).toThrow('script_binding_shape')
-    expect(() => reCanonicalizeBoundSnapshot([])).toThrow('script_binding_shape')
-    expect(() => reCanonicalizeBoundSnapshot(null)).toThrow('script_binding_shape')
-    // the no-captured-script (upload) form is NOT a valid bound script snapshot
-    expect(() => reCanonicalizeBoundSnapshot(buildNoCapturedScriptSnapshot('g1').snapshot)).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot(extraSceneKey, 'g1')).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot([], 'g1')).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot(null, 'g1')).toThrow('script_binding_shape')
+    expect(() => reCanonicalizeBoundSnapshot(buildNoCapturedScriptSnapshot('g1').snapshot, 'g1')).toThrow('script_binding_shape')
+  })
+  it('enforces value bounds: non-normalized strings, non-positive/duplicate scene numbers, oversize', () => {
+    const base = () => JSON.parse(JSON.stringify(good.snapshot))
+    const nonNormDialogue = base(); nonNormDialogue.scenes[0].dialogue = 'Hello  world' // double space (not collapsed)
+    expect(() => reCanonicalizeBoundSnapshot(nonNormDialogue, 'g1')).toThrow('script_binding_shape')
+    const nonNormHook = base(); nonNormHook.hook = ' Hook ' // untrimmed
+    expect(() => reCanonicalizeBoundSnapshot(nonNormHook, 'g1')).toThrow('script_binding_shape')
+    const zeroScene = base(); zeroScene.scenes[0].sceneNumber = 0
+    expect(() => reCanonicalizeBoundSnapshot(zeroScene, 'g1')).toThrow('script_binding_shape')
+    const dupScene = base(); dupScene.scenes = [good.snapshot.scenes[0], good.snapshot.scenes[0]]
+    expect(() => reCanonicalizeBoundSnapshot(dupScene, 'g1')).toThrow('script_binding_shape')
+    const emptyType = base(); emptyType.scenes[0].sceneType = ''
+    expect(() => reCanonicalizeBoundSnapshot(emptyType, 'g1')).toThrow('script_binding_shape')
   })
   it('tampered content re-canonicalizes to DIFFERENT bytes (so a stale SHA is caught)', () => {
+    // tamper with a value that stays normalized so it passes shape but changes bytes
     const tampered = JSON.parse(JSON.stringify(good.snapshot))
     tampered.scenes[0].dialogue = 'Goodbye'
-    expect(reCanonicalizeBoundSnapshot(tampered).canonical).not.toBe(good.canonical)
+    expect(reCanonicalizeBoundSnapshot(tampered, 'g1').canonical).not.toBe(good.canonical)
   })
 })
