@@ -12,6 +12,13 @@
 // This job VALIDATES media; it never edits it. The AI Edit path (editor_v2,
 // Phase 2+) is a separate job type and cannot start from here.
 import { createHash } from 'node:crypto'
+import {
+  validateCaptureIntent,
+  normalizeCaptureManifest,
+  manifestSha256 as computeManifestSha,
+  CaptureContractError,
+  CAPTURE_NORMALIZATION_VERSION,
+} from './captureContract.js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -202,6 +209,49 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
       maxPixels: env.sourceMaxPixels,
     })
     if (!verdict.ok) return await reject(assetId, verdict.code, verdict.detail)
+
+    // Source Capture Manifest (Phase 7 exit correction, Constitution §5.1): if
+    // the asset carries a capture intent, normalize its accepted windows against
+    // the MEASURED media duration and persist the immutable manifest BEFORE the
+    // ready-flip (a teleprompter source cannot become ready without it — DB
+    // guard). Assets with NO intent (legacy / Phases 1-6) skip this entirely, so
+    // earlier matrices are unaffected. A teleprompter recording whose windows do
+    // not fit the measured media is REJECTED with the stable capture code — never
+    // silently recast as upload inference.
+    {
+      const { data: capRow } = await db
+        .from('source_capture_intents')
+        .select('intent, intent_sha256, origin')
+        .eq('source_asset_id', assetId)
+        .maybeSingle()
+      if (capRow) {
+        let manifestObj: Record<string, unknown>
+        try {
+          const intent = validateCaptureIntent(capRow.intent)
+          const normalized = normalizeCaptureManifest({
+            intent,
+            sourceSha256: sha256,
+            sourceDurationMs: verdict.durationMs,
+            intentSha256: capRow.intent_sha256 as string,
+          })
+          manifestObj = { ...normalized, manifestSha256: computeManifestSha(normalized) }
+        } catch (e) {
+          if (e instanceof CaptureContractError) {
+            return await reject(assetId, e.code, `capture normalize: ${e.message}`.slice(0, 200))
+          }
+          throw e
+        }
+        const { error: capErr } = await db.rpc('editor_write_capture_manifest', {
+          p_asset: assetId,
+          p_origin: capRow.origin,
+          p_intent_sha256: capRow.intent_sha256,
+          p_manifest: manifestObj,
+          p_manifest_sha256: manifestObj.manifestSha256,
+          p_normalization_version: CAPTURE_NORMALIZATION_VERSION,
+        })
+        if (capErr) throw new Error(`validate_source: capture manifest write failed: ${capErr.message}`)
+      }
+    }
 
     // Atomic ready-flip with a DATABASE-LEVEL metadata merge (metadata ||
     // patch): finalized_etag/finalized_bytes recorded at finalize survive to

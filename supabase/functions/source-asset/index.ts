@@ -41,6 +41,111 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const MAX_OPEN_SOURCE_ASSETS = Number(Deno.env.get('SOURCE_MAX_OPEN_ASSETS') ?? '5')
 const USER_QUOTA_BYTES = Number(Deno.env.get('SOURCE_USER_QUOTA_BYTES') ?? String(20 * 1024 * 1024 * 1024)) // 20 GB
 
+// ---------------------------------------------------------------------------
+// Source Capture Intent (Constitution §5.1). The SINGLE source-provenance seam:
+// the client sends `capture` on `create`; the server stamps the assigned asset
+// id, canonicalizes, hashes, and persists ONE immutable source_capture_intents
+// row bound to the asset. Mirrors packages/shared/src/editor/capture.ts
+// (validation + canonical form); the worker re-validates + normalizes against
+// the MEASURED media duration before the asset can become ready.
+// ---------------------------------------------------------------------------
+const HEX64_RE = /^[0-9a-f]{64}$/
+const CAPTURE_SCHEMA_VERSION = 1
+const CAPTURE_MIN_SEGMENT_MS = 250
+const CAPTURE_MAX_SEGMENTS = 200
+const CAPTURE_INTENT_MAX_BYTES = 65536
+
+interface CaptureSegmentIn { scene_number?: unknown; start_ms?: unknown; end_ms?: unknown; intended_dialogue_sha256?: unknown }
+interface CapturePayloadIn {
+  origin?: unknown
+  recording_script_sha256?: unknown
+  recorder_clock?: unknown
+  accepted_segments?: unknown
+}
+
+// STRICT canonical JSON (sorted keys, no spaces) — byte-compatible with the
+// shared canonicalJson so the stored intent_sha256 is stable and meaningful.
+function canonicalJsonEdge(value: unknown): string {
+  if (value === null) return 'null'
+  const t = typeof value
+  if (t === 'number') {
+    if (!Number.isFinite(value as number)) throw new Error('non-finite')
+    return JSON.stringify(value)
+  }
+  if (t === 'boolean') return (value as boolean) ? 'true' : 'false'
+  if (t === 'string') return JSON.stringify(value)
+  if (Array.isArray(value)) return `[${value.map((el) => canonicalJsonEdge(el)).join(',')}]`
+  if (t === 'object') {
+    const o = value as Record<string, unknown>
+    const keys = Object.keys(o).sort()
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJsonEdge(o[k])}`).join(',')}}`
+  }
+  throw new Error(`unsupported ${t}`)
+}
+async function sha256HexEdge(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+// Validate the client capture payload and build the canonical intent bound to
+// this asset. Returns { intent, sha } or an { error } message (→ 400).
+async function buildCaptureIntent(
+  cap: CapturePayloadIn, ctx: { generationId: string; sourceAssetId: string; attemptId: string },
+): Promise<{ intent: Record<string, unknown>; sha: string } | { error: string }> {
+  const origin = cap.origin
+  if (origin !== 'teleprompter' && origin !== 'upload') return { error: 'capture.origin invalid' }
+  const clock = cap.recorder_clock
+  const scriptSha = cap.recording_script_sha256
+  const rawSegs = cap.accepted_segments
+  if (!Array.isArray(rawSegs)) return { error: 'capture.accepted_segments must be an array' }
+
+  if (origin === 'upload') {
+    if (rawSegs.length !== 0) return { error: 'upload capture must have no segments' }
+    if (scriptSha !== null) return { error: 'upload capture must not carry a script sha' }
+    if (clock !== 'none') return { error: 'upload capture recorder_clock must be none' }
+  } else {
+    if (typeof scriptSha !== 'string' || !HEX64_RE.test(scriptSha)) return { error: 'teleprompter capture needs a 64-hex script sha' }
+    if (clock !== 'mediarecorder-active-time-ms') return { error: 'teleprompter capture recorder_clock invalid' }
+    if (rawSegs.length === 0) return { error: 'teleprompter capture needs >=1 segment' }
+    if (rawSegs.length > CAPTURE_MAX_SEGMENTS) return { error: 'too many capture segments' }
+  }
+
+  const seenScenes = new Set<number>()
+  let prevEnd = -1
+  const segments: Array<Record<string, number | string>> = []
+  for (let i = 0; i < rawSegs.length; i++) {
+    const s = rawSegs[i] as CaptureSegmentIn
+    const sceneNumber = s.scene_number
+    const startMs = s.start_ms
+    const endMs = s.end_ms
+    const dsha = s.intended_dialogue_sha256
+    if (typeof sceneNumber !== 'number' || !Number.isInteger(sceneNumber) || sceneNumber < 1) return { error: `segment ${i}: bad scene_number` }
+    if (seenScenes.has(sceneNumber)) return { error: `segment ${i}: duplicate scene_number` }
+    seenScenes.add(sceneNumber)
+    if (typeof startMs !== 'number' || !Number.isInteger(startMs) || startMs < 0) return { error: `segment ${i}: bad start_ms` }
+    if (typeof endMs !== 'number' || !Number.isInteger(endMs) || endMs < 0) return { error: `segment ${i}: bad end_ms` }
+    if (endMs - startMs < CAPTURE_MIN_SEGMENT_MS) return { error: `segment ${i}: below min duration` }
+    if (startMs < prevEnd) return { error: `segment ${i}: overlaps/out-of-order` }
+    prevEnd = endMs
+    if (typeof dsha !== 'string' || !HEX64_RE.test(dsha)) return { error: `segment ${i}: bad intended_dialogue_sha256` }
+    segments.push({ sceneNumber, startMs, endMs, intendedDialogueSha256: dsha })
+  }
+
+  const intent = {
+    schemaVersion: CAPTURE_SCHEMA_VERSION,
+    origin,
+    generationId: ctx.generationId,
+    sourceAssetId: ctx.sourceAssetId,
+    recordingScriptSha256: origin === 'upload' ? null : (scriptSha as string),
+    clientAttemptId: ctx.attemptId,
+    recorderClock: clock,
+    acceptedSegments: segments,
+  }
+  const canonical = canonicalJsonEdge(intent)
+  if (new TextEncoder().encode(canonical).length > CAPTURE_INTENT_MAX_BYTES) return { error: 'capture intent too large' }
+  return { intent, sha: await sha256HexEdge(canonical) }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405)
@@ -63,6 +168,7 @@ Deno.serve(async (req: Request) => {
     content_type?: string
     size_bytes?: number
     asset_id?: string
+    capture?: CapturePayloadIn
   }
   try {
     body = await req.json()
@@ -120,6 +226,30 @@ Deno.serve(async (req: Request) => {
       .maybeSingle()
     if (!gen) return json({ error: 'Generation not found' }, 404)
 
+    // Persist the immutable capture intent bound to this asset (record + upload
+    // both flow through here — the SINGLE source-provenance seam). Validation
+    // failure rejects BEFORE any upload token is minted. Insert is idempotent
+    // per asset (unique source_asset_id), so a retry of the same attempt is safe.
+    async function attachCapture(assetId: string): Promise<Response | null> {
+      if (!body.capture) return null
+      const built = await buildCaptureIntent(body.capture, { generationId, sourceAssetId: assetId, attemptId })
+      if ('error' in built) return json({ error: `capture: ${built.error}` }, 400)
+      const { error: capErr } = await admin.from('source_capture_intents').insert({
+        source_asset_id: assetId,
+        owner_id: user.id,
+        generation_id: generationId,
+        origin: built.intent.origin,
+        recording_script_sha256: built.intent.recordingScriptSha256,
+        client_attempt_id: attemptId,
+        intent: built.intent,
+        intent_sha256: built.sha,
+      })
+      if (capErr && (capErr as { code?: string }).code !== '23505' && !String(capErr.message ?? '').toLowerCase().includes('duplicate')) {
+        return json({ error: 'Could not record capture intent — try again.' }, 500)
+      }
+      return null
+    }
+
     // Idempotent create: the DB unique index on (owner, generation, attempt)
     // means every repeat of this call — refresh, second tab, second device,
     // timeout retry — converges on the SAME asset row and stable path.
@@ -137,6 +267,8 @@ Deno.serve(async (req: Request) => {
       if (existing.status === 'rejected' || existing.status === 'deleted') {
         return json({ error: 'This recording was rejected — please record a new take.' }, 409)
       }
+      const capResp = await attachCapture(existing.id)
+      if (capResp) return capResp
       const sign = await signUpload(existing.storage_path)
       if (!sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
       return intentResponse(existing, sign)
@@ -184,12 +316,18 @@ Deno.serve(async (req: Request) => {
       // Converge on that row instead of failing.
       const { data: raced } = await findExisting()
       if (raced && raced.status !== 'rejected' && raced.status !== 'deleted') {
+        if (raced.status !== 'ready') {
+          const capResp = await attachCapture(raced.id)
+          if (capResp) return capResp
+        }
         const sign = raced.status === 'ready' ? null : await signUpload(raced.storage_path)
         if (raced.status !== 'ready' && !sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
         return intentResponse(raced, sign)
       }
       return json({ error: 'Could not start the upload — try again.' }, 500)
     }
+    const capResp = await attachCapture(assetId)
+    if (capResp) return capResp
     const sign = await signUpload(path)
     if (!sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
     return json({ assetId, bucket: BUCKET, path, status: 'uploading', token: sign.token, signedUrl: sign.signedUrl })
