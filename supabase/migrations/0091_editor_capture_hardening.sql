@@ -183,29 +183,26 @@ create policy source_capture_manifests_owner_read
 
 -- ---------------------------------------------------------------------------
 -- 5. Gate-D (Constitution §10D): ONE server-authoritative, transactional
---    source-create RPC. Replaces the edge's two separate writes (media_assets
---    INSERT + source_capture_intents INSERT) with a single atomic function so a
---    crash can never leave a new-era orphan. It:
---      * takes an attempt-scoped advisory lock so concurrent first calls with
---        different proposed ids converge on ONE authoritative asset,
---      * verifies owner/generation ownership + binds the client input to THIS
---        generation + attempt (embedded ids vs relational truth),
---      * resolves-or-creates the single media_assets row (marker stamped),
---      * constructs the STORED SourceCaptureIntentV1 INSIDE the transaction from
---        the resolved asset id + a server-assigned recordedAt, canonicalizes and
---        hashes it with editor_capture_intent_sha256 (byte-parity with shared
---        canonicalJson — proven by a DB↔TS parity test), and inserts-or-verifies
---        it: identical retry is idempotent, a divergent payload fails closed
---        with capture_intent_conflict,
---      * enforces open-asset + quota caps at mint (race-free under the lock).
---    No upload token is minted by the edge until this RPC succeeds.
+--    source-create RPC + its helpers. Everything between the extraction markers
+--    below is SELF-CONTAINED (depends only on media_assets / generations /
+--    source_capture_intents + pgcrypto) so the offline harness in
+--    scripts/db-tests/gate-d/ loads the AUTHORITATIVE definitions straight from
+--    THIS file — no hand-copied mirror can drift.
+--
+-- The DB is an INDEPENDENT authority: editor_validate_capture_input re-enforces
+-- the COMPLETE frozen SourceCaptureIntentInputV1 contract with the same stable
+-- codes as shared capture.ts (it does not trust the edge's validation), and the
+-- create RPC constrains every policy arg (bucket/mime/size/caps) rather than
+-- trusting arbitrary service input. The stored document is validated again
+-- immediately before it is hashed.
 -- ---------------------------------------------------------------------------
+-- >>> GATE-D-FUNCTIONS-BEGIN (extracted verbatim by scripts/db-tests/gate-d/run.sh)
 
--- Deterministic canonical serializer for the STORED capture intent. Emits
--- byte-identical output to shared canonicalJson(SourceCaptureIntentV1): sorted
--- top-level keys, sorted segment keys, array order preserved, no insignificant
--- whitespace. All string fields are ASCII (uuids/hex/enums/ISO); to_jsonb(text)
--- escaping matches JSON.stringify (Unicode-safe, proven by parity fixtures).
+-- Deterministic canonical serializer for a capture intent (input OR stored).
+-- Byte-identical to shared canonicalJson: sorted top-level keys, sorted segment
+-- keys, array order preserved, no insignificant whitespace. Stored fields are
+-- bounded ASCII (uuids/hex/enums/ISO), but to_jsonb(text) escaping matches
+-- JSON.stringify for arbitrary strings too (proven by a direct escaping probe).
 create or replace function public.editor_capture_intent_canonical(p jsonb)
 returns text language sql immutable as $$
   select '{'
@@ -235,6 +232,74 @@ returns text language sql immutable as $$
   select encode(digest(convert_to(public.editor_capture_intent_canonical(p), 'UTF8'), 'sha256'), 'hex')
 $$;
 
+-- INDEPENDENT full-contract validation of the client SourceCaptureIntentInputV1.
+-- Reads only the client-authority keys (server fields are ignored so it can also
+-- revalidate a stored doc). Every violation raises the SAME stable code shared
+-- capture.ts uses. p_uuid_gen/p_uuid_attempt let the caller bind embedded ids to
+-- relational truth; pass NULL to only check uuid shape.
+create or replace function public.editor_validate_capture_input(
+  p jsonb, p_uuid_gen uuid default null, p_uuid_attempt uuid default null
+) returns void language plpgsql immutable as $$
+declare
+  origin text;
+  segs jsonb;
+  seg jsonb;
+  n int;
+  prev_end bigint := -1;
+  seen int[] := '{}';
+  sc bigint; st bigint; en bigint;
+  uuid_re text := '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$';
+begin
+  if p is null or jsonb_typeof(p) <> 'object' then raise exception 'capture_intent_not_object'; end if;
+  if jsonb_typeof(p->'schemaVersion') <> 'number' or (p->>'schemaVersion') <> '1' then raise exception 'capture_intent_schema'; end if;
+  origin := p->>'origin';
+  if origin is null or origin not in ('teleprompter','upload') then raise exception 'capture_intent_bad_origin'; end if;
+  if (p->>'generationId') !~ uuid_re then raise exception 'capture_intent_bad_id'; end if;
+  if (p->>'clientAttemptId') !~ uuid_re then raise exception 'capture_intent_bad_id'; end if;
+  if p_uuid_gen is not null and (p->>'generationId') is distinct from p_uuid_gen::text then raise exception 'capture_intent_generation_mismatch'; end if;
+  if p_uuid_attempt is not null and (p->>'clientAttemptId') is distinct from p_uuid_attempt::text then raise exception 'capture_intent_attempt_mismatch'; end if;
+
+  if origin = 'teleprompter' then
+    if (p->>'recordingScriptSha256') !~ '^[0-9a-f]{64}$' then raise exception 'capture_intent_bad_script_sha'; end if;
+    if (p->>'recorderClock') is distinct from 'mediarecorder-active-time-ms' then raise exception 'capture_intent_bad_clock'; end if;
+  else
+    if p ? 'recordingScriptSha256' and jsonb_typeof(p->'recordingScriptSha256') <> 'null' then raise exception 'capture_intent_upload_shape'; end if;
+    if (p->>'recorderClock') is distinct from 'none' then raise exception 'capture_intent_upload_shape'; end if;
+  end if;
+
+  if jsonb_typeof(p->'acceptedSegments') <> 'array' then raise exception 'capture_intent_bad_segments'; end if;
+  segs := p->'acceptedSegments';
+  n := jsonb_array_length(segs);
+  if origin = 'upload' then
+    if n <> 0 then raise exception 'capture_intent_upload_shape'; end if;
+  else
+    if n = 0 then raise exception 'capture_intent_no_segments'; end if;
+    if n > 200 then raise exception 'capture_intent_too_many'; end if;
+  end if;
+
+  for i in 0 .. n - 1 loop
+    seg := segs->i;
+    if jsonb_typeof(seg) <> 'object' then raise exception 'capture_intent_bad_segments'; end if;
+    if jsonb_typeof(seg->'sceneNumber') <> 'number' or (seg->>'sceneNumber') !~ '^[0-9]+$' then raise exception 'capture_intent_bad_scene'; end if;
+    sc := (seg->>'sceneNumber')::bigint;
+    if sc < 1 then raise exception 'capture_intent_bad_scene'; end if;
+    if sc = any(seen) then raise exception 'capture_intent_dup_scene'; end if;
+    seen := seen || sc::int;
+    if jsonb_typeof(seg->'startMs') <> 'number' or (seg->>'startMs') !~ '^[0-9]+$' then raise exception 'capture_intent_bad_time'; end if;
+    if jsonb_typeof(seg->'endMs') <> 'number' or (seg->>'endMs') !~ '^[0-9]+$' then raise exception 'capture_intent_bad_time'; end if;
+    st := (seg->>'startMs')::bigint; en := (seg->>'endMs')::bigint;
+    if en - st < 250 then raise exception 'capture_intent_short_segment'; end if;
+    if st < prev_end then raise exception 'capture_intent_overlap'; end if;
+    prev_end := en;
+    if (seg->>'intendedDialogueSha256') !~ '^[0-9a-f]{64}$' then raise exception 'capture_intent_bad_dialogue_sha'; end if;
+  end loop;
+
+  if octet_length(convert_to(public.editor_capture_intent_canonical(p), 'UTF8')) > 65536 then
+    raise exception 'capture_intent_too_large';
+  end if;
+end;
+$$;
+
 -- Build the STORED intent jsonb from client input + server-authority fields,
 -- rebuilt field-by-field from RELATIONAL truth (never trusting embedded ids).
 create or replace function public.editor_build_stored_intent(
@@ -260,20 +325,22 @@ create or replace function public.editor_create_source_asset(
   p_input jsonb,
   p_bucket text,
   p_mime text,
-  p_ext text,
-  p_size_bytes bigint,
-  p_max_open int,
-  p_quota_bytes bigint
+  p_size_bytes bigint
 ) returns table(asset_id uuid, storage_path text, status text, intent_sha256 text, created boolean)
 language plpgsql
 security definer
 set search_path = pg_catalog, public
 as $$
 declare
+  -- SERVER policy (not caller-supplied): the create RPC never trusts arbitrary
+  -- cap args. These are the abuse/cost bounds for a source recording.
+  max_open constant int := 5;
+  quota constant bigint := 21474836480; -- 20 GB per owner
   gen_owner uuid;
   a public.media_assets;
   existing_intent public.source_capture_intents;
   origin text := p_input->>'origin';
+  ext text;
   recorded_at_str text;
   stored jsonb;
   computed_sha text;
@@ -282,6 +349,13 @@ declare
   open_count int;
   used_bytes bigint;
 begin
+  -- POLICY: never trust arbitrary service args. Whitelist bucket + mime, derive
+  -- the extension from the mime, and bound the size to the takes-bucket window.
+  if p_bucket is distinct from 'takes' then raise exception 'source_policy_bucket'; end if;
+  if p_mime not in ('video/webm','video/mp4','video/quicktime') then raise exception 'source_policy_mime'; end if;
+  ext := case when p_mime = 'video/webm' then 'webm' else 'mp4' end;
+  if p_size_bytes is null or p_size_bytes < 2048 or p_size_bytes > 629145600 then raise exception 'source_policy_size'; end if;
+
   -- Serialize concurrent creates of the SAME recording attempt so the
   -- authoritative asset id is chosen once; late callers block, then resolve.
   perform pg_advisory_xact_lock(hashtextextended(p_owner::text || ':' || p_generation::text || ':' || p_attempt::text, 0));
@@ -291,24 +365,8 @@ begin
     raise exception 'source_generation_not_owned: % / %', p_owner, p_generation using errcode = 'raise_exception';
   end if;
 
-  if origin not in ('teleprompter','upload') then
-    raise exception 'capture_intent_bad_origin' using errcode = 'raise_exception';
-  end if;
-  if (p_input->>'generationId') is distinct from p_generation::text then
-    raise exception 'capture_intent_generation_mismatch' using errcode = 'raise_exception';
-  end if;
-  if (p_input->>'clientAttemptId') is distinct from p_attempt::text then
-    raise exception 'capture_intent_attempt_mismatch' using errcode = 'raise_exception';
-  end if;
-  if origin = 'teleprompter' then
-    if (p_input->>'recordingScriptSha256') !~ '^[0-9a-f]{64}$' then raise exception 'capture_intent_bad_script_sha'; end if;
-    if (p_input->>'recorderClock') is distinct from 'mediarecorder-active-time-ms' then raise exception 'capture_intent_bad_clock'; end if;
-    if jsonb_array_length(coalesce(p_input->'acceptedSegments','[]'::jsonb)) = 0 then raise exception 'capture_intent_no_segments'; end if;
-  else
-    if p_input ? 'recordingScriptSha256' and jsonb_typeof(p_input->'recordingScriptSha256') <> 'null' then raise exception 'capture_intent_upload_shape'; end if;
-    if (p_input->>'recorderClock') is distinct from 'none' then raise exception 'capture_intent_upload_shape'; end if;
-    if jsonb_array_length(coalesce(p_input->'acceptedSegments','[]'::jsonb)) <> 0 then raise exception 'capture_intent_upload_shape'; end if;
-  end if;
+  -- INDEPENDENT full-contract validation + embedded-id binding to relational truth.
+  perform public.editor_validate_capture_input(p_input, p_generation, p_attempt);
 
   select * into a from public.media_assets
    where owner_id = p_owner and generation_id = p_generation and recording_attempt_id = p_attempt;
@@ -321,6 +379,7 @@ begin
     if found then
       recorded_at_str := existing_intent.intent->>'recordedAt';
       stored := public.editor_build_stored_intent(p_input, a.id, p_generation, p_attempt, recorded_at_str);
+      perform public.editor_validate_capture_input(stored, p_generation, p_attempt);  -- revalidate before hashing
       computed_sha := public.editor_capture_intent_sha256(stored);
       if computed_sha is distinct from existing_intent.intent_sha256 then
         raise exception 'capture_intent_conflict: a different capture intent already exists for %', a.id using errcode = 'raise_exception';
@@ -328,33 +387,41 @@ begin
       return query select a.id, a.storage_path, a.status, existing_intent.intent_sha256, false;
       return;
     end if;
-    -- Marked asset without intent (recovery): bind one now.
+    -- Marked asset without intent (recovery): insert, then RE-READ the winner and
+    -- byte/hash-verify it (a concurrent divergent winner fails closed).
     recorded_at_str := to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
     stored := public.editor_build_stored_intent(p_input, a.id, p_generation, p_attempt, recorded_at_str);
+    perform public.editor_validate_capture_input(stored, p_generation, p_attempt);
     computed_sha := public.editor_capture_intent_sha256(stored);
     insert into public.source_capture_intents
       (source_asset_id, owner_id, generation_id, origin, recording_script_sha256, client_attempt_id, intent, intent_sha256, recorded_at)
     values (a.id, p_owner, p_generation, origin, nullif(p_input->>'recordingScriptSha256',''), p_attempt, stored, computed_sha, recorded_at_str::timestamptz)
     on conflict (source_asset_id) do nothing;
-    return query select a.id, a.storage_path, a.status, computed_sha, false;
+    select * into existing_intent from public.source_capture_intents where source_asset_id = a.id;
+    if existing_intent.intent_sha256 is distinct from computed_sha
+       or existing_intent.intent is distinct from stored then
+      raise exception 'capture_intent_conflict: a concurrent divergent intent exists for %', a.id using errcode = 'raise_exception';
+    end if;
+    return query select a.id, a.storage_path, a.status, existing_intent.intent_sha256, false;
     return;
   end if;
 
   select count(*) into open_count from public.media_assets m
    where m.owner_id = p_owner and m.kind = 'source' and m.status in ('uploading','validating');
-  if open_count >= p_max_open then
+  if open_count >= max_open then
     raise exception 'source_too_many_open' using errcode = 'raise_exception';
   end if;
   select coalesce(sum(m.size_bytes),0) into used_bytes from public.media_assets m
    where m.owner_id = p_owner and m.status <> 'deleted';
-  if used_bytes + p_size_bytes > p_quota_bytes then
+  if used_bytes + p_size_bytes > quota then
     raise exception 'source_quota_exceeded' using errcode = 'raise_exception';
   end if;
 
   new_id := gen_random_uuid();
-  new_path := p_owner::text || '/' || p_generation::text || '/' || new_id::text || '.' || p_ext;
+  new_path := p_owner::text || '/' || p_generation::text || '/' || new_id::text || '.' || ext;
   recorded_at_str := to_char((now() at time zone 'utc'), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
   stored := public.editor_build_stored_intent(p_input, new_id, p_generation, p_attempt, recorded_at_str);
+  perform public.editor_validate_capture_input(stored, p_generation, p_attempt);  -- revalidate before hashing
   computed_sha := public.editor_capture_intent_sha256(stored);
 
   insert into public.media_assets
@@ -369,6 +436,18 @@ begin
   return query select new_id, new_path, 'uploading'::text, computed_sha, true;
 end;
 $$;
+-- <<< GATE-D-FUNCTIONS-END
 
-revoke all on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, text, bigint, int, bigint) from public, anon, authenticated;
-grant execute on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, text, bigint, int, bigint) to service_role;
+-- Service-role-only across EVERY Gate-D function (helpers included); the create
+-- RPC is SECURITY DEFINER, the helpers are pure/immutable but still must not be
+-- reachable by anon/authenticated.
+revoke all on function public.editor_capture_intent_canonical(jsonb) from public, anon, authenticated;
+revoke all on function public.editor_capture_intent_sha256(jsonb) from public, anon, authenticated;
+revoke all on function public.editor_validate_capture_input(jsonb, uuid, uuid) from public, anon, authenticated;
+revoke all on function public.editor_build_stored_intent(jsonb, uuid, uuid, uuid, text) from public, anon, authenticated;
+revoke all on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint) from public, anon, authenticated;
+grant execute on function public.editor_capture_intent_canonical(jsonb) to service_role;
+grant execute on function public.editor_capture_intent_sha256(jsonb) to service_role;
+grant execute on function public.editor_validate_capture_input(jsonb, uuid, uuid) to service_role;
+grant execute on function public.editor_build_stored_intent(jsonb, uuid, uuid, uuid, text) to service_role;
+grant execute on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint) to service_role;

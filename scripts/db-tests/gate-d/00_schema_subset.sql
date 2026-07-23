@@ -1,6 +1,13 @@
 -- Faithful subset of the real schema for Gate-D create/complete RPC verification.
 create extension if not exists pgcrypto;
 
+-- Supabase's standard roles, so grant-posture assertions are meaningful here.
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;
+  if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated nologin; end if;
+  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role nologin; end if;
+end $$;
+
 drop table if exists public.source_capture_manifests cascade;
 drop table if exists public.source_capture_intents cascade;
 drop table if exists public.media_assets cascade;
