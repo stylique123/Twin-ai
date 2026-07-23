@@ -6,22 +6,38 @@
 # a real 5-way concurrency test, DB<->TS canonical parity, and negative-control
 # mutation tests that PROVE the harness fails when a guarantee is broken.
 set -euo pipefail
+# Portable across the founder/dev macOS Bash 3.2 and Linux/CI: no empty-array
+# expansion under `set -u`, and an explicit C locale + UTF8 encoding (macOS has
+# no C.UTF-8). PGCLIENTENCODING keeps the client UTF8 regardless of LC_ALL.
+export LC_ALL=C LANG=C PGCLIENTENCODING=UTF8
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 MIG="$REPO/supabase/migrations/0091_editor_capture_hardening.sql"
-PGBIN="${PGBIN:-/usr/lib/postgresql/16/bin}"
+# Autodetect the initdb/pg_ctl location if PGBIN isn't set (Linux pkg path or a
+# Homebrew/Postgres.app bin on macOS).
+if [ -z "${PGBIN:-}" ]; then
+  for d in /usr/lib/postgresql/*/bin /opt/homebrew/opt/postgresql@16/bin /usr/local/opt/postgresql@16/bin \
+           /Applications/Postgres.app/Contents/Versions/latest/bin; do
+    [ -x "$d/initdb" ] && PGBIN="$d" && break
+  done
+  PGBIN="${PGBIN:-$(dirname "$(command -v initdb 2>/dev/null || echo /usr/bin/initdb)")}"
+fi
 WORK="$(mktemp -d)"
 export PGHOST="$WORK/sock" PGUSER=postgres PGDATABASE=postgres
 mkdir -p "$WORK/data" "$WORK/sock"
 
-RUN=(); if [ "$(id -u)" = "0" ] && id postgres >/dev/null 2>&1; then
-  chown -R postgres:postgres "$WORK"; RUN=(runuser -u postgres --); fi
-cleanup(){ "${RUN[@]}" "$PGBIN/pg_ctl" -D "$WORK/data" stop -m immediate >/dev/null 2>&1 || true; rm -rf "$WORK"; }
+# initdb/postgres refuse to run as root; drop to the postgres user only then.
+# Use a function (not an array) so Bash 3.2 + `set -u` never expands an unbound
+# empty array.
+AS_PG=0
+if [ "$(id -u)" = "0" ] && id postgres >/dev/null 2>&1; then chown -R postgres:postgres "$WORK"; AS_PG=1; fi
+pg_run(){ if [ "$AS_PG" = "1" ]; then runuser -u postgres -- "$@"; else "$@"; fi; }
+cleanup(){ pg_run "$PGBIN/pg_ctl" -D "$WORK/data" stop -m immediate >/dev/null 2>&1 || true; rm -rf "$WORK"; }
 trap cleanup EXIT
 
-"${RUN[@]}" "$PGBIN/initdb" -D "$WORK/data" -U postgres --auth=trust >/dev/null
-"${RUN[@]}" "$PGBIN/pg_ctl" -D "$WORK/data" \
+pg_run "$PGBIN/initdb" -D "$WORK/data" -U postgres --auth=trust --locale=C --encoding=UTF8 >/dev/null
+pg_run "$PGBIN/pg_ctl" -D "$WORK/data" \
   -o "-c unix_socket_directories=$WORK/sock -c listen_addresses=''" -l "$WORK/pg.log" start >/dev/null
 for _ in $(seq 1 30); do "$PGBIN/pg_isready" -q && break || sleep 0.3; done
 

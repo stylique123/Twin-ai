@@ -34,120 +34,48 @@ function json(body: unknown, status = 200) {
 const BUCKET = 'takes'
 const MAX_BYTES = 600 * 1024 * 1024 // matches the takes bucket cap
 const MIN_BYTES = 2048 // a real few-second take is tens of KB minimum
-const ALLOWED_TYPES = ['video/webm', 'video/mp4', 'video/quicktime']
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-// Abuse/cost caps (env-overridable). Modest defaults: a creator records one
-// take at a time; a fleet of parallel never-finalized uploads is not a person.
-const MAX_OPEN_SOURCE_ASSETS = Number(Deno.env.get('SOURCE_MAX_OPEN_ASSETS') ?? '5')
-const USER_QUOTA_BYTES = Number(Deno.env.get('SOURCE_USER_QUOTA_BYTES') ?? String(20 * 1024 * 1024 * 1024)) // 20 GB
 
 // ---------------------------------------------------------------------------
-// Source Capture Intent (Constitution §5.1). The SINGLE source-provenance seam:
-// the client sends `capture` on `create`; the server stamps the assigned asset
-// id, canonicalizes, hashes, and persists ONE immutable source_capture_intents
-// row bound to the asset. Mirrors packages/shared/src/editor/capture.ts
-// (validation + canonical form); the worker re-validates + normalizes against
-// the MEASURED media duration before the asset can become ready.
+// Source Capture (Constitution §5.1 / §10D). The edge PARSES, AUTHENTICATES and
+// NORMALIZES, then calls ONE atomic RPC (editor_create_source_asset). That RPC
+// is the sole authority for provenance, canonicalization/hashing, the new-era
+// marker, and open/quota/descriptor policy — the edge builds no intent, computes
+// no hash, and enforces no cost policy. There is NO second create path.
 // ---------------------------------------------------------------------------
-const HEX64_RE = /^[0-9a-f]{64}$/
-const CAPTURE_SCHEMA_VERSION = 1
-// New-era marker stamped on every source this edge creates. A media_assets row
-// carrying it can never become `ready` without a capture manifest (0090 guard),
-// so absence of provenance fails closed instead of masquerading as legacy.
-const CAPTURE_CONTRACT_VERSION = 1
-const CAPTURE_MIN_SEGMENT_MS = 250
-const CAPTURE_MAX_SEGMENTS = 200
-const CAPTURE_INTENT_MAX_BYTES = 65536
-
 interface CaptureSegmentIn { scene_number?: unknown; start_ms?: unknown; end_ms?: unknown; intended_dialogue_sha256?: unknown }
-interface CapturePayloadIn {
-  origin?: unknown
-  recording_script_sha256?: unknown
-  recorder_clock?: unknown
-  accepted_segments?: unknown
+
+// The ONE MIME boundary: strip a MediaRecorder codec suffix
+// (video/webm;codecs=vp9,opus) to the frozen base MIME the RPC accepts. Mirrors
+// shared normalizeSourceMime (packages/shared/src/editor/capture.ts, tested).
+function normalizeSourceMime(contentType: unknown): { baseMime: string; ext: string } | null {
+  const base = (typeof contentType === 'string' ? contentType : '').split(';')[0].trim().toLowerCase()
+  if (base === 'video/webm') return { baseMime: 'video/webm', ext: 'webm' }
+  if (base === 'video/mp4') return { baseMime: 'video/mp4', ext: 'mp4' }
+  if (base === 'video/quicktime') return { baseMime: 'video/quicktime', ext: 'mp4' }
+  return null
 }
 
-// STRICT canonical JSON (sorted keys, no spaces) — byte-compatible with the
-// shared canonicalJson so the stored intent_sha256 is stable and meaningful.
-function canonicalJsonEdge(value: unknown): string {
-  if (value === null) return 'null'
-  const t = typeof value
-  if (t === 'number') {
-    if (!Number.isFinite(value as number)) throw new Error('non-finite')
-    return JSON.stringify(value)
-  }
-  if (t === 'boolean') return (value as boolean) ? 'true' : 'false'
-  if (t === 'string') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map((el) => canonicalJsonEdge(el)).join(',')}]`
-  if (t === 'object') {
-    const o = value as Record<string, unknown>
-    const keys = Object.keys(o).sort()
-    return `{${keys.map((k) => `${JSON.stringify(k)}:${canonicalJsonEdge(o[k])}`).join(',')}}`
-  }
-  throw new Error(`unsupported ${t}`)
+// Map the RPC's stable exception codes to an HTTP status + user-safe message.
+function createErrorStatus(msg: string): number {
+  if (msg.includes('source_generation_not_owned')) return 404
+  if (msg.includes('source_too_many_open')) return 429
+  if (msg.includes('source_quota_exceeded')) return 413
+  if (msg.includes('source_attempt_conflict') || msg.includes('capture_intent_conflict')) return 409
+  if (msg.includes('source_policy_') || msg.includes('capture_intent_')) return 400
+  return 500
 }
-async function sha256HexEdge(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
-  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-// Validate the client capture payload and build the canonical intent bound to
-// this asset. Returns { intent, sha } or an { error } message (→ 400).
-async function buildCaptureIntent(
-  cap: CapturePayloadIn, ctx: { generationId: string; sourceAssetId: string; attemptId: string },
-): Promise<{ intent: Record<string, unknown>; sha: string } | { error: string }> {
-  const origin = cap.origin
-  if (origin !== 'teleprompter' && origin !== 'upload') return { error: 'capture.origin invalid' }
-  const clock = cap.recorder_clock
-  const scriptSha = cap.recording_script_sha256
-  const rawSegs = cap.accepted_segments
-  if (!Array.isArray(rawSegs)) return { error: 'capture.accepted_segments must be an array' }
-
-  if (origin === 'upload') {
-    if (rawSegs.length !== 0) return { error: 'upload capture must have no segments' }
-    if (scriptSha !== null) return { error: 'upload capture must not carry a script sha' }
-    if (clock !== 'none') return { error: 'upload capture recorder_clock must be none' }
-  } else {
-    if (typeof scriptSha !== 'string' || !HEX64_RE.test(scriptSha)) return { error: 'teleprompter capture needs a 64-hex script sha' }
-    if (clock !== 'mediarecorder-active-time-ms') return { error: 'teleprompter capture recorder_clock invalid' }
-    if (rawSegs.length === 0) return { error: 'teleprompter capture needs >=1 segment' }
-    if (rawSegs.length > CAPTURE_MAX_SEGMENTS) return { error: 'too many capture segments' }
-  }
-
-  const seenScenes = new Set<number>()
-  let prevEnd = -1
-  const segments: Array<Record<string, number | string>> = []
-  for (let i = 0; i < rawSegs.length; i++) {
-    const s = rawSegs[i] as CaptureSegmentIn
-    const sceneNumber = s.scene_number
-    const startMs = s.start_ms
-    const endMs = s.end_ms
-    const dsha = s.intended_dialogue_sha256
-    if (typeof sceneNumber !== 'number' || !Number.isInteger(sceneNumber) || sceneNumber < 1) return { error: `segment ${i}: bad scene_number` }
-    if (seenScenes.has(sceneNumber)) return { error: `segment ${i}: duplicate scene_number` }
-    seenScenes.add(sceneNumber)
-    if (typeof startMs !== 'number' || !Number.isInteger(startMs) || startMs < 0) return { error: `segment ${i}: bad start_ms` }
-    if (typeof endMs !== 'number' || !Number.isInteger(endMs) || endMs < 0) return { error: `segment ${i}: bad end_ms` }
-    if (endMs - startMs < CAPTURE_MIN_SEGMENT_MS) return { error: `segment ${i}: below min duration` }
-    if (startMs < prevEnd) return { error: `segment ${i}: overlaps/out-of-order` }
-    prevEnd = endMs
-    if (typeof dsha !== 'string' || !HEX64_RE.test(dsha)) return { error: `segment ${i}: bad intended_dialogue_sha256` }
-    segments.push({ sceneNumber, startMs, endMs, intendedDialogueSha256: dsha })
-  }
-
-  const intent = {
-    schemaVersion: CAPTURE_SCHEMA_VERSION,
-    origin,
-    generationId: ctx.generationId,
-    sourceAssetId: ctx.sourceAssetId,
-    recordingScriptSha256: origin === 'upload' ? null : (scriptSha as string),
-    clientAttemptId: ctx.attemptId,
-    recorderClock: clock,
-    acceptedSegments: segments,
-  }
-  const canonical = canonicalJsonEdge(intent)
-  if (new TextEncoder().encode(canonical).length > CAPTURE_INTENT_MAX_BYTES) return { error: 'capture intent too large' }
-  return { intent, sha: await sha256HexEdge(canonical) }
+function mapCreateError(msg: string): string {
+  if (msg.includes('source_generation_not_owned')) return 'Generation not found'
+  if (msg.includes('source_too_many_open')) return 'Too many recordings are still processing — give them a moment to finish.'
+  if (msg.includes('source_quota_exceeded')) return 'Your storage is full — delete some older videos first.'
+  if (msg.includes('source_attempt_conflict')) return 'This recording attempt already exists with different details.'
+  if (msg.includes('capture_intent_conflict')) return 'A different capture already exists for this recording.'
+  if (msg.includes('source_policy_mime')) return 'Unsupported video type — record or pick an MP4/MOV/WebM.'
+  if (msg.includes('source_policy_size')) return 'That recording is empty or too large — please re-record.'
+  if (msg.includes('source_policy_bucket')) return 'Upload target not allowed.'
+  if (msg.includes('capture_intent_')) return 'The capture data was invalid — please re-record.'
+  return 'Could not start the upload — try again.'
 }
 
 Deno.serve(async (req: Request) => {
@@ -172,7 +100,7 @@ Deno.serve(async (req: Request) => {
     content_type?: string
     size_bytes?: number
     asset_id?: string
-    capture?: CapturePayloadIn
+    capture?: Record<string, unknown>
   }
   try {
     body = await req.json()
@@ -208,158 +136,65 @@ Deno.serve(async (req: Request) => {
   if (body.action === 'create') {
     const generationId = (body.generation_id ?? '').trim()
     const attemptId = (body.recording_attempt_id ?? '').trim().toLowerCase()
-    const contentType = (body.content_type ?? '').trim().toLowerCase()
     const sizeBytes = Number(body.size_bytes ?? 0)
     if (!generationId) return json({ error: 'generation_id is required' }, 400)
     if (!UUID_RE.test(attemptId)) return json({ error: 'recording_attempt_id (uuid) is required' }, 400)
-    if (!ALLOWED_TYPES.some((t) => contentType.startsWith(t))) {
-      return json({ error: 'Unsupported video type — record or pick an MP4/MOV/WebM.' }, 400)
-    }
-    if (!Number.isFinite(sizeBytes) || sizeBytes < MIN_BYTES) {
-      return json({ error: 'That recording came through empty — please re-record.' }, 400)
-    }
-    if (sizeBytes > MAX_BYTES) return json({ error: 'That video is too large (600MB max).' }, 400)
 
-    // Capture provenance is MANDATORY for every new source (record OR upload):
-    // the client always sends it, and requiring it server-side is what makes the
-    // new-era marker meaningful — absence can never masquerade as legacy.
+    // The ONE MIME boundary (Constitution §10D): MediaRecorder reports a
+    // codec-suffixed type (video/webm;codecs=vp9,opus); normalize to the frozen
+    // base MIME the create RPC accepts. Mirrors shared normalizeSourceMime
+    // (packages/shared/src/editor/capture.ts, tested there). Fail closed on
+    // anything outside the allowed set.
+    const norm = normalizeSourceMime(body.content_type)
+    if (!norm) return json({ error: 'Unsupported video type — record or pick an MP4/MOV/WebM.' }, 400)
+
+    // Capture provenance is MANDATORY for every new source (record OR upload).
     if (!body.capture || typeof body.capture !== 'object') {
       return json({ error: 'capture provenance is required' }, 400)
     }
+    const cap = body.capture
 
-    // Ownership: the generation must belong to the caller (owner-strict; peers
-    // can view a workspace's generations but only the owner records onto them).
-    const { data: gen } = await admin
-      .from('generations')
-      .select('id, user_id')
-      .eq('id', generationId)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    if (!gen) return json({ error: 'Generation not found' }, 404)
-
-    // Persist the immutable capture intent bound to this asset (record + upload
-    // both flow through here — the SINGLE source-provenance seam). Validation
-    // failure rejects BEFORE any upload token is minted. Insert is idempotent
-    // per asset (unique source_asset_id), so a retry of the same attempt is safe.
-    async function attachCapture(assetId: string): Promise<Response | null> {
-      if (!body.capture) return json({ error: 'capture provenance is required' }, 400)
-      const built = await buildCaptureIntent(body.capture, { generationId, sourceAssetId: assetId, attemptId })
-      if ('error' in built) return json({ error: `capture: ${built.error}` }, 400)
-      const { error: capErr } = await admin.from('source_capture_intents').insert({
-        source_asset_id: assetId,
-        owner_id: user.id,
-        generation_id: generationId,
-        origin: built.intent.origin,
-        recording_script_sha256: built.intent.recordingScriptSha256,
-        client_attempt_id: attemptId,
-        intent: built.intent,
-        intent_sha256: built.sha,
-      })
-      if (capErr) {
-        const isConflict = (capErr as { code?: string }).code === '23505' || String(capErr.message ?? '').toLowerCase().includes('duplicate')
-        if (!isConflict) return json({ error: 'Could not record capture intent — try again.' }, 500)
-        // An intent already exists for this asset (idempotent retry). Compare the
-        // CANONICAL intent hash: identical is fine; a CONFLICTING payload must
-        // fail closed with a stable code, never be silently ignored.
-        const { data: existing } = await admin
-          .from('source_capture_intents').select('intent_sha256').eq('source_asset_id', assetId).maybeSingle()
-        if (!existing) return json({ error: 'Could not record capture intent — try again.' }, 500)
-        if (existing.intent_sha256 !== built.sha) {
-          return json({ error: 'capture_intent_conflict: a different capture intent already exists for this recording.' }, 409)
-        }
-      }
-      return null
+    // Map the client's snake_case capture payload to the camelCase
+    // SourceCaptureIntentInputV1 the RPC validates. The edge does NOT build,
+    // hash, or persist the intent, and does NOT enforce open/quota/descriptor
+    // policy — the single atomic RPC owns all of that. No alternate create path.
+    const rawSegs = (cap as { accepted_segments?: unknown }).accepted_segments
+    const input = {
+      schemaVersion: 1,
+      origin: (cap as { origin?: unknown }).origin,
+      generationId,
+      recordingScriptSha256: (cap as { recording_script_sha256?: unknown }).recording_script_sha256 ?? null,
+      clientAttemptId: attemptId,
+      recorderClock: (cap as { recorder_clock?: unknown }).recorder_clock,
+      acceptedSegments: Array.isArray(rawSegs)
+        ? rawSegs.map((s) => ({
+            sceneNumber: (s as CaptureSegmentIn).scene_number,
+            startMs: (s as CaptureSegmentIn).start_ms,
+            endMs: (s as CaptureSegmentIn).end_ms,
+            intendedDialogueSha256: (s as CaptureSegmentIn).intended_dialogue_sha256,
+          }))
+        : rawSegs,
     }
 
-    // Idempotent create: the DB unique index on (owner, generation, attempt)
-    // means every repeat of this call — refresh, second tab, second device,
-    // timeout retry — converges on the SAME asset row and stable path.
-    const findExisting = () => admin
-      .from('media_assets')
-      .select('id, storage_path, status')
-      .eq('owner_id', user.id)
-      .eq('generation_id', generationId)
-      .eq('recording_attempt_id', attemptId)
-      .maybeSingle()
-
-    const { data: existing } = await findExisting()
-    if (existing) {
-      if (existing.status === 'rejected' || existing.status === 'deleted') {
-        return json({ error: 'This recording was rejected — please record a new take.' }, 409)
-      }
-      // Validate + conflict-check the supplied MANDATORY capture against the
-      // immutable stored intent for EVERY idempotent retry — INCLUDING a ready
-      // asset — BEFORE any status shortcut. An identical retry passes; a
-      // divergent payload returns a stable 409, so a ready asset can never
-      // silently accept a different capture intent.
-      const capResp = await attachCapture(existing.id)
-      if (capResp) return capResp
-      if (existing.status === 'ready') return intentResponse(existing, null) // nothing left to upload
-      const sign = await signUpload(existing.storage_path)
-      if (!sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
-      return intentResponse(existing, sign)
-    }
-
-    // Abuse/cost caps, checked only when actually minting a NEW asset.
-    const { count: openCount } = await admin
-      .from('media_assets')
-      .select('id', { count: 'exact', head: true })
-      .eq('owner_id', user.id)
-      .eq('kind', 'source')
-      .in('status', ['uploading', 'validating'])
-    if ((openCount ?? 0) >= MAX_OPEN_SOURCE_ASSETS) {
-      return json({ error: 'Too many recordings are still processing — give them a moment to finish.' }, 429)
-    }
-    const { data: usage } = await admin
-      .from('media_assets')
-      .select('size_bytes')
-      .eq('owner_id', user.id)
-      .neq('status', 'deleted')
-    const usedBytes = (usage ?? []).reduce((acc, r) => acc + Number(r.size_bytes ?? 0), 0)
-    if (usedBytes + sizeBytes > USER_QUOTA_BYTES) {
-      return json({ error: 'Your storage is full — delete some older videos first.' }, 413)
-    }
-
-    const assetId = crypto.randomUUID()
-    const ext = contentType.includes('mp4') ? 'mp4' : contentType.includes('quicktime') ? 'mp4' : 'webm'
-    // Stable path: {owner}/{generation}/{asset}.{ext} — owner-prefixed to match
-    // the bucket's layout conventions; retries re-upload this same object.
-    const path = `${user.id}/${generationId}/${assetId}.${ext}`
-    const { error: insErr } = await admin.from('media_assets').insert({
-      id: assetId,
-      owner_id: user.id,
-      generation_id: generationId,
-      recording_attempt_id: attemptId,
-      kind: 'source',
-      bucket: BUCKET,
-      storage_path: path,
-      mime_type: contentType,
-      size_bytes: sizeBytes,
-      status: 'uploading',
-      // New-era marker (stamped atomically): this source MUST have a capture
-      // manifest before it can become ready (0090 guard).
-      capture_contract_version: CAPTURE_CONTRACT_VERSION,
+    const { data, error } = await admin.rpc('editor_create_source_asset', {
+      p_owner: user.id,
+      p_generation: generationId,
+      p_attempt: attemptId,
+      p_input: input,
+      p_bucket: BUCKET,
+      p_mime: norm.baseMime,
+      p_size_bytes: sizeBytes,
     })
-    if (insErr) {
-      // Unique-index race: another tab/device created this attempt first.
-      // Converge on that row instead of failing.
-      const { data: raced } = await findExisting()
-      if (raced && raced.status !== 'rejected' && raced.status !== 'deleted') {
-        // Conflict-check the mandatory capture against the stored intent for the
-        // raced row too — INCLUDING a ready race — before any status shortcut.
-        const capResp = await attachCapture(raced.id)
-        if (capResp) return capResp
-        const sign = raced.status === 'ready' ? null : await signUpload(raced.storage_path)
-        if (raced.status !== 'ready' && !sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
-        return intentResponse(raced, sign)
-      }
-      return json({ error: 'Could not start the upload — try again.' }, 500)
+    if (error) return json({ error: mapCreateError(error.message) }, createErrorStatus(error.message))
+    const row = Array.isArray(data) ? data[0] : data
+    if (!row) return json({ error: 'Could not start the upload — try again.' }, 500)
+
+    if (row.status === 'ready') {
+      return intentResponse({ id: row.asset_id, storage_path: row.storage_path, status: row.status }, null)
     }
-    const capResp = await attachCapture(assetId)
-    if (capResp) return capResp
-    const sign = await signUpload(path)
+    const sign = await signUpload(row.storage_path)
     if (!sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
-    return json({ assetId, bucket: BUCKET, path, status: 'uploading', token: sign.token, signedUrl: sign.signedUrl })
+    return intentResponse({ id: row.asset_id, storage_path: row.storage_path, status: row.status }, sign)
   }
 
   if (body.action === 'finalize') {
