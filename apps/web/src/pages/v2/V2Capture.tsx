@@ -413,11 +413,13 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
         intended_dialogue_sha256: await sha256Hex(normalizeDialogue(scene.dialogue ?? '')),
       })
     }
-    // Validate against the shared contract before uploading; a contract failure
-    // throws → the save fails retryably, never an upload without provenance.
+    // Validate the client INPUT against the shared contract before uploading; a
+    // contract failure throws → the save fails retryably, never an upload
+    // without provenance. The server-authority fields (sourceAssetId,
+    // recordedAt) are assigned by the create RPC, so the browser never supplies
+    // them (Constitution §10D).
     await buildTeleprompterIntent({
       generationId: genId,
-      sourceAssetId: '00000000-0000-0000-0000-000000000000',
       clientAttemptId: attemptIdRef.current,
       recordingScriptSha256: scriptSha,
       segments: accepted_segments.map((a) => ({ sceneNumber: a.scene_number, startMs: a.start_ms, endMs: a.end_ms, dialogue: '' })),
