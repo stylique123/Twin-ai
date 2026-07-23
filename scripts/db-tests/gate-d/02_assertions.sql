@@ -13,6 +13,18 @@ begin
 end; $$;
 create or replace function pg_temp.expect_true(p boolean, label text) returns void language plpgsql as $$
 begin if p is distinct from true then raise exception 'ASSERT_FAIL: % (expected true)', label; end if; end; $$;
+-- Build a stored capture-intent JSON exactly as the create RPC would, so backfill
+-- fixtures carry SELF-CONSISTENT intents (hash recomputes, JSON matches columns). The
+-- `p_json_asset` override lets a hostile fixture deliberately store a JSON sourceAssetId
+-- that disagrees with the relational source_asset_id column.
+create or replace function pg_temp.mk_intent(p_asset uuid, p_gen uuid, p_attempt uuid, p_origin text, p_script_sha text, p_json_asset uuid default null)
+returns jsonb language sql as $$
+  select public.editor_build_stored_intent(
+    jsonb_build_object('origin',p_origin,'recordingScriptSha256',p_script_sha,
+                       'recorderClock', case when p_origin='teleprompter' then 'mediarecorder-active-time-ms' else 'none' end,
+                       'acceptedSegments','[]'::jsonb),
+    coalesce(p_json_asset, p_asset), p_gen, p_attempt, '2026-01-01T00:00:00.000Z')
+$$;
 
 -- ---- fixtures
 truncate public.source_capture_manifests, public.source_capture_intents, public.media_assets, public.generations cascade;
@@ -423,20 +435,30 @@ do $$
 declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f7f7f7f7-0000-0000-0000-0000000000f7';
   a_tele uuid := 'f8000000-0000-0000-0000-000000000001'; a_up uuid := 'f8000000-0000-0000-0000-000000000002';
   a_legacy uuid := 'f8000000-0000-0000-0000-000000000003'; a_bad uuid := 'f8000000-0000-0000-0000-000000000004';
+  att_t uuid := gen_random_uuid(); att_u uuid := gen_random_uuid(); att_b uuid := gen_random_uuid();
+  script_sha text := repeat('a',64); i_tele jsonb; i_up jsonb; sha_t text; sha_u text;
 begin
-  truncate public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
-  -- Pre-0091 rows (marker NULL). Valid teleprompter (intent+manifest, ready) → marker 1;
-  -- valid upload (intent, uploading) → marker 1; true legacy (no intent) → stays NULL.
+  -- Pre-0091 rows (marker NULL). Valid teleprompter (intent+manifest+matching snapshot,
+  -- ready) → marker 1; valid upload (intent, uploading, no snapshot) → marker 1; true
+  -- legacy (no intent) → stays NULL. Intents are built self-consistently so the new
+  -- hash/relational/manifest/snapshot invariants all hold on the VALID rows.
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values
-    (a_tele,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'ready',null),
-    (a_up,own,g,gen_random_uuid(),'source','takes','y','video/webm',1024,'uploading',null),
+    (a_tele,own,g,att_t,'source','takes','x','video/webm',1024,'ready',null),
+    (a_up,own,g,att_u,'source','takes','y','video/webm',1024,'uploading',null),
     (a_legacy,own,g,gen_random_uuid(),'source','takes','z','video/webm',1024,'uploading',null);
+  i_tele := pg_temp.mk_intent(a_tele,g,att_t,'teleprompter',script_sha); sha_t := public.editor_capture_intent_sha256(i_tele);
+  i_up := pg_temp.mk_intent(a_up,g,att_u,'upload',null);               sha_u := public.editor_capture_intent_sha256(i_up);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at) values
-    (a_tele,own,g,'teleprompter',repeat('a',64),gen_random_uuid(),'{}'::jsonb,repeat('a',64),now()),
-    (a_up,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,repeat('b',64),now());
+    (a_tele,own,g,'teleprompter',script_sha,att_t,i_tele,sha_t,now()),
+    (a_up,own,g,'upload',null,att_u,i_up,sha_u,now());
+  -- Manifest agrees with the teleprompter intent (same origin + same intent hash).
   insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version) values
-    (a_tele,own,'teleprompter',repeat('a',64),'{}'::jsonb,repeat('a',64),'v1');
+    (a_tele,own,'teleprompter',sha_t,'{}'::jsonb,repeat('a',64),'v1');
+  -- Teleprompter source-bound snapshot whose SHA equals the intent's script SHA.
+  insert into public.source_script_snapshots(source_asset_id,owner_id,generation_id,snapshot,snapshot_sha) values
+    (a_tele,own,g,'{}'::jsonb,script_sha);
   perform public.editor_backfill_capture_marker();
   perform pg_temp.expect_true((select capture_contract_version from public.media_assets where id=a_tele)=1, 'backfill: valid teleprompter → 1');
   perform pg_temp.expect_true((select capture_contract_version from public.media_assets where id=a_up)=1, 'backfill: valid upload → 1');
@@ -444,11 +466,13 @@ begin
   -- Idempotent: a second run changes nothing.
   perform public.editor_backfill_capture_marker();
   perform pg_temp.expect_true((select count(*) from public.media_assets where capture_contract_version=1)=2, 'backfill: idempotent');
-  -- INCONSISTENT: a ready source with an intent but NO manifest → fails migration closed.
+  -- INCONSISTENT: a ready source with a (self-consistent) intent but NO manifest → fails
+  -- migration closed. The intent is built consistently so this trips ONLY the
+  -- ready-no-manifest guard (keeping the (k) mutation control isolated).
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values
-    (a_bad,own,g,gen_random_uuid(),'source','takes','w','video/webm',1024,'ready',null);
+    (a_bad,own,g,att_b,'source','takes','w','video/webm',1024,'ready',null);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at) values
-    (a_bad,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,repeat('c',64),now());
+    (a_bad,own,g,'upload',null,att_b,pg_temp.mk_intent(a_bad,g,att_b,'upload',null),public.editor_capture_intent_sha256(pg_temp.mk_intent(a_bad,g,att_b,'upload',null)),now());
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
 end $$;
 
@@ -481,54 +505,168 @@ begin
 end $$;
 do $$  -- (3) intent attached to a NON-source asset
 declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
-  a uuid := 'f9000000-0000-0000-0000-000000000013';
+  a uuid := 'f9000000-0000-0000-0000-000000000013'; att uuid := gen_random_uuid(); j jsonb;
 begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
     values (a,own,g,null,'music','takes','x','audio/mpeg',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'upload',null);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
-    values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,repeat('a',64),now());
+    values (a,own,g,'upload',null,att,j,public.editor_capture_intent_sha256(j),now());
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
 end $$;
-do $$  -- (4) intent owner/generation linkage mismatch
+do $$  -- (4) intent owner/generation linkage mismatch (owner column ≠ asset owner)
 declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
-  a uuid := 'f9000000-0000-0000-0000-000000000014';
+  a uuid := 'f9000000-0000-0000-0000-000000000014'; att uuid := gen_random_uuid(); j jsonb;
 begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
     values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+  -- owner_id is NOT part of the stored intent JSON, so the JSON stays self-consistent
+  -- while the relational owner_id column diverges from the asset owner.
+  j := pg_temp.mk_intent(a,g,att,'upload',null);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
-    values (a,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',g,'upload',null,gen_random_uuid(),'{}'::jsonb,repeat('a',64),now());
+    values (a,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',g,'upload',null,att,j,public.editor_capture_intent_sha256(j),now());
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
 end $$;
-do $$  -- (5) manifest owner linkage mismatch
+do $$  -- (5) manifest owner linkage mismatch (upload path: no snapshot required)
 declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
-  a uuid := 'f9000000-0000-0000-0000-000000000015';
+  a uuid := 'f9000000-0000-0000-0000-000000000015'; att uuid := gen_random_uuid(); j jsonb; s text;
 begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
     values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'upload',null); s := public.editor_capture_intent_sha256(j);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
-    values (a,own,g,'teleprompter',repeat('a',64),gen_random_uuid(),'{}'::jsonb,repeat('a',64),now());
+    values (a,own,g,'upload',null,att,j,s,now());
+  -- Manifest agrees with the intent on origin AND hash; only its owner_id diverges.
   insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
-    values (a,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','teleprompter',repeat('a',64),'{}'::jsonb,repeat('a',64),'v1');
+    values (a,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','upload',s,'{}'::jsonb,repeat('a',64),'v1');
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
 end $$;
-do $$  -- (6) binding owner/generation linkage mismatch
+do $$  -- (6) binding owner/generation linkage mismatch (snapshot SHA matches; generation diverges)
 declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
-  a uuid := 'f9000000-0000-0000-0000-000000000016';
+  a uuid := 'f9000000-0000-0000-0000-000000000016'; att uuid := gen_random_uuid(); j jsonb; sc text := repeat('a',64);
 begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
     values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'teleprompter',sc);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
-    values (a,own,g,'teleprompter',repeat('a',64),gen_random_uuid(),'{}'::jsonb,repeat('a',64),now());
+    values (a,own,g,'teleprompter',sc,att,j,public.editor_capture_intent_sha256(j),now());
+  -- snapshot SHA matches the intent script SHA (so the teleprompter-snapshot guard is
+  -- satisfied); only its generation_id diverges → isolates the binding-linkage guard.
   insert into public.source_script_snapshots(source_asset_id,owner_id,generation_id,snapshot,snapshot_sha)
-    values (a,own,'f9000000-0000-0000-0000-0000000000ff','{}'::jsonb,repeat('a',64));
+    values (a,own,'f9000000-0000-0000-0000-0000000000ff','{}'::jsonb,sc);
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+
+\echo == backup-7: backfill rejects intent/manifest/snapshot provenance corruption ==
+-- Each block builds a fully SELF-CONSISTENT source+intent and perturbs exactly ONE new
+-- invariant, so it must trip precisely that guard (all other classes clean).
+do $$  -- (7) manifest ORIGIN differs from its intent
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fa000000-0000-0000-0000-0000000000fa';
+  a uuid := 'fa000000-0000-0000-0000-000000000071'; att uuid := gen_random_uuid(); j jsonb; s text;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'upload',null); s := public.editor_capture_intent_sha256(j);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,att,j,s,now());
+  insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
+    values (a,own,'teleprompter',s,'{}'::jsonb,repeat('a',64),'v1');  -- origin ≠ intent 'upload'
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (8) manifest INTENT HASH differs from its intent
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fa000000-0000-0000-0000-0000000000fa';
+  a uuid := 'fa000000-0000-0000-0000-000000000082'; att uuid := gen_random_uuid(); j jsonb; s text;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'upload',null); s := public.editor_capture_intent_sha256(j);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,att,j,s,now());
+  insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
+    values (a,own,'upload',repeat('0',64),'{}'::jsonb,repeat('a',64),'v1');  -- intent_sha256 ≠ intent's
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (9) teleprompter intent WITHOUT a matching script snapshot (none present)
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fa000000-0000-0000-0000-0000000000fa';
+  a uuid := 'fa000000-0000-0000-0000-000000000093'; att uuid := gen_random_uuid(); j jsonb; s text; sc text := repeat('a',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'teleprompter',sc); s := public.editor_capture_intent_sha256(j);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'teleprompter',sc,att,j,s,now());  -- NO source_script_snapshots row
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (9b) teleprompter intent WITH a snapshot whose SHA differs from recording_script_sha256
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fa000000-0000-0000-0000-0000000000fa';
+  a uuid := 'fa000000-0000-0000-0000-00000000009b'; att uuid := gen_random_uuid(); j jsonb; s text; sc text := repeat('a',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'teleprompter',sc); s := public.editor_capture_intent_sha256(j);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'teleprompter',sc,att,j,s,now());
+  insert into public.source_script_snapshots(source_asset_id,owner_id,generation_id,snapshot,snapshot_sha)
+    values (a,own,g,'{}'::jsonb,repeat('9',64));  -- snapshot SHA ≠ recording_script_sha256
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (10) UPLOAD intent carrying a script snapshot
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fa000000-0000-0000-0000-0000000000fa';
+  a uuid := 'fa000000-0000-0000-0000-000000000104'; att uuid := gen_random_uuid(); j jsonb; s text;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'upload',null); s := public.editor_capture_intent_sha256(j);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,att,j,s,now());
+  insert into public.source_script_snapshots(source_asset_id,owner_id,generation_id,snapshot,snapshot_sha)
+    values (a,own,g,'{}'::jsonb,repeat('a',64));  -- upload must have NO snapshot
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (11) stored intent HASH does not recompute
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fa000000-0000-0000-0000-0000000000fa';
+  a uuid := 'fa000000-0000-0000-0000-000000000115'; att uuid := gen_random_uuid(); j jsonb;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+  j := pg_temp.mk_intent(a,g,att,'upload',null);  -- correct JSON, but stored with a WRONG sha
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,att,j,repeat('0',64),now());
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (12) stored intent JSON disagrees with relational columns (JSON sourceAssetId ≠ column)
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fa000000-0000-0000-0000-0000000000fa';
+  a uuid := 'fa000000-0000-0000-0000-000000000126'; att uuid := gen_random_uuid(); j jsonb; s text;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+  -- JSON built against a DIFFERENT asset id; hash recomputes (so the hash check passes)
+  -- but the relational sourceAssetId disagrees → relational guard must fire.
+  j := pg_temp.mk_intent(a,g,att,'upload',null,'fa000000-0000-0000-0000-0000000000ee'); s := public.editor_capture_intent_sha256(j);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,att,j,s,now());
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
 end $$;
 

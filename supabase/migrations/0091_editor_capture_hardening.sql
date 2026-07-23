@@ -590,7 +590,12 @@ $$;
 --   * a manifest whose source has NO intent (orphaned provenance);
 --   * a script binding whose source has NO intent;
 --   * an intent attached to a NON-source asset;
---   * any asset↔intent, asset↔manifest, asset↔binding owner/generation linkage mismatch.
+--   * any asset↔intent, asset↔manifest, asset↔binding owner/generation linkage mismatch;
+--   * a manifest whose origin or intent hash differs from its intent;
+--   * a teleprompter intent without exactly one script snapshot matching its script SHA;
+--   * an upload intent that carries any script snapshot;
+--   * a stored intent whose sha256 does not recompute, or whose JSON disagrees with its
+--     relational columns.
 -- A source WITHOUT a capture intent stays NULL (true legacy).
 create or replace function public.editor_backfill_capture_marker() returns void language plpgsql as $$
 declare bad int;
@@ -633,6 +638,58 @@ begin
    where b.owner_id is distinct from a.owner_id or b.generation_id is distinct from a.generation_id;
   if bad > 0 then
     raise exception 'capture_backfill_inconsistent: % binding owner/generation linkage mismatch', bad using errcode = 'raise_exception';
+  end if;
+  -- A manifest MUST agree with its intent: same origin AND same intent hash. A manifest
+  -- minted for a different origin, or against a different capture intent, is corrupt.
+  select count(*) into bad from public.source_capture_manifests m
+    join public.source_capture_intents i on i.source_asset_id = m.source_asset_id
+   where m.origin is distinct from i.origin;
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % manifest origin differs from its intent', bad using errcode = 'raise_exception';
+  end if;
+  select count(*) into bad from public.source_capture_manifests m
+    join public.source_capture_intents i on i.source_asset_id = m.source_asset_id
+   where m.intent_sha256 is distinct from i.intent_sha256;
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % manifest intent hash differs from its intent', bad using errcode = 'raise_exception';
+  end if;
+  -- A TELEPROMPTER intent MUST have EXACTLY ONE source-bound script snapshot, and that
+  -- snapshot's SHA MUST equal the intent's immutable recording_script_sha256. Zero, many
+  -- (structurally impossible — source_asset_id is the snapshot PK, but proven anyway), or
+  -- a divergent SHA is corrupt provenance.
+  select count(*) into bad from public.source_capture_intents i
+   where i.origin = 'teleprompter'
+     and ( (select count(*) from public.source_script_snapshots b where b.source_asset_id = i.source_asset_id) <> 1
+        or not exists (select 1 from public.source_script_snapshots b
+                        where b.source_asset_id = i.source_asset_id and b.snapshot_sha = i.recording_script_sha256) );
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % teleprompter intent without exactly one matching script snapshot', bad using errcode = 'raise_exception';
+  end if;
+  -- An UPLOAD intent was NOT recorded against a script → it MUST carry NO script snapshot.
+  select count(*) into bad from public.source_capture_intents i
+   where i.origin = 'upload'
+     and exists (select 1 from public.source_script_snapshots b where b.source_asset_id = i.source_asset_id);
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % upload intent carries a script snapshot', bad using errcode = 'raise_exception';
+  end if;
+  -- Every stored intent's sha256 MUST recompute from its own canonical JSON (no tampered
+  -- row whose hash silently disagrees with its bytes).
+  select count(*) into bad from public.source_capture_intents i
+   where i.intent_sha256 is distinct from public.editor_capture_intent_sha256(i.intent);
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % stored intent hash does not recompute', bad using errcode = 'raise_exception';
+  end if;
+  -- Every stored intent's JSON MUST agree with its relational columns (origin,
+  -- generation, source asset, attempt, recording-script SHA), so a row cannot present
+  -- one identity relationally while its signed bytes claim another.
+  select count(*) into bad from public.source_capture_intents i
+   where (i.intent->>'origin') is distinct from i.origin
+      or (i.intent->>'generationId') is distinct from i.generation_id::text
+      or (i.intent->>'sourceAssetId') is distinct from i.source_asset_id::text
+      or (i.intent->>'clientAttemptId') is distinct from i.client_attempt_id::text
+      or (i.intent->>'recordingScriptSha256') is distinct from i.recording_script_sha256;
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % stored intent JSON/relational mismatch', bad using errcode = 'raise_exception';
   end if;
   -- All inconsistencies ruled out → backfill every source-with-intent to marker 1.
   update public.media_assets a set capture_contract_version = 1

@@ -235,6 +235,20 @@ mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % mani
   "(k6) backfill manifest-linkage guard removed → gate correctly FAILED"
 mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % binding owner\/generation linkage mismatch', bad using errcode = 'raise_exception';/null;/" \
   "(k7) backfill binding-linkage guard removed → gate correctly FAILED"
+# (k8)-(k13) each NEW provenance-corruption guard removed → its isolated hostile fixture
+#            (which expected capture_backfill_inconsistent) now sees success → gate FAILS.
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % manifest origin differs from its intent', bad using errcode = 'raise_exception';/null;/" \
+  "(k8) manifest-origin guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % manifest intent hash differs from its intent', bad using errcode = 'raise_exception';/null;/" \
+  "(k9) manifest-intent-hash guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % teleprompter intent without exactly one matching script snapshot', bad using errcode = 'raise_exception';/null;/" \
+  "(k10) teleprompter-snapshot guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % upload intent carries a script snapshot', bad using errcode = 'raise_exception';/null;/" \
+  "(k11) upload-no-snapshot guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % stored intent hash does not recompute', bad using errcode = 'raise_exception';/null;/" \
+  "(k12) stored-intent-hash guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % stored intent JSON\/relational mismatch', bad using errcode = 'raise_exception';/null;/" \
+  "(k13) stored-intent-relational guard removed → gate correctly FAILED"
 
 echo "== identity negative controls (RLS/privilege/service-role/warning must have teeth) =="
 # (l) manifest RLS disabled → an outsider sees the owner's manifest → identity FAILS.
