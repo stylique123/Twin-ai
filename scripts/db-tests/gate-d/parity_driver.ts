@@ -1,6 +1,12 @@
-// Emits TS canonical + sha for stored-intent fixtures, for DB↔TS parity.
-// Bundled by run.sh with esbuild (resolves the shared capture module).
-import { buildStoredIntent, canonicalCaptureIntent, captureIntentSha256, type SourceCaptureIntentInputV1 } from '../../../packages/shared/src/editor/capture'
+// Emits TS canonical fixtures for DB↔TS parity: for each intent, the stored
+// canonical + sha, and the browser input + its input-canonical. Also emits a
+// numeric-normalization fixture (integral float on the wire) to prove the DB's
+// trunc()-based number emission matches JSON.stringify of the integer.
+// Bundled by run.sh with esbuild.
+import {
+  buildStoredIntent, canonicalCaptureIntent, canonicalCaptureIntentInput, captureIntentSha256,
+  type SourceCaptureIntentInputV1,
+} from '../../../packages/shared/src/editor/capture'
 
 const GEN = '11111111-1111-1111-1111-111111111111'
 const ASSET = '22222222-2222-2222-2222-222222222222'
@@ -20,12 +26,21 @@ const teleInput: SourceCaptureIntentInputV1 = {
     { sceneNumber: 2, startMs: 2000, endMs: 5000, intendedDialogueSha256: DSHA },
   ],
 }
-const fixtures = [
-  buildStoredIntent(uploadInput, { sourceAssetId: ASSET, recordedAt: R }),
-  buildStoredIntent(teleInput, { sourceAssetId: ASSET, recordedAt: R }),
-]
+const inputs = [uploadInput, teleInput]
 ;(async () => {
-  const out = []
-  for (const f of fixtures) out.push({ intent: f, canonical: canonicalCaptureIntent(f), sha: await captureIntentSha256(f) })
+  const out: unknown[] = []
+  for (const input of inputs) {
+    const stored = buildStoredIntent(input, { sourceAssetId: ASSET, recordedAt: R })
+    out.push({
+      input, inputCanonical: canonicalCaptureIntentInput(input),
+      stored, canonical: canonicalCaptureIntent(stored), sha: await captureIntentSha256(stored),
+    })
+  }
+  // Numeric-normalization fixture: the DB receives integral FLOATS on the wire
+  // (0.0 / 2000.0) as a RAW json string; the shared reference is the integer
+  // form. dbStoredRaw is fed verbatim to the DB canonical fn.
+  const teleInts = buildStoredIntent(teleInput, { sourceAssetId: ASSET, recordedAt: R })
+  const dbStoredRaw = JSON.stringify(teleInts).replace('"startMs":0,', '"startMs":0.0,').replace('"endMs":2000,', '"endMs":2000.0,')
+  out.push({ numericNorm: true, dbStoredRaw, canonical: canonicalCaptureIntent(teleInts) })
   process.stdout.write(JSON.stringify(out))
 })()

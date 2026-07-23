@@ -13,6 +13,7 @@ import {
   canonicalCaptureScript,
   sha256Hex,
   normalizeDialogue,
+  normalizeSourceMime,
   CaptureContractError,
   CAPTURE_MIN_SEGMENT_MS,
   CAPTURE_END_TOLERANCE_MS,
@@ -147,6 +148,32 @@ describe('capture: validation hostile shapes', () => {
       acceptedSegments: [{ sceneNumber: 1, startMs: 0, endMs: 3000, intendedDialogueSha256: SHA }] }
     expect(code(() => validateCaptureIntentInput(t))).toBe('capture_intent_bad_script_sha')
   })
+  it('upload rejects a MISSING recordingScriptSha256 key (undefined !== null)', () => {
+    const b = base() as Record<string, unknown>
+    delete b.recordingScriptSha256
+    expect(code(() => validateCaptureIntentInput(b))).toBe('capture_intent_upload_shape')
+  })
+})
+
+describe('capture: bounded numeric contract (DB parity)', () => {
+  const tele = (seg: Record<string, unknown>): unknown => ({
+    schemaVersion: 1, origin: 'teleprompter', generationId: GEN, recordingScriptSha256: SHA,
+    clientAttemptId: ATTEMPT, recorderClock: 'mediarecorder-active-time-ms', acceptedSegments: [seg],
+  })
+  const okSeg = { sceneNumber: 1, startMs: 0, endMs: 2000, intendedDialogueSha256: SHA }
+  it('accepts a plain integer and an integral float (1.0 parses to 1)', () => {
+    expect(() => validateCaptureIntentInput(tele(okSeg))).not.toThrow()
+    // 1.0 and 2000.0 are integral — JSON.parse yields 1 / 2000, Number.isSafeInteger true.
+    expect(() => validateCaptureIntentInput(tele({ ...okSeg, startMs: 0.0, endMs: 2000.0 }))).not.toThrow()
+  })
+  it('rejects fractional, negative, unsafe (>2^53-1) and non-number', () => {
+    expect(code(() => validateCaptureIntentInput(tele({ ...okSeg, endMs: 2000.5 })))).toBe('capture_intent_bad_time')
+    expect(code(() => validateCaptureIntentInput(tele({ ...okSeg, startMs: -1 })))).toBe('capture_intent_bad_time')
+    expect(code(() => validateCaptureIntentInput(tele({ ...okSeg, endMs: 9007199254740992 })))).toBe('capture_intent_bad_time')
+    expect(code(() => validateCaptureIntentInput(tele({ ...okSeg, startMs: '0' })))).toBe('capture_intent_bad_time')
+    expect(code(() => validateCaptureIntentInput(tele({ ...okSeg, sceneNumber: 1.5 })))).toBe('capture_intent_bad_scene')
+    expect(code(() => validateCaptureIntentInput(tele({ ...okSeg, sceneNumber: 9007199254740992 })))).toBe('capture_intent_bad_scene')
+  })
 })
 
 describe('capture: server normalization vs measured duration', () => {
@@ -206,6 +233,24 @@ describe('capture: canonical stored-intent bytes (DB parity anchor)', () => {
       + `"origin":"upload","recordedAt":"${RECORDED}","recorderClock":"none",`
       + `"recordingScriptSha256":null,"schemaVersion":1,"sourceAssetId":"${ASSET}"}`,
     )
+  })
+})
+
+describe('capture: source MIME normalization boundary', () => {
+  it('strips codec params and maps to base MIME + ext (real MediaRecorder strings)', () => {
+    expect(normalizeSourceMime('video/webm;codecs=vp9,opus')).toEqual({ baseMime: 'video/webm', ext: 'webm' })
+    expect(normalizeSourceMime('video/webm;codecs="vp8,opus"')).toEqual({ baseMime: 'video/webm', ext: 'webm' })
+    expect(normalizeSourceMime('VIDEO/WEBM; codecs=vp9')).toEqual({ baseMime: 'video/webm', ext: 'webm' })
+    expect(normalizeSourceMime('video/mp4')).toEqual({ baseMime: 'video/mp4', ext: 'mp4' })
+    expect(normalizeSourceMime('video/mp4;codecs=avc1.42E01E,mp4a.40.2')).toEqual({ baseMime: 'video/mp4', ext: 'mp4' })
+    expect(normalizeSourceMime('video/quicktime')).toEqual({ baseMime: 'video/quicktime', ext: 'mp4' })
+  })
+  it('fails closed (null) for anything outside the allowed set', () => {
+    expect(normalizeSourceMime('image/png')).toBeNull()
+    expect(normalizeSourceMime('application/octet-stream')).toBeNull()
+    expect(normalizeSourceMime('')).toBeNull()
+    expect(normalizeSourceMime(null)).toBeNull()
+    expect(normalizeSourceMime('video/x-matroska')).toBeNull()
   })
 })
 

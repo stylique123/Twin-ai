@@ -125,9 +125,82 @@ begin
   perform public.editor_validate_capture_input(base);
 end $$;
 
+\echo == round-2: numeric contract, missing-key, input byte cap ==
+do $$
+declare base jsonb := (select tel from v);
+  seg jsonb := '{"sceneNumber":1,"startMs":0,"endMs":2000,"intendedDialogueSha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}'::jsonb;
+begin
+  -- integral float (1.0 / 2000.0) is ACCEPTED (parity with Number.isSafeInteger)
+  perform public.editor_validate_capture_input(base || jsonb_build_object('acceptedSegments', jsonb_build_array(seg || '{"startMs":0.0,"endMs":2000.0}'::jsonb)));
+  -- fractional / negative / >2^53-1 / non-number REJECTED with stable codes
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base||jsonb_build_object('acceptedSegments',jsonb_build_array(seg||'{"endMs":2000.5}'::jsonb)))::text), 'capture_intent_bad_time');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base||jsonb_build_object('acceptedSegments',jsonb_build_array(seg||'{"startMs":-1}'::jsonb)))::text), 'capture_intent_bad_time');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base||jsonb_build_object('acceptedSegments',jsonb_build_array(seg||'{"endMs":9007199254740992}'::jsonb)))::text), 'capture_intent_bad_time');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base||jsonb_build_object('acceptedSegments',jsonb_build_array(seg||'{"startMs":"0"}'::jsonb)))::text), 'capture_intent_bad_time');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base||jsonb_build_object('acceptedSegments',jsonb_build_array(seg||'{"sceneNumber":1.5}'::jsonb)))::text), 'capture_intent_bad_scene');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base||jsonb_build_object('acceptedSegments',jsonb_build_array(seg||'{"sceneNumber":9007199254740992}'::jsonb)))::text), 'capture_intent_bad_scene');
+  -- upload MISSING recordingScriptSha256 key → upload_shape; teleprompter missing → bad_script_sha
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, ((select up from v) - 'recordingScriptSha256')::text), 'capture_intent_upload_shape');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_capture_input(%L::jsonb)$q$, (base - 'recordingScriptSha256')::text), 'capture_intent_bad_script_sha');
+  -- input byte cap is a REAL computation (not the old NULL no-op): well under cap
+  -- for a max input, and > cap detectable on an oversized (600-segment) doc.
+  perform pg_temp.expect_true(octet_length(convert_to(public.editor_capture_intent_input_canonical(base),'UTF8')) <= 65536, 'input canonical under cap');
+  perform pg_temp.expect_true(octet_length(convert_to(public.editor_capture_intent_input_canonical(
+    base || jsonb_build_object('acceptedSegments', (select jsonb_agg(jsonb_build_object('sceneNumber',g,'startMs',g*400,'endMs',g*400+300,'intendedDialogueSha256',repeat('b',64))) from generate_series(1,600) g))),'UTF8')) > 65536, 'oversized input canonical > cap');
+end $$;
+
+\echo == round-2: existing-attempt descriptor binding + marker matrix + corrupted row ==
+do $$
+declare r record; up jsonb := (select up from v);
+begin
+  truncate public.source_capture_intents, public.media_assets cascade;
+  -- fresh create for a descriptor-binding attempt
+  select * into r from public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','33333333-3333-3333-3333-333333333333', up,'takes','video/webm',1048576);
+  -- divergent descriptor retries all fail closed (bucket already policy-checked; test mime/size)
+  perform pg_temp.expect_code($q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','33333333-3333-3333-3333-333333333333', (select up from v),'takes','video/mp4',1048576)$q$, 'source_attempt_conflict');
+  perform pg_temp.expect_code($q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','33333333-3333-3333-3333-333333333333', (select up from v),'takes','video/webm',2097152)$q$, 'source_attempt_conflict');
+  -- identical descriptor still idempotent
+  select * into r from public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','33333333-3333-3333-3333-333333333333', up,'takes','video/webm',1048576);
+  perform pg_temp.expect_true(not r.created, 'identical descriptor idempotent');
+
+  -- MARKER MATRIX: an in-flight legacy row (marker NULL, uploading) is UPGRADED
+  -- to marker=1 with a verified intent on create; a settled legacy row is not.
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values ('aaaaaaaa-0000-0000-0000-000000000001','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','a1a1a1a1-0000-0000-0000-000000000001','source','takes','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/11111111-1111-1111-1111-111111111111/aaaaaaaa-0000-0000-0000-000000000001.webm','video/webm',1048576,'uploading',null);
+  select * into r from public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','a1a1a1a1-0000-0000-0000-000000000001',
+    '{"schemaVersion":1,"origin":"upload","generationId":"11111111-1111-1111-1111-111111111111","recordingScriptSha256":null,"clientAttemptId":"a1a1a1a1-0000-0000-0000-000000000001","recorderClock":"none","acceptedSegments":[]}'::jsonb,'takes','video/webm',1048576);
+  perform pg_temp.expect_true((select capture_contract_version from public.media_assets where id='aaaaaaaa-0000-0000-0000-000000000001')=1, 'in-flight legacy upgraded to marker=1');
+  perform pg_temp.expect_true((select count(*) from public.source_capture_intents where source_asset_id='aaaaaaaa-0000-0000-0000-000000000001')=1, 'upgraded row has one intent');
+
+  -- settled legacy row (ready, marker NULL) cannot be upgraded → fail closed
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values ('aaaaaaaa-0000-0000-0000-000000000002','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','a2a2a2a2-0000-0000-0000-000000000002','source','takes','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/11111111-1111-1111-1111-111111111111/aaaaaaaa-0000-0000-0000-000000000002.webm','video/webm',1048576,'ready',null);
+  perform pg_temp.expect_code($q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','a2a2a2a2-0000-0000-0000-000000000002','{"schemaVersion":1,"origin":"upload","generationId":"11111111-1111-1111-1111-111111111111","recordingScriptSha256":null,"clientAttemptId":"a2a2a2a2-0000-0000-0000-000000000002","recorderClock":"none","acceptedSegments":[]}'::jsonb,'takes','video/webm',1048576)$q$, 'source_attempt_conflict');
+end $$;
+
+-- CORRUPTED ROW: a stored intent whose intent_sha256 is CORRECT but whose JSON is
+-- tampered (extra key) must still fail closed — the retry compares the immutable
+-- JSON, not only the hash.
+do $$
+declare aid uuid := 'aaaaaaaa-0000-0000-0000-000000000003';
+  att uuid := 'a3a3a3a3-0000-0000-0000-000000000003';
+  inp jsonb := '{"schemaVersion":1,"origin":"upload","generationId":"11111111-1111-1111-1111-111111111111","recordingScriptSha256":null,"clientAttemptId":"a3a3a3a3-0000-0000-0000-000000000003","recorderClock":"none","acceptedSegments":[]}'::jsonb;
+  good jsonb; goodsha text;
+begin
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (aid,'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111',att,'source','takes','aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa/11111111-1111-1111-1111-111111111111/'||aid::text||'.webm','video/webm',1048576,'uploading',1);
+  good := public.editor_build_stored_intent(inp, aid, '11111111-1111-1111-1111-111111111111', att, '2026-07-23T11:00:00.000Z');
+  goodsha := public.editor_capture_intent_sha256(good);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (aid,'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','upload',null,att, good || '{"junk":1}'::jsonb, goodsha, '2026-07-23T11:00:00.000Z'::timestamptz);
+  perform pg_temp.expect_code(format($q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','%s',%L::jsonb,'takes','video/webm',1048576)$q$, att, inp::text), 'capture_intent_conflict');
+end $$;
+
 \echo == grant posture (service_role only; anon/authenticated denied) ==
 do $$
 declare fns text[] := array[
+  'public.editor_capture_segments_canonical(jsonb)',
+  'public.editor_capture_intent_input_canonical(jsonb)',
   'public.editor_capture_intent_canonical(jsonb)',
   'public.editor_capture_intent_sha256(jsonb)',
   'public.editor_validate_capture_input(jsonb, uuid, uuid)',

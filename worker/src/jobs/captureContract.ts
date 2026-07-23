@@ -17,6 +17,7 @@ export const CAPTURE_MIN_SEGMENT_MS = 250
 export const CAPTURE_MAX_SEGMENTS = 200
 export const CAPTURE_INTENT_MAX_BYTES = 65536
 export const CAPTURE_MANIFEST_MAX_BYTES = 65536
+export const CAPTURE_MAX_INT = Number.MAX_SAFE_INTEGER
 
 export type CaptureOrigin = 'teleprompter' | 'upload'
 
@@ -127,13 +128,13 @@ function validateCommonIntentFields(o: Record<string, unknown>): CommonIntentFie
     if (typeof raw !== 'object' || raw === null) fail(`segment ${i}: not an object`, 'capture_intent_bad_segments')
     const s = raw as Record<string, unknown>
     const sceneNumber = s.sceneNumber
-    if (typeof sceneNumber !== 'number' || !Number.isInteger(sceneNumber) || sceneNumber < 1) fail(`segment ${i}: sceneNumber`, 'capture_intent_bad_scene')
+    if (typeof sceneNumber !== 'number' || !Number.isSafeInteger(sceneNumber) || sceneNumber < 1 || sceneNumber > CAPTURE_MAX_INT) fail(`segment ${i}: sceneNumber`, 'capture_intent_bad_scene')
     if (seenScenes.has(sceneNumber)) fail(`segment ${i}: duplicate sceneNumber`, 'capture_intent_dup_scene')
     seenScenes.add(sceneNumber)
     const startMs = s.startMs
     const endMs = s.endMs
-    if (typeof startMs !== 'number' || !Number.isInteger(startMs) || startMs < 0) fail(`segment ${i}: startMs`, 'capture_intent_bad_time')
-    if (typeof endMs !== 'number' || !Number.isInteger(endMs) || endMs < 0) fail(`segment ${i}: endMs`, 'capture_intent_bad_time')
+    if (typeof startMs !== 'number' || !Number.isSafeInteger(startMs) || startMs < 0 || startMs > CAPTURE_MAX_INT) fail(`segment ${i}: startMs`, 'capture_intent_bad_time')
+    if (typeof endMs !== 'number' || !Number.isSafeInteger(endMs) || endMs < 0 || endMs > CAPTURE_MAX_INT) fail(`segment ${i}: endMs`, 'capture_intent_bad_time')
     if (endMs - startMs < CAPTURE_MIN_SEGMENT_MS) fail(`segment ${i}: below min`, 'capture_intent_short_segment')
     if (startMs < prevEnd) fail(`segment ${i}: overlaps`, 'capture_intent_overlap')
     prevEnd = endMs

@@ -26,6 +26,21 @@ export const CAPTURE_MIN_SEGMENT_MS = 250 // minimum accepted capture segment
 export const CAPTURE_MAX_SEGMENTS = 200 // bound on accepted scenes (defense-in-depth)
 export const CAPTURE_INTENT_MAX_BYTES = 65536 // canonical intent byte cap
 export const CAPTURE_MANIFEST_MAX_BYTES = 65536 // canonical manifest byte cap
+export const CAPTURE_MAX_INT = Number.MAX_SAFE_INTEGER // 2^53-1: bounded numeric contract (scene/start/end)
+
+// Source MIME normalization boundary (Constitution §10D integration). Browsers'
+// MediaRecorder reports e.g. "video/webm;codecs=vp9,opus"; the create RPC accepts
+// only an exact base MIME. This is the ONE frozen place that maps a raw upload
+// Content-Type to {baseMime (for the DB), ext}. Returns null for anything not in
+// the allowed set — the edge fails closed rather than guessing.
+export const SOURCE_ALLOWED_BASE_MIME = ['video/webm', 'video/mp4', 'video/quicktime'] as const
+export function normalizeSourceMime(contentType: string | null | undefined): { baseMime: string; ext: 'webm' | 'mp4' } | null {
+  const base = (contentType ?? '').split(';')[0].trim().toLowerCase()
+  if (base === 'video/webm') return { baseMime: 'video/webm', ext: 'webm' }
+  if (base === 'video/mp4') return { baseMime: 'video/mp4', ext: 'mp4' }
+  if (base === 'video/quicktime') return { baseMime: 'video/quicktime', ext: 'mp4' }
+  return null
+}
 
 export type CaptureOrigin = 'teleprompter' | 'upload'
 export type RecorderClock = 'mediarecorder-active-time-ms' | 'none'
@@ -271,15 +286,19 @@ function validateCommonIntentFields(o: Record<string, unknown>): CommonIntentFie
     if (typeof raw !== 'object' || raw === null) fail(`segment ${i}: not an object`, 'capture_intent_bad_segments')
     const s = raw as Record<string, unknown>
     const sceneNumber = s.sceneNumber
-    if (typeof sceneNumber !== 'number' || !Number.isInteger(sceneNumber) || sceneNumber < 1) {
+    if (typeof sceneNumber !== 'number' || !Number.isSafeInteger(sceneNumber) || sceneNumber < 1 || sceneNumber > CAPTURE_MAX_INT) {
       fail(`segment ${i}: sceneNumber`, 'capture_intent_bad_scene')
     }
     if (seenScenes.has(sceneNumber)) fail(`segment ${i}: duplicate sceneNumber`, 'capture_intent_dup_scene')
     seenScenes.add(sceneNumber)
     const startMs = s.startMs
     const endMs = s.endMs
-    if (typeof startMs !== 'number' || !Number.isInteger(startMs) || startMs < 0) fail(`segment ${i}: startMs`, 'capture_intent_bad_time')
-    if (typeof endMs !== 'number' || !Number.isInteger(endMs) || endMs < 0) fail(`segment ${i}: endMs`, 'capture_intent_bad_time')
+    // Bounded numeric contract: a JS-safe non-negative integer within
+    // [0, CAPTURE_MAX_INT]. The DB mirrors this with a numeric integral + range
+    // check (so JSON 1.0 is accepted, 1.5 / exponent-fraction / >2^53-1 rejected)
+    // and never risks a bigint-overflow error.
+    if (typeof startMs !== 'number' || !Number.isSafeInteger(startMs) || startMs < 0 || startMs > CAPTURE_MAX_INT) fail(`segment ${i}: startMs`, 'capture_intent_bad_time')
+    if (typeof endMs !== 'number' || !Number.isSafeInteger(endMs) || endMs < 0 || endMs > CAPTURE_MAX_INT) fail(`segment ${i}: endMs`, 'capture_intent_bad_time')
     if (endMs - startMs < CAPTURE_MIN_SEGMENT_MS) fail(`segment ${i}: below min duration`, 'capture_intent_short_segment')
     // Strict order + non-overlap in the intent's own timeline. Abutting windows
     // (startMs == prevEnd) are legal — a continuous recorder pauses/resumes with
@@ -354,6 +373,12 @@ export function buildStoredIntent(
   if (!UUID_RE.test(server.sourceAssetId)) fail('stored intent: sourceAssetId', 'capture_intent_bad_id')
   if (!RECORDED_AT_RE.test(server.recordedAt)) fail('stored intent: recordedAt', 'capture_intent_bad_recorded_at')
   return validateCaptureIntent({ ...input, sourceAssetId: server.sourceAssetId, recordedAt: server.recordedAt })
+}
+
+// Canonical bytes of the BROWSER input projection (no server fields). Used for
+// the input byte-cap and DB↔TS input-canonical parity.
+export function canonicalCaptureIntentInput(input: SourceCaptureIntentInputV1): string {
+  return canonicalJson(input)
 }
 
 // Canonical bytes / SHA of a stored intent (what intent_sha256 covers).

@@ -37,6 +37,7 @@ describe('capture-contract parity: constants', () => {
     expect(W.CAPTURE_MAX_SEGMENTS).toBe(S.CAPTURE_MAX_SEGMENTS)
     expect(W.CAPTURE_INTENT_MAX_BYTES).toBe(S.CAPTURE_INTENT_MAX_BYTES)
     expect(W.CAPTURE_MANIFEST_MAX_BYTES).toBe(S.CAPTURE_MANIFEST_MAX_BYTES)
+    expect(W.CAPTURE_MAX_INT).toBe(S.CAPTURE_MAX_INT)
   })
 })
 
