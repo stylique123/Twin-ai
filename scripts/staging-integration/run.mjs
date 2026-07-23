@@ -84,7 +84,7 @@ async function edge(client, body) {
   return { status: res.status, body: await res.json().catch(() => ({})) }
 }
 const createIntent = (client, genId, attemptId, contentType, sizeBytes) =>
-  edge(client, { action: 'create', generation_id: genId, recording_attempt_id: attemptId, content_type: contentType, size_bytes: sizeBytes })
+  edge(client, { action: 'create', capture: { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }, generation_id: genId, recording_attempt_id: attemptId, content_type: contentType, size_bytes: sizeBytes })
 const finalize = (client, assetId) => edge(client, { action: 'finalize', asset_id: assetId })
 
 async function putSigned(signedUrl, buf, contentType) {

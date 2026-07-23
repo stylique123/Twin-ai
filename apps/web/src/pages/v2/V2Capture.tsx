@@ -388,47 +388,41 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   const saveSourceOnce = (blob: Blob) => uploadOnceRef.current.run(async () => {
     const contentType = blob.type || 'video/webm'
     attemptIdRef.current ??= newRecordingAttemptId()
-    // Source Capture Intent (Constitution §5.1): attach the accepted per-scene
-    // windows so the editor knows which take the creator kept. Positional:
-    // segmentsRef[i] is the accepted window for scenes[i] (the filtered
-    // teleprompter scenes, in order; retakes/go-backs already popped the
-    // rejected reads). Times are active-recording seconds → integer ms. If the
-    // payload can't be built or fails the shared contract, we send WITHOUT it —
-    // a recording must NEVER be lost to a provenance edge case.
-    let capture: CaptureUploadPayload | undefined
-    try {
-      const segs = segmentsRef.current
-      if (segs.length) {
-        const scriptSha = await captureScriptSha256({
-          generation_id: genId,
-          hook: timeline.hook,
-          scenes: scenes.map((s) => ({ scene_number: s.scene_number, dialogue: s.dialogue, show_in_teleprompter: s.show_in_teleprompter })),
-        })
-        const accepted_segments = []
-        for (let idx = 0; idx < segs.length; idx++) {
-          const scene = scenes[idx]
-          if (!scene) throw new Error('segment/scene mapping mismatch')
-          accepted_segments.push({
-            scene_number: scene.scene_number,
-            start_ms: Math.round(segs[idx].start * 1000),
-            end_ms: Math.round(segs[idx].end * 1000),
-            intended_dialogue_sha256: await sha256Hex(normalizeDialogue(scene.dialogue ?? '')),
-          })
-        }
-        // Validate against the shared contract before attaching; only a payload
-        // that would pass the edge/worker is sent (otherwise fall back cleanly).
-        await buildTeleprompterIntent({
-          generationId: genId,
-          sourceAssetId: '00000000-0000-0000-0000-000000000000',
-          clientAttemptId: attemptIdRef.current,
-          recordingScriptSha256: scriptSha,
-          segments: accepted_segments.map((a) => ({ sceneNumber: a.scene_number, startMs: a.start_ms, endMs: a.end_ms, dialogue: '' })),
-        })
-        capture = { origin: 'teleprompter', recording_script_sha256: scriptSha, recorder_clock: 'mediarecorder-active-time-ms', accepted_segments }
-      }
-    } catch {
-      capture = undefined
+    // Source Capture Intent (Constitution §5.1) — MANDATORY for a teleprompter
+    // take. segmentsRef[i] is the accepted window for scenes[i] (filtered
+    // teleprompter scenes, in order; retakes/go-backs already popped the rejected
+    // reads). We build + validate it against the shared contract and NEVER upload
+    // without it — a provenance failure surfaces as a retryable save error (the
+    // raw blob stays in reviewBlobRef), so we neither lose the recording NOR
+    // silently strip provenance and recreate the retake defect.
+    const segs = segmentsRef.current
+    if (!segs.length) throw new Error('No recorded scenes to save — record at least one scene.')
+    const scriptSha = await captureScriptSha256({
+      generation_id: genId,
+      hook: timeline.hook,
+      scenes: scenes.map((s) => ({ scene_number: s.scene_number, dialogue: s.dialogue, show_in_teleprompter: s.show_in_teleprompter })),
+    })
+    const accepted_segments = []
+    for (let idx = 0; idx < segs.length; idx++) {
+      const scene = scenes[idx]
+      if (!scene) throw new Error('Could not match a recorded scene to the script — please re-record.')
+      accepted_segments.push({
+        scene_number: scene.scene_number,
+        start_ms: Math.round(segs[idx].start * 1000),
+        end_ms: Math.round(segs[idx].end * 1000),
+        intended_dialogue_sha256: await sha256Hex(normalizeDialogue(scene.dialogue ?? '')),
+      })
     }
+    // Validate against the shared contract before uploading; a contract failure
+    // throws → the save fails retryably, never an upload without provenance.
+    await buildTeleprompterIntent({
+      generationId: genId,
+      sourceAssetId: '00000000-0000-0000-0000-000000000000',
+      clientAttemptId: attemptIdRef.current,
+      recordingScriptSha256: scriptSha,
+      segments: accepted_segments.map((a) => ({ sceneNumber: a.scene_number, startMs: a.start_ms, endMs: a.end_ms, dialogue: '' })),
+    })
+    const capture: CaptureUploadPayload = { origin: 'teleprompter', recording_script_sha256: scriptSha, recorder_clock: 'mediarecorder-active-time-ms', accepted_segments }
     const intent = await uploadSourceRecording(genId, attemptIdRef.current, { blob, contentType, sizeBytes: blob.size }, undefined, capture)
     saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
     return { path: intent.path }
