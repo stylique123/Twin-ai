@@ -26,6 +26,18 @@ export interface IntentAcceptedSegment {
   endMs: number
   intendedDialogueSha256: string
 }
+// Browser INPUT (no server-authority fields); mirrors shared capture.ts §10D.
+export interface SourceCaptureIntentInputV1 {
+  schemaVersion: 1
+  origin: CaptureOrigin
+  generationId: string
+  recordingScriptSha256: string | null
+  clientAttemptId: string
+  recorderClock: 'mediarecorder-active-time-ms' | 'none'
+  acceptedSegments: IntentAcceptedSegment[]
+}
+// STORED, authoritative — adds resolved sourceAssetId + server recordedAt;
+// intent_sha256 covers THIS document (recordedAt included).
 export interface SourceCaptureIntentV1 {
   schemaVersion: 1
   origin: CaptureOrigin
@@ -35,7 +47,10 @@ export interface SourceCaptureIntentV1 {
   clientAttemptId: string
   recorderClock: 'mediarecorder-active-time-ms' | 'none'
   acceptedSegments: IntentAcceptedSegment[]
+  recordedAt: string // server-assigned ISO-8601 UTC, ms precision
 }
+
+const RECORDED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 export interface ManifestAcceptedSegment {
   sceneNumber: number
   sourceStartMs: number
@@ -74,15 +89,20 @@ function utf8Len(s: string): number {
   return Buffer.byteLength(s, 'utf8')
 }
 
-// Untrusted-input validation (the stored intent jsonb, re-checked in the worker).
-export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
-  const o = input as Record<string, unknown>
+// Common (client-asserted) field validation, shared by both intent shapes.
+interface CommonIntentFields {
+  origin: CaptureOrigin
+  generationId: string
+  clientAttemptId: string
+  recordingScriptSha256: string | null
+  recorderClock: SourceCaptureIntentV1['recorderClock']
+  acceptedSegments: IntentAcceptedSegment[]
+}
+function validateCommonIntentFields(o: Record<string, unknown>): CommonIntentFields {
   if (o.schemaVersion !== CAPTURE_SCHEMA_VERSION) fail('intent: schemaVersion', 'capture_intent_schema')
   if (o.origin !== 'teleprompter' && o.origin !== 'upload') fail('intent: origin', 'capture_intent_bad_origin')
   const origin = o.origin as CaptureOrigin
   if (typeof o.generationId !== 'string' || !UUID_RE.test(o.generationId)) fail('intent: generationId', 'capture_intent_bad_id')
-  if (typeof o.sourceAssetId !== 'string' || !UUID_RE.test(o.sourceAssetId)) fail('intent: sourceAssetId', 'capture_intent_bad_id')
   if (typeof o.clientAttemptId !== 'string' || !UUID_RE.test(o.clientAttemptId)) fail('intent: clientAttemptId', 'capture_intent_bad_id')
 
   if (origin === 'teleprompter') {
@@ -103,7 +123,7 @@ export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
   }
   const seenScenes = new Set<number>()
   let prevEnd = -1
-  const normalized: IntentAcceptedSegment[] = segs.map((raw, i) => {
+  const acceptedSegments: IntentAcceptedSegment[] = segs.map((raw, i) => {
     if (typeof raw !== 'object' || raw === null) fail(`segment ${i}: not an object`, 'capture_intent_bad_segments')
     const s = raw as Record<string, unknown>
     const sceneNumber = s.sceneNumber
@@ -120,19 +140,70 @@ export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
     if (typeof s.intendedDialogueSha256 !== 'string' || !HEX64_RE.test(s.intendedDialogueSha256)) fail(`segment ${i}: dialogue sha`, 'capture_intent_bad_dialogue_sha')
     return { sceneNumber, startMs, endMs, intendedDialogueSha256: s.intendedDialogueSha256 }
   })
-
-  const intent: SourceCaptureIntentV1 = {
-    schemaVersion: CAPTURE_SCHEMA_VERSION,
+  return {
     origin,
     generationId: o.generationId,
-    sourceAssetId: o.sourceAssetId,
-    recordingScriptSha256: o.recordingScriptSha256 as string | null,
     clientAttemptId: o.clientAttemptId,
+    recordingScriptSha256: o.recordingScriptSha256 as string | null,
     recorderClock: o.recorderClock as SourceCaptureIntentV1['recorderClock'],
-    acceptedSegments: normalized,
+    acceptedSegments,
+  }
+}
+
+// Validate the browser INPUT document (no server-authority fields).
+export function validateCaptureIntentInput(input: unknown): SourceCaptureIntentInputV1 {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
+  const c = validateCommonIntentFields(input as Record<string, unknown>)
+  const intent: SourceCaptureIntentInputV1 = {
+    schemaVersion: CAPTURE_SCHEMA_VERSION,
+    origin: c.origin,
+    generationId: c.generationId,
+    recordingScriptSha256: c.recordingScriptSha256,
+    clientAttemptId: c.clientAttemptId,
+    recorderClock: c.recorderClock,
+    acceptedSegments: c.acceptedSegments,
   }
   if (utf8Len(canonicalJson(intent)) > CAPTURE_INTENT_MAX_BYTES) fail('intent too large', 'capture_intent_too_large')
   return intent
+}
+
+// Validate the STORED document (what intent_sha256 covers): common fields PLUS
+// the server-authority sourceAssetId + recordedAt.
+export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
+  const o = input as Record<string, unknown>
+  const c = validateCommonIntentFields(o)
+  if (typeof o.sourceAssetId !== 'string' || !UUID_RE.test(o.sourceAssetId)) fail('intent: sourceAssetId', 'capture_intent_bad_id')
+  if (typeof o.recordedAt !== 'string' || !RECORDED_AT_RE.test(o.recordedAt)) fail('intent: recordedAt', 'capture_intent_bad_recorded_at')
+  const intent: SourceCaptureIntentV1 = {
+    schemaVersion: CAPTURE_SCHEMA_VERSION,
+    origin: c.origin,
+    generationId: c.generationId,
+    sourceAssetId: o.sourceAssetId,
+    recordingScriptSha256: c.recordingScriptSha256,
+    clientAttemptId: c.clientAttemptId,
+    recorderClock: c.recorderClock,
+    acceptedSegments: c.acceptedSegments,
+    recordedAt: o.recordedAt,
+  }
+  if (utf8Len(canonicalJson(intent)) > CAPTURE_INTENT_MAX_BYTES) fail('intent too large', 'capture_intent_too_large')
+  return intent
+}
+
+// Construct + canonicalize/hash the STORED intent (parity with shared + DB).
+export function buildStoredIntent(
+  input: SourceCaptureIntentInputV1,
+  server: { sourceAssetId: string; recordedAt: string },
+): SourceCaptureIntentV1 {
+  if (!UUID_RE.test(server.sourceAssetId)) fail('stored intent: sourceAssetId', 'capture_intent_bad_id')
+  if (!RECORDED_AT_RE.test(server.recordedAt)) fail('stored intent: recordedAt', 'capture_intent_bad_recorded_at')
+  return validateCaptureIntent({ ...input, sourceAssetId: server.sourceAssetId, recordedAt: server.recordedAt })
+}
+export function canonicalCaptureIntent(intent: SourceCaptureIntentV1): string {
+  return canonicalJson(intent)
+}
+export function captureIntentSha256(intent: SourceCaptureIntentV1): string {
+  return sha256Hex(canonicalJson(intent))
 }
 
 // Normalize against MEASURED media duration. Fail-closed, never clamps past the

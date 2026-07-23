@@ -11,6 +11,7 @@ const ASSET = '22222222-2222-2222-2222-222222222222'
 const ATTEMPT = '33333333-3333-3333-3333-333333333333'
 const SHA = 'a'.repeat(64)
 const DSHA = 'b'.repeat(64)
+const RECORDED = '2026-07-23T11:00:00.000Z'
 
 const intent: W.SourceCaptureIntentV1 = {
   schemaVersion: 1,
@@ -24,6 +25,7 @@ const intent: W.SourceCaptureIntentV1 = {
     { sceneNumber: 1, startMs: 0, endMs: 2000, intendedDialogueSha256: DSHA },
     { sceneNumber: 2, startMs: 2000, endMs: 5000, intendedDialogueSha256: DSHA },
   ],
+  recordedAt: RECORDED,
 }
 
 describe('capture-contract parity: constants', () => {
@@ -52,6 +54,19 @@ describe('capture-contract parity: validation', () => {
     const sc = grab(() => S.validateCaptureIntent(bad))
     expect(wc).toBe('capture_intent_overlap')
     expect(sc).toBe(wc)
+  })
+})
+
+describe('capture-contract parity: stored intent canonical bytes', () => {
+  it('worker + shared produce byte-identical canonical stored-intent JSON', () => {
+    expect(W.canonicalCaptureIntent(intent)).toBe(S.canonicalCaptureIntent(intent))
+    expect(W.captureIntentSha256(intent)).toBe(W.captureIntentSha256(intent))
+  })
+  it('the stored validator requires recordedAt on both sides', () => {
+    const noRecorded = { ...intent } as Record<string, unknown>
+    delete noRecorded.recordedAt
+    expect(grab(() => W.validateCaptureIntent(noRecorded))).toBe('capture_intent_bad_recorded_at')
+    expect(grab(() => S.validateCaptureIntent(noRecorded))).toBe('capture_intent_bad_recorded_at')
   })
 })
 

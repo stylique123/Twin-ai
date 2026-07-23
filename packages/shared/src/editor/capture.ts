@@ -45,7 +45,30 @@ export interface IntentAcceptedSegment {
   intendedDialogueSha256: string // 64-hex
 }
 
-// The client-asserted intent (server assigns recordedAt on insert).
+// TWO intent types, distinct authority (Constitution §5.1 / §10D):
+//
+//  * SourceCaptureIntentInputV1 — what the BROWSER asserts. It omits
+//    sourceAssetId and recordedAt because NEITHER is client authority: the
+//    server assigns the asset id (after the attempt lock) and the timestamp.
+//    This is what the client builders produce and what the edge forwards.
+//
+//  * SourceCaptureIntentV1 — the STORED, authoritative document. The
+//    server-authoritative create RPC constructs it INSIDE the transaction from
+//    the input plus the resolved sourceAssetId and a server-assigned
+//    recordedAt, then canonicalizes + hashes it — intent_sha256 covers THIS
+//    document (recordedAt included). An idempotent retry re-derives the
+//    identical hash from the SAME stored recordedAt + asset id; a divergent
+//    payload does not, so it fails closed.
+export interface SourceCaptureIntentInputV1 {
+  schemaVersion: 1
+  origin: CaptureOrigin
+  generationId: string
+  recordingScriptSha256: string | null // 64-hex (teleprompter) / null (upload)
+  clientAttemptId: string
+  recorderClock: RecorderClock
+  acceptedSegments: IntentAcceptedSegment[]
+}
+
 export interface SourceCaptureIntentV1 {
   schemaVersion: 1
   origin: CaptureOrigin
@@ -55,7 +78,13 @@ export interface SourceCaptureIntentV1 {
   clientAttemptId: string
   recorderClock: RecorderClock
   acceptedSegments: IntentAcceptedSegment[]
+  recordedAt: string // server-assigned ISO-8601 UTC, ms precision (YYYY-MM-DDTHH:MM:SS.sssZ)
 }
+
+// Server-assigned recordedAt format: ISO-8601 UTC with exactly millisecond
+// precision and a literal Z. The create RPC emits this EXACT shape so the DB
+// and TS canonical hashes agree byte-for-byte.
+const RECORDED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/
 
 export interface ManifestAcceptedSegment {
   sceneNumber: number
@@ -150,73 +179,72 @@ export async function captureScriptSha256(script: CaptureScriptLike): Promise<st
 // ---------------------------------------------------------------------------
 export async function buildTeleprompterIntent(args: {
   generationId: string
-  sourceAssetId: string
   clientAttemptId: string
   recordingScriptSha256: string
   segments: AcceptedSegmentInput[]
-}): Promise<SourceCaptureIntentV1> {
+}): Promise<SourceCaptureIntentInputV1> {
   if (args.segments.length === 0) fail('teleprompter: no accepted segments', 'capture_intent_no_segments')
   if (args.segments.length > CAPTURE_MAX_SEGMENTS) fail('teleprompter: too many segments', 'capture_intent_too_many')
   const acceptedSegments: IntentAcceptedSegment[] = []
   for (const seg of args.segments) {
-    const startMs = Math.round(seg.startMs)
-    const endMs = Math.round(seg.endMs)
     acceptedSegments.push({
       sceneNumber: seg.sceneNumber,
-      startMs,
-      endMs,
+      startMs: Math.round(seg.startMs),
+      endMs: Math.round(seg.endMs),
       intendedDialogueSha256: await sha256Hex(normalizeDialogue(seg.dialogue)),
     })
   }
-  const intent: SourceCaptureIntentV1 = {
+  const input: SourceCaptureIntentInputV1 = {
     schemaVersion: CAPTURE_SCHEMA_VERSION,
     origin: 'teleprompter',
     generationId: args.generationId,
-    sourceAssetId: args.sourceAssetId,
     recordingScriptSha256: args.recordingScriptSha256,
     clientAttemptId: args.clientAttemptId,
     recorderClock: 'mediarecorder-active-time-ms',
     acceptedSegments,
   }
-  // Structural validation (throws on any contract violation) before it leaves
-  // the client — the edge function re-validates server-side regardless.
-  validateCaptureIntent(intent)
-  return intent
+  // Structural validation before it leaves the client — the edge re-validates
+  // and the create RPC is the sole authority for the stored document.
+  validateCaptureIntentInput(input)
+  return input
 }
 
 export function buildUploadIntent(args: {
   generationId: string
-  sourceAssetId: string
   clientAttemptId: string
-}): SourceCaptureIntentV1 {
-  const intent: SourceCaptureIntentV1 = {
+}): SourceCaptureIntentInputV1 {
+  const input: SourceCaptureIntentInputV1 = {
     schemaVersion: CAPTURE_SCHEMA_VERSION,
     origin: 'upload',
     generationId: args.generationId,
-    sourceAssetId: args.sourceAssetId,
     recordingScriptSha256: null,
     clientAttemptId: args.clientAttemptId,
     recorderClock: 'none',
     acceptedSegments: [],
   }
-  validateCaptureIntent(intent)
-  return intent
+  validateCaptureIntentInput(input)
+  return input
 }
 
 // ---------------------------------------------------------------------------
-// Untrusted-input validation (used by the client builder, the edge function's
-// server-side re-check, and tests). Every malformed case is a STABLE code.
+// Untrusted-input validation. Every malformed case is a STABLE code. The common
+// fields (everything the CLIENT asserts) are validated once; the input validator
+// stops there, the stored validator additionally requires the server-authority
+// fields (sourceAssetId + recordedAt).
 // ---------------------------------------------------------------------------
-export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
-  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
-    fail('intent: not an object', 'capture_intent_not_object')
-  }
-  const o = input as Record<string, unknown>
+interface CommonIntentFields {
+  origin: CaptureOrigin
+  generationId: string
+  clientAttemptId: string
+  recordingScriptSha256: string | null
+  recorderClock: RecorderClock
+  acceptedSegments: IntentAcceptedSegment[]
+}
+function validateCommonIntentFields(o: Record<string, unknown>): CommonIntentFields {
   if (o.schemaVersion !== CAPTURE_SCHEMA_VERSION) fail('intent: schemaVersion', 'capture_intent_schema')
   if (o.origin !== 'teleprompter' && o.origin !== 'upload') fail('intent: origin', 'capture_intent_bad_origin')
   const origin = o.origin as CaptureOrigin
   if (typeof o.generationId !== 'string' || !UUID_RE.test(o.generationId)) fail('intent: generationId', 'capture_intent_bad_id')
-  if (typeof o.sourceAssetId !== 'string' || !UUID_RE.test(o.sourceAssetId)) fail('intent: sourceAssetId', 'capture_intent_bad_id')
   if (typeof o.clientAttemptId !== 'string' || !UUID_RE.test(o.clientAttemptId)) fail('intent: clientAttemptId', 'capture_intent_bad_id')
 
   if (origin === 'teleprompter') {
@@ -239,7 +267,7 @@ export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
   }
   const seenScenes = new Set<number>()
   let prevEnd = -1
-  const normalized: IntentAcceptedSegment[] = segs.map((raw, i) => {
+  const acceptedSegments: IntentAcceptedSegment[] = segs.map((raw, i) => {
     if (typeof raw !== 'object' || raw === null) fail(`segment ${i}: not an object`, 'capture_intent_bad_segments')
     const s = raw as Record<string, unknown>
     const sceneNumber = s.sceneNumber
@@ -263,23 +291,75 @@ export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
     }
     return { sceneNumber, startMs, endMs, intendedDialogueSha256: s.intendedDialogueSha256 }
   })
-
-  const intent: SourceCaptureIntentV1 = {
-    schemaVersion: CAPTURE_SCHEMA_VERSION,
+  return {
     origin,
     generationId: o.generationId,
-    sourceAssetId: o.sourceAssetId,
-    recordingScriptSha256: (o.recordingScriptSha256 as string | null),
     clientAttemptId: o.clientAttemptId,
+    recordingScriptSha256: o.recordingScriptSha256 as string | null,
     recorderClock: o.recorderClock as RecorderClock,
-    acceptedSegments: normalized,
+    acceptedSegments,
+  }
+}
+
+// Validate the BROWSER input document (no server-authority fields).
+export function validateCaptureIntentInput(input: unknown): SourceCaptureIntentInputV1 {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
+  const c = validateCommonIntentFields(input as Record<string, unknown>)
+  const intent: SourceCaptureIntentInputV1 = {
+    schemaVersion: CAPTURE_SCHEMA_VERSION,
+    origin: c.origin,
+    generationId: c.generationId,
+    recordingScriptSha256: c.recordingScriptSha256,
+    clientAttemptId: c.clientAttemptId,
+    recorderClock: c.recorderClock,
+    acceptedSegments: c.acceptedSegments,
   }
   const bytes = utf8ByteLength(canonicalJson(intent))
   if (bytes > CAPTURE_INTENT_MAX_BYTES) fail(`intent ${bytes} bytes > cap`, 'capture_intent_too_large')
   return intent
 }
 
-// Canonical SHA of a validated intent (server binds the manifest to it).
+// Validate the STORED document (the one intent_sha256 covers): common fields
+// PLUS the server-authority sourceAssetId + recordedAt.
+export function validateCaptureIntent(input: unknown): SourceCaptureIntentV1 {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) fail('intent: not an object', 'capture_intent_not_object')
+  const o = input as Record<string, unknown>
+  const c = validateCommonIntentFields(o)
+  if (typeof o.sourceAssetId !== 'string' || !UUID_RE.test(o.sourceAssetId)) fail('intent: sourceAssetId', 'capture_intent_bad_id')
+  if (typeof o.recordedAt !== 'string' || !RECORDED_AT_RE.test(o.recordedAt)) fail('intent: recordedAt', 'capture_intent_bad_recorded_at')
+  const intent: SourceCaptureIntentV1 = {
+    schemaVersion: CAPTURE_SCHEMA_VERSION,
+    origin: c.origin,
+    generationId: c.generationId,
+    sourceAssetId: o.sourceAssetId,
+    recordingScriptSha256: c.recordingScriptSha256,
+    clientAttemptId: c.clientAttemptId,
+    recorderClock: c.recorderClock,
+    acceptedSegments: c.acceptedSegments,
+    recordedAt: o.recordedAt,
+  }
+  const bytes = utf8ByteLength(canonicalJson(intent))
+  if (bytes > CAPTURE_INTENT_MAX_BYTES) fail(`intent ${bytes} bytes > cap`, 'capture_intent_too_large')
+  return intent
+}
+
+// Construct the STORED intent from a validated input plus the server-authority
+// fields. This is EXACTLY the document the create RPC persists and hashes — the
+// DB builds the same string field-by-field, and a parity test proves byte
+// equality against canonicalCaptureIntent() here.
+export function buildStoredIntent(
+  input: SourceCaptureIntentInputV1,
+  server: { sourceAssetId: string; recordedAt: string },
+): SourceCaptureIntentV1 {
+  if (!UUID_RE.test(server.sourceAssetId)) fail('stored intent: sourceAssetId', 'capture_intent_bad_id')
+  if (!RECORDED_AT_RE.test(server.recordedAt)) fail('stored intent: recordedAt', 'capture_intent_bad_recorded_at')
+  return validateCaptureIntent({ ...input, sourceAssetId: server.sourceAssetId, recordedAt: server.recordedAt })
+}
+
+// Canonical bytes / SHA of a stored intent (what intent_sha256 covers).
+export function canonicalCaptureIntent(intent: SourceCaptureIntentV1): string {
+  return canonicalJson(intent)
+}
 export async function captureIntentSha256(intent: SourceCaptureIntentV1): Promise<string> {
   return sha256Hex(canonicalJson(intent))
 }
