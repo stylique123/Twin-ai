@@ -582,15 +582,16 @@ begin
 end;
 $$;
 
--- 0090→0091 CLASSIFICATION: rows created under the applied 0090 predate the marker.
--- Deterministically classify them (idempotent; only ever sets a NULL marker to 1,
--- never downgrades):
---   * a source with a capture intent is capture-aware → marker 1;
---   * a source WITHOUT a capture intent stays NULL (true legacy);
---   * inconsistent combinations FAIL the migration closed with stable evidence:
---       - a `ready` source that has a capture intent but NO manifest (a new-era ready
---         source must have a manifest — the ready-guard invariant), or
---       - a manifest whose source has NO capture intent (orphaned provenance).
+-- 0090→0091 CLASSIFICATION (one-time; NOT granted to anyone; the migration runs it
+-- once then DROPs it). Deterministic + idempotent (only ever sets a NULL marker to 1,
+-- never downgrades); backfills ONLY fully-consistent new-era sources and FAILS the
+-- migration closed with stable evidence on ANY inconsistency:
+--   * a `ready` source with an intent but NO manifest (ready-guard invariant);
+--   * a manifest whose source has NO intent (orphaned provenance);
+--   * a script binding whose source has NO intent;
+--   * an intent attached to a NON-source asset;
+--   * any asset↔intent, asset↔manifest, asset↔binding owner/generation linkage mismatch.
+-- A source WITHOUT a capture intent stays NULL (true legacy).
 create or replace function public.editor_backfill_capture_marker() returns void language plpgsql as $$
 declare bad int;
 begin
@@ -606,6 +607,34 @@ begin
   if bad > 0 then
     raise exception 'capture_backfill_inconsistent: % manifest(s) without a capture intent', bad using errcode = 'raise_exception';
   end if;
+  select count(*) into bad from public.source_script_snapshots b
+   where not exists (select 1 from public.source_capture_intents i where i.source_asset_id = b.source_asset_id);
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % script binding(s) without a capture intent', bad using errcode = 'raise_exception';
+  end if;
+  select count(*) into bad from public.source_capture_intents i
+    join public.media_assets a on a.id = i.source_asset_id where a.kind <> 'source';
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % intent(s) attached to a non-source asset', bad using errcode = 'raise_exception';
+  end if;
+  select count(*) into bad from public.source_capture_intents i
+    join public.media_assets a on a.id = i.source_asset_id
+   where i.owner_id is distinct from a.owner_id or i.generation_id is distinct from a.generation_id;
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % intent owner/generation linkage mismatch', bad using errcode = 'raise_exception';
+  end if;
+  select count(*) into bad from public.source_capture_manifests m
+    join public.media_assets a on a.id = m.source_asset_id where m.owner_id is distinct from a.owner_id;
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % manifest owner linkage mismatch', bad using errcode = 'raise_exception';
+  end if;
+  select count(*) into bad from public.source_script_snapshots b
+    join public.media_assets a on a.id = b.source_asset_id
+   where b.owner_id is distinct from a.owner_id or b.generation_id is distinct from a.generation_id;
+  if bad > 0 then
+    raise exception 'capture_backfill_inconsistent: % binding owner/generation linkage mismatch', bad using errcode = 'raise_exception';
+  end if;
+  -- All inconsistencies ruled out → backfill every source-with-intent to marker 1.
   update public.media_assets a set capture_contract_version = 1
    where a.kind = 'source' and a.capture_contract_version is null
      and exists (select 1 from public.source_capture_intents i where i.source_asset_id = a.id);
@@ -823,12 +852,16 @@ grant execute on function public.editor_recording_script_canonical(uuid, jsonb, 
 grant execute on function public.editor_recording_script_sha256(uuid, jsonb, text) to service_role;
 grant execute on function public.editor_verify_capture_dialogue_shas(jsonb, jsonb) to service_role;
 grant execute on function public.editor_persist_script_binding(uuid, uuid, uuid, text, text, text, text, jsonb, jsonb) to service_role;
-grant execute on function public.editor_backfill_capture_marker() to service_role;
 grant execute on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint) to service_role;
+-- NB: editor_backfill_capture_marker() is a ONE-TIME migration helper. It is NEVER
+-- granted to service_role (or anyone) — it must not be callable at runtime — and it
+-- is DROPPED immediately after the single classification pass below, so re-applying
+-- this migration re-creates, runs, and re-drops it safely (create-or-replace + drop).
 
 -- Run the one-time 0090→0091 classification (idempotent; fails the migration closed
--- on any inconsistent pre-existing row).
+-- on any inconsistent pre-existing row), then drop the helper so it cannot be reused.
 select public.editor_backfill_capture_marker();
+drop function public.editor_backfill_capture_marker();
 
 -- ---------------------------------------------------------------------------
 -- 7. Explicit privilege posture for the capture tables (defence in depth beyond

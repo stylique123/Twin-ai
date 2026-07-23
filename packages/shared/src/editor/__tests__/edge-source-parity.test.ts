@@ -38,6 +38,7 @@ const FUNCS: Array<{ name: string; shared: string }> = [
   { name: 'buildCreatePlan', shared: sourceCreateSrc },
   { name: 'createErrorStatus', shared: sourceCreateSrc },
   { name: 'mapCreateError', shared: sourceCreateSrc },
+  { name: 'executePreparedCreate', shared: sourceCreateSrc },
   { name: 'runSourceCreate', shared: sourceCreateSrc },
   { name: 'handleSourceAssetRequest', shared: sourceCreateSrc },
 ]

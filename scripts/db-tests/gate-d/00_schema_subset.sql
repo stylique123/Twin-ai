@@ -124,19 +124,28 @@ create or replace function public.workspace_peers() returns setof uuid language 
   select nullif(current_setting('test.workspace_peer', true), '')::uuid
    where nullif(current_setting('test.workspace_peer', true), '') is not null
 $$;
--- Explicit privilege posture (mirrors 0091): revoke ALL from public/anon/authenticated,
+-- Explicit privilege posture (mirrors 0091 §7): revoke ALL from public/anon/authenticated,
 -- grant authenticated SELECT only, service_role full DML. RLS filters reads to owner+peer.
+-- ALL THREE capture tables get identical posture — intents, manifests, and script
+-- snapshots — so the identity matrix can prove each one under SET ROLE.
 alter table public.source_capture_intents enable row level security;
+alter table public.source_capture_manifests enable row level security;
 alter table public.source_script_snapshots enable row level security;
 drop policy if exists sci_owner_read on public.source_capture_intents;
 create policy sci_owner_read on public.source_capture_intents for select
+  using (owner_id = auth.uid() or owner_id in (select public.workspace_peers()));
+drop policy if exists scm_owner_read on public.source_capture_manifests;
+create policy scm_owner_read on public.source_capture_manifests for select
   using (owner_id = auth.uid() or owner_id in (select public.workspace_peers()));
 drop policy if exists sss_owner_read on public.source_script_snapshots;
 create policy sss_owner_read on public.source_script_snapshots for select
   using (owner_id = auth.uid() or owner_id in (select public.workspace_peers()));
 revoke all on public.source_capture_intents from public, anon, authenticated;
+revoke all on public.source_capture_manifests from public, anon, authenticated;
 revoke all on public.source_script_snapshots from public, anon, authenticated;
 grant select on public.source_capture_intents to authenticated;
+grant select on public.source_capture_manifests to authenticated;
 grant select on public.source_script_snapshots to authenticated;
 grant select, insert, update, delete on public.source_capture_intents to service_role;
+grant select, insert, update, delete on public.source_capture_manifests to service_role;
 grant select, insert, update, delete on public.source_script_snapshots to service_role;

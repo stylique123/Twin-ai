@@ -57,7 +57,18 @@ echo "== fail-closed assertions (contract matrix, policy, grants) =="
 psql -q -f "$HERE/02_assertions.sql" | grep -E "ALL-ASSERTIONS-PASSED|=="
 
 echo "== identity matrix (RLS owner/peer/outsider/anon/service_role, SET ROLE) =="
-psql -q -f "$HERE/03_identity.sql" | grep -E "IDENTITY-MATRIX-PASSED"
+# Capture BOTH stdout and stderr: a PostgreSQL WARNING (e.g. a bare SET LOCAL ROLE
+# outside a transaction, which PG ignores) prints to stderr and MUST fail the gate,
+# along with any IDENTITY_FAIL/ERROR. Success requires the PASS marker AND no warning.
+identity_run(){ # $1 = sql file → 0 iff clean PASS, nonzero otherwise
+  local out; out="$(psql -q -f "$1" 2>&1 || true)"
+  printf '%s\n' "$out" | grep -qiE 'warning' && return 1
+  printf '%s\n' "$out" | grep -qE 'IDENTITY_FAIL|ERROR' && return 1
+  printf '%s\n' "$out" | grep -qE 'IDENTITY-MATRIX-PASSED' || return 1
+  return 0
+}
+if identity_run "$HERE/03_identity.sql"; then echo "  IDENTITY-MATRIX-PASSED (3 tables; no warnings)"
+else echo "IDENTITY MATRIX FAIL"; psql -q -f "$HERE/03_identity.sql" 2>&1 | tail -20; exit 1; fi
 
 # concurrency uses a FRESH owner/generation (untouched by caps pre-seeding). The
 # generation carries a real scene_timeline so the divergent-concurrent teleprompter
@@ -209,6 +220,54 @@ mutate_and_expect_fail "s/raise exception 'script_binding_conflict: a divergent 
   "(j) conflict-verify persist guard removed → gate correctly FAILED"
 # (k) backfill inconsistency guard removed → gate must fail on the inconsistent row.
 mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % ready source(s) with a capture intent but no manifest', bad using errcode = 'raise_exception';/null;/" \
-  "(k) backfill inconsistency guard removed → gate correctly FAILED"
+  "(k) backfill ready-no-manifest guard removed → gate correctly FAILED"
+# (k2)-(k6) each NEW backfill classification guard removed → its negative assertion
+#          (which expected capture_backfill_inconsistent) now sees success → gate FAILS.
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % manifest(s) without a capture intent', bad using errcode = 'raise_exception';/null;/" \
+  "(k2) backfill manifest-without-intent guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % script binding(s) without a capture intent', bad using errcode = 'raise_exception';/null;/" \
+  "(k3) backfill binding-without-intent guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % intent(s) attached to a non-source asset', bad using errcode = 'raise_exception';/null;/" \
+  "(k4) backfill intent-on-non-source guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % intent owner\/generation linkage mismatch', bad using errcode = 'raise_exception';/null;/" \
+  "(k5) backfill intent-linkage guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % manifest owner linkage mismatch', bad using errcode = 'raise_exception';/null;/" \
+  "(k6) backfill manifest-linkage guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % binding owner\/generation linkage mismatch', bad using errcode = 'raise_exception';/null;/" \
+  "(k7) backfill binding-linkage guard removed → gate correctly FAILED"
+
+echo "== identity negative controls (RLS/privilege/service-role/warning must have teeth) =="
+# (l) manifest RLS disabled → an outsider sees the owner's manifest → identity FAILS.
+psql -q -c "alter table public.source_capture_manifests disable row level security;"
+if identity_run "$HERE/03_identity.sql"; then
+  echo "NEGATIVE-CONTROL FAIL: identity PASSED with manifest RLS disabled"; \
+  psql -q -c "alter table public.source_capture_manifests enable row level security;"; exit 1; fi
+psql -q -c "alter table public.source_capture_manifests enable row level security;"
+echo "  (l) manifest RLS disabled → identity correctly FAILED"
+# (m) manifest write-denial is defended by TWO layers: no INSERT grant AND RLS with no
+#     INSERT policy. Break BOTH (grant INSERT + a permissive WITH CHECK policy) so an
+#     authenticated INSERT actually SUCCEEDS → the write-denial assertion FAILS → identity
+#     FAILS. Proves the manifest privilege posture is a real, non-vacuous check.
+psql -q -c "grant insert on public.source_capture_manifests to authenticated; create policy scm_ins_mut on public.source_capture_manifests for insert with check (true);"
+restore_m(){ psql -q -c "drop policy if exists scm_ins_mut on public.source_capture_manifests; revoke insert on public.source_capture_manifests from authenticated;"; }
+if identity_run "$HERE/03_identity.sql"; then
+  echo "NEGATIVE-CONTROL FAIL: identity PASSED with authenticated able to INSERT manifests"; restore_m; exit 1; fi
+restore_m
+echo "  (m) authenticated INSERT on manifests → identity correctly FAILED"
+# (n) service-role MASQUERADE: neutralize the role switch in service_write() so the
+#     write would run as the connecting superuser → the current_role/is_superuser
+#     anti-masquerade assertion must fire IDENTITY_FAIL.
+sed "s/set local role service_role;/perform 1;/" "$HERE/03_identity.sql" > "$WORK/id_masq.sql"
+if diff -q "$HERE/03_identity.sql" "$WORK/id_masq.sql" >/dev/null; then
+  echo "NEGATIVE-CONTROL FAIL: masquerade mutation changed nothing"; exit 1; fi
+if identity_run "$WORK/id_masq.sql"; then
+  echo "NEGATIVE-CONTROL FAIL: identity PASSED while service_role write ran as superuser"; exit 1; fi
+echo "  (n) service_role role-switch removed → identity correctly FAILED (no superuser masquerade)"
+# (o) WARNING gate: inject the exact original bug — a bare top-level SET LOCAL ROLE,
+#     which PostgreSQL ignores with a WARNING → identity_run must fail on the warning.
+{ echo 'set local role service_role;'; echo 'reset role;'; cat "$HERE/03_identity.sql"; } > "$WORK/id_warn.sql"
+if identity_run "$WORK/id_warn.sql"; then
+  echo "NEGATIVE-CONTROL FAIL: identity PASSED despite a PostgreSQL WARNING"; exit 1; fi
+echo "  (o) bare SET LOCAL ROLE warning → identity correctly FAILED"
 
 echo "GATE-D LOCAL VERIFICATION: PASS"

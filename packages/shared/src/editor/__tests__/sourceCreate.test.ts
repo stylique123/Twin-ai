@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
   normalizeSourceMime, safeSizeBytes, buildCreateInput, createErrorStatus, mapCreateError,
-  buildCreatePlan, runSourceCreate, handleSourceAssetRequest, type CreateDeps, type RequestDeps,
+  buildCreatePlan, runSourceCreate, handleSourceAssetRequest, executePreparedCreate,
+  type CreateDeps, type RequestDeps,
 } from '../sourceCreate'
 
 const GEN = '11111111-1111-1111-1111-111111111111'
@@ -184,6 +185,31 @@ describe('handleSourceAssetRequest: request-level boundaries (item 8)', () => {
     const r = await handleSourceAssetRequest({ action: 'finalize', asset_id: '33333333-3333-3333-3333-333333333333' }, d)
     expect(r.status).toBe(200)
     expect(calls(d._.finalize)).toBe(1)
+  })
+
+  it('a valid create rate-checks once, RPCs once, signs at most once — item 5', async () => {
+    // The handler plans once then routes to executePreparedCreate (it no longer calls
+    // runSourceCreate, which would re-plan). Observable proof: one rate, one create RPC,
+    // one signer — never doubled.
+    const d = deps()
+    const r = await handleSourceAssetRequest(body(), d)
+    expect(r.status).toBe(200)
+    expect(calls(d._.checkRateLimit)).toBe(1)
+    expect(calls(d._.createSourceAsset)).toBe(1)
+    expect(calls(d._.signUpload)).toBe(1)
+  })
+})
+
+describe('executePreparedCreate: single create authority (already-validated plan)', () => {
+  it('runs EXACTLY one create RPC + one signer, no re-validation', async () => {
+    const createSourceAsset = vi.fn(async () => ({ data: { asset_id: 'a', storage_path: 'p/q/a.webm', status: 'uploading' }, error: null }))
+    const signUpload = vi.fn(async () => ({ token: 't', signedUrl: 'u' }))
+    const plan = buildCreatePlan(body())
+    if (!('rpcArgs' in plan)) throw new Error('expected a valid plan')
+    const r = await executePreparedCreate(plan.rpcArgs, 'owner', { createSourceAsset, signUpload })
+    expect(r.status).toBe(200)
+    expect(createSourceAsset).toHaveBeenCalledTimes(1)
+    expect(signUpload).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -452,6 +452,86 @@ begin
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
 end $$;
 
+\echo == round-4-closure: backfill rejects EVERY inconsistency class ==
+-- Each block sets up exactly ONE inconsistency (all other classes clean) so the
+-- classifier is proven to reject that specific class, not just fail generically.
+do $$  -- (1) manifest WITHOUT an intent
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
+  a uuid := 'f9000000-0000-0000-0000-000000000011';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+  insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
+    values (a,own,'teleprompter',repeat('a',64),'{}'::jsonb,repeat('a',64),'v1');
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (2) script binding WITHOUT an intent
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
+  a uuid := 'f9000000-0000-0000-0000-000000000012';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+  insert into public.source_script_snapshots(source_asset_id,owner_id,generation_id,snapshot,snapshot_sha)
+    values (a,own,g,'{}'::jsonb,repeat('a',64));
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (3) intent attached to a NON-source asset
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
+  a uuid := 'f9000000-0000-0000-0000-000000000013';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,null,'music','takes','x','audio/mpeg',1024,'uploading',null);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,repeat('a',64),now());
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (4) intent owner/generation linkage mismatch
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
+  a uuid := 'f9000000-0000-0000-0000-000000000014';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',g,'upload',null,gen_random_uuid(),'{}'::jsonb,repeat('a',64),now());
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (5) manifest owner linkage mismatch
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
+  a uuid := 'f9000000-0000-0000-0000-000000000015';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'teleprompter',repeat('a',64),gen_random_uuid(),'{}'::jsonb,repeat('a',64),now());
+  insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
+    values (a,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','teleprompter',repeat('a',64),'{}'::jsonb,repeat('a',64),'v1');
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+do $$  -- (6) binding owner/generation linkage mismatch
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'f9000000-0000-0000-0000-0000000000f9';
+  a uuid := 'f9000000-0000-0000-0000-000000000016';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'teleprompter',repeat('a',64),gen_random_uuid(),'{}'::jsonb,repeat('a',64),now());
+  insert into public.source_script_snapshots(source_asset_id,owner_id,generation_id,snapshot,snapshot_sha)
+    values (a,own,'f9000000-0000-0000-0000-0000000000ff','{}'::jsonb,repeat('a',64));
+  perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
+end $$;
+
 \echo == round-4: oversize recording script fails closed (byte cap) ==
 do $$
 declare

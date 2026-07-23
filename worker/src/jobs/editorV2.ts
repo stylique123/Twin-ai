@@ -217,6 +217,14 @@ async function pinManifest(
   //    by pin time it exists.
   const brandSnapshotSha = await pinBrandSnapshotSha(ownerId)
   const captureManifestSha = await pinCaptureManifestSha(sourceAssetId)
+  // Read the source's provenance state ONCE and reuse it for both the manifest-null
+  // guard and the snapshot policy (no double read).
+  const provState = await readSourceProvenanceState(sourceAssetId)
+  // DEFENSE IN DEPTH: a MARKED (new-era) source must NEVER pin a null capture manifest.
+  // Only a true legacy source (marker NULL) may pin null.
+  if (provState.marker !== null && !captureManifestSha) {
+    throw new PermanentJobError(`pin: marked source ${sourceAssetId} has a null capture manifest`, 'capture_manifest_required')
+  }
   const manifest = await buildBootManifest({
     inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
     brandSnapshotSha, captureManifestSha,
@@ -229,7 +237,7 @@ async function pinManifest(
   const snapshot = await resolveBootScriptSnapshot(
     sourceAssetId, generationId, ownerId,
     gen as { id: string; selected_hook: string | null; scene_timeline: unknown },
-    { readState: readSourceProvenanceState, readRow: readSourceScriptSnapshotRow },
+    { readState: async () => provState, readRow: readSourceScriptSnapshotRow },
   )
   const { data, error } = await db.rpc('editor_pin_manifest', {
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,

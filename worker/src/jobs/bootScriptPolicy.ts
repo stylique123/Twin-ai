@@ -51,6 +51,11 @@ export async function resolveBootScriptSnapshot(
   }
   if (st.marker !== 1) fail('source_marker_unsupported', `unsupported capture_contract_version ${st.marker} on ${sourceAssetId}`)
 
+  // (1b) A MARKED (new-era) source MUST have a normalized capture manifest — enforced
+  // BEFORE origin branching (the 0091 ready-guard invariant; a marked source cannot be
+  // `ready` without one, so at Boot it must exist).
+  if (!st.hasManifest) fail('capture_manifest_required', `marked source ${sourceAssetId} has no capture manifest`)
+
   // (2) A marked source MUST have a capture intent bound to THIS owner/generation/source.
   if (st.origin === null) fail('source_state_contradiction', `marked source ${sourceAssetId} has no capture intent`)
   if (st.intentOwner !== ownerId || st.intentGeneration !== generationId || st.intentSource !== sourceAssetId) {

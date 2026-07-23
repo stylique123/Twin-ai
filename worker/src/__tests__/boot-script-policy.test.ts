@@ -70,6 +70,11 @@ describe('resolveBootScriptSnapshot: marker/origin branches', () => {
   it('marker not 1 → source_marker_unsupported', async () => {
     expect(await code(resolveBootScriptSnapshot(SRC, GENID, OWNER, gen, deps({ marker: 2 })))).toBe('source_marker_unsupported')
   })
+  it('marker=1 + NO manifest → capture_manifest_required (before origin branching)', async () => {
+    // enforced for BOTH origins, before we look at origin
+    expect(await code(resolveBootScriptSnapshot(SRC, GENID, OWNER, gen, deps({ hasManifest: false, origin: 'teleprompter' }, goodRow)))).toBe('capture_manifest_required')
+    expect(await code(resolveBootScriptSnapshot(SRC, GENID, OWNER, gen, deps({ hasManifest: false, origin: 'upload', hasBinding: false })))).toBe('capture_manifest_required')
+  })
   it('marker=1 + no intent → source_state_contradiction', async () => {
     expect(await code(resolveBootScriptSnapshot(SRC, GENID, OWNER, gen, deps({ origin: null, intentOwner: null, intentGeneration: null, intentSource: null })))).toBe('source_state_contradiction')
   })

@@ -181,25 +181,33 @@ export interface CreateDeps {
 }
 export interface CreateResult { status: number; body: Record<string, unknown> }
 
-export async function runSourceCreate(
-  body: Record<string, unknown>, ownerId: string, deps: CreateDeps,
+// Execute an ALREADY-VALIDATED plan: EXACTLY one create RPC + at most one signer call,
+// zero direct writes. The single create authority — both the public fail-closed
+// runSourceCreate(raw) and the request handler route through here, so a create is
+// planned exactly once and never re-validated/re-planned downstream.
+export async function executePreparedCreate(
+  rpcArgs: CreateRpcArgs, ownerId: string, deps: CreateDeps,
 ): Promise<CreateResult> {
-  const plan = buildCreatePlan(body)
-  if ('error' in plan) return { status: plan.error.status, body: { error: plan.error.message } }
-
-  const { data, error } = await deps.createSourceAsset({ p_owner: ownerId, ...plan.rpcArgs })
+  const { data, error } = await deps.createSourceAsset({ p_owner: ownerId, ...rpcArgs })
   if (error) return { status: createErrorStatus(error.message), body: { error: mapCreateError(error.message) } }
   const row = (Array.isArray(data) ? data[0] : data) as { asset_id?: string; storage_path?: string; status?: string } | null
   if (!row || !row.asset_id || !row.storage_path || !row.status) {
     return { status: 500, body: { error: 'Could not start the upload — try again.' } }
   }
-
   const base = { assetId: row.asset_id, bucket: SOURCE_BUCKET, path: row.storage_path, status: row.status }
   if (row.status === 'ready') return { status: 200, body: { ...base, token: null, signedUrl: null } }
-
   const sign = await deps.signUpload(row.storage_path)
   if (!sign) return { status: 500, body: { error: 'Could not authorize the upload — try again.' } }
   return { status: 200, body: { ...base, token: sign.token, signedUrl: sign.signedUrl } }
+}
+
+// Public fail-closed create entry (validates + plans ONCE, then executes).
+export async function runSourceCreate(
+  body: unknown, ownerId: string, deps: CreateDeps,
+): Promise<CreateResult> {
+  const plan = buildCreatePlan(body)
+  if ('error' in plan) return { status: plan.error.status, body: { error: plan.error.message } }
+  return executePreparedCreate(plan.rpcArgs, ownerId, deps)
 }
 
 // The injectable REQUEST-LEVEL handler the edge's Deno.serve calls (same function,
@@ -224,14 +232,14 @@ export async function handleSourceAssetRequest(body: unknown, deps: RequestDeps)
   if (!user) return { status: 401, body: { error: 'Not authenticated' } }
 
   if (b.action === 'create') {
-    // Validate the FULL keyset FIRST — an unknown/malformed request never reaches the
-    // rate limiter or the create RPC.
+    // Plan ONCE (validate the full keyset FIRST — unknown/malformed never reaches the
+    // rate limiter or the create RPC), rate-check once, then execute the SAME plan.
     const plan = buildCreatePlan(b)
     if ('error' in plan) return { status: plan.error.status, body: { error: plan.error.message } }
     if (!(await deps.checkRateLimit(user.id))) {
       return { status: 429, body: { error: 'Too many uploads at once — give it a few seconds.' } }
     }
-    return runSourceCreate(b, user.id, deps)
+    return executePreparedCreate(plan.rpcArgs, user.id, deps)
   }
 
   if (b.action === 'finalize') {
