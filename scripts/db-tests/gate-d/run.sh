@@ -45,9 +45,15 @@ for _ in $(seq 1 30); do "$PGBIN/pg_isready" -q && break || sleep 0.3; done
 awk '/GATE-D-FUNCTIONS-BEGIN/{f=1} f{print} /GATE-D-FUNCTIONS-END/{f=0}' "$MIG" > "$WORK/gate_d_fns.sql"
 if ! grep -q editor_create_source_asset "$WORK/gate_d_fns.sql"; then
   echo "FATAL: could not extract Gate-D functions from 0091 (markers moved?)"; exit 1; fi
+# D2 ready-flip guard (marker-1 source cannot go ready without a manifest) — extracted
+# authoritatively from 0091 too, so its assertions run against the REAL trigger.
+awk '/GATE-D-READYGUARD-BEGIN/{f=1} f{print} /GATE-D-READYGUARD-END/{f=0}' "$MIG" > "$WORK/ready_guard.sql"
+if ! grep -q editor_capture_ready_guard "$WORK/ready_guard.sql"; then
+  echo "FATAL: could not extract ready-guard from 0091 (markers moved?)"; exit 1; fi
 
 psql -q -f "$HERE/00_schema_subset.sql"
 psql -q -f "$WORK/gate_d_fns.sql"
+psql -q -f "$WORK/ready_guard.sql"
 # grants live just outside the markers; apply the real revoke/grant statements
 # so the grant-posture assertions exercise the migration's actual posture.
 grep -E '^(revoke|grant) .*public\.editor_(capture_segments|capture_intent|validate_capture|build_stored|snapshot_normalize|recording_script|verify_capture|persist_script|create_source)' "$MIG" > "$WORK/grants.sql"
@@ -249,6 +255,16 @@ mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % stor
   "(k12) stored-intent-hash guard removed → gate correctly FAILED"
 mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % stored intent JSON\/relational mismatch', bad using errcode = 'raise_exception';/null;/" \
   "(k13) stored-intent-relational guard removed → gate correctly FAILED"
+# (rg) D2 ready-flip guard neutralized (extracted separately) → a marked source flips to
+#      ready manifest-less → the D2 assertion block FAILS → gate has teeth.
+sed "s/if not has_manifest then/if false then/" "$WORK/ready_guard.sql" > "$WORK/rg_mut.sql"
+if diff -q "$WORK/ready_guard.sql" "$WORK/rg_mut.sql" >/dev/null; then
+  echo "NEGATIVE-CONTROL FAIL: ready-guard mutation changed nothing (guard text moved?)"; exit 1; fi
+psql -q -f "$WORK/rg_mut.sql" >/dev/null
+if psql -q -f "$HERE/02_assertions.sql" >/dev/null 2>&1; then
+  echo "NEGATIVE-CONTROL FAIL: gate PASSED with the D2 ready-guard removed"; psql -q -f "$WORK/ready_guard.sql" >/dev/null; exit 1; fi
+psql -q -f "$WORK/ready_guard.sql" >/dev/null   # restore authoritative ready-guard
+echo "  (rg) D2 ready-guard removed → gate correctly FAILED"
 
 echo "== identity negative controls (RLS/privilege/service-role/warning must have teeth) =="
 # (l) manifest RLS disabled → an outsider sees the owner's manifest → identity FAILS.

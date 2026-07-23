@@ -65,6 +65,7 @@ $$;
 -- 2. Ready-flip guard: a NEW-ERA source (marker not null) can NEVER become
 --    `ready` without its normalized capture manifest — regardless of origin.
 -- ---------------------------------------------------------------------------
+-- >>> GATE-D-READYGUARD-BEGIN (extracted verbatim by scripts/db-tests/gate-d/run.sh)
 create or replace function public.editor_capture_ready_guard()
 returns trigger
 language plpgsql
@@ -90,6 +91,7 @@ drop trigger if exists media_assets_capture_ready_guard on public.media_assets;
 create trigger media_assets_capture_ready_guard
   before update of status on public.media_assets
   for each row execute function public.editor_capture_ready_guard();
+-- <<< GATE-D-READYGUARD-END
 
 -- ---------------------------------------------------------------------------
 -- 3. Fully conflict-verifying manifest writer.

@@ -670,6 +670,35 @@ begin
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
 end $$;
 
+\echo == D2: ready-flip guard (marker-1 source cannot be ready without a manifest) ==
+-- The atomic finalize path writes the capture manifest BEFORE flipping to ready; this
+-- proves the DB backstop — a new-era source can NEVER reach `ready` manifest-less,
+-- while true legacy (marker NULL) is unaffected.
+do $$
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fb000000-0000-0000-0000-0000000000fb';
+  a_ok uuid := 'fb000000-0000-0000-0000-0000000000a1';   -- marked + manifest → ready OK
+  a_no uuid := 'fb000000-0000-0000-0000-0000000000a2';   -- marked + NO manifest → blocked
+  a_leg uuid := 'fb000000-0000-0000-0000-0000000000a3';  -- legacy (marker NULL) → ready OK
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values
+    (a_ok, own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1),
+    (a_no, own,g,gen_random_uuid(),'source','takes','y','video/webm',1024,'validating',1),
+    (a_leg,own,g,gen_random_uuid(),'source','takes','z','video/webm',1024,'validating',null);
+  insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version) values
+    (a_ok,own,'upload',repeat('a',64),'{}'::jsonb,repeat('a',64),'v1');
+  -- marked + manifest present → ready flip succeeds.
+  update public.media_assets set status='ready' where id=a_ok;
+  perform pg_temp.expect_true((select status from public.media_assets where id=a_ok)='ready', 'D2 marked+manifest → ready');
+  -- marked + NO manifest → ready flip fails closed with the stable code.
+  perform pg_temp.expect_code($q$update public.media_assets set status='ready' where id='fb000000-0000-0000-0000-0000000000a2'$q$, 'capture_manifest_required');
+  perform pg_temp.expect_true((select status from public.media_assets where id=a_no)='validating', 'D2 blocked source stays validating');
+  -- true legacy (marker NULL) → ready flip succeeds without a manifest (guard N/A).
+  update public.media_assets set status='ready' where id=a_leg;
+  perform pg_temp.expect_true((select status from public.media_assets where id=a_leg)='ready', 'D2 legacy → ready without manifest');
+end $$;
+
 \echo == round-4: oversize recording script fails closed (byte cap) ==
 do $$
 declare
