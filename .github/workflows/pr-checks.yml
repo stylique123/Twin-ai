@@ -153,6 +153,14 @@ jobs:
         run: |
           node scripts/ci/check_build_provenance.mjs --selftest
           node scripts/ci/check_build_provenance.mjs
+      - name: Phase-7 Gate 0 — Director envelope fits one inference (exact bytes + conservative token bound)
+        run: node scripts/director-eval/count_tokens.mjs --selftest
+      - name: Phase-7 Director quality-gate digest is immutable
+        run: |
+          node scripts/ci/check_quality_gate_digest.mjs --selftest
+          node scripts/ci/check_quality_gate_digest.mjs
+      - name: Phase-7 ci-bootstrap secret-key selection (fail-closed, no byte leak)
+        run: node scripts/ci/check_ci_bootstrap_keyselect.mjs
 
   # Offline hostile suite for the production gate-probe predicates
   # (scripts/ci/gate_probe_assert.mjs — the exact module verify-prod-gate.yml
@@ -166,3 +174,18 @@ jobs:
         with: { node-version: 20 }
       - name: Gate-probe predicates (hostile selftest)
         run: node scripts/ci/gate_probe_assert.mjs --selftest
+
+  # Phase-7 Gate 0 MANDATORY real-token evidence: run the provider countTokens on
+  # the EXACT maximum-legal Director envelope and FAIL CLOSED if GEMINI_API_KEY is
+  # not configured. The conservative bound (tokens <= bytes) is proven in the
+  # unit tests + the --selftest step; this job records the ACTUAL provider count.
+  director-token-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Real Gemini countTokens on the max 30-minute envelope (mandatory, fail-closed)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: node scripts/director-eval/count_tokens.mjs

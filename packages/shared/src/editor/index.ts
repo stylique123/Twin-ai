@@ -5,3 +5,5 @@
 export * from './contracts'
 export * from './api'
 export * from './features'
+export * from './director'
+export * from './capture'

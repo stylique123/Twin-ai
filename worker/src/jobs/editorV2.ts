@@ -36,10 +36,11 @@ import { env } from '../env.js'
 import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost } from '../errors.js'
 import { queueSafeError, sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
-import { AnalyzeCancelledError } from './editorCancel.js'
+import { AnalyzeCancelledError, DirectorCancelledError } from './editorCancel.js'
 import { InspectionCancelledError, loadEligibleSource, runInspectingStage } from './editorInspect.js'
 import { SpeechCancelledError, runTranscribingStage } from './editorSpeech.js'
 import { runAnalyzingStage, type AnalyzeOutcome } from './editorAnalyze.js'
+import { runDirectingStage, type DirectorOutcome } from './editorDirector.js'
 import { buildBootManifest, buildScriptSnapshot, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
 import { VerifiedSourceSession } from './sourceSession.js'
 
@@ -275,6 +276,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     let inspect: Record<string, unknown> | null = null
     let speech: Record<string, unknown> | null = null
     let analysis: AnalyzeOutcome | null = null
+    let director: DirectorOutcome | null = null
     for (const stage of stagesFrom(proj.status)) {
       if (lease.lost()) throw new LeaseLostError(`lease lost before stage ${stage}`)
       maybeCrash(`before_stage:${stage}`, job)
@@ -292,7 +294,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       // the project as cancelled — shared by every real stage.
       const cancelledMidStage = async (err: unknown): Promise<boolean> => {
         if (err instanceof InspectionCancelledError || err instanceof SpeechCancelledError
-            || err instanceof AnalyzeCancelledError) {
+            || err instanceof AnalyzeCancelledError || err instanceof DirectorCancelledError) {
           await finishProject(job, projectId, 'cancelled', undefined, { at_stage: stage })
           return true
         }
@@ -353,6 +355,20 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           }
           throw err
         }
+      } else if (stage === 'directing' && env.editorDirectorEnabled) {
+        // Phase 7: the REAL directing stage — one pinned gemini-3.5-flash call,
+        // server-side re-resolution, immutable decision. Gated by env so
+        // production (flag unset) keeps directing SIMULATED below.
+        try {
+          director = await runDirectingStage(job, projectId, dir, session, pinned)
+        } catch (err) {
+          if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          if (!isLeaseLost(err)) {
+            const code = err instanceof PermanentJobError ? err.code : 'director_error'
+            await appendEvent(job, projectId, 'director_failed', { code })
+          }
+          throw err
+        }
       } else {
         await runStageWithTimeout(stage, job, dir)
       }
@@ -360,22 +376,29 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     }
 
     await finishProject(job, projectId, 'completed', undefined, {
-      // Scaffold marker: directing/compiling/rendering/validating are still
-      // simulated and output_asset_id stays NULL — never a product success.
-      simulated_after_analysis: true,
+      // Scaffold marker: compiling/rendering/validating are still simulated and
+      // output_asset_id stays NULL — never a product success. When directing
+      // ran for real, the boundary moves to after-directing; otherwise it is
+      // the unchanged after-analysis boundary (production).
+      ...(director ? { simulated_after_directing: true } : { simulated_after_analysis: true }),
+      director_ran: !!director,
       manifest_sha: pinned.manifest.manifestSha,
       source_downloads: session.downloadsPerformed,
       components: analysis ? {
         visual: analysis.visual, audio: analysis.audio, hook: analysis.hook,
       } : null,
+      director: director ? { selections: director.selections, reused: director.reused, decision_sha256: director.decisionSha256 } : null,
     })
     maybeCrash('after_finish', job) // project settled, job not yet acknowledged
     return {
-      simulated_after_analysis: true, // directing/compiling/rendering/validating are still simulated
+      // compiling/rendering/validating are still simulated; directing is real
+      // only when the flag is enabled (else after-analysis, as in production).
+      ...(director ? { simulated_after_directing: true } : { simulated_after_analysis: true }),
       stages_ran: ranStages,
       inspection: inspect,
       speech,
       analysis: analysis as unknown as Record<string, unknown> | null,
+      director: director as unknown as Record<string, unknown> | null,
       source_downloads: session.downloadsPerformed,
       swept_orphan_dirs: sweptOrphans,
       temp_dir_cleaned: true, // the finally below removes it before we return

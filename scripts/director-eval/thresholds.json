@@ -1,0 +1,71 @@
+{
+  "evaluationVersion": "phase7-director-quality-v1",
+  "purpose": "Target-user Director-quality gate. Blocks BETA ENABLEMENT (not the Phase-7 engineering merge). Valid schema-conformant JSON is NOT proof of good editing. Frozen before the first rating result; any change to sample table, procedure, or thresholds requires a NEW evaluationVersion and a FULL rerun — never a reinterpretation of existing results.",
+  "sample": {
+    "N": 16,
+    "primaryStrataMutuallyExclusive": [
+      { "durationBucket": "lt2min", "delivery": "scripted", "count": 2 },
+      { "durationBucket": "lt2min", "delivery": "improv", "count": 2 },
+      { "durationBucket": "2to8min", "delivery": "scripted", "count": 3 },
+      { "durationBucket": "2to8min", "delivery": "improv", "count": 3 },
+      { "durationBucket": "8to30min", "delivery": "scripted", "count": 3 },
+      { "durationBucket": "8to30min", "delivery": "improv", "count": 3 }
+    ],
+    "primaryStrataSumCheck": 16,
+    "secondaryTagMinimums": {
+      "note": "Attributes of the SAME 16 recordings — satisfied by assignment, never by adding recordings (no double-counting).",
+      "speechRateFastMin": 5,
+      "speechRateNormalMin": 5,
+      "audioNoisyMin": 4,
+      "atLeastOneGte25min": 1
+    },
+    "reserveRecordings": 4
+  },
+  "procedure": {
+    "ratersPerRecording": 3,
+    "blinded": true,
+    "randomizedOrder": true,
+    "groundTruthAdjudicator": "one senior adjudicator, NOT a rater, establishes the correct removal/keep spans from the source BEFORE seeing Director output",
+    "actionMatchTolerance": "a Director removal is a true positive iff it is contained in, or has IoU >= 0.5 with, a ground-truth removal span",
+    "consent": "target-user recordings; shared with task #115 corpus; consented"
+  },
+  "metrics": {
+    "removalPrecision": {
+      "formula": "TP / (TP + FP)",
+      "denominator": "all Director removal actions in scope",
+      "overallPointMin": 0.95,
+      "overallWilsonLcbMin": 0.90,
+      "perDurationStratumPointMin": 0.90,
+      "minRemovalActionsOverall": 40,
+      "minRemovalActionsPerDurationStratum": 8,
+      "insufficientDenominatorOutcome": "INCONCLUSIVE"
+    },
+    "harmfulCuts": {
+      "definition": "any Director removal overlapping a ground-truth KEEP (content-bearing) span by > 0 ms",
+      "max": 0,
+      "scope": "overall_and_per_recording"
+    },
+    "raterAgreement": {
+      "metric": "fleiss_kappa",
+      "min": 0.60,
+      "scope": "overall",
+      "belowMinOutcome": "FAIL_RERUN_NEW_VERSION"
+    },
+    "wouldShip": {
+      "definition": "fraction of recordings where >= 2 of 3 raters answer 'a creator would ship this edit'",
+      "hardRuleMinOfN": 15,
+      "n": 16,
+      "pointMin": 0.80,
+      "wilsonLcbMin": 0.70,
+      "note": "At N=16 a Wilson 95% lower bound >= 0.70 is only met at 15/16 (LCB ~0.717); 14/16 gives LCB ~0.640. The operative HARD RULE is therefore >= 15/16, not 13/16."
+    }
+  },
+  "outcomeRules": {
+    "PASS": "all metrics meet thresholds AND all minimum denominators satisfied",
+    "INCONCLUSIVE": "removal-action denominator below minimum (overall or any duration stratum), or reserves exhausted before N=16 ratable recordings — NEVER counted as a pass",
+    "FAIL": "any harmful cut, precision below threshold/LCB, would-ship < 15/16, or kappa < 0.60",
+    "disagreementHandling": "per-action verdict by 2/3 majority; a tie is treated as NOT acceptable (conservative)",
+    "missingHandling": "unratable/corrupt/no-speech/provider-error recordings are excluded and replaced from reserves (logged); if reserves exhaust, outcome is INCONCLUSIVE",
+    "immutability": "any change to this file or the rubric requires a new evaluationVersion + full rerun; existing results are never reinterpreted"
+  }
+}

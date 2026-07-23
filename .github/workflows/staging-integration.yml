@@ -34,7 +34,10 @@ concurrency:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Phase 1-6 consume ~40 min; Phase 7 (7 fixtures + 4 full-pipeline runs +
+    # a crash-resume + the RPC truth table) adds ~12 min. The old 45-min budget
+    # cancelled Phase 7 mid-run, so give the full Phase 1-7 regression headroom.
+    timeout-minutes: 70
     # Phases 3-5 all drive the REAL speech stage, which now loads the PINNED
     # snapshot from this path offline (fetched + digest-verified in the install
     # step). Job-level so EVERY phase inherits it, not just Phase 5. NOTE: the
@@ -46,6 +49,12 @@ jobs:
       # the built dist/ directly (not the Docker image), so inject the exact
       # head commit here — every spawned worker inherits it via process.env.
       WORKER_GIT_SHA: ${{ github.sha }}
+      # Phase-7: the REAL directing stage makes one pinned gemini-3.5-flash call.
+      # The spawned staging worker (EDITOR_DIRECTOR_ENABLED=true, set per-worker
+      # in phase7.mjs) inherits this key via process.env; Gate 0's real
+      # countTokens uses it too. Absent => Gate 0 self-tests offline and the
+      # Phase-7 fail-closed case still passes.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -113,6 +122,13 @@ jobs:
           if [ -z "$SERVICE" ] || [ "$SERVICE" = "null" ]; then
             echo "bootstrap failed: $(echo "$RESP" | jq -r '.error // "no error field"')"; exit 1
           fi
+          # NON-SECRET credential diagnostic: the selection source (key NAME only)
+          # and the literal, non-secret key PREFIX (sb_secret_ / sb_publishable_ /
+          # eyJhbGciOi… for a JWT) — the first 10 chars are a fixed format marker,
+          # never the random secret body. Bisects "wrong key selected" vs
+          # "sb_secret_ rejected by GoTrue" without exposing any credential.
+          echo "credential source: $(echo "$RESP" | jq -r '.keySource // "none"')"
+          echo "credential head:   ${SERVICE:0:10}"
           echo "::add-mask::$SERVICE"
           {
             echo "STAGING_URL=$URL"
@@ -189,3 +205,10 @@ jobs:
         # opencv-python-headless is installed by the pinned requirements step
         # above; the YuNet .onnx + vision manifest are committed in-repo.
         run: node scripts/staging-integration/phase6.mjs
+
+      - name: Run Phase 7 integration matrix (real directing — Director call, decision, filler guards)
+        # Requires migration 0088 (edit_director_calls/decisions + RPCs) applied
+        # to staging. EDITOR_DIRECTOR_ENABLED is set PER-WORKER inside phase7.mjs
+        # (never a Supabase secret) so production stays simulated. GEMINI_API_KEY
+        # is threaded via job env above.
+        run: node scripts/staging-integration/phase7.mjs
