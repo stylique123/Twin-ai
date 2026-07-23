@@ -15,6 +15,8 @@ import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
 import { loadRecordingScript, setWpm } from '../../lib/api'
 import { buildRecordingScript } from '../../lib/api'
 import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
+import { buildTeleprompterIntent, captureScriptSha256, sha256Hex, normalizeDialogue } from '../../lib/api'
+import type { CaptureUploadPayload } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
@@ -386,7 +388,48 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   const saveSourceOnce = (blob: Blob) => uploadOnceRef.current.run(async () => {
     const contentType = blob.type || 'video/webm'
     attemptIdRef.current ??= newRecordingAttemptId()
-    const intent = await uploadSourceRecording(genId, attemptIdRef.current, { blob, contentType, sizeBytes: blob.size })
+    // Source Capture Intent (Constitution §5.1): attach the accepted per-scene
+    // windows so the editor knows which take the creator kept. Positional:
+    // segmentsRef[i] is the accepted window for scenes[i] (the filtered
+    // teleprompter scenes, in order; retakes/go-backs already popped the
+    // rejected reads). Times are active-recording seconds → integer ms. If the
+    // payload can't be built or fails the shared contract, we send WITHOUT it —
+    // a recording must NEVER be lost to a provenance edge case.
+    let capture: CaptureUploadPayload | undefined
+    try {
+      const segs = segmentsRef.current
+      if (segs.length) {
+        const scriptSha = await captureScriptSha256({
+          generation_id: genId,
+          hook: timeline.hook,
+          scenes: scenes.map((s) => ({ scene_number: s.scene_number, dialogue: s.dialogue, show_in_teleprompter: s.show_in_teleprompter })),
+        })
+        const accepted_segments = []
+        for (let idx = 0; idx < segs.length; idx++) {
+          const scene = scenes[idx]
+          if (!scene) throw new Error('segment/scene mapping mismatch')
+          accepted_segments.push({
+            scene_number: scene.scene_number,
+            start_ms: Math.round(segs[idx].start * 1000),
+            end_ms: Math.round(segs[idx].end * 1000),
+            intended_dialogue_sha256: await sha256Hex(normalizeDialogue(scene.dialogue ?? '')),
+          })
+        }
+        // Validate against the shared contract before attaching; only a payload
+        // that would pass the edge/worker is sent (otherwise fall back cleanly).
+        await buildTeleprompterIntent({
+          generationId: genId,
+          sourceAssetId: '00000000-0000-0000-0000-000000000000',
+          clientAttemptId: attemptIdRef.current,
+          recordingScriptSha256: scriptSha,
+          segments: accepted_segments.map((a) => ({ sceneNumber: a.scene_number, startMs: a.start_ms, endMs: a.end_ms, dialogue: '' })),
+        })
+        capture = { origin: 'teleprompter', recording_script_sha256: scriptSha, recorder_clock: 'mediarecorder-active-time-ms', accepted_segments }
+      }
+    } catch {
+      capture = undefined
+    }
+    const intent = await uploadSourceRecording(genId, attemptIdRef.current, { blob, contentType, sizeBytes: blob.size }, undefined, capture)
     saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
     return { path: intent.path }
   })
@@ -742,7 +785,11 @@ function UploadMode({ genId, onBack }: { genId: string; onBack: () => void }) {
       const contentType = f.type || 'video/mp4'
       const key = `${f.name}:${f.size}:${f.lastModified}`
       if (attemptRef.current?.key !== key) attemptRef.current = { key, id: newRecordingAttemptId() }
-      const intent = await uploadSourceRecording(genId, attemptRef.current.id, { blob: f, contentType, sizeBytes: f.size }, (p) => setPct(p))
+      // Uploaded sources carry an EXPLICIT upload-origin capture intent (no
+      // accepted windows) — the editor uses evidence-based inference, never
+      // mistaking a real upload for lost teleprompter provenance.
+      const capture: CaptureUploadPayload = { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }
+      const intent = await uploadSourceRecording(genId, attemptRef.current.id, { blob: f, contentType, sizeBytes: f.size }, (p) => setPct(p), capture)
       if (cancelRef.current) return
       saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
       onBack()
