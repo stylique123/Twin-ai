@@ -74,13 +74,21 @@ describe('model identities', () => {
 })
 
 describe('boot manifest', () => {
-  it('builds a complete manifest with digests and a canonical sha', async () => {
-    const built = await buildBootManifest({ inspectorVersion: 'inspect-1', speechVersion: 'speech-6' })
+  const BRAND_SHA = 'b'.repeat(64)
+  const CAP_SHA = 'c'.repeat(64)
+  const v2opts = { inspectorVersion: 'inspect-1', speechVersion: 'speech-6', brandSnapshotSha: BRAND_SHA, captureManifestSha: CAP_SHA }
+
+  it('builds a complete v2 manifest with digests, epoch-2 pins and a canonical sha', async () => {
+    const built = await buildBootManifest(v2opts)
     const m = built.manifest as Record<string, any>
-    expect(m.manifestEpoch).toBe(1)
+    // Boot Manifest v2: epoch 2, visual-2, and the frozen creative-half pins.
+    expect(m.manifestEpoch).toBe(2)
     expect(m.componentVersions).toEqual({
-      inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-1', audio: 'audio-1', hook: 'hook-1',
+      inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-2', audio: 'audio-1', hook: 'hook-1',
     })
+    expect(m.brandSnapshotSha).toBe(BRAND_SHA)
+    expect(m.captureManifestSha).toBe(CAP_SHA)
+    expect(m.features).toEqual({ autoFillerRemoval: false })
     expect(built.componentDigests.visual).toMatch(/^[0-9a-f]{64}$/)
     expect(built.componentDigests.audio).toMatch(/^[0-9a-f]{64}$/)
     expect(built.componentDigests.hook).toMatch(/^[0-9a-f]{64}$/)
@@ -88,8 +96,12 @@ describe('boot manifest', () => {
     expect(new Set(Object.values(built.componentDigests)).size).toBe(3)
     expect(built.manifestSha).toBe(sha256Hex(canonicalJson(built.manifest)))
     // Rebuild is byte-stable for the same inputs.
-    const again = await buildBootManifest({ inspectorVersion: 'inspect-1', speechVersion: 'speech-6' })
+    const again = await buildBootManifest(v2opts)
     expect(again.manifestSha).toBe(built.manifestSha)
+    // The v2 pins are part of manifest identity: a different brand/capture SHA,
+    // or a null capture (legacy), yields a different manifestSha.
+    expect((await buildBootManifest({ ...v2opts, brandSnapshotSha: 'd'.repeat(64) })).manifestSha).not.toBe(built.manifestSha)
+    expect((await buildBootManifest({ ...v2opts, captureManifestSha: null })).manifestSha).not.toBe(built.manifestSha)
     // Rules identity flows into the manifest.
     expect(m.rules.boundsSha256).toBe(loadAnalysisRules().boundsSha256)
     // Face model hash is an input to the VISUAL digest specifically.
@@ -111,7 +123,7 @@ describe('boot manifest', () => {
         process.env.GIT_SHA = ''
         let err: unknown
         try {
-          await buildBootManifest({ inspectorVersion: 'inspect-1', speechVersion: 'speech-6' })
+          await buildBootManifest({ inspectorVersion: 'inspect-1', speechVersion: 'speech-6', brandSnapshotSha: 'b'.repeat(64), captureManifestSha: null })
         } catch (e) { err = e }
         expect(err).toBeInstanceOf(PermanentJobError)
         expect((err as PermanentJobError).code).toBe('build_provenance_missing')

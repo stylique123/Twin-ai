@@ -7,7 +7,7 @@ import { loadAnalysisRules } from '../jobs/editorManifest.js'
 import { PermanentJobError } from '../errors.js'
 import type { VisualBridgeOutput, VisualFacts } from '../jobs/editorVisual.js'
 
-const { buildVisualAnalysis, coarseIntervalMs, roundUpTo } = await import('../jobs/editorVisual.js')
+const { buildVisualAnalysis, coarseIntervalMs, roundUpTo, computeBlankIntervals } = await import('../jobs/editorVisual.js')
 
 const { rules, boundsSha256 } = loadAnalysisRules()
 
@@ -36,6 +36,10 @@ const bridge = (over: Partial<VisualBridgeOutput> = {}): VisualBridgeOutput => (
   fineSamples: 3,
   faceSamples: 5,
   motion: [{ timeMs: 2000, diff: 0.05 }, { timeMs: 4000, diff: 0.42 }],
+  lumaCurve: [
+    { timeMs: 0, luma: 0.5 }, { timeMs: 2000, luma: 0.5 }, { timeMs: 4000, luma: 0.5 },
+    { timeMs: 6000, luma: 0.5 }, { timeMs: 8000, luma: 0.5 },
+  ],
   shotBoundaries: [{ timeMs: 3500, score: 0.42, evidenceCodes: ['luma_diff_threshold', 'fine_refined'] }],
   faces: [{ timeMs: 0, detections: [{ x: 100, y: 200, width: 300, height: 400, score: 0.91 }] }],
   faceCoverage: { samplesWithFace: 1, samplesTotal: 5 },
@@ -51,11 +55,15 @@ describe('buildVisualAnalysis', () => {
   it('builds the evidence-only contract with display-space facts and pinned provenance', () => {
     const r = buildVisualAnalysis({ id: 'a1', content_sha256: 'h1' }, bridge(), facts,
       { intervalMs: 2000, rules, boundsSha256, requirePinnedModel: true }) as Record<string, any>
-    expect(r.visualVersion).toBe('visual-1')
+    expect(r.visualVersion).toBe('visual-2')
     expect(r.rotation).toBe(90)
     expect(r.displayWidth).toBe(1080)
     expect(r.sampling).toEqual({ coarseIntervalMs: 2000, coarseSamples: 5, fineSamples: 3, faceSamples: 5 })
     expect(r.shotBoundaries).toHaveLength(1)
+    // visual-2: per-sample luma curve is carried through; a well-lit clip has no
+    // blank intervals.
+    expect(r.lumaCurve).toHaveLength(5)
+    expect(r.blankIntervals).toEqual([])
     expect(r.provenance.detector).toBe('yunet')
     expect(r.provenance.detectorScoreThreshold).toBe(0.6)
     expect(r.provenance.modelVerified).toBe(true)
@@ -84,6 +92,48 @@ describe('buildVisualAnalysis', () => {
         { intervalMs: 2000, rules, boundsSha256, requirePinnedModel: true })
     } catch (e) { err = e }
     expect((err as PermanentJobError).code).toBe('visual_bounds_exceeded')
+  })
+
+  it('surfaces merged near-black / frozen blank intervals (visual-2 evidence)', () => {
+    // samples every 2000ms; near-black at 2000..6000, plus a frozen tail.
+    const lumaCurve = [
+      { timeMs: 0, luma: 0.5 },
+      { timeMs: 2000, luma: 0.02 }, { timeMs: 4000, luma: 0.03 }, { timeMs: 6000, luma: 0.01 },
+      { timeMs: 8000, luma: 0.5 },
+    ]
+    const motion = [
+      { timeMs: 2000, diff: 0.3 }, { timeMs: 4000, diff: 0.3 }, { timeMs: 6000, diff: 0.3 },
+      { timeMs: 8000, diff: 0.3 },
+    ]
+    const { intervals } = computeBlankIntervals(lumaCurve, motion, rules)
+    expect(intervals).toHaveLength(1)
+    expect(intervals[0]).toEqual({ startMs: 2000, endMs: 6000, evidenceCodes: ['near_black'] })
+
+    const r = buildVisualAnalysis({ id: 'a1', content_sha256: 'h1' }, bridge({ lumaCurve, motion }), facts,
+      { intervalMs: 2000, rules, boundsSha256, requirePinnedModel: true }) as Record<string, any>
+    expect(r.blankIntervals).toEqual([{ startMs: 2000, endMs: 6000, evidenceCodes: ['near_black'] }])
+  })
+
+  it('does not flag a lone blank sample or a sub-threshold run', () => {
+    // one near-black sample (count < 2) and a two-sample run shorter than minBlankDurationMs.
+    const lumaCurve = [
+      { timeMs: 0, luma: 0.5 }, { timeMs: 2000, luma: 0.01 }, { timeMs: 4000, luma: 0.5 },
+    ]
+    const motion = [{ timeMs: 2000, diff: 0.3 }, { timeMs: 4000, diff: 0.3 }]
+    expect(computeBlankIntervals(lumaCurve, motion, rules).intervals).toEqual([])
+  })
+
+  it('classifies a frozen (low-motion) run distinct from near-black', () => {
+    const lumaCurve = [
+      { timeMs: 0, luma: 0.5 }, { timeMs: 2000, luma: 0.5 }, { timeMs: 4000, luma: 0.5 },
+      { timeMs: 6000, luma: 0.5 },
+    ]
+    // motion at 2000..6000 is at/below frozenMotionMax (0.01).
+    const motion = [
+      { timeMs: 2000, diff: 0.005 }, { timeMs: 4000, diff: 0.008 }, { timeMs: 6000, diff: 0.002 },
+    ]
+    const { intervals } = computeBlankIntervals(lumaCurve, motion, rules)
+    expect(intervals).toEqual([{ startMs: 2000, endMs: 6000, evidenceCodes: ['frozen'] }])
   })
 
   it('fails LOUD when the payload would exceed the cap (never truncates evidence)', () => {

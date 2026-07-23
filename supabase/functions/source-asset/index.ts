@@ -284,12 +284,17 @@ Deno.serve(async (req: Request) => {
 
     const { data: existing } = await findExisting()
     if (existing) {
-      if (existing.status === 'ready') return intentResponse(existing, null) // nothing left to upload
       if (existing.status === 'rejected' || existing.status === 'deleted') {
         return json({ error: 'This recording was rejected — please record a new take.' }, 409)
       }
+      // Validate + conflict-check the supplied MANDATORY capture against the
+      // immutable stored intent for EVERY idempotent retry — INCLUDING a ready
+      // asset — BEFORE any status shortcut. An identical retry passes; a
+      // divergent payload returns a stable 409, so a ready asset can never
+      // silently accept a different capture intent.
       const capResp = await attachCapture(existing.id)
       if (capResp) return capResp
+      if (existing.status === 'ready') return intentResponse(existing, null) // nothing left to upload
       const sign = await signUpload(existing.storage_path)
       if (!sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
       return intentResponse(existing, sign)
@@ -340,10 +345,10 @@ Deno.serve(async (req: Request) => {
       // Converge on that row instead of failing.
       const { data: raced } = await findExisting()
       if (raced && raced.status !== 'rejected' && raced.status !== 'deleted') {
-        if (raced.status !== 'ready') {
-          const capResp = await attachCapture(raced.id)
-          if (capResp) return capResp
-        }
+        // Conflict-check the mandatory capture against the stored intent for the
+        // raced row too — INCLUDING a ready race — before any status shortcut.
+        const capResp = await attachCapture(raced.id)
+        if (capResp) return capResp
         const sign = raced.status === 'ready' ? null : await signUpload(raced.storage_path)
         if (raced.status !== 'ready' && !sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
         return intentResponse(raced, sign)
