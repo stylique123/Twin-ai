@@ -105,13 +105,29 @@ describe('buildVisualAnalysis', () => {
       { timeMs: 2000, diff: 0.3 }, { timeMs: 4000, diff: 0.3 }, { timeMs: 6000, diff: 0.3 },
       { timeMs: 8000, diff: 0.3 },
     ]
+    // near-black but MOVING (motion 0.3) → recorded as evidence but NOT selectable waste
+    // (corroboration missing): dark_motion, selectableWaste false.
     const { intervals } = computeBlankIntervals(lumaCurve, motion, rules)
     expect(intervals).toHaveLength(1)
-    expect(intervals[0]).toEqual({ startMs: 2000, endMs: 6000, evidenceCodes: ['near_black'] })
+    expect(intervals[0]).toEqual({ startMs: 2000, endMs: 6000, evidenceCodes: ['near_black'], classification: 'dark_motion', selectableWaste: false })
 
     const r = buildVisualAnalysis({ id: 'a1', content_sha256: 'h1' }, bridge({ lumaCurve, motion }), facts,
       { intervalMs: 2000, rules, boundsSha256, requirePinnedModel: true }) as Record<string, any>
-    expect(r.blankIntervals).toEqual([{ startMs: 2000, endMs: 6000, evidenceCodes: ['near_black'] }])
+    expect(r.blankIntervals).toEqual([{ startMs: 2000, endMs: 6000, evidenceCodes: ['near_black'], classification: 'dark_motion', selectableWaste: false }])
+  })
+
+  it('corroborated dead air (dark AND static together) IS selectable waste', () => {
+    // dark (luma ~0.02) AND frozen (motion ~0) at the same samples → dead_air, selectable.
+    const lumaCurve = [
+      { timeMs: 0, luma: 0.5 },
+      { timeMs: 2000, luma: 0.02 }, { timeMs: 4000, luma: 0.01 }, { timeMs: 6000, luma: 0.02 },
+      { timeMs: 8000, luma: 0.5 },
+    ]
+    const motion = [
+      { timeMs: 2000, diff: 0.002 }, { timeMs: 4000, diff: 0.003 }, { timeMs: 6000, diff: 0.001 }, { timeMs: 8000, diff: 0.3 },
+    ]
+    const { intervals } = computeBlankIntervals(lumaCurve, motion, rules)
+    expect(intervals).toEqual([{ startMs: 2000, endMs: 6000, evidenceCodes: ['near_black', 'frozen'], classification: 'dead_air', selectableWaste: true }])
   })
 
   it('does not flag a lone blank sample or a sub-threshold run', () => {
@@ -123,7 +139,9 @@ describe('buildVisualAnalysis', () => {
     expect(computeBlankIntervals(lumaCurve, motion, rules).intervals).toEqual([])
   })
 
-  it('classifies a frozen (low-motion) run distinct from near-black', () => {
+  it('a static talking head (frozen, NORMAL brightness) is NEVER auto-called waste', () => {
+    // normal luma (0.5) + low motion = a person holding still while talking. It is
+    // recorded as `static_hold` evidence but is NOT selectable waste (no corroboration).
     const lumaCurve = [
       { timeMs: 0, luma: 0.5 }, { timeMs: 2000, luma: 0.5 }, { timeMs: 4000, luma: 0.5 },
       { timeMs: 6000, luma: 0.5 },
@@ -133,7 +151,7 @@ describe('buildVisualAnalysis', () => {
       { timeMs: 2000, diff: 0.005 }, { timeMs: 4000, diff: 0.008 }, { timeMs: 6000, diff: 0.002 },
     ]
     const { intervals } = computeBlankIntervals(lumaCurve, motion, rules)
-    expect(intervals).toEqual([{ startMs: 2000, endMs: 6000, evidenceCodes: ['frozen'] }])
+    expect(intervals).toEqual([{ startMs: 2000, endMs: 6000, evidenceCodes: ['frozen'], classification: 'static_hold', selectableWaste: false }])
   })
 
   it('fails LOUD when the payload would exceed the cap (never truncates evidence)', () => {

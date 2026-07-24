@@ -71,13 +71,17 @@ export function computeBlankIntervals(
   lumaCurve: Array<{ timeMs: number; luma: number }>,
   motion: Array<{ timeMs: number; diff: number }>,
   rules: AnalysisRules,
-): { intervals: Array<{ startMs: number; endMs: number; evidenceCodes: string[] }>; dropped: number } {
+): { intervals: Array<{ startMs: number; endMs: number; evidenceCodes: string[]; classification: string; selectableWaste: boolean }>; dropped: number } {
   const R = rules.visual
   const diffAt = new Map<number, number>()
   for (const m of motion) diffAt.set(m.timeMs, m.diff)
   const samples = [...lumaCurve].sort((a, b) => a.timeMs - b.timeMs)
 
-  type Run = { startMs: number; endMs: number; count: number; nearBlack: boolean; frozen: boolean }
+  // `both` = a sample that is near-black AND frozen AT THE SAME MOMENT — the corroborated
+  // dead-air signal. nearBlack/frozen alone are kept as separate EVIDENCE but never make
+  // an interval selectable on their own (a still talking head is frozen but not dark; a
+  // dark scene can still have motion).
+  type Run = { startMs: number; endMs: number; count: number; nearBlack: boolean; frozen: boolean; both: boolean }
   let run: Run | null = null
   const runs: Run[] = []
   const closeRun = () => {
@@ -88,12 +92,13 @@ export function computeBlankIntervals(
     const nearBlack = s.luma <= R.nearBlackLuma
     const d = diffAt.get(s.timeMs)
     const frozen = d !== undefined && d <= R.frozenMotionMax
+    const both = nearBlack && frozen
     if (nearBlack || frozen) {
       if (run) {
         run.endMs = s.timeMs; run.count += 1
-        run.nearBlack = run.nearBlack || nearBlack; run.frozen = run.frozen || frozen
+        run.nearBlack = run.nearBlack || nearBlack; run.frozen = run.frozen || frozen; run.both = run.both || both
       } else {
-        run = { startMs: s.timeMs, endMs: s.timeMs, count: 1, nearBlack, frozen }
+        run = { startMs: s.timeMs, endMs: s.timeMs, count: 1, nearBlack, frozen, both }
       }
     } else {
       closeRun()
@@ -101,9 +106,19 @@ export function computeBlankIntervals(
   }
   closeRun()
 
+  // Honest classification. Only corroborated dead air (dark AND static together) is
+  // SELECTABLE as visual waste; a static talking head (frozen only) or a dark-but-moving
+  // scene is recorded as evidence but NEVER auto-called waste.
+  const classify = (r: Run): string =>
+    r.both ? 'dead_air'
+      : r.frozen && !r.nearBlack ? 'static_hold'
+      : r.nearBlack && !r.frozen ? 'dark_motion'
+      : 'ambiguous'
   const all = runs.map((r) => ({
     startMs: r.startMs, endMs: r.endMs,
     evidenceCodes: [...(r.nearBlack ? ['near_black'] : []), ...(r.frozen ? ['frozen'] : [])],
+    classification: classify(r),
+    selectableWaste: r.both,
   }))
   const intervals = all.slice(0, R.blankCandidateCap)
   return { intervals, dropped: all.length - intervals.length }
