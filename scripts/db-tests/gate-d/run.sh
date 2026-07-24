@@ -265,6 +265,20 @@ mutate_and_expect_fail "s/raise exception 'capture_manifest_conflict: a divergen
   "(p6) manifest pre-existing-divergent guard removed → gate correctly FAILED"
 mutate_and_expect_fail "s/raise exception 'capture_manifest_conflict: settled asset % has a divergent manifest', p_asset;/null;/" \
   "(p7) manifest settled-divergent guard removed → gate correctly FAILED"
+# (v1)-(v6) D2 atomic editor_validate_source guards. Each removed → its hostile fixture
+# passes through → the real assertion gate FAILS.
+mutate_and_expect_fail "s/raise exception 'source_validate_window_out_of_bounds: segment \[%,%\] vs duration %', s_start, s_end, p_duration_ms using errcode = 'raise_exception';/null;/" \
+  "(v1) validate window-bounds guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'source_validate_sha_mismatch: stored % vs probed %', a.content_sha256, p_content_sha using errcode = 'raise_exception';/null;/" \
+  "(v2) validate sha-reconcile guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'source_validate_size_mismatch: stored % vs probed %', a.size_bytes, p_size_bytes using errcode = 'raise_exception';/null;/" \
+  "(v3) validate size-reconcile guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'source_validate_conflict: ready asset % has divergent validated facts', p_asset using errcode = 'raise_exception';/null;/" \
+  "(v4) validate idempotent-divergent guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'source_validate_no_intent: %', p_asset using errcode = 'raise_exception';/null;/" \
+  "(v5) validate no-intent guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'source_validate_bad_duration: %', p_duration_ms using errcode = 'raise_exception';/null;/" \
+  "(v6) validate bad-duration guard removed → gate correctly FAILED"
 
 echo "== identity negative controls (RLS/privilege/service-role/warning must have teeth) =="
 # (l) manifest RLS disabled → an outsider sees the owner's manifest → identity FAILS.

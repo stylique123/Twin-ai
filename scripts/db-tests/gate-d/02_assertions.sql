@@ -783,6 +783,82 @@ begin
   perform pg_temp.expect_true((select status from public.media_assets where id=a)='ready', 'ready-guard M: legacy → ready without manifest');
 end $$;
 
+\echo == backup-10: D2 atomic editor_validate_source completion RPC (hostile matrix) ==
+do $$  -- happy path + idempotent + divergent-on-ready
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fd000000-0000-0000-0000-0000000000fd';
+  a uuid := 'fd000000-0000-0000-0000-000000000001'; ish text := repeat('a',64); sha text := repeat('d',64); msha text := repeat('c',64); r record;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish,now());
+  select * into r from public.editor_validate_source(a,own,sha,1024,5000,1080,1920,30,1,0,true,'{}'::jsonb,msha,'v1','{"p":1}'::jsonb);
+  perform pg_temp.expect_true(r.made_ready, 'validate: happy → made_ready');
+  perform pg_temp.expect_true((select status from public.media_assets where id=a)='ready', 'validate: status ready');
+  perform pg_temp.expect_true((select duration_ms from public.media_assets where id=a)=5000, 'validate: duration persisted');
+  perform pg_temp.expect_true((select content_sha256 from public.media_assets where id=a)=sha, 'validate: sha persisted');
+  perform pg_temp.expect_true((select count(*) from public.source_capture_manifests where source_asset_id=a)=1, 'validate: manifest written');
+  -- idempotent identical → no error, made_ready false, still one manifest
+  select * into r from public.editor_validate_source(a,own,sha,1024,5000,1080,1920,30,1,0,true,'{}'::jsonb,msha,'v1','{"p":1}'::jsonb);
+  perform pg_temp.expect_true(not r.made_ready, 'validate: idempotent → not made_ready again');
+  perform pg_temp.expect_true((select count(*) from public.source_capture_manifests where source_asset_id=a)=1, 'validate: still one manifest');
+  -- divergent facts on a ready asset → conflict
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,9999,1080,1920,30,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, repeat('e',64), msha), 'source_validate_conflict');
+end $$;
+do $$  -- guards: not-owned, bad-state, no-intent, bad-duration, bad-sha, sha-mismatch, size-mismatch, missing
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fd000000-0000-0000-0000-0000000000fd';
+  a uuid := 'fd000000-0000-0000-0000-000000000002'; a2 uuid := 'fd000000-0000-0000-0000-000000000003';
+  a3 uuid := 'fd000000-0000-0000-0000-000000000004'; ish text := repeat('a',64); sha text := repeat('d',64); msha text := repeat('c',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  -- validating asset + intent (baseline for most guards)
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish,now());
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, sha, msha), 'source_validate_not_owned');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,0,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, sha, msha), 'source_validate_bad_duration');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','notasha',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, msha), 'source_validate_bad_sha');
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',2048,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, sha, msha), 'source_validate_size_mismatch');
+  -- bad-state: uploading asset + intent
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a2,own,g,gen_random_uuid(),'source','takes','y','video/webm',1024,'uploading',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a2,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish,now());
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a2, own, sha, msha), 'source_validate_bad_state');
+  -- no-intent: validating asset, NO intent
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a3,own,g,gen_random_uuid(),'source','takes','z','video/webm',1024,'validating',1);
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a3, own, sha, msha), 'source_validate_no_intent');
+  -- missing asset
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, gen_random_uuid(), own, sha, msha), 'source_validate_asset_missing');
+end $$;
+do $$  -- sha reconcile mismatch: row already carries a content_sha that differs from probe
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fd000000-0000-0000-0000-0000000000fd'; a uuid := 'fd000000-0000-0000-0000-000000000005'; ish text := repeat('a',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,content_sha256,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x',repeat('a',64),'video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish,now());
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, repeat('b',64), repeat('c',64)), 'source_validate_sha_mismatch');
+end $$;
+do $$  -- window out of bounds: teleprompter segment endMs > measured duration
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fd000000-0000-0000-0000-0000000000fd'; a uuid := 'fd000000-0000-0000-0000-000000000006'; sc text := repeat('a',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'teleprompter',sc,gen_random_uuid(),'{"acceptedSegments":[{"startMs":0,"endMs":9000,"sceneNumber":1,"intendedDialogueSha256":"x"}]}'::jsonb,repeat('a',64),now());
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, repeat('d',64), repeat('c',64)), 'source_validate_window_out_of_bounds');
+end $$;
+
 \echo == round-4: oversize recording script fails closed (byte cap) ==
 do $$
 declare

@@ -884,6 +884,117 @@ begin
   return query select new_id, new_path, 'uploading'::text, computed_sha, true;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- D2: ONE atomic source-validation completion RPC. The worker measures the real
+-- media (probe) and calls this; the DB is the single authority that reconciles
+-- those facts, normalizes the accepted capture windows against the MEASURED
+-- duration, persists the immutable capture manifest (intent-bound), and flips the
+-- asset to `ready` — all in ONE transaction. It reuses the two existing D2
+-- authorities: editor_write_capture_manifest (conflict-verifying, intent-bound) and
+-- the ready-flip guard (a marked source cannot be ready without a manifest). An
+-- identical retry converges; any divergence on an already-`ready` asset fails closed.
+-- (The retake active-source pointer + monotonic `seq` ordering is a separate step.)
+create or replace function public.editor_validate_source(
+  p_asset uuid,
+  p_owner uuid,
+  p_content_sha text,
+  p_size_bytes bigint,
+  p_duration_ms bigint,
+  p_width int,
+  p_height int,
+  p_frame_rate_num int,
+  p_frame_rate_den int,
+  p_rotation int,
+  p_has_audio boolean,
+  p_manifest jsonb,
+  p_manifest_sha256 text,
+  p_normalization_version text,
+  p_probe jsonb
+) returns table(asset_id uuid, status text, manifest_id uuid, made_ready boolean)
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  a public.media_assets;
+  intent_row public.source_capture_intents;
+  seg jsonb;
+  s_start numeric;
+  s_end numeric;
+  mid uuid;
+begin
+  select * into a from public.media_assets where id = p_asset for update;
+  if not found then raise exception 'source_validate_asset_missing: %', p_asset using errcode = 'raise_exception'; end if;
+  if a.owner_id is distinct from p_owner then raise exception 'source_validate_not_owned: %', p_asset using errcode = 'raise_exception'; end if;
+  if a.kind <> 'source' then raise exception 'source_validate_not_source: %', p_asset using errcode = 'raise_exception'; end if;
+
+  -- IDEMPOTENT recovery: already ready. The validated facts must be byte-identical
+  -- (a late duplicate cannot rewrite them); any divergence fails closed.
+  if a.status = 'ready' then
+    if a.content_sha256 is distinct from p_content_sha
+       or a.duration_ms is distinct from p_duration_ms
+       or (p_size_bytes is not null and a.size_bytes is distinct from p_size_bytes) then
+      raise exception 'source_validate_conflict: ready asset % has divergent validated facts', p_asset using errcode = 'raise_exception';
+    end if;
+    select id into mid from public.source_capture_manifests where source_asset_id = p_asset;
+    return query select a.id, a.status, mid, false;
+    return;
+  end if;
+
+  -- Must be in the validating window (uploading/rejected/deleted cannot be completed here).
+  if a.status <> 'validating' then
+    raise exception 'source_validate_bad_state: asset % is % (expected validating)', p_asset, a.status using errcode = 'raise_exception';
+  end if;
+
+  select * into intent_row from public.source_capture_intents where source_asset_id = p_asset;
+  if not found then raise exception 'source_validate_no_intent: %', p_asset using errcode = 'raise_exception'; end if;
+
+  -- Probe facts must be plausible and reconcile with any create-time descriptor.
+  if p_duration_ms is null or p_duration_ms <= 0 then raise exception 'source_validate_bad_duration: %', p_duration_ms using errcode = 'raise_exception'; end if;
+  if p_content_sha is null or p_content_sha !~ '^[0-9a-f]{64}$' then raise exception 'source_validate_bad_sha' using errcode = 'raise_exception'; end if;
+  if a.content_sha256 is not null and a.content_sha256 is distinct from p_content_sha then
+    raise exception 'source_validate_sha_mismatch: stored % vs probed %', a.content_sha256, p_content_sha using errcode = 'raise_exception';
+  end if;
+  if a.size_bytes is not null and p_size_bytes is not null and a.size_bytes is distinct from p_size_bytes then
+    raise exception 'source_validate_size_mismatch: stored % vs probed %', a.size_bytes, p_size_bytes using errcode = 'raise_exception';
+  end if;
+
+  -- Normalize every accepted capture window against the MEASURED duration:
+  -- 0 <= startMs < endMs <= duration_ms. Teleprompter carries segments; upload none.
+  for seg in select value from jsonb_array_elements(coalesce(intent_row.intent->'acceptedSegments','[]'::jsonb)) as t(value) loop
+    s_start := (seg->>'startMs')::numeric;
+    s_end := (seg->>'endMs')::numeric;
+    if s_start is null or s_end is null or s_start < 0 or s_end <= s_start or s_end > p_duration_ms then
+      raise exception 'source_validate_window_out_of_bounds: segment [%,%] vs duration %', s_start, s_end, p_duration_ms using errcode = 'raise_exception';
+    end if;
+  end loop;
+
+  -- Persist measured probe facts.
+  update public.media_assets set
+    content_sha256 = p_content_sha,
+    size_bytes = coalesce(p_size_bytes, size_bytes),
+    duration_ms = p_duration_ms,
+    width = p_width,
+    height = p_height,
+    frame_rate_num = p_frame_rate_num,
+    frame_rate_den = p_frame_rate_den,
+    rotation = p_rotation,
+    has_audio = p_has_audio,
+    metadata = coalesce(p_probe, metadata)
+  where id = p_asset;
+
+  -- Persist the immutable, intent-bound capture manifest (writer requires the
+  -- asset to still be `validating`, which it is here).
+  mid := public.editor_write_capture_manifest(p_asset, intent_row.origin, intent_row.intent_sha256, p_manifest, p_manifest_sha256, p_normalization_version);
+  if mid is null then raise exception 'source_validate_manifest_failed: %', p_asset using errcode = 'raise_exception'; end if;
+
+  -- Flip to ready in the SAME transaction; the ready-flip guard re-checks the manifest.
+  update public.media_assets set status = 'ready', validated_at = now() where id = p_asset;
+
+  return query select p_asset, 'ready'::text, mid, true;
+end;
+$$;
 -- <<< GATE-D-FUNCTIONS-END
 
 -- Service-role-only across EVERY Gate-D function (helpers included).
@@ -912,6 +1023,8 @@ grant execute on function public.editor_recording_script_sha256(uuid, jsonb, tex
 grant execute on function public.editor_verify_capture_dialogue_shas(jsonb, jsonb) to service_role;
 grant execute on function public.editor_persist_script_binding(uuid, uuid, uuid, text, text, text, text, jsonb, jsonb) to service_role;
 grant execute on function public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint) to service_role;
+revoke all on function public.editor_validate_source(uuid, uuid, text, bigint, bigint, int, int, int, int, int, boolean, jsonb, text, text, jsonb) from public, anon, authenticated;
+grant execute on function public.editor_validate_source(uuid, uuid, text, bigint, bigint, int, int, int, int, int, boolean, jsonb, text, text, jsonb) to service_role;
 -- NB: editor_backfill_capture_marker() is a ONE-TIME migration helper. It is NEVER
 -- granted to service_role (or anyone) — it must not be callable at runtime — and it
 -- is DROPPED immediately after the single classification pass below, so re-applying
