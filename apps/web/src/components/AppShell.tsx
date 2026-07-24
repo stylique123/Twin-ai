@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { LayoutDashboard, Wand2, LibraryBig, LayoutGrid, Sparkles, LogOut, Menu, X, Settings, Users, CalendarDays } from 'lucide-react'
 import { Logo, LogoMark } from './Logo'
 import { BrandSwitcher } from './BrandSwitcher'
+import { BrandReminder } from './BrandReminder'
 import { NotificationBell } from './NotificationBell'
 import { useAuth } from '../context/AuthContext'
 import { videosFromCredits } from '../lib/brand'
@@ -144,7 +145,10 @@ export function AppShell({ children, mobileChrome = true }: { children: React.Re
         }
         {/* Room for the fixed bottom tab bar on phones (none on lg, where the
             sidebar takes over; none on the V2 wizard, which brings its own CTA bar). */}
-        <main className={cn('min-w-0 flex-1', mobileChrome && 'pb-[calc(4.25rem+env(safe-area-inset-bottom))] lg:pb-0')}>{children}</main>
+        <main className={cn('min-w-0 flex-1', mobileChrome && 'pb-[calc(4.25rem+env(safe-area-inset-bottom))] lg:pb-0')}>
+          <BrandReminder />
+          {children}
+        </main>
 
         {/* PHONE bottom tab bar — the app's primary mobile navigation (the
             hamburger stays for secondary items: Settings, Workspaces, sign out). */}
