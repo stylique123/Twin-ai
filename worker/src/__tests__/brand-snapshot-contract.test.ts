@@ -8,15 +8,15 @@ import * as S from '../../../packages/shared/src/editor/brandSnapshot'
 import { CAPTION_PRESET_IDS as SHARED_CAPTION_PRESET_IDS } from '../../../packages/shared/src/editor/catalogs'
 import { canonicalJson } from '../jobs/editorManifest.js'
 
-const VLOGO = { assetId: '11111111-1111-1111-1111-111111111111', sha256: 'a'.repeat(64) }
+const VLOGO = { path: 'me/brandkit/logo.png', sha256: 'a'.repeat(64) }
 const cases: Array<[unknown, unknown, unknown]> = [
-  [{ tone: 'warm', pacing: 'fast and energetic', hook_style: 'question', editing_style: 'word by word', dos: ['a', 'b'], donts: ['c'] }, { primary_hex: '#AABBCC', caption_preset_id: 'caption-punchy-word-v1' }, null],
+  [{ tone: 'warm', pacing: 'fast and energetic', hook_style: 'question', editing_style: 'word by word', dos: ['a', 'b'], donts: ['c'] }, { palette: { primary: '#AABBCC' }, palette_source: 'manual', caption_style: 'punchy' }, null],
   [null, null, undefined],
-  [{ editing_style: 'minimal subtitle', pacing: 'slow' }, { primary_hex: 'not-a-hex', caption_preset_id: 'made-up' }, null],
-  [{ tone: 'bold', dos: Array.from({ length: 40 }, (_, i) => `do-${i}`) }, undefined, VLOGO],
+  [{ editing_style: 'minimal subtitle', pacing: 'slow' }, { palette: { primary: 'not-a-hex' }, palette_source: 'pending', caption_preset_id: 'made-up' }, null],
+  [{ tone: 'bold', dos: Array.from({ length: 40 }, (_, i) => `do-${i}`) }, { palette: { primary: '#0a0b0c' }, palette_source: 'auto' }, VLOGO],
   // a verified logo is emitted; an invalid one (bad sha) is dropped to none — same on both sides.
-  [{ tone: 'x' }, { logo_asset_id: VLOGO.assetId }, VLOGO],
-  [{ tone: 'x' }, { logo_asset_id: VLOGO.assetId }, { assetId: VLOGO.assetId, sha256: 'nope' }],
+  [{ tone: 'x' }, { logo_path: VLOGO.path }, VLOGO],
+  [{ tone: 'x' }, { logo_path: VLOGO.path }, { path: VLOGO.path, sha256: 'nope' }],
 ]
 
 describe('brand-snapshot parity: worker == shared', () => {

@@ -31,6 +31,7 @@
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { createHash } from 'node:crypto'
 import { db, renewJobLease, type Job } from '../db.js'
 import { env } from '../env.js'
 import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost } from '../errors.js'
@@ -127,25 +128,27 @@ async function pinBrandSnapshotSha(ownerId: string): Promise<string> {
   return brandSnapshotSha256(projectBrandSnapshot(profile, kit, verifiedLogo))
 }
 
-// D4: a brand-kit logo_asset_id is only a CLAIM. It becomes part of the pinned brand
-// snapshot ONLY when it resolves to a media asset that (a) is owned by this creator,
-// (b) is `ready`, and (c) carries a content checksum — which is then pinned as the
-// logo SHA. Anything unverified → no logo (fail-closed), never a runtime URL.
+// D4: the brand logo is a storage `logo_path` (brand_kit.logo_path, in the `edits`
+// bucket). It becomes part of the pinned brand snapshot ONLY when it is VERIFIED:
+// (a) owned by this creator (the object key is prefixed with the owner's id), and
+// (b) the object actually exists and downloads — which is then content-checksummed
+// and pinned as the logo SHA. Anything unverified → no logo (fail-closed): Twin never
+// carries a logo it cannot confirm, and never a runtime URL.
 async function resolveVerifiedLogo(
   ownerId: string,
   kit: Parameters<typeof projectBrandSnapshot>[1],
-): Promise<{ assetId: string; sha256: string } | null> {
-  const claim = kit && typeof kit === 'object' ? (kit as { logo_asset_id?: unknown }).logo_asset_id : null
-  if (typeof claim !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(claim)) return null
-  const { data, error } = await db
-    .from('media_assets').select('id, owner_id, status, content_sha256')
-    .eq('id', claim).maybeSingle()
-  if (error) throw new Error(`pin: logo asset read failed: ${error.message}`)
-  if (data && data.owner_id === ownerId && data.status === 'ready'
-      && typeof data.content_sha256 === 'string' && /^[0-9a-f]{64}$/.test(data.content_sha256)) {
-    return { assetId: data.id as string, sha256: data.content_sha256 as string }
-  }
-  return null
+): Promise<{ path: string; sha256: string } | null> {
+  const path = kit && typeof kit === 'object' ? (kit as { logo_path?: unknown }).logo_path : null
+  if (typeof path !== 'string' || path.length === 0 || path.length > 512) return null
+  // Ownership is proven by the storage key prefix (brand-logo edge fn writes
+  // `${user.id}/brandkit/...`); reject anything not under this owner's namespace.
+  if (!path.startsWith(`${ownerId}/`)) return null
+  const { data, error } = await db.storage.from('edits').download(path)
+  if (error || !data) return null
+  const bytes = Buffer.from(await data.arrayBuffer())
+  if (bytes.byteLength === 0) return null
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  return { path, sha256 }
 }
 
 // The normalized capture-manifest SHA for THIS source asset. null ONLY for a
