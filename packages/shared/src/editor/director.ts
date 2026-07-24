@@ -654,6 +654,10 @@ export const MAX_DECISION_REASON_CHARS = 500
 export const MAX_EMPHASIS_WORDS = 40
 export const DECISION_PACING = ['calm', 'balanced', 'punchy'] as const
 export const DECISION_MUSIC = ['none', 'subtle', 'energetic'] as const
+// Hook treatment: 'keep' the real opening, or 'open_at_word' — start on a real spoken
+// word (dropping greeting/preamble BEFORE it). The word is referenced by index and must
+// exist, so a hook can never be fabricated.
+export const DECISION_HOOK = ['keep', 'open_at_word'] as const
 
 // Raw provider output shape (what generateContent must return under the strict
 // responseSchema). Only these fields are consumed.
@@ -664,6 +668,8 @@ export interface RawDirectorDecision {
   pacing?: string
   music?: string
   emphasisWordIndices?: number[]
+  hookTreatment?: string
+  hookStartWordIndex?: number
 }
 
 // The persisted, re-resolved decision. kind/selectionEnabled/span are copied
@@ -678,6 +684,7 @@ export interface DirectorSelection {
 }
 export type DecisionPacing = (typeof DECISION_PACING)[number]
 export type DecisionMusic = (typeof DECISION_MUSIC)[number]
+export type DecisionHook = (typeof DECISION_HOOK)[number]
 export interface DirectorDecision {
   schemaVersion: number
   selections: DirectorSelection[]
@@ -686,6 +693,8 @@ export interface DirectorDecision {
   pacing: DecisionPacing
   music: DecisionMusic
   emphasisWordIndices: number[]
+  hookTreatment: DecisionHook
+  hookStartWordIndex: number | null
 }
 
 export class DirectorDecisionError extends Error {
@@ -722,6 +731,8 @@ export function directorResponseSchema(): Record<string, unknown> {
       pacing: { type: 'string', enum: [...DECISION_PACING] },
       music: { type: 'string', enum: [...DECISION_MUSIC] },
       emphasisWordIndices: { type: 'array', items: { type: 'integer' } },
+      hookTreatment: { type: 'string', enum: [...DECISION_HOOK] },
+      hookStartWordIndex: { type: 'integer' },
     },
     required: ['selections'],
   }
@@ -805,5 +816,19 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
       return w
     })
   }
-  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary, pacing, music, emphasisWordIndices }
+  // Hook treatment. 'keep' (default) never touches the opening. 'open_at_word' must name
+  // a REAL word (index in range, past the very first word) to open on — the compiler
+  // later enforces sentence coherence; a fabricated index is rejected here.
+  let hookTreatment: DecisionHook = 'keep'
+  if ('hookTreatment' in raw && raw.hookTreatment !== undefined) {
+    if (!(DECISION_HOOK as readonly unknown[]).includes(raw.hookTreatment)) failDecision(`decision: bad hookTreatment ${String(raw.hookTreatment)}`, 'director_decision_bad_hook')
+    hookTreatment = raw.hookTreatment as DecisionHook
+  }
+  let hookStartWordIndex: number | null = null
+  if (hookTreatment === 'open_at_word') {
+    const idx = raw.hookStartWordIndex
+    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx <= 0 || idx >= envelope.words.length) failDecision(`decision: hookStartWordIndex ${String(idx)} out of range`, 'director_decision_bad_hook')
+    hookStartWordIndex = idx
+  }
+  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary, pacing, music, emphasisWordIndices, hookTreatment, hookStartWordIndex }
 }

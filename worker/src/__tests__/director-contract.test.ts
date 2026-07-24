@@ -98,5 +98,20 @@ describe('Gate 7: worker director contract == shared authority', () => {
       expect(code(() => W.validateDirectorDecision(bad, small as unknown as W.DirectorEnvelope))).toBe(expected)
       expect(code(() => sharedValidateDecision(bad, small))).toBe(expected)
     }
+    // hook: keep by default; open_at_word must name a real word past the first; fabricated rejected
+    expect(def.hookTreatment).toBe('keep'); expect(def.hookStartWordIndex).toBe(null)
+    const openHook = { selections: [], hookTreatment: 'open_at_word', hookStartWordIndex: 1 }
+    const wh = W.validateDirectorDecision(openHook, small as unknown as W.DirectorEnvelope)
+    expect(JSON.stringify(wh)).toBe(JSON.stringify(sharedValidateDecision(openHook, small)))
+    expect(wh.hookTreatment).toBe('open_at_word'); expect(wh.hookStartWordIndex).toBe(1)
+    for (const bad of [
+      { selections: [], hookTreatment: 'rewrite' },                              // bad enum
+      { selections: [], hookTreatment: 'open_at_word' },                         // missing index
+      { selections: [], hookTreatment: 'open_at_word', hookStartWordIndex: 0 },  // index 0 (can't drop nothing)
+      { selections: [], hookTreatment: 'open_at_word', hookStartWordIndex: 9 },  // fabricated (out of range)
+    ]) {
+      expect(code(() => W.validateDirectorDecision(bad, small as unknown as W.DirectorEnvelope))).toBe('director_decision_bad_hook')
+      expect(code(() => sharedValidateDecision(bad, small))).toBe('director_decision_bad_hook')
+    }
   })
 })
