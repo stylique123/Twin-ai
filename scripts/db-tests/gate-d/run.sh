@@ -279,6 +279,10 @@ mutate_and_expect_fail "s/raise exception 'source_validate_no_intent: %', p_asse
   "(v5) validate no-intent guard removed → gate correctly FAILED"
 mutate_and_expect_fail "s/raise exception 'source_validate_bad_duration: %', p_duration_ms using errcode = 'raise_exception';/null;/" \
   "(v6) validate bad-duration guard removed → gate correctly FAILED"
+# (v7) retake newest-wins guard neutralized (pointer always overwrites) → a late OLDER
+#      take steals the pointer → the retake assertion FAILS → gate has teeth.
+mutate_and_expect_fail "s/and coalesce((select m.seq from public.media_assets m where m.id = gp.source_asset_id), 0) <= a.seq;/;/" \
+  "(v7) retake newest-wins guard removed → gate correctly FAILED"
 
 echo "== identity negative controls (RLS/privilege/service-role/warning must have teeth) =="
 # (l) manifest RLS disabled → an outsider sees the owner's manifest → identity FAILS.

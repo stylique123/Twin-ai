@@ -859,6 +859,54 @@ begin
   perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, repeat('d',64), repeat('c',64)), 'source_validate_window_out_of_bounds');
 end $$;
 
+\echo == backup-11: retake pointer (newest-wins; a late older take cannot steal it) ==
+do $$  -- newer take wins the generation pointer (+ legacy take_path mirror)
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fe000000-0000-0000-0000-0000000000fe';
+  a1 uuid := 'fe000000-0000-0000-0000-000000000001'; a2 uuid := 'fe000000-0000-0000-0000-000000000002';
+  ish1 text := repeat('a',64); ish2 text := repeat('b',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets, public.generations cascade;
+  insert into public.generations(id,user_id) values (g,own);
+  -- a1 inserted first → lower seq; a2 second → higher seq
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a1,own,g,gen_random_uuid(),'source','takes','fe/p1','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a1,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish1,now());
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a2,own,g,gen_random_uuid(),'source','takes','fe/p2','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a2,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish2,now());
+  perform public.editor_validate_source(a1,own,repeat('1',64),1024,5000,1,1,1,1,0,true,'{}'::jsonb,repeat('c',64),'v1',null);
+  perform pg_temp.expect_true((select source_asset_id from public.generations where id=g)=a1, 'retake: first take becomes the pointer');
+  perform pg_temp.expect_true((select take_path from public.generations where id=g)='fe/p1', 'retake: take_path mirrors a1');
+  perform public.editor_validate_source(a2,own,repeat('2',64),1024,5000,1,1,1,1,0,true,'{}'::jsonb,repeat('c',64),'v1',null);
+  perform pg_temp.expect_true((select source_asset_id from public.generations where id=g)=a2, 'retake: newer take wins the pointer');
+  perform pg_temp.expect_true((select take_path from public.generations where id=g)='fe/p2', 'retake: take_path mirrors a2');
+end $$;
+do $$  -- a late OLDER take (lower seq) completing after a newer one must NOT steal the pointer
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fe000000-0000-0000-0000-0000000000ef';
+  a1 uuid := 'fe000000-0000-0000-0000-000000000011'; a2 uuid := 'fe000000-0000-0000-0000-000000000012';
+  ish1 text := repeat('a',64); ish2 text := repeat('b',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets, public.generations cascade;
+  insert into public.generations(id,user_id) values (g,own);
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a1,own,g,gen_random_uuid(),'source','takes','ef/p1','video/webm',1024,'validating',1);   -- older (lower seq)
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a1,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish1,now());
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a2,own,g,gen_random_uuid(),'source','takes','ef/p2','video/webm',1024,'validating',1);   -- newer (higher seq)
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a2,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish2,now());
+  -- validate the NEWER take first → pointer = a2
+  perform public.editor_validate_source(a2,own,repeat('2',64),1024,5000,1,1,1,1,0,true,'{}'::jsonb,repeat('c',64),'v1',null);
+  perform pg_temp.expect_true((select source_asset_id from public.generations where id=g)=a2, 'retake: newer take pointed first');
+  -- now the OLDER take finishes late → it must reach ready but must NOT steal the pointer
+  perform public.editor_validate_source(a1,own,repeat('1',64),1024,5000,1,1,1,1,0,true,'{}'::jsonb,repeat('c',64),'v1',null);
+  perform pg_temp.expect_true((select status from public.media_assets where id=a1)='ready', 'retake: late older take still validates to ready');
+  perform pg_temp.expect_true((select source_asset_id from public.generations where id=g)=a2, 'retake: late older take did NOT steal the pointer');
+end $$;
+
 \echo == round-4: oversize recording script fails closed (byte cap) ==
 do $$
 declare

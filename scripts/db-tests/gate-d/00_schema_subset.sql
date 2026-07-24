@@ -19,7 +19,9 @@ create table public.generations (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null,
   selected_hook text,
-  scene_timeline jsonb
+  scene_timeline jsonb,
+  source_asset_id uuid,
+  take_path text
 );
 
 create table public.media_assets (

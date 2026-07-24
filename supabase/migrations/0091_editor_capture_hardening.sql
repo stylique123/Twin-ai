@@ -894,7 +894,8 @@ $$;
 -- authorities: editor_write_capture_manifest (conflict-verifying, intent-bound) and
 -- the ready-flip guard (a marked source cannot be ready without a manifest). An
 -- identical retry converges; any divergence on an already-`ready` asset fails closed.
--- (The retake active-source pointer + monotonic `seq` ordering is a separate step.)
+-- On success it also advances the generation's durable source pointer to this take
+-- (newest-wins by monotonic `seq`; a late older take can never steal it).
 create or replace function public.editor_validate_source(
   p_asset uuid,
   p_owner uuid,
@@ -991,6 +992,18 @@ begin
 
   -- Flip to ready in the SAME transaction; the ready-flip guard re-checks the manifest.
   update public.media_assets set status = 'ready', validated_at = now() where id = p_asset;
+
+  -- RETAKE POINTER (newest-wins, monotonic by seq). Point the generation at THIS take
+  -- and mirror the legacy take_path compatibility field — but ONLY if this take is newer
+  -- (>= seq) than whatever the generation currently points at. A late-completing OLDER
+  -- take (lower seq) can therefore never steal the pointer from a newer, already-ready
+  -- take. Same-asset re-validation is a harmless no-op (equal seq).
+  if a.generation_id is not null then
+    update public.generations gp
+       set source_asset_id = p_asset, take_path = a.storage_path
+     where gp.id = a.generation_id
+       and coalesce((select m.seq from public.media_assets m where m.id = gp.source_asset_id), 0) <= a.seq;
+  end if;
 
   return query select p_asset, 'ready'::text, mid, true;
 end;
