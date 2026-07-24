@@ -72,4 +72,31 @@ describe('Gate 7: worker director contract == shared authority', () => {
     expect(wr).toBe(sr)
     expect(wr).toBe('director_decision_bad_ref')
   })
+
+  it('decision v2 creative choices re-resolve identically (pacing/music/emphasis + fabricated rejection)', () => {
+    const env = buildMaxUpstreamCompatFixture() as unknown as SharedEnvelope
+    const small: SharedEnvelope = {
+      ...env, words: [['a', 0, 90], ['b', 10, 90]], candidates: [[0, 3, 8, 1, 2, 1, []]], boundaries: [[1, 0, 1]],
+    }
+    const code = (fn: () => unknown) => { try { fn(); return 'ok' } catch (e) { return (e as { code: string }).code } }
+    // valid v2 decision resolves identically in both copies
+    const raw = { selections: [{ candidateIndex: 0 }], pacing: 'punchy', music: 'subtle', emphasisWordIndices: [0, 1] }
+    const s = sharedValidateDecision(raw, small)
+    const w = W.validateDirectorDecision(raw, small as unknown as W.DirectorEnvelope)
+    expect(JSON.stringify(w)).toBe(JSON.stringify(s))
+    expect(w.pacing).toBe('punchy'); expect(w.music).toBe('subtle'); expect(w.emphasisWordIndices).toEqual([0, 1])
+    // absent → safe defaults, never invented
+    const def = W.validateDirectorDecision({ selections: [] }, small as unknown as W.DirectorEnvelope)
+    expect(def.pacing).toBe('balanced'); expect(def.music).toBe('none'); expect(def.emphasisWordIndices).toEqual([])
+    // bad enums / fabricated + duplicate emphasis → same stable codes in both copies
+    for (const [bad, expected] of [
+      [{ selections: [], pacing: 'chaotic' }, 'director_decision_bad_pacing'],
+      [{ selections: [], music: 'lofi' }, 'director_decision_bad_music'],
+      [{ selections: [], emphasisWordIndices: [2] }, 'director_decision_bad_emphasis'],
+      [{ selections: [], emphasisWordIndices: [0, 0] }, 'director_decision_duplicate'],
+    ] as const) {
+      expect(code(() => W.validateDirectorDecision(bad, small as unknown as W.DirectorEnvelope))).toBe(expected)
+      expect(code(() => sharedValidateDecision(bad, small))).toBe(expected)
+    }
+  })
 })

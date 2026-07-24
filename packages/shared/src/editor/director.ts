@@ -78,7 +78,7 @@ export const DIRECTOR_VERSION = 'director-1'
 export const DIRECTOR_PROVIDER = 'google'
 export const DIRECTOR_MODEL = 'gemini-3.5-flash'
 export const DIRECTOR_ENVELOPE_SCHEMA_VERSION = 1
-export const DIRECTOR_DECISION_SCHEMA_VERSION = 1
+export const DIRECTOR_DECISION_SCHEMA_VERSION = 2
 export const PIPELINE_EPOCH_V2 = 2 // Phase 7 bumps the boot-manifest epoch 1 -> 2
 
 // ---------------------------------------------------------------------------
@@ -649,6 +649,11 @@ export function buildMaxUpstreamCompatFixture(): DirectorEnvelope {
 export const MAX_DECISION_SELECTIONS = MAX_CANDIDATES // one per candidate, at most
 export const MAX_DECISION_SUMMARY_CHARS = 2000
 export const MAX_DECISION_REASON_CHARS = 500
+// Decision v2 creative choices. emphasis references words BY INDEX (word identity is
+// positional in the envelope), bounded so the decision stays small.
+export const MAX_EMPHASIS_WORDS = 40
+export const DECISION_PACING = ['calm', 'balanced', 'punchy'] as const
+export const DECISION_MUSIC = ['none', 'subtle', 'energetic'] as const
 
 // Raw provider output shape (what generateContent must return under the strict
 // responseSchema). Only these fields are consumed.
@@ -656,6 +661,9 @@ export interface RawDirectorDecision {
   selections: Array<{ candidateIndex: number; reason?: string }>
   keptBoundaries?: number[]
   summary?: string
+  pacing?: string
+  music?: string
+  emphasisWordIndices?: number[]
 }
 
 // The persisted, re-resolved decision. kind/selectionEnabled/span are copied
@@ -668,11 +676,16 @@ export interface DirectorSelection {
   startCs: number
   endCs: number
 }
+export type DecisionPacing = (typeof DECISION_PACING)[number]
+export type DecisionMusic = (typeof DECISION_MUSIC)[number]
 export interface DirectorDecision {
   schemaVersion: number
   selections: DirectorSelection[]
   keptBoundaries: number[]
   summary: string
+  pacing: DecisionPacing
+  music: DecisionMusic
+  emphasisWordIndices: number[]
 }
 
 export class DirectorDecisionError extends Error {
@@ -706,6 +719,9 @@ export function directorResponseSchema(): Record<string, unknown> {
       },
       keptBoundaries: { type: 'array', items: { type: 'integer' } },
       summary: { type: 'string' },
+      pacing: { type: 'string', enum: [...DECISION_PACING] },
+      music: { type: 'string', enum: [...DECISION_MUSIC] },
+      emphasisWordIndices: { type: 'array', items: { type: 'integer' } },
     },
     required: ['selections'],
   }
@@ -763,5 +779,31 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
     summary = raw.summary
   }
 
-  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary }
+  // v2 creative choices. Enums default to the safe/neutral value; emphasis references
+  // words BY INDEX and every index must be a REAL word in the envelope (fabricated →
+  // rejected), with no duplicates and a bounded count.
+  let pacing: DecisionPacing = 'balanced'
+  if ('pacing' in raw && raw.pacing !== undefined) {
+    if (!(DECISION_PACING as readonly unknown[]).includes(raw.pacing)) failDecision(`decision: bad pacing ${String(raw.pacing)}`, 'director_decision_bad_pacing')
+    pacing = raw.pacing as DecisionPacing
+  }
+  let music: DecisionMusic = 'none'
+  if ('music' in raw && raw.music !== undefined) {
+    if (!(DECISION_MUSIC as readonly unknown[]).includes(raw.music)) failDecision(`decision: bad music ${String(raw.music)}`, 'director_decision_bad_music')
+    music = raw.music as DecisionMusic
+  }
+  let emphasisWordIndices: number[] = []
+  if ('emphasisWordIndices' in raw && raw.emphasisWordIndices !== undefined) {
+    if (!Array.isArray(raw.emphasisWordIndices)) failDecision('emphasisWordIndices: not an array', 'director_decision_bad_emphasis')
+    const arr = raw.emphasisWordIndices as unknown[]
+    if (arr.length > MAX_EMPHASIS_WORDS) failDecision('emphasisWordIndices: too many', 'director_decision_too_large')
+    const seenW = new Set<number>()
+    emphasisWordIndices = arr.map((w) => {
+      if (typeof w !== 'number' || !Number.isInteger(w) || w < 0 || w >= envelope.words.length) failDecision(`emphasisWordIndices: index ${String(w)} out of range`, 'director_decision_bad_emphasis')
+      if (seenW.has(w)) failDecision(`emphasisWordIndices: duplicate ${w}`, 'director_decision_duplicate')
+      seenW.add(w)
+      return w
+    })
+  }
+  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary, pacing, music, emphasisWordIndices }
 }
