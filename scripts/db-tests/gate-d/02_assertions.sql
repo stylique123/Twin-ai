@@ -670,6 +670,119 @@ begin
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
 end $$;
 
+\echo == backup-8: D2 manifest writer (editor_write_capture_manifest) hostile matrix ==
+do $$  -- A/B/C: validating write, idempotent recovery, divergent conflict
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fb000000-0000-0000-0000-0000000000fb';
+  a uuid := 'fb000000-0000-0000-0000-000000000001'; ish text := repeat('a',64); msha text := repeat('c',64); mid uuid; mid2 uuid;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
+  mid := public.editor_write_capture_manifest(a,'upload',ish,'{"n":1}'::jsonb,msha,'v1');
+  perform pg_temp.expect_true(mid is not null, 'manifest A: write returns id');
+  perform pg_temp.expect_true((select count(*) from public.source_capture_manifests where source_asset_id=a)=1, 'manifest A: exactly one row');
+  mid2 := public.editor_write_capture_manifest(a,'upload',ish,'{"n":1}'::jsonb,msha,'v1');
+  perform pg_temp.expect_true(mid2 = mid, 'manifest B: idempotent identical → same id');
+  perform pg_temp.expect_true((select count(*) from public.source_capture_manifests where source_asset_id=a)=1, 'manifest B: still one row');
+  perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','upload','%s','{"n":2}'::jsonb,'%s','v1')$q$, a, ish, msha), 'capture_manifest_conflict');
+end $$;
+do $$  -- D: no capture intent → fails closed
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fb000000-0000-0000-0000-0000000000fb'; a uuid := 'fb000000-0000-0000-0000-000000000002';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','upload','%s','{}'::jsonb,'%s','v1')$q$, a, repeat('a',64), repeat('c',64)), 'capture_manifest_no_intent');
+end $$;
+do $$  -- E/F: origin mismatch, then intent-hash mismatch
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fb000000-0000-0000-0000-0000000000fb'; a uuid := 'fb000000-0000-0000-0000-000000000003'; ish text := repeat('a',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
+  perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','teleprompter','%s','{}'::jsonb,'%s','v1')$q$, a, ish, repeat('c',64)), 'capture_manifest_origin_mismatch');
+  perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','upload','%s','{}'::jsonb,'%s','v1')$q$, a, repeat('0',64), repeat('c',64)), 'capture_manifest_intent_mismatch');
+end $$;
+do $$  -- G: intent owner ≠ asset owner → owner mismatch
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fb000000-0000-0000-0000-0000000000fb'; a uuid := 'fb000000-0000-0000-0000-000000000004'; ish text := repeat('a',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
+  perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','upload','%s','{}'::jsonb,'%s','v1')$q$, a, ish, repeat('c',64)), 'capture_manifest_owner_mismatch');
+end $$;
+do $$  -- H/I: SETTLED asset → lost-race null; settled + divergent existing → conflict
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fb000000-0000-0000-0000-0000000000fb';
+  a uuid := 'fb000000-0000-0000-0000-000000000005'; b uuid := 'fb000000-0000-0000-0000-000000000006'; ish text := repeat('a',64); msha text := repeat('c',64); r uuid;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  -- H: settled (ready) with NO manifest → lost race → null (INSERT bypasses ready guard).
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'ready',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
+  r := public.editor_write_capture_manifest(a,'upload',ish,'{"n":1}'::jsonb,msha,'v1');
+  perform pg_temp.expect_true(r is null, 'manifest H: settled + no manifest → null (lost race)');
+  -- I: settled (ready) with a DIVERGENT existing manifest → conflict.
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (b,own,g,gen_random_uuid(),'source','takes','y','video/webm',1024,'ready',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (b,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
+  insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
+    values (b,own,'upload',ish,'{"n":1}'::jsonb,msha,'v1');
+  perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','upload','%s','{"n":9}'::jsonb,'%s','v1')$q$, b, ish, msha), 'capture_manifest_conflict');
+end $$;
+do $$  -- J: unknown asset → asset missing
+begin
+  perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','upload','%s','{}'::jsonb,'%s','v1')$q$, gen_random_uuid(), repeat('a',64), repeat('c',64)), 'capture_manifest_asset_missing');
+end $$;
+
+\echo == backup-8: D2 ready-flip guard (marker-1 needs manifest; legacy exempt) ==
+do $$  -- K: marker-1 + manifest → validating→ready succeeds
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fc000000-0000-0000-0000-0000000000fc'; a uuid := 'fc000000-0000-0000-0000-000000000001'; ish text := repeat('a',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
+  insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
+    values (a,own,'upload',ish,'{}'::jsonb,repeat('c',64),'v1');
+  update public.media_assets set status='ready' where id=a;
+  perform pg_temp.expect_true((select status from public.media_assets where id=a)='ready', 'ready-guard K: marker-1 + manifest → ready');
+end $$;
+do $$  -- L: marker-1 + NO manifest → ready flip fails closed
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fc000000-0000-0000-0000-0000000000fc'; a uuid := 'fc000000-0000-0000-0000-000000000002';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  perform pg_temp.expect_code(format($q$update public.media_assets set status='ready' where id='%s'$q$, a), 'capture_manifest_required');
+end $$;
+do $$  -- M: LEGACY (marker null) + no manifest → ready flip allowed (guard is new-era only)
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fc000000-0000-0000-0000-0000000000fc'; a uuid := 'fc000000-0000-0000-0000-000000000003';
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',null);
+  update public.media_assets set status='ready' where id=a;
+  perform pg_temp.expect_true((select status from public.media_assets where id=a)='ready', 'ready-guard M: legacy → ready without manifest');
+end $$;
+
 \echo == round-4: oversize recording script fails closed (byte cap) ==
 do $$
 declare

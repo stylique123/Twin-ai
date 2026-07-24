@@ -61,6 +61,7 @@ begin
 end;
 $$;
 
+-- >>> GATE-D-FUNCTIONS-BEGIN (D2 manifest/ready authorities; extracted by scripts/db-tests/gate-d/run.sh)
 -- ---------------------------------------------------------------------------
 -- 2. Ready-flip guard: a NEW-ERA source (marker not null) can NEVER become
 --    `ready` without its normalized capture manifest — regardless of origin.
@@ -194,6 +195,7 @@ $$;
 
 revoke all on function public.editor_write_capture_manifest(uuid, text, text, jsonb, text, text) from public, anon, authenticated;
 grant execute on function public.editor_write_capture_manifest(uuid, text, text, jsonb, text, text) to service_role;
+-- <<< GATE-D-FUNCTIONS-END
 
 -- ---------------------------------------------------------------------------
 -- 4. Read RLS widened to owner + workspace peers (constitution sharing seam).

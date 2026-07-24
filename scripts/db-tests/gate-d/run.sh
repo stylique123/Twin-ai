@@ -249,6 +249,22 @@ mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % stor
   "(k12) stored-intent-hash guard removed → gate correctly FAILED"
 mutate_and_expect_fail "s/raise exception 'capture_backfill_inconsistent: % stored intent JSON\/relational mismatch', bad using errcode = 'raise_exception';/null;/" \
   "(k13) stored-intent-relational guard removed → gate correctly FAILED"
+# (p1)-(p7) D2 authorities: ready-flip guard + manifest writer. Each removed guard makes
+# its hostile fixture pass through, so the REAL assertion gate must FAIL.
+mutate_and_expect_fail "s/if not has_manifest then/if false then/" \
+  "(p1) ready-flip manifest guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_manifest_no_intent: asset % has no capture intent', p_asset;/null;/" \
+  "(p2) manifest no-intent guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_manifest_owner_mismatch: intent owner does not match asset % owner', p_asset;/null;/" \
+  "(p3) manifest owner-mismatch guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_manifest_origin_mismatch: intent % vs manifest %', intent_row.origin, p_origin;/null;/" \
+  "(p4) manifest origin-mismatch guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_manifest_intent_mismatch: manifest not bound to the stored intent';/null;/" \
+  "(p5) manifest intent-hash guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_manifest_conflict: a divergent manifest already exists for %', p_asset;/null;/" \
+  "(p6) manifest pre-existing-divergent guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'capture_manifest_conflict: settled asset % has a divergent manifest', p_asset;/null;/" \
+  "(p7) manifest settled-divergent guard removed → gate correctly FAILED"
 
 echo "== identity negative controls (RLS/privilege/service-role/warning must have teeth) =="
 # (l) manifest RLS disabled → an outsider sees the owner's manifest → identity FAILS.
