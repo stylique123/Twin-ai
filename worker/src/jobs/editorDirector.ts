@@ -22,6 +22,7 @@ import { env } from '../env.js'
 import { classifyDbError, PermanentJobError } from '../errors.js'
 import { DirectorCancelledError, watchCancellation } from './editorCancel.js'
 import { loadEligibleSource } from './editorInspect.js'
+import { resolveBrandSnapshot } from './brandResolve.js'
 import { loadComponentStrict } from './editorSpeech.js'
 import { sha256Hex, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
 import type { VerifiedSourceSession } from './sourceSession.js'
@@ -62,7 +63,7 @@ const SYSTEM_PROMPT = [
 
 function buildEnvelope(
   projectId: string, asset: { id: string; content_sha256: string },
-  pinned: PinnedContext, speech: Record<string, unknown>,
+  pinned: PinnedContext, speech: Record<string, unknown>, brandSummary: unknown,
 ): DirectorEnvelope {
   // generationId comes from the PINNED snapshot (authoritative), not a re-read.
   const generationId = String((pinned.snapshot.snapshot as { generationId?: string }).generationId ?? '')
@@ -87,7 +88,10 @@ function buildEnvelope(
       componentDigests: { visual: digests.visual, audio: digests.audio, hook: digests.hook },
     },
     script: pinned.snapshot.snapshot,
-    summaries: {},
+    // The Director is told EXACTLY what brand it has: the bounded brand snapshot, whose
+    // visual.colorsSource / logoSource are 'none' when nothing is confirmed — so the
+    // Director never treats an absent colour/logo as if it existed.
+    summaries: { brand: brandSummary },
     words: proj.words, candidates: proj.candidates, boundaries: proj.boundaries,
   }
   return validateDirectorEnvelope(JSON.parse(JSON.stringify(env0)))
@@ -233,7 +237,20 @@ export async function runDirectingStage(
     const versions = (pinned.manifest.manifest as { componentVersions: Record<string, string> }).componentVersions
     const speech = await loadComponentStrict(asset.id, asset.content_sha256, 'speech', versions.speech)
 
-    const envelope = buildEnvelope(projectId, asset, pinned, speech)
+    // BRAND (D3/D4): re-derive the owner's bounded brand snapshot and PROVE it is the
+    // same one pinned in the Boot Manifest at boot time. If the creator changed their
+    // brand mid-project the hashes diverge → fail closed (versions are never mixed);
+    // otherwise the snapshot becomes the envelope's brand summary so the Director knows
+    // exactly what colours/logo are confirmed vs absent.
+    const brand = await resolveBrandSnapshot(asset.owner_id)
+    const pinnedBrandSha = (pinned.manifest.manifest as { brandSnapshotSha?: string }).brandSnapshotSha
+    if (brand.sha !== pinnedBrandSha) {
+      throw new PermanentJobError(
+        `director: brand snapshot drifted from the pinned manifest (${brand.sha} vs ${pinnedBrandSha})`,
+        'brand_snapshot_mismatch')
+    }
+
+    const envelope = buildEnvelope(projectId, asset, pinned, speech, brand.snapshot)
     const serialized = serializeDirectorEnvelope(envelope)
     const envelopeSha256 = sha256Hex(serialized)
 

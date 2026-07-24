@@ -31,7 +31,6 @@
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { createHash } from 'node:crypto'
 import { db, renewJobLease, type Job } from '../db.js'
 import { env } from '../env.js'
 import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost } from '../errors.js'
@@ -44,7 +43,7 @@ import { runAnalyzingStage, type AnalyzeOutcome } from './editorAnalyze.js'
 import { runDirectingStage, type DirectorOutcome } from './editorDirector.js'
 import { buildBootManifest, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
 import { resolveBootScriptSnapshot, type SourceProvenanceState } from './bootScriptPolicy.js'
-import { projectBrandSnapshot, brandSnapshotSha256 } from './brandSnapshot.js'
+import { resolveBrandSnapshot } from './brandResolve.js'
 import { VerifiedSourceSession } from './sourceSession.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -107,48 +106,11 @@ async function appendEvent(
 // DIVERGENT manifest (different worker build / rules / models mid-project)
 // fails closed as the PERMANENT manifest_mismatch — versions are never mixed
 // within one project.
-// Project the owner's DEFAULT brand voice into the bounded snapshot SHA. Read
-// fails closed on schema drift; an absent/unready default voice yields a stable
-// snapshot-of-empty-inputs SHA (never a silent skip / null).
+// Pin the owner's DEFAULT brand snapshot SHA in the Boot Manifest. The snapshot and
+// its verified logo are resolved by the shared resolveBrandSnapshot (brandResolve.ts),
+// which the Director stage re-runs and checks against this pinned SHA.
 async function pinBrandSnapshotSha(ownerId: string): Promise<string> {
-  const { data: voice, error } = await db
-    .from('brand_voices').select('profile, brand_kit')
-    .eq('owner_id', ownerId).eq('is_default', true).maybeSingle()
-  if (error) {
-    if (/column .*does not exist|profile|brand_kit|is_default/i.test(error.message)) {
-      throw new PermanentJobError(
-        `pin: brand_voices schema is missing a required column (deployment drift): ${error.message}`,
-        'brand_schema_drift')
-    }
-    throw new Error(`pin: brand voice read failed: ${error.message}`)
-  }
-  const profile = (voice?.profile ?? null) as Parameters<typeof projectBrandSnapshot>[0]
-  const kit = (voice?.brand_kit ?? null) as Parameters<typeof projectBrandSnapshot>[1]
-  const verifiedLogo = await resolveVerifiedLogo(ownerId, kit)
-  return brandSnapshotSha256(projectBrandSnapshot(profile, kit, verifiedLogo))
-}
-
-// D4: the brand logo is a storage `logo_path` (brand_kit.logo_path, in the `edits`
-// bucket). It becomes part of the pinned brand snapshot ONLY when it is VERIFIED:
-// (a) owned by this creator (the object key is prefixed with the owner's id), and
-// (b) the object actually exists and downloads — which is then content-checksummed
-// and pinned as the logo SHA. Anything unverified → no logo (fail-closed): Twin never
-// carries a logo it cannot confirm, and never a runtime URL.
-async function resolveVerifiedLogo(
-  ownerId: string,
-  kit: Parameters<typeof projectBrandSnapshot>[1],
-): Promise<{ path: string; sha256: string } | null> {
-  const path = kit && typeof kit === 'object' ? (kit as { logo_path?: unknown }).logo_path : null
-  if (typeof path !== 'string' || path.length === 0 || path.length > 512) return null
-  // Ownership is proven by the storage key prefix (brand-logo edge fn writes
-  // `${user.id}/brandkit/...`); reject anything not under this owner's namespace.
-  if (!path.startsWith(`${ownerId}/`)) return null
-  const { data, error } = await db.storage.from('edits').download(path)
-  if (error || !data) return null
-  const bytes = Buffer.from(await data.arrayBuffer())
-  if (bytes.byteLength === 0) return null
-  const sha256 = createHash('sha256').update(bytes).digest('hex')
-  return { path, sha256 }
+  return (await resolveBrandSnapshot(ownerId)).sha
 }
 
 // The normalized capture-manifest SHA for THIS source asset. null ONLY for a
