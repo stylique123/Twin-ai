@@ -40,4 +40,29 @@ describe('brandSnapshot: projection is bounded + deterministic', () => {
     const b = projectBrandSnapshot({ tone: 'bold', dos: ['x', 'y'] }, { primary_hex: '#123456' })
     expect(JSON.stringify(a)).toBe(JSON.stringify(b))
   })
+
+  it('is schema v2 and carries a logo slot', () => {
+    const s = projectBrandSnapshot(null)
+    expect(s.schemaVersion).toBe(2)
+    expect(s.visual.logoAssetId).toBeNull()
+    expect(s.visual.logoSha256).toBeNull()
+  })
+
+  it('NEVER trusts a raw kit logo_asset_id — only a verified logo appears', () => {
+    // A raw claim on the kit, but NO verifiedLogo passed → no logo.
+    const claimed = projectBrandSnapshot({}, { logo_asset_id: '11111111-1111-1111-1111-111111111111' })
+    expect(claimed.visual.logoAssetId).toBeNull()
+    expect(claimed.visual.logoSha256).toBeNull()
+    // A verified logo (owned+ready+checksummed by the caller) IS emitted, with its pinned sha.
+    const verified = projectBrandSnapshot({}, {}, { assetId: '11111111-1111-1111-1111-111111111111', sha256: 'a'.repeat(64) })
+    expect(verified.visual.logoAssetId).toBe('11111111-1111-1111-1111-111111111111')
+    expect(verified.visual.logoSha256).toBe('a'.repeat(64))
+  })
+
+  it('drops a malformed verified logo to none (fail-closed)', () => {
+    const badSha = projectBrandSnapshot({}, {}, { assetId: '11111111-1111-1111-1111-111111111111', sha256: 'not-a-sha' })
+    expect(badSha.visual.logoAssetId).toBeNull()
+    const badId = projectBrandSnapshot({}, {}, { assetId: 'not-a-uuid', sha256: 'a'.repeat(64) })
+    expect(badId.visual.logoAssetId).toBeNull()
+  })
 })

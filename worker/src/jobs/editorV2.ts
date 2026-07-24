@@ -123,7 +123,29 @@ async function pinBrandSnapshotSha(ownerId: string): Promise<string> {
   }
   const profile = (voice?.profile ?? null) as Parameters<typeof projectBrandSnapshot>[0]
   const kit = (voice?.brand_kit ?? null) as Parameters<typeof projectBrandSnapshot>[1]
-  return brandSnapshotSha256(projectBrandSnapshot(profile, kit))
+  const verifiedLogo = await resolveVerifiedLogo(ownerId, kit)
+  return brandSnapshotSha256(projectBrandSnapshot(profile, kit, verifiedLogo))
+}
+
+// D4: a brand-kit logo_asset_id is only a CLAIM. It becomes part of the pinned brand
+// snapshot ONLY when it resolves to a media asset that (a) is owned by this creator,
+// (b) is `ready`, and (c) carries a content checksum — which is then pinned as the
+// logo SHA. Anything unverified → no logo (fail-closed), never a runtime URL.
+async function resolveVerifiedLogo(
+  ownerId: string,
+  kit: Parameters<typeof projectBrandSnapshot>[1],
+): Promise<{ assetId: string; sha256: string } | null> {
+  const claim = kit && typeof kit === 'object' ? (kit as { logo_asset_id?: unknown }).logo_asset_id : null
+  if (typeof claim !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(claim)) return null
+  const { data, error } = await db
+    .from('media_assets').select('id, owner_id, status, content_sha256')
+    .eq('id', claim).maybeSingle()
+  if (error) throw new Error(`pin: logo asset read failed: ${error.message}`)
+  if (data && data.owner_id === ownerId && data.status === 'ready'
+      && typeof data.content_sha256 === 'string' && /^[0-9a-f]{64}$/.test(data.content_sha256)) {
+    return { assetId: data.id as string, sha256: data.content_sha256 as string }
+  }
+  return null
 }
 
 // The normalized capture-manifest SHA for THIS source asset. null ONLY for a
