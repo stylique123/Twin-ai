@@ -790,8 +790,8 @@ declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fd000000-
 begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
-  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version,metadata)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1,'{"finalized_etag":"E1","finalized_bytes":1024}'::jsonb);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish,now());
   select * into r from public.editor_validate_source(a,own,sha,1024,5000,1080,1920,30,1,0,true,'{}'::jsonb,msha,'v1','{"p":1}'::jsonb);
@@ -800,6 +800,13 @@ begin
   perform pg_temp.expect_true((select duration_ms from public.media_assets where id=a)=5000, 'validate: duration persisted');
   perform pg_temp.expect_true((select content_sha256 from public.media_assets where id=a)=sha, 'validate: sha persisted');
   perform pg_temp.expect_true((select count(*) from public.source_capture_manifests where source_asset_id=a)=1, 'validate: manifest written');
+  -- metadata is MERGED, never replaced: the finalize-time integrity references survive
+  -- alongside the probe patch (the editor re-proves object integrity against them).
+  perform pg_temp.expect_true((select metadata->>'finalized_etag' from public.media_assets where id=a)='E1', 'validate: finalized_etag SURVIVES the probe merge');
+  perform pg_temp.expect_true((select metadata->>'p' from public.media_assets where id=a)='1', 'validate: probe patch applied alongside');
+  -- the generation pointer commits IN THE SAME transaction as the ready-flip
+  -- (no ready-but-unlinked crash window).
+  perform pg_temp.expect_true((select source_asset_id from public.generations where id=g)=a, 'validate: generation pointer set atomically with ready');
   -- idempotent identical → no error, made_ready false, still one manifest
   select * into r from public.editor_validate_source(a,own,sha,1024,5000,1080,1920,30,1,0,true,'{}'::jsonb,msha,'v1','{"p":1}'::jsonb);
   perform pg_temp.expect_true(not r.made_ready, 'validate: idempotent → not made_ready again');

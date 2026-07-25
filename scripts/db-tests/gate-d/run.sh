@@ -202,6 +202,11 @@ mutate_and_expect_fail "s/raise exception 'capture_intent_unknown_key: %', k;/nu
 #      no longer masks a missing-`extensions` search_path the way a public install would.
 mutate_and_expect_fail "s/public, extensions  -- direct digest/public  -- direct digest/" \
   "(q1) create_source_asset search_path missing extensions → gate correctly FAILED (pgcrypto digest unresolved)"
+# (q2) metadata merge teeth: restore the replace-bug (metadata = coalesce(p_probe, metadata))
+#      in editor_validate_source — the finalized_etag-survives assertion must then FAIL,
+#      proving the gate detects a regression that erases finalize integrity references.
+mutate_and_expect_fail "s/metadata = coalesce(metadata, '{}'::jsonb) || coalesce(p_probe, '{}'::jsonb)/metadata = coalesce(p_probe, metadata)/" \
+  "(q2) validate_source metadata replace-bug reintroduced → gate correctly FAILED (finalized_etag erased)"
 # (d) marker state-machine guard removed → gate must fail on the marker-v2 assertion.
 mutate_and_expect_fail "s/raise exception 'source_attempt_conflict: unsupported capture_contract_version % on %', a.capture_contract_version, a.id using errcode = 'raise_exception';/null;/" \
   "(d) marker-v2 guard removed → gate correctly FAILED"

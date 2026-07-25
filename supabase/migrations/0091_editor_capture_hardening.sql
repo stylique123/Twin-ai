@@ -991,7 +991,11 @@ begin
     frame_rate_den = p_frame_rate_den,
     rotation = p_rotation,
     has_audio = p_has_audio,
-    metadata = coalesce(p_probe, metadata)
+    -- MERGE, never replace: the finalize-time integrity references
+    -- (finalized_etag / finalized_bytes) recorded in metadata MUST survive to
+    -- `ready` — the editor's inspection re-proves object integrity against them
+    -- on every run. A replace here would silently erase them.
+    metadata = coalesce(metadata, '{}'::jsonb) || coalesce(p_probe, '{}'::jsonb)
   where id = p_asset;
 
   -- Persist the immutable, intent-bound capture manifest (writer requires the
