@@ -39,10 +39,11 @@ export type SilenceClassName = (typeof SILENCE_CLASS_CODES)[number]
 
 export const MAX_DECISION_SELECTIONS = MAX_CANDIDATES
 export const MAX_DECISION_SUMMARY_CHARS = 2000
-// OUTPUT budget (mirror of shared director.ts — bytes >= tokens convention; the
-// worst legal decision is < 31,767 B; frozen with headroom and test-asserted
-// against DIRECTOR_MAX_OUTPUT_TOKENS - DIRECTOR_THINKING_BUDGET_TOKENS).
-export const MAX_DECISION_OUTPUT_BYTES = 32768
+// OUTPUT budget (mirror of shared director.ts — bytes >= tokens convention).
+// `summary` is bounded in JS string LENGTH, not bytes, so the worst case is NOT
+// ascii (31,330 B) but a control-character summary escaping to \uXXXX: 41,330 B.
+// Frozen at 49,152 with headroom, under 65,536 - 2,048 = 63,488.
+export const MAX_DECISION_OUTPUT_BYTES = 49152
 export const DIRECTOR_MAX_OUTPUT_TOKENS = 65536
 export const DIRECTOR_THINKING_BUDGET_TOKENS = 2048
 export const MAX_DECISION_KEPT_BOUNDARIES = 512

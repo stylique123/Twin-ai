@@ -170,13 +170,19 @@ describe('Gate 7: worker director contract == shared authority', () => {
     expect(JSON.stringify(norm(RESPONSE_SCHEMA))).toBe(JSON.stringify(sharedResponseSchema()))
   })
 
-  it('OUTPUT budget: the worst legal Decision v2 fits under maxOutputTokens - thinking (bytes >= tokens)', () => {
-    // Recompute the absolute worst-case response bytes from the frozen caps and assert
-    // it is under BOTH the frozen MAX_DECISION_OUTPUT_BYTES and the provider budget.
-    const worst = JSON.stringify({
-      selections: Array.from({ length: MAX_DECISION_SELECTIONS }, (_, i) => 4900 - (i % 4901)),
+  it('OUTPUT budget: the TRUE worst legal Decision v2 fits under maxOutputTokens - thinking', () => {
+    // Recompute the absolute worst-case response bytes from the frozen caps.
+    //
+    // `summary` is capped in JS string LENGTH (UTF-16 units), NOT bytes — so an ascii
+    // summary is NOT the worst case and must never be used as the bound. Both real
+    // amplifiers are exercised: multi-byte UTF-8 (an ordinary non-English summary) and
+    // JSON escaping of control characters (\uXXXX = 6 B each, the true maximum).
+    const build = (summary: string) => JSON.stringify({
+      schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION,
+      // widest indices: every value 4 digits so each element costs the maximum
+      selections: Array.from({ length: MAX_DECISION_SELECTIONS }, (_, i) => 1000 + (i % 3901)),
       keptBoundaries: Array.from({ length: MAX_DECISION_KEPT_BOUNDARIES }, () => 9522),
-      summary: 'a'.repeat(MAX_DECISION_SUMMARY_CHARS),
+      summary,
       pacing: 'balanced', music: 'energetic',
       emphasisWordIndices: Array.from({ length: MAX_EMPHASIS_WORDS }, () => 16948),
       hookTreatment: 'open_at_word', hookStartWordIndex: 16948,
@@ -184,8 +190,17 @@ describe('Gate 7: worker director contract == shared authority', () => {
       captionPresetId: 'caption-minimal-subtitle-v1', transitionPolicy: 'hard_cuts_only',
       zoomRequests: Array.from({ length: MAX_ZOOM_REQUESTS }, () => ({ anchorWordIndex: 16948, intensity: 'medium', reasonCode: 'retention_beat' })),
     })
-    const bytes = new TextEncoder().encode(worst).length
-    expect(bytes).toBeLessThanOrEqual(MAX_DECISION_OUTPUT_BYTES)
+    const summaries = [
+      'a'.repeat(MAX_DECISION_SUMMARY_CHARS),            // ascii            (~31,330 B)
+      '中'.repeat(MAX_DECISION_SUMMARY_CHARS),       // BMP 3-byte / CJK (~35,330 B)
+      '\u{1F600}'.repeat(MAX_DECISION_SUMMARY_CHARS / 2), // astral 4-byte   (~33,330 B)
+      ''.repeat(MAX_DECISION_SUMMARY_CHARS),       // control escape   (~41,330 B) <- TRUE worst
+    ]
+    const worstBytes = Math.max(...summaries.map((s) => new TextEncoder().encode(build(s)).length))
+    // The ascii-only estimate must NOT be mistaken for the bound (regression guard).
+    const asciiBytes = new TextEncoder().encode(build(summaries[0])).length
+    expect(worstBytes).toBeGreaterThan(asciiBytes)
+    expect(worstBytes).toBeLessThanOrEqual(MAX_DECISION_OUTPUT_BYTES)
     expect(MAX_DECISION_OUTPUT_BYTES).toBeLessThanOrEqual(DIRECTOR_MAX_OUTPUT_TOKENS - DIRECTOR_THINKING_BUDGET_TOKENS)
   })
 

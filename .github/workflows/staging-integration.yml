@@ -186,6 +186,16 @@ jobs:
             *otgzjsagybpgtwweuptj*) : ;;
             *) echo "::error::STAGING_DB_URL does not point at the staging project ref — refusing to apply."; exit 1 ;;
           esac
+          # GitHub-hosted runners have NO IPv6, and Supabase's DIRECT database host
+          # (db.<ref>.supabase.co) resolves to IPv6 only — psql fails with "Network is
+          # unreachable". The connection POOLER (Supavisor) is IPv4-reachable, so CI
+          # must use the pooler URI. Detect the direct host and say exactly what to fix
+          # rather than failing with an opaque network error.
+          case "$STAGING_DB_URL" in
+            *db.otgzjsagybpgtwweuptj.supabase.co*)
+              echo "::error::STAGING_DB_URL uses the DIRECT database host (db.<ref>.supabase.co), which is IPv6-only — GitHub runners cannot reach it. Use the Session pooler URI instead: Supabase dashboard -> Project Settings -> Database -> Connection string -> 'Session pooler' (host aws-<n>-<region>.pooler.supabase.com, port 5432, user postgres.otgzjsagybpgtwweuptj)."
+              exit 1 ;;
+          esac
           sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends postgresql-client
           for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2; do
             echo "== applying $f =="

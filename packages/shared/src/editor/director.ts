@@ -745,17 +745,24 @@ export interface RawDirectorDecision {
 
 // ---- OUTPUT budget (the input side is proven above; this is the response side) ----
 // Convention identical to the input proof: BYTES >= TOKENS (ultra-conservative).
-// Worst legal decision, absolute bytes:
-//   selections           4901 indices x <=5B ("4900,")            = 24,505
-//   keptBoundaries       512 x <=5B                               =  2,560
-//   summary              2000 chars (+2 quotes)                   =  2,002
-//   emphasisWordIndices  40 x <=6B                                =    240
-//   zoomRequests         20 x <=64B objects                       =  1,280
-//   visualWasteSelections 60 x <=3B                               =    180
-//   scalars + keys + scaffolding                                  <   1,000
-// Total < 31,767 — frozen below with headroom. Must stay under the provider budget
-// minus the thinking allowance; asserted by test (never weaken silently).
-export const MAX_DECISION_OUTPUT_BYTES = 32768
+//
+// CRITICAL SUBTLETY: `summary` is bounded by MAX_DECISION_SUMMARY_CHARS in JS string
+// LENGTH (UTF-16 code units), NOT bytes — so an ASCII-based estimate is NOT the worst
+// case. Two independent amplifiers apply to the SERIALIZED size:
+//   * multi-byte UTF-8: 2000 BMP chars (e.g. CJK) serialize to 6,002 B, and a
+//     non-English creator summary is an entirely ordinary input — not an attack.
+//   * JSON escaping: a control character serializes as \uXXXX (6 B each), so a
+//     2000-char summary can reach 12,002 B.
+// Measured worst legal decision (see the parity test, which RECOMPUTES this from the
+// frozen caps rather than trusting this comment):
+//   ascii summary        31,330 B   <- the naive estimate; NOT the bound
+//   astral/emoji         33,330 B
+//   BMP 3-byte (CJK)     35,330 B
+//   control-char escape  41,330 B   <- the true worst case
+// Frozen below at 49,152 with headroom, and it must stay under the provider budget
+// minus the thinking allowance (65,536 - 2,048 = 63,488). Asserted by test against the
+// TRUE worst case — never weaken silently.
+export const MAX_DECISION_OUTPUT_BYTES = 49152
 export const DIRECTOR_MAX_OUTPUT_TOKENS = 65536
 export const DIRECTOR_THINKING_BUDGET_TOKENS = 2048
 export const MAX_DECISION_KEPT_BOUNDARIES = 512
