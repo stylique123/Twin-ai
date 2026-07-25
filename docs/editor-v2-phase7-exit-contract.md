@@ -238,3 +238,46 @@ implementation and returns to the lead with evidence.
 
 Compiler / renderer / validator / completion remain **out of scope** (simulated),
 owned by Phases 8–11.
+
+---
+
+## 7. Build status (this exit correction — what actually shipped)
+
+Delivered on the exit-correction line (backup-19 → backup-23), each batch
+verified locally and pushed:
+
+- **Adversarial-review fixes** (b19): the critical `0091` pgcrypto `digest()`
+  search-path bug (would have failed migration-apply / every capture RPC on
+  Supabase) + four honesty/robustness fixes; the local Gate-D harness was
+  hardened (pgcrypto now installed in `extensions`, mutation control `q1`) so it
+  can no longer mask that class.
+- **§3.5 envelope** (b20): the bounded `visualWaste` stream + selection-safety
+  validator; byte budget re-frozen (`EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563730`,
+  `ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES = 752587`).
+- **§3.6 Decision v2** (b21): full choice set — speech + visual-waste removals,
+  `captionPresetId`, `zoomRequests`, `transitionPolicy`, all bound to the frozen
+  `editor/catalogs.ts`; server re-resolution + stable rejection codes; provider
+  schema updated; shared↔worker byte-parity.
+- **§3.5 runtime wiring** (b22): the directing stage loads the pinned
+  visual/audio/hook components and populates the real bounded `summaries`
+  (brand/visual/audio/hook/catalogs/features) + the `visualWaste` stream from the
+  visual component's corroborated dead-air intervals.
+- **§4 DB validation** (b23): migration `0092` — a `BEFORE INSERT/UPDATE` trigger
+  on `edit_director_decisions` that independently re-rejects filler removals,
+  non-dead_air visual-waste, and off-catalog enums; proven by Gate-E.
+
+**Recorded encoding choices** (§6 permits them): visual-waste removals are a
+separate typed index array (`visualWasteSelections`) rather than a tagged
+`removals[{source}]` union; `music` stays a bounded enum (no licensed-track
+catalog this epoch); hook stays word-anchored (`hookTreatment` +
+`hookStartWordIndex`) rather than boundary-anchored. All are equally
+fabrication-proof (each re-resolves against the immutable envelope).
+
+**Zero-delta held**: migrations `0091`/`0092` remain UNAPPLIED on staging and
+production; PR #199 carries the diff for review; no `edit_plans`, output assets,
+or Edit CTA; compiling/rendering/validating still simulated.
+
+**Remaining operator-verified steps** (outside the sandbox): the `phase7.mjs`
+staging-matrix cases (§5) and the actual `0091`/`0092` staging apply must run on
+staging before production enablement — the local Gate-D/Gate-E harnesses +
+shared/worker unit + parity suites are the in-sandbox substitute.
