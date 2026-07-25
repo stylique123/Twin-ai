@@ -39,7 +39,13 @@ export type SilenceClassName = (typeof SILENCE_CLASS_CODES)[number]
 
 export const MAX_DECISION_SELECTIONS = MAX_CANDIDATES
 export const MAX_DECISION_SUMMARY_CHARS = 2000
-export const MAX_DECISION_REASON_CHARS = 500
+// OUTPUT budget (mirror of shared director.ts — bytes >= tokens convention; the
+// worst legal decision is < 31,767 B; frozen with headroom and test-asserted
+// against DIRECTOR_MAX_OUTPUT_TOKENS - DIRECTOR_THINKING_BUDGET_TOKENS).
+export const MAX_DECISION_OUTPUT_BYTES = 32768
+export const DIRECTOR_MAX_OUTPUT_TOKENS = 65536
+export const DIRECTOR_THINKING_BUDGET_TOKENS = 2048
+export const MAX_DECISION_KEPT_BOUNDARIES = 512
 // Decision v2 creative choices. emphasis references words BY INDEX (word identity is
 // positional in the envelope), bounded so the decision stays small.
 export const MAX_EMPHASIS_WORDS = 40
@@ -369,7 +375,7 @@ export type ZoomIntensity = (typeof ZOOM_INTENSITIES)[number]
 export type ZoomReasonCode = (typeof ZOOM_REASON_CODES)[number]
 export type TransitionPolicy = (typeof TRANSITION_POLICIES)[number]
 export interface RawDirectorDecision {
-  selections: Array<{ candidateIndex: number; reason?: string }>
+  selections: number[]
   keptBoundaries?: number[]
   summary?: string
   pacing?: string
@@ -411,14 +417,7 @@ export function directorResponseSchema(): Record<string, unknown> {
   return {
     type: 'object',
     properties: {
-      selections: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: { candidateIndex: { type: 'integer' }, reason: { type: 'string' } },
-          required: ['candidateIndex'],
-        },
-      },
+      selections: { type: 'array', items: { type: 'integer' } },
       keptBoundaries: { type: 'array', items: { type: 'integer' } },
       summary: { type: 'string' },
       pacing: { type: 'string', enum: [...DECISION_PACING] },
@@ -453,14 +452,12 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
   if (sels.length > MAX_DECISION_SELECTIONS) failDecision('decision: too many selections', 'director_decision_too_large')
   const seen = new Set<number>()
   const selections: DirectorSelection[] = sels.map((s) => {
-    if (!isPlainObject(s)) failDecision('selection: not an object', 'director_decision_bad_selections')
-    const idx = s.candidateIndex
+    // Wire format: a selection is a BARE candidate index (see shared director.ts —
+    // reasons dropped; output-budget proof).
+    const idx = s
     if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= envelope.candidates.length) failDecision(`selection: candidateIndex ${String(idx)} out of range`, 'director_decision_bad_ref')
     if (seen.has(idx)) failDecision(`selection: duplicate candidateIndex ${idx}`, 'director_decision_duplicate')
     seen.add(idx)
-    if ('reason' in s && s.reason !== undefined) {
-      if (typeof s.reason !== 'string' || s.reason.length > MAX_DECISION_REASON_CHARS) failDecision('selection: reason too long / not a string', 'director_decision_bad_summary')
-    }
     const tuple = envelope.candidates[idx]
     const kind = SPEECH_CANDIDATE_KINDS[tuple[0]]
     const selectionEnabled = tuple[5] as 0 | 1
@@ -471,6 +468,7 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
   let keptBoundaries: number[] = []
   if ('keptBoundaries' in raw && raw.keptBoundaries !== undefined) {
     if (!Array.isArray(raw.keptBoundaries)) failDecision('keptBoundaries: not an array', 'director_decision_bad_boundary')
+    if ((raw.keptBoundaries as unknown[]).length > MAX_DECISION_KEPT_BOUNDARIES) failDecision('keptBoundaries: too many', 'director_decision_too_large')
     keptBoundaries = (raw.keptBoundaries as unknown[]).map((b) => {
       if (typeof b !== 'number' || !Number.isInteger(b) || b < 0 || b >= envelope.boundaries.length) failDecision(`keptBoundaries: index ${String(b)} out of range`, 'director_decision_bad_boundary')
       return b

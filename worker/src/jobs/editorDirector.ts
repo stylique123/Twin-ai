@@ -29,7 +29,8 @@ import { sha256Hex, type BuiltManifest, type BuiltSnapshot } from './editorManif
 import type { VerifiedSourceSession } from './sourceSession.js'
 import {
   DIRECTOR_DECISION_SCHEMA_VERSION, DIRECTOR_MODEL, DIRECTOR_PROVIDER, DIRECTOR_VERSION,
-  DIRECTOR_ENVELOPE_SCHEMA_VERSION, PIPELINE_EPOCH_V2, MAX_TIME_CS,
+  DIRECTOR_ENVELOPE_SCHEMA_VERSION, DIRECTOR_MAX_OUTPUT_TOKENS, DIRECTOR_THINKING_BUDGET_TOKENS,
+  PIPELINE_EPOCH_V2, MAX_TIME_CS,
   MAX_VISUAL_WASTE, VISUAL_WASTE_CLASSES, visualWasteSelectionEnabled,
   CAPTION_PRESET_IDS, ZOOM_INTENSITIES, ZOOM_REASON_CODES, TRANSITION_POLICIES,
   canonicalJson, directorResponseSchema, projectSpeechToEnvelope, serializeDirectorEnvelope,
@@ -72,8 +73,9 @@ const SYSTEM_PROMPT = [
   'reasonCode: one of catalogs.zoomReasons}). To remove visual dead air, use',
   '`visualWasteSelections`: integer indices into the envelope `visualWaste` stream, and ONLY',
   'indices whose 4th tuple element (selectionEnabled) is 1 — never any other. Respond ONLY',
-  'with the required JSON: an array of {candidateIndex} selections (optionally a short',
-  'reason), and optional keptBoundaries, pacing, music, emphasisWordIndices, hookTreatment,',
+  'with the required JSON: `selections` as an array of INTEGER candidate indices (bare',
+  'integers — no objects, no reasons), and optional keptBoundaries (a bounded shortlist,',
+  'never every boundary), pacing, music, emphasisWordIndices, hookTreatment,',
   'hookStartWordIndex, visualWasteSelections, captionPresetId, transitionPolicy, zoomRequests,',
   'and a short summary. Choose only from the catalogs; do not invent indices or IDs.',
 ].join(' ')
@@ -157,7 +159,14 @@ function buildEnvelope(
   const digests = pinned.manifest.componentDigests
   const promptSha256 = sha256Hex(SYSTEM_PROMPT)
   const schemaSha256 = sha256Hex(canonicalJson(directorResponseSchema()))
-  const configSha256 = sha256Hex(canonicalJson({ model: DIRECTOR_MODEL, provider: DIRECTOR_PROVIDER, temperature: 0.2, maxOutputTokens: 16384, decisionSchemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION }))
+  // configSha256 covers the COMPLETE generation config actually sent (incl. thinking
+  // budget + response mime type) — a provider-behavior change can never hide behind an
+  // unchanged config hash.
+  const configSha256 = sha256Hex(canonicalJson({
+    model: DIRECTOR_MODEL, provider: DIRECTOR_PROVIDER, temperature: 0.2,
+    maxOutputTokens: DIRECTOR_MAX_OUTPUT_TOKENS, thinkingBudget: DIRECTOR_THINKING_BUDGET_TOKENS,
+    responseMimeType: 'application/json', decisionSchemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION,
+  }))
   const visualWaste = buildVisualWasteStream(components.visual)
   const env0: DirectorEnvelope = {
     schemaVersion: DIRECTOR_ENVELOPE_SCHEMA_VERSION,

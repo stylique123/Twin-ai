@@ -56,7 +56,7 @@
 //       envelope_speech <= (2/3)*C + 512 <= 667179 bytes
 //       envelope_total  <= 667179 + MAX_SCRIPT_BYTES + MAX_SUMMARY_BYTES
 //                          + IDENTITY_BUNDLE_MAX_BYTES + wrapper(<=224)
-//                       <= ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES = 751371
+//                       <= ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES = 752587 (incl. the 1216-byte visualWaste term)
 //     and since a provider token spans >= 1 UTF-8 byte:
 //       tokens <= bytes <= DIRECTOR_INPUT_MAX_BYTES (819200)
 //              <= PROVIDER_TOKEN_CEILING (838860 = 80% of 1048576).
@@ -705,7 +705,6 @@ export function buildMaxUpstreamCompatFixture(): DirectorEnvelope {
 // ===========================================================================
 export const MAX_DECISION_SELECTIONS = MAX_CANDIDATES // one per candidate, at most
 export const MAX_DECISION_SUMMARY_CHARS = 2000
-export const MAX_DECISION_REASON_CHARS = 500
 // Decision v2 creative choices. emphasis references words BY INDEX (word identity is
 // positional in the envelope), bounded so the decision stays small.
 export const MAX_EMPHASIS_WORDS = 40
@@ -726,9 +725,11 @@ export const DECISION_HOOK = ['keep', 'open_at_word'] as const
 export const MAX_ZOOM_REQUESTS = 20
 
 // Raw provider output shape (what generateContent must return under the strict
-// responseSchema). Only these fields are consumed.
+// responseSchema). Only these fields are consumed. All index lists are BARE integer
+// arrays (selections included — reasons were dropped: discarded at re-resolution
+// anyway, and they made a max-legal decision unable to fit the output budget).
 export interface RawDirectorDecision {
-  selections: Array<{ candidateIndex: number; reason?: string }>
+  selections: number[]
   keptBoundaries?: number[]
   summary?: string
   pacing?: string
@@ -741,6 +742,23 @@ export interface RawDirectorDecision {
   transitionPolicy?: string
   zoomRequests?: Array<{ anchorWordIndex: number; intensity?: string; reasonCode?: string }>
 }
+
+// ---- OUTPUT budget (the input side is proven above; this is the response side) ----
+// Convention identical to the input proof: BYTES >= TOKENS (ultra-conservative).
+// Worst legal decision, absolute bytes:
+//   selections           4901 indices x <=5B ("4900,")            = 24,505
+//   keptBoundaries       512 x <=5B                               =  2,560
+//   summary              2000 chars (+2 quotes)                   =  2,002
+//   emphasisWordIndices  40 x <=6B                                =    240
+//   zoomRequests         20 x <=64B objects                       =  1,280
+//   visualWasteSelections 60 x <=3B                               =    180
+//   scalars + keys + scaffolding                                  <   1,000
+// Total < 31,767 — frozen below with headroom. Must stay under the provider budget
+// minus the thinking allowance; asserted by test (never weaken silently).
+export const MAX_DECISION_OUTPUT_BYTES = 32768
+export const DIRECTOR_MAX_OUTPUT_TOKENS = 65536
+export const DIRECTOR_THINKING_BUDGET_TOKENS = 2048
+export const MAX_DECISION_KEPT_BOUNDARIES = 512
 
 // The persisted, re-resolved decision. kind/selectionEnabled/span are copied
 // FROM the pinned envelope so a DB trigger can independently re-verify the
@@ -804,17 +822,7 @@ export function directorResponseSchema(): Record<string, unknown> {
   return {
     type: 'object',
     properties: {
-      selections: {
-        type: 'array',
-        items: {
-          type: 'object',
-          properties: {
-            candidateIndex: { type: 'integer' },
-            reason: { type: 'string' },
-          },
-          required: ['candidateIndex'],
-        },
-      },
+      selections: { type: 'array', items: { type: 'integer' } },
       keptBoundaries: { type: 'array', items: { type: 'integer' } },
       summary: { type: 'string' },
       pacing: { type: 'string', enum: [...DECISION_PACING] },
@@ -851,18 +859,16 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
   if (sels.length > MAX_DECISION_SELECTIONS) failDecision('decision: too many selections', 'director_decision_too_large')
   const seen = new Set<number>()
   const selections: DirectorSelection[] = sels.map((s) => {
-    if (!isPlainObject(s)) failDecision('selection: not an object', 'director_decision_bad_selections')
-    const idx = s.candidateIndex
+    // Wire format (recorded encoding choice, output-budget proof): a selection is a BARE
+    // candidate index — same compact form as keptBoundaries/visualWasteSelections. The
+    // object-with-reason form was dropped: reasons were discarded at re-resolution anyway
+    // and made a max-legal decision provably unable to fit the output token budget.
+    const idx = s
     if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= envelope.candidates.length) {
       failDecision(`selection: candidateIndex ${String(idx)} out of range`, 'director_decision_bad_ref')
     }
     if (seen.has(idx)) failDecision(`selection: duplicate candidateIndex ${idx}`, 'director_decision_duplicate')
     seen.add(idx)
-    if ('reason' in s && s.reason !== undefined) {
-      if (typeof s.reason !== 'string' || s.reason.length > MAX_DECISION_REASON_CHARS) {
-        failDecision('selection: reason too long / not a string', 'director_decision_bad_summary')
-      }
-    }
     // AUTHORITY = the pinned envelope tuple, never the model.
     const tuple = envelope.candidates[idx]
     const kindCode = tuple[0]
@@ -878,6 +884,12 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
   let keptBoundaries: number[] = []
   if ('keptBoundaries' in raw && raw.keptBoundaries !== undefined) {
     if (!Array.isArray(raw.keptBoundaries)) failDecision('keptBoundaries: not an array', 'director_decision_bad_boundary')
+    // Advisory emphasis list, BOUNDED (output-budget proof): absent = no constraint, so
+    // listing every boundary is never needed and an unbounded list breaks the worst-case
+    // output fit. Recorded encoding choice: cap at MAX_DECISION_KEPT_BOUNDARIES.
+    if ((raw.keptBoundaries as unknown[]).length > MAX_DECISION_KEPT_BOUNDARIES) {
+      failDecision('keptBoundaries: too many', 'director_decision_too_large')
+    }
     keptBoundaries = (raw.keptBoundaries as unknown[]).map((b) => {
       if (typeof b !== 'number' || !Number.isInteger(b) || b < 0 || b >= envelope.boundaries.length) {
         failDecision(`keptBoundaries: index ${String(b)} out of range`, 'director_decision_bad_boundary')

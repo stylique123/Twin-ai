@@ -50,7 +50,7 @@ psql -q -f "$HERE/00_schema_subset.sql"
 psql -q -f "$WORK/gate_d_fns.sql"
 # grants live just outside the markers; apply the real revoke/grant statements
 # so the grant-posture assertions exercise the migration's actual posture.
-grep -E '^(revoke|grant) .*public\.editor_(capture_segments|capture_intent|validate_capture|build_stored|snapshot_normalize|recording_script|verify_capture|persist_script|create_source|validate_source|write_capture_manifest)' "$MIG" > "$WORK/grants.sql"
+grep -E '^(revoke|grant) .*public\.editor_(capture_segments|capture_intent|validate_capture|build_stored|snapshot_normalize|recording_script|verify_capture|persist_script|create_source|validate_source|write_capture_manifest|backfill_capture_marker)' "$MIG" > "$WORK/grants.sql"
 psql -q -f "$WORK/grants.sql"
 
 echo "== fail-closed assertions (contract matrix, policy, grants) =="
@@ -102,7 +102,7 @@ echo "== owner-scoped cap race: 3 concurrent DISTINCT attempts, 1 slot left =="
 OWN2='eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee'; GENE='55555555-5555-5555-5555-555555555555'
 psql -q -c "insert into public.generations(id,user_id) values ('$GENE','$OWN2');"
 # pre-seed 4 open source assets → exactly ONE of 3 concurrent distinct-attempt creates may pass (5th slot).
-psql -q -c "insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) select gen_random_uuid(),'$OWN2','$GENE',gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',1 from generate_series(1,4);"
+psql -q -c "insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) select gen_random_uuid(),'$OWN2','$GENE',gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',1 from generate_series(1,4);"
 for i in 1 2 3; do
   A="ee00000$i-0000-0000-0000-00000000000$i"
   J='{"schemaVersion":1,"origin":"upload","generationId":"'"$GENE"'","recordingScriptSha256":null,"clientAttemptId":"'"$A"'","recorderClock":"none","acceptedSegments":[]}'
@@ -120,7 +120,7 @@ psql -q -c "insert into public.generations(id,user_id) values ('$GENF','$OWN3');
 # Pre-seed usage so exactly ONE more 1 MiB (1048576) asset fits under the 20 GB
 # (21474836480) quota: seed 21473336480 used → after one create 21474385056 (ok),
 # a second would be 21475433632 (> quota). status 'ready' so open-cap isn't the gate.
-psql -q -c "insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values (gen_random_uuid(),'$OWN3','$GENF',gen_random_uuid(),'source','takes','x','video/webm',21473336480,'ready',1);"
+psql -q -c "insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values (gen_random_uuid(),'$OWN3','$GENF',gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',21473336480,'ready',1);"
 for i in 1 2 3; do
   A="ff00000$i-0000-0000-0000-00000000000$i"
   J='{"schemaVersion":1,"origin":"upload","generationId":"'"$GENF"'","recordingScriptSha256":null,"clientAttemptId":"'"$A"'","recorderClock":"none","acceptedSegments":[]}'

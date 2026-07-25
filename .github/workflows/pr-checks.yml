@@ -175,6 +175,24 @@ jobs:
       - name: Gate-probe predicates (hostile selftest)
         run: node scripts/ci/gate_probe_assert.mjs --selftest
 
+  # Gate-D + Gate-E: ephemeral-Postgres verification of the capture/validation RPC
+  # matrix (0091) and the Decision v2 DB guard (0092), INCLUDING every mutation
+  # control. These previously ran only locally — a migration edit could silently
+  # break a DB guarantee with CI green. Now they gate every PR.
+  db-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql postgresql-contrib
+      - name: Gate-D (capture/validation RPC matrix + negative controls)
+        run: bash scripts/db-tests/gate-d/run.sh
+      - name: Gate-E (Decision v2 DB guard + hostile matrix)
+        run: bash scripts/db-tests/gate-e/run.sh
+
   # Phase-7 Gate 0 MANDATORY real-token evidence: run the provider countTokens on
   # the EXACT maximum-legal Director envelope and FAIL CLOSED if GEMINI_API_KEY is
   # not configured. The conservative bound (tokens <= bytes) is proven in the

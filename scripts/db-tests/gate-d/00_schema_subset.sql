@@ -43,7 +43,7 @@ create table public.media_assets (
   kind text not null check (kind in ('source','music','output','thumbnail')),
   seq bigint generated always as identity,
   bucket text not null,
-  storage_path text not null,
+  storage_path text not null unique,  -- mirror 0076: real schema is UNIQUE; laxity here hid collision bugs
   content_sha256 text,
   mime_type text,
   size_bytes bigint,
@@ -72,7 +72,11 @@ begin
   if new.status = 'deleted' then return new; end if;
   if old.status = 'uploading' and new.status = 'validating' then return new; end if;
   if old.status = 'validating' and new.status in ('ready','rejected') then return new; end if;
-  if old.status = 'rejected' and new.status = 'validating' then return new; end if;
+  if old.status = 'rejected' and new.status = 'validating' then
+    -- mirror 0079: re-validation is legal ONLY with an explicit version bump
+    if new.validation_version is distinct from old.validation_version and new.validation_version > coalesce(old.validation_version, 0) then return new; end if;
+    raise exception 'media_assets: rejected -> validating requires a validation_version bump';
+  end if;
   raise exception 'media_assets: illegal status transition % -> %', old.status, new.status;
 end; $$;
 create trigger media_assets_status_guard before update of status on public.media_assets
@@ -116,9 +120,9 @@ create table public.source_capture_manifests (
   source_asset_id uuid not null unique references public.media_assets(id) on delete cascade,
   owner_id uuid not null,
   origin text not null check (origin in ('teleprompter','upload')),
-  intent_sha256 text not null,
+  intent_sha256 text not null check (intent_sha256 ~ '^[0-9a-f]{64}$'),  -- mirror 0090
   manifest jsonb not null,
-  manifest_sha256 text not null,
+  manifest_sha256 text not null check (manifest_sha256 ~ '^[0-9a-f]{64}$'),  -- mirror 0090
   normalization_version text not null,
   created_at timestamptz not null default now()
 );

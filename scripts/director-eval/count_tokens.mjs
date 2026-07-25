@@ -18,7 +18,7 @@
 //   node scripts/director-eval/count_tokens.mjs --selftest # offline: port parity + conservative bound only
 
 // ---- frozen constants (must equal packages/shared/src/editor/director.ts) ----
-const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563014
+const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563730 // re-frozen when the visualWaste stream was added
 const DIRECTOR_INPUT_MAX_BYTES = 819200
 const PROVIDER_TOKEN_CEILING = 838860 // floor(1048576 * 0.8)
 const UPSTREAM_SPEECH_BUDGET_BYTES = 1_000_000
@@ -145,6 +145,9 @@ function buildFixture() {
     },
     script, summaries,
     words: proj.words, candidates: proj.candidates, boundaries: proj.boundaries,
+    // visualWaste stream saturated at its cap (mirror of buildMaxUpstreamCompatFixture):
+    // class cycles through the 4 codes; selectionEnabled 1 only for dead_air (code 0).
+    visualWaste: Array.from({ length: 60 }, (_, i) => [i, i, i % 4, i % 4 === 0 ? 1 : 0]),
   }
 }
 

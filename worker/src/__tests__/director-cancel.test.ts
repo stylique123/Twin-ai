@@ -27,7 +27,7 @@ const ENVELOPE = {
   candidates: [[3, 0, 1, 1, 0, 1, [0]]],
   boundaries: [],
 }
-const GOOD_RESPONSE = { raw: { selections: [{ candidateIndex: 0 }] }, responseText: '{"selections":[{"candidateIndex":0}]}' }
+const GOOD_RESPONSE = { raw: { selections: [0] }, responseText: '{"selections":[0]}' }
 
 function fakeLedger(begin = 'started') {
   const calls = []

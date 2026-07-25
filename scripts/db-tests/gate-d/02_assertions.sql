@@ -84,7 +84,7 @@ begin
   select count(*) into c from public.media_assets; perform pg_temp.expect_true(c=1, 'no orphan after policy/ownership failures');
   -- QUOTA: load the owner over the 20 GB cap, then a fresh create fails closed.
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (gen_random_uuid(),'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111',gen_random_uuid(),'source','takes','x','video/webm',21474836480,'uploading',1);
+    values (gen_random_uuid(),'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111',gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',21474836480,'uploading',1);
   perform pg_temp.expect_code(
     $q$select public.editor_create_source_asset('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa','11111111-1111-1111-1111-111111111111','55555555-5555-5555-5555-555555555555','{"schemaVersion":1,"origin":"upload","generationId":"11111111-1111-1111-1111-111111111111","recordingScriptSha256":null,"clientAttemptId":"55555555-5555-5555-5555-555555555555","recorderClock":"none","acceptedSegments":[]}'::jsonb,'takes','video/webm',1048576)$q$,
     'source_quota_exceeded');
@@ -92,7 +92,7 @@ begin
   -- five open source assets → the 6th create for that owner fails closed.
   insert into public.generations (id, user_id) values ('22222222-2222-2222-2222-222222222222','cccccccc-cccc-cccc-cccc-cccccccccccc');
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    select gen_random_uuid(),'cccccccc-cccc-cccc-cccc-cccccccccccc','22222222-2222-2222-2222-222222222222',gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',1 from generate_series(1,5);
+    select gen_random_uuid(),'cccccccc-cccc-cccc-cccc-cccccccccccc','22222222-2222-2222-2222-222222222222',gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',1 from generate_series(1,5);
   perform pg_temp.expect_code(
     $q$select public.editor_create_source_asset('cccccccc-cccc-cccc-cccc-cccccccccccc','22222222-2222-2222-2222-222222222222','99999999-9999-9999-9999-999999999999','{"schemaVersion":1,"origin":"upload","generationId":"22222222-2222-2222-2222-222222222222","recordingScriptSha256":null,"clientAttemptId":"99999999-9999-9999-9999-999999999999","recorderClock":"none","acceptedSegments":[]}'::jsonb,'takes','video/webm',1048576)$q$,
     'source_too_many_open');
@@ -445,7 +445,7 @@ begin
   -- legacy (no intent) → stays NULL. Intents are built self-consistently so the new
   -- hash/relational/manifest/snapshot invariants all hold on the VALID rows.
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version) values
-    (a_tele,own,g,att_t,'source','takes','x','video/webm',1024,'ready',null),
+    (a_tele,own,g,att_t,'source','takes',gen_random_uuid()::text,'video/webm',1024,'ready',null),
     (a_up,own,g,att_u,'source','takes','y','video/webm',1024,'uploading',null),
     (a_legacy,own,g,gen_random_uuid(),'source','takes','z','video/webm',1024,'uploading',null);
   i_tele := pg_temp.mk_intent(a_tele,g,att_t,'teleprompter',script_sha); sha_t := public.editor_capture_intent_sha256(i_tele);
@@ -486,7 +486,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
     values (a,own,'teleprompter',repeat('a',64),'{}'::jsonb,repeat('a',64),'v1');
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
@@ -498,7 +498,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   insert into public.source_script_snapshots(source_asset_id,owner_id,generation_id,snapshot,snapshot_sha)
     values (a,own,g,'{}'::jsonb,repeat('a',64));
   perform pg_temp.expect_code($q$select public.editor_backfill_capture_marker()$q$, 'capture_backfill_inconsistent');
@@ -510,7 +510,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,null,'music','takes','x','audio/mpeg',1024,'uploading',null);
+    values (a,own,g,null,'music','takes',gen_random_uuid()::text,'audio/mpeg',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'upload',null);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,att,j,public.editor_capture_intent_sha256(j),now());
@@ -523,7 +523,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   -- owner_id is NOT part of the stored intent JSON, so the JSON stays self-consistent
   -- while the relational owner_id column diverges from the asset owner.
   j := pg_temp.mk_intent(a,g,att,'upload',null);
@@ -538,7 +538,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'upload',null); s := public.editor_capture_intent_sha256(j);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,att,j,s,now());
@@ -554,7 +554,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'teleprompter',sc);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'teleprompter',sc,att,j,public.editor_capture_intent_sha256(j),now());
@@ -575,7 +575,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,att,'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'upload',null); s := public.editor_capture_intent_sha256(j);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,att,j,s,now());
@@ -590,7 +590,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,att,'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'upload',null); s := public.editor_capture_intent_sha256(j);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,att,j,s,now());
@@ -605,7 +605,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,att,'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'teleprompter',sc); s := public.editor_capture_intent_sha256(j);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'teleprompter',sc,att,j,s,now());  -- NO source_script_snapshots row
@@ -618,7 +618,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,att,'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'teleprompter',sc); s := public.editor_capture_intent_sha256(j);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'teleprompter',sc,att,j,s,now());
@@ -633,7 +633,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,att,'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'upload',null); s := public.editor_capture_intent_sha256(j);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,att,j,s,now());
@@ -648,7 +648,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,att,'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   j := pg_temp.mk_intent(a,g,att,'upload',null);  -- correct JSON, but stored with a WRONG sha
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,att,j,repeat('0',64),now());
@@ -661,7 +661,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,att,'source','takes','x','video/webm',1024,'uploading',null);
+    values (a,own,g,att,'source','takes',gen_random_uuid()::text,'video/webm',1024,'uploading',null);
   -- JSON built against a DIFFERENT asset id; hash recomputes (so the hash check passes)
   -- but the relational sourceAssetId disagrees → relational guard must fire.
   j := pg_temp.mk_intent(a,g,att,'upload',null,'fa000000-0000-0000-0000-0000000000ee'); s := public.editor_capture_intent_sha256(j);
@@ -678,7 +678,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
   mid := public.editor_write_capture_manifest(a,'upload',ish,'{"n":1}'::jsonb,msha,'v1');
@@ -695,7 +695,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','upload','%s','{}'::jsonb,'%s','v1')$q$, a, repeat('a',64), repeat('c',64)), 'capture_manifest_no_intent');
 end $$;
 do $$  -- E/F: origin mismatch, then intent-hash mismatch
@@ -704,7 +704,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
   perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','teleprompter','%s','{}'::jsonb,'%s','v1')$q$, a, ish, repeat('c',64)), 'capture_manifest_origin_mismatch');
@@ -716,7 +716,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb',g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
   perform pg_temp.expect_code(format($q$select public.editor_write_capture_manifest('%s','upload','%s','{}'::jsonb,'%s','v1')$q$, a, ish, repeat('c',64)), 'capture_manifest_owner_mismatch');
@@ -729,7 +729,7 @@ begin
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   -- H: settled (ready) with NO manifest → lost race → null (INSERT bypasses ready guard).
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'ready',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'ready',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
   r := public.editor_write_capture_manifest(a,'upload',ish,'{"n":1}'::jsonb,msha,'v1');
@@ -755,7 +755,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,gen_random_uuid(),'{}'::jsonb,ish,now());
   insert into public.source_capture_manifests(source_asset_id,owner_id,origin,intent_sha256,manifest,manifest_sha256,normalization_version)
@@ -769,7 +769,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   perform pg_temp.expect_code(format($q$update public.media_assets set status='ready' where id='%s'$q$, a), 'capture_manifest_required');
 end $$;
 do $$  -- M: LEGACY (marker null) + no manifest → ready flip allowed (guard is new-era only)
@@ -778,7 +778,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',null);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',null);
   update public.media_assets set status='ready' where id=a;
   perform pg_temp.expect_true((select status from public.media_assets where id=a)='ready', 'ready-guard M: legacy → ready without manifest');
 end $$;
@@ -791,7 +791,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version,metadata)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1,'{"finalized_etag":"E1","finalized_bytes":1024}'::jsonb);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1,'{"finalized_etag":"E1","finalized_bytes":1024}'::jsonb);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish,now());
   select * into r from public.editor_validate_source(a,own,sha,1024,5000,1080,1920,30,1,0,true,'{}'::jsonb,msha,'v1','{"p":1}'::jsonb);
@@ -823,7 +823,7 @@ begin
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   -- validating asset + intent (baseline for most guards)
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish,now());
   perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, sha, msha), 'source_validate_not_owned');
@@ -849,7 +849,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,content_sha256,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x',repeat('a',64),'video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,repeat('a',64),'video/webm',1024,'validating',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'upload',null,gen_random_uuid(),'{"acceptedSegments":[]}'::jsonb,ish,now());
   perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, repeat('b',64), repeat('c',64)), 'source_validate_sha_mismatch');
@@ -860,7 +860,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'teleprompter',sc,gen_random_uuid(),'{"acceptedSegments":[{"startMs":0,"endMs":9000,"sceneNumber":1,"intendedDialogueSha256":"x"}]}'::jsonb,repeat('a',64),now());
   perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, repeat('d',64), repeat('c',64)), 'source_validate_window_out_of_bounds');
@@ -871,7 +871,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   -- intent endMs 5300 vs measured 5000: 300ms drift, inside tolerance; manifest carries the CLAMPED window.
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'teleprompter',sc,gen_random_uuid(),'{"acceptedSegments":[{"startMs":0,"endMs":5300,"sceneNumber":1,"intendedDialogueSha256":"x"}]}'::jsonb,repeat('a',64),now());
@@ -885,7 +885,7 @@ begin
   truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
   insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
   insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
-    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+    values (a,own,g,gen_random_uuid(),'source','takes',gen_random_uuid()::text,'video/webm',1024,'validating',1);
   insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
     values (a,own,g,'teleprompter',sc,gen_random_uuid(),'{"acceptedSegments":[{"startMs":0,"endMs":5000,"sceneNumber":1,"intendedDialogueSha256":"x"}]}'::jsonb,repeat('a',64),now());
   perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{"acceptedSegments":[{"sourceStartMs":0,"sourceEndMs":9000,"sceneNumber":1}]}'::jsonb,'%s','v1',null)$q$, a, own, repeat('d',64), repeat('c',64)), 'source_validate_manifest_out_of_bounds');

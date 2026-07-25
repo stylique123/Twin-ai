@@ -52,8 +52,10 @@ jobs:
       # Phase-7: the REAL directing stage makes one pinned gemini-3.5-flash call.
       # The spawned staging worker (EDITOR_DIRECTOR_ENABLED=true, set per-worker
       # in phase7.mjs) inherits this key via process.env; Gate 0's real
-      # countTokens uses it too. Absent => Gate 0 self-tests offline and the
-      # Phase-7 fail-closed case still passes.
+      # countTokens uses it too. This key is HARD-REQUIRED: without it the
+      # Phase-7 A/C sections fail closed (director_no_credentials) — checked
+      # up-front below so a missing secret fails in seconds, not after the
+      # 40-minute pipeline reaches Phase 7.
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
@@ -153,8 +155,33 @@ jobs:
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
             echo "::error::SUPABASE_ACCESS_TOKEN secret is not set"; exit 1
           fi
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY secret is not set — Phase 7 A/C would fail closed 40 minutes in"; exit 1
+          fi
           supabase functions deploy source-asset --project-ref otgzjsagybpgtwweuptj
           supabase functions deploy start-editor-v2 --project-ref otgzjsagybpgtwweuptj
+
+      - name: Apply repo migrations to STAGING and assert parity
+        # The matrix must run against the EXACT migration files in this checkout
+        # (the audit's requirement: "with 0091/0092 actually applied") — not a
+        # drifted, manually-maintained staging schema. `db push` applies any
+        # unapplied migrations; the assertion then proves the remote migration
+        # list covers every local file (staging only; production is untouched).
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+        run: |
+          if [ -z "$SUPABASE_DB_PASSWORD" ]; then
+            echo "::error::STAGING_DB_PASSWORD secret is not set (needed for supabase db push)"; exit 1
+          fi
+          supabase link --project-ref otgzjsagybpgtwweuptj
+          supabase db push --include-all
+          # Parity assertion: every local migration must now be applied remotely.
+          supabase migration list --linked | tee /tmp/miglist.txt
+          for f in supabase/migrations/*.sql; do
+            v=$(basename "$f" | cut -d_ -f1)
+            grep -q "$v" /tmp/miglist.txt || { echo "::error::migration $v not applied to staging"; exit 1; }
+          done
 
       - name: Build worker (the real one that will run in production)
         run: cd worker && npm ci && npm run build

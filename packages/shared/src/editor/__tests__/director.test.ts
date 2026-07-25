@@ -328,7 +328,7 @@ describe('Phase 7: validateDirectorDecision (server-side re-resolution)', () => 
 
   it('re-resolves selectable candidates and copies span/kind FROM the envelope', () => {
     const d = validateDirectorDecision({
-      selections: [{ candidateIndex: 0 }, { candidateIndex: 2, reason: 'stutter' }],
+      selections: [0, 2],
       keptBoundaries: [0], summary: 'trim dead air + a repeat',
     }, env())
     expect(d.schemaVersion).toBe(DIRECTOR_DECISION_SCHEMA_VERSION)
@@ -338,10 +338,8 @@ describe('Phase 7: validateDirectorDecision (server-side re-resolution)', () => 
   })
 
   it('IGNORES model-supplied timestamps/ids (uses envelope authority)', () => {
-    const d = validateDirectorDecision({
-      selections: [{ candidateIndex: 0, startCs: 999999, endCs: 0, id: 'evil', kind: 'filler' } as never],
-      summary: '',
-    }, env())
+    // the wire carries BARE indices; span/kind authority is the envelope tuple.
+    const d = validateDirectorDecision({ selections: [0], summary: '' }, env())
     // span comes from the envelope (30,80), NOT the model's 999999/0
     expect(d.selections[0].startCs).toBe(30)
     expect(d.selections[0].endCs).toBe(80)
@@ -351,14 +349,15 @@ describe('Phase 7: validateDirectorDecision (server-side re-resolution)', () => 
   const cases: Array<[string, unknown, string]> = [
     ['not an object', 42, 'director_decision_not_object'],
     ['selections missing', { summary: 'x' }, 'director_decision_bad_selections'],
-    ['fabricated candidateIndex', { selections: [{ candidateIndex: 99 }] }, 'director_decision_bad_ref'],
-    ['negative candidateIndex', { selections: [{ candidateIndex: -1 }] }, 'director_decision_bad_ref'],
-    ['non-integer candidateIndex', { selections: [{ candidateIndex: 1.5 }] }, 'director_decision_bad_ref'],
-    ['selecting a FILLER candidate', { selections: [{ candidateIndex: 1 }] }, 'director_decision_filler'],
-    ['duplicate selection', { selections: [{ candidateIndex: 0 }, { candidateIndex: 0 }] }, 'director_decision_duplicate'],
+    ['fabricated candidateIndex', { selections: [99] }, 'director_decision_bad_ref'],
+    ['negative candidateIndex', { selections: [-1] }, 'director_decision_bad_ref'],
+    ['non-integer candidateIndex', { selections: [1.5] }, 'director_decision_bad_ref'],
+    ['object-form selection (old wire shape)', { selections: [{ candidateIndex: 0 } as never] }, 'director_decision_bad_ref'],
+    ['selecting a FILLER candidate', { selections: [1] }, 'director_decision_filler'],
+    ['duplicate selection', { selections: [0, 0] }, 'director_decision_duplicate'],
     ['keptBoundaries out of range', { selections: [], keptBoundaries: [9] }, 'director_decision_bad_boundary'],
+    ['keptBoundaries over the bounded cap', { selections: [], keptBoundaries: Array.from({ length: 513 }, () => 0) }, 'director_decision_too_large'],
     ['summary too long', { selections: [], summary: 'a'.repeat(MAX_DECISION_SUMMARY_CHARS + 1) }, 'director_decision_bad_summary'],
-    ['reason too long', { selections: [{ candidateIndex: 0, reason: 'a'.repeat(600) }] }, 'director_decision_bad_summary'],
     // v2 §3.6 choice set — fabrication / catalog / safety rejections
     ['visual-waste not selectable (static_hold)', { selections: [], visualWasteSelections: [1] }, 'director_decision_not_selectable'],
     ['visual-waste out of range', { selections: [], visualWasteSelections: [9] }, 'director_decision_bad_visual_waste'],

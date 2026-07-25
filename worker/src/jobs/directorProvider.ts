@@ -8,6 +8,7 @@ import { env } from '../env.js'
 import {
   DIRECTOR_MODEL, DECISION_PACING, DECISION_MUSIC, DECISION_HOOK,
   CAPTION_PRESET_IDS, TRANSITION_POLICIES, ZOOM_INTENSITIES, ZOOM_REASON_CODES,
+  DIRECTOR_MAX_OUTPUT_TOKENS, DIRECTOR_THINKING_BUDGET_TOKENS,
 } from './directorContract.js'
 
 export class DirectorProviderError extends Error {
@@ -25,20 +26,12 @@ export class DirectorProviderError extends Error {
 // whose SHA is pinned into the envelope); both carry the FULL Decision v2 choice set
 // so the model can actually return caption/zoom/transition/visual-waste, not just cuts.
 const enumStr = (values: readonly string[]) => ({ type: 'STRING', format: 'enum', enum: [...values] })
-const RESPONSE_SCHEMA = {
+// Exported so the parity test can pin this literal (dialect-normalized) against
+// directorResponseSchema() — the two must never drift apart silently.
+export const RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
-    selections: {
-      type: 'ARRAY',
-      items: {
-        type: 'OBJECT',
-        properties: {
-          candidateIndex: { type: 'INTEGER' },
-          reason: { type: 'STRING' },
-        },
-        required: ['candidateIndex'],
-      },
-    },
+    selections: { type: 'ARRAY', items: { type: 'INTEGER' } },
     keptBoundaries: { type: 'ARRAY', items: { type: 'INTEGER' } },
     summary: { type: 'STRING' },
     pacing: enumStr(DECISION_PACING),
@@ -90,10 +83,12 @@ export async function callDirectorOnce(
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
     generationConfig: {
       temperature: 0.2,
-      maxOutputTokens: 16384,
+      // Output budget: sized so the WORST legal Decision v2 provably fits
+      // (MAX_DECISION_OUTPUT_BYTES <= max - thinking, bytes>=tokens; test-pinned).
+      maxOutputTokens: DIRECTOR_MAX_OUTPUT_TOKENS,
       responseMimeType: 'application/json',
       responseSchema: RESPONSE_SCHEMA,
-      thinkingConfig: { thinkingBudget: 2048 },
+      thinkingConfig: { thinkingBudget: DIRECTOR_THINKING_BUDGET_TOKENS },
     },
   })
   const ctrl = new AbortController()
