@@ -109,8 +109,9 @@ async function appendEvent(
 // Pin the owner's DEFAULT brand snapshot SHA in the Boot Manifest. The snapshot and
 // its verified logo are resolved by the shared resolveBrandSnapshot (brandResolve.ts),
 // which the Director stage re-runs and checks against this pinned SHA.
-async function pinBrandSnapshotSha(ownerId: string): Promise<string> {
-  return (await resolveBrandSnapshot(ownerId)).sha
+async function pinBrandSnapshot(ownerId: string): Promise<{ snapshot: Record<string, unknown>; sha: string }> {
+  const { snapshot, sha } = await resolveBrandSnapshot(ownerId)
+  return { snapshot: snapshot as unknown as Record<string, unknown>, sha }
 }
 
 // The normalized capture-manifest SHA for THIS source asset. null ONLY for a
@@ -202,7 +203,7 @@ async function pinManifest(
   //    source asset. null ONLY for a true legacy source (no capture contract);
   //    a new-era source without a manifest cannot reach `ready` (0091 guard), so
   //    by pin time it exists.
-  const brandSnapshotSha = await pinBrandSnapshotSha(ownerId)
+  const brand = await pinBrandSnapshot(ownerId)
   const captureManifestSha = await pinCaptureManifestSha(sourceAssetId)
   // Read the source's provenance state ONCE and reuse it for both the manifest-null
   // guard and the snapshot policy (no double read).
@@ -214,7 +215,7 @@ async function pinManifest(
   }
   const manifest = await buildBootManifest({
     inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
-    brandSnapshotSha, captureManifestSha,
+    brandSnapshot: brand.snapshot, brandSnapshotSha: brand.sha, captureManifestSha,
   })
   // The recording-script snapshot is SOURCE-BOUND under ONE explicit marker/origin
   // policy (resolveBootScriptSnapshot): teleprompter → the verified persisted binding;

@@ -232,6 +232,7 @@ export interface BuiltManifest {
 export async function buildBootManifest(opts: {
   inspectorVersion: string
   speechVersion: string
+  brandSnapshot: Record<string, unknown>
   brandSnapshotSha: string
   captureManifestSha: string | null
 }): Promise<BuiltManifest> {
@@ -271,8 +272,11 @@ export async function buildBootManifest(opts: {
     build,
     ffmpeg: { versionBannerSha256: await ffmpegBannerSha256() },
     rules: { rulesVersion: rules.rulesVersion, boundsSha256 },
-    // Boot Manifest v2 pins: bounded brand snapshot SHA, source capture-manifest
-    // SHA (null only for a true legacy source), and frozen feature flags.
+    // Boot Manifest v2 pins: the bounded brand snapshot CONTENT (frozen once — the
+    // directing stage reads THIS, never live brand, so a mid-project Brand Settings
+    // change can't retro-alter or fail the running edit) plus its SHA, the source
+    // capture-manifest SHA (null only for a true legacy source), and frozen features.
+    brandSnapshot: opts.brandSnapshot,
     brandSnapshotSha: opts.brandSnapshotSha,
     captureManifestSha: opts.captureManifestSha,
     features: { autoFillerRemoval: false },

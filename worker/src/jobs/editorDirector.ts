@@ -22,7 +22,7 @@ import { env } from '../env.js'
 import { classifyDbError, PermanentJobError } from '../errors.js'
 import { DirectorCancelledError, watchCancellation } from './editorCancel.js'
 import { loadEligibleSource } from './editorInspect.js'
-import { resolveBrandSnapshot } from './brandResolve.js'
+import { brandSnapshotSha256, type EditorBrandSnapshotV1 } from './brandSnapshot.js'
 import { loadComponentStrict } from './editorSpeech.js'
 import { lookupCached } from './editorAnalyze.js'
 import { sha256Hex, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
@@ -340,20 +340,21 @@ export async function runDirectingStage(
       if (!comp) throw new PermanentJobError(`director: pinned ${name} component missing at its digest`, 'director_component_missing')
     }
 
-    // BRAND (D3/D4): re-derive the owner's bounded brand snapshot and PROVE it is the
-    // same one pinned in the Boot Manifest at boot time. If the creator changed their
-    // brand mid-project the hashes diverge → fail closed (versions are never mixed);
-    // otherwise the snapshot becomes the envelope's brand summary so the Director knows
-    // exactly what colours/logo are confirmed vs absent.
-    const brand = await resolveBrandSnapshot(asset.owner_id)
-    const pinnedBrandSha = (pinned.manifest.manifest as { brandSnapshotSha?: string }).brandSnapshotSha
-    if (brand.sha !== pinnedBrandSha) {
+    // BRAND (§3.2): read the FROZEN brand snapshot pinned in the Boot Manifest at boot
+    // time — NEVER live brand. This is what preserves the creator's original brand for the
+    // whole edit: changing Brand Settings mid-project cannot retro-alter or fail this run.
+    // Self-integrity only: the stored snapshot must still hash to the pinned SHA (a
+    // corrupt/tampered manifest fails closed) — no comparison against live brand.
+    const pinnedManifest = pinned.manifest.manifest as { brandSnapshot?: unknown; brandSnapshotSha?: string }
+    const brandSnapshot = pinnedManifest.brandSnapshot
+    if (!brandSnapshot || typeof brandSnapshot !== 'object'
+        || brandSnapshotSha256(brandSnapshot as EditorBrandSnapshotV1) !== pinnedManifest.brandSnapshotSha) {
       throw new PermanentJobError(
-        `director: brand snapshot drifted from the pinned manifest (${brand.sha} vs ${pinnedBrandSha})`,
-        'brand_snapshot_mismatch')
+        'director: pinned brand snapshot missing or SHA-inconsistent in the boot manifest',
+        'brand_snapshot_corrupt')
     }
 
-    const envelope = buildEnvelope(projectId, asset, pinned, speech, brand.snapshot, { visual, audio, hook })
+    const envelope = buildEnvelope(projectId, asset, pinned, speech, brandSnapshot, { visual, audio, hook })
     const serialized = serializeDirectorEnvelope(envelope)
     const envelopeSha256 = sha256Hex(serialized)
 
