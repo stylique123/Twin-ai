@@ -259,6 +259,14 @@ async function main() {
     check('A5 exactly ONE immutable decision, auto_filler_removal=false', decs.length === 1 && decs[0].auto_filler_removal === false)
     check('A6 decision has selections array', decs.length === 1 && Array.isArray(decs[0].decision?.selections))
     check('A7 no filler in the persisted selections', decs.length === 1 && (decs[0].decision.selections ?? []).every((s) => s.kind !== 'filler' && s.selectionEnabled === 1))
+    // The FULL Decision v2 survives persistence (schema 2 + every creative field present).
+    check('A7b decision is schema v2 with the full choice set persisted', decs.length === 1
+      && decs[0].schema_version === 2
+      && typeof decs[0].decision?.captionPresetId === 'string'
+      && typeof decs[0].decision?.transitionPolicy === 'string'
+      && typeof decs[0].decision?.pacing === 'string'
+      && Array.isArray(decs[0].decision?.visualWasteSelections)
+      && Array.isArray(decs[0].decision?.zoomRequests), JSON.stringify(decs[0]?.decision))
     const codes = (await getEvents(pid)).map((e) => e.message_code)
     check('A8 director_started + director_succeeded events', codes.includes('director_started') && codes.includes('director_succeeded'))
     check('A9 edit_plans still 0 (compilation is Phase 8)', (await editPlanCount(pid)) === 0)
@@ -306,9 +314,18 @@ async function main() {
     await dirBegin(p2, l2, D2.assetId)
     const recvSha = sha256('r2')
     await admin.rpc('editor_director_receive', { p_project: p2, p_job: l2.jobId, p_worker: l2.worker, p_attempt: l2.attempt, p_response_sha256: recvSha })
-    const okDecision = { schemaVersion: 1, selections: [], keptBoundaries: [], summary: '' }
+    // A COMPLETE Decision v2 (schema 2) — the 0092 guard requires schema 2 AND every
+    // field present, so a partial/v1 object is rejected before any mismatch check.
+    const fullV2 = (over = {}) => ({
+      schemaVersion: 2, selections: [], keptBoundaries: [], summary: '',
+      pacing: 'balanced', music: 'none', emphasisWordIndices: [],
+      hookTreatment: 'keep', hookStartWordIndex: null,
+      visualWasteSelections: [], captionPresetId: 'caption-clean-keyword-v1',
+      transitionPolicy: 'restrained', zoomRequests: [], ...over,
+    })
+    const okDecision = fullV2()
     const succeed = (over) => admin.rpc('editor_director_succeed', {
-      p_project: p2, p_job: l2.jobId, p_worker: l2.worker, p_attempt: l2.attempt, p_schema_version: 1,
+      p_project: p2, p_job: l2.jobId, p_worker: l2.worker, p_attempt: l2.attempt, p_schema_version: 2,
       p_response_sha256: recvSha, p_decision: okDecision, p_decision_sha256: sha256('d2'), p_model: 'gemini-3.5-flash', p_provider: 'google', ...over,
     })
     const sHash = await succeed({ p_response_sha256: sha256('WRONG') })
@@ -318,8 +335,16 @@ async function main() {
     const sProv = await succeed({ p_provider: 'openai' })
     check('D8 succeed with wrong provider => director_provider_mismatch', !!sProv.error && /director_provider_mismatch/.test(sProv.error.message), JSON.stringify(sProv.error))
     // D-filler-guard: a decision selecting a filler candidate is rejected by the DB.
-    const sFiller = await succeed({ p_decision: { schemaVersion: 1, selections: [{ candidateIndex: 0, kind: 'filler', selectionEnabled: 1, startCs: 0, endCs: 1 }], keptBoundaries: [], summary: '' } })
+    const sFiller = await succeed({ p_decision: fullV2({ selections: [{ candidateIndex: 0, kind: 'filler', selectionEnabled: 1, startCs: 0, endCs: 1 }] }) })
     check('D9 DB rejects a filler selection (director_filler_disabled)', !!sFiller.error && /director_filler_disabled/.test(sFiller.error.message), JSON.stringify(sFiller.error))
+    // D-decision-v2-guard (0092): schema!=2, an incomplete object, and an off-catalog
+    // enum are each rejected before any row is written.
+    const sV1 = await succeed({ p_schema_version: 1, p_decision: { schemaVersion: 1, selections: [], keptBoundaries: [], summary: '' } })
+    check('D9b DB rejects schema_version != 2 (director_decision_bad_schema_version)', !!sV1.error && /director_decision_bad_schema_version/.test(sV1.error.message), JSON.stringify(sV1.error))
+    const sIncomplete = await succeed({ p_decision: { schemaVersion: 2, selections: [] } })
+    check('D9c DB rejects an incomplete Decision v2 (director_decision_incomplete)', !!sIncomplete.error && /director_decision_incomplete/.test(sIncomplete.error.message), JSON.stringify(sIncomplete.error))
+    const sBadCat = await succeed({ p_decision: fullV2({ captionPresetId: 'neon' }) })
+    check('D9d DB rejects an off-catalog caption preset (director_decision_bad_caption)', !!sBadCat.error && /director_decision_bad_caption/.test(sBadCat.error.message), JSON.stringify(sBadCat.error))
     check('D10 zero decision rows across all rejected succeed attempts', (await directorDecisions(p2)).length === 0)
 
     // D-wrong-attempt: fenced begin with a stale attempt => lease_lost.
