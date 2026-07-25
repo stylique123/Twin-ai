@@ -273,11 +273,64 @@ catalog this epoch); hook stays word-anchored (`hookTreatment` +
 `hookStartWordIndex`) rather than boundary-anchored. All are equally
 fabrication-proof (each re-resolves against the immutable envelope).
 
-**Zero-delta held**: migrations `0091`/`0092` remain UNAPPLIED on staging and
-production; PR #199 carries the diff for review; no `edit_plans`, output assets,
-or Edit CTA; compiling/rendering/validating still simulated.
+### 7.1 Second review round (adversarial re-review of the exit correction)
 
-**Remaining operator-verified steps** (outside the sandbox): the `phase7.mjs`
-staging-matrix cases (§5) and the actual `0091`/`0092` staging apply must run on
-staging before production enablement — the local Gate-D/Gate-E harnesses +
-shared/worker unit + parity suites are the in-sandbox substitute.
+The exit correction above was then re-reviewed adversarially (four parallel
+auditors over the decision, completion, brand and gate seams, each finding
+independently verified before acceptance). **13 findings were confirmed** — the
+three most serious of which were introduced or left standing BY the exit
+correction itself — and all were fixed on the same line (backup-29 → backup-30):
+
+- **Pin freeze only held within one attempt** (HIGH). The boot manifest was
+  recomputed from LIVE inputs on every attempt, so a mid-project brand edit (or
+  logo re-upload, or a legacy source's script edit, or a transient ffmpeg banner
+  probe failure) turned ANY retry into a permanent `manifest_mismatch`. The pin
+  now REUSES the stored manifest+snapshot on resume, self-integrity-checked
+  against their pinned SHAs, asserting byte-identity only for the
+  worker-identity sections (`assertPinnedWorkerIdentity`) — versions are still
+  never mixed, but user-mutable inputs never re-enter a running edit.
+- **Atomic RPC vs capture tolerance** (HIGH). `editor_validate_source`
+  re-validated the RAW intent windows with ZERO tolerance while the worker
+  normalizes with the frozen 750ms recorder-clock tolerance — so a routine
+  teleprompter take in the 1–750ms drift band would crash-loop to dead-letter
+  and strand the asset in `validating` forever. The RPC now allows the intent
+  the frozen tolerance and STRICTLY checks the NORMALIZED manifest windows.
+- **The DB gates never ran in CI** (HIGH) — Gate-D/Gate-E were local-only
+  scripts. A new `db-gates` PR job runs both on ephemeral PostgreSQL.
+- **No output-token bound** (major). A contract-legal decision could not fit the
+  provider's output budget, and truncation is permanent (no retry by design).
+  `selections` is now a bare index array (per-selection `reason` dropped — it was
+  discarded at re-resolution anyway), `keptBoundaries` is bounded, the budget is
+  raised, and a test RECOMPUTES the worst-case response bytes from the frozen
+  caps and asserts the fit. The PERSISTED decision shape is unchanged.
+- **Silent-drift channels** (major): the Gemini-facing `RESPONSE_SCHEMA` was
+  unpinned (now dialect-normalized-pinned to `directorResponseSchema()`), the
+  parity test never covered the Decision-v2 half (now covers every v2 constant,
+  catalog and behavior), and `count_tokens.mjs` had drifted to the pre-visualWaste
+  envelope while self-checking against its own stale constant (re-frozen).
+- **Five swallowed-error paths** (medium) where a transient DB/storage blip
+  became a PERMANENT wrong outcome — false `ownership_mismatch` rejection, false
+  `object_missing` rejection, a job settled "rejected" with the asset actually
+  left `validating`, a metadata replace erasing the finalize integrity
+  references, and an unretried heal — all now fail loud and retry.
+- Minors: `configSha256` now covers the complete generation config actually sent;
+  `0092` requires the embedded `schemaVersion` and that it agrees with the
+  column; Gate-D's schema subset now mirrors the real `storage_path UNIQUE`,
+  manifest hex CHECKs and re-validation version-bump rule.
+
+The staging workflow now **applies the repo migrations to staging and asserts
+remote/local migration parity before the matrix**, so "run with `0091`/`0092`
+actually applied" is enforced by the harness rather than assumed, and a missing
+`GEMINI_API_KEY` fails in seconds instead of 40 minutes in.
+
+**Zero-delta held**: migrations `0091`/`0092` remain UNAPPLIED on staging and
+production; PR #200 carries the diff for review (superseding #199's candidate);
+no `edit_plans`, output assets, or Edit CTA; compiling/rendering/validating still
+simulated; the directing stage remains flag-gated (`EDITOR_DIRECTOR_ENABLED`
+unset ⇒ simulated).
+
+**Remaining operator-verified step** (outside the sandbox): one dispatch of the
+staging workflow for the exact-head Phase 1–7 regression — it now applies
+`0091`/`0092` itself and asserts parity — before any production enablement. The
+in-sandbox substitutes are the Gate-D/Gate-E harnesses (now also in CI), the
+shared/worker unit + parity suites, and the token-evidence gate.
