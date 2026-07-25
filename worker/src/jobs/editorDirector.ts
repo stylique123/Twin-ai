@@ -24,14 +24,17 @@ import { DirectorCancelledError, watchCancellation } from './editorCancel.js'
 import { loadEligibleSource } from './editorInspect.js'
 import { resolveBrandSnapshot } from './brandResolve.js'
 import { loadComponentStrict } from './editorSpeech.js'
+import { lookupCached } from './editorAnalyze.js'
 import { sha256Hex, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
 import type { VerifiedSourceSession } from './sourceSession.js'
 import {
   DIRECTOR_DECISION_SCHEMA_VERSION, DIRECTOR_MODEL, DIRECTOR_PROVIDER, DIRECTOR_VERSION,
-  DIRECTOR_ENVELOPE_SCHEMA_VERSION, PIPELINE_EPOCH_V2,
+  DIRECTOR_ENVELOPE_SCHEMA_VERSION, PIPELINE_EPOCH_V2, MAX_TIME_CS,
+  MAX_VISUAL_WASTE, VISUAL_WASTE_CLASSES, visualWasteSelectionEnabled,
+  CAPTION_PRESET_IDS, ZOOM_INTENSITIES, ZOOM_REASON_CODES, TRANSITION_POLICIES,
   canonicalJson, directorResponseSchema, projectSpeechToEnvelope, serializeDirectorEnvelope,
   validateDirectorDecision, validateDirectorEnvelope,
-  type DirectorEnvelope, type SpeechBoundaryLike, type SpeechCandidateLike, type SpeechWordLike,
+  type DirectorEnvelope, type EnvVisualWaste, type SpeechBoundaryLike, type SpeechCandidateLike, type SpeechWordLike,
 } from './directorContract.js'
 import { callDirectorOnce, DirectorProviderError, type DirectorProviderResult } from './directorProvider.js'
 
@@ -68,9 +71,73 @@ const SYSTEM_PROMPT = [
   'hookStartWordIndex, and an optional short summary. Do not invent indices.',
 ].join(' ')
 
+// Map the pinned visual component's blank intervals into the compact, server-issued
+// visual-waste stream. selectionEnabled is derived from the class safety rule (only
+// corroborated dead_air is selectable), matching the envelope validator — NEVER from the
+// model, and never a guessed span.
+export function buildVisualWasteStream(visual: Record<string, unknown> | null): EnvVisualWaste[] {
+  const raw = (visual as { blankIntervals?: unknown } | null)?.blankIntervals
+  const intervals = Array.isArray(raw) ? (raw as Array<Record<string, unknown>>) : []
+  const out: EnvVisualWaste[] = []
+  for (const iv of intervals) {
+    const classCode = (VISUAL_WASTE_CLASSES as readonly string[]).indexOf(String(iv.classification ?? ''))
+    if (classCode < 0) continue
+    const startCs = Math.round(Number(iv.startMs) / 10)
+    const endCs = Math.round(Number(iv.endMs) / 10)
+    if (!Number.isInteger(startCs) || !Number.isInteger(endCs) || startCs < 0 || endCs > MAX_TIME_CS || startCs > endCs) continue
+    out.push([startCs, endCs, classCode, visualWasteSelectionEnabled(VISUAL_WASTE_CLASSES[classCode])])
+    if (out.length >= MAX_VISUAL_WASTE) break
+  }
+  return out
+}
+
+const finite = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+// The bounded `summaries` the Director sees (§3.5): compact projections of the PINNED
+// evidence (never raw component JSON), plus the ALLOWED Decision-v2 catalogs and the
+// frozen feature flags. brand states exactly what is confirmed vs none. Bounded by
+// MAX_SUMMARY_BYTES (validateDirectorEnvelope enforces the cap fail-closed).
+export function buildDirectorSummaries(
+  brandSummary: unknown, visual: Record<string, unknown> | null,
+  audio: Record<string, unknown> | null, hook: Record<string, unknown> | null,
+  visualWaste: EnvVisualWaste[],
+): Record<string, unknown> {
+  const shot = Array.isArray((visual as { shotBoundaries?: unknown } | null)?.shotBoundaries)
+    ? (visual as { shotBoundaries: unknown[] }).shotBoundaries.length : 0
+  const fc = (visual as { faceCoverage?: { samplesWithFace?: unknown; samplesTotal?: unknown } } | null)?.faceCoverage
+  const aud = (audio ?? {}) as Record<string, unknown>
+  const hk = (hook ?? {}) as Record<string, unknown>
+  const opening = (hk.spokenOpening ?? {}) as Record<string, unknown>
+  return {
+    brand: brandSummary,
+    visual: {
+      shotCount: shot,
+      blankIntervalCount: visualWaste.length,
+      selectableWasteCount: visualWaste.filter((w) => w[3] === 1).length,
+      faceCoverage: fc ? { withFace: finite(fc.samplesWithFace) ?? 0, total: finite(fc.samplesTotal) ?? 0 } : null,
+    },
+    audio: {
+      integratedLufs: finite(aud.integratedLufs), truePeakDbtp: finite(aud.truePeakDbtp),
+      noiseFloorDb: finite(aud.noiseFloorDb), snrDb: finite(aud.snrDb),
+    },
+    hook: {
+      firstWordStartMs: finite(opening.firstWordStartMs),
+      wordCount: finite(opening.wordCount),
+      matchedTokenRatio: finite(hk.matchedTokenRatio),
+    },
+    // The allowed Decision-v2 choices, so the model picks only real catalog IDs.
+    catalogs: {
+      captionPresets: [...CAPTION_PRESET_IDS], transitionPolicies: [...TRANSITION_POLICIES],
+      zoomIntensities: [...ZOOM_INTENSITIES], zoomReasons: [...ZOOM_REASON_CODES],
+    },
+    features: { autoFillerRemoval: false },
+  }
+}
+
 function buildEnvelope(
   projectId: string, asset: { id: string; content_sha256: string },
   pinned: PinnedContext, speech: Record<string, unknown>, brandSummary: unknown,
+  components: { visual: Record<string, unknown> | null; audio: Record<string, unknown> | null; hook: Record<string, unknown> | null },
 ): DirectorEnvelope {
   // generationId comes from the PINNED snapshot (authoritative), not a re-read.
   const generationId = String((pinned.snapshot.snapshot as { generationId?: string }).generationId ?? '')
@@ -84,6 +151,7 @@ function buildEnvelope(
   const promptSha256 = sha256Hex(SYSTEM_PROMPT)
   const schemaSha256 = sha256Hex(canonicalJson(directorResponseSchema()))
   const configSha256 = sha256Hex(canonicalJson({ model: DIRECTOR_MODEL, provider: DIRECTOR_PROVIDER, temperature: 0.2, maxOutputTokens: 16384, decisionSchemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION }))
+  const visualWaste = buildVisualWasteStream(components.visual)
   const env0: DirectorEnvelope = {
     schemaVersion: DIRECTOR_ENVELOPE_SCHEMA_VERSION,
     pipelineEpoch: PIPELINE_EPOCH_V2,
@@ -95,15 +163,15 @@ function buildEnvelope(
       componentDigests: { visual: digests.visual, audio: digests.audio, hook: digests.hook },
     },
     script: pinned.snapshot.snapshot,
-    // The Director is told EXACTLY what brand it has: the bounded brand snapshot, whose
-    // visual.colorsSource / logoSource are 'none' when nothing is confirmed — so the
-    // Director never treats an absent colour/logo as if it existed.
-    summaries: { brand: brandSummary },
+    // The Director sees the whole bounded picture (§3.5): brand (colorsSource/logoSource
+    // are 'none' when nothing is confirmed — never a fabricated colour/logo), compact
+    // visual/audio/hook facts, the allowed Decision-v2 catalogs, and the frozen features.
+    summaries: buildDirectorSummaries(brandSummary, components.visual, components.audio, components.hook, visualWaste),
     words: proj.words, candidates: proj.candidates, boundaries: proj.boundaries,
-    // visual-waste stream: populated from the pinned visual component's corroborated
-    // dead-air intervals in the §3.5 runtime wiring step; empty until then (honest —
-    // an unwired stream surfaces NOTHING rather than a guessed span).
-    visualWaste: [],
+    // The server-issued visual-waste candidate stream, from the pinned visual component's
+    // corroborated dead-air intervals (only dead_air is selectable — same honesty rule as
+    // the analyzer). A Decision v2 visual_waste removal can reference ONLY these indices.
+    visualWaste,
   }
   return validateDirectorEnvelope(JSON.parse(JSON.stringify(env0)))
 }
@@ -248,6 +316,19 @@ export async function runDirectingStage(
     const versions = (pinned.manifest.manifest as { componentVersions: Record<string, string> }).componentVersions
     const speech = await loadComponentStrict(asset.id, asset.content_sha256, 'speech', versions.speech)
 
+    // Load the digested evidence components the Director must SEE (§3.5). They are
+    // identified by the digests PINNED in the boot manifest — the same immutable evidence
+    // analyze produced; a missing pinned component is an integrity failure (fail closed).
+    const digests = pinned.manifest.componentDigests
+    const [visual, audio, hook] = await Promise.all([
+      lookupCached(asset.id, asset.content_sha256, 'visual', digests.visual),
+      lookupCached(asset.id, asset.content_sha256, 'audio', digests.audio),
+      lookupCached(asset.id, asset.content_sha256, 'hook', digests.hook),
+    ])
+    for (const [name, comp] of [['visual', visual], ['audio', audio], ['hook', hook]] as const) {
+      if (!comp) throw new PermanentJobError(`director: pinned ${name} component missing at its digest`, 'director_component_missing')
+    }
+
     // BRAND (D3/D4): re-derive the owner's bounded brand snapshot and PROVE it is the
     // same one pinned in the Boot Manifest at boot time. If the creator changed their
     // brand mid-project the hashes diverge → fail closed (versions are never mixed);
@@ -261,7 +342,7 @@ export async function runDirectingStage(
         'brand_snapshot_mismatch')
     }
 
-    const envelope = buildEnvelope(projectId, asset, pinned, speech, brand.snapshot)
+    const envelope = buildEnvelope(projectId, asset, pinned, speech, brand.snapshot, { visual, audio, hook })
     const serialized = serializeDirectorEnvelope(envelope)
     const envelopeSha256 = sha256Hex(serialized)
 

@@ -71,7 +71,7 @@ async function recordAnalysis(
 
 // Digest-keyed cache lookup. A hit whose recorded hash differs from the
 // current bytes is an integrity failure, never a reuse.
-async function lookupCached(
+export async function lookupCached(
   assetId: string, contentSha256: string, component: string, digest: string,
 ): Promise<Record<string, unknown> | null> {
   const { data: row, error } = await db
