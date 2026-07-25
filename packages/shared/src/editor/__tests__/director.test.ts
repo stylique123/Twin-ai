@@ -359,8 +359,38 @@ describe('Phase 7: validateDirectorDecision (server-side re-resolution)', () => 
     ['keptBoundaries out of range', { selections: [], keptBoundaries: [9] }, 'director_decision_bad_boundary'],
     ['summary too long', { selections: [], summary: 'a'.repeat(MAX_DECISION_SUMMARY_CHARS + 1) }, 'director_decision_bad_summary'],
     ['reason too long', { selections: [{ candidateIndex: 0, reason: 'a'.repeat(600) }] }, 'director_decision_bad_summary'],
+    // v2 §3.6 choice set — fabrication / catalog / safety rejections
+    ['visual-waste not selectable (static_hold)', { selections: [], visualWasteSelections: [1] }, 'director_decision_not_selectable'],
+    ['visual-waste out of range', { selections: [], visualWasteSelections: [9] }, 'director_decision_bad_visual_waste'],
+    ['visual-waste duplicate', { selections: [], visualWasteSelections: [0, 0] }, 'director_decision_duplicate'],
+    ['bad caption preset', { selections: [], captionPresetId: 'neon' }, 'director_decision_bad_caption'],
+    ['bad transition policy', { selections: [], transitionPolicy: 'wipe' }, 'director_decision_bad_transition'],
+    ['zoom fabricated anchor', { selections: [], zoomRequests: [{ anchorWordIndex: 9 }] }, 'director_decision_bad_zoom'],
+    ['zoom bad intensity', { selections: [], zoomRequests: [{ anchorWordIndex: 0, intensity: 'nuclear' }] }, 'director_decision_bad_zoom'],
+    ['zoom duplicate anchor', { selections: [], zoomRequests: [{ anchorWordIndex: 0 }, { anchorWordIndex: 0 }] }, 'director_decision_duplicate'],
   ]
   for (const [name, raw, code] of cases) it(`${name} => ${code}`, () => expectCode(raw, code))
+
+  it('re-resolves the full v2 choice set (visual-waste span FROM envelope, caption, transition, zoom)', () => {
+    const d = validateDirectorDecision({
+      selections: [],
+      visualWasteSelections: [0], // dead_air, selectable
+      captionPresetId: 'caption-punchy-word-v1', transitionPolicy: 'restrained',
+      zoomRequests: [{ anchorWordIndex: 1, intensity: 'medium', reasonCode: 'retention_beat' }],
+    }, env())
+    expect(d.visualWasteSelections).toEqual([{ wasteIndex: 0, classCode: VISUAL_WASTE_CLASSES.indexOf('dead_air'), startCs: 0, endCs: 5 }])
+    expect(d.captionPresetId).toBe('caption-punchy-word-v1')
+    expect(d.transitionPolicy).toBe('restrained')
+    expect(d.zoomRequests).toEqual([{ anchorWordIndex: 1, intensity: 'medium', reasonCode: 'retention_beat' }])
+  })
+
+  it('v2 choice-set defaults are safe/neutral when absent (never invented)', () => {
+    const d = validateDirectorDecision({ selections: [] }, env())
+    expect(d.visualWasteSelections).toEqual([])
+    expect(d.captionPresetId).toBe('caption-clean-keyword-v1')
+    expect(d.transitionPolicy).toBe('restrained')
+    expect(d.zoomRequests).toEqual([])
+  })
 
   it('response schema is a well-formed object schema requiring selections', () => {
     const s = directorResponseSchema() as { type: string; required: string[] }

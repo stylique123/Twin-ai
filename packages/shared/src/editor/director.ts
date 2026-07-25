@@ -71,6 +71,11 @@
 //     CONFIRMATORY EVIDENCE of actual tokenizer behavior on that one fixture;
 //     it proves nothing universal and is never load-bearing for the guarantee.
 
+import {
+  CAPTION_PRESET_IDS, TRANSITION_POLICIES, ZOOM_INTENSITIES, ZOOM_REASON_CODES,
+  type CaptionPresetId, type TransitionPolicy, type ZoomIntensity, type ZoomReasonCode,
+} from './catalogs'
+
 // ---------------------------------------------------------------------------
 // Frozen versions + provider bundle identity
 // ---------------------------------------------------------------------------
@@ -711,6 +716,15 @@ export const DECISION_MUSIC = ['none', 'subtle', 'energetic'] as const
 // exist, so a hook can never be fabricated.
 export const DECISION_HOOK = ['keep', 'open_at_word'] as const
 
+// Decision v2 complete choice set (§3.6). The model may pick ONLY IDs/enums from the
+// FROZEN catalogs (editor/catalogs.ts — the single source of truth, also carried in the
+// envelope's summaries.catalogs); anything else is rejected, never mapped silently.
+// Recorded encoding choice (§3.6 permits recording them): visual-waste removals are a
+// separate typed index array `visualWasteSelections` rather than a tagged
+// `removals[{source}]` union — each array re-resolves against its OWN immutable envelope
+// stream, which is simpler and equally fabrication-proof.
+export const MAX_ZOOM_REQUESTS = 20
+
 // Raw provider output shape (what generateContent must return under the strict
 // responseSchema). Only these fields are consumed.
 export interface RawDirectorDecision {
@@ -722,6 +736,10 @@ export interface RawDirectorDecision {
   emphasisWordIndices?: number[]
   hookTreatment?: string
   hookStartWordIndex?: number
+  visualWasteSelections?: number[]
+  captionPresetId?: string
+  transitionPolicy?: string
+  zoomRequests?: Array<{ anchorWordIndex: number; intensity?: string; reasonCode?: string }>
 }
 
 // The persisted, re-resolved decision. kind/selectionEnabled/span are copied
@@ -733,6 +751,21 @@ export interface DirectorSelection {
   selectionEnabled: 0 | 1
   startCs: number
   endCs: number
+}
+// A re-resolved visual-waste removal: index + the span copied FROM the pinned
+// envelope's visualWaste tuple (never the model), so the DB can re-verify.
+export interface DirectorVisualWasteSelection {
+  wasteIndex: number
+  classCode: number
+  startCs: number
+  endCs: number
+}
+// A re-resolved zoom request: the anchor word (re-resolved against the envelope)
+// plus bounded, catalog-checked intensity/reason.
+export interface DirectorZoomRequest {
+  anchorWordIndex: number
+  intensity: ZoomIntensity
+  reasonCode: ZoomReasonCode
 }
 export type DecisionPacing = (typeof DECISION_PACING)[number]
 export type DecisionMusic = (typeof DECISION_MUSIC)[number]
@@ -747,6 +780,10 @@ export interface DirectorDecision {
   emphasisWordIndices: number[]
   hookTreatment: DecisionHook
   hookStartWordIndex: number | null
+  visualWasteSelections: DirectorVisualWasteSelection[]
+  captionPresetId: CaptionPresetId
+  transitionPolicy: TransitionPolicy
+  zoomRequests: DirectorZoomRequest[]
 }
 
 export class DirectorDecisionError extends Error {
@@ -785,6 +822,21 @@ export function directorResponseSchema(): Record<string, unknown> {
       emphasisWordIndices: { type: 'array', items: { type: 'integer' } },
       hookTreatment: { type: 'string', enum: [...DECISION_HOOK] },
       hookStartWordIndex: { type: 'integer' },
+      visualWasteSelections: { type: 'array', items: { type: 'integer' } },
+      captionPresetId: { type: 'string', enum: [...CAPTION_PRESET_IDS] },
+      transitionPolicy: { type: 'string', enum: [...TRANSITION_POLICIES] },
+      zoomRequests: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            anchorWordIndex: { type: 'integer' },
+            intensity: { type: 'string', enum: [...ZOOM_INTENSITIES] },
+            reasonCode: { type: 'string', enum: [...ZOOM_REASON_CODES] },
+          },
+          required: ['anchorWordIndex'],
+        },
+      },
     },
     required: ['selections'],
   }
@@ -882,5 +934,67 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
     if (typeof idx !== 'number' || !Number.isInteger(idx) || idx <= 0 || idx >= envelope.words.length) failDecision(`decision: hookStartWordIndex ${String(idx)} out of range`, 'director_decision_bad_hook')
     hookStartWordIndex = idx
   }
-  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary, pacing, music, emphasisWordIndices, hookTreatment, hookStartWordIndex }
+
+  // Visual-waste removals. Each index must reference a REAL envelope.visualWaste tuple
+  // that is selectionEnabled=1 (only corroborated dead_air) — span copied FROM the
+  // tuple, never the model. Fabricated/non-selectable/duplicate → rejected.
+  let visualWasteSelections: DirectorVisualWasteSelection[] = []
+  if ('visualWasteSelections' in raw && raw.visualWasteSelections !== undefined) {
+    if (!Array.isArray(raw.visualWasteSelections)) failDecision('visualWasteSelections: not an array', 'director_decision_bad_visual_waste')
+    const arr = raw.visualWasteSelections as unknown[]
+    if (arr.length > MAX_VISUAL_WASTE) failDecision('visualWasteSelections: too many', 'director_decision_too_large')
+    const seenV = new Set<number>()
+    visualWasteSelections = arr.map((w) => {
+      if (typeof w !== 'number' || !Number.isInteger(w) || w < 0 || w >= envelope.visualWaste.length) failDecision(`visualWasteSelections: index ${String(w)} out of range`, 'director_decision_bad_visual_waste')
+      if (seenV.has(w)) failDecision(`visualWasteSelections: duplicate ${w}`, 'director_decision_duplicate')
+      seenV.add(w)
+      const tuple = envelope.visualWaste[w]
+      if (tuple[3] !== 1) failDecision(`visualWasteSelections ${w}: not selection-enabled`, 'director_decision_not_selectable')
+      return { wasteIndex: w, classCode: tuple[2], startCs: tuple[0], endCs: tuple[1] }
+    })
+  }
+
+  // Caption preset + transition policy: bounded FROZEN-catalog enums; safe defaults when
+  // absent (the neutral cleanest caption; restrained transitions).
+  let captionPresetId: CaptionPresetId = CAPTION_PRESET_IDS[0]
+  if ('captionPresetId' in raw && raw.captionPresetId !== undefined) {
+    if (!(CAPTION_PRESET_IDS as readonly unknown[]).includes(raw.captionPresetId)) failDecision(`decision: bad captionPresetId ${String(raw.captionPresetId)}`, 'director_decision_bad_caption')
+    captionPresetId = raw.captionPresetId as CaptionPresetId
+  }
+  let transitionPolicy: TransitionPolicy = 'restrained'
+  if ('transitionPolicy' in raw && raw.transitionPolicy !== undefined) {
+    if (!(TRANSITION_POLICIES as readonly unknown[]).includes(raw.transitionPolicy)) failDecision(`decision: bad transitionPolicy ${String(raw.transitionPolicy)}`, 'director_decision_bad_transition')
+    transitionPolicy = raw.transitionPolicy as TransitionPolicy
+  }
+
+  // Zoom requests. Each anchors on a REAL word index; intensity/reason are catalog-bound
+  // (defaulted when omitted); bounded count; deduped by anchor word so one word can't be
+  // zoomed twice. A fabricated anchor is rejected.
+  let zoomRequests: DirectorZoomRequest[] = []
+  if ('zoomRequests' in raw && raw.zoomRequests !== undefined) {
+    if (!Array.isArray(raw.zoomRequests)) failDecision('zoomRequests: not an array', 'director_decision_bad_zoom')
+    const arr = raw.zoomRequests as unknown[]
+    if (arr.length > MAX_ZOOM_REQUESTS) failDecision('zoomRequests: too many', 'director_decision_too_large')
+    const seenA = new Set<number>()
+    zoomRequests = arr.map((z) => {
+      if (!isPlainObject(z)) failDecision('zoomRequests: not an object', 'director_decision_bad_zoom')
+      const a = z.anchorWordIndex
+      if (typeof a !== 'number' || !Number.isInteger(a) || a < 0 || a >= envelope.words.length) failDecision(`zoomRequests: anchorWordIndex ${String(a)} out of range`, 'director_decision_bad_zoom')
+      if (seenA.has(a)) failDecision(`zoomRequests: duplicate anchor ${a}`, 'director_decision_duplicate')
+      seenA.add(a)
+      let intensity: ZoomIntensity = 'subtle'
+      if ('intensity' in z && z.intensity !== undefined) {
+        if (!(ZOOM_INTENSITIES as readonly unknown[]).includes(z.intensity)) failDecision(`zoomRequests: bad intensity ${String(z.intensity)}`, 'director_decision_bad_zoom')
+        intensity = z.intensity as ZoomIntensity
+      }
+      let reasonCode: ZoomReasonCode = 'emphasis_word'
+      if ('reasonCode' in z && z.reasonCode !== undefined) {
+        if (!(ZOOM_REASON_CODES as readonly unknown[]).includes(z.reasonCode)) failDecision(`zoomRequests: bad reasonCode ${String(z.reasonCode)}`, 'director_decision_bad_zoom')
+        reasonCode = z.reasonCode as ZoomReasonCode
+      }
+      return { anchorWordIndex: a, intensity, reasonCode }
+    })
+  }
+
+  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary, pacing, music, emphasisWordIndices, hookTreatment, hookStartWordIndex, visualWasteSelections, captionPresetId, transitionPolicy, zoomRequests }
 }
