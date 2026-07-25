@@ -70,7 +70,15 @@ export async function downloadObject(
 // must not let different content get validated.
 export async function headObject(bucket: string, path: string): Promise<{ sizeBytes: number; etag: string | null } | null> {
   const res = await fetch(`${base}/object/${bucket}/${encodePath(path)}`, { method: 'HEAD', headers: auth })
-  if (!res.ok) return null
+  // null means PROVEN ABSENT, and ONLY 404 proves it. The caller turns null into a
+  // PERMANENT `object_missing` rejection, so the asymmetry matters: 400 is also what
+  // the storage API returns for a malformed request / bad bucket, and a HEAD carries no
+  // body to tell the two apart — accepting it here would permanently reject a recording
+  // whose bytes are perfectly fine. Every non-404 failure (400/5xx/429/auth) is
+  // UNVERIFIED and throws, so the job retries and the truth surfaces as a job failure
+  // rather than a wrong verdict on the user's media.
+  if (res.status === 404) return null
+  if (!res.ok) throw new Error(`storage head ${bucket}/${path}: ${res.status} (transient — object presence unverified)`)
   return {
     sizeBytes: Number(res.headers.get('content-length') ?? '0'),
     etag: res.headers.get('etag'),

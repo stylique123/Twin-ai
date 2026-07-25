@@ -12,6 +12,13 @@
 // This job VALIDATES media; it never edits it. The AI Edit path (editor_v2,
 // Phase 2+) is a separate job type and cannot start from here.
 import { createHash } from 'node:crypto'
+import {
+  validateCaptureIntent,
+  normalizeCaptureManifest,
+  manifestSha256 as computeManifestSha,
+  CaptureContractError,
+  CAPTURE_NORMALIZATION_VERSION,
+} from './captureContract.js'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { mkdtemp, rm } from 'node:fs/promises'
@@ -70,6 +77,16 @@ export function extractProbeFacts(probe: ProbeResult): ProbeFacts {
     audio_channels: audio?.channels ?? null,
     audio_channel_layout: audio?.channel_layout ?? null,
   }
+}
+
+// The video stream's rational frame rate ("30000/1001") as integer num/den for the
+// media_assets columns; {null,null} when absent or malformed (never a guessed rate).
+export function parseFrameRate(probe: ProbeResult): { num: number | null; den: number | null } {
+  const raw = probe.streams?.find((s) => s.codec_type === 'video')?.r_frame_rate ?? ''
+  const m = /^(\d{1,7})\/(\d{1,7})$/.exec(raw)
+  if (!m) return { num: null, den: null }
+  const num = Number(m[1]), den = Number(m[2])
+  return num > 0 && den > 0 ? { num, den } : { num: null, den: null }
 }
 
 export interface SourceLimits {
@@ -142,17 +159,36 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
     .eq('id', assetId)
     .maybeSingle()
   if (!asset) throw new Error('validate_source: asset not found')
-  // Idempotent: a retried/duplicate job for a settled asset is a no-op.
-  if (asset.status !== 'validating') return { status: asset.status, idempotent: true }
+  // Idempotent: a retried/duplicate job for a settled asset is a no-op — EXCEPT that a
+  // crash between an older ready-flip and its generation-link could have left a READY
+  // asset with no pointer (a valid recording, disconnected). Healing here is free and
+  // safe: editor_link_ready_source is newest-wins + idempotent, so re-attempting on
+  // every retried job repairs any such orphan and can never steal from a newer take.
+  if (asset.status !== 'validating') {
+    let healedLink = false
+    if (asset.status === 'ready' && asset.generation_id) {
+      const { data, error: healErr } = await db.rpc('editor_link_ready_source', { p_asset_id: assetId })
+      // The heal must be RELIABLE, not best-effort: this retry may be the only one
+      // that ever runs for an orphaned ready asset. A transient error → throw →
+      // the job retries and the heal happens; swallowing it makes the orphan permanent.
+      if (healErr) throw new Error(`validate_source: heal-link failed: ${healErr.message}`)
+      healedLink = data === true
+    }
+    return { status: asset.status, idempotent: true, healed_link: healedLink }
+  }
   // Ownership re-check at execution time (not only at enqueue): the asset's
   // owner must still own the generation it claims to belong to.
   if (asset.generation_id) {
-    const { data: gen } = await db
+    const { data: gen, error: genErr } = await db
       .from('generations')
       .select('id')
       .eq('id', asset.generation_id)
       .eq('user_id', asset.owner_id)
       .maybeSingle()
+    // A transient read error is UNVERIFIED ownership, not disproven ownership —
+    // throwing retries; rejecting here would permanently kill a valid recording
+    // with a false security verdict on a DB blip.
+    if (genErr) throw new Error(`validate_source: ownership read failed: ${genErr.message}`)
     if (!gen) return await reject(assetId, 'ownership_mismatch', 'asset owner does not own the generation')
   }
 
@@ -203,39 +239,106 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
     })
     if (!verdict.ok) return await reject(assetId, verdict.code, verdict.detail)
 
-    // Atomic ready-flip with a DATABASE-LEVEL metadata merge (metadata ||
-    // patch): finalized_etag/finalized_bytes recorded at finalize survive to
-    // `ready` — the editor's inspection re-proves object integrity against
-    // them on every run — and no client-side read-modify-write window exists.
-    const { error: upErr } = await db.rpc('editor_complete_validation', {
-      p_asset: assetId,
-      p_sha256: sha256,
-      p_duration_ms: verdict.durationMs,
-      p_width: verdict.width,
-      p_height: verdict.height,
-      p_rotation: verdict.rotation,
-      p_has_audio: verdict.hasAudio,
-      p_size_bytes: verdict.sizeBytes ?? null,
-      p_meta_patch: {
-        container: verdict.container,
-        video_codec: verdict.videoCodec,
-        audio_codec: verdict.audioCodec,
-        probe_facts: extractProbeFacts(probe),
-        // Policy: a no-audio take is READY (playable, recoverable) but NOT
-        // eligible for AI editing — the editor requires speech to analyze.
-        editor_eligible: verdict.hasAudio,
-      },
-    })
-    if (upErr) throw new Error(`validate_source: ready update failed: ${upErr.message}`)
+    // Source Capture Manifest (Phase 7 exit correction, Constitution §5.1): if
+    // the asset carries a capture intent, normalize its accepted windows against
+    // the MEASURED media duration and persist the immutable manifest BEFORE the
+    // ready-flip (a teleprompter source cannot become ready without it — DB
+    // guard). Assets with NO intent (legacy / Phases 1-6) skip this entirely, so
+    // earlier matrices are unaffected. A teleprompter recording whose windows do
+    // not fit the measured media is REJECTED with the stable capture code — never
+    // silently recast as upload inference.
+    // Metadata patch merged (DATABASE-level ||, never replace) into the asset at
+    // ready — finalized_etag/finalized_bytes recorded at finalize SURVIVE, and the
+    // editor's inspection re-proves object integrity against them on every run.
+    const metaPatch = {
+      container: verdict.container,
+      video_codec: verdict.videoCodec,
+      audio_codec: verdict.audioCodec,
+      probe_facts: extractProbeFacts(probe),
+      // Policy: a no-audio take is READY (playable, recoverable) but NOT
+      // eligible for AI editing — the editor requires speech to analyze.
+      editor_eligible: verdict.hasAudio,
+    }
 
-    // Durable pointers on the generation via the guarded DB function:
-    // source_asset_id (authoritative) + take_path (compatibility projection).
-    // Returns false — correctly — when a NEWER take already owns the pointer.
+    const { data: capRow, error: capReadErr } = await db
+      .from('source_capture_intents')
+      .select('intent, intent_sha256, origin')
+      .eq('source_asset_id', assetId)
+      .maybeSingle()
+    // "No intent" must be PROVEN, not assumed: a transient read error here would
+    // silently misroute a capture-contract asset onto the legacy path. Throw → retry.
+    if (capReadErr) throw new Error(`validate_source: capture intent read failed: ${capReadErr.message}`)
+    if (capRow) {
+      // New-era (capture-contract) source: normalize the accepted windows against the
+      // MEASURED duration, then complete in ONE atomic RPC — capture manifest +
+      // measured facts + metadata merge + ready-flip + newest-wins generation pointer
+      // all commit together. A crash can no longer strand a ready-but-unlinked
+      // recording (there is no window between `ready` and its pointer).
+      let manifestObj: Record<string, unknown>
+      try {
+        const intent = validateCaptureIntent(capRow.intent)
+        const normalized = normalizeCaptureManifest({
+          intent,
+          sourceSha256: sha256,
+          sourceDurationMs: verdict.durationMs,
+          intentSha256: capRow.intent_sha256 as string,
+        })
+        manifestObj = { ...normalized, manifestSha256: computeManifestSha(normalized) }
+      } catch (e) {
+        if (e instanceof CaptureContractError) {
+          return await reject(assetId, e.code, `capture normalize: ${e.message}`.slice(0, 200))
+        }
+        throw e
+      }
+      const fr = parseFrameRate(probe)
+      const { error: vErr } = await db.rpc('editor_validate_source', {
+        p_asset: assetId,
+        p_owner: asset.owner_id,
+        p_content_sha: sha256,
+        p_size_bytes: verdict.sizeBytes ?? null,
+        p_duration_ms: verdict.durationMs,
+        p_width: verdict.width,
+        p_height: verdict.height,
+        p_frame_rate_num: fr.num,
+        p_frame_rate_den: fr.den,
+        p_rotation: verdict.rotation,
+        p_has_audio: verdict.hasAudio,
+        p_manifest: manifestObj,
+        p_manifest_sha256: manifestObj.manifestSha256,
+        p_normalization_version: CAPTURE_NORMALIZATION_VERSION,
+        p_probe: metaPatch,
+      })
+      if (vErr) throw new Error(`validate_source: atomic completion failed: ${vErr.message}`)
+    } else {
+      // TRUE LEGACY source (pre-capture-contract; no intent row): the transitional
+      // two-step path. Its historical ready→link crash window is covered by the
+      // heal-on-retry link in the idempotent early-return above; this branch drains
+      // to zero as legacy assets settle.
+      const { error: upErr } = await db.rpc('editor_complete_validation', {
+        p_asset: assetId,
+        p_sha256: sha256,
+        p_duration_ms: verdict.durationMs,
+        p_width: verdict.width,
+        p_height: verdict.height,
+        p_rotation: verdict.rotation,
+        p_has_audio: verdict.hasAudio,
+        p_size_bytes: verdict.sizeBytes ?? null,
+        p_meta_patch: metaPatch,
+      })
+      if (upErr) throw new Error(`validate_source: ready update failed: ${upErr.message}`)
+      if (asset.generation_id) {
+        const { error: linkErr } = await db.rpc('editor_link_ready_source', { p_asset_id: assetId })
+        if (linkErr) throw new Error(`validate_source: link failed: ${linkErr.message}`)
+      }
+    }
+
+    // Informational: does the generation now point at THIS take? (false — correctly —
+    // when a NEWER take already owns the pointer.)
     let linked = false
     if (asset.generation_id) {
-      const { data, error: linkErr } = await db.rpc('editor_link_ready_source', { p_asset_id: assetId })
-      if (linkErr) throw new Error(`validate_source: link failed: ${linkErr.message}`)
-      linked = data === true
+      const { data: g } = await db
+        .from('generations').select('source_asset_id').eq('id', asset.generation_id).maybeSingle()
+      linked = g?.source_asset_id === assetId
     }
 
     return { status: 'ready', duration_ms: verdict.durationMs, has_audio: verdict.hasAudio, sha256, linked }
@@ -249,11 +352,40 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
 // would burn worker retries re-probing a file that will never become valid.
 // Only validating→rejected is legal (the transition guard enforces it too).
 async function reject(assetId: string, code: string, detail: string): Promise<Record<string, unknown>> {
-  await db
+  // MERGE the rejection into existing metadata (finalized_etag/finalized_bytes must
+  // survive — the schema supports rejected→validating re-validation, and the etag
+  // re-check is skipped forever if the finalize references are erased here).
+  //
+  // This is a client-side read-modify-write, which 0084 otherwise avoids in favour of a
+  // DB-side `||` merge. It is safe HERE and only here: the write is guarded on
+  // `status = 'validating'`, and this worker holds that asset's job lease, so no second
+  // writer can be merging into the same row's metadata concurrently. The compare-and-set
+  // below turns any violation of that assumption into a loud failure, not a lost write.
+  const { data: cur, error: readErr } = await db
+    .from('media_assets').select('metadata').eq('id', assetId).maybeSingle()
+  if (readErr) throw new Error(`validate_source: reject read failed: ${readErr.message}`)
+  const { data: updated, error: upErr } = await db
     .from('media_assets')
-    .update({ status: 'rejected', metadata: { rejection_code: code, rejection_detail: detail } })
+    .update({ status: 'rejected', metadata: { ...((cur?.metadata as Record<string, unknown>) ?? {}), rejection_code: code, rejection_detail: detail } })
     .eq('id', assetId)
     .eq('status', 'validating')
+    .select('id')
+  // A rejection that did not land must NOT settle the job as 'rejected' — the asset
+  // would be stranded in `validating` with no retry ever coming. Throw → retry.
+  if (upErr) throw new Error(`validate_source: reject write failed: ${upErr.message}`)
+  if (!updated || updated.length === 0) {
+    // The guarded update matched NO row: the asset left `validating` between the read
+    // and the write. A silent zero-row update here would report `rejected` to the job
+    // while the row says otherwise. Re-read and decide: already `rejected` is this same
+    // verdict landing twice (idempotent — settle); anything else is a concurrent
+    // transition we must not paper over, so throw and let the attempt re-derive.
+    const { data: now } = await db
+      .from('media_assets').select('status').eq('id', assetId).maybeSingle()
+    const status = (now as { status?: string } | null)?.status ?? null
+    if (status !== 'rejected') {
+      throw new Error(`validate_source: reject did not land — asset ${assetId} is now ${status ?? 'missing'}, not validating`)
+    }
+  }
   return { status: 'rejected', code, detail }
 }
 

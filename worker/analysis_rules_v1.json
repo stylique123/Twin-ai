@@ -12,6 +12,10 @@
     "sceneMergeWindowMs": 500,
     "motionDownscaleWidth": 160,
     "motionDownscaleHeight": 90,
+    "nearBlackLuma": 0.06,
+    "frozenMotionMax": 0.01,
+    "minBlankDurationMs": 1200,
+    "blankCandidateCap": 60,
     "faceMaxSamples": 120,
     "face": {
       "inputSize": 320,

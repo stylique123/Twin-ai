@@ -34,7 +34,10 @@ concurrency:
 jobs:
   integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # Phase 1-6 consume ~40 min; Phase 7 (7 fixtures + 4 full-pipeline runs +
+    # a crash-resume + the RPC truth table) adds ~12 min. The old 45-min budget
+    # cancelled Phase 7 mid-run, so give the full Phase 1-7 regression headroom.
+    timeout-minutes: 70
     # Phases 3-5 all drive the REAL speech stage, which now loads the PINNED
     # snapshot from this path offline (fetched + digest-verified in the install
     # step). Job-level so EVERY phase inherits it, not just Phase 5. NOTE: the
@@ -46,6 +49,14 @@ jobs:
       # the built dist/ directly (not the Docker image), so inject the exact
       # head commit here — every spawned worker inherits it via process.env.
       WORKER_GIT_SHA: ${{ github.sha }}
+      # Phase-7: the REAL directing stage makes one pinned gemini-3.5-flash call.
+      # The spawned staging worker (EDITOR_DIRECTOR_ENABLED=true, set per-worker
+      # in phase7.mjs) inherits this key via process.env; Gate 0's real
+      # countTokens uses it too. This key is HARD-REQUIRED: without it the
+      # Phase-7 A/C sections fail closed (director_no_credentials) — checked
+      # up-front below so a missing secret fails in seconds, not after the
+      # 40-minute pipeline reaches Phase 7.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -113,6 +124,13 @@ jobs:
           if [ -z "$SERVICE" ] || [ "$SERVICE" = "null" ]; then
             echo "bootstrap failed: $(echo "$RESP" | jq -r '.error // "no error field"')"; exit 1
           fi
+          # NON-SECRET credential diagnostic: the selection source (key NAME only)
+          # and the literal, non-secret key PREFIX (sb_secret_ / sb_publishable_ /
+          # eyJhbGciOi… for a JWT) — the first 10 chars are a fixed format marker,
+          # never the random secret body. Bisects "wrong key selected" vs
+          # "sb_secret_ rejected by GoTrue" without exposing any credential.
+          echo "credential source: $(echo "$RESP" | jq -r '.keySource // "none"')"
+          echo "credential head:   ${SERVICE:0:10}"
           echo "::add-mask::$SERVICE"
           {
             echo "STAGING_URL=$URL"
@@ -137,8 +155,97 @@ jobs:
           if [ -z "$SUPABASE_ACCESS_TOKEN" ]; then
             echo "::error::SUPABASE_ACCESS_TOKEN secret is not set"; exit 1
           fi
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "::error::GEMINI_API_KEY secret is not set — Phase 7 A/C would fail closed 40 minutes in"; exit 1
+          fi
           supabase functions deploy source-asset --project-ref otgzjsagybpgtwweuptj
           supabase functions deploy start-editor-v2 --project-ref otgzjsagybpgtwweuptj
+
+      - name: Apply the editor migrations to STAGING (byte-exact) and assert the schema
+        # The matrix must run against the EXACT migration files in THIS checkout
+        # (the audit's requirement: "with 0091/0092 actually applied").
+        #
+        # Deliberately NOT `supabase db push`: staging's migration ledger records
+        # timestamp versions (20260717140819 named "0076_media_assets") while the
+        # repo's files are version-prefixed (0076_…), so the CLI would judge EVERY
+        # local migration unapplied and try to replay the whole history onto a
+        # populated database. Instead apply the three editor migrations explicitly
+        # with psql. All three are idempotent (create-or-replace / if-not-exists /
+        # drop-if-exists), so re-running is a safe no-op, and the file is copied
+        # byte-for-byte — never re-typed.
+        #
+        # STAGING ONLY. Production (jmdecibuytznsonrasxw) is never referenced here.
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+        run: |
+          if [ -z "$STAGING_DB_URL" ]; then
+            echo "::error::STAGING_DB_URL secret is not set — the editor migrations cannot be applied byte-exactly, so the matrix would run against a schema that does not match this checkout."
+            exit 1
+          fi
+          case "$STAGING_DB_URL" in
+            *otgzjsagybpgtwweuptj*) : ;;
+            *) echo "::error::STAGING_DB_URL does not point at the staging project ref — refusing to apply."; exit 1 ;;
+          esac
+          # GitHub-hosted runners have NO IPv6, and Supabase's DIRECT database host
+          # (db.<ref>.supabase.co) resolves to IPv6 only — psql fails with "Network is
+          # unreachable". The connection POOLER (Supavisor) is IPv4-reachable, so CI
+          # must use the pooler URI. Detect the direct host and say exactly what to fix
+          # rather than failing with an opaque network error.
+          case "$STAGING_DB_URL" in
+            *db.otgzjsagybpgtwweuptj.supabase.co*)
+              echo "::error::STAGING_DB_URL uses the DIRECT database host (db.<ref>.supabase.co), which is IPv6-only — GitHub runners cannot reach it. Use the Session pooler URI instead: Supabase dashboard -> Project Settings -> Database -> Connection string -> 'Session pooler' (host aws-<n>-<region>.pooler.supabase.com, port 5432, user postgres.otgzjsagybpgtwweuptj)."
+              exit 1 ;;
+          esac
+          # A connection URI carries the password inside the authority, so a password
+          # containing a RESERVED character silently repartitions the URI: libpq splits
+          # at the first '@', the rest of the password becomes part of the host, and the
+          # failure surfaces as an opaque "could not translate host name". Count the
+          # delimiters (never print them — this is a secret) and say exactly what to fix.
+          authority=${STAGING_DB_URL#*://}
+          at_count=$(printf '%s' "$authority" | tr -cd '@' | wc -c | tr -d ' ')
+          if [ "$at_count" != "1" ]; then
+            # The encoding table goes to the plain log, NOT the ::error:: annotation:
+            # Actions percent-DECODES annotation text, so a literal %25 in an annotation
+            # renders as a bare '%' and the instruction contradicts itself.
+            echo "STAGING_DB_URL fix — percent-encode these characters in the PASSWORD:"
+            echo "    @ -> %40      : -> %3A      / -> %2F"
+            echo "    # -> %23      ? -> %3F      % -> %25"
+            echo "  Shape: postgresql://postgres.otgzjsagybpgtwweuptj:<ENCODED-PASSWORD>@aws-<n>-<region>.pooler.supabase.com:5432/postgres"
+            echo "  (exactly one '@' in the whole string — the one before the host)"
+            echo "::error::STAGING_DB_URL contains $at_count '@' characters after '://' — a connection URI may contain exactly one, separating credentials from host. The PASSWORD contains a reserved character that must be percent-encoded; see the encoding table printed above this annotation."
+            exit 1
+          fi
+          hostport=${authority#*@}
+          case "${hostport%%/*}" in
+            *pooler.supabase.com:5432) : ;;
+            *) echo "::error::STAGING_DB_URL host is not the Session pooler on port 5432. Expected aws-<n>-<region>.pooler.supabase.com:5432 (Supabase dashboard -> Project Settings -> Database -> Connection string -> 'Session pooler')."; exit 1 ;;
+          esac
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends postgresql-client
+          # Prove the connection BEFORE touching schema: a credential problem must not
+          # surface as a half-applied migration.
+          if ! psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -c 'select 1' >/dev/null; then
+            echo "::error::Could not connect to STAGING with STAGING_DB_URL (see the psql error above). Nothing was applied. Re-copy the Session pooler connection string and percent-encode the password."
+            exit 1
+          fi
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2; do
+            echo "== applying $f =="
+            psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
+          done
+          echo "== asserting the required schema objects exist =="
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -c "
+            do \$\$
+            begin
+              if to_regclass('public.source_capture_intents')   is null then raise exception 'missing table source_capture_intents (0090)'; end if;
+              if to_regclass('public.source_capture_manifests') is null then raise exception 'missing table source_capture_manifests (0090)'; end if;
+              if to_regclass('public.source_script_snapshots')  is null then raise exception 'missing table source_script_snapshots (0091)'; end if;
+              if to_regproc('public.editor_create_source_asset') is null then raise exception 'missing fn editor_create_source_asset (0091)'; end if;
+              if to_regproc('public.editor_validate_source')     is null then raise exception 'missing fn editor_validate_source (0091)'; end if;
+              if to_regproc('public.editor_assert_director_decision_v2') is null then raise exception 'missing fn editor_assert_director_decision_v2 (0092)'; end if;
+              if not exists (select 1 from pg_trigger where tgname='trg_editor_director_decision_guard')
+                then raise exception 'missing trigger trg_editor_director_decision_guard (0092)'; end if;
+            end
+            \$\$;"
+          echo "staging schema matches this checkout (0090/0091/0092 applied)"
 
       - name: Build worker (the real one that will run in production)
         run: cd worker && npm ci && npm run build
@@ -189,3 +296,10 @@ jobs:
         # opencv-python-headless is installed by the pinned requirements step
         # above; the YuNet .onnx + vision manifest are committed in-repo.
         run: node scripts/staging-integration/phase6.mjs
+
+      - name: Run Phase 7 integration matrix (real directing — Director call, decision, filler guards)
+        # Requires migration 0088 (edit_director_calls/decisions + RPCs) applied
+        # to staging. EDITOR_DIRECTOR_ENABLED is set PER-WORKER inside phase7.mjs
+        # (never a Supabase secret) so production stays simulated. GEMINI_API_KEY
+        # is threaded via job env above.
+        run: node scripts/staging-integration/phase7.mjs

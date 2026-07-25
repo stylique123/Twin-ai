@@ -1,0 +1,577 @@
+// Editor v2 — Phase 7 Director: RUNTIME duplicate of the pure Director contract.
+//
+// The worker is self-contained (no @twinai/shared runtime dep; Docker builds
+// only worker/src). This file re-implements the envelope + decision contract
+// from packages/shared/src/editor/director.ts BYTE-FOR-BYTE, pinned by the
+// parity test worker/src/__tests__/director-contract.test.ts (a __tests__ file,
+// excluded from the tsc build, which imports the shared authority by relative
+// path and asserts identical output). NEVER import @twinai/shared from a
+// runtime module — change this file and the shared module together, or the
+// parity test fails.
+
+// ---- frozen identity/version constants (must equal the shared authority) ----
+export const DIRECTOR_VERSION = 'director-1'
+export const DIRECTOR_PROVIDER = 'google'
+export const DIRECTOR_MODEL = 'gemini-3.5-flash'
+export const DIRECTOR_ENVELOPE_SCHEMA_VERSION = 1
+export const DIRECTOR_DECISION_SCHEMA_VERSION = 2
+export const PIPELINE_EPOCH_V2 = 2
+
+export const UPSTREAM_SPEECH_BUDGET_BYTES = 1_000_000
+export const MAX_WORDS = 16949
+export const MAX_CANDIDATES = 4901
+export const MAX_BOUNDARIES = 9523
+export const MAX_TIME_CS = 180000
+export const MAX_SCRIPT_BYTES = 65536
+export const MAX_SUMMARY_BYTES = 16384
+export const IDENTITY_BUNDLE_MAX_BYTES = 2048
+export const PROVIDER_CONTEXT_TOKENS = 1048576
+export const PROVIDER_TOKEN_CEILING = Math.floor(PROVIDER_CONTEXT_TOKENS * 0.8)
+export const DIRECTOR_INPUT_MAX_BYTES = 819200
+
+export const SPEECH_CANDIDATE_KINDS = ['silence', 'filler', 'false_start', 'repetition'] as const
+export const BOUNDARY_KINDS = ['punctuation_sentence', 'asr_segment', 'pause_utterance'] as const
+export const CANDIDATE_CONFIDENCE_CODES = ['low', 'medium', 'high'] as const
+export const SILENCE_CLASS_CODES = ['none', 'uncertain', 'removable', 'dead_air'] as const
+export type SpeechCandidateKindName = (typeof SPEECH_CANDIDATE_KINDS)[number]
+export type CandidateConfidenceName = (typeof CANDIDATE_CONFIDENCE_CODES)[number]
+export type SilenceClassName = (typeof SILENCE_CLASS_CODES)[number]
+
+export const MAX_DECISION_SELECTIONS = MAX_CANDIDATES
+export const MAX_DECISION_SUMMARY_CHARS = 2000
+// OUTPUT budget (mirror of shared director.ts — bytes >= tokens convention).
+// `summary` is bounded in JS string LENGTH, not bytes, so the worst case is NOT
+// ascii (31,330 B) but a control-character summary escaping to \uXXXX: 41,330 B.
+// Frozen at 49,152 with headroom, under 65,536 - 2,048 = 63,488.
+export const MAX_DECISION_OUTPUT_BYTES = 49152
+export const DIRECTOR_MAX_OUTPUT_TOKENS = 65536
+export const DIRECTOR_THINKING_BUDGET_TOKENS = 2048
+export const MAX_DECISION_KEPT_BOUNDARIES = 512
+// Decision v2 creative choices. emphasis references words BY INDEX (word identity is
+// positional in the envelope), bounded so the decision stays small.
+export const MAX_EMPHASIS_WORDS = 40
+export const DECISION_PACING = ['calm', 'balanced', 'punchy'] as const
+export const DECISION_MUSIC = ['none', 'subtle', 'energetic'] as const
+// Hook treatment: 'keep' the real opening, or 'open_at_word' — start on a real spoken
+// word (dropping greeting/preamble BEFORE it). The word is referenced by index and must
+// exist, so a hook can never be fabricated.
+export const DECISION_HOOK = ['keep', 'open_at_word'] as const
+
+export function kindSelectionEnabled(kind: SpeechCandidateKindName): 0 | 1 {
+  return kind === 'filler' ? 0 : 1
+}
+
+// Visual-waste candidate stream (§3.5). Only corroborated dead air is selectable.
+export const VISUAL_WASTE_CLASSES = ['dead_air', 'static_hold', 'dark_motion', 'ambiguous'] as const
+export type VisualWasteClassName = (typeof VISUAL_WASTE_CLASSES)[number]
+export const MAX_VISUAL_WASTE = 60
+export function visualWasteSelectionEnabled(cls: VisualWasteClassName): 0 | 1 {
+  return cls === 'dead_air' ? 1 : 0
+}
+
+export type EnvWord = [string, number, number]
+export type EnvCandidate = [number, number, number, number, number, number, number[]]
+export type EnvBoundary = [number, number, number]
+// visualWaste: [startCs, endCs, classCode, selectionEnabled]   index == waste id
+export type EnvVisualWaste = [number, number, number, number]
+
+export interface DirectorEnvelope {
+  schemaVersion: number
+  pipelineEpoch: number
+  bundle: {
+    version: string; provider: string; model: string
+    promptSha256: string; schemaSha256: string; configSha256: string
+  }
+  identity: {
+    projectId: string; generationId: string; sourceAssetId: string
+    sourceChecksum: string; bootManifestSha: string; scriptSnapshotSha: string
+    componentVersions: { inspection: string; speech: string }
+    componentDigests: { visual: string; audio: string; hook: string }
+  }
+  script: unknown
+  summaries: unknown
+  words: EnvWord[]
+  candidates: EnvCandidate[]
+  boundaries: EnvBoundary[]
+  visualWaste: EnvVisualWaste[]
+}
+
+// ---- strict canonical JSON (identical to the shared authority) ----
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  if (typeof v !== 'object' || v === null || Array.isArray(v)) return false
+  const proto = Object.getPrototypeOf(v)
+  return proto === Object.prototype || proto === null
+}
+export function canonicalJson(value: unknown): string {
+  if (value === null) return 'null'
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('canonicalJson: non-finite number')
+    return JSON.stringify(value)
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'string') return JSON.stringify(value)
+  if (Array.isArray(value)) {
+    return `[${value.map((el) => {
+      if (el === undefined) throw new Error('canonicalJson: undefined array element')
+      return canonicalJson(el)
+    }).join(',')}]`
+  }
+  if (typeof value === 'object') {
+    if (!isPlainObject(value)) throw new Error('canonicalJson: non-plain object')
+    const keys = Object.keys(value).sort()
+    const parts: string[] = []
+    for (const k of keys) {
+      const v = value[k]
+      if (v === undefined) throw new Error(`canonicalJson: undefined property ${k}`)
+      parts.push(`${JSON.stringify(k)}:${canonicalJson(v)}`)
+    }
+    return `{${parts.join(',')}}`
+  }
+  throw new Error(`canonicalJson: unsupported value type ${typeof value}`)
+}
+const ENC = new TextEncoder()
+export function utf8ByteLength(s: string): number {
+  return ENC.encode(s).length
+}
+export function serializeDirectorEnvelope(env: DirectorEnvelope): string {
+  return canonicalJson(env)
+}
+export function envelopeByteLength(env: DirectorEnvelope): number {
+  return utf8ByteLength(serializeDirectorEnvelope(env))
+}
+
+// ---- envelope validation ----
+export class DirectorEnvelopeError extends Error {
+  code: string
+  constructor(message: string, code: string) { super(message); this.name = 'DirectorEnvelopeError'; this.code = code }
+}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+const HEX64_RE = /^[0-9a-f]{64}$/
+function fail(message: string, code: string): never { throw new DirectorEnvelopeError(message, code) }
+function requireKeys(obj: Record<string, unknown>, keys: readonly string[], where: string): void {
+  for (const k of keys) if (!(k in obj)) fail(`${where}: missing key ${k}`, 'director_envelope_missing_key')
+  for (const k of Object.keys(obj)) if (!keys.includes(k)) fail(`${where}: unknown key ${k}`, 'director_envelope_unknown_key')
+}
+function requireIntIn(v: unknown, lo: number, hi: number, where: string, code: string): number {
+  if (typeof v !== 'number' || !Number.isInteger(v) || v < lo || v > hi) fail(`${where}: expected integer in [${lo},${hi}]`, code)
+  return v as number
+}
+function requireShortString(v: unknown, maxBytes: number, where: string): string {
+  if (typeof v !== 'string' || v.length === 0 || utf8ByteLength(v) > maxBytes) fail(`${where}: expected non-empty string <= ${maxBytes} bytes`, 'director_envelope_bad_string')
+  return v
+}
+function requireExact(v: unknown, expected: string, where: string): void {
+  if (v !== expected) fail(`${where}: expected ${expected}`, 'director_envelope_bad_bundle')
+}
+function requireMatch(v: unknown, re: RegExp, where: string): string {
+  if (typeof v !== 'string' || !re.test(v)) fail(`${where}: malformed`, 'director_envelope_bad_string')
+  return v
+}
+function safeCanonicalBytes(v: unknown, where: string): number {
+  try { return utf8ByteLength(canonicalJson(v)) } catch { fail(`${where}: not canonically serializable`, 'director_envelope_unserializable') }
+}
+const TOP_KEYS = ['schemaVersion', 'pipelineEpoch', 'bundle', 'identity', 'script', 'summaries', 'words', 'candidates', 'boundaries', 'visualWaste'] as const
+const BUNDLE_KEYS = ['version', 'provider', 'model', 'promptSha256', 'schemaSha256', 'configSha256'] as const
+const IDENTITY_KEYS = ['projectId', 'generationId', 'sourceAssetId', 'sourceChecksum', 'bootManifestSha', 'scriptSnapshotSha', 'componentVersions', 'componentDigests'] as const
+
+export function validateDirectorEnvelope(input: unknown): DirectorEnvelope {
+  if (!isPlainObject(input)) fail('envelope: not a plain object', 'director_envelope_not_object')
+  requireKeys(input, TOP_KEYS, 'envelope')
+  if (input.schemaVersion !== DIRECTOR_ENVELOPE_SCHEMA_VERSION) fail('envelope schemaVersion mismatch', 'director_envelope_schema_mismatch')
+  if (input.pipelineEpoch !== PIPELINE_EPOCH_V2) fail('envelope pipelineEpoch mismatch', 'director_envelope_epoch_mismatch')
+  const bundle = input.bundle
+  if (!isPlainObject(bundle)) fail('bundle: not an object', 'director_envelope_bad_bundle')
+  requireKeys(bundle, BUNDLE_KEYS, 'bundle')
+  requireExact(bundle.version, DIRECTOR_VERSION, 'bundle.version')
+  requireExact(bundle.provider, DIRECTOR_PROVIDER, 'bundle.provider')
+  requireExact(bundle.model, DIRECTOR_MODEL, 'bundle.model')
+  requireMatch(bundle.promptSha256, HEX64_RE, 'bundle.promptSha256')
+  requireMatch(bundle.schemaSha256, HEX64_RE, 'bundle.schemaSha256')
+  requireMatch(bundle.configSha256, HEX64_RE, 'bundle.configSha256')
+  const identity = input.identity
+  if (!isPlainObject(identity)) fail('identity: not an object', 'director_envelope_bad_identity')
+  requireKeys(identity, IDENTITY_KEYS, 'identity')
+  requireMatch(identity.projectId, UUID_RE, 'identity.projectId')
+  requireMatch(identity.generationId, UUID_RE, 'identity.generationId')
+  requireMatch(identity.sourceAssetId, UUID_RE, 'identity.sourceAssetId')
+  requireMatch(identity.sourceChecksum, HEX64_RE, 'identity.sourceChecksum')
+  requireMatch(identity.bootManifestSha, HEX64_RE, 'identity.bootManifestSha')
+  requireMatch(identity.scriptSnapshotSha, HEX64_RE, 'identity.scriptSnapshotSha')
+  const cv = identity.componentVersions
+  if (!isPlainObject(cv)) fail('identity.componentVersions: not an object', 'director_envelope_bad_identity')
+  requireKeys(cv, ['inspection', 'speech'], 'identity.componentVersions')
+  requireShortString(cv.inspection, 64, 'componentVersions.inspection')
+  requireShortString(cv.speech, 64, 'componentVersions.speech')
+  const cd = identity.componentDigests
+  if (!isPlainObject(cd)) fail('identity.componentDigests: not an object', 'director_envelope_bad_identity')
+  requireKeys(cd, ['visual', 'audio', 'hook'], 'identity.componentDigests')
+  requireMatch(cd.visual, HEX64_RE, 'componentDigests.visual')
+  requireMatch(cd.audio, HEX64_RE, 'componentDigests.audio')
+  requireMatch(cd.hook, HEX64_RE, 'componentDigests.hook')
+  const idBytes = safeCanonicalBytes({ bundle, identity }, 'identity+bundle')
+  if (idBytes > IDENTITY_BUNDLE_MAX_BYTES) fail(`identity+bundle ${idBytes} > ${IDENTITY_BUNDLE_MAX_BYTES}`, 'director_identity_too_large')
+
+  const words = input.words
+  if (!Array.isArray(words)) fail('words: not an array', 'director_envelope_bad_word')
+  if (words.length > MAX_WORDS) fail(`words ${words.length} > ${MAX_WORDS}`, 'director_input_too_many_words')
+  const n = words.length
+  let prevStartCs = 0
+  for (let i = 0; i < n; i++) {
+    const w = words[i]
+    if (!Array.isArray(w) || w.length !== 3) fail(`word ${i}: tuple shape`, 'director_envelope_bad_word')
+    if (typeof w[0] !== 'string') fail(`word ${i}: text not a string`, 'director_envelope_bad_word')
+    const startCs = requireIntIn(w[1], 0, MAX_TIME_CS, `word ${i} startCs`, 'director_envelope_bad_word')
+    requireIntIn(w[2], 0, 100, `word ${i} confPct`, 'director_envelope_bad_word')
+    if (i > 0 && startCs < prevStartCs) fail(`word ${i}: startCs decreases`, 'director_envelope_bad_word')
+    prevStartCs = startCs
+  }
+  const candidates = input.candidates
+  if (!Array.isArray(candidates)) fail('candidates: not an array', 'director_envelope_bad_candidate')
+  if (candidates.length > MAX_CANDIDATES) fail(`candidates ${candidates.length} > ${MAX_CANDIDATES}`, 'director_input_too_many_candidates')
+  for (let i = 0; i < candidates.length; i++) {
+    const c = candidates[i]
+    if (!Array.isArray(c) || c.length !== 7) fail(`candidate ${i}: tuple shape`, 'director_envelope_bad_candidate')
+    const kindCode = requireIntIn(c[0], 0, SPEECH_CANDIDATE_KINDS.length - 1, `candidate ${i} kind`, 'director_envelope_bad_candidate')
+    const startCs = requireIntIn(c[1], 0, MAX_TIME_CS, `candidate ${i} startCs`, 'director_envelope_bad_candidate')
+    const endCs = requireIntIn(c[2], 0, MAX_TIME_CS, `candidate ${i} endCs`, 'director_envelope_bad_candidate')
+    if (startCs > endCs) fail(`candidate ${i}: startCs > endCs`, 'director_envelope_bad_candidate')
+    requireIntIn(c[3], 0, CANDIDATE_CONFIDENCE_CODES.length - 1, `candidate ${i} confidenceCode`, 'director_envelope_bad_candidate')
+    const silClass = requireIntIn(c[4], 0, SILENCE_CLASS_CODES.length - 1, `candidate ${i} silenceClassCode`, 'director_envelope_bad_candidate')
+    const selectionEnabled = requireIntIn(c[5], 0, 1, `candidate ${i} selectionEnabled`, 'director_envelope_bad_candidate')
+    const kindName = SPEECH_CANDIDATE_KINDS[kindCode]
+    if (kindName === 'silence') { if (silClass === 0) fail(`candidate ${i}: silence requires a non-none class`, 'director_envelope_bad_candidate') }
+    else if (silClass !== 0) fail(`candidate ${i}: non-silence must have silenceClass none`, 'director_envelope_bad_candidate')
+    if (kindName === 'filler' && selectionEnabled !== 0) fail(`candidate ${i}: filler must not be selection-enabled`, 'director_envelope_filler_selectable')
+    const refs = c[6]
+    if (!Array.isArray(refs)) fail(`candidate ${i}: refs not an array`, 'director_envelope_bad_candidate')
+    let prev = -1
+    for (const r of refs) {
+      requireIntIn(r, 0, n - 1, `candidate ${i} ref`, 'director_envelope_bad_candidate')
+      if ((r as number) <= prev) fail(`candidate ${i}: refs not strictly ascending`, 'director_envelope_bad_candidate')
+      prev = r as number
+    }
+  }
+  const boundaries = input.boundaries
+  if (!Array.isArray(boundaries)) fail('boundaries: not an array', 'director_envelope_bad_boundary')
+  if (boundaries.length > MAX_BOUNDARIES) fail(`boundaries ${boundaries.length} > ${MAX_BOUNDARIES}`, 'director_input_too_many_boundaries')
+  for (let i = 0; i < boundaries.length; i++) {
+    const b = boundaries[i]
+    if (!Array.isArray(b) || b.length !== 3) fail(`boundary ${i}: tuple shape`, 'director_envelope_bad_boundary')
+    requireIntIn(b[0], 0, BOUNDARY_KINDS.length - 1, `boundary ${i} kind`, 'director_envelope_bad_boundary')
+    const sw = requireIntIn(b[1], 0, n - 1, `boundary ${i} startWordIdx`, 'director_envelope_bad_boundary')
+    const ew = requireIntIn(b[2], 0, n - 1, `boundary ${i} endWordIdx`, 'director_envelope_bad_boundary')
+    if (sw > ew) fail(`boundary ${i}: start > end`, 'director_envelope_bad_boundary')
+  }
+  const visualWaste = input.visualWaste
+  if (!Array.isArray(visualWaste)) fail('visualWaste: not an array', 'director_envelope_bad_visual_waste')
+  if (visualWaste.length > MAX_VISUAL_WASTE) {
+    fail(`visualWaste ${visualWaste.length} > ${MAX_VISUAL_WASTE}`, 'director_input_too_many_visual_waste')
+  }
+  for (let i = 0; i < visualWaste.length; i++) {
+    const w = visualWaste[i]
+    if (!Array.isArray(w) || w.length !== 4) fail(`visualWaste ${i}: tuple shape`, 'director_envelope_bad_visual_waste')
+    const startCs = requireIntIn(w[0], 0, MAX_TIME_CS, `visualWaste ${i} startCs`, 'director_envelope_bad_visual_waste')
+    const endCs = requireIntIn(w[1], 0, MAX_TIME_CS, `visualWaste ${i} endCs`, 'director_envelope_bad_visual_waste')
+    if (startCs > endCs) fail(`visualWaste ${i}: startCs > endCs`, 'director_envelope_bad_visual_waste')
+    const classCode = requireIntIn(w[2], 0, VISUAL_WASTE_CLASSES.length - 1, `visualWaste ${i} classCode`, 'director_envelope_bad_visual_waste')
+    const selectionEnabled = requireIntIn(w[3], 0, 1, `visualWaste ${i} selectionEnabled`, 'director_envelope_bad_visual_waste')
+    if (selectionEnabled !== visualWasteSelectionEnabled(VISUAL_WASTE_CLASSES[classCode])) {
+      fail(`visualWaste ${i}: selectionEnabled must match class safety`, 'director_envelope_visual_waste_selectable')
+    }
+  }
+
+  const scriptBytes = safeCanonicalBytes(input.script, 'script')
+  if (scriptBytes > MAX_SCRIPT_BYTES) fail(`script ${scriptBytes} > ${MAX_SCRIPT_BYTES}`, 'director_script_too_large')
+  const summaryBytes = safeCanonicalBytes(input.summaries, 'summaries')
+  if (summaryBytes > MAX_SUMMARY_BYTES) fail(`summaries ${summaryBytes} > ${MAX_SUMMARY_BYTES}`, 'director_summaries_too_large')
+  const env = input as unknown as DirectorEnvelope
+  const total = envelopeByteLength(env)
+  if (total > DIRECTOR_INPUT_MAX_BYTES) fail(`envelope ${total} > ${DIRECTOR_INPUT_MAX_BYTES}`, 'director_input_too_large')
+  return env
+}
+
+// ---- projection: speech component -> envelope arrays ----
+export interface SpeechWordLike { id: string; text: string; startMs: number; confidence: number }
+export interface SpeechCandidateLike {
+  id: string; kind: string; wordIds: string[]
+  prevWordId: string | null; nextWordId: string | null
+  startMs: number; endMs: number; confidence: string
+  evidence?: Record<string, unknown> | null
+}
+export interface SpeechBoundaryLike { id: string; kind: string; startWordId: string; endWordId: string }
+
+function widIndex(id: string | null | undefined, n: number, where: string): number {
+  if (id === null || id === undefined) return -1
+  if (typeof id !== 'string') fail(`${where}: non-string word id`, 'director_projection_bad_ref')
+  const m = /^w(\d+)$/.exec(id)
+  if (!m) fail(`${where}: malformed word id ${id}`, 'director_projection_bad_ref')
+  const i = Number(m[1])
+  if (!Number.isInteger(i) || i < 0 || i >= n) fail(`${where}: word id ${id} out of range`, 'director_projection_bad_ref')
+  return i
+}
+function reqMsToCs(ms: unknown, where: string): number {
+  if (typeof ms !== 'number' || !Number.isFinite(ms)) fail(`${where}: non-finite ms`, 'director_projection_bad_ref')
+  const cs = Math.round(ms / 10)
+  if (cs < 0 || cs > MAX_TIME_CS) fail(`${where}: ms out of range`, 'director_projection_bad_ref')
+  return cs
+}
+function reqConfPct(conf: unknown, where: string): number {
+  if (typeof conf !== 'number' || !Number.isFinite(conf) || conf < 0 || conf > 1) fail(`${where}: confidence out of [0,1]`, 'director_projection_bad_ref')
+  return Math.round(conf * 100)
+}
+export function projectSpeechToEnvelope(speech: {
+  words: SpeechWordLike[]; candidates: SpeechCandidateLike[]; boundaries: SpeechBoundaryLike[]
+}): { words: EnvWord[]; candidates: EnvCandidate[]; boundaries: EnvBoundary[] } {
+  const n = speech.words.length
+  const words: EnvWord[] = speech.words.map((w, i) => {
+    if (w.id !== `w${i}`) fail(`word ${i}: positional id mismatch (${w.id})`, 'director_projection_bad_ref')
+    if (typeof w.text !== 'string') fail(`word ${i}: text not a string`, 'director_projection_bad_ref')
+    return [w.text, reqMsToCs(w.startMs, `word ${i} start`), reqConfPct(w.confidence, `word ${i} confidence`)]
+  })
+  const candidates: EnvCandidate[] = speech.candidates.map((c, i) => {
+    if (c.id !== `c${i}`) fail(`candidate ${i}: positional id mismatch (${c.id})`, 'director_projection_bad_ref')
+    const kindCode = SPEECH_CANDIDATE_KINDS.indexOf(c.kind as SpeechCandidateKindName)
+    if (kindCode < 0) fail(`candidate ${i}: unknown kind ${c.kind}`, 'director_projection_bad_ref')
+    const kindName = SPEECH_CANDIDATE_KINDS[kindCode]
+    const startCs = reqMsToCs(c.startMs, `candidate ${i} start`)
+    const endCs = reqMsToCs(c.endMs, `candidate ${i} end`)
+    if (startCs > endCs) fail(`candidate ${i}: span reversed`, 'director_projection_bad_ref')
+    const confCode = CANDIDATE_CONFIDENCE_CODES.indexOf(c.confidence as CandidateConfidenceName)
+    if (confCode < 0) fail(`candidate ${i}: invalid confidence ${String(c.confidence)}`, 'director_projection_bad_ref')
+    let silClass = 0
+    if (kindName === 'silence') {
+      const cls = c.evidence && typeof c.evidence === 'object' ? (c.evidence as Record<string, unknown>).class : undefined
+      silClass = SILENCE_CLASS_CODES.indexOf(cls as SilenceClassName)
+      if (silClass <= 0) fail(`candidate ${i}: invalid silence class ${String(cls)}`, 'director_projection_bad_ref')
+    }
+    const selectionEnabled = kindSelectionEnabled(kindName)
+    const refs = c.wordIds.map((id) => widIndex(id, n, `candidate ${i} ref`))
+    for (let r = 1; r < refs.length; r++) if (refs[r] <= refs[r - 1]) fail(`candidate ${i}: refs not strictly ascending`, 'director_projection_bad_ref')
+    return [kindCode, startCs, endCs, confCode, silClass, selectionEnabled, refs]
+  })
+  const boundaries: EnvBoundary[] = speech.boundaries.map((b, i) => {
+    if (b.id !== `u${i}`) fail(`boundary ${i}: positional id mismatch (${b.id})`, 'director_projection_bad_ref')
+    const kindCode = BOUNDARY_KINDS.indexOf(b.kind as (typeof BOUNDARY_KINDS)[number])
+    if (kindCode < 0) fail(`boundary ${i}: unknown kind ${b.kind}`, 'director_projection_bad_ref')
+    const sw = widIndex(b.startWordId, n, `boundary ${i} start`)
+    const ew = widIndex(b.endWordId, n, `boundary ${i} end`)
+    if (sw > ew) fail(`boundary ${i}: start > end`, 'director_projection_bad_ref')
+    return [kindCode, sw, ew]
+  })
+  return { words, candidates, boundaries }
+}
+
+// ---- decision (provider OUTPUT) contract ----
+// Decision v2 complete choice set (§3.6). FROZEN catalogs — mirror of shared
+// editor/catalogs.ts (worker has no @twinai/shared runtime dep; values MUST match
+// byte-for-byte, pinned by the parity test). See director.ts for the recorded encoding
+// choice (separate visualWasteSelections array; flat music enum kept as-is).
+export const CAPTION_PRESET_IDS = ['caption-clean-keyword-v1', 'caption-punchy-word-v1', 'caption-minimal-subtitle-v1'] as const
+export const ZOOM_INTENSITIES = ['subtle', 'medium'] as const
+export const ZOOM_REASON_CODES = ['emphasis_word', 'scene_open', 'retention_beat'] as const
+export const TRANSITION_POLICIES = ['hard_cuts_only', 'restrained'] as const
+export const MAX_ZOOM_REQUESTS = 20
+export type CaptionPresetId = (typeof CAPTION_PRESET_IDS)[number]
+export type ZoomIntensity = (typeof ZOOM_INTENSITIES)[number]
+export type ZoomReasonCode = (typeof ZOOM_REASON_CODES)[number]
+export type TransitionPolicy = (typeof TRANSITION_POLICIES)[number]
+export interface RawDirectorDecision {
+  selections: number[]
+  keptBoundaries?: number[]
+  summary?: string
+  pacing?: string
+  music?: string
+  emphasisWordIndices?: number[]
+  hookTreatment?: string
+  hookStartWordIndex?: number
+  visualWasteSelections?: number[]
+  captionPresetId?: string
+  transitionPolicy?: string
+  zoomRequests?: Array<{ anchorWordIndex: number; intensity?: string; reasonCode?: string }>
+}
+export interface DirectorSelection {
+  candidateIndex: number; kind: SpeechCandidateKindName; selectionEnabled: 0 | 1; startCs: number; endCs: number
+}
+export interface DirectorVisualWasteSelection {
+  wasteIndex: number; classCode: number; startCs: number; endCs: number
+}
+export interface DirectorZoomRequest {
+  anchorWordIndex: number; intensity: ZoomIntensity; reasonCode: ZoomReasonCode
+}
+export type DecisionPacing = (typeof DECISION_PACING)[number]
+export type DecisionMusic = (typeof DECISION_MUSIC)[number]
+export type DecisionHook = (typeof DECISION_HOOK)[number]
+export interface DirectorDecision {
+  schemaVersion: number; selections: DirectorSelection[]; keptBoundaries: number[]; summary: string
+  pacing: DecisionPacing; music: DecisionMusic; emphasisWordIndices: number[]
+  hookTreatment: DecisionHook; hookStartWordIndex: number | null
+  visualWasteSelections: DirectorVisualWasteSelection[]; captionPresetId: CaptionPresetId
+  transitionPolicy: TransitionPolicy; zoomRequests: DirectorZoomRequest[]
+}
+export class DirectorDecisionError extends Error {
+  code: string
+  constructor(message: string, code: string) { super(message); this.name = 'DirectorDecisionError'; this.code = code }
+}
+function failDecision(message: string, code: string): never { throw new DirectorDecisionError(message, code) }
+
+export function directorResponseSchema(): Record<string, unknown> {
+  return {
+    type: 'object',
+    properties: {
+      selections: { type: 'array', items: { type: 'integer' } },
+      keptBoundaries: { type: 'array', items: { type: 'integer' } },
+      summary: { type: 'string' },
+      pacing: { type: 'string', enum: [...DECISION_PACING] },
+      music: { type: 'string', enum: [...DECISION_MUSIC] },
+      emphasisWordIndices: { type: 'array', items: { type: 'integer' } },
+      hookTreatment: { type: 'string', enum: [...DECISION_HOOK] },
+      hookStartWordIndex: { type: 'integer' },
+      visualWasteSelections: { type: 'array', items: { type: 'integer' } },
+      captionPresetId: { type: 'string', enum: [...CAPTION_PRESET_IDS] },
+      transitionPolicy: { type: 'string', enum: [...TRANSITION_POLICIES] },
+      zoomRequests: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            anchorWordIndex: { type: 'integer' },
+            intensity: { type: 'string', enum: [...ZOOM_INTENSITIES] },
+            reasonCode: { type: 'string', enum: [...ZOOM_REASON_CODES] },
+          },
+          required: ['anchorWordIndex'],
+        },
+      },
+    },
+    required: ['selections'],
+  }
+}
+
+export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelope): DirectorDecision {
+  if (!isPlainObject(raw)) failDecision('decision: not a plain object', 'director_decision_not_object')
+  if (!('selections' in raw) || !Array.isArray(raw.selections)) failDecision('decision: selections missing/not array', 'director_decision_bad_selections')
+  const sels = raw.selections as unknown[]
+  if (sels.length > MAX_DECISION_SELECTIONS) failDecision('decision: too many selections', 'director_decision_too_large')
+  const seen = new Set<number>()
+  const selections: DirectorSelection[] = sels.map((s) => {
+    // Wire format: a selection is a BARE candidate index (see shared director.ts —
+    // reasons dropped; output-budget proof).
+    const idx = s
+    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx < 0 || idx >= envelope.candidates.length) failDecision(`selection: candidateIndex ${String(idx)} out of range`, 'director_decision_bad_ref')
+    if (seen.has(idx)) failDecision(`selection: duplicate candidateIndex ${idx}`, 'director_decision_duplicate')
+    seen.add(idx)
+    const tuple = envelope.candidates[idx]
+    const kind = SPEECH_CANDIDATE_KINDS[tuple[0]]
+    const selectionEnabled = tuple[5] as 0 | 1
+    if (kind === 'filler') failDecision(`selection ${idx}: filler is disabled`, 'director_decision_filler')
+    if (selectionEnabled !== 1) failDecision(`selection ${idx}: not selection-enabled`, 'director_decision_not_selectable')
+    return { candidateIndex: idx, kind, selectionEnabled, startCs: tuple[1], endCs: tuple[2] }
+  })
+  let keptBoundaries: number[] = []
+  if ('keptBoundaries' in raw && raw.keptBoundaries !== undefined) {
+    if (!Array.isArray(raw.keptBoundaries)) failDecision('keptBoundaries: not an array', 'director_decision_bad_boundary')
+    if ((raw.keptBoundaries as unknown[]).length > MAX_DECISION_KEPT_BOUNDARIES) failDecision('keptBoundaries: too many', 'director_decision_too_large')
+    keptBoundaries = (raw.keptBoundaries as unknown[]).map((b) => {
+      if (typeof b !== 'number' || !Number.isInteger(b) || b < 0 || b >= envelope.boundaries.length) failDecision(`keptBoundaries: index ${String(b)} out of range`, 'director_decision_bad_boundary')
+      return b
+    })
+  }
+  let summary = ''
+  if ('summary' in raw && raw.summary !== undefined) {
+    if (typeof raw.summary !== 'string' || raw.summary.length > MAX_DECISION_SUMMARY_CHARS) failDecision('summary too long / not a string', 'director_decision_bad_summary')
+    summary = raw.summary
+  }
+  // v2 creative choices. Enums default to the safe/neutral value; emphasis references
+  // words BY INDEX and every index must be a REAL word in the envelope (fabricated →
+  // rejected), with no duplicates and a bounded count.
+  let pacing: DecisionPacing = 'balanced'
+  if ('pacing' in raw && raw.pacing !== undefined) {
+    if (!(DECISION_PACING as readonly unknown[]).includes(raw.pacing)) failDecision(`decision: bad pacing ${String(raw.pacing)}`, 'director_decision_bad_pacing')
+    pacing = raw.pacing as DecisionPacing
+  }
+  let music: DecisionMusic = 'none'
+  if ('music' in raw && raw.music !== undefined) {
+    if (!(DECISION_MUSIC as readonly unknown[]).includes(raw.music)) failDecision(`decision: bad music ${String(raw.music)}`, 'director_decision_bad_music')
+    music = raw.music as DecisionMusic
+  }
+  let emphasisWordIndices: number[] = []
+  if ('emphasisWordIndices' in raw && raw.emphasisWordIndices !== undefined) {
+    if (!Array.isArray(raw.emphasisWordIndices)) failDecision('emphasisWordIndices: not an array', 'director_decision_bad_emphasis')
+    const arr = raw.emphasisWordIndices as unknown[]
+    if (arr.length > MAX_EMPHASIS_WORDS) failDecision('emphasisWordIndices: too many', 'director_decision_too_large')
+    const seenW = new Set<number>()
+    emphasisWordIndices = arr.map((w) => {
+      if (typeof w !== 'number' || !Number.isInteger(w) || w < 0 || w >= envelope.words.length) failDecision(`emphasisWordIndices: index ${String(w)} out of range`, 'director_decision_bad_emphasis')
+      if (seenW.has(w)) failDecision(`emphasisWordIndices: duplicate ${w}`, 'director_decision_duplicate')
+      seenW.add(w)
+      return w
+    })
+  }
+  // Hook treatment. 'keep' (default) never touches the opening. 'open_at_word' must name
+  // a REAL word (index in range, past the very first word) to open on — the compiler
+  // later enforces sentence coherence; a fabricated index is rejected here.
+  let hookTreatment: DecisionHook = 'keep'
+  if ('hookTreatment' in raw && raw.hookTreatment !== undefined) {
+    if (!(DECISION_HOOK as readonly unknown[]).includes(raw.hookTreatment)) failDecision(`decision: bad hookTreatment ${String(raw.hookTreatment)}`, 'director_decision_bad_hook')
+    hookTreatment = raw.hookTreatment as DecisionHook
+  }
+  let hookStartWordIndex: number | null = null
+  if (hookTreatment === 'open_at_word') {
+    const idx = raw.hookStartWordIndex
+    if (typeof idx !== 'number' || !Number.isInteger(idx) || idx <= 0 || idx >= envelope.words.length) failDecision(`decision: hookStartWordIndex ${String(idx)} out of range`, 'director_decision_bad_hook')
+    hookStartWordIndex = idx
+  }
+
+  // Visual-waste removals: index into envelope.visualWaste, must be selectionEnabled=1
+  // (only corroborated dead_air); span copied FROM the tuple, never the model.
+  let visualWasteSelections: DirectorVisualWasteSelection[] = []
+  if ('visualWasteSelections' in raw && raw.visualWasteSelections !== undefined) {
+    if (!Array.isArray(raw.visualWasteSelections)) failDecision('visualWasteSelections: not an array', 'director_decision_bad_visual_waste')
+    const arr = raw.visualWasteSelections as unknown[]
+    if (arr.length > MAX_VISUAL_WASTE) failDecision('visualWasteSelections: too many', 'director_decision_too_large')
+    const seenV = new Set<number>()
+    visualWasteSelections = arr.map((w) => {
+      if (typeof w !== 'number' || !Number.isInteger(w) || w < 0 || w >= envelope.visualWaste.length) failDecision(`visualWasteSelections: index ${String(w)} out of range`, 'director_decision_bad_visual_waste')
+      if (seenV.has(w)) failDecision(`visualWasteSelections: duplicate ${w}`, 'director_decision_duplicate')
+      seenV.add(w)
+      const tuple = envelope.visualWaste[w]
+      if (tuple[3] !== 1) failDecision(`visualWasteSelections ${w}: not selection-enabled`, 'director_decision_not_selectable')
+      return { wasteIndex: w, classCode: tuple[2], startCs: tuple[0], endCs: tuple[1] }
+    })
+  }
+  let captionPresetId: CaptionPresetId = CAPTION_PRESET_IDS[0]
+  if ('captionPresetId' in raw && raw.captionPresetId !== undefined) {
+    if (!(CAPTION_PRESET_IDS as readonly unknown[]).includes(raw.captionPresetId)) failDecision(`decision: bad captionPresetId ${String(raw.captionPresetId)}`, 'director_decision_bad_caption')
+    captionPresetId = raw.captionPresetId as CaptionPresetId
+  }
+  let transitionPolicy: TransitionPolicy = 'restrained'
+  if ('transitionPolicy' in raw && raw.transitionPolicy !== undefined) {
+    if (!(TRANSITION_POLICIES as readonly unknown[]).includes(raw.transitionPolicy)) failDecision(`decision: bad transitionPolicy ${String(raw.transitionPolicy)}`, 'director_decision_bad_transition')
+    transitionPolicy = raw.transitionPolicy as TransitionPolicy
+  }
+  let zoomRequests: DirectorZoomRequest[] = []
+  if ('zoomRequests' in raw && raw.zoomRequests !== undefined) {
+    if (!Array.isArray(raw.zoomRequests)) failDecision('zoomRequests: not an array', 'director_decision_bad_zoom')
+    const arr = raw.zoomRequests as unknown[]
+    if (arr.length > MAX_ZOOM_REQUESTS) failDecision('zoomRequests: too many', 'director_decision_too_large')
+    const seenA = new Set<number>()
+    zoomRequests = arr.map((z) => {
+      if (!isPlainObject(z)) failDecision('zoomRequests: not an object', 'director_decision_bad_zoom')
+      const a = z.anchorWordIndex
+      if (typeof a !== 'number' || !Number.isInteger(a) || a < 0 || a >= envelope.words.length) failDecision(`zoomRequests: anchorWordIndex ${String(a)} out of range`, 'director_decision_bad_zoom')
+      if (seenA.has(a)) failDecision(`zoomRequests: duplicate anchor ${a}`, 'director_decision_duplicate')
+      seenA.add(a)
+      let intensity: ZoomIntensity = 'subtle'
+      if ('intensity' in z && z.intensity !== undefined) {
+        if (!(ZOOM_INTENSITIES as readonly unknown[]).includes(z.intensity)) failDecision(`zoomRequests: bad intensity ${String(z.intensity)}`, 'director_decision_bad_zoom')
+        intensity = z.intensity as ZoomIntensity
+      }
+      let reasonCode: ZoomReasonCode = 'emphasis_word'
+      if ('reasonCode' in z && z.reasonCode !== undefined) {
+        if (!(ZOOM_REASON_CODES as readonly unknown[]).includes(z.reasonCode)) failDecision(`zoomRequests: bad reasonCode ${String(z.reasonCode)}`, 'director_decision_bad_zoom')
+        reasonCode = z.reasonCode as ZoomReasonCode
+      }
+      return { anchorWordIndex: a, intensity, reasonCode }
+    })
+  }
+  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary, pacing, music, emphasisWordIndices, hookTreatment, hookStartWordIndex, visualWasteSelections, captionPresetId, transitionPolicy, zoomRequests }
+}

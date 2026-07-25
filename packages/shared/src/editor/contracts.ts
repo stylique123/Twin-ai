@@ -346,11 +346,11 @@ export interface SpeechAnalysis {
 // PIPELINE_EPOCH is the single authority for the boot-manifest epoch. It bumps
 // only when the MEANING of the pinned-manifest scheme itself changes (not when
 // an individual component version bumps).
-export const PIPELINE_EPOCH = 1
+export const PIPELINE_EPOCH = 2
 
 // Component analyzer-bundle versions (cache identity inputs). The worker's
 // runtime constants must match these exactly — a cross-package test pins them.
-export const VISUAL_ANALYSIS_VERSION = 'visual-1'
+export const VISUAL_ANALYSIS_VERSION = 'visual-2' // v2: + per-sample luma curve + near-black/frozen blank intervals
 export const AUDIO_ANALYSIS_VERSION = 'audio-1'
 export const HOOK_EVIDENCE_VERSION = 'hook-1'
 
@@ -570,6 +570,15 @@ export interface BootArtifactManifest {
   rules: {
     rulesVersion: string
     boundsSha256: string
+  }
+  // Boot Manifest v2 pins (epoch 2). brandSnapshotSha binds the bounded brand
+  // snapshot; captureManifestSha binds the normalized source capture manifest
+  // (null ONLY for a true legacy source with no capture contract); features
+  // freezes the creative-half flags so a pinned project's behavior can't drift.
+  brandSnapshotSha: string
+  captureManifestSha: string | null
+  features: {
+    autoFillerRemoval: boolean
   }
 }
 

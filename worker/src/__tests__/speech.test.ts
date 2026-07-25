@@ -542,3 +542,27 @@ describe('speech model pinning (speech-6)', () => {
     expect(a.provenance.modelVerified).toBe(false)
   })
 })
+
+describe('bridge-corruption backstop (speech_transcript_mismatch)', () => {
+  it('fails CLOSED when per-word text grossly exceeds the transcript', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    const { PermanentJobError } = await import('../errors.js')
+    const br = fixtureBridge()
+    br.text = ''
+    // 2 words of 2000 chars each dwarf the (empty) transcript far past the
+    // 2B/word + 1KiB slack — definitionally corrupt ASR output.
+    br.words = [
+      { w: 'x'.repeat(2000), start: 0.1, end: 0.2, p: 0.9 },
+      { w: 'y'.repeat(2000), start: 0.3, end: 0.4, p: 0.9 },
+    ]
+    let err: unknown
+    try { buildSpeechAnalysis(asset, br, opts) } catch (e) { err = e }
+    expect(err).toBeInstanceOf(PermanentJobError)
+    expect((err as PermanentJobError).code).toBe('speech_transcript_mismatch')
+  })
+
+  it('legitimate output (words == transcript tokens) passes untouched', async () => {
+    const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
+    expect(() => buildSpeechAnalysis(asset, fixtureBridge(), opts)).not.toThrow()
+  })
+})

@@ -9,14 +9,16 @@
 //              every new-flow object provably has a corresponding intent row.
 //   finalize → verify the caller owns the asset, confirm the object actually
 //              exists in storage with a plausible size, then call the atomic
-//              editor_finalize_source() DB function: uploading→validating and
-//              exactly-one validation job (dedup-keyed) in ONE transaction.
-//              Repeats reconcile — a flip that lost its job gets the job
-//              inserted on the next call; valid user media is never deleted or
-//              reset to a misleading state.
+//              editor_finalize_source() DB function.
 //
 // The browser never chooses paths, never marks an asset ready, and never inserts
 // jobs directly. ffprobe validation runs on the worker (validate_source).
+//
+// TRUST BOUNDARY (Constitution §10D): create runs through the shared, injectable
+// authority runSourceCreate — it REJECTS unknown request/capture/segment keys
+// BEFORE mapping (never sanitizes hostile keys into a valid request), parses only a
+// safe size + allowed MIME, then calls EXACTLY ONE atomic RPC
+// (editor_create_source_asset). The edge performs ZERO direct table writes.
 //
 // Deploy:  supabase functions deploy source-asset
 
@@ -34,12 +36,231 @@ function json(body: unknown, status = 200) {
 const BUCKET = 'takes'
 const MAX_BYTES = 600 * 1024 * 1024 // matches the takes bucket cap
 const MIN_BYTES = 2048 // a real few-second take is tens of KB minimum
-const ALLOWED_TYPES = ['video/webm', 'video/mp4', 'video/quicktime']
+
+// ---------------------------------------------------------------------------
+// Source Capture (Constitution §5.1 / §10D). The edge PARSES, AUTHENTICATES and
+// NORMALIZES, then calls ONE atomic RPC (editor_create_source_asset). That RPC
+// is the sole authority for provenance, canonicalization/hashing, the new-era
+// marker, open/quota/descriptor policy, and the source-bound script binding — the
+// edge builds no intent, computes no hash, and enforces no cost policy.
+// ---------------------------------------------------------------------------
+// ---- edge-core (INLINED verbatim from packages/shared/src/editor/sourceCreate.ts
+// + capture.ts; Deno cannot import shared at deploy time). Shared is the single
+// source of truth; edge-source-parity.test.ts asserts these bodies never drift.
+// >>> EDGE-CORE-BEGIN
+const SOURCE_BUCKET = 'takes'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-// Abuse/cost caps (env-overridable). Modest defaults: a creator records one
-// take at a time; a fleet of parallel never-finalized uploads is not a person.
-const MAX_OPEN_SOURCE_ASSETS = Number(Deno.env.get('SOURCE_MAX_OPEN_ASSETS') ?? '5')
-const USER_QUOTA_BYTES = Number(Deno.env.get('SOURCE_USER_QUOTA_BYTES') ?? String(20 * 1024 * 1024 * 1024)) // 20 GB
+const CREATE_BODY_KEYS = new Set(['action', 'generation_id', 'recording_attempt_id', 'content_type', 'size_bytes', 'capture'])
+const CAPTURE_SNAKE_KEYS = new Set(['origin', 'recording_script_sha256', 'recorder_clock', 'accepted_segments'])
+const SEGMENT_SNAKE_KEYS = new Set(['scene_number', 'start_ms', 'end_ms', 'intended_dialogue_sha256'])
+
+export function normalizeSourceMime(contentType: string | null | undefined): { baseMime: string; ext: 'webm' | 'mp4' } | null {
+  const base = (contentType ?? '').split(';')[0].trim().toLowerCase()
+  if (base === 'video/webm') return { baseMime: 'video/webm', ext: 'webm' }
+  if (base === 'video/mp4') return { baseMime: 'video/mp4', ext: 'mp4' }
+  if (base === 'video/quicktime') return { baseMime: 'video/quicktime', ext: 'mp4' }
+  return null
+}
+
+export function safeSizeBytes(raw: unknown): number | null {
+  const n = typeof raw === 'number' ? raw : (typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : NaN)
+  if (!Number.isFinite(n) || !Number.isSafeInteger(n) || n < 0) return null
+  return n
+}
+
+export function buildCreateInput(
+  capture: Record<string, unknown>,
+  ctx: { generationId: string; clientAttemptId: string },
+): Record<string, unknown> {
+  const rawSegs = capture.accepted_segments
+  const input: Record<string, unknown> = {
+    schemaVersion: 1,
+    origin: capture.origin,
+    generationId: ctx.generationId,
+    clientAttemptId: ctx.clientAttemptId,
+    recorderClock: capture.recorder_clock,
+    acceptedSegments: Array.isArray(rawSegs)
+      ? rawSegs.map((s) => {
+          const seg = s as Record<string, unknown>
+          return {
+            sceneNumber: seg.scene_number,
+            startMs: seg.start_ms,
+            endMs: seg.end_ms,
+            intendedDialogueSha256: seg.intended_dialogue_sha256,
+          }
+        })
+      : rawSegs,
+  }
+  if (Object.prototype.hasOwnProperty.call(capture, 'recording_script_sha256')) {
+    input.recordingScriptSha256 = capture.recording_script_sha256
+  }
+  return input
+}
+
+export interface PlanError { status: number; message: string }
+export interface CreateRpcArgs {
+  p_generation: string
+  p_attempt: string
+  p_input: Record<string, unknown>
+  p_bucket: string
+  p_mime: string
+  p_size_bytes: number
+}
+
+export function buildCreatePlan(
+  raw: unknown,
+): { error: PlanError } | { rpcArgs: CreateRpcArgs } {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return { error: { status: 400, message: 'Invalid request body' } }
+  }
+  const body = raw as Record<string, unknown>
+  for (const k of Object.keys(body)) {
+    if (!CREATE_BODY_KEYS.has(k)) return { error: { status: 400, message: `Unexpected field: ${k}` } }
+  }
+  const generationId = String(body.generation_id ?? '').trim()
+  const attemptId = String(body.recording_attempt_id ?? '').trim().toLowerCase()
+  if (!UUID_RE.test(generationId)) return { error: { status: 400, message: 'generation_id (uuid) is required' } }
+  if (!UUID_RE.test(attemptId)) return { error: { status: 400, message: 'recording_attempt_id (uuid) is required' } }
+
+  const sizeBytes = safeSizeBytes(body.size_bytes)
+  if (sizeBytes === null) return { error: { status: 400, message: 'That recording is empty or too large — please re-record.' } }
+
+  const norm = normalizeSourceMime(body.content_type as string | null | undefined)
+  if (!norm) return { error: { status: 400, message: 'Unsupported video type — record or pick an MP4/MOV/WebM.' } }
+
+  const capture = body.capture
+  if (!capture || typeof capture !== 'object' || Array.isArray(capture)) {
+    return { error: { status: 400, message: 'capture provenance is required' } }
+  }
+  const cap = capture as Record<string, unknown>
+  for (const k of Object.keys(cap)) {
+    if (!CAPTURE_SNAKE_KEYS.has(k)) return { error: { status: 400, message: `Unexpected capture field: ${k}` } }
+  }
+  const segs = cap.accepted_segments
+  if (Array.isArray(segs)) {
+    for (const s of segs) {
+      if (!s || typeof s !== 'object' || Array.isArray(s)) return { error: { status: 400, message: 'Invalid capture segment' } }
+      for (const k of Object.keys(s as Record<string, unknown>)) {
+        if (!SEGMENT_SNAKE_KEYS.has(k)) return { error: { status: 400, message: `Unexpected segment field: ${k}` } }
+      }
+    }
+  }
+
+  return {
+    rpcArgs: {
+      p_generation: generationId,
+      p_attempt: attemptId,
+      p_input: buildCreateInput(cap, { generationId, clientAttemptId: attemptId }),
+      p_bucket: SOURCE_BUCKET,
+      p_mime: norm.baseMime,
+      p_size_bytes: sizeBytes,
+    },
+  }
+}
+
+export function createErrorStatus(msg: string): number {
+  if (msg.includes('source_generation_not_owned')) return 404
+  if (msg.includes('source_too_many_open')) return 429
+  if (msg.includes('source_quota_exceeded')) return 413
+  if (msg.includes('script_snapshot_too_large')) return 413
+  if (msg.includes('source_asset_rejected')
+    || msg.includes('source_attempt_conflict')
+    || msg.includes('capture_intent_conflict')
+    || msg.includes('capture_script_sha_mismatch')
+    || msg.includes('capture_dialogue_sha_mismatch')
+    || msg.includes('capture_script_ambiguous_scene')
+    || msg.includes('capture_segment_not_teleprompter')
+    || msg.includes('capture_segment_order')) return 409
+  if (msg.includes('source_policy_') || msg.includes('capture_')) return 400
+  return 500
+}
+export function mapCreateError(msg: string): string {
+  if (msg.includes('source_generation_not_owned')) return 'Generation not found'
+  if (msg.includes('source_too_many_open')) return 'Too many recordings are still processing — give them a moment to finish.'
+  if (msg.includes('source_quota_exceeded')) return 'Your storage is full — delete some older videos first.'
+  if (msg.includes('script_snapshot_too_large')) return 'Your script is too long to record against — shorten it and try again.'
+  if (msg.includes('source_asset_rejected')) return 'This recording was rejected — please record a new take.'
+  if (msg.includes('source_attempt_conflict')) return 'This recording attempt already exists with different details.'
+  if (msg.includes('capture_intent_conflict')) return 'A different capture already exists for this recording.'
+  if (msg.includes('capture_script_sha_mismatch')) return "This take doesn't match the current script — please re-record."
+  if (msg.includes('capture_dialogue_sha_mismatch')) return "A scene's words don't match the script — please re-record."
+  if (msg.includes('capture_script_ambiguous_scene')) return 'This script has duplicate scenes — regenerate it and try again.'
+  if (msg.includes('capture_segment_not_teleprompter')) return 'A recorded scene is not part of the teleprompter script — please re-record.'
+  if (msg.includes('capture_segment_order')) return 'The recorded scenes are out of order — please re-record.'
+  if (msg.includes('source_policy_mime')) return 'Unsupported video type — record or pick an MP4/MOV/WebM.'
+  if (msg.includes('source_policy_size')) return 'That recording is empty or too large — please re-record.'
+  if (msg.includes('source_policy_bucket')) return 'Upload target not allowed.'
+  if (msg.includes('capture_')) return 'The capture data was invalid — please re-record.'
+  return 'Could not start the upload — try again.'
+}
+
+export interface CreateDeps {
+  createSourceAsset(args: CreateRpcArgs & { p_owner: string }): Promise<{ data: unknown; error: { message: string } | null }>
+  signUpload(path: string): Promise<{ token: string; signedUrl: string } | null>
+}
+export interface CreateResult { status: number; body: Record<string, unknown> }
+
+export async function executePreparedCreate(
+  rpcArgs: CreateRpcArgs, ownerId: string, deps: CreateDeps,
+): Promise<CreateResult> {
+  const { data, error } = await deps.createSourceAsset({ p_owner: ownerId, ...rpcArgs })
+  if (error) return { status: createErrorStatus(error.message), body: { error: mapCreateError(error.message) } }
+  const row = (Array.isArray(data) ? data[0] : data) as { asset_id?: string; storage_path?: string; status?: string } | null
+  if (!row || !row.asset_id || !row.storage_path || !row.status) {
+    return { status: 500, body: { error: 'Could not start the upload — try again.' } }
+  }
+  const base = { assetId: row.asset_id, bucket: SOURCE_BUCKET, path: row.storage_path, status: row.status }
+  if (row.status === 'ready') return { status: 200, body: { ...base, token: null, signedUrl: null } }
+  const sign = await deps.signUpload(row.storage_path)
+  if (!sign) return { status: 500, body: { error: 'Could not authorize the upload — try again.' } }
+  return { status: 200, body: { ...base, token: sign.token, signedUrl: sign.signedUrl } }
+}
+
+export async function runSourceCreate(
+  body: unknown, ownerId: string, deps: CreateDeps,
+): Promise<CreateResult> {
+  const plan = buildCreatePlan(body)
+  if ('error' in plan) return { status: plan.error.status, body: { error: plan.error.message } }
+  return executePreparedCreate(plan.rpcArgs, ownerId, deps)
+}
+
+const FINALIZE_BODY_KEYS = new Set(['action', 'asset_id'])
+export interface RequestDeps extends CreateDeps {
+  getUser(): Promise<{ id: string } | null>
+  checkRateLimit(ownerId: string): Promise<boolean> // true = allowed
+  finalize(ownerId: string, assetId: string): Promise<CreateResult>
+}
+export async function handleSourceAssetRequest(body: unknown, deps: RequestDeps): Promise<CreateResult> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { status: 400, body: { error: 'Invalid request body' } }
+  }
+  const b = body as Record<string, unknown>
+  const user = await deps.getUser()
+  if (!user) return { status: 401, body: { error: 'Not authenticated' } }
+
+  if (b.action === 'create') {
+    // Plan ONCE (validate the full keyset FIRST — unknown/malformed never reaches the
+    // rate limiter or the create RPC), rate-check once, then execute the SAME plan.
+    const plan = buildCreatePlan(b)
+    if ('error' in plan) return { status: plan.error.status, body: { error: plan.error.message } }
+    if (!(await deps.checkRateLimit(user.id))) {
+      return { status: 429, body: { error: 'Too many uploads at once — give it a few seconds.' } }
+    }
+    return executePreparedCreate(plan.rpcArgs, user.id, deps)
+  }
+
+  if (b.action === 'finalize') {
+    for (const k of Object.keys(b)) {
+      if (!FINALIZE_BODY_KEYS.has(k)) return { status: 400, body: { error: `Unexpected field: ${k}` } }
+    }
+    const assetId = String(b.asset_id ?? '').trim()
+    if (!UUID_RE.test(assetId)) return { status: 400, body: { error: 'asset_id (uuid) is required' } }
+    return deps.finalize(user.id, assetId)
+  }
+
+  return { status: 400, body: { error: 'Unknown action' } }
+}
+// <<< EDGE-CORE-END
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -53,186 +274,57 @@ Deno.serve(async (req: Request) => {
   })
   const admin = createClient(supabaseUrl, serviceKey)
 
-  const { data: { user } } = await userClient.auth.getUser()
-  if (!user) return json({ error: 'Not authenticated' }, 401)
+  let body: unknown
+  try { body = await req.json() } catch { body = null }
 
-  let body: {
-    action?: string
-    generation_id?: string
-    recording_attempt_id?: string
-    content_type?: string
-    size_bytes?: number
-    asset_id?: string
-  }
-  try {
-    body = await req.json()
-  } catch {
-    return json({ error: 'Invalid JSON body' }, 400)
-  }
-
-  // Bound intent churn (each create is a row + a future validation job).
-  const { data: rateOk } = await admin.rpc('check_rate_limit', {
-    p_user: user.id, p_action: 'source_asset', p_max: 30, p_window_secs: 60,
-  })
-  if (rateOk === false) return json({ error: 'Too many uploads at once — give it a few seconds.' }, 429)
-
-  // Sign an upload token for the asset's exact object. upsert:true so a retry
-  // of the SAME attempt re-uploads the SAME object instead of erroring.
   async function signUpload(path: string): Promise<{ token: string; signedUrl: string } | null> {
     const { data, error } = await admin.storage.from(BUCKET).createSignedUploadUrl(path, { upsert: true })
     if (error || !data) return null
     return { token: data.token, signedUrl: data.signedUrl }
   }
 
-  function intentResponse(asset: { id: string; storage_path: string; status: string }, sign: { token: string; signedUrl: string } | null) {
-    return json({
-      assetId: asset.id,
-      bucket: BUCKET,
-      path: asset.storage_path,
-      status: asset.status,
-      token: sign?.token ?? null,
-      signedUrl: sign?.signedUrl ?? null,
-    })
-  }
-
-  if (body.action === 'create') {
-    const generationId = (body.generation_id ?? '').trim()
-    const attemptId = (body.recording_attempt_id ?? '').trim().toLowerCase()
-    const contentType = (body.content_type ?? '').trim().toLowerCase()
-    const sizeBytes = Number(body.size_bytes ?? 0)
-    if (!generationId) return json({ error: 'generation_id is required' }, 400)
-    if (!UUID_RE.test(attemptId)) return json({ error: 'recording_attempt_id (uuid) is required' }, 400)
-    if (!ALLOWED_TYPES.some((t) => contentType.startsWith(t))) {
-      return json({ error: 'Unsupported video type — record or pick an MP4/MOV/WebM.' }, 400)
-    }
-    if (!Number.isFinite(sizeBytes) || sizeBytes < MIN_BYTES) {
-      return json({ error: 'That recording came through empty — please re-record.' }, 400)
-    }
-    if (sizeBytes > MAX_BYTES) return json({ error: 'That video is too large (600MB max).' }, 400)
-
-    // Ownership: the generation must belong to the caller (owner-strict; peers
-    // can view a workspace's generations but only the owner records onto them).
-    const { data: gen } = await admin
-      .from('generations')
-      .select('id, user_id')
-      .eq('id', generationId)
-      .eq('user_id', user.id)
-      .maybeSingle()
-    if (!gen) return json({ error: 'Generation not found' }, 404)
-
-    // Idempotent create: the DB unique index on (owner, generation, attempt)
-    // means every repeat of this call — refresh, second tab, second device,
-    // timeout retry — converges on the SAME asset row and stable path.
-    const findExisting = () => admin
-      .from('media_assets')
-      .select('id, storage_path, status')
-      .eq('owner_id', user.id)
-      .eq('generation_id', generationId)
-      .eq('recording_attempt_id', attemptId)
-      .maybeSingle()
-
-    const { data: existing } = await findExisting()
-    if (existing) {
-      if (existing.status === 'ready') return intentResponse(existing, null) // nothing left to upload
-      if (existing.status === 'rejected' || existing.status === 'deleted') {
-        return json({ error: 'This recording was rejected — please record a new take.' }, 409)
-      }
-      const sign = await signUpload(existing.storage_path)
-      if (!sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
-      return intentResponse(existing, sign)
-    }
-
-    // Abuse/cost caps, checked only when actually minting a NEW asset.
-    const { count: openCount } = await admin
-      .from('media_assets')
-      .select('id', { count: 'exact', head: true })
-      .eq('owner_id', user.id)
-      .eq('kind', 'source')
-      .in('status', ['uploading', 'validating'])
-    if ((openCount ?? 0) >= MAX_OPEN_SOURCE_ASSETS) {
-      return json({ error: 'Too many recordings are still processing — give them a moment to finish.' }, 429)
-    }
-    const { data: usage } = await admin
-      .from('media_assets')
-      .select('size_bytes')
-      .eq('owner_id', user.id)
-      .neq('status', 'deleted')
-    const usedBytes = (usage ?? []).reduce((acc, r) => acc + Number(r.size_bytes ?? 0), 0)
-    if (usedBytes + sizeBytes > USER_QUOTA_BYTES) {
-      return json({ error: 'Your storage is full — delete some older videos first.' }, 413)
-    }
-
-    const assetId = crypto.randomUUID()
-    const ext = contentType.includes('mp4') ? 'mp4' : contentType.includes('quicktime') ? 'mp4' : 'webm'
-    // Stable path: {owner}/{generation}/{asset}.{ext} — owner-prefixed to match
-    // the bucket's layout conventions; retries re-upload this same object.
-    const path = `${user.id}/${generationId}/${assetId}.${ext}`
-    const { error: insErr } = await admin.from('media_assets').insert({
-      id: assetId,
-      owner_id: user.id,
-      generation_id: generationId,
-      recording_attempt_id: attemptId,
-      kind: 'source',
-      bucket: BUCKET,
-      storage_path: path,
-      mime_type: contentType,
-      size_bytes: sizeBytes,
-      status: 'uploading',
-    })
-    if (insErr) {
-      // Unique-index race: another tab/device created this attempt first.
-      // Converge on that row instead of failing.
-      const { data: raced } = await findExisting()
-      if (raced && raced.status !== 'rejected' && raced.status !== 'deleted') {
-        const sign = raced.status === 'ready' ? null : await signUpload(raced.storage_path)
-        if (raced.status !== 'ready' && !sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
-        return intentResponse(raced, sign)
-      }
-      return json({ error: 'Could not start the upload — try again.' }, 500)
-    }
-    const sign = await signUpload(path)
-    if (!sign) return json({ error: 'Could not authorize the upload — try again.' }, 500)
-    return json({ assetId, bucket: BUCKET, path, status: 'uploading', token: sign.token, signedUrl: sign.signedUrl })
-  }
-
-  if (body.action === 'finalize') {
-    const assetId = (body.asset_id ?? '').trim()
-    if (!assetId) return json({ error: 'asset_id is required' }, 400)
-
+  // The finalize product authority: verify ownership + that the object really exists,
+  // then the atomic uploading→validating + one dedup-keyed job DB RPC.
+  async function finalize(ownerId: string, assetId: string): Promise<{ status: number; body: Record<string, unknown> }> {
     const { data: asset } = await admin
-      .from('media_assets')
-      .select('id, owner_id, generation_id, bucket, storage_path, status')
-      .eq('id', assetId)
-      .eq('owner_id', user.id)
-      .maybeSingle()
-    if (!asset) return json({ error: 'Asset not found' }, 404)
-    // Idempotent: settled assets just report their state.
-    if (asset.status === 'ready') return json({ ok: true, status: 'ready' })
+      .from('media_assets').select('id, owner_id, generation_id, bucket, storage_path, status')
+      .eq('id', assetId).eq('owner_id', ownerId).maybeSingle()
+    if (!asset) return { status: 404, body: { error: 'Asset not found' } }
+    if (asset.status === 'ready') return { status: 200, body: { ok: true, status: 'ready' } }
     if (asset.status === 'rejected' || asset.status === 'deleted') {
-      return json({ error: 'This upload was rejected — please re-record.' }, 409)
+      return { status: 409, body: { error: 'This upload was rejected — please re-record.' } }
     }
-
-    // The object must really exist before we claim anything about it. HEAD via
-    // the authenticated storage endpoint (service role).
     const head = await fetch(
       `${supabaseUrl}/storage/v1/object/${BUCKET}/${asset.storage_path.split('/').map(encodeURIComponent).join('/')}`,
       { method: 'HEAD', headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } },
     )
-    if (!head.ok) return json({ error: "The upload didn't complete — try again." }, 409)
+    if (!head.ok) return { status: 409, body: { error: "The upload didn't complete — try again." } }
     const objectBytes = Number(head.headers.get('content-length') ?? '0')
     const objectEtag = head.headers.get('etag')
-    if (objectBytes < MIN_BYTES) return json({ error: 'The uploaded file is empty — please re-record.' }, 409)
-    if (objectBytes > MAX_BYTES) return json({ error: 'The uploaded file is too large.' }, 409)
-
-    // Atomic in the DB: uploading→validating + exactly-one dedup-keyed
-    // validation job, in one transaction. Safe to repeat. The size + etag pin
-    // WHICH bytes were finalized — the validator refuses different bytes.
+    if (objectBytes < MIN_BYTES) return { status: 409, body: { error: 'The uploaded file is empty — please re-record.' } }
+    if (objectBytes > MAX_BYTES) return { status: 409, body: { error: 'The uploaded file is too large.' } }
     const { data: status, error: finErr } = await admin.rpc('editor_finalize_source', {
       p_asset_id: assetId, p_object_bytes: objectBytes, p_object_etag: objectEtag,
     })
-    if (finErr) return json({ error: 'Could not queue validation — try again.' }, 500)
-    return json({ ok: true, status: status ?? 'validating' })
+    if (finErr) return { status: 500, body: { error: 'Could not queue validation — try again.' } }
+    return { status: 200, body: { ok: true, status: status ?? 'validating' } }
   }
 
-  return json({ error: 'Unknown action' }, 400)
+  // ONE shared request handler routes parse/auth/action/rate/create/finalize. All
+  // product authority (auth, rate limiter, create RPC, storage signing, finalize RPC)
+  // is injected; the edge only wires it. Malformed/unknown requests 400 before any of it.
+  const result = await handleSourceAssetRequest(body, {
+    getUser: async () => {
+      const { data: { user } } = await userClient.auth.getUser()
+      return user ? { id: user.id } : null
+    },
+    checkRateLimit: async (ownerId) => {
+      const { data } = await admin.rpc('check_rate_limit', { p_user: ownerId, p_action: 'source_asset', p_max: 30, p_window_secs: 60 })
+      return data !== false
+    },
+    createSourceAsset: (args) => admin.rpc('editor_create_source_asset', args),
+    signUpload,
+    finalize,
+  })
+  return json(result.body, result.status)
 })

@@ -25,8 +25,11 @@ import { PermanentJobError } from '../errors.js'
 
 // Analyzer bundle versions — frozen constants, never env-driven. Bumping one
 // is a code change that also changes the component digest via `version`.
-export const PIPELINE_EPOCH = 1
-export const VISUAL_ANALYSIS_VERSION = 'visual-1'
+// Boot Manifest v2 (Phase 7 exit): epoch 1 -> 2. The v2 manifest additionally
+// pins the bounded brand snapshot SHA, the source's capture-manifest SHA, and
+// the frozen feature flags — so no stage rereads live brand/feature settings.
+export const PIPELINE_EPOCH = 2
+export const VISUAL_ANALYSIS_VERSION = 'visual-2' // v2: + per-sample luma + near-black/frozen blank intervals
 export const AUDIO_ANALYSIS_VERSION = 'audio-1'
 export const HOOK_EVIDENCE_VERSION = 'hook-1'
 export const VISUAL_ANALYSIS_SCHEMA_VERSION = 1
@@ -80,6 +83,11 @@ export interface AnalysisRules {
     motionDownscaleWidth: number
     motionDownscaleHeight: number
     faceMaxSamples: number
+    // visual-2 near-black/frozen blank-interval detection.
+    nearBlackLuma: number
+    frozenMotionMax: number
+    minBlankDurationMs: number
+    blankCandidateCap: number
     face: { inputSize: number; scoreThreshold: number; nmsThreshold: number; topK: number }
   }
   audio: {
@@ -224,6 +232,9 @@ export interface BuiltManifest {
 export async function buildBootManifest(opts: {
   inspectorVersion: string
   speechVersion: string
+  brandSnapshot: Record<string, unknown>
+  brandSnapshotSha: string
+  captureManifestSha: string | null
 }): Promise<BuiltManifest> {
   const { rules, boundsSha256 } = loadAnalysisRules()
   const speech = speechModelIdentity()
@@ -261,6 +272,14 @@ export async function buildBootManifest(opts: {
     build,
     ffmpeg: { versionBannerSha256: await ffmpegBannerSha256() },
     rules: { rulesVersion: rules.rulesVersion, boundsSha256 },
+    // Boot Manifest v2 pins: the bounded brand snapshot CONTENT (frozen once — the
+    // directing stage reads THIS, never live brand, so a mid-project Brand Settings
+    // change can't retro-alter or fail the running edit) plus its SHA, the source
+    // capture-manifest SHA (null only for a true legacy source), and frozen features.
+    brandSnapshot: opts.brandSnapshot,
+    brandSnapshotSha: opts.brandSnapshotSha,
+    captureManifestSha: opts.captureManifestSha,
+    features: { autoFillerRemoval: false },
   }
   return { manifest, manifestSha: sha256Hex(canonicalJson(manifest)), componentDigests: digests }
 }
@@ -303,6 +322,12 @@ export interface BuiltSnapshot {
 //  * scene_timeline absent  -> hook = selected_hook (or null), scenes = [].
 // Fails closed (`script_snapshot_too_large`) when the canonical form exceeds
 // SCRIPT_SNAPSHOT_MAX_BYTES.
+//
+// This is the ONE canonical Recording-Script snapshot — byte-identical to shared
+// buildRecordingScriptSnapshot (@twinai/shared editor/scriptSnapshot) and the DB
+// editor_recording_script_canonical (0091). The worker can't import shared at
+// runtime, so this is a pinned mirror; script-snapshot-parity.test.ts fails if it
+// drifts. Capture computes the same SHA, so a take binds to exactly its script.
 export function buildScriptSnapshot(gen: GenerationScriptRow): BuiltSnapshot {
   const tl = (gen.scene_timeline && typeof gen.scene_timeline === 'object'
     ? gen.scene_timeline as SceneTimelineShape
@@ -330,6 +355,68 @@ export function buildScriptSnapshot(gen: GenerationScriptRow): BuiltSnapshot {
       `script snapshot canonical form is ${canonicalBytes} bytes (cap ${SCRIPT_SNAPSHOT_MAX_BYTES})`,
       'script_snapshot_too_large',
     )
+  }
+  return { snapshot, snapshotSha: sha256Hex(canonical), canonicalBytes }
+}
+
+// UPLOAD provenance — the explicit NO-CAPTURED-SCRIPT form (mirror of shared
+// buildNoCapturedScriptSnapshot). An uploaded file was not recorded against a script,
+// so it gets a distinct, deterministic snapshot (discriminated by capturedScript:false)
+// — NEVER a script snapshot and NEVER derived from the live generation.
+export function buildNoCapturedScriptSnapshot(generationId: string): BuiltSnapshot {
+  const snapshot: Record<string, unknown> = { schemaVersion: 1, capturedScript: false, generationId }
+  const canonical = canonicalJson(snapshot)
+  return { snapshot, snapshotSha: sha256Hex(canonical), canonicalBytes: Buffer.byteLength(canonical, 'utf8') }
+}
+
+// Strictly re-validate + re-canonicalize a SOURCE-BOUND recording-script snapshot read
+// back at Boot (mirror of shared reCanonicalizeBoundSnapshot). Trusts NOTHING about the
+// stored jsonb: checks the exact keyset/types/bounds and re-serializes canonically so
+// Boot recomputes the SHA from CONTENT. Any violation throws a PermanentJobError with a
+// stable code (fail closed). jsonb key ordering is not proof — only the bytes are.
+// Frozen value bounds — identical to shared scriptSnapshot (parity-pinned).
+export const SNAPSHOT_MAX_SCENES = 500
+export const SNAPSHOT_MAX_SCENE_NUMBER = 9007199254740991
+export const SNAPSHOT_MAX_HOOK_CHARS = 4096
+export const SNAPSHOT_MAX_DIALOGUE_CHARS = 4096
+export const SNAPSHOT_MAX_SCENETYPE_CHARS = 64
+export function reCanonicalizeBoundSnapshot(raw: unknown, expectedGenerationId: string): BuiltSnapshot {
+  const bad = (m: string): never => { throw new PermanentJobError(`script_binding_shape: ${m}`, 'script_binding_shape') }
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) bad('not an object')
+  const o = raw as Record<string, unknown>
+  if (Object.keys(o).sort().join(',') !== 'generationId,hook,scenes,schemaVersion') bad('unexpected keys')
+  if (o.schemaVersion !== 1) bad('bad schemaVersion')
+  if (typeof o.generationId !== 'string' || o.generationId !== expectedGenerationId) bad('generationId does not match the bound source')
+  if (o.hook !== null) {
+    if (typeof o.hook !== 'string') bad('bad hook')
+    if ((o.hook as string).length > SNAPSHOT_MAX_HOOK_CHARS) bad('hook too long')
+    if (normalizeSnapshotString(o.hook as string) !== o.hook) bad('hook is not in normalized form')
+  }
+  if (!Array.isArray(o.scenes)) bad('scenes not an array')
+  if ((o.scenes as unknown[]).length > SNAPSHOT_MAX_SCENES) bad('too many scenes')
+  const seen = new Set<number>()
+  const scenes = (o.scenes as unknown[]).map((s) => {
+    if (s === null || typeof s !== 'object' || Array.isArray(s)) bad('scene not an object')
+    const sc = s as Record<string, unknown>
+    if (Object.keys(sc).sort().join(',') !== 'dialogue,sceneNumber,sceneType,showInTeleprompter') bad('bad scene keys')
+    if (!Number.isInteger(sc.sceneNumber) || (sc.sceneNumber as number) < 1 || (sc.sceneNumber as number) > SNAPSHOT_MAX_SCENE_NUMBER) bad('bad sceneNumber')
+    if (seen.has(sc.sceneNumber as number)) bad('duplicate sceneNumber')
+    seen.add(sc.sceneNumber as number)
+    if (typeof sc.sceneType !== 'string' || sc.sceneType === '' || (sc.sceneType as string).length > SNAPSHOT_MAX_SCENETYPE_CHARS) bad('bad sceneType')
+    if (normalizeSnapshotString(sc.sceneType as string) !== sc.sceneType) bad('sceneType is not in normalized form')
+    if (sc.dialogue !== null) {
+      if (typeof sc.dialogue !== 'string') bad('bad dialogue')
+      if ((sc.dialogue as string).length > SNAPSHOT_MAX_DIALOGUE_CHARS) bad('dialogue too long')
+      if (normalizeSnapshotString(sc.dialogue as string) !== sc.dialogue) bad('dialogue is not in normalized form')
+    }
+    if (typeof sc.showInTeleprompter !== 'boolean') bad('bad showInTeleprompter')
+    return { sceneNumber: sc.sceneNumber, sceneType: sc.sceneType, dialogue: sc.dialogue, showInTeleprompter: sc.showInTeleprompter }
+  })
+  const snapshot: Record<string, unknown> = { schemaVersion: o.schemaVersion, generationId: o.generationId, hook: o.hook, scenes }
+  const canonical = canonicalJson(snapshot)
+  const canonicalBytes = Buffer.byteLength(canonical, 'utf8')
+  if (canonicalBytes > SCRIPT_SNAPSHOT_MAX_BYTES) {
+    throw new PermanentJobError(`bound script snapshot is ${canonicalBytes} bytes (cap ${SCRIPT_SNAPSHOT_MAX_BYTES})`, 'script_snapshot_too_large')
   }
   return { snapshot, snapshotSha: sha256Hex(canonical), canonicalBytes }
 }

@@ -81,7 +81,7 @@ async function putSigned(signedUrl, buf, contentType) {
 }
 async function sourceFlow(client, genId, buf, contentType) {
   const c = await callEdge(client, 'source-asset', {
-    action: 'create', generation_id: genId, recording_attempt_id: randomUUID(),
+    action: 'create', capture: { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }, generation_id: genId, recording_attempt_id: randomUUID(),
     content_type: contentType, size_bytes: buf.byteLength,
   })
   if (c.status !== 200) throw new Error(`source create ${c.status}: ${JSON.stringify(c.body)}`)
@@ -290,7 +290,7 @@ async function main() {
     // uploading source: an intent with no bytes/finalize stays 'uploading'
     const genUp = await newGen(owner.id)
     const up = await callEdge(cOwner, 'source-asset', {
-      action: 'create', generation_id: genUp, recording_attempt_id: randomUUID(),
+      action: 'create', capture: { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }, generation_id: genUp, recording_attempt_id: randomUUID(),
       content_type: 'video/webm', size_bytes: 100_000,
     })
     const rUp = await startEdit(cOwner, genUp, up.body.assetId, randomUUID())

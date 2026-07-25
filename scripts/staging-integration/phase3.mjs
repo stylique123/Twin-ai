@@ -89,7 +89,7 @@ async function putSigned(signedUrl, buf, contentType) {
 }
 async function sourceFlow(client, genId, buf, contentType = 'video/webm') {
   const c = await callEdge(client, 'source-asset', {
-    action: 'create', generation_id: genId, recording_attempt_id: randomUUID(),
+    action: 'create', capture: { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }, generation_id: genId, recording_attempt_id: randomUUID(),
     content_type: contentType, size_bytes: buf.byteLength,
   })
   if (c.status !== 200) throw new Error(`source create ${c.status}: ${JSON.stringify(c.body)}`)

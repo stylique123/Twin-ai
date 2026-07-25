@@ -47,13 +47,34 @@ export function newRecordingAttemptId(): string {
   return crypto.randomUUID()
 }
 
+// The capture payload the recorder/upload sends at `create`. The server stamps
+// the assigned source_asset_id and the recorded_at, then persists it as the
+// immutable SourceCaptureIntentV1 (see packages/shared/src/editor/capture.ts).
+// `origin='upload'` MUST carry an empty segments array (explicit inference
+// origin); `origin='teleprompter'` MUST carry the pinned script SHA and >=1
+// accepted segment. Times are integer milliseconds.
+export interface CaptureUploadPayload {
+  origin: 'teleprompter' | 'upload'
+  recording_script_sha256: string | null
+  recorder_clock: 'mediarecorder-active-time-ms' | 'none'
+  accepted_segments: Array<{
+    scene_number: number
+    start_ms: number
+    end_ms: number
+    intended_dialogue_sha256: string
+  }>
+}
+
 // Create (or converge on) the server-authorized upload intent for this attempt.
 // Returns the asset id, the STABLE object path, and a signed upload token bound
-// to exactly that object (null if the asset is already ready).
+// to exactly that object (null if the asset is already ready). When `capture` is
+// supplied, the server binds it to the new source asset as the immutable capture
+// intent — the SINGLE source-provenance seam for both record and upload paths.
 export async function createSourceUpload(
   generationId: string,
   attemptId: string,
   file: { contentType: string; sizeBytes: number },
+  capture?: CaptureUploadPayload,
 ): Promise<SourceUploadIntent> {
   const { data, error } = await getClient().functions.invoke('source-asset', {
     body: {
@@ -62,6 +83,7 @@ export async function createSourceUpload(
       recording_attempt_id: attemptId,
       content_type: file.contentType,
       size_bytes: file.sizeBytes,
+      ...(capture ? { capture } : {}),
     },
   })
   if (error) throw new Error(await invokeError(error))
@@ -87,11 +109,12 @@ export async function uploadSourceRecording(
   attemptId: string,
   file: TakeFile & { sizeBytes: number },
   onProgress?: (fraction: number) => void,
+  capture?: CaptureUploadPayload,
 ): Promise<SourceUploadIntent> {
   const intent = await createSourceUpload(generationId, attemptId, {
     contentType: file.contentType,
     sizeBytes: file.sizeBytes,
-  })
+  }, capture)
   // Already validated (e.g. finalized from another tab/device) → nothing to send.
   if (intent.status === 'ready' || !intent.token || !intent.signedUrl) {
     onProgress?.(1)

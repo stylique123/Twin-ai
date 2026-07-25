@@ -36,11 +36,14 @@ import { env } from '../env.js'
 import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost } from '../errors.js'
 import { queueSafeError, sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
-import { AnalyzeCancelledError } from './editorCancel.js'
+import { AnalyzeCancelledError, DirectorCancelledError } from './editorCancel.js'
 import { InspectionCancelledError, loadEligibleSource, runInspectingStage } from './editorInspect.js'
 import { SpeechCancelledError, runTranscribingStage } from './editorSpeech.js'
 import { runAnalyzingStage, type AnalyzeOutcome } from './editorAnalyze.js'
-import { buildBootManifest, buildScriptSnapshot, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
+import { runDirectingStage, type DirectorOutcome } from './editorDirector.js'
+import { buildBootManifest, canonicalJson, sha256Hex, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
+import { resolveBootScriptSnapshot, type SourceProvenanceState } from './bootScriptPolicy.js'
+import { resolveBrandSnapshot } from './brandResolve.js'
 import { VerifiedSourceSession } from './sourceSession.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -99,28 +102,88 @@ async function appendEvent(
 
 // ---- boot-manifest pinning --------------------------------------------------
 // Fenced, set-once: called on EVERY attempt before the stage loop. First call
-// pins; an identical recomputation is an idempotent 'already_pinned'; a
-// DIVERGENT manifest (different worker build / rules / models mid-project)
-// fails closed as the PERMANENT manifest_mismatch — versions are never mixed
-// within one project.
+// pins; a RESUME reuses the STORED pin (reuseStoredPin) after proving this
+// worker's identity sections match it — a divergent build/rules/models fails
+// closed as the PERMANENT manifest_mismatch (versions are never mixed), while
+// user-mutable inputs (brand; a legacy source's live script) never re-enter:
+// the pinned copy is the frozen truth for the whole edit.
+// Pin the owner's DEFAULT brand snapshot (content + SHA) in the Boot Manifest;
+// the Director reads the frozen copy from the pinned manifest, never live brand.
+async function pinBrandSnapshot(ownerId: string): Promise<{ snapshot: Record<string, unknown>; sha: string }> {
+  const { snapshot, sha } = await resolveBrandSnapshot(ownerId)
+  return { snapshot: snapshot as unknown as Record<string, unknown>, sha }
+}
+
+// The normalized capture-manifest SHA for THIS source asset. null ONLY for a
+// true legacy source (no capture contract). A new-era source without a manifest
+// cannot be `ready` (0091 ready-guard), so at pin time a marked source has one.
+async function pinCaptureManifestSha(sourceAssetId: string): Promise<string | null> {
+  const { data, error } = await db
+    .from('source_capture_manifests').select('manifest_sha256')
+    .eq('source_asset_id', sourceAssetId).maybeSingle()
+  if (error) throw new Error(`pin: capture manifest read failed: ${error.message}`)
+  const sha = (data?.manifest_sha256 ?? null) as string | null
+  return sha
+}
+
+// DB readers for the Boot script policy (the pure policy lives in bootScriptPolicy.ts;
+// these supply it real rows). Kept here because they use the module `db` client.
+async function readSourceProvenanceState(sourceAssetId: string): Promise<SourceProvenanceState> {
+  const { data: asset, error: aErr } = await db
+    .from('media_assets').select('capture_contract_version, owner_id, generation_id')
+    .eq('id', sourceAssetId).maybeSingle()
+  if (aErr) throw new Error(`pin: media_asset read failed: ${aErr.message}`)
+  if (!asset) throw new PermanentJobError(`pin: source asset ${sourceAssetId} missing`, 'source_missing')
+  const { data: intent, error: iErr } = await db
+    .from('source_capture_intents').select('origin, recording_script_sha256, owner_id, generation_id, source_asset_id')
+    .eq('source_asset_id', sourceAssetId).maybeSingle()
+  if (iErr) throw new Error(`pin: capture intent read failed: ${iErr.message}`)
+  const { count: manifestCount, error: mErr } = await db
+    .from('source_capture_manifests').select('source_asset_id', { count: 'exact', head: true })
+    .eq('source_asset_id', sourceAssetId)
+  if (mErr) throw new Error(`pin: capture manifest count failed: ${mErr.message}`)
+  const { count: bindingCount, error: bErr } = await db
+    .from('source_script_snapshots').select('source_asset_id', { count: 'exact', head: true })
+    .eq('source_asset_id', sourceAssetId)
+  if (bErr) throw new Error(`pin: script binding count failed: ${bErr.message}`)
+  const a = asset as { capture_contract_version: number | null; owner_id: string | null; generation_id: string | null }
+  const i = intent as { origin: string; recording_script_sha256: string | null; owner_id: string; generation_id: string | null; source_asset_id: string } | null
+  return {
+    marker: a.capture_contract_version, assetOwner: a.owner_id, assetGeneration: a.generation_id,
+    origin: i ? i.origin : null, intentOwner: i ? i.owner_id : null, intentGeneration: i ? i.generation_id : null,
+    intentSource: i ? i.source_asset_id : null, intentScriptSha: i ? i.recording_script_sha256 : null,
+    hasManifest: (manifestCount ?? 0) > 0, hasBinding: (bindingCount ?? 0) > 0,
+  }
+}
+
+// The SOURCE-BOUND recording-script snapshot row (teleprompter only) with its linkage
+// columns, so Boot can verify owner/generation binding + re-canonicalize the content.
+async function readSourceScriptSnapshotRow(sourceAssetId: string):
+  Promise<{ snapshot: unknown; snapshotSha: string; ownerId: string; generationId: string } | null> {
+  const { data, error } = await db
+    .from('source_script_snapshots').select('snapshot, snapshot_sha, owner_id, generation_id')
+    .eq('source_asset_id', sourceAssetId).maybeSingle()
+  if (error) throw new Error(`pin: source script snapshot read failed: ${error.message}`)
+  if (!data) return null
+  const d = data as { snapshot: unknown; snapshot_sha: string; owner_id: string; generation_id: string }
+  return { snapshot: d.snapshot, snapshotSha: d.snapshot_sha, ownerId: d.owner_id, generationId: d.generation_id }
+}
+
 async function pinManifest(
-  job: Job, projectId: string, generationId: string,
+  job: Job, projectId: string, generationId: string, sourceAssetId: string,
 ): Promise<{ manifest: BuiltManifest; snapshot: BuiltSnapshot; pin: string }> {
-  const manifest = await buildBootManifest({
-    inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
-  })
-  // Read the REQUIRED script columns explicitly. If a required column is
-  // absent (schema drift / an un-migrated deployment), PostgREST returns a
-  // "column ... does not exist" error — fail CLOSED with a stable
-  // schema-drift code rather than silently degrading to "no script". A
-  // legitimately NULL scene_timeline is fine (buildScriptSnapshot then
-  // produces the documented empty-scenes snapshot); only a MISSING column is
-  // the error.
+  // Read the REQUIRED script columns explicitly, plus user_id (the owner) so we
+  // can project the bounded brand snapshot. If a required column is absent
+  // (schema drift / an un-migrated deployment), PostgREST returns a "column ...
+  // does not exist" error — fail CLOSED with a stable schema-drift code rather
+  // than silently degrading to "no script". A legitimately NULL scene_timeline
+  // is fine (buildScriptSnapshot then produces the documented empty-scenes
+  // snapshot); only a MISSING column is the error.
   const { data: gen, error: genErr } = await db
-    .from('generations').select('id, selected_hook, scene_timeline')
+    .from('generations').select('id, user_id, selected_hook, scene_timeline')
     .eq('id', generationId).maybeSingle()
   if (genErr) {
-    if (/column .*does not exist|scene_timeline|selected_hook/i.test(genErr.message)) {
+    if (/column .*does not exist|scene_timeline|selected_hook|user_id/i.test(genErr.message)) {
       throw new PermanentJobError(
         `pin: generations schema is missing a required script column (deployment drift): ${genErr.message}`,
         'script_schema_drift')
@@ -128,15 +191,155 @@ async function pinManifest(
     throw new Error(`pin: generation read failed: ${genErr.message}`)
   }
   if (!gen) throw new PermanentJobError(`pin: generation ${generationId} missing`, 'generation_missing')
-  const snapshot = buildScriptSnapshot(gen as { id: string; selected_hook: string | null; scene_timeline: unknown })
-  // throws script_snapshot_too_large (fail closed)
+  const ownerId = (gen as { user_id?: string | null }).user_id
+  if (!ownerId) throw new PermanentJobError(`pin: generation ${generationId} has no owner`, 'generation_missing')
+
+  // Boot Manifest v2 pin inputs (epoch 2), both read fail-closed:
+  //  * brandSnapshotSha — the owner's DEFAULT brand voice profile + kit,
+  //    projected through the SAME bounded projection the shared contract uses
+  //    (parity-pinned). Absent/unready brand → snapshot of empty inputs (a
+  //    stable, non-null SHA); never a silent skip.
+  //  * captureManifestSha — the normalized source capture manifest for THIS
+  //    source asset. null ONLY for a true legacy source (no capture contract);
+  //    a new-era source without a manifest cannot reach `ready` (0091 guard), so
+  //    by pin time it exists.
+  const captureManifestSha = await pinCaptureManifestSha(sourceAssetId)
+  // Read the source's provenance state ONCE and reuse it for both the manifest-null
+  // guard and the snapshot policy (no double read).
+  const provState = await readSourceProvenanceState(sourceAssetId)
+  // DEFENSE IN DEPTH: a MARKED (new-era) source must NEVER pin a null capture manifest.
+  // Only a true legacy source (marker NULL) may pin null.
+  if (provState.marker !== null && !captureManifestSha) {
+    throw new PermanentJobError(`pin: marked source ${sourceAssetId} has a null capture manifest`, 'capture_manifest_required')
+  }
+
+  // RESUME REUSES THE PINNED TRUTH (§3.2 set-once, made real across attempts), and it
+  // is checked BEFORE any user-mutable live input is resolved. The manifest is
+  // recomputed from LIVE inputs; brand (and, for legacy sources, the script) are
+  // user-mutable — so "recompute, then compare" would let an input that has since
+  // become UNRESOLVABLE (brand row deleted, a legacy generation's scene_timeline
+  // grown past the snapshot bound) fail a project that is otherwise perfectly
+  // resumable from its frozen pin. Resolving the pin first removes that whole class.
+  //
+  // assertPinnedWorkerIdentity compares only the WORKER-IDENTITY sections (versions
+  // are never mixed — the guard this pin exists for); brandSnapshot is deliberately
+  // NOT among them, so an identity-only manifest built with a placeholder brand is
+  // sufficient to verify the stored pin, and the STORED brand is what we go on with.
+  const identityManifest = await buildBootManifest({
+    inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
+    brandSnapshot: {}, brandSnapshotSha: '', captureManifestSha,
+  })
+  const reused = await reuseStoredPin(projectId, identityManifest)
+  if (reused) {
+    // The first-pin path goes through editor_pin_manifest, which asserts the lease and
+    // writes a history marker. The reuse path must not be silently fence-free: append a
+    // marker (editor_append_event asserts the same lease) so a resumed attempt is both
+    // fenced and visible in the project history.
+    await appendEvent(job, projectId, 'manifest_pin_reused', {
+      manifest_sha: reused.manifest.manifestSha, snapshot_sha: reused.snapshot.snapshotSha,
+      attempt: job.attempts,
+    })
+    return reused
+  }
+
+  const brand = await pinBrandSnapshot(ownerId)
+  const manifest = await buildBootManifest({
+    inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
+    brandSnapshot: brand.snapshot, brandSnapshotSha: brand.sha, captureManifestSha,
+  })
+  // The recording-script snapshot is SOURCE-BOUND under ONE explicit marker/origin
+  // policy (resolveBootScriptSnapshot): teleprompter → the verified persisted binding;
+  // upload → the no-captured-script form; true legacy → the live generation. A new-era
+  // source NEVER falls back to the live generation, and a corrupt/mismatched/missing
+  // binding fails the job permanently rather than silently pinning the wrong script.
+  const snapshot = await resolveBootScriptSnapshot(
+    sourceAssetId, generationId, ownerId,
+    gen as { id: string; selected_hook: string | null; scene_timeline: unknown },
+    { readState: async () => provState, readRow: readSourceScriptSnapshotRow },
+  )
+
   const { data, error } = await db.rpc('editor_pin_manifest', {
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_manifest: manifest.manifest, p_manifest_sha: manifest.manifestSha,
     p_snapshot: snapshot.snapshot, p_snapshot_sha: snapshot.snapshotSha,
   })
-  if (error) throw classifyDbError(error.message)
+  if (error) {
+    // Lost the pin race to a concurrent worker (or our unpinned read was stale):
+    // re-attempt the stored-pin reuse before failing — the mismatch may be nothing
+    // but a brand edit landing between our read and the RPC.
+    if (/manifest_mismatch/.test(error.message)) {
+      const late = await reuseStoredPin(projectId, manifest)
+      if (late) {
+        await appendEvent(job, projectId, 'manifest_pin_reused', {
+          manifest_sha: late.manifest.manifestSha, snapshot_sha: late.snapshot.snapshotSha,
+          attempt: job.attempts, raced: true,
+        })
+        return late
+      }
+    }
+    throw classifyDbError(error.message)
+  }
   return { manifest, snapshot, pin: String(data ?? '') }
+}
+
+// When a boot manifest is already pinned for this project, return IT (self-integrity
+// checked) instead of the live recomputation — after asserting the WORKER-IDENTITY
+// sections are byte-identical to what this worker would produce (versions are never
+// mixed). User-mutable inputs (brand; a legacy source's live script) are deliberately
+// NOT compared: the pinned copy is the frozen truth for the whole edit.
+async function reuseStoredPin(
+  projectId: string, local: BuiltManifest,
+): Promise<{ manifest: BuiltManifest; snapshot: BuiltSnapshot; pin: string } | null> {
+  const { data: pinRow, error: pinReadErr } = await db
+    .from('edit_projects')
+    .select('boot_manifest, boot_manifest_sha, script_snapshot, script_snapshot_sha')
+    .eq('id', projectId)
+    .maybeSingle()
+  if (pinReadErr) throw new Error(`pin: stored-pin read failed: ${pinReadErr.message}`)
+  if (!pinRow?.boot_manifest_sha) return null
+  const stored = (pinRow.boot_manifest ?? {}) as Record<string, unknown>
+  if (sha256Hex(canonicalJson(stored)) !== pinRow.boot_manifest_sha) {
+    throw new PermanentJobError('pin: stored boot manifest does not hash to its pinned SHA', 'manifest_corrupt')
+  }
+  const storedSnap = (pinRow.script_snapshot ?? {}) as Record<string, unknown>
+  if (!pinRow.script_snapshot_sha || sha256Hex(canonicalJson(storedSnap)) !== pinRow.script_snapshot_sha) {
+    throw new PermanentJobError('pin: stored script snapshot does not hash to its pinned SHA', 'manifest_corrupt')
+  }
+  assertPinnedWorkerIdentity(stored, local.manifest as Record<string, unknown>)
+  const digests = (stored.componentDigests ?? {}) as { visual: string; audio: string; hook: string }
+  return {
+    manifest: { manifest: stored, manifestSha: pinRow.boot_manifest_sha, componentDigests: digests },
+    snapshot: {
+      snapshot: storedSnap, snapshotSha: pinRow.script_snapshot_sha,
+      canonicalBytes: Buffer.byteLength(canonicalJson(storedSnap), 'utf8'),
+    },
+    pin: 'already_pinned',
+  }
+}
+
+// Worker-identity sections must match the recomputation byte-for-byte. ffmpeg is the
+// one lenient section: it is compared ONLY when BOTH banners resolved. A `-version`
+// probe can fail transiently, and the result is cached for the whole process lifetime
+// (editorManifest.ts ffmpegBannerSha256) — so a single blip at pin time freezes a null
+// banner into the pin, and a blip on a later attempt produces a null locally. Either
+// direction is a probe artifact, not a version change; only two RESOLVED banners that
+// disagree prove the build actually moved. Exported for tests.
+export function assertPinnedWorkerIdentity(stored: Record<string, unknown>, local: Record<string, unknown>): void {
+  const identityKeys = ['schemaVersion', 'manifestEpoch', 'componentVersions', 'componentDigests',
+    'modelArtifacts', 'build', 'rules', 'captureManifestSha', 'features'] as const
+  for (const k of identityKeys) {
+    if (canonicalJson(stored[k] ?? null) !== canonicalJson(local[k] ?? null)) {
+      throw new PermanentJobError(`pin: pinned manifest diverges from this worker at '${k}' — versions are never mixed`, 'manifest_mismatch')
+    }
+  }
+  const banner = (v: unknown): string | null | undefined =>
+    (v as { versionBannerSha256?: string | null } | null | undefined)?.versionBannerSha256
+  const localBanner = banner(local.ffmpeg)
+  const storedBanner = banner(stored.ffmpeg)
+  if (localBanner != null && storedBanner != null
+      && canonicalJson(stored.ffmpeg ?? null) !== canonicalJson(local.ffmpeg ?? null)) {
+    throw new PermanentJobError("pin: pinned manifest diverges from this worker at 'ffmpeg' — versions are never mixed", 'manifest_mismatch')
+  }
 }
 
 // ---- background lease renewal ----------------------------------------------
@@ -239,7 +442,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
   try {
     const { data: proj, error } = await db
       .from('edit_projects')
-      .select('id,status,cancel_requested_at,generation_id')
+      .select('id,status,cancel_requested_at,generation_id,source_asset_id')
       .eq('id', projectId)
       .maybeSingle()
     if (error) throw new Error(`project read failed: ${error.message}`)
@@ -268,13 +471,14 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // BEFORE the first queued->inspecting transition (idempotent on resume;
     // fails closed on divergence). Then open the attempt-scoped source
     // session every real stage shares.
-    const pinned = await pinManifest(job, projectId, String(proj.generation_id))
+    const pinned = await pinManifest(job, projectId, String(proj.generation_id), String(proj.source_asset_id))
     const src = await loadEligibleSource(projectId, 'session')
     session = new VerifiedSourceSession(src.asset, src.meta, dir)
 
     let inspect: Record<string, unknown> | null = null
     let speech: Record<string, unknown> | null = null
     let analysis: AnalyzeOutcome | null = null
+    let director: DirectorOutcome | null = null
     for (const stage of stagesFrom(proj.status)) {
       if (lease.lost()) throw new LeaseLostError(`lease lost before stage ${stage}`)
       maybeCrash(`before_stage:${stage}`, job)
@@ -292,7 +496,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       // the project as cancelled — shared by every real stage.
       const cancelledMidStage = async (err: unknown): Promise<boolean> => {
         if (err instanceof InspectionCancelledError || err instanceof SpeechCancelledError
-            || err instanceof AnalyzeCancelledError) {
+            || err instanceof AnalyzeCancelledError || err instanceof DirectorCancelledError) {
           await finishProject(job, projectId, 'cancelled', undefined, { at_stage: stage })
           return true
         }
@@ -353,6 +557,20 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           }
           throw err
         }
+      } else if (stage === 'directing' && env.editorDirectorEnabled) {
+        // Phase 7: the REAL directing stage — one pinned gemini-3.5-flash call,
+        // server-side re-resolution, immutable decision. Gated by env so
+        // production (flag unset) keeps directing SIMULATED below.
+        try {
+          director = await runDirectingStage(job, projectId, dir, session, pinned)
+        } catch (err) {
+          if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          if (!isLeaseLost(err)) {
+            const code = err instanceof PermanentJobError ? err.code : 'director_error'
+            await appendEvent(job, projectId, 'director_failed', { code })
+          }
+          throw err
+        }
       } else {
         await runStageWithTimeout(stage, job, dir)
       }
@@ -360,22 +578,29 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     }
 
     await finishProject(job, projectId, 'completed', undefined, {
-      // Scaffold marker: directing/compiling/rendering/validating are still
-      // simulated and output_asset_id stays NULL — never a product success.
-      simulated_after_analysis: true,
+      // Scaffold marker: compiling/rendering/validating are still simulated and
+      // output_asset_id stays NULL — never a product success. When directing
+      // ran for real, the boundary moves to after-directing; otherwise it is
+      // the unchanged after-analysis boundary (production).
+      ...(director ? { simulated_after_directing: true } : { simulated_after_analysis: true }),
+      director_ran: !!director,
       manifest_sha: pinned.manifest.manifestSha,
       source_downloads: session.downloadsPerformed,
       components: analysis ? {
         visual: analysis.visual, audio: analysis.audio, hook: analysis.hook,
       } : null,
+      director: director ? { selections: director.selections, reused: director.reused, decision_sha256: director.decisionSha256 } : null,
     })
     maybeCrash('after_finish', job) // project settled, job not yet acknowledged
     return {
-      simulated_after_analysis: true, // directing/compiling/rendering/validating are still simulated
+      // compiling/rendering/validating are still simulated; directing is real
+      // only when the flag is enabled (else after-analysis, as in production).
+      ...(director ? { simulated_after_directing: true } : { simulated_after_analysis: true }),
       stages_ran: ranStages,
       inspection: inspect,
       speech,
       analysis: analysis as unknown as Record<string, unknown> | null,
+      director: director as unknown as Record<string, unknown> | null,
       source_downloads: session.downloadsPerformed,
       swept_orphan_dirs: sweptOrphans,
       temp_dir_cleaned: true, // the finally below removes it before we return

@@ -502,6 +502,26 @@ export function buildSpeechAnalysis(
     boundaries, vadSegments, energy, candidates, provenance,
   }
 
+  // BRIDGE-CORRUPTION BACKSTOP (same class as RAW_ENERGY_HARD_CAP above: "a
+  // bug, not data"). Whisper word tokens ARE the transcript's tokens, so the
+  // total per-word text can never grossly exceed the transcript itself. A
+  // component whose word text dwarfs its transcript is a corrupt bridge
+  // output, and it would also break the Phase-7 Director byte-domination
+  // theorem (packages/shared/src/editor/director.ts derives the one-inference
+  // envelope bound from word text being carried TWICE — text + transcript).
+  // Fail closed at BUILD time — never downstream at directing. The slack
+  // (2 bytes/word + 1 KiB) covers joins/spacing/rounding; no legitimate ASR
+  // output comes near this bound.
+  {
+    const wordTextBytes = words.reduce((a, w) => a + Buffer.byteLength(JSON.stringify(w.text), 'utf8') - 2, 0)
+    const transcriptBytes = Buffer.byteLength(JSON.stringify(bridge.text ?? ''), 'utf8') - 2
+    if (wordTextBytes > transcriptBytes + 2 * words.length + 1024) {
+      throw new PermanentJobError(
+        `speech: word text ${wordTextBytes}B grossly exceeds transcript ${transcriptBytes}B — corrupt bridge output`,
+        'speech_transcript_mismatch')
+    }
+  }
+
   // DB payload safety. The component is bounded by construction (energy is
   // downsampled; words/candidates scale with speech, not duration). A very
   // long, very dense source can still approach the 1 MiB DB limit — when it

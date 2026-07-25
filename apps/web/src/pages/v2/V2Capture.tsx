@@ -12,9 +12,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
-import { loadRecordingScript, setWpm } from '../../lib/api'
+import { loadRecordingScript, setWpm, establishDurableRecordingScriptLive, prepareCaptureMode } from '../../lib/api'
 import { buildRecordingScript } from '../../lib/api'
 import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
+import { buildTeleprompterIntent, captureScriptSha256, sha256Hex, normalizeDialogue } from '../../lib/api'
+import type { CaptureUploadPayload } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
@@ -27,6 +29,8 @@ import {
   teleprompterScenes,
   estimateDurationSec,
   sceneTimeCapSec,
+  keepBeforeScene,
+  projectAcceptedSegments,
 } from '../../lib/timeline'
 
 // The single scene-by-scene recorder — served at BOTH the live `/record/:id`
@@ -37,46 +41,66 @@ export default function V2Capture() {
   const [params] = useSearchParams()
   const mode = params.get('mode') === 'upload' ? 'upload' : 'record'
   const nav = useNavigate()
-  const [timeline, setTimeline] = useState<RecordingScript | null>(null)
-  const [loadFailed, setLoadFailed] = useState(false)
-  const [loadNonce, setLoadNonce] = useState(0) // bump to retry the load
+  // Back always returns to the plan (Result) — the single plan screen for the flow.
+  const onBack = () => nav(`/result/${id}`)
+  return <CaptureGate genId={id} mode={mode} onBack={onBack} />
+}
 
-  // Load the persisted Recording Script; if there isn't one (e.g. a blueprint made via
-  // the classic Studio flow), synthesize it from the blueprint in-memory so every
-  // generation is recordable here. A throw OR an unresolvable generation flips to
-  // an error card with Retry — never the "Loading…" screen forever.
+// The ONE capture-mode gate. Both modes route through the shared prepareCaptureMode
+// seam (recordingScriptApi): UPLOAD is usable immediately and does ZERO script work
+// (Constitution §5.1 — it is not recorded against a script, so a legacy null timeline
+// is fine); RECORD establishes ONE DURABLE authoritative Recording Script (load → else
+// synthesize from the blueprint → strict-persist → reload → prove canonical equality)
+// before the teleprompter is usable. Recording against an in-memory-only or drifted
+// script would deterministically fail the create RPC's capture_script_sha_mismatch, so
+// a prepare failure blocks recording visibly + retryably — never a lost take.
+function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 'record'; onBack: () => void }) {
+  const [timeline, setTimeline] = useState<RecordingScript | null>(null)
+  const [uploadReady, setUploadReady] = useState(false)
+  const [failed, setFailed] = useState<null | 'load' | 'prepare'>(null)
+  const [nonce, setNonce] = useState(0)
   useEffect(() => {
     let alive = true
-    setLoadFailed(false)
+    setFailed(null); setTimeline(null); setUploadReady(false)
     ;(async () => {
       try {
-        let tl = await loadRecordingScript(id)
-        if (!tl) {
-          const g = await getGeneration(id)
-          if (g) tl = buildRecordingScript({ generationId: id, blueprint: g.blueprint, selectedHook: g.selected_hook })
-        }
+        const r = await prepareCaptureMode(mode, {
+          loadScript: () => loadRecordingScript(genId),
+          synthScript: async () => {
+            const g = await getGeneration(genId)
+            return g ? buildRecordingScript({ generationId: genId, blueprint: g.blueprint, selectedHook: g.selected_hook }) : null
+          },
+          establish: (t) => establishDurableRecordingScriptLive(t),
+        })
         if (!alive) return
-        if (tl) setTimeline(tl)
-        else setLoadFailed(true)
+        if (r.ready && r.mode === 'upload') { setUploadReady(true); return }
+        if (r.ready && r.mode === 'record') { setTimeline(r.script); return }
+        setFailed(r.reason === 'load' ? 'load' : 'prepare')
       } catch {
-        if (alive) setLoadFailed(true)
+        if (alive) setFailed('prepare')
       }
     })()
     return () => { alive = false }
-  }, [id, loadNonce])
+  }, [genId, mode, nonce])
 
-  // Back always returns to the plan (Result) — the single plan screen for the flow.
-  const onBack = () => nav(`/result/${id}`)
-
+  if (mode === 'upload') {
+    if (uploadReady) return <UploadMode genId={genId} onBack={onBack} />
+    return <div className="min-h-[100dvh] grid place-items-center bg-ink text-sand">Loading…</div>
+  }
   if (!timeline) {
-    if (loadFailed) {
+    if (failed) {
+      const isPrepare = failed === 'prepare'
       return (
         <div className="min-h-[100dvh] grid place-items-center bg-ink text-cream px-6">
           <div className="max-w-sm text-center">
-            <p className="font-semibold">We couldn't load your video plan</p>
-            <p className="mt-1 text-sm text-white/60">Check your connection and try again — your script is safe in your Library.</p>
+            <p className="font-semibold">{isPrepare ? "We couldn't prepare your script for recording" : "We couldn't load your video plan"}</p>
+            <p className="mt-1 text-sm text-white/60">
+              {isPrepare
+                ? 'Your script must be saved before you record so your take is never lost. Check your connection and try again.'
+                : 'Check your connection and try again — your script is safe in your Library.'}
+            </p>
             <div className="mt-4 flex justify-center gap-2">
-              <button onClick={() => setLoadNonce((n) => n + 1)} className="rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Retry</button>
+              <button onClick={() => setNonce((n) => n + 1)} className="rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Retry</button>
               <button onClick={onBack} className="rounded-xl border border-white/20 px-5 py-2 text-sm text-cream">Back</button>
             </div>
           </div>
@@ -85,9 +109,7 @@ export default function V2Capture() {
     }
     return <div className="min-h-[100dvh] grid place-items-center bg-ink text-sand">Loading…</div>
   }
-  return mode === 'upload'
-    ? <UploadMode genId={id} onBack={onBack} />
-    : <Teleprompter genId={id} timeline={timeline} setTimeline={setTimeline} onBack={onBack} />
+  return <Teleprompter genId={genId} timeline={timeline} setTimeline={setTimeline} onBack={onBack} />
 }
 
 function Teleprompter({ genId, timeline, setTimeline, onBack }: {
@@ -386,7 +408,59 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   const saveSourceOnce = (blob: Blob) => uploadOnceRef.current.run(async () => {
     const contentType = blob.type || 'video/webm'
     attemptIdRef.current ??= newRecordingAttemptId()
-    const intent = await uploadSourceRecording(genId, attemptIdRef.current, { blob, contentType, sizeBytes: blob.size })
+    // Source Capture Intent (Constitution §5.1) — MANDATORY for a teleprompter
+    // take. segmentsRef[i] is the accepted window for scenes[i] (filtered
+    // teleprompter scenes, in order; retakes/go-backs already popped the rejected
+    // reads). We build + validate it against the shared contract and NEVER upload
+    // without it — a provenance failure surfaces as a retryable save error (the
+    // raw blob stays in reviewBlobRef), so we neither lose the recording NOR
+    // silently strip provenance and recreate the retake defect.
+    const segs = segmentsRef.current
+    if (!segs.length) throw new Error('No recorded scenes to save — record at least one scene.')
+    // The recording-script SHA is the ONE canonical snapshot (scriptSnapshot.ts),
+    // computed from the FULL, UNFILTERED script (every scene, incl. hidden b-roll) —
+    // the SAME canonical the server recomputes from generations.scene_timeline and
+    // Boot later pins. NOT the filtered teleprompter subset.
+    const scriptSha = await captureScriptSha256({
+      generation_id: genId,
+      hook: timeline.hook,
+      scenes: timeline.scenes.map((s) => ({
+        scene_number: s.scene_number, scene_type: s.scene_type,
+        dialogue: s.dialogue, show_in_teleprompter: s.show_in_teleprompter,
+      })),
+    })
+    // Project the recorded windows onto the teleprompter scenes through the ONE
+    // shared authority: it pairs window k ↔ scene k, verifies the windows are
+    // ordered + non-overlapping (rejected bytes fall in the gaps) and the scene
+    // numbers unique, and fails closed on any misalignment — so we never upload
+    // provenance that doesn't match the take.
+    const projected = projectAcceptedSegments(
+      segs.map((s) => ({ startMs: Math.round(s.start * 1000), endMs: Math.round(s.end * 1000) })),
+      scenes,
+    )
+    const accepted_segments = []
+    for (let idx = 0; idx < projected.length; idx++) {
+      const scene = scenes[idx]
+      accepted_segments.push({
+        scene_number: projected[idx].sceneNumber,
+        start_ms: projected[idx].startMs,
+        end_ms: projected[idx].endMs,
+        intended_dialogue_sha256: await sha256Hex(normalizeDialogue(scene.dialogue ?? '')),
+      })
+    }
+    // Validate the client INPUT against the shared contract before uploading; a
+    // contract failure throws → the save fails retryably, never an upload
+    // without provenance. The server-authority fields (sourceAssetId,
+    // recordedAt) are assigned by the create RPC, so the browser never supplies
+    // them (Constitution §10D).
+    await buildTeleprompterIntent({
+      generationId: genId,
+      clientAttemptId: attemptIdRef.current,
+      recordingScriptSha256: scriptSha,
+      segments: accepted_segments.map((a) => ({ sceneNumber: a.scene_number, startMs: a.start_ms, endMs: a.end_ms, dialogue: '' })),
+    })
+    const capture: CaptureUploadPayload = { origin: 'teleprompter', recording_script_sha256: scriptSha, recorder_clock: 'mediarecorder-active-time-ms', accepted_segments }
+    const intent = await uploadSourceRecording(genId, attemptIdRef.current, { blob, contentType, sizeBytes: blob.size }, undefined, capture)
     saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
     return { path: intent.path }
   })
@@ -442,27 +516,31 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   }
 
   const continueNext = () => { setBetween(false); setI((v) => v + 1) }
-  // Step back one scene. If the scene we're returning to was already committed
-  // (its boundary/window/line are recorded), pop those trailing entries exactly
-  // like retakeScene does — otherwise re-recording it would APPEND a duplicate
-  // window and the scene would appear twice in the take's records.
+  // Truncate the recorded-scene provenance to entries strictly before `target`
+  // through the ONE shared authority (keepBeforeScene), applied identically to all
+  // parallel accumulators so they stay 1:1 with the teleprompter scenes.
+  const truncateRecordedTo = (target: number) => {
+    segmentsRef.current = keepBeforeScene(segmentsRef.current, target)
+    boundsRef.current = keepBeforeScene(boundsRef.current, target)
+    linesRef.current = keepBeforeScene(linesRef.current, target)
+  }
+  // Step back to scene `i-1`. Re-recording the target re-appends it, and any scenes
+  // recorded AFTER the target's now-discarded take are orphaned, so discard the
+  // target scene's window AND every window after it — NOT just the last one (the old
+  // pop-one left the target's stale window in place, duplicating a scene at save).
+  // The recorder clock is never rewound: the flubbed bytes stay in the single blob.
   const goPrevScene = () => {
     if (i === 0 || recording) return
-    if (boundsRef.current.length >= i) {
-      segmentsRef.current.pop()
-      boundsRef.current.pop()
-      linesRef.current.pop()
-    }
+    const target = i - 1
+    truncateRecordedTo(target)
     setBetween(false)
-    setI((v) => v - 1)
+    setI(target)
   }
-  // Retake the scene we just finished: drop its kept window (the flubbed read stays
-  // in the blob) and re-open the SAME scene. The next startScene reopens the window
-  // past the bad read.
+  // Retake the scene we just finished: same truncation with the target set to the
+  // last recorded scene (drops its kept window; the flubbed read stays in the blob).
+  // The next startScene reopens the window past the bad read.
   const retakeScene = () => {
-    segmentsRef.current.pop()
-    boundsRef.current.pop()
-    linesRef.current.pop()
+    truncateRecordedTo(segmentsRef.current.length - 1)
     setBetween(false)
   }
 
@@ -742,7 +820,11 @@ function UploadMode({ genId, onBack }: { genId: string; onBack: () => void }) {
       const contentType = f.type || 'video/mp4'
       const key = `${f.name}:${f.size}:${f.lastModified}`
       if (attemptRef.current?.key !== key) attemptRef.current = { key, id: newRecordingAttemptId() }
-      const intent = await uploadSourceRecording(genId, attemptRef.current.id, { blob: f, contentType, sizeBytes: f.size }, (p) => setPct(p))
+      // Uploaded sources carry an EXPLICIT upload-origin capture intent (no
+      // accepted windows) — the editor uses evidence-based inference, never
+      // mistaking a real upload for lost teleprompter provenance.
+      const capture: CaptureUploadPayload = { origin: 'upload', recording_script_sha256: null, recorder_clock: 'none', accepted_segments: [] }
+      const intent = await uploadSourceRecording(genId, attemptRef.current.id, { blob: f, contentType, sizeBytes: f.size }, (p) => setPct(p), capture)
       if (cancelRef.current) return
       saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
       onBack()

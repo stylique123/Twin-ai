@@ -103,6 +103,14 @@ export const env = {
   // empty in production — matrix-only, proves exact crash-point recovery.
   editorSimCrashPoint: (process.env.EDITOR_SIM_CRASH_POINT ?? '').trim(),
 
+  // ---- directing (Phase 7) ----
+  // Gate for the REAL directing stage. Unset/anything-but-'true' => directing
+  // stays SIMULATED (production behaviour is unchanged). Enabled only in the
+  // staging matrix. Requires GEMINI_API_KEY when enabled (fails closed).
+  editorDirectorEnabled: (process.env.EDITOR_DIRECTOR_ENABLED ?? '').trim() === 'true',
+  // Hard timeout for THE single director generateContent call (no retry).
+  editorDirectorTimeoutMs: Number(process.env.EDITOR_DIRECTOR_TIMEOUT_MS ?? '60000'),
+
   // ---- media inspection (Phase 4) ----
   // Cache identity: one immutable inspection component per
   // (source_asset_id, component, inspector version). Bumping the version

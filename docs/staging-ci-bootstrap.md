@@ -39,3 +39,54 @@ Any one of:
 
 Rotating the staging service-role key (Supabase dashboard) additionally
 invalidates anything previously handed out.
+
+## Credential path after a JWT signing-key rotation
+
+The function code lives in `supabase/functions/ci-bootstrap/index.ts` (deployed
+ONLY to staging). When the staging project migrates to the new asymmetric JWT
+signing keys (ES256), the **legacy HS256 `service_role` JWT** that Supabase
+injects as `SUPABASE_SERVICE_ROLE_KEY` is rejected by GoTrue's admin API — the
+harness's `admin.auth.admin.createUser` then fails, intermittently at first
+(rotation in progress across nodes), with:
+
+```
+invalid JWT: … unrecognized JWT kid <nil> for algorithm ES256
+```
+
+The anon path already dodges this by using the new **publishable** key
+(`sb_publishable_…`). The service path must do the same with a new **secret**
+key (`sb_secret_…`), which the API gateway maps to `service_role` without JWT
+verification.
+
+**No operator step and no minted/pasted custom secret are required.** Per the
+current Supabase docs, hosted Edge Functions are AUTOMATICALLY injected with
+**`SUPABASE_SECRET_KEYS`** — a JSON dictionary of the project's new
+`sb_secret_…` keys. `ci-bootstrap` parses that dictionary
+(`supabase/functions/ci-bootstrap/keyselect.mjs`, `selectSecretKey`) and
+deterministically selects the key named `default`, or the sole valid
+`sb_secret_…` value if the dictionary uses another shape. The selected value is
+validated to start with `sb_secret_`.
+
+- **No legacy fallback.** On this rotated project the legacy HS256
+  `service_role` JWT is a dead credential, so it is **not** used at all —
+  handing it out would only reintroduce the JWT failure.
+- **Fail closed.** If `SUPABASE_SECRET_KEYS` is missing, malformed, empty,
+  holds no `sb_secret_…` value, or is ambiguous (multiple secrets, none named
+  `default`), the function returns **503** with a non-secret error
+  (`staging credential unavailable: <source>`) instead of a bad key.
+- **No byte leakage.** The `ci_bootstrap_granted` (and the
+  `ci_bootstrap_no_credential`) log line records only `key_source` — the
+  selection outcome / key NAME (`secret_key:default`, `no_valid_secret`,
+  `malformed_json`, …) — never any key bytes.
+
+The selection logic is proven offline (no network, no secrets) by
+`scripts/ci/check_ci_bootstrap_keyselect.mjs`, which runs in `pr-checks.yml`
+and covers: valid `default` (object-map and array shapes), sole valid
+non-default key, malformed JSON, empty dictionary, non-`sb_secret_` value,
+legacy-only (unset) environment, ambiguous multiple secrets, and the
+never-leak-bytes invariant.
+
+Production (`jmdecibuytznsonrasxw`) is a different project and is never touched.
+With the auto-injected dictionary in place, every phase's `createUser` uses the
+new secret key and the Phase 1–7 matrices run without the intermittent JWT
+failure.

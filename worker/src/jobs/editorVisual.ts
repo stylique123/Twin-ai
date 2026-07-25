@@ -37,6 +37,7 @@ export interface VisualBridgeOutput {
   fineSamples: number
   faceSamples: number
   motion: Array<{ timeMs: number; diff: number }>
+  lumaCurve: Array<{ timeMs: number; luma: number }>
   shotBoundaries: Array<{ timeMs: number; score: number; evidenceCodes: string[] }>
   faces: Array<{ timeMs: number; detections: Array<{ x: number; y: number; width: number; height: number; score: number }> }>
   faceCoverage: { samplesWithFace: number; samplesTotal: number }
@@ -55,6 +56,87 @@ export interface VisualFacts {
   displayWidth: number
   displayHeight: number
   rotation: 0 | 90 | 180 | 270
+}
+
+// visual-2: merge per-sample near-black / frozen coarse samples into blank
+// intervals — EVIDENCE of visual waste (dead air, held/black frames), never a
+// cut. A coarse sample is "blank" when its mean luma is at/below nearBlackLuma
+// (near-black) OR its motion diff to the previous sample is at/below
+// frozenMotionMax (frozen). Consecutive blank samples merge; a run is kept only
+// when it spans at least minBlankDurationMs. Deterministic and bounded by
+// blankCandidateCap (excess is dropped — logged, never truncated silently by
+// the byte cap). Interval duration = last blank sample − first (no padding), so
+// a lone blank sample never qualifies.
+export function computeBlankIntervals(
+  lumaCurve: Array<{ timeMs: number; luma: number }>,
+  motion: Array<{ timeMs: number; diff: number }>,
+  rules: AnalysisRules,
+): { intervals: Array<{ startMs: number; endMs: number; evidenceCodes: string[]; classification: string; selectableWaste: boolean }>; dropped: number } {
+  const R = rules.visual
+  const diffAt = new Map<number, number>()
+  for (const m of motion) diffAt.set(m.timeMs, m.diff)
+  const samples = [...lumaCurve].sort((a, b) => a.timeMs - b.timeMs)
+
+  // `both` = a sample that is near-black AND frozen AT THE SAME MOMENT — the corroborated
+  // dead-air signal. nearBlack/frozen alone are kept as separate EVIDENCE but never make
+  // an interval selectable on their own (a still talking head is frozen but not dark; a
+  // dark scene can still have motion).
+  // A blank run is any maximal chain of samples that are near-black OR frozen. We keep
+  // the PER-SAMPLE `both` flag (near-black AND frozen at the same instant — the only
+  // corroborated dead-air signal) so the run can be split before it is judged.
+  type BlankSample = { timeMs: number; nearBlack: boolean; frozen: boolean; both: boolean }
+  let run: BlankSample[] = []
+  const runs: BlankSample[][] = []
+  const closeRun = () => { if (run.length) runs.push(run); run = [] }
+  for (const s of samples) {
+    const nearBlack = s.luma <= R.nearBlackLuma
+    const d = diffAt.get(s.timeMs)
+    const frozen = d !== undefined && d <= R.frozenMotionMax
+    if (nearBlack || frozen) run.push({ timeMs: s.timeMs, nearBlack, frozen, both: nearBlack && frozen })
+    else closeRun()
+  }
+  closeRun()
+
+  // Split every run at the boundary between corroborated (`both`) and non-corroborated
+  // samples. Without this, a static talking head (frozen only) adjacent to genuine dead
+  // air (both) would merge into one run whose OR-accumulated `both` tainted the WHOLE
+  // span as selectable waste — flagging legitimate normal-brightness footage. After the
+  // split each segment is homogeneous in `both`, so only the truly corroborated dead-air
+  // span can ever be selectable. Each segment is then gated independently (≥2 samples AND
+  // ≥ minBlankDurationMs); a lone corroborated sample never qualifies.
+  const segments: BlankSample[][] = []
+  for (const r of runs) {
+    let seg: BlankSample[] = []
+    for (const s of r) {
+      if (seg.length && seg[seg.length - 1].both !== s.both) { segments.push(seg); seg = [] }
+      seg.push(s)
+    }
+    if (seg.length) segments.push(seg)
+  }
+
+  // Honest classification. Only corroborated dead air (dark AND static together) is
+  // SELECTABLE as visual waste; a static talking head (frozen only) or a dark-but-moving
+  // scene is recorded as evidence but NEVER auto-called waste.
+  const classify = (nearBlack: boolean, frozen: boolean, both: boolean): string =>
+    both ? 'dead_air'
+      : frozen && !nearBlack ? 'static_hold'
+      : nearBlack && !frozen ? 'dark_motion'
+      : 'ambiguous'
+  const all = segments
+    .filter((seg) => seg.length >= 2 && seg[seg.length - 1].timeMs - seg[0].timeMs >= R.minBlankDurationMs)
+    .map((seg) => {
+      const nearBlack = seg.some((s) => s.nearBlack)
+      const frozen = seg.some((s) => s.frozen)
+      const both = seg[0].both // homogeneous after the split: every sample shares one `both`
+      return {
+        startMs: seg[0].timeMs, endMs: seg[seg.length - 1].timeMs,
+        evidenceCodes: [...(nearBlack ? ['near_black'] : []), ...(frozen ? ['frozen'] : [])],
+        classification: classify(nearBlack, frozen, both),
+        selectableWaste: both,
+      }
+    })
+  const intervals = all.slice(0, R.blankCandidateCap)
+  return { intervals, dropped: all.length - intervals.length }
 }
 
 // Pure contract construction (unit-tested with synthetic bridge output).
@@ -93,6 +175,8 @@ export function buildVisualAnalysis(
     },
     shotBoundaries: bridge.shotBoundaries,
     motion: bridge.motion,
+    lumaCurve: bridge.lumaCurve,
+    blankIntervals: computeBlankIntervals(bridge.lumaCurve ?? [], bridge.motion, opts.rules).intervals,
     faces: bridge.faces,
     faceCoverage: bridge.faceCoverage,
     provenance: {
