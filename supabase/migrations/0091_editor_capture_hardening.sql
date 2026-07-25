@@ -309,7 +309,12 @@ returns text language sql immutable as $$
 $$;
 
 create or replace function public.editor_capture_intent_sha256(p jsonb)
-returns text language sql immutable as $$
+returns text language sql immutable
+-- pgcrypto's digest() lives in the `extensions` schema on Supabase (not public);
+-- pin it on the search_path or both migration-apply AND every call fail with
+-- "function digest(bytea, unknown) does not exist" (repo convention: 0021/0049).
+set search_path = pg_catalog, public, extensions
+as $$
   select encode(digest(convert_to(public.editor_capture_intent_canonical(p), 'UTF8'), 'sha256'), 'hex')
 $$;
 
@@ -370,7 +375,9 @@ $$;
 
 create or replace function public.editor_recording_script_sha256(
   p_generation uuid, p_scene_timeline jsonb, p_selected_hook text
-) returns text language sql immutable as $$
+) returns text language sql immutable
+set search_path = pg_catalog, public, extensions  -- pgcrypto digest() lives in extensions on Supabase
+as $$
   select encode(digest(convert_to(
     public.editor_recording_script_canonical(p_generation, p_scene_timeline, p_selected_hook), 'UTF8'), 'sha256'), 'hex')
 $$;
@@ -389,7 +396,9 @@ $$;
 --     sha256(NFC(dialogue)) (NFC-only, matching shared normalizeDialogue; null→'').
 create or replace function public.editor_verify_capture_dialogue_shas(
   p_scene_timeline jsonb, p_segments jsonb
-) returns void language plpgsql immutable as $$
+) returns void language plpgsql immutable
+set search_path = pg_catalog, public, extensions  -- pgcrypto digest() lives in extensions on Supabase
+as $$
 declare
   s jsonb; sc numeric; maxint constant numeric := 9007199254740991;
   all_nums numeric[] := '{}';
@@ -711,7 +720,7 @@ create or replace function public.editor_create_source_asset(
 ) returns table(asset_id uuid, storage_path text, status text, intent_sha256 text, created boolean)
 language plpgsql
 security definer
-set search_path = pg_catalog, public
+set search_path = pg_catalog, public, extensions  -- direct digest() at snap_sha; pgcrypto is in extensions on Supabase
 as $$
 declare
   max_open constant int := 5;

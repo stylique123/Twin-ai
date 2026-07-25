@@ -19,7 +19,20 @@ async function resolveVerifiedLogo(
   if (typeof path !== 'string' || path.length === 0 || path.length > 512) return null
   if (!path.startsWith(`${ownerId}/`)) return null
   const { data, error } = await db.storage.from('edits').download(path)
-  if (error || !data) return null
+  if (error) {
+    // A genuine "object not found" means the logo legitimately isn't there → none.
+    // ANY OTHER error (network blip, 5xx, throttling, expired creds) is UNVERIFIED,
+    // not proven-absent — failing it open would silently pin a logoless brand off a
+    // transient blip and ship a de-branded video. Unverified must fail closed (throw)
+    // so the job retries rather than dropping the creator's real, checksummable logo.
+    const msg = (error as { message?: string }).message ?? String(error)
+    const status = Number(
+      (error as { status?: number }).status ?? (error as { statusCode?: number | string }).statusCode ?? NaN)
+    const notFound = status === 404 || /not[_ ]?found|does not exist|no such (file|object|key)/i.test(msg)
+    if (notFound) return null
+    throw new Error(`brand logo verification could not reach storage (unverified, not absent): ${msg}`)
+  }
+  if (!data) return null
   const bytes = Buffer.from(await data.arrayBuffer())
   if (bytes.byteLength === 0) return null
   return { path, sha256: createHash('sha256').update(bytes).digest('hex') }

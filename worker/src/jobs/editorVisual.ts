@@ -81,45 +81,60 @@ export function computeBlankIntervals(
   // dead-air signal. nearBlack/frozen alone are kept as separate EVIDENCE but never make
   // an interval selectable on their own (a still talking head is frozen but not dark; a
   // dark scene can still have motion).
-  type Run = { startMs: number; endMs: number; count: number; nearBlack: boolean; frozen: boolean; both: boolean }
-  let run: Run | null = null
-  const runs: Run[] = []
-  const closeRun = () => {
-    if (run && run.count >= 2 && run.endMs - run.startMs >= R.minBlankDurationMs) runs.push(run)
-    run = null
-  }
+  // A blank run is any maximal chain of samples that are near-black OR frozen. We keep
+  // the PER-SAMPLE `both` flag (near-black AND frozen at the same instant — the only
+  // corroborated dead-air signal) so the run can be split before it is judged.
+  type BlankSample = { timeMs: number; nearBlack: boolean; frozen: boolean; both: boolean }
+  let run: BlankSample[] = []
+  const runs: BlankSample[][] = []
+  const closeRun = () => { if (run.length) runs.push(run); run = [] }
   for (const s of samples) {
     const nearBlack = s.luma <= R.nearBlackLuma
     const d = diffAt.get(s.timeMs)
     const frozen = d !== undefined && d <= R.frozenMotionMax
-    const both = nearBlack && frozen
-    if (nearBlack || frozen) {
-      if (run) {
-        run.endMs = s.timeMs; run.count += 1
-        run.nearBlack = run.nearBlack || nearBlack; run.frozen = run.frozen || frozen; run.both = run.both || both
-      } else {
-        run = { startMs: s.timeMs, endMs: s.timeMs, count: 1, nearBlack, frozen, both }
-      }
-    } else {
-      closeRun()
-    }
+    if (nearBlack || frozen) run.push({ timeMs: s.timeMs, nearBlack, frozen, both: nearBlack && frozen })
+    else closeRun()
   }
   closeRun()
+
+  // Split every run at the boundary between corroborated (`both`) and non-corroborated
+  // samples. Without this, a static talking head (frozen only) adjacent to genuine dead
+  // air (both) would merge into one run whose OR-accumulated `both` tainted the WHOLE
+  // span as selectable waste — flagging legitimate normal-brightness footage. After the
+  // split each segment is homogeneous in `both`, so only the truly corroborated dead-air
+  // span can ever be selectable. Each segment is then gated independently (≥2 samples AND
+  // ≥ minBlankDurationMs); a lone corroborated sample never qualifies.
+  const segments: BlankSample[][] = []
+  for (const r of runs) {
+    let seg: BlankSample[] = []
+    for (const s of r) {
+      if (seg.length && seg[seg.length - 1].both !== s.both) { segments.push(seg); seg = [] }
+      seg.push(s)
+    }
+    if (seg.length) segments.push(seg)
+  }
 
   // Honest classification. Only corroborated dead air (dark AND static together) is
   // SELECTABLE as visual waste; a static talking head (frozen only) or a dark-but-moving
   // scene is recorded as evidence but NEVER auto-called waste.
-  const classify = (r: Run): string =>
-    r.both ? 'dead_air'
-      : r.frozen && !r.nearBlack ? 'static_hold'
-      : r.nearBlack && !r.frozen ? 'dark_motion'
+  const classify = (nearBlack: boolean, frozen: boolean, both: boolean): string =>
+    both ? 'dead_air'
+      : frozen && !nearBlack ? 'static_hold'
+      : nearBlack && !frozen ? 'dark_motion'
       : 'ambiguous'
-  const all = runs.map((r) => ({
-    startMs: r.startMs, endMs: r.endMs,
-    evidenceCodes: [...(r.nearBlack ? ['near_black'] : []), ...(r.frozen ? ['frozen'] : [])],
-    classification: classify(r),
-    selectableWaste: r.both,
-  }))
+  const all = segments
+    .filter((seg) => seg.length >= 2 && seg[seg.length - 1].timeMs - seg[0].timeMs >= R.minBlankDurationMs)
+    .map((seg) => {
+      const nearBlack = seg.some((s) => s.nearBlack)
+      const frozen = seg.some((s) => s.frozen)
+      const both = seg[0].both // homogeneous after the split: every sample shares one `both`
+      return {
+        startMs: seg[0].timeMs, endMs: seg[seg.length - 1].timeMs,
+        evidenceCodes: [...(nearBlack ? ['near_black'] : []), ...(frozen ? ['frozen'] : [])],
+        classification: classify(nearBlack, frozen, both),
+        selectableWaste: both,
+      }
+    })
   const intervals = all.slice(0, R.blankCandidateCap)
   return { intervals, dropped: all.length - intervals.length }
 }

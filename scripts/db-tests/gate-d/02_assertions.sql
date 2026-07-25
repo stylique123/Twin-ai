@@ -954,7 +954,12 @@ declare fns text[] := array[
   'public.editor_recording_script_sha256(uuid, jsonb, text)',
   'public.editor_verify_capture_dialogue_shas(jsonb, jsonb)',
   'public.editor_persist_script_binding(uuid, uuid, uuid, text, text, text, text, jsonb, jsonb)',
-  'public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint)'];
+  'public.editor_create_source_asset(uuid, uuid, uuid, jsonb, text, text, bigint)',
+  -- The two most-privileged D2 RPCs (write the manifest / flip ready + repoint the
+  -- generation). Their service_role-only posture MUST be asserted here — a
+  -- regression dropping their revoke must fail the gate, not slip through green.
+  'public.editor_write_capture_manifest(uuid, text, text, jsonb, text, text)',
+  'public.editor_validate_source(uuid, uuid, text, bigint, bigint, int, int, int, int, int, boolean, jsonb, text, text, jsonb)'];
   f text;
 begin
   foreach f in array fns loop

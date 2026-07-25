@@ -17,7 +17,17 @@ function computeGaps(v: BrandVoice | null | undefined): BrandGaps {
   // (scan-couldn't-read) state — we never treat a blocked scan as if colors exist.
   const paletteHasReal = !!kit.palette && Object.values(kit.palette).some((x) => typeof x === 'string' && HEX.test(x))
   const colors = kit.palette_source === 'pending' || !paletteHasReal
-  const logo = !(typeof kit.logo_path === 'string' && kit.logo_path.length > 0)
+  // Match the editor's logo verification (worker resolveVerifiedLogo), not just
+  // "is the string non-empty": the editor ONLY applies a logo whose object key is
+  // owner-prefixed (`${owner_id}/…`) and ≤512 chars — anything else silently resolves
+  // to no-logo. A teammate-uploaded key under their OWN id, or a wrong prefix, would
+  // otherwise read as "confirmed" here while the render drops it. If we can't confirm
+  // the owner-prefix, we treat the logo as a gap (remind) rather than claim it's set.
+  const owner = (v as { owner_id?: unknown } | null)?.owner_id
+  const path = kit.logo_path
+  const logoConfirmed = typeof path === 'string' && path.length > 0 && path.length <= 512
+    && typeof owner === 'string' && path.startsWith(`${owner}/`)
+  const logo = !logoConfirmed
   const prof = (v?.profile ?? null) as { niche?: unknown; tone?: unknown; summary?: unknown } | null
   const status = (v as { status?: unknown } | null)?.status
   const voice = !v || status === 'failed' || !(prof && (prof.niche || prof.tone || prof.summary))

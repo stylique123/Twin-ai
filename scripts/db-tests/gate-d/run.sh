@@ -50,7 +50,7 @@ psql -q -f "$HERE/00_schema_subset.sql"
 psql -q -f "$WORK/gate_d_fns.sql"
 # grants live just outside the markers; apply the real revoke/grant statements
 # so the grant-posture assertions exercise the migration's actual posture.
-grep -E '^(revoke|grant) .*public\.editor_(capture_segments|capture_intent|validate_capture|build_stored|snapshot_normalize|recording_script|verify_capture|persist_script|create_source)' "$MIG" > "$WORK/grants.sql"
+grep -E '^(revoke|grant) .*public\.editor_(capture_segments|capture_intent|validate_capture|build_stored|snapshot_normalize|recording_script|verify_capture|persist_script|create_source|validate_source|write_capture_manifest)' "$MIG" > "$WORK/grants.sql"
 psql -q -f "$WORK/grants.sql"
 
 echo "== fail-closed assertions (contract matrix, policy, grants) =="
@@ -195,6 +195,13 @@ mutate_and_expect_fail(){ # $1 = sed expr, $2 = label
 # (c) unknown top-level key guard removed → gate must fail on the unknown-key assertion.
 mutate_and_expect_fail "s/raise exception 'capture_intent_unknown_key: %', k;/null;/" \
   "(c) unknown-key guard removed → gate correctly FAILED"
+# (q1) pgcrypto search_path teeth: strip `extensions` from editor_create_source_asset's
+#      search_path (reproducing the real bug where digest() lives in the extensions
+#      schema on Supabase). With pgcrypto installed in `extensions` here (not public),
+#      the direct digest() call at snap_sha then fails to resolve — proving the harness
+#      no longer masks a missing-`extensions` search_path the way a public install would.
+mutate_and_expect_fail "s/public, extensions  -- direct digest/public  -- direct digest/" \
+  "(q1) create_source_asset search_path missing extensions → gate correctly FAILED (pgcrypto digest unresolved)"
 # (d) marker state-machine guard removed → gate must fail on the marker-v2 assertion.
 mutate_and_expect_fail "s/raise exception 'source_attempt_conflict: unsupported capture_contract_version % on %', a.capture_contract_version, a.id using errcode = 'raise_exception';/null;/" \
   "(d) marker-v2 guard removed → gate correctly FAILED"

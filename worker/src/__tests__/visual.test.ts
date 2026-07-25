@@ -154,6 +154,47 @@ describe('buildVisualAnalysis', () => {
     expect(intervals).toEqual([{ startMs: 2000, endMs: 6000, evidenceCodes: ['frozen'], classification: 'static_hold', selectableWaste: false }])
   })
 
+  it('a static talking head adjacent to dead air is NOT swept into the selectable span', () => {
+    // frozen-only talking head (normal brightness) at 2000..4000, then genuine
+    // dead air (dark AND frozen) at 6000. Before the fix, the run merged and the
+    // whole [2000..6000] span was mislabeled dead_air/selectable. Now the run splits
+    // at the corroboration boundary: the talking-head segment stays static_hold /
+    // non-selectable, and the lone dead-air sample is below the 2-sample floor.
+    const lumaCurve = [
+      { timeMs: 0, luma: 0.5 },
+      { timeMs: 2000, luma: 0.5 }, { timeMs: 4000, luma: 0.5 }, { timeMs: 6000, luma: 0.02 },
+      { timeMs: 8000, luma: 0.5 },
+    ]
+    const motion = [
+      { timeMs: 2000, diff: 0.005 }, { timeMs: 4000, diff: 0.005 }, { timeMs: 6000, diff: 0.005 },
+      { timeMs: 8000, diff: 0.5 },
+    ]
+    const { intervals } = computeBlankIntervals(lumaCurve, motion, rules)
+    expect(intervals).toEqual([
+      { startMs: 2000, endMs: 4000, evidenceCodes: ['frozen'], classification: 'static_hold', selectableWaste: false },
+    ])
+  })
+
+  it('splits a run into a static_hold segment then a real dead_air segment', () => {
+    // frozen-only talking head at 2000..4000, then corroborated dead air (dark AND
+    // frozen) at 6000..8000. Two distinct segments, only the second selectable.
+    const lumaCurve = [
+      { timeMs: 0, luma: 0.5 },
+      { timeMs: 2000, luma: 0.5 }, { timeMs: 4000, luma: 0.5 },
+      { timeMs: 6000, luma: 0.02 }, { timeMs: 8000, luma: 0.01 },
+      { timeMs: 10000, luma: 0.5 },
+    ]
+    const motion = [
+      { timeMs: 2000, diff: 0.005 }, { timeMs: 4000, diff: 0.005 },
+      { timeMs: 6000, diff: 0.003 }, { timeMs: 8000, diff: 0.002 }, { timeMs: 10000, diff: 0.5 },
+    ]
+    const { intervals } = computeBlankIntervals(lumaCurve, motion, rules)
+    expect(intervals).toEqual([
+      { startMs: 2000, endMs: 4000, evidenceCodes: ['frozen'], classification: 'static_hold', selectableWaste: false },
+      { startMs: 6000, endMs: 8000, evidenceCodes: ['near_black', 'frozen'], classification: 'dead_air', selectableWaste: true },
+    ])
+  })
+
   it('fails LOUD when the payload would exceed the cap (never truncates evidence)', () => {
     const big = bridge({
       faces: Array.from({ length: 120 }, (_, i) => ({

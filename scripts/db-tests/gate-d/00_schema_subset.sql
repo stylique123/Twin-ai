@@ -1,5 +1,16 @@
 -- Faithful subset of the real schema for Gate-D create/complete RPC verification.
-create extension if not exists pgcrypto;
+-- Mirror Supabase EXACTLY: pgcrypto lives in the `extensions` schema, NOT public.
+-- A vanilla `create extension pgcrypto` would land it in public and let functions
+-- that pin `search_path = pg_catalog, public` (no extensions) resolve digest()
+-- locally while FAILING on Supabase — the exact trap that hid a migration-apply
+-- break. Installing it in `extensions` makes the harness fail-for-real unless each
+-- pgcrypto-calling function self-declares `extensions` on its search_path.
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+-- A normal Supabase session has `extensions` on its path (so top-level scaffolding
+-- digest() calls resolve); security-definer functions still pin their OWN path, so
+-- one omitting `extensions` fails exactly as it would on Supabase.
+alter database postgres set search_path = pg_catalog, public, extensions;
 
 -- Supabase's standard roles, so grant-posture assertions are meaningful here.
 do $$ begin
