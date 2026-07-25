@@ -161,27 +161,51 @@ jobs:
           supabase functions deploy source-asset --project-ref otgzjsagybpgtwweuptj
           supabase functions deploy start-editor-v2 --project-ref otgzjsagybpgtwweuptj
 
-      - name: Apply repo migrations to STAGING and assert parity
-        # The matrix must run against the EXACT migration files in this checkout
-        # (the audit's requirement: "with 0091/0092 actually applied") — not a
-        # drifted, manually-maintained staging schema. `db push` applies any
-        # unapplied migrations; the assertion then proves the remote migration
-        # list covers every local file (staging only; production is untouched).
+      - name: Apply the editor migrations to STAGING (byte-exact) and assert the schema
+        # The matrix must run against the EXACT migration files in THIS checkout
+        # (the audit's requirement: "with 0091/0092 actually applied").
+        #
+        # Deliberately NOT `supabase db push`: staging's migration ledger records
+        # timestamp versions (20260717140819 named "0076_media_assets") while the
+        # repo's files are version-prefixed (0076_…), so the CLI would judge EVERY
+        # local migration unapplied and try to replay the whole history onto a
+        # populated database. Instead apply the three editor migrations explicitly
+        # with psql. All three are idempotent (create-or-replace / if-not-exists /
+        # drop-if-exists), so re-running is a safe no-op, and the file is copied
+        # byte-for-byte — never re-typed.
+        #
+        # STAGING ONLY. Production (jmdecibuytznsonrasxw) is never referenced here.
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.STAGING_DB_PASSWORD }}
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
         run: |
-          if [ -z "$SUPABASE_DB_PASSWORD" ]; then
-            echo "::error::STAGING_DB_PASSWORD secret is not set (needed for supabase db push)"; exit 1
+          if [ -z "$STAGING_DB_URL" ]; then
+            echo "::error::STAGING_DB_URL secret is not set — the editor migrations cannot be applied byte-exactly, so the matrix would run against a schema that does not match this checkout."
+            exit 1
           fi
-          supabase link --project-ref otgzjsagybpgtwweuptj
-          supabase db push --include-all
-          # Parity assertion: every local migration must now be applied remotely.
-          supabase migration list --linked | tee /tmp/miglist.txt
-          for f in supabase/migrations/*.sql; do
-            v=$(basename "$f" | cut -d_ -f1)
-            grep -q "$v" /tmp/miglist.txt || { echo "::error::migration $v not applied to staging"; exit 1; }
+          case "$STAGING_DB_URL" in
+            *otgzjsagybpgtwweuptj*) : ;;
+            *) echo "::error::STAGING_DB_URL does not point at the staging project ref — refusing to apply."; exit 1 ;;
+          esac
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends postgresql-client
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2; do
+            echo "== applying $f =="
+            psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
+          echo "== asserting the required schema objects exist =="
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -c "
+            do \$\$
+            begin
+              if to_regclass('public.source_capture_intents')   is null then raise exception 'missing table source_capture_intents (0090)'; end if;
+              if to_regclass('public.source_capture_manifests') is null then raise exception 'missing table source_capture_manifests (0090)'; end if;
+              if to_regclass('public.source_script_snapshots')  is null then raise exception 'missing table source_script_snapshots (0091)'; end if;
+              if to_regproc('public.editor_create_source_asset') is null then raise exception 'missing fn editor_create_source_asset (0091)'; end if;
+              if to_regproc('public.editor_validate_source')     is null then raise exception 'missing fn editor_validate_source (0091)'; end if;
+              if to_regproc('public.editor_assert_director_decision_v2') is null then raise exception 'missing fn editor_assert_director_decision_v2 (0092)'; end if;
+              if not exists (select 1 from pg_trigger where tgname='trg_editor_director_decision_guard')
+                then raise exception 'missing trigger trg_editor_director_decision_guard (0092)'; end if;
+            end
+            \$\$;"
+          echo "staging schema matches this checkout (0090/0091/0092 applied)"
 
       - name: Build worker (the real one that will run in production)
         run: cd worker && npm ci && npm run build
