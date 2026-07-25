@@ -204,7 +204,15 @@ jobs:
           authority=${STAGING_DB_URL#*://}
           at_count=$(printf '%s' "$authority" | tr -cd '@' | wc -c | tr -d ' ')
           if [ "$at_count" != "1" ]; then
-            echo "::error::STAGING_DB_URL contains $at_count '@' characters after '://' — a connection URI may contain exactly one, separating credentials from host. This means the PASSWORD contains a reserved character that must be percent-encoded. Encode it: @ -> %40, : -> %3A, / -> %2F, # -> %23, ? -> %3F, % -> %25. Shape: postgresql://postgres.otgzjsagybpgtwweuptj:<ENCODED-PASSWORD>@aws-<n>-<region>.pooler.supabase.com:5432/postgres"
+            # The encoding table goes to the plain log, NOT the ::error:: annotation:
+            # Actions percent-DECODES annotation text, so a literal %25 in an annotation
+            # renders as a bare '%' and the instruction contradicts itself.
+            echo "STAGING_DB_URL fix — percent-encode these characters in the PASSWORD:"
+            echo "    @ -> %40      : -> %3A      / -> %2F"
+            echo "    # -> %23      ? -> %3F      % -> %25"
+            echo "  Shape: postgresql://postgres.otgzjsagybpgtwweuptj:<ENCODED-PASSWORD>@aws-<n>-<region>.pooler.supabase.com:5432/postgres"
+            echo "  (exactly one '@' in the whole string — the one before the host)"
+            echo "::error::STAGING_DB_URL contains $at_count '@' characters after '://' — a connection URI may contain exactly one, separating credentials from host. The PASSWORD contains a reserved character that must be percent-encoded; see the encoding table printed above this annotation."
             exit 1
           fi
           hostport=${authority#*@}
