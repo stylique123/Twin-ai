@@ -167,7 +167,11 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
   if (asset.status !== 'validating') {
     let healedLink = false
     if (asset.status === 'ready' && asset.generation_id) {
-      const { data } = await db.rpc('editor_link_ready_source', { p_asset_id: assetId })
+      const { data, error: healErr } = await db.rpc('editor_link_ready_source', { p_asset_id: assetId })
+      // The heal must be RELIABLE, not best-effort: this retry may be the only one
+      // that ever runs for an orphaned ready asset. A transient error → throw →
+      // the job retries and the heal happens; swallowing it makes the orphan permanent.
+      if (healErr) throw new Error(`validate_source: heal-link failed: ${healErr.message}`)
       healedLink = data === true
     }
     return { status: asset.status, idempotent: true, healed_link: healedLink }
@@ -175,12 +179,16 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
   // Ownership re-check at execution time (not only at enqueue): the asset's
   // owner must still own the generation it claims to belong to.
   if (asset.generation_id) {
-    const { data: gen } = await db
+    const { data: gen, error: genErr } = await db
       .from('generations')
       .select('id')
       .eq('id', asset.generation_id)
       .eq('user_id', asset.owner_id)
       .maybeSingle()
+    // A transient read error is UNVERIFIED ownership, not disproven ownership —
+    // throwing retries; rejecting here would permanently kill a valid recording
+    // with a false security verdict on a DB blip.
+    if (genErr) throw new Error(`validate_source: ownership read failed: ${genErr.message}`)
     if (!gen) return await reject(assetId, 'ownership_mismatch', 'asset owner does not own the generation')
   }
 
@@ -252,11 +260,14 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
       editor_eligible: verdict.hasAudio,
     }
 
-    const { data: capRow } = await db
+    const { data: capRow, error: capReadErr } = await db
       .from('source_capture_intents')
       .select('intent, intent_sha256, origin')
       .eq('source_asset_id', assetId)
       .maybeSingle()
+    // "No intent" must be PROVEN, not assumed: a transient read error here would
+    // silently misroute a capture-contract asset onto the legacy path. Throw → retry.
+    if (capReadErr) throw new Error(`validate_source: capture intent read failed: ${capReadErr.message}`)
     if (capRow) {
       // New-era (capture-contract) source: normalize the accepted windows against the
       // MEASURED duration, then complete in ONE atomic RPC — capture manifest +
@@ -341,11 +352,20 @@ export async function handleValidateSource(job: Job): Promise<Record<string, unk
 // would burn worker retries re-probing a file that will never become valid.
 // Only validating→rejected is legal (the transition guard enforces it too).
 async function reject(assetId: string, code: string, detail: string): Promise<Record<string, unknown>> {
-  await db
+  // MERGE the rejection into existing metadata (finalized_etag/finalized_bytes must
+  // survive — the schema supports rejected→validating re-validation, and the etag
+  // re-check is skipped forever if the finalize references are erased here).
+  const { data: cur, error: readErr } = await db
+    .from('media_assets').select('metadata').eq('id', assetId).maybeSingle()
+  if (readErr) throw new Error(`validate_source: reject read failed: ${readErr.message}`)
+  const { error: upErr } = await db
     .from('media_assets')
-    .update({ status: 'rejected', metadata: { rejection_code: code, rejection_detail: detail } })
+    .update({ status: 'rejected', metadata: { ...((cur?.metadata as Record<string, unknown>) ?? {}), rejection_code: code, rejection_detail: detail } })
     .eq('id', assetId)
     .eq('status', 'validating')
+  // A rejection that did not land must NOT settle the job as 'rejected' — the asset
+  // would be stranded in `validating` with no retry ever coming. Throw → retry.
+  if (upErr) throw new Error(`validate_source: reject write failed: ${upErr.message}`)
   return { status: 'rejected', code, detail }
 }
 

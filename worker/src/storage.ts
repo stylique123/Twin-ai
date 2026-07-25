@@ -70,7 +70,12 @@ export async function downloadObject(
 // must not let different content get validated.
 export async function headObject(bucket: string, path: string): Promise<{ sizeBytes: number; etag: string | null } | null> {
   const res = await fetch(`${base}/object/${bucket}/${encodePath(path)}`, { method: 'HEAD', headers: auth })
-  if (!res.ok) return null
+  // null means PROVEN ABSENT (the storage API answered "no such object": 404, or the
+  // 400 some versions return for a missing key). Any OTHER failure (5xx/429/auth) is
+  // UNVERIFIED — throwing lets the caller's job retry instead of mistaking a transient
+  // storage error for a vanished object and permanently rejecting a valid recording.
+  if (res.status === 404 || res.status === 400) return null
+  if (!res.ok) throw new Error(`storage head ${bucket}/${path}: ${res.status} (transient — object presence unverified)`)
   return {
     sizeBytes: Number(res.headers.get('content-length') ?? '0'),
     etag: res.headers.get('etag'),

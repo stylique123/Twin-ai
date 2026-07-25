@@ -970,13 +970,26 @@ begin
     raise exception 'source_validate_size_mismatch: stored % vs probed %', a.size_bytes, p_size_bytes using errcode = 'raise_exception';
   end if;
 
-  -- Normalize every accepted capture window against the MEASURED duration:
-  -- 0 <= startMs < endMs <= duration_ms. Teleprompter carries segments; upload none.
+  -- Re-check BOTH capture documents against the MEASURED duration:
+  --  * RAW intent windows may exceed it only within the frozen recorder-clock
+  --    tolerance (CAPTURE_END_TOLERANCE_MS = 750, capture policy v1 — the same
+  --    constant the worker's normalizeCaptureManifest clamps with; a strict check
+  --    here would reject the exact 1-750ms drift band the contract exists to
+  --    accept, crash-looping legitimate teleprompter takes).
   for seg in select value from jsonb_array_elements(coalesce(intent_row.intent->'acceptedSegments','[]'::jsonb)) as t(value) loop
     s_start := (seg->>'startMs')::numeric;
     s_end := (seg->>'endMs')::numeric;
-    if s_start is null or s_end is null or s_start < 0 or s_end <= s_start or s_end > p_duration_ms then
+    if s_start is null or s_end is null or s_start < 0 or s_end <= s_start or s_end > p_duration_ms + 750 then
       raise exception 'source_validate_window_out_of_bounds: segment [%,%] vs duration %', s_start, s_end, p_duration_ms using errcode = 'raise_exception';
+    end if;
+  end loop;
+  --  * NORMALIZED manifest windows are post-clamp and must fit STRICTLY (a doctored
+  --    manifest cannot smuggle an out-of-range window past the tolerance).
+  for seg in select value from jsonb_array_elements(coalesce(p_manifest->'acceptedSegments','[]'::jsonb)) as t(value) loop
+    s_start := (seg->>'sourceStartMs')::numeric;
+    s_end := (seg->>'sourceEndMs')::numeric;
+    if s_start is null or s_end is null or s_start < 0 or s_end <= s_start or s_end > p_duration_ms then
+      raise exception 'source_validate_manifest_out_of_bounds: segment [%,%] vs duration %', s_start, s_end, p_duration_ms using errcode = 'raise_exception';
     end if;
   end loop;
 

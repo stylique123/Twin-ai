@@ -281,6 +281,8 @@ mutate_and_expect_fail "s/raise exception 'capture_manifest_conflict: settled as
 # passes through → the real assertion gate FAILS.
 mutate_and_expect_fail "s/raise exception 'source_validate_window_out_of_bounds: segment \[%,%\] vs duration %', s_start, s_end, p_duration_ms using errcode = 'raise_exception';/null;/" \
   "(v1) validate window-bounds guard removed → gate correctly FAILED"
+mutate_and_expect_fail "s/raise exception 'source_validate_manifest_out_of_bounds: segment \[%,%\] vs duration %', s_start, s_end, p_duration_ms using errcode = 'raise_exception';/null;/" \
+  "(v1b) validate MANIFEST strict-bounds guard removed → gate correctly FAILED (doctored manifest accepted)"
 mutate_and_expect_fail "s/raise exception 'source_validate_sha_mismatch: stored % vs probed %', a.content_sha256, p_content_sha using errcode = 'raise_exception';/null;/" \
   "(v2) validate sha-reconcile guard removed → gate correctly FAILED"
 mutate_and_expect_fail "s/raise exception 'source_validate_size_mismatch: stored % vs probed %', a.size_bytes, p_size_bytes using errcode = 'raise_exception';/null;/" \

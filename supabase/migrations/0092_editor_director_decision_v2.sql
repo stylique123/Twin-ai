@@ -38,13 +38,18 @@ begin
   -- validator always emits every field (safe defaults when the model omits one), so a
   -- missing key means a truncated/partial decision slipped past — reject it rather than
   -- store a degenerate row (e.g. `{schemaVersion:2}` with everything defaulted away).
-  foreach k in array array['selections','keptBoundaries','summary','pacing','music',
+  foreach k in array array['schemaVersion','selections','keptBoundaries','summary','pacing','music',
     'emphasisWordIndices','hookTreatment','hookStartWordIndex','visualWasteSelections',
     'captionPresetId','transitionPolicy','zoomRequests'] loop
     if not (p_decision ? k) then
       raise exception 'director_decision_incomplete: missing %', k using errcode = 'raise_exception';
     end if;
   end loop;
+  -- The embedded schemaVersion must AGREE with the column — a Phase-8 consumer reading
+  -- decision.schemaVersion must never disagree with the guard's verdict.
+  if (p_decision ->> 'schemaVersion') is distinct from '2' then
+    raise exception 'director_decision_bad_schema_version: embedded %', p_decision ->> 'schemaVersion' using errcode = 'raise_exception';
+  end if;
 
   -- selections (speech-candidate removals): never a filler, always selection-enabled.
   if jsonb_typeof(coalesce(p_decision -> 'selections', '[]'::jsonb)) <> 'array' then

@@ -64,6 +64,7 @@ no 2 "$(mut '.zoomRequests=[{"anchorWordIndex":1,"intensity":"nuclear","reasonCo
 no 2 "$(mut '.zoomRequests=[{"anchorWordIndex":1,"intensity":"subtle","reasonCode":"vibes"}]')" "off-catalog zoom reason"
 no 2 "$(mut 'del(.captionPresetId)')" "incomplete decision (missing a required field)"
 no 2 '{"schemaVersion":2,"selections":[]}' "degenerate near-empty decision"
+no 2 "$(mut '.schemaVersion=1')" "embedded schemaVersion disagrees with the column"
 
 echo "== negative control (guard removed → gate must FAIL) =="
 setup_db "s/raise exception 'director_filler_disabled' using errcode = 'raise_exception';/null;/"

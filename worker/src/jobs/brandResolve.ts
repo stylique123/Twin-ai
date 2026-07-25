@@ -1,7 +1,8 @@
 // Editor v2 — resolve the owner's DEFAULT brand into the bounded snapshot, WITH a
-// verified logo. Shared by the boot-manifest pin (editorV2) and the Director stage
-// (editorDirector) so both derive the SAME snapshot from the SAME rules — the Director
-// re-derives it and fails closed if it drifts from the hash pinned at boot.
+// verified logo. Called ONLY by the boot-manifest pin (editorV2): the snapshot
+// CONTENT is frozen into the pinned manifest there, and every later stage (incl.
+// the Director) reads that frozen copy — never a live re-derivation — so a
+// mid-project brand change cannot alter or fail a running edit.
 import { createHash } from 'node:crypto'
 import { db } from '../db.js'
 import { PermanentJobError } from '../errors.js'

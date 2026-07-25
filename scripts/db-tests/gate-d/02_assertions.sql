@@ -865,6 +865,31 @@ begin
     values (a,own,g,'teleprompter',sc,gen_random_uuid(),'{"acceptedSegments":[{"startMs":0,"endMs":9000,"sceneNumber":1,"intendedDialogueSha256":"x"}]}'::jsonb,repeat('a',64),now());
   perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{}'::jsonb,'%s','v1',null)$q$, a, own, repeat('d',64), repeat('c',64)), 'source_validate_window_out_of_bounds');
 end $$;
+do $$  -- recorder-clock drift WITHIN the frozen 750ms tolerance completes (the worker clamps it in the manifest)
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fd000000-0000-0000-0000-0000000000fd'; a uuid := 'fd000000-0000-0000-0000-000000000007'; sc text := repeat('a',64); r record;
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  -- intent endMs 5300 vs measured 5000: 300ms drift, inside tolerance; manifest carries the CLAMPED window.
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'teleprompter',sc,gen_random_uuid(),'{"acceptedSegments":[{"startMs":0,"endMs":5300,"sceneNumber":1,"intendedDialogueSha256":"x"}]}'::jsonb,repeat('a',64),now());
+  select * into r from public.editor_validate_source(a,own,repeat('d',64),1024,5000,1,1,1,1,0,true,
+    '{"acceptedSegments":[{"sourceStartMs":0,"sourceEndMs":5000,"sceneNumber":1}]}'::jsonb,repeat('c',64),'v1',null);
+  perform pg_temp.expect_true(r.made_ready, 'validate: within-tolerance drift completes (not crash-looped)');
+end $$;
+do $$  -- a DOCTORED manifest window beyond the measured duration is rejected strictly
+declare own uuid := 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'; g uuid := 'fd000000-0000-0000-0000-0000000000fd'; a uuid := 'fd000000-0000-0000-0000-000000000008'; sc text := repeat('a',64);
+begin
+  truncate public.source_script_snapshots, public.source_capture_manifests, public.source_capture_intents, public.media_assets cascade;
+  insert into public.generations(id,user_id) values (g,own) on conflict do nothing;
+  insert into public.media_assets(id,owner_id,generation_id,recording_attempt_id,kind,bucket,storage_path,mime_type,size_bytes,status,capture_contract_version)
+    values (a,own,g,gen_random_uuid(),'source','takes','x','video/webm',1024,'validating',1);
+  insert into public.source_capture_intents(source_asset_id,owner_id,generation_id,origin,recording_script_sha256,client_attempt_id,intent,intent_sha256,recorded_at)
+    values (a,own,g,'teleprompter',sc,gen_random_uuid(),'{"acceptedSegments":[{"startMs":0,"endMs":5000,"sceneNumber":1,"intendedDialogueSha256":"x"}]}'::jsonb,repeat('a',64),now());
+  perform pg_temp.expect_code(format($q$select public.editor_validate_source('%s','%s','%s',1024,5000,1,1,1,1,0,true,'{"acceptedSegments":[{"sourceStartMs":0,"sourceEndMs":9000,"sceneNumber":1}]}'::jsonb,'%s','v1',null)$q$, a, own, repeat('d',64), repeat('c',64)), 'source_validate_manifest_out_of_bounds');
+end $$;
 
 \echo == backup-11: retake pointer (newest-wins; a late older take cannot steal it) ==
 do $$  -- newer take wins the generation pointer (+ legacy take_path mirror)
