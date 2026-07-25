@@ -45,22 +45,29 @@ no(){ if ins "$1" "$2"; then echo "GATE-E FAIL: hostile decision ACCEPTED ($3)";
 setup_db ""
 echo "== positive =="
 ok 2 "$VALID" "valid v2 decision inserts"
+# Build each hostile from the FULL valid base by poisoning exactly ONE field with jq, so
+# a specific-guard test is rejected for its OWN reason (filler / not-selectable / catalog)
+# and never merely for incompleteness.
+mut(){ echo "$VALID" | jq -c "$1"; }
+FILLER='.selections=[{"candidateIndex":0,"kind":"filler","selectionEnabled":1,"startCs":0,"endCs":10}]'
 echo "== hostile (each must be rejected) =="
 no 1 "$VALID" "schema_version != 2"
-no 2 '{"schemaVersion":2,"selections":[{"kind":"filler","selectionEnabled":1}]}' "filler removal"
-no 2 '{"schemaVersion":2,"selections":[{"kind":"silence","selectionEnabled":0}]}' "non-selectable speech removal"
-no 2 '{"schemaVersion":2,"selections":[],"visualWasteSelections":[{"classCode":1}]}' "non-dead_air visual-waste removal"
-no 2 '{"schemaVersion":2,"selections":[],"captionPresetId":"neon"}' "off-catalog caption preset"
-no 2 '{"schemaVersion":2,"selections":[],"transitionPolicy":"wipe"}' "off-catalog transition policy"
-no 2 '{"schemaVersion":2,"selections":[],"pacing":"chaotic"}' "off-catalog pacing"
-no 2 '{"schemaVersion":2,"selections":[],"music":"lofi"}' "off-catalog music"
-no 2 '{"schemaVersion":2,"selections":[],"hookTreatment":"rewrite"}' "off-catalog hook treatment"
-no 2 '{"schemaVersion":2,"selections":[],"zoomRequests":[{"anchorWordIndex":0,"intensity":"nuclear"}]}' "off-catalog zoom intensity"
-no 2 '{"schemaVersion":2,"selections":[],"zoomRequests":[{"anchorWordIndex":0,"reasonCode":"vibes"}]}' "off-catalog zoom reason"
+no 2 "$(mut "$FILLER")" "filler removal"
+no 2 "$(mut '.selections=[{"candidateIndex":0,"kind":"silence","selectionEnabled":0,"startCs":0,"endCs":10}]')" "non-selectable speech removal"
+no 2 "$(mut '.visualWasteSelections=[{"wasteIndex":0,"classCode":1,"startCs":0,"endCs":5}]')" "non-dead_air visual-waste removal"
+no 2 "$(mut '.captionPresetId="neon"')" "off-catalog caption preset"
+no 2 "$(mut '.transitionPolicy="wipe"')" "off-catalog transition policy"
+no 2 "$(mut '.pacing="chaotic"')" "off-catalog pacing"
+no 2 "$(mut '.music="lofi"')" "off-catalog music"
+no 2 "$(mut '.hookTreatment="rewrite"')" "off-catalog hook treatment"
+no 2 "$(mut '.zoomRequests=[{"anchorWordIndex":1,"intensity":"nuclear","reasonCode":"emphasis_word"}]')" "off-catalog zoom intensity"
+no 2 "$(mut '.zoomRequests=[{"anchorWordIndex":1,"intensity":"subtle","reasonCode":"vibes"}]')" "off-catalog zoom reason"
+no 2 "$(mut 'del(.captionPresetId)')" "incomplete decision (missing a required field)"
+no 2 '{"schemaVersion":2,"selections":[]}' "degenerate near-empty decision"
 
 echo "== negative control (guard removed → gate must FAIL) =="
 setup_db "s/raise exception 'director_filler_disabled' using errcode = 'raise_exception';/null;/"
-if ins 2 '{"schemaVersion":2,"selections":[{"kind":"filler","selectionEnabled":1}]}'; then
+if ins 2 "$(mut "$FILLER")"; then
   echo "  (m1) filler guard removed → hostile filler correctly ACCEPTED (control has teeth)"
 else
   echo "GATE-E FAIL: filler still rejected after removing its guard — control is toothless"; exit 1

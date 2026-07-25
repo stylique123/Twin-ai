@@ -25,7 +25,7 @@ language plpgsql
 immutable
 set search_path = pg_catalog, public
 as $$
-declare e jsonb;
+declare e jsonb; k text;
 begin
   if p_schema_version is distinct from 2 then
     raise exception 'director_decision_bad_schema_version: %', p_schema_version using errcode = 'raise_exception';
@@ -33,6 +33,18 @@ begin
   if p_decision is null or jsonb_typeof(p_decision) <> 'object' then
     raise exception 'director_decision_not_object' using errcode = 'raise_exception';
   end if;
+
+  -- Completeness: a persisted Decision v2 must be the FULL object. The worker's
+  -- validator always emits every field (safe defaults when the model omits one), so a
+  -- missing key means a truncated/partial decision slipped past — reject it rather than
+  -- store a degenerate row (e.g. `{schemaVersion:2}` with everything defaulted away).
+  foreach k in array array['selections','keptBoundaries','summary','pacing','music',
+    'emphasisWordIndices','hookTreatment','hookStartWordIndex','visualWasteSelections',
+    'captionPresetId','transitionPolicy','zoomRequests'] loop
+    if not (p_decision ? k) then
+      raise exception 'director_decision_incomplete: missing %', k using errcode = 'raise_exception';
+    end if;
+  end loop;
 
   -- selections (speech-candidate removals): never a filler, always selection-enabled.
   if jsonb_typeof(coalesce(p_decision -> 'selections', '[]'::jsonb)) <> 'array' then

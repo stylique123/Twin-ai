@@ -65,10 +65,17 @@ const SYSTEM_PROMPT = [
   '`emphasisWordIndices` (integer indices into `words`, for the few words to emphasise),',
   'and the hook: `hookTreatment` is "keep" (keep the real opening) or "open_at_word" with',
   '`hookStartWordIndex` (a real word index > 0) to start on a spoken word, dropping any',
-  'greeting/preamble before it — never invent an opening. Respond ONLY with the required',
-  'JSON: an array of {candidateIndex} selections (optionally a short reason), optional',
-  'keptBoundaries indices, optional pacing, music, emphasisWordIndices, hookTreatment,',
-  'hookStartWordIndex, and an optional short summary. Do not invent indices.',
+  'greeting/preamble before it — never invent an opening. You also choose, ONLY from the IDs',
+  'listed in `summaries.catalogs`: `captionPresetId` (one of catalogs.captionPresets),',
+  '`transitionPolicy` (one of catalogs.transitionPolicies), and `zoomRequests` (each is',
+  '{anchorWordIndex: a real `words` index, intensity: one of catalogs.zoomIntensities,',
+  'reasonCode: one of catalogs.zoomReasons}). To remove visual dead air, use',
+  '`visualWasteSelections`: integer indices into the envelope `visualWaste` stream, and ONLY',
+  'indices whose 4th tuple element (selectionEnabled) is 1 — never any other. Respond ONLY',
+  'with the required JSON: an array of {candidateIndex} selections (optionally a short',
+  'reason), and optional keptBoundaries, pacing, music, emphasisWordIndices, hookTreatment,',
+  'hookStartWordIndex, visualWasteSelections, captionPresetId, transitionPolicy, zoomRequests,',
+  'and a short summary. Choose only from the catalogs; do not invent indices or IDs.',
 ].join(' ')
 
 // Map the pinned visual component's blank intervals into the compact, server-issued
@@ -250,7 +257,11 @@ export async function driveDirectorCall(ctx: DriveCtx): Promise<DirectorOutcome>
     throw new PermanentJobError(`director decision rejected: ${code}`, code)
   }
 
-  const decisionJson = { schemaVersion: decision.schemaVersion, selections: decision.selections, keptBoundaries: decision.keptBoundaries, summary: decision.summary }
+  // Persist the FULL validated Decision v2 — every field already re-resolved against the
+  // pinned envelope. The compiler (Phase 8) consumes ALL of it (pacing/music/hook/caption/
+  // zoom/transition/visual-waste), so a reduced subset here would silently discard the
+  // Director's creative decision after validation.
+  const decisionJson = decision
   const decisionSha256 = sha256Hex(canonicalJson(decisionJson))
   await ctx.ledger.succeed(decisionJson, decisionSha256, responseSha256)
   await ctx.ledger.event('director_succeeded', { decision_sha256: decisionSha256, selections: decision.selections.length })

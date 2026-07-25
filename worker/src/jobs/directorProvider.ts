@@ -5,7 +5,10 @@
 // double-charge or double-edit. This is deliberately NOT worker/src/gemini.ts
 // (which retries). Model is the frozen DIRECTOR_MODEL constant, never env.
 import { env } from '../env.js'
-import { DIRECTOR_MODEL } from './directorContract.js'
+import {
+  DIRECTOR_MODEL, DECISION_PACING, DECISION_MUSIC, DECISION_HOOK,
+  CAPTION_PRESET_IDS, TRANSITION_POLICIES, ZOOM_INTENSITIES, ZOOM_REASON_CODES,
+} from './directorContract.js'
 
 export class DirectorProviderError extends Error {
   code: string
@@ -17,7 +20,11 @@ export class DirectorProviderError extends Error {
 }
 
 // Gemini structured-output schema (uppercase OpenAPI-subset types). The real
-// authority is validateDirectorDecision — this only shapes the model's output.
+// authority is validateDirectorDecision — this only shapes the model's output. It
+// MUST stay semantically identical to directorResponseSchema() (the lowercase copy
+// whose SHA is pinned into the envelope); both carry the FULL Decision v2 choice set
+// so the model can actually return caption/zoom/transition/visual-waste, not just cuts.
+const enumStr = (values: readonly string[]) => ({ type: 'STRING', format: 'enum', enum: [...values] })
 const RESPONSE_SCHEMA = {
   type: 'OBJECT',
   properties: {
@@ -34,6 +41,26 @@ const RESPONSE_SCHEMA = {
     },
     keptBoundaries: { type: 'ARRAY', items: { type: 'INTEGER' } },
     summary: { type: 'STRING' },
+    pacing: enumStr(DECISION_PACING),
+    music: enumStr(DECISION_MUSIC),
+    emphasisWordIndices: { type: 'ARRAY', items: { type: 'INTEGER' } },
+    hookTreatment: enumStr(DECISION_HOOK),
+    hookStartWordIndex: { type: 'INTEGER' },
+    visualWasteSelections: { type: 'ARRAY', items: { type: 'INTEGER' } },
+    captionPresetId: enumStr(CAPTION_PRESET_IDS),
+    transitionPolicy: enumStr(TRANSITION_POLICIES),
+    zoomRequests: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          anchorWordIndex: { type: 'INTEGER' },
+          intensity: enumStr(ZOOM_INTENSITIES),
+          reasonCode: enumStr(ZOOM_REASON_CODES),
+        },
+        required: ['anchorWordIndex'],
+      },
+    },
   },
   required: ['selections'],
 }
