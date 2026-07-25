@@ -49,6 +49,19 @@ describe('pin resume: assertPinnedWorkerIdentity', () => {
     expect(() => assertPinnedWorkerIdentity(base(), local)).not.toThrow()
   })
 
+  it('a STORED null ffmpeg banner does NOT fail a resolved local one (leniency is symmetric)', () => {
+    // The probe result is cached for the whole process lifetime, so a single blip at
+    // PIN time freezes null into the pin — every later attempt on the same build would
+    // otherwise hit a permanent manifest_mismatch it can never clear.
+    const stored = { ...base(), ffmpeg: { versionBannerSha256: null } }
+    expect(() => assertPinnedWorkerIdentity(stored, base())).not.toThrow()
+  })
+
+  it('both banners null passes (nothing was proven either way)', () => {
+    const nulled = { ...base(), ffmpeg: { versionBannerSha256: null } }
+    expect(() => assertPinnedWorkerIdentity(nulled, { ...nulled })).not.toThrow()
+  })
+
   it('a RESOLVED but different ffmpeg banner still fails closed', () => {
     const local = { ...base(), ffmpeg: { versionBannerSha256: '8'.repeat(64) } }
     expect(() => assertPinnedWorkerIdentity(base(), local)).toThrow(/ffmpeg/)

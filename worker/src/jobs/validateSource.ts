@@ -355,17 +355,37 @@ async function reject(assetId: string, code: string, detail: string): Promise<Re
   // MERGE the rejection into existing metadata (finalized_etag/finalized_bytes must
   // survive — the schema supports rejected→validating re-validation, and the etag
   // re-check is skipped forever if the finalize references are erased here).
+  //
+  // This is a client-side read-modify-write, which 0084 otherwise avoids in favour of a
+  // DB-side `||` merge. It is safe HERE and only here: the write is guarded on
+  // `status = 'validating'`, and this worker holds that asset's job lease, so no second
+  // writer can be merging into the same row's metadata concurrently. The compare-and-set
+  // below turns any violation of that assumption into a loud failure, not a lost write.
   const { data: cur, error: readErr } = await db
     .from('media_assets').select('metadata').eq('id', assetId).maybeSingle()
   if (readErr) throw new Error(`validate_source: reject read failed: ${readErr.message}`)
-  const { error: upErr } = await db
+  const { data: updated, error: upErr } = await db
     .from('media_assets')
     .update({ status: 'rejected', metadata: { ...((cur?.metadata as Record<string, unknown>) ?? {}), rejection_code: code, rejection_detail: detail } })
     .eq('id', assetId)
     .eq('status', 'validating')
+    .select('id')
   // A rejection that did not land must NOT settle the job as 'rejected' — the asset
   // would be stranded in `validating` with no retry ever coming. Throw → retry.
   if (upErr) throw new Error(`validate_source: reject write failed: ${upErr.message}`)
+  if (!updated || updated.length === 0) {
+    // The guarded update matched NO row: the asset left `validating` between the read
+    // and the write. A silent zero-row update here would report `rejected` to the job
+    // while the row says otherwise. Re-read and decide: already `rejected` is this same
+    // verdict landing twice (idempotent — settle); anything else is a concurrent
+    // transition we must not paper over, so throw and let the attempt re-derive.
+    const { data: now } = await db
+      .from('media_assets').select('status').eq('id', assetId).maybeSingle()
+    const status = (now as { status?: string } | null)?.status ?? null
+    if (status !== 'rejected') {
+      throw new Error(`validate_source: reject did not land — asset ${assetId} is now ${status ?? 'missing'}, not validating`)
+    }
+  }
   return { status: 'rejected', code, detail }
 }
 

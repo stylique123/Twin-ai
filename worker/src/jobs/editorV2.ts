@@ -203,7 +203,6 @@ async function pinManifest(
   //    source asset. null ONLY for a true legacy source (no capture contract);
   //    a new-era source without a manifest cannot reach `ready` (0091 guard), so
   //    by pin time it exists.
-  const brand = await pinBrandSnapshot(ownerId)
   const captureManifestSha = await pinCaptureManifestSha(sourceAssetId)
   // Read the source's provenance state ONCE and reuse it for both the manifest-null
   // guard and the snapshot policy (no double read).
@@ -213,6 +212,37 @@ async function pinManifest(
   if (provState.marker !== null && !captureManifestSha) {
     throw new PermanentJobError(`pin: marked source ${sourceAssetId} has a null capture manifest`, 'capture_manifest_required')
   }
+
+  // RESUME REUSES THE PINNED TRUTH (§3.2 set-once, made real across attempts), and it
+  // is checked BEFORE any user-mutable live input is resolved. The manifest is
+  // recomputed from LIVE inputs; brand (and, for legacy sources, the script) are
+  // user-mutable — so "recompute, then compare" would let an input that has since
+  // become UNRESOLVABLE (brand row deleted, a legacy generation's scene_timeline
+  // grown past the snapshot bound) fail a project that is otherwise perfectly
+  // resumable from its frozen pin. Resolving the pin first removes that whole class.
+  //
+  // assertPinnedWorkerIdentity compares only the WORKER-IDENTITY sections (versions
+  // are never mixed — the guard this pin exists for); brandSnapshot is deliberately
+  // NOT among them, so an identity-only manifest built with a placeholder brand is
+  // sufficient to verify the stored pin, and the STORED brand is what we go on with.
+  const identityManifest = await buildBootManifest({
+    inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
+    brandSnapshot: {}, brandSnapshotSha: '', captureManifestSha,
+  })
+  const reused = await reuseStoredPin(projectId, identityManifest)
+  if (reused) {
+    // The first-pin path goes through editor_pin_manifest, which asserts the lease and
+    // writes a history marker. The reuse path must not be silently fence-free: append a
+    // marker (editor_append_event asserts the same lease) so a resumed attempt is both
+    // fenced and visible in the project history.
+    await appendEvent(job, projectId, 'manifest_pin_reused', {
+      manifest_sha: reused.manifest.manifestSha, snapshot_sha: reused.snapshot.snapshotSha,
+      attempt: job.attempts,
+    })
+    return reused
+  }
+
+  const brand = await pinBrandSnapshot(ownerId)
   const manifest = await buildBootManifest({
     inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
     brandSnapshot: brand.snapshot, brandSnapshotSha: brand.sha, captureManifestSha,
@@ -227,17 +257,6 @@ async function pinManifest(
     gen as { id: string; selected_hook: string | null; scene_timeline: unknown },
     { readState: async () => provState, readRow: readSourceScriptSnapshotRow },
   )
-  // RESUME REUSES THE PINNED TRUTH (§3.2 set-once, made real across attempts).
-  // The manifest above is recomputed from LIVE inputs; brand (and, for legacy
-  // sources, the script) are user-mutable, and the ffmpeg banner probe can fail
-  // transiently — so "recompute and compare bytes" would turn a mid-project brand
-  // edit or a probe blip into a permanent manifest_mismatch on ANY retry. Instead:
-  // when a pin already exists, verify only the WORKER-IDENTITY sections match the
-  // recomputation (versions are never mixed — the guard this pin exists for), then
-  // proceed with the STORED manifest + snapshot, self-integrity-checked against
-  // their pinned SHAs. Brand changes mid-project no longer touch a running edit.
-  const reused = await reuseStoredPin(projectId, manifest)
-  if (reused) return reused
 
   const { data, error } = await db.rpc('editor_pin_manifest', {
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
@@ -250,7 +269,13 @@ async function pinManifest(
     // but a brand edit landing between our read and the RPC.
     if (/manifest_mismatch/.test(error.message)) {
       const late = await reuseStoredPin(projectId, manifest)
-      if (late) return late
+      if (late) {
+        await appendEvent(job, projectId, 'manifest_pin_reused', {
+          manifest_sha: late.manifest.manifestSha, snapshot_sha: late.snapshot.snapshotSha,
+          attempt: job.attempts, raced: true,
+        })
+        return late
+      }
     }
     throw classifyDbError(error.message)
   }
@@ -292,9 +317,13 @@ async function reuseStoredPin(
   }
 }
 
-// Worker-identity sections must match the recomputation byte-for-byte. ffmpeg is
-// compared only when the recomputed banner resolved (a transient probe failure on a
-// matching build must not permanently fail a resumable project). Exported for tests.
+// Worker-identity sections must match the recomputation byte-for-byte. ffmpeg is the
+// one lenient section: it is compared ONLY when BOTH banners resolved. A `-version`
+// probe can fail transiently, and the result is cached for the whole process lifetime
+// (editorManifest.ts ffmpegBannerSha256) — so a single blip at pin time freezes a null
+// banner into the pin, and a blip on a later attempt produces a null locally. Either
+// direction is a probe artifact, not a version change; only two RESOLVED banners that
+// disagree prove the build actually moved. Exported for tests.
 export function assertPinnedWorkerIdentity(stored: Record<string, unknown>, local: Record<string, unknown>): void {
   const identityKeys = ['schemaVersion', 'manifestEpoch', 'componentVersions', 'componentDigests',
     'modelArtifacts', 'build', 'rules', 'captureManifestSha', 'features'] as const
@@ -303,8 +332,12 @@ export function assertPinnedWorkerIdentity(stored: Record<string, unknown>, loca
       throw new PermanentJobError(`pin: pinned manifest diverges from this worker at '${k}' — versions are never mixed`, 'manifest_mismatch')
     }
   }
-  const localBanner = (local.ffmpeg as { versionBannerSha256?: string | null } | undefined)?.versionBannerSha256
-  if (localBanner != null && canonicalJson(stored.ffmpeg ?? null) !== canonicalJson(local.ffmpeg ?? null)) {
+  const banner = (v: unknown): string | null | undefined =>
+    (v as { versionBannerSha256?: string | null } | null | undefined)?.versionBannerSha256
+  const localBanner = banner(local.ffmpeg)
+  const storedBanner = banner(stored.ffmpeg)
+  if (localBanner != null && storedBanner != null
+      && canonicalJson(stored.ffmpeg ?? null) !== canonicalJson(local.ffmpeg ?? null)) {
     throw new PermanentJobError("pin: pinned manifest diverges from this worker at 'ffmpeg' — versions are never mixed", 'manifest_mismatch')
   }
 }

@@ -170,8 +170,21 @@ describe('Gate 7: worker director contract == shared authority', () => {
     expect(JSON.stringify(norm(RESPONSE_SCHEMA))).toBe(JSON.stringify(sharedResponseSchema()))
   })
 
-  it('OUTPUT budget: the TRUE worst legal Decision v2 fits under maxOutputTokens - thinking', () => {
-    // Recompute the absolute worst-case response bytes from the frozen caps.
+  it('OUTPUT budget: an UPPER BOUND on any Decision v2 response fits under maxOutputTokens - thinking', () => {
+    // Recompute the worst-case response bytes from the frozen caps.
+    //
+    // What this proves, precisely: the object built below is an UPPER BOUND, not itself
+    // a legal decision — the index generator repeats values (4901 selections drawn from
+    // 3901 distinct indices), which validateDirectorDecision rejects as duplicates. That
+    // is deliberate: relaxing legality can only make the encoding LONGER (every element
+    // is already the widest 4-digit form and every optional array is at its cap), so a
+    // bound proven here holds for every decision that IS legal.
+    //
+    // Nothing enforces MAX_DECISION_OUTPUT_BYTES at runtime — it is a budget-sizing
+    // constant, and this test is its only enforcement. Its job is to fail the build if a
+    // future field or a raised cap pushes the worst case past the provider's usable
+    // output budget (maxOutputTokens - thinking), where the model would be truncated
+    // mid-JSON instead of returning a decision.
     //
     // `summary` is capped in JS string LENGTH (UTF-16 units), NOT bytes — so an ascii
     // summary is NOT the worst case and must never be used as the bound. Both real
