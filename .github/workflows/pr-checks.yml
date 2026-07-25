@@ -181,9 +181,13 @@ jobs:
   # break a DB guarantee with CI green. Now they gate every PR.
   db-gates:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20, cache: npm }
+      - name: Install dependencies (Gate-D's DB<->TS parity step needs esbuild)
+        run: npm ci
       - name: Install PostgreSQL
         run: |
           sudo apt-get update -qq
