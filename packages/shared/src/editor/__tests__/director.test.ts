@@ -8,6 +8,7 @@ import {
   DIRECTOR_INPUT_MAX_BYTES, EXPECTED_MAX_COMPAT_ENVELOPE_BYTES, PROVIDER_TOKEN_CEILING,
   PROVIDER_CONTEXT_TOKENS, ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES, IDENTITY_BUNDLE_MAX_BYTES,
   PIPELINE_EPOCH_V2, SPEECH_CANDIDATE_KINDS, CANDIDATE_CONFIDENCE_CODES, SILENCE_CLASS_CODES,
+  VISUAL_WASTE_CLASSES, MAX_VISUAL_WASTE,
   kindSelectionEnabled, validateDirectorDecision, DirectorDecisionError,
   directorResponseSchema, DIRECTOR_DECISION_SCHEMA_VERSION, MAX_DECISION_SUMMARY_CHARS,
   type DirectorEnvelope,
@@ -391,5 +392,7 @@ function baseEnvelope(): DirectorEnvelope {
       [3, 0, 10, CANDIDATE_CONFIDENCE_CODES.indexOf('medium'), 0, 1, [1]],
     ],
     boundaries: [[1, 0, 1]],
+    // vw0: dead_air (selectable), vw1: static_hold (not selectable)
+    visualWaste: [[0, 5, VISUAL_WASTE_CLASSES.indexOf('dead_air'), 1], [10, 20, VISUAL_WASTE_CLASSES.indexOf('static_hold'), 0]],
   }
 }

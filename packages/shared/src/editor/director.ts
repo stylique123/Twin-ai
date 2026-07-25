@@ -95,7 +95,12 @@ export const MAX_TIME_CS = 180000 // SOURCE_MAX_DURATION_MS / 10 (30 min)
 export const MAX_SCRIPT_BYTES = 65536 // == SCRIPT_SNAPSHOT_MAX_BYTES (pinned once)
 export const MAX_SUMMARY_BYTES = 16384 // our own summary builder's enforced cap
 export const IDENTITY_BUNDLE_MAX_BYTES = 2048 // serialized identity+bundle cap
-export const ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES = 751371 // 667179+65536+16384+2048+224
+// visualWaste stream: MAX_VISUAL_WASTE tuples, each <= 20 bytes in-array
+// (`[180000,180000,3,1],` — two 6-digit cs + a class code + a 0/1 flag), plus the
+// `"visualWaste":[]` wrapper (16). A FIXED, bounded term; never scales with the
+// component. 60*20 + 16 = 1216.
+export const MAX_VISUAL_WASTE_BYTES = 1216 // MAX_VISUAL_WASTE(60)*20 + 16 (literal: MAX_VISUAL_WASTE is declared below)
+export const ANALYTIC_MAX_UPSTREAM_ENVELOPE_BYTES = 752587 // 667179+65536+16384+2048+1216+224
 
 // Provider context (gemini-3.5-flash) and the enforced input byte cap.
 export const PROVIDER_CONTEXT_TOKENS = 1048576
@@ -105,7 +110,7 @@ export const DIRECTOR_INPUT_MAX_BYTES = 819200 // > analytic max, <= token ceili
 // The exact measured serialized size of buildMaxUpstreamCompatFixture(), frozen
 // by the Gate-0 tests (recomputed from the real serializer and asserted for
 // byte EQUALITY — never approximate).
-export const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563014
+export const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563730
 
 // Legends (index == code in the compact tuples). Order is FROZEN — a decision
 // signal the server cross-checks against the re-resolved immutable component.
@@ -119,6 +124,21 @@ export const SILENCE_CLASS_CODES = ['none', 'uncertain', 'removable', 'dead_air'
 export type SpeechCandidateKindName = (typeof SPEECH_CANDIDATE_KINDS)[number]
 export type CandidateConfidenceName = (typeof CANDIDATE_CONFIDENCE_CODES)[number]
 export type SilenceClassName = (typeof SILENCE_CLASS_CODES)[number]
+
+// Visual-waste candidate stream (§3.5). The visual analyzer classifies blank
+// intervals; only corroborated dead air is ever selectable (see editorVisual.ts
+// computeBlankIntervals — near-black AND frozen on the same sample). The envelope
+// carries a compact, server-issued stream the Director references by index, so a
+// Decision v2 `visual_waste` removal can never point at a fabricated span. Order is
+// FROZEN (index == class code). selectionEnabled is 1 ONLY for corroborated dead_air.
+export const VISUAL_WASTE_CLASSES = ['dead_air', 'static_hold', 'dark_motion', 'ambiguous'] as const
+export type VisualWasteClassName = (typeof VISUAL_WASTE_CLASSES)[number]
+// Bounded by the analyzer's own blankCandidateCap (analysis_rules_v1.json = 60).
+export const MAX_VISUAL_WASTE = 60
+// A visual-waste class is selectable as waste ONLY when it is corroborated dead air.
+export function visualWasteSelectionEnabled(cls: VisualWasteClassName): 0 | 1 {
+  return cls === 'dead_air' ? 1 : 0
+}
 
 // FEATURE SAFETY: auto filler removal is OFF (EDITOR_FEATURES.autoFillerRemoval
 // = false). A `filler` candidate is inert evidence and must NEVER be marked
@@ -147,6 +167,10 @@ export function kindSelectionEnabled(kind: SpeechCandidateKindName): 0 | 1 {
 export type EnvWord = [string, number, number]
 export type EnvCandidate = [number, number, number, number, number, number, number[]]
 export type EnvBoundary = [number, number, number]
+// visualWaste: [startCs, endCs, classCode, selectionEnabled]   index == waste id
+//   classCode indexes VISUAL_WASTE_CLASSES; selectionEnabled is 1 only for
+//   corroborated dead_air (the upstream analyzer's independent-evidence gate).
+export type EnvVisualWaste = [number, number, number, number]
 
 export interface DirectorEnvelopeIdentity {
   projectId: string
@@ -178,6 +202,7 @@ export interface DirectorEnvelope {
   words: EnvWord[]
   candidates: EnvCandidate[]
   boundaries: EnvBoundary[]
+  visualWaste: EnvVisualWaste[]
 }
 
 // ---------------------------------------------------------------------------
@@ -297,7 +322,7 @@ function safeCanonicalBytes(v: unknown, where: string): number {
   }
 }
 
-const TOP_KEYS = ['schemaVersion', 'pipelineEpoch', 'bundle', 'identity', 'script', 'summaries', 'words', 'candidates', 'boundaries'] as const
+const TOP_KEYS = ['schemaVersion', 'pipelineEpoch', 'bundle', 'identity', 'script', 'summaries', 'words', 'candidates', 'boundaries', 'visualWaste'] as const
 const BUNDLE_KEYS = ['version', 'provider', 'model', 'promptSha256', 'schemaSha256', 'configSha256'] as const
 const IDENTITY_KEYS = ['projectId', 'generationId', 'sourceAssetId', 'sourceChecksum', 'bootManifestSha', 'scriptSnapshotSha', 'componentVersions', 'componentDigests'] as const
 
@@ -414,6 +439,27 @@ export function validateDirectorEnvelope(input: unknown): DirectorEnvelope {
     const sw = requireIntIn(b[1], 0, n - 1, `boundary ${i} startWordIdx`, 'director_envelope_bad_boundary')
     const ew = requireIntIn(b[2], 0, n - 1, `boundary ${i} endWordIdx`, 'director_envelope_bad_boundary')
     if (sw > ew) fail(`boundary ${i}: start > end`, 'director_envelope_bad_boundary')
+  }
+
+  const visualWaste = input.visualWaste
+  if (!Array.isArray(visualWaste)) fail('visualWaste: not an array', 'director_envelope_bad_visual_waste')
+  if (visualWaste.length > MAX_VISUAL_WASTE) {
+    fail(`visualWaste ${visualWaste.length} > ${MAX_VISUAL_WASTE}`, 'director_input_too_many_visual_waste')
+  }
+  for (let i = 0; i < visualWaste.length; i++) {
+    const w = visualWaste[i]
+    if (!Array.isArray(w) || w.length !== 4) fail(`visualWaste ${i}: tuple shape`, 'director_envelope_bad_visual_waste')
+    const startCs = requireIntIn(w[0], 0, MAX_TIME_CS, `visualWaste ${i} startCs`, 'director_envelope_bad_visual_waste')
+    const endCs = requireIntIn(w[1], 0, MAX_TIME_CS, `visualWaste ${i} endCs`, 'director_envelope_bad_visual_waste')
+    if (startCs > endCs) fail(`visualWaste ${i}: startCs > endCs`, 'director_envelope_bad_visual_waste')
+    const classCode = requireIntIn(w[2], 0, VISUAL_WASTE_CLASSES.length - 1, `visualWaste ${i} classCode`, 'director_envelope_bad_visual_waste')
+    const selectionEnabled = requireIntIn(w[3], 0, 1, `visualWaste ${i} selectionEnabled`, 'director_envelope_bad_visual_waste')
+    // FEATURE SAFETY (independent of the projection): only corroborated dead_air may
+    // ever be selection-enabled. A non-dead_air class marked selectable is rejected so
+    // legitimate footage can never be offered as removable waste.
+    if (selectionEnabled !== visualWasteSelectionEnabled(VISUAL_WASTE_CLASSES[classCode])) {
+      fail(`visualWaste ${i}: selectionEnabled must match class safety`, 'director_envelope_visual_waste_selectable')
+    }
   }
 
   const scriptBytes = safeCanonicalBytes(input.script, 'script')
@@ -632,6 +678,12 @@ export function buildMaxUpstreamCompatFixture(): DirectorEnvelope {
     words: proj.words,
     candidates: proj.candidates,
     boundaries: proj.boundaries,
+    // Saturate the visual-waste cap; class cycles through all four, selectionEnabled
+    // strictly derived from class safety (dead_air selectable, others not).
+    visualWaste: Array.from({ length: MAX_VISUAL_WASTE }, (_, i) => {
+      const classCode = i % VISUAL_WASTE_CLASSES.length
+      return [i, i, classCode, visualWasteSelectionEnabled(VISUAL_WASTE_CLASSES[classCode])] as EnvVisualWaste
+    }),
   }
 }
 

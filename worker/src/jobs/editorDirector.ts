@@ -100,6 +100,10 @@ function buildEnvelope(
     // Director never treats an absent colour/logo as if it existed.
     summaries: { brand: brandSummary },
     words: proj.words, candidates: proj.candidates, boundaries: proj.boundaries,
+    // visual-waste stream: populated from the pinned visual component's corroborated
+    // dead-air intervals in the §3.5 runtime wiring step; empty until then (honest —
+    // an unwired stream surfaces NOTHING rather than a guessed span).
+    visualWaste: [],
   }
   return validateDirectorEnvelope(JSON.parse(JSON.stringify(env0)))
 }

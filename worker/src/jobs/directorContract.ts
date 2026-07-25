@@ -54,9 +54,19 @@ export function kindSelectionEnabled(kind: SpeechCandidateKindName): 0 | 1 {
   return kind === 'filler' ? 0 : 1
 }
 
+// Visual-waste candidate stream (§3.5). Only corroborated dead air is selectable.
+export const VISUAL_WASTE_CLASSES = ['dead_air', 'static_hold', 'dark_motion', 'ambiguous'] as const
+export type VisualWasteClassName = (typeof VISUAL_WASTE_CLASSES)[number]
+export const MAX_VISUAL_WASTE = 60
+export function visualWasteSelectionEnabled(cls: VisualWasteClassName): 0 | 1 {
+  return cls === 'dead_air' ? 1 : 0
+}
+
 export type EnvWord = [string, number, number]
 export type EnvCandidate = [number, number, number, number, number, number, number[]]
 export type EnvBoundary = [number, number, number]
+// visualWaste: [startCs, endCs, classCode, selectionEnabled]   index == waste id
+export type EnvVisualWaste = [number, number, number, number]
 
 export interface DirectorEnvelope {
   schemaVersion: number
@@ -76,6 +86,7 @@ export interface DirectorEnvelope {
   words: EnvWord[]
   candidates: EnvCandidate[]
   boundaries: EnvBoundary[]
+  visualWaste: EnvVisualWaste[]
 }
 
 // ---- strict canonical JSON (identical to the shared authority) ----
@@ -152,7 +163,7 @@ function requireMatch(v: unknown, re: RegExp, where: string): string {
 function safeCanonicalBytes(v: unknown, where: string): number {
   try { return utf8ByteLength(canonicalJson(v)) } catch { fail(`${where}: not canonically serializable`, 'director_envelope_unserializable') }
 }
-const TOP_KEYS = ['schemaVersion', 'pipelineEpoch', 'bundle', 'identity', 'script', 'summaries', 'words', 'candidates', 'boundaries'] as const
+const TOP_KEYS = ['schemaVersion', 'pipelineEpoch', 'bundle', 'identity', 'script', 'summaries', 'words', 'candidates', 'boundaries', 'visualWaste'] as const
 const BUNDLE_KEYS = ['version', 'provider', 'model', 'promptSha256', 'schemaSha256', 'configSha256'] as const
 const IDENTITY_KEYS = ['projectId', 'generationId', 'sourceAssetId', 'sourceChecksum', 'bootManifestSha', 'scriptSnapshotSha', 'componentVersions', 'componentDigests'] as const
 
@@ -244,6 +255,24 @@ export function validateDirectorEnvelope(input: unknown): DirectorEnvelope {
     const ew = requireIntIn(b[2], 0, n - 1, `boundary ${i} endWordIdx`, 'director_envelope_bad_boundary')
     if (sw > ew) fail(`boundary ${i}: start > end`, 'director_envelope_bad_boundary')
   }
+  const visualWaste = input.visualWaste
+  if (!Array.isArray(visualWaste)) fail('visualWaste: not an array', 'director_envelope_bad_visual_waste')
+  if (visualWaste.length > MAX_VISUAL_WASTE) {
+    fail(`visualWaste ${visualWaste.length} > ${MAX_VISUAL_WASTE}`, 'director_input_too_many_visual_waste')
+  }
+  for (let i = 0; i < visualWaste.length; i++) {
+    const w = visualWaste[i]
+    if (!Array.isArray(w) || w.length !== 4) fail(`visualWaste ${i}: tuple shape`, 'director_envelope_bad_visual_waste')
+    const startCs = requireIntIn(w[0], 0, MAX_TIME_CS, `visualWaste ${i} startCs`, 'director_envelope_bad_visual_waste')
+    const endCs = requireIntIn(w[1], 0, MAX_TIME_CS, `visualWaste ${i} endCs`, 'director_envelope_bad_visual_waste')
+    if (startCs > endCs) fail(`visualWaste ${i}: startCs > endCs`, 'director_envelope_bad_visual_waste')
+    const classCode = requireIntIn(w[2], 0, VISUAL_WASTE_CLASSES.length - 1, `visualWaste ${i} classCode`, 'director_envelope_bad_visual_waste')
+    const selectionEnabled = requireIntIn(w[3], 0, 1, `visualWaste ${i} selectionEnabled`, 'director_envelope_bad_visual_waste')
+    if (selectionEnabled !== visualWasteSelectionEnabled(VISUAL_WASTE_CLASSES[classCode])) {
+      fail(`visualWaste ${i}: selectionEnabled must match class safety`, 'director_envelope_visual_waste_selectable')
+    }
+  }
+
   const scriptBytes = safeCanonicalBytes(input.script, 'script')
   if (scriptBytes > MAX_SCRIPT_BYTES) fail(`script ${scriptBytes} > ${MAX_SCRIPT_BYTES}`, 'director_script_too_large')
   const summaryBytes = safeCanonicalBytes(input.summaries, 'summaries')
