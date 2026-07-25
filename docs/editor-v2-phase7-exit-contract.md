@@ -334,3 +334,59 @@ staging workflow for the exact-head Phase 1–7 regression — it now applies
 `0091`/`0092` itself and asserts parity — before any production enablement. The
 in-sandbox substitutes are the Gate-D/Gate-E harnesses (now also in CI), the
 shared/worker unit + parity suites, and the token-evidence gate.
+
+### 7.2 Third review round (the exit correction's own fixes, re-reviewed)
+
+Round 2's fixes were themselves put through a final adversarial pass. **Eight
+findings; six were defects, two were accuracy problems.** Two of the six were in
+the round-2 pin-resume fix — the fix solved half the problem it claimed to:
+
+- **The pin was read AFTER the live inputs it was meant to make irrelevant**
+  (medium-high). `pinManifest` resolved the brand snapshot and the boot script
+  snapshot BEFORE calling `reuseStoredPin`, so a live input that had become
+  *unresolvable* (a deleted brand row; a legacy generation whose `scene_timeline`
+  had grown past `script_snapshot_too_large`) still failed a project that was
+  perfectly resumable from its frozen pin. Round 2 stopped comparing live inputs;
+  it did not stop *resolving* them. The stored pin is now read FIRST, via an
+  identity-only manifest — `brandSnapshot` is not a worker-identity key, so a
+  placeholder brand is sufficient to verify the pin, and the STORED brand is what
+  the edit proceeds on.
+- **ffmpeg leniency was one-directional** (medium-high). Round 2 skipped the
+  banner comparison when the LOCAL probe returned null, but not when the STORED
+  one was null. `ffmpegBannerSha256` caches its result for the whole process
+  lifetime, so a single probe blip at PIN time freezes `null` into the manifest,
+  and every later attempt on the identical build hits a permanent
+  `manifest_mismatch` it can never clear. The comparison now requires BOTH
+  banners to have resolved; only two resolved, disagreeing banners prove the
+  build actually moved.
+- **The resume path was fence-free and invisible** (low). The first-pin path goes
+  through `editor_pin_manifest`, which asserts the lease and leaves a history
+  marker; the reuse path returned early and did neither. It now appends a
+  `manifest_pin_reused` event — `editor_append_event` asserts the same lease, so
+  this restores the fence and the audit trail in one call.
+- **`reject()` could not see a zero-row update** (low). The status-guarded write
+  reported success whether or not it matched a row, so a job could settle
+  `rejected` while the asset said otherwise. It now selects its rows back and
+  re-reads on zero: already-`rejected` settles (idempotent), anything else throws.
+- **`headObject` treated HTTP 400 as proven-absent** (low). 400 is also what the
+  storage API returns for a malformed request, and a HEAD carries no body to tell
+  them apart — while the caller turns `null` into a PERMANENT `object_missing`
+  rejection. Only 404 now proves absence; every other failure is unverified and
+  retries.
+- **The client-side read-modify-write in `reject()`** (low) contradicts `0084`'s
+  DB-merge principle. Reviewed and kept, with the reasoning written down: the
+  write is guarded on `status = 'validating'` and this worker holds the asset's
+  job lease, so no second writer can be merging concurrently — and the
+  compare-and-set above turns any violation of that assumption into a loud
+  failure rather than a lost write.
+
+The two accuracy problems: the Director contract doc still specified
+`selections[]` as `{candidateIndex}` objects with an optional `reason` (round 2
+had changed the wire to a bare index array), and the output-budget test claimed
+to build "the worst LEGAL decision" when it in fact builds an **upper bound** —
+the index generator repeats values, which the validator rejects as duplicates.
+Both corrected in place; the test now also records that it is the ONLY
+enforcement of `MAX_DECISION_OUTPUT_BYTES`, which has no runtime check.
+
+**Verified on this head**: shared 228, worker 198, all typechecks, Gate-D PASS,
+Gate-E PASS.
