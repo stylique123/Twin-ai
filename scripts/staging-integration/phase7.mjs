@@ -358,6 +358,20 @@ async function main() {
     check('D12 begin before directing => director_wrong_stage', !!bStage.error && /director_wrong_stage/.test(bStage.error.message), JSON.stringify(bStage.error))
   }
 
+  // Section D's truth table deliberately leaves projects mid-flight (begin => started,
+  // then => unknown) to prove the call-state machine, and D12 leaves one parked before
+  // `directing`. Those never settle, so they keep counting against the per-user ACTIVE
+  // project cap — and section E then cannot start at all:
+  //   start 429: {"code":"too_many_active_projects"}
+  // startProject's 429 retry waits out the RATE window, which cannot help here: the
+  // projects are active, not throttled. Drain the matrix's own fixtures now, using the
+  // same statement the setup block uses. This is harness hygiene, not a weakened
+  // assertion — every D check has already run and passed by this point, and the cap
+  // itself keeps its teeth (it is asserted in the Phase-2 matrix, G3).
+  await admin.from('jobs').update({ status: 'done', result: { drained_by: 'phase7-post-D' }, locked_at: null, locked_by: null })
+    .eq('type', 'editor_v2').in('status', ['queued', 'running'])
+  await admin.from('edit_projects').update({ status: 'cancelled' }).not('status', 'in', '("completed","failed","cancelled")')
+
   // ---- E. fail-closed credentials ----------------------------------------
   console.log('\n== E. enabled + no GEMINI_API_KEY => fail closed ==')
   {
