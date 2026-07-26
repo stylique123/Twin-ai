@@ -43,16 +43,33 @@ async function resolveVerifiedLogo(
 // SHA). Read fails closed on schema drift; an absent/unready default voice yields a
 // stable snapshot-of-empty-inputs (never a silent skip / null) whose visual sources are
 // all `none` — the editor knows it has no confirmed brand rather than guessing one.
+// Classify a brand_voices read failure as DEPLOYMENT DRIFT (permanent) or not.
+// Drift is permanent by nature: retrying cannot conjure a missing column or table,
+// and calling it transient turns one bad deploy into every editor job retry-storming
+// until it dead-letters, with the real cause buried under generic retry noise.
+//
+// The table case used to fall through to `transient` — PostgREST reports an absent
+// table as "Could not find the table 'public.brand_voices' in the schema cache"
+// (PGRST205), which matches none of the column patterns. The staging matrix hit it
+// for real (staging is an editor-only project and had no brand tables) and the job
+// retried four times before the harness timed out. Exported for tests.
+export function brandReadDrift(message: string): string | null {
+  if (/could not find the table|relation .*does not exist|PGRST205/i.test(message)) {
+    return 'brand_voices table is absent (deployment drift)'
+  }
+  if (/column .*does not exist|profile|brand_kit|is_default/i.test(message)) {
+    return 'brand_voices schema is missing a required column (deployment drift)'
+  }
+  return null
+}
+
 export async function resolveBrandSnapshot(ownerId: string): Promise<{ snapshot: EditorBrandSnapshotV1; sha: string }> {
   const { data: voice, error } = await db
     .from('brand_voices').select('profile, brand_kit')
     .eq('owner_id', ownerId).eq('is_default', true).maybeSingle()
   if (error) {
-    if (/column .*does not exist|profile|brand_kit|is_default/i.test(error.message)) {
-      throw new PermanentJobError(
-        `brand_voices schema is missing a required column (deployment drift): ${error.message}`,
-        'brand_schema_drift')
-    }
+    const drift = brandReadDrift(error.message)
+    if (drift) throw new PermanentJobError(`${drift}: ${error.message}`, 'brand_schema_drift')
     throw new Error(`brand voice read failed: ${error.message}`)
   }
   const profile = (voice?.profile ?? null) as Parameters<typeof projectBrandSnapshot>[0]
