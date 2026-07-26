@@ -24,6 +24,48 @@
 # Secrets: $STAGING_DB_URL and $SUPABASE_ACCESS_TOKEN are read from the environment and
 # NEVER printed. psql reads the URL from PGURL to keep it out of `ps` and out of logs.
 set -euo pipefail
+
+# =====================================================================================
+# DISABLED — THIS ALGORITHM IS UNSAFE. DO NOT RUN AGAINST ANY LIVE DATABASE.
+# =====================================================================================
+# Four defects found in review, two of them dangerous:
+#
+# 1. IT MUTATES BEFORE IT DECIDES. The script re-applies migrations to LIVE staging and
+#    only then reports drift. A safety check that performs the risky action first is not
+#    a safety check. Expected state must never be derived by writing to the thing being
+#    verified.
+#
+# 2. ADDITIVE DRIFT IS INVISIBLE. Idempotent re-application does not remove an extra
+#    column, index, constraint or grant, so BEFORE == AFTER and the comparison passes —
+#    the ledger could then be repaired against a schema that does NOT match the
+#    migrations. Precisely the failure this guard exists to prevent.
+#
+# 3. THE HOSTILE TESTS DO NOT TEST THIS ALGORITHM. They mutate a fixture and assert the
+#    FINGERPRINT changes. They never execute reapply-and-compare, so they prove nothing
+#    about whether run.sh blocks anything. This is the vacuous-fixture failure mode
+#    documented in the Gate-0 freeze itself (SS8.1) — reproduced while writing the
+#    document that warns about it.
+#
+# 4. fingerprint.sql DOES NOT COVER THE OWNED SURFACE. Missing: most 0091 functions,
+#    function EXECUTE ACLs, media_assets columns and its capture-ready trigger, the
+#    Decision-v2 trigger/table surface, trigger ENABLED state, policy permissive vs
+#    restrictive, column defaults, and forced-RLS state.
+#
+# REQUIRED REDESIGN before this may run anywhere:
+#   * build the EXPECTED fingerprint in an isolated disposable database from the
+#     committed migration inputs — never by writing to staging;
+#   * or compare staging against a committed canonical manifest produced by that build;
+#   * cover the entire owned surface, including ACLs, trigger enabled state, policy
+#     permissiveness, column defaults and forced RLS;
+#   * run the REAL guard end-to-end in every hostile case, including ADDITIVE drift;
+#   * prove staging is semantically unchanged after every rejected case;
+#   * only then repair the ledger, as a separate ledger-only transaction.
+#
+echo "::error::migration-reconcile is DISABLED: the algorithm mutates staging before" >&2
+echo "::error::detecting drift and cannot see additive drift. See this file's header." >&2
+exit 1
+# =====================================================================================
+
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 FP="$HERE/fingerprint.sql"
