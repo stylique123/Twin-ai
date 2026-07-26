@@ -398,7 +398,20 @@ begin
     'takes','video/webm',1048576);
   -- DIRECT update/delete on the INTENT (reproduced auditor control) → immutable.
   perform pg_temp.expect_code(format($q$delete from public.source_capture_intents where source_asset_id=%L$q$, r.asset_id::text), 'capture_row_immutable');
-  perform pg_temp.expect_code(format($q$update public.source_capture_intents set origin='upload' where source_asset_id=%L$q$, r.asset_id::text), 'capture_row_immutable');
+  perform pg_temp.expect_code(format($q$update public.source_capture_intents set origin='upload' where origin='teleprompter' and source_asset_id=%L$q$, r.asset_id::text), 'capture_row_immutable');
+  -- A direct SET NULL on generation_id is ALSO refused: the exemption below is for
+  -- the REFERENTIAL ACTION, never for a caller who merely mimics its shape.
+  perform pg_temp.expect_code(format($q$update public.source_capture_intents set generation_id=null where source_asset_id=%L$q$, r.asset_id::text), 'capture_row_immutable');
+  -- SANCTIONED cascade #2 — generations ON DELETE SET NULL. Postgres performs this
+  -- as an UPDATE on the child, and the pre-0093 guard refused every UPDATE at any
+  -- depth, so deleting a generation rolled back and the recording became
+  -- UNDELETABLE. Caught by the Phase-2 staging matrix, never by a unit test:
+  -- this subset used to declare generation_id with no FK, so it never fired.
+  perform pg_temp.expect_true((select generation_id from public.source_capture_intents where source_asset_id=r.asset_id) = g,
+    'retention: intent still points at its generation pre-delete');
+  delete from public.generations where id = g;   -- must NOT raise
+  perform pg_temp.expect_true((select generation_id is null from public.source_capture_intents where source_asset_id=r.asset_id),
+    'retention: generation DELETE cascades SET NULL into the intent (not blocked)');
   -- SANCTIONED parent-cascade retention: deleting the media_assets parent cascades to
   -- intent + script snapshot (no direct-delete block), leaving NO orphan rows.
   perform pg_temp.expect_true((select count(*) from public.source_capture_intents where source_asset_id=r.asset_id)=1, 'retention: intent present pre-delete');
