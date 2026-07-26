@@ -368,11 +368,16 @@ the round-2 pin-resume fix — the fix solved half the problem it claimed to:
   reported success whether or not it matched a row, so a job could settle
   `rejected` while the asset said otherwise. It now selects its rows back and
   re-reads on zero: already-`rejected` settles (idempotent), anything else throws.
-- **`headObject` treated HTTP 400 as proven-absent** (low). 400 is also what the
+- **`headObject` treated HTTP 400 as proven-absent** (low). ~~400 is also what the
   storage API returns for a malformed request, and a HEAD carries no body to tell
   them apart — while the caller turns `null` into a PERMANENT `object_missing`
   rejection. Only 404 now proves absence; every other failure is unverified and
-  retries.
+  retries.~~ **REVERTED — this "fix" was wrong and staging proved it** (see §7.3).
+  Supabase Storage answers a missing key on HEAD with **400**, not 404. With 400
+  excluded, a genuinely vanished object stopped being rejected and instead retried
+  to `failed/retries_exhausted` — a hung job, and a worse outcome for the user than
+  the clean `object_missing` verdict. The finding was reasoning about an API's
+  behaviour without evidence; the behaviour is now pinned by Phase-4 F9.
 - **The client-side read-modify-write in `reject()`** (low) contradicts `0084`'s
   DB-merge principle. Reviewed and kept, with the reasoning written down: the
   write is guarded on `status = 'validating'` and this worker holds the asset's
@@ -469,3 +474,21 @@ review rounds, a full unit suite, and a green Gate-D; every one of them needed r
 infrastructure to surface, and the last needed the previous fix to exist first.
 Production apply, worker deploy and the `EDITOR_DIRECTOR_ENABLED` flip stay three
 separate decisions with verification between them — not one batch.
+
+**Fifth defect (mine, from the review round rather than the build).** Phase 4 came
+back 56 passed / 1 failed: `F9 vanished storage object fails as object_missing —
+failed/retries_exhausted`. The third review round had narrowed `headObject` to treat
+only 404 as proven-absent, arguing that 400 might be a malformed request and that
+accepting it could permanently reject a healthy recording. That argument was made
+from first principles about an API whose actual behaviour nobody had checked —
+Supabase Storage answers a missing key on HEAD with **400**. The result was the
+opposite of the intent: instead of protecting a healthy recording, it left a
+genuinely vanished one retrying to exhaustion, giving the user a hung job instead of
+a clean rejection. Reverted, with the empirical fact recorded at the call site.
+
+The residual ambiguity is real but bounded by construction: bucket and path come
+from the asset row rather than user input, so a 400 here means the key is gone. If
+it ever needs removing rather than bounding, the mechanism is a 1-byte ranged GET,
+which returns a body the HEAD does not. That was deliberately NOT attempted in this
+batch: it cannot be verified from the sandbox, and an unverified guess is exactly
+what caused this failure.
