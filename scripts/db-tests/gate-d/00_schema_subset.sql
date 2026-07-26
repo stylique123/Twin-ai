@@ -38,7 +38,12 @@ create table public.generations (
 create table public.media_assets (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null,
-  generation_id uuid,
+  -- Real 0076 shape: `references generations(id) on delete set null`. It was a bare
+  -- `uuid` here, which made the subset disagree with production about what happens
+  -- when a generation is deleted — the asset kept its pointer while the intent's was
+  -- cleared, and the linkage check read that as corruption. Second time an omitted
+  -- referential action produced a fake result in this harness; declare them for real.
+  generation_id uuid references public.generations(id) on delete set null,
   recording_attempt_id uuid,
   kind text not null check (kind in ('source','music','output','thumbnail')),
   seq bigint generated always as identity,

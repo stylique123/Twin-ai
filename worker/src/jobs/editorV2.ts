@@ -183,6 +183,15 @@ async function pinManifest(
     .from('generations').select('id, user_id, selected_hook, scene_timeline')
     .eq('id', generationId).maybeSingle()
   if (genErr) {
+    // An ABSENT TABLE is drift too, and PostgREST words it differently ("Could not
+    // find the table ... in the schema cache", PGRST205) — the column patterns below
+    // miss it entirely. Same defect the brand read shipped with (see brandReadDrift);
+    // fixed here in the same pass rather than left as its unfixed sibling.
+    if (/could not find the table|relation .*does not exist|PGRST205/i.test(genErr.message)) {
+      throw new PermanentJobError(
+        `pin: generations table is absent (deployment drift): ${genErr.message}`,
+        'script_schema_drift')
+    }
     if (/column .*does not exist|scene_timeline|selected_hook|user_id/i.test(genErr.message)) {
       throw new PermanentJobError(
         `pin: generations schema is missing a required script column (deployment drift): ${genErr.message}`,

@@ -60,6 +60,13 @@ psql -q -f "$WORK/capture_guard.sql"
 
 psql -q -f "$HERE/00_schema_subset.sql"
 psql -q -f "$WORK/gate_d_fns.sql"
+# 0094 makes the capture INTEGRITY definition retention-aware. It must load AFTER
+# gate_d_fns.sql, which carries 0091's original body — last definition wins, exactly
+# as the real migration order does.
+BFMIG="$REPO/supabase/migrations/0094_editor_capture_integrity_retention_aware.sql"
+if ! grep -q 'RETENTION-AWARE' "$BFMIG"; then
+  echo "FATAL: 0094 does not carry the retention-aware integrity checks"; exit 1; fi
+psql -q -f "$BFMIG"
 # grants live just outside the markers; apply the real revoke/grant statements
 # so the grant-posture assertions exercise the migration's actual posture.
 grep -E '^(revoke|grant) .*public\.editor_(capture_segments|capture_intent|validate_capture|build_stored|snapshot_normalize|recording_script|verify_capture|persist_script|create_source|validate_source|write_capture_manifest|backfill_capture_marker)' "$MIG" > "$WORK/grants.sql"
@@ -329,6 +336,16 @@ if psql -q -f "$HERE/02_assertions.sql" >/dev/null 2>&1; then
   echo "NEGATIVE-CONTROL FAIL: gate PASSED with the pre-0093 guard (generation delete would be blocked)"; exit 1; fi
 echo "  (r) pre-0093 capture guard restored → gate correctly FAILED (SET NULL retention blocked)"
 psql -q -f "$WORK/capture_guard.sql" >/dev/null   # restore the authoritative 0093 body
+
+# (r2) INTEGRITY teeth: reinstate 0091's pre-0094 backfill body, whose generation
+#      comparisons are not retention-aware. Once a generation has been deleted the
+#      cleared live pointers differ from the preserved historical ones, and that body
+#      calls the difference corruption — exactly the staging failure. Gate MUST fail.
+psql -q -f "$WORK/gate_d_fns.sql" >/dev/null      # 0091 body (pre-0094 comparisons)
+if psql -q -f "$HERE/02_assertions.sql" >/dev/null 2>&1; then
+  echo "NEGATIVE-CONTROL FAIL: gate PASSED with the pre-0094 integrity checks (post-retention state would read as corruption)"; exit 1; fi
+echo "  (r2) pre-0094 integrity checks restored → gate correctly FAILED (retention state read as corruption)"
+psql -q -f "$BFMIG" >/dev/null                    # restore the authoritative 0094 body
 
 echo "== identity negative controls (RLS/privilege/service-role/warning must have teeth) =="
 # (l) manifest RLS disabled → an outsider sees the owner's manifest → identity FAILS.

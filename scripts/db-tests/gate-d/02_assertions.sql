@@ -412,6 +412,14 @@ begin
   delete from public.generations where id = g;   -- must NOT raise
   perform pg_temp.expect_true((select generation_id is null from public.source_capture_intents where source_asset_id=r.asset_id),
     'retention: generation DELETE cascades SET NULL into the intent (not blocked)');
+  -- AND the system's own definition of "consistent" must survive that state. The
+  -- cleared live pointers now differ from the preserved historical ones (immutable
+  -- intent JSON; the NOT NULL, FK-less snapshots.generation_id), which the pre-0094
+  -- checks counted as corruption. Two of them, not one — fixing only the first would
+  -- have moved the failure to the second.
+  perform public.editor_backfill_capture_marker();
+  perform pg_temp.expect_true(true,
+    'retention: capture integrity still passes AFTER a generation deletion (0094)');
   -- SANCTIONED parent-cascade retention: deleting the media_assets parent cascades to
   -- intent + script snapshot (no direct-delete block), leaving NO orphan rows.
   perform pg_temp.expect_true((select count(*) from public.source_capture_intents where source_asset_id=r.asset_id)=1, 'retention: intent present pre-delete');

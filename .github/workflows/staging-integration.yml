@@ -227,7 +227,7 @@ jobs:
             echo "::error::Could not connect to STAGING with STAGING_DB_URL (see the psql error above). Nothing was applied. Re-copy the Session pooler connection string and percent-encode the password."
             exit 1
           fi
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade; do
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_capture_integrity_retention_aware; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
