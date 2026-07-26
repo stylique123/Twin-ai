@@ -46,8 +46,25 @@ awk '/GATE-D-FUNCTIONS-BEGIN/{f=1} f{print} /GATE-D-FUNCTIONS-END/{f=0}' "$MIG" 
 if ! grep -q editor_create_source_asset "$WORK/gate_d_fns.sql"; then
   echo "FATAL: could not extract Gate-D functions from 0091 (markers moved?)"; exit 1; fi
 
+# The capture-table append-only guard is the AUTHORITY from 0093, never a copy.
+# A hand-written mirror of this function previously drifted from the migration in
+# the direction that hid a real defect (the ON DELETE SET NULL path), so it is
+# extracted verbatim and loaded BEFORE 00_schema_subset.sql creates the triggers
+# that reference it.
+CAPMIG="$REPO/supabase/migrations/0093_editor_capture_retention_cascade.sql"
+awk '/^create or replace function public\.editor_capture_no_mutate/{f=1} f{print} /^\$\$;$/{if(f){exit}}' \
+  "$CAPMIG" > "$WORK/capture_guard.sql"
+if ! grep -q pg_trigger_depth "$WORK/capture_guard.sql"; then
+  echo "FATAL: could not extract editor_capture_no_mutate from 0093 (shape moved?)"; exit 1; fi
+psql -q -f "$WORK/capture_guard.sql"
+
 psql -q -f "$HERE/00_schema_subset.sql"
 psql -q -f "$WORK/gate_d_fns.sql"
+# The capture INTEGRITY checks are retention-aware inside 0091 itself (they cannot
+# live in a later migration: 0091 CALLS editor_backfill_capture_marker() and then
+# DROPS it, so a follow-up would both arrive too late and resurrect a one-time helper).
+if ! grep -q 'RETENTION-AWARE' "$WORK/gate_d_fns.sql"; then
+  echo "FATAL: 0091 no longer carries the retention-aware integrity checks"; exit 1; fi
 # grants live just outside the markers; apply the real revoke/grant statements
 # so the grant-posture assertions exercise the migration's actual posture.
 grep -E '^(revoke|grant) .*public\.editor_(capture_segments|capture_intent|validate_capture|build_stored|snapshot_normalize|recording_script|verify_capture|persist_script|create_source|validate_source|write_capture_manifest|backfill_capture_marker)' "$MIG" > "$WORK/grants.sql"
@@ -297,6 +314,33 @@ mutate_and_expect_fail "s/raise exception 'source_validate_bad_duration: %', p_d
 #      take steals the pointer → the retake assertion FAILS → gate has teeth.
 mutate_and_expect_fail "s/and coalesce((select m.seq from public.media_assets m where m.id = gp.source_asset_id), 0) <= a.seq;/;/" \
   "(v7) retake newest-wins guard removed → gate correctly FAILED"
+
+# (r) RETENTION teeth: reinstate the PRE-0093 guard — the 0091 body, which refuses
+#     every UPDATE at any depth. That is the exact code that shipped and that the
+#     staging matrix caught: `generations ON DELETE SET NULL` performs a cascade
+#     UPDATE, so deleting a generation raised capture_row_immutable and rolled the
+#     transaction back, making a user's recording undeletable. The gate MUST fail.
+psql -q -c "create or replace function public.editor_capture_no_mutate() returns trigger language plpgsql set search_path = pg_catalog, public as \$\$
+begin
+  if tg_op = 'UPDATE' then
+    raise exception 'capture_row_immutable: % is append-only', tg_table_name using errcode = 'raise_exception';
+  end if;
+  if pg_trigger_depth() = 1 then
+    raise exception 'capture_row_immutable: % direct deletes are not permitted (retention runs via the parent cascade)', tg_table_name using errcode = 'raise_exception';
+  end if;
+  return old;
+end \$\$;" >/dev/null
+if psql -q -f "$HERE/02_assertions.sql" >/dev/null 2>&1; then
+  echo "NEGATIVE-CONTROL FAIL: gate PASSED with the pre-0093 guard (generation delete would be blocked)"; exit 1; fi
+echo "  (r) pre-0093 capture guard restored → gate correctly FAILED (SET NULL retention blocked)"
+psql -q -f "$WORK/capture_guard.sql" >/dev/null   # restore the authoritative 0093 body
+
+# (r2) INTEGRITY teeth: strip the retention guards out of the generation comparisons,
+#      reproducing the pre-fix body. Once a generation has been deleted the cleared live
+#      pointers differ from the preserved historical ones, and the unguarded comparisons
+#      call that difference corruption — exactly the staging failure. Gate MUST fail.
+mutate_and_expect_fail "s/i\.generation_id is not null and //; s/a\.generation_id is not null and //" \
+  "(r2) retention guards stripped from the integrity checks → gate correctly FAILED (retention state read as corruption)"
 
 echo "== identity negative controls (RLS/privilege/service-role/warning must have teeth) =="
 # (l) manifest RLS disabled → an outsider sees the owner's manifest → identity FAILS.

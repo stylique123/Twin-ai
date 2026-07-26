@@ -70,14 +70,28 @@ export async function downloadObject(
 // must not let different content get validated.
 export async function headObject(bucket: string, path: string): Promise<{ sizeBytes: number; etag: string | null } | null> {
   const res = await fetch(`${base}/object/${bucket}/${encodePath(path)}`, { method: 'HEAD', headers: auth })
-  // null means PROVEN ABSENT, and ONLY 404 proves it. The caller turns null into a
-  // PERMANENT `object_missing` rejection, so the asymmetry matters: 400 is also what
-  // the storage API returns for a malformed request / bad bucket, and a HEAD carries no
-  // body to tell the two apart — accepting it here would permanently reject a recording
-  // whose bytes are perfectly fine. Every non-404 failure (400/5xx/429/auth) is
-  // UNVERIFIED and throws, so the job retries and the truth surfaces as a job failure
-  // rather than a wrong verdict on the user's media.
-  if (res.status === 404) return null
+  // null means PROVEN ABSENT. Supabase Storage answers a MISSING KEY on HEAD with
+  // 400, not 404 — established empirically by the staging matrix (Phase-4 F9,
+  // "vanished storage object fails as object_missing"), which is the only place that
+  // deletes a real object and watches what the API says.
+  //
+  // A previous edit here narrowed this to 404-only on the theory that 400 might be a
+  // malformed request and accepting it could permanently reject a healthy recording.
+  // The theory was wrong about THIS API: with 400 excluded, a genuinely vanished
+  // object stopped being rejected at all and instead retried to
+  // failed/retries_exhausted — a hung job and a worse outcome for the user than the
+  // clean `object_missing` verdict they should get. Restored, and pinned by F9.
+  //
+  // The residual ambiguity is real but strictly smaller: a malformed request would
+  // also be read as absent. It is bounded by construction — bucket and path come from
+  // the asset row, not from user input, and encodePath handles the escaping — so a 400
+  // here means the key is gone, not that the request was wrong. If that ever needs
+  // removing rather than bounding, the fix is a 1-byte ranged GET (which returns a
+  // body, unlike HEAD) to read the error code directly; not attempted here because it
+  // cannot be verified from the sandbox and a guess already cost one run.
+  if (res.status === 404 || res.status === 400) return null
+  // Everything else (5xx/429/auth) is UNVERIFIED: throw so the job retries rather than
+  // mistaking a transient storage error for a vanished recording.
   if (!res.ok) throw new Error(`storage head ${bucket}/${path}: ${res.status} (transient — object presence unverified)`)
   return {
     sizeBytes: Number(res.headers.get('content-length') ?? '0'),

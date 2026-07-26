@@ -311,10 +311,20 @@ async function main() {
     pinSha = proj.boot_manifest_sha
     check('A3 stored manifest canonically re-hashes to boot_manifest_sha',
       sha256(canonicalize(manifest)) === proj.boot_manifest_sha)
-    check('A3b stored snapshot canonically re-hashes to script_snapshot_sha, hook preserved',
+    // The fixtures here are ALL origin='upload' (see sourceFlow). Under the §4.1
+    // source-provenance policy an uploaded file was never recorded against a script,
+    // so it pins the explicit no-captured-script form — it must NOT inherit the
+    // generation's hook/scenes, which are a PLAN the user may never have followed.
+    // This used to assert the opposite (hook === HOOK_LINE, 2 scenes) because the
+    // snapshot always came from the live generation before this batch. Re-aimed, and
+    // stronger: it now proves the generation's script does not leak into an upload.
+    check('A3b upload source pins the no-captured-script form; generation script does NOT leak',
       sha256(canonicalize(proj.script_snapshot)) === proj.script_snapshot_sha
-      && proj.script_snapshot?.hook === HOOK_LINE
-      && (proj.script_snapshot?.scenes ?? []).length === 2)
+      && proj.script_snapshot?.capturedScript === false
+      && proj.script_snapshot?.generationId === S.gen
+      && proj.script_snapshot?.hook === undefined
+      && proj.script_snapshot?.scenes === undefined,
+      JSON.stringify(proj.script_snapshot))
     check('A4 manifest epoch-2 + versions + model artifacts + v2 pins',
       manifest.manifestEpoch === 2
       && manifest.componentVersions?.visual === 'visual-2'
@@ -394,12 +404,20 @@ async function main() {
 
     // ---- hook evidence
     const hk = rows.hook[0]?.result ?? {}
-    check('A13 hook: bound to the pinned snapshot + spoken opening + alignment evidence',
+    // Upload fixture ⇒ no captured script ⇒ NO hook to align against. The evidence must
+    // say so honestly (scriptAlignment null) rather than invent a ratio against the
+    // generation's plan. Previously this asserted scriptHookTokenCount === 5 and a
+    // ratio ≥ 0.4, which only held while the snapshot came from the live generation.
+    // The alignment MATH still has teeth in worker/src/__tests__/hook.test.ts. What this
+    // matrix does NOT yet cover is a teleprompter-origin fixture end-to-end (every
+    // sourceFlow fixture is origin='upload'), so the persisted-binding branch of
+    // bootScriptPolicy is unexercised here — recorded as a known coverage gap rather
+    // than papered over.
+    check('A13 hook: bound to the pinned snapshot, real spoken opening, NO fabricated alignment',
       hk.scriptSnapshotSha256 === proj.script_snapshot_sha
       && (hk.spokenOpening?.wordCount ?? 0) >= 1
-      && hk.scriptAlignment?.scriptHookTokenCount === 5
-      && hk.scriptAlignment?.matchedTokenRatio >= 0.4,
-      JSON.stringify(hk.spokenOpening ?? {}) + ` ratio=${hk.scriptAlignment?.matchedTokenRatio}`)
+      && hk.scriptAlignment === null,
+      JSON.stringify(hk.spokenOpening ?? {}) + ` alignment=${JSON.stringify(hk.scriptAlignment)}`)
 
     // ---- payload caps + immutability
     const bytes = (o) => Buffer.byteLength(JSON.stringify(o), 'utf8')
@@ -625,13 +643,32 @@ async function main() {
         ...SCENE_TIMELINE.scenes[0], scene_number: i + 1, dialogue: 'word '.repeat(100) + 'x'.repeat(20),
       })),
     }
-    // Reuse the settled fixture asset via a fresh generation+asset pair.
-    const big = await (async () => {
-      const validator2 = startWorker('p6-validator2', { WORKER_JOB_TYPES: 'validate_source' })
-      const r = await mintReady(cA, uA.id, await makeFixture(dir, 'bigsnap'), bigTimeline)
-      stopWorker(validator2)
-      return r
-    })()
+    // The snapshot bound is only reachable on the ONE path that pins the live
+    // generation: a TRUE LEGACY source (capture_contract_version NULL, no capture
+    // rows). Under the §4.1 source-provenance policy an origin='upload' source — which
+    // is what sourceFlow mints — pins the no-captured-script form instead, so a huge
+    // generation can never make it oversize. This section used to mint an upload
+    // source and therefore stopped testing anything once that policy landed: the
+    // project simply completed. (The other oversize path, a teleprompter source with
+    // an over-cap captured script, is refused at persist time and is covered by
+    // Gate-D's "oversize recording script fails closed (byte cap)".)
+    //
+    // A legacy asset is built directly, because that is exactly what one is: a row
+    // that predates the capture contract and has no intent/manifest/binding.
+    const bigGen = await newGen(uA.id, bigTimeline, HOOK_LINE)
+    const legacyAssetId = randomUUID()
+    {
+      const { error } = await admin.from('media_assets').insert({
+        id: legacyAssetId, owner_id: uA.id, generation_id: bigGen, kind: 'source',
+        recording_attempt_id: randomUUID(), bucket: 'takes',
+        storage_path: `${uA.id}/legacy-bigsnap-${legacyAssetId}.webm`,
+        status: 'ready', capture_contract_version: null,
+      })
+      if (error) throw new Error(`legacy fixture insert: ${error.message}`)
+    }
+    // The pin is the FIRST thing the stage loop does, so this fails before any
+    // download — the object never needs to exist.
+    const big = { gen: bigGen, assetId: legacyAssetId }
     const pid = await startProject(cA, big.gen, big.assetId)
     const proj = await runToSettled('p6-bigsnap', pid)
     check('D1 project failed with the stable script_snapshot_too_large code',

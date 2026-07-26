@@ -646,7 +646,12 @@ begin
   end if;
   select count(*) into bad from public.source_script_snapshots b
     join public.media_assets a on a.id = b.source_asset_id
-   where b.owner_id is distinct from a.owner_id or b.generation_id is distinct from a.generation_id;
+   where b.owner_id is distinct from a.owner_id
+      -- RETENTION-AWARE: media_assets.generation_id is ON DELETE SET NULL, but
+      -- source_script_snapshots.generation_id is NOT NULL with no FK, so after a generation
+      -- is deleted the asset's pointer is NULL while the binding keeps its historical id.
+      -- That divergence is retention, not corruption.
+      or (a.generation_id is not null and b.generation_id is distinct from a.generation_id);
   if bad > 0 then
     raise exception 'capture_backfill_inconsistent: % binding owner/generation linkage mismatch', bad using errcode = 'raise_exception';
   end if;
@@ -695,7 +700,12 @@ begin
   -- one identity relationally while its signed bytes claim another.
   select count(*) into bad from public.source_capture_intents i
    where (i.intent->>'origin') is distinct from i.origin
-      or (i.intent->>'generationId') is distinct from i.generation_id::text
+      -- RETENTION-AWARE: `generations ON DELETE SET NULL` clears the live pointer while
+      -- the signed intent bytes keep the original id (immutable history — rewriting them
+      -- would break intent_sha256). A NULL column PROVES retention ran: only an FK action
+      -- can produce it, since 0093 still refuses a directly-issued SET NULL. Two NON-NULL
+      -- ids that disagree is still one row presenting two identities, and still corrupt.
+      or (i.generation_id is not null and (i.intent->>'generationId') is distinct from i.generation_id::text)
       or (i.intent->>'sourceAssetId') is distinct from i.source_asset_id::text
       or (i.intent->>'clientAttemptId') is distinct from i.client_attempt_id::text
       or (i.intent->>'recordingScriptSha256') is distinct from i.recording_script_sha256;

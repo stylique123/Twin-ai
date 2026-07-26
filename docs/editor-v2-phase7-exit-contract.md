@@ -368,11 +368,16 @@ the round-2 pin-resume fix — the fix solved half the problem it claimed to:
   reported success whether or not it matched a row, so a job could settle
   `rejected` while the asset said otherwise. It now selects its rows back and
   re-reads on zero: already-`rejected` settles (idempotent), anything else throws.
-- **`headObject` treated HTTP 400 as proven-absent** (low). 400 is also what the
+- **`headObject` treated HTTP 400 as proven-absent** (low). ~~400 is also what the
   storage API returns for a malformed request, and a HEAD carries no body to tell
   them apart — while the caller turns `null` into a PERMANENT `object_missing`
   rejection. Only 404 now proves absence; every other failure is unverified and
-  retries.
+  retries.~~ **REVERTED — this "fix" was wrong and staging proved it** (see §7.3).
+  Supabase Storage answers a missing key on HEAD with **400**, not 404. With 400
+  excluded, a genuinely vanished object stopped being rejected and instead retried
+  to `failed/retries_exhausted` — a hung job, and a worse outcome for the user than
+  the clean `object_missing` verdict. The finding was reasoning about an API's
+  behaviour without evidence; the behaviour is now pinned by Phase-4 F9.
 - **The client-side read-modify-write in `reject()`** (low) contradicts `0084`'s
   DB-merge principle. Reviewed and kept, with the reasoning written down: the
   write is guarded on `status = 'validating'` and this worker holds the asset's
@@ -390,3 +395,100 @@ enforcement of `MAX_DECISION_OUTPUT_BYTES`, which has no runtime check.
 
 **Verified on this head**: shared 228, worker 198, all typechecks, Gate-D PASS,
 Gate-E PASS.
+
+### 7.3 Staging round (what only real infrastructure could find)
+
+PR #200 merged as `16f33ac` after three review rounds. The staging Phase 1–7
+matrix then ran against the merged head for the first time and found **four more
+defects** — none of which any unit test or Gate-D run could have caught, and one
+of which was introduced by the fix for the previous one. This section records them
+because the pattern matters more than the individual bugs.
+
+- **Retention could not delete a recording** (the serious one).
+  `source_capture_intents.generation_id` is `references generations(id) ON DELETE
+  SET NULL`. Postgres implements SET NULL as an **UPDATE** on the child row, and
+  `editor_capture_no_mutate` refused every UPDATE at any trigger depth. Deleting a
+  generation therefore raised `capture_row_immutable` and rolled the whole
+  transaction back — permanently, for any source carrying a capture intent, i.e.
+  **every teleprompter recording**. A retention sweep or a plain "delete this
+  recording" would have failed, and data a user asked to be rid of would have been
+  undeletable. (Account erasure was unaffected: `auth.users` is ON DELETE CASCADE,
+  which `0091` §1b already permitted.) Fixed in `0093`: at depth > 1 a cascade
+  DELETE is permitted, and an UPDATE is permitted **only** when the row differs
+  solely by `generation_id` becoming NULL. A directly-issued statement is still
+  refused for both, service_role included.
+
+- **Absent-table drift was classified as transient.** `resolveBrandSnapshot` had a
+  `brand_schema_drift` permanent classification, but its pattern matched only a
+  missing COLUMN. PostgREST reports a missing TABLE as "Could not find the table …
+  in the schema cache" (PGRST205), which matched nothing, so the job retried until
+  the harness gave up. In production a bad deploy or a stale schema cache would
+  have every editor job retry-storming to dead-letter with the real cause buried.
+  Now a pure exported `brandReadDrift()` covering both, with a test that also pins
+  five genuinely transient wordings as NOT drift — misclassifying is expensive in
+  both directions.
+
+- **Staging could not exercise the brand pin at all.** The staging project is a
+  purpose-built editor-only test bed (17 tables; no `profiles`, no brand tables).
+  Correct until the exit correction made the Boot Manifest pin brand snapshot
+  CONTENT, after which every `editor_v2` job reads `brand_voices`. Added a
+  staging-only fixture deliberately OUTSIDE `supabase/migrations/`, mirroring only
+  the columns `resolveBrandSnapshot` reads, with an up-front CI assertion.
+
+- **The fix for the first defect broke the integrity definition** — caused by
+  `0093`, not pre-existing. Once retention worked, it produced a state that had
+  never existed: the live pointers are cleared while the immutable records keep
+  their original id (the intent JSON cannot be rewritten — `intent_sha256` covers
+  those bytes). **Two** of `editor_backfill_capture_marker`'s checks called that
+  difference corruption; fixing only the one that fired would have moved the
+  failure to the other. Both now follow one rule: a NULL live pointer PROVES
+  retention ran (only an FK action can produce it, since `0093` still refuses a
+  direct SET NULL), so the historical record is unconstrained there; two NON-NULL
+  ids that disagree remain corrupt.
+
+  The first attempt at this fix shipped as a follow-up migration `0094` and was
+  **wrong**: `0091` defines that function, CALLS it, and DROPS it in the same file,
+  so a later migration arrives after the failure and would resurrect a one-time
+  helper. `0094` was deleted and the comparisons folded into `0091` itself — safe
+  because production has none of `0090`–`0093` applied and staging re-applies every
+  migration byte-exactly on every run.
+
+**Why the gates were green through all of this.** Gate-D carried a hand-written
+copy of `editor_capture_no_mutate` commented "matches 0091's forward-corrected
+function" — a mirror that had drifted in the direction that HID the bug. And its
+schema subset declared BOTH `source_capture_intents.generation_id` and
+`media_assets.generation_id` as bare `uuid`s, with no foreign key, so the
+referential actions that break simply never fired. The same omission produced a
+false PASS in one place and later a false FAIL in another.
+
+Structural fixes, so this class cannot recur: the hand-written mirror is **deleted**
+(the harness extracts the authoritative body from the migration, with a guard that
+fails loudly if the retention-aware comparisons disappear), both FKs are declared
+with their real referential actions, the retention section now calls
+`editor_backfill_capture_marker()` **after** the deletion, and two new mutation
+controls — `(r)` and `(r2)` — restore the pre-fix bodies and assert the gate FAILS.
+Both verified to have teeth.
+
+**The lesson for the rollout sequence.** Four defects survived three adversarial
+review rounds, a full unit suite, and a green Gate-D; every one of them needed real
+infrastructure to surface, and the last needed the previous fix to exist first.
+Production apply, worker deploy and the `EDITOR_DIRECTOR_ENABLED` flip stay three
+separate decisions with verification between them — not one batch.
+
+**Fifth defect (mine, from the review round rather than the build).** Phase 4 came
+back 56 passed / 1 failed: `F9 vanished storage object fails as object_missing —
+failed/retries_exhausted`. The third review round had narrowed `headObject` to treat
+only 404 as proven-absent, arguing that 400 might be a malformed request and that
+accepting it could permanently reject a healthy recording. That argument was made
+from first principles about an API whose actual behaviour nobody had checked —
+Supabase Storage answers a missing key on HEAD with **400**. The result was the
+opposite of the intent: instead of protecting a healthy recording, it left a
+genuinely vanished one retrying to exhaustion, giving the user a hung job instead of
+a clean rejection. Reverted, with the empirical fact recorded at the call site.
+
+The residual ambiguity is real but bounded by construction: bucket and path come
+from the asset row rather than user input, so a 400 here means the key is gone. If
+it ever needs removing rather than bounding, the mechanism is a 1-byte ranged GET,
+which returns a body the HEAD does not. That was deliberately NOT attempted in this
+batch: it cannot be verified from the sandbox, and an unverified guess is exactly
+what caused this failure.

@@ -38,7 +38,12 @@ create table public.generations (
 create table public.media_assets (
   id uuid primary key default gen_random_uuid(),
   owner_id uuid not null,
-  generation_id uuid,
+  -- Real 0076 shape: `references generations(id) on delete set null`. It was a bare
+  -- `uuid` here, which made the subset disagree with production about what happens
+  -- when a generation is deleted — the asset kept its pointer while the intent's was
+  -- cleared, and the linkage check read that as corruption. Second time an omitted
+  -- referential action produced a fake result in this harness; declare them for real.
+  generation_id uuid references public.generations(id) on delete set null,
   recording_attempt_id uuid,
   kind text not null check (kind in ('source','music','output','thumbnail')),
   seq bigint generated always as identity,
@@ -83,11 +88,16 @@ create trigger media_assets_status_guard before update of status on public.media
   for each row execute function public.media_assets_status_guard();
 
 -- 0090 capture intents (subset: table + append-only trigger).
+-- The generation_id FK is declared WITH its real ON DELETE SET NULL action. It
+-- previously read `generation_id uuid` with no FK at all, so the SET NULL
+-- referential action never fired here — which is exactly how the guard's refusal
+-- of that action (a cascade UPDATE) survived every gate and was first caught by
+-- the staging matrix. A subset that omits a referential action cannot test it.
 create table public.source_capture_intents (
   id uuid primary key default gen_random_uuid(),
   source_asset_id uuid not null unique references public.media_assets(id) on delete cascade,
   owner_id uuid not null,
-  generation_id uuid,
+  generation_id uuid references public.generations(id) on delete set null,
   origin text not null check (origin in ('teleprompter','upload')),
   recording_script_sha256 text check (recording_script_sha256 ~ '^[0-9a-f]{64}$'),
   client_attempt_id uuid not null,
@@ -99,19 +109,12 @@ create table public.source_capture_intents (
     (origin = 'teleprompter' and recording_script_sha256 is not null)
     or (origin = 'upload' and recording_script_sha256 is null))
 );
--- Matches 0091's forward-corrected function: UPDATE always fails; a DIRECT delete
--- fails, but a sanctioned parent-cascade (pg_trigger_depth()>1) is permitted so
--- retention leaves no orphan rows.
-create or replace function public.editor_capture_no_mutate() returns trigger language plpgsql as $$
-begin
-  if tg_op = 'UPDATE' then
-    raise exception 'capture_row_immutable: % is append-only', tg_table_name using errcode = 'raise_exception';
-  end if;
-  if pg_trigger_depth() = 1 then
-    raise exception 'capture_row_immutable: % direct deletes are not permitted (retention runs via the parent cascade)', tg_table_name using errcode = 'raise_exception';
-  end if;
-  return old;
-end; $$;
+-- NOTE: `editor_capture_no_mutate` is NOT defined here. It used to be a
+-- hand-written copy, and the copy drifted from the migration in the direction
+-- that HID a bug: it claimed to match "0091's forward-corrected function" while
+-- the real chain (0090 → 0091 → 0093) behaved differently on the SET NULL path.
+-- run.sh now loads the authoritative body straight out of 0093 before the
+-- triggers below are exercised, so there is no mirror left to drift.
 create trigger source_capture_intents_immutable before update or delete on public.source_capture_intents
   for each row execute function public.editor_capture_no_mutate();
 

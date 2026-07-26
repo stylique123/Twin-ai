@@ -227,14 +227,23 @@ jobs:
             echo "::error::Could not connect to STAGING with STAGING_DB_URL (see the psql error above). Nothing was applied. Re-copy the Session pooler connection string and percent-encode the password."
             exit 1
           fi
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2; do
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
+          # STAGING-ONLY fixture, never a migration: staging is a purpose-built
+          # editor test bed with no brand tables, and the Phase-7 Boot Manifest now
+          # pins the brand snapshot CONTENT, so every editor_v2 job reads
+          # brand_voices. Production already has this table from 0002/0043 and gets
+          # nothing from here. Idempotent.
+          echo "== applying the staging-only brand fixture =="
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f scripts/staging-integration/staging-brand-schema.sql
+
           echo "== asserting the required schema objects exist =="
           psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -c "
             do \$\$
             begin
+              if to_regclass('public.brand_voices') is null then raise exception 'missing table brand_voices (staging brand fixture) — the Boot Manifest brand pin cannot resolve'; end if;
               if to_regclass('public.source_capture_intents')   is null then raise exception 'missing table source_capture_intents (0090)'; end if;
               if to_regclass('public.source_capture_manifests') is null then raise exception 'missing table source_capture_manifests (0090)'; end if;
               if to_regclass('public.source_script_snapshots')  is null then raise exception 'missing table source_script_snapshots (0091)'; end if;
@@ -245,7 +254,7 @@ jobs:
                 then raise exception 'missing trigger trg_editor_director_decision_guard (0092)'; end if;
             end
             \$\$;"
-          echo "staging schema matches this checkout (0090/0091/0092 applied)"
+          echo "staging schema matches this checkout (0090-0093 + brand fixture applied)"
 
       - name: Build worker (the real one that will run in production)
         run: cd worker && npm ci && npm run build
