@@ -139,8 +139,10 @@ jobs:
           started=$(docker inspect "$C" --format '{{.State.StartedAt}}' 2>/dev/null || true)
           uptime_s=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || true)
           loadavg=$(awk '{print $1"|"$2"|"$3}' /proc/loadavg 2>/dev/null || true)
-          # Live work: how many editor jobs the worker currently holds. Read-only; a
-          # non-zero count means a capacity measurement would be contended.
+          # NOT a measure of active work. This counts "claimed" lines in the last 400 log
+          # lines — a historical record of claims that includes long-finished jobs. Actual
+          # active/running jobs and live leases come from the DATABASE, queried separately
+          # with before/after timestamps. Reporting log lines as active work would be a lie.
           claims=$(docker logs --tail 400 "$C" 2>&1 | grep -c '"msg":"claimed"' || true)
           ffmpeg_ver=$(docker exec "$C" ffmpeg -hide_banner -version 2>/dev/null | head -1 || true)
           ffprobe_ok=$(docker exec "$C" ffprobe -hide_banner -version >/dev/null 2>&1 && echo 1 || echo 0)
@@ -168,7 +170,7 @@ jobs:
           emit OBS_STARTED "$started"
           emit OBS_UPTIME_S "$uptime_s"
           emit OBS_LOADAVG "$loadavg"
-          emit OBS_ACTIVE_CLAIMS "$claims"
+          emit OBS_RECENT_CLAIM_LOG_LINES "$claims"
           emit OBS_FFMPEG_VERSION "$ffmpeg_ver"
           emit OBS_FFPROBE_OK "$ffprobe_ok"
           emit OBS_OTHER_RESTARTS "$other_restarts"
@@ -199,6 +201,21 @@ jobs:
       # what happened on 2026-07-26: SHA drift failed the run and the facts were only
       # visible by reading raw logs). Informational by design — it never fails the run,
       # because a capacity fact is evidence, not a gate.
+      # Host-key pinning must be PROVEN, not asserted. Reaching this step means the
+      # StrictHostKeyChecking=yes session above returned 0 under `set -e`, i.e. the pinned
+      # key verified. We record that fact plus a SHA-256 of the pinned known_hosts entry —
+      # an identity commitment, not the material (a host public key is not secret, but we
+      # publish only its digest so the report never carries key bytes).
+      - name: Record host-key verification proof
+        run: |
+          set -euo pipefail
+          KH="$HOME/.ssh/known_hosts_vps"
+          [ -s "$KH" ] || { echo "::error::pinned known_hosts missing after a successful SSH — refusing to claim pinning"; exit 1; }
+          {
+            echo "OBS_KNOWN_HOSTS_SHA256=$(sha256sum "$KH" | cut -d' ' -f1)"
+            echo "OBS_SSH_STRICT_VERIFIED=1"
+          } >> facts.env
+
       - name: Phase 8 capacity inventory (informational, hashed report)
         if: always()
         run: |
@@ -216,7 +233,8 @@ jobs:
           # no signed URLs. Image *identity* only, never registry credentials.
           inv = {
             'schema': 'vps-inventory-1',
-            'host_pinned': True,
+            'ssh': {'strict_host_key_verified': g('OBS_SSH_STRICT_VERIFIED') == '1',
+                    'known_hosts_sha256': g('OBS_KNOWN_HOSTS_SHA256')},
             'cpu':   {'count': kb('OBS_CPU_COUNT'), 'model': g('OBS_CPU_MODEL')},
             'memory':{'total_kb': kb('OBS_MEM_TOTAL_KB'), 'available_kb': kb('OBS_MEM_AVAIL_KB')},
             'swap':  {'total_kb': kb('OBS_SWAP_TOTAL_KB'), 'free_kb': kb('OBS_SWAP_FREE_KB')},
@@ -230,7 +248,7 @@ jobs:
                           'image_id': g('OBS_IMAGE_ID'), 'image_ref': g('OBS_IMAGE_REF'),
                           'image_revision': g('OBS_IMAGE_REVISION')},
             'worker': {'deployed_sha': g('OBS_SHA'), 'registry': g('OBS_REGISTRY').replace('\\',''),
-                       'active_claims_recent': kb('OBS_ACTIVE_CLAIMS')},
+                       'recent_claim_log_lines': kb('OBS_RECENT_CLAIM_LOG_LINES')},
             'media':  {'ffmpeg_version': g('OBS_FFMPEG_VERSION'), 'ffprobe_ok': g('OBS_FFPROBE_OK')},
             'host':   {'uptime_s': kb('OBS_UPTIME_S'), 'loadavg': g('OBS_LOADAVG'),
                        'other_container_restarts': g('OBS_OTHER_RESTARTS')},
@@ -247,7 +265,7 @@ jobs:
           echo "Swap     : $(kb2g "${OBS_SWAP_TOTAL_KB:-0}") GiB total / $(kb2g "${OBS_SWAP_FREE_KB:-0}") GiB free"
           echo "Disk     : root $(kb2g "${OBS_FS_ROOT_AVAIL_KB:-0}") GiB free (${OBS_FS_ROOT_USED_PCT:-?}% used) | docker $(kb2g "${OBS_FS_DOCKER_AVAIL_KB:-0}") GiB | ctr /tmp $(kb2g "${OBS_CTR_TMP_AVAIL_KB:-0}") GiB"
           echo "Load     : ${OBS_LOADAVG:-?}  uptime ${OBS_UPTIME_S:-?}s"
-          echo "Claims   : ${OBS_ACTIVE_CLAIMS:-?} recent"
+          echo "ClaimLog : ${OBS_RECENT_CLAIM_LOG_LINES:-?} 'claimed' lines in last 400 (NOT active work)"
           echo "Other ctr: ${OBS_OTHER_RESTARTS:-none}"
 
       - name: Upload inventory report
@@ -256,7 +274,16 @@ jobs:
         with:
           name: vps-inventory
           path: vps-inventory.json
-          if-no-files-found: warn
+          if-no-files-found: error
+
+      # GATE-0 ACCEPTANCE. The report stays informational for the sign-off, but a Gate-0
+      # row cannot be closed on an inventory with missing, null, out-of-range or
+      # SUBSTITUTED facts. This validates required fields and ranges, and recomputes
+      # report_sha256 over the body. Runs AFTER upload so the artifact survives a
+      # rejection — you can inspect exactly what failed.
+      - name: Validate inventory (fail closed)
+        if: always()
+        run: node scripts/ci/validate_vps_inventory.mjs vps-inventory.json
 
       - name: Assert sign-off snapshot (fail-closed)
         run: |
