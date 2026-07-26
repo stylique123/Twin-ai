@@ -211,3 +211,86 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node scripts/director-eval/count_tokens.mjs
+
+  # The gate that was missing when PR #200 merged. `staging-integration` runs the
+  # REAL Phase 1-7 matrix (live Gemini call, real ASR, real ffprobe, migrations
+  # applied to the staging database) — but it only triggers on push to
+  # `rebuild/editor-v2-*` or manual dispatch. A head that lands via any other branch
+  # can therefore merge having proven nothing beyond typechecks.
+  #
+  # That is not hypothetical: #200 merged on `a2cd85f` with PR checks only, carrying a
+  # Phase-6 assertion (D1, the oversized-script guard) that had silently stopped
+  # testing anything — it fed a huge generation to an origin='upload' source, which
+  # can never be oversize, so the project just completed. The matrix would have caught
+  # it; the matrix was never run on that head.
+  #
+  # This job makes the matrix the GATE rather than something we remember to run. It is
+  # deliberately NOT a `pull_request` trigger on staging-integration itself: that would
+  # fire a ~45-minute run costing real Gemini + real ASR on every push to every PR,
+  # and the concurrency group serialises them against ONE shared staging project.
+  # Instead: run the matrix when you want (push to a phase branch, or dispatch), and
+  # this check simply refuses to go green until a SUCCESSFUL run exists for the exact
+  # head being merged.
+  staging-matrix-required:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Decide whether this PR needs the matrix
+        id: scope
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Default is REQUIRED. A PR is exempt only when EVERY changed file is one
+          # that cannot alter editor runtime behaviour: documentation, or CI config
+          # other than the matrix definition itself (changing that changes what gets
+          # proven, so it must be re-proven). Anything touching worker/, supabase/,
+          # packages/, apps/ or the harness scripts is gated.
+          FILES=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$REPO/pulls/$PR/files?per_page=300" | jq -r '.[].filename')
+          echo "changed files:"; printf '%s\n' "$FILES" | sed 's/^/  /'
+          NEEDED=0
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              .github/workflows/staging-integration.yml) NEEDED=1 ;;
+              docs/*|*.md|.github/*) ;;
+              *) NEEDED=1 ;;
+            esac
+          done <<< "$FILES"
+          echo "needed=$NEEDED" >> "$GITHUB_OUTPUT"
+          if [ "$NEEDED" = "0" ]; then
+            echo "This PR changes only documentation / non-matrix CI config — the editor matrix cannot prove anything about it. Skipping."
+          fi
+
+      - name: Require a successful staging-integration run on THIS head
+        if: steps.scope.outputs.needed == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          echo "head under merge: $HEAD_SHA"
+          # Ask ONLY for runs of this workflow at this exact SHA. A run on an ancestor
+          # commit does not count: the whole point is that the bytes being merged are
+          # the bytes that were proven.
+          RESP=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$REPO/actions/workflows/staging-integration.yml/runs?head_sha=$HEAD_SHA&per_page=100")
+          TOTAL=$(printf '%s' "$RESP" | jq -r '.total_count // 0')
+          OK=$(printf '%s' "$RESP" | jq -r '[.workflow_runs[]? | select(.conclusion=="success")] | length')
+          echo "staging-integration runs at this head: $TOTAL (successful: $OK)"
+          printf '%s' "$RESP" | jq -r '.workflow_runs[]? | "  \(.status)/\(.conclusion // "-")  \(.html_url)"'
+          if [ "${OK:-0}" -ge 1 ]; then
+            echo "OK: the Phase 1-7 staging matrix passed on the exact head being merged."
+            exit 0
+          fi
+          echo "::error::No SUCCESSFUL staging-integration run exists for head $HEAD_SHA. The Phase 1-7 matrix is what proves this change against real infrastructure — migrations on a real database, real ASR, and the live Director call. Unit tests and Gate-D cannot substitute: every defect found in the Phase-7 exit round was invisible to them. To clear this check, run the matrix on THIS head (push the branch as rebuild/editor-v2-<name>, or dispatch staging-integration against it) and let it pass. Do not merge around this check."
+          exit 1
