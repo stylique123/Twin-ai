@@ -53,3 +53,8 @@ export function classifyDbError(message: string): Error {
   }
   return new Error(message)
 }
+
+// TEMPORARY — branch-protection proof (PR to be closed, branch deleted).
+// Touches a runtime path so staging-matrix-required classifies this PR as NEEDED.
+// Its head deliberately has NO staging-integration run, so the check must fail and
+// GitHub must refuse the merge. Delete on sight if this ever reaches main.
