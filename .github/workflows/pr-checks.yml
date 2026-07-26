@@ -246,27 +246,58 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          # Default is REQUIRED. A PR is exempt only when EVERY changed file is one
-          # that cannot alter editor runtime behaviour: documentation, or CI config
-          # other than the matrix definition itself (changing that changes what gets
-          # proven, so it must be re-proven). Anything touching worker/, supabase/,
-          # packages/, apps/ or the harness scripts is gated.
-          FILES=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/$REPO/pulls/$PR/files?per_page=300" | jq -r '.[].filename')
-          echo "changed files:"; printf '%s\n' "$FILES" | sed 's/^/  /'
+          # STRICT ALLOWLIST, FAIL CLOSED. The matrix is REQUIRED unless every changed
+          # file is provably incapable of altering runtime behaviour — documentation,
+          # and nothing else.
+          #
+          # An earlier version exempted `.github/*` wholesale. That was wrong: it
+          # exempted deploy-worker.yml and deploy-edge.yml, so a change to WHAT GETS
+          # DEPLOYED TO PRODUCTION could bypass the gate. CI config is not
+          # "non-runtime" — it decides what runs.
+          #
+          # It also used per_page=300, which GitHub silently CAPS AT 100, so a PR
+          # touching more than 100 files was classified on a truncated list. Now
+          # paginated; and any failure to enumerate the diff fails this check rather
+          # than exempting it.
+          : > /tmp/pr_files.txt
+          PAGE=1
+          while :; do
+            RESP=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$REPO/pulls/$PR/files?per_page=100&page=$PAGE")
+            N=$(printf '%s' "$RESP" | jq 'if type=="array" then length else -1 end')
+            if [ "$N" -lt 0 ]; then
+              echo "::error::Could not enumerate the PR's changed files (page $PAGE). Failing closed — this check will not pass on an unknown diff."
+              exit 1
+            fi
+            [ "$N" -eq 0 ] && break
+            printf '%s' "$RESP" | jq -r '.[].filename' >> /tmp/pr_files.txt
+            [ "$N" -lt 100 ] && break
+            PAGE=$((PAGE + 1))
+            if [ "$PAGE" -gt 50 ]; then
+              echo "::error::PR exceeds 5000 changed files; refusing to classify. Failing closed."
+              exit 1
+            fi
+          done
+          COUNT=$(grep -c . /tmp/pr_files.txt || true)
+          if [ "${COUNT:-0}" -eq 0 ]; then
+            echo "::error::Resolved zero changed files. That is an API problem or an empty PR; neither is evidence of safety. Failing closed."
+            exit 1
+          fi
+          echo "changed files ($COUNT):"; sed 's/^/  /' /tmp/pr_files.txt
           NEEDED=0
           while IFS= read -r f; do
             [ -z "$f" ] && continue
             case "$f" in
-              .github/workflows/staging-integration.yml) NEEDED=1 ;;
-              docs/*|*.md|.github/*) ;;
+              docs/*|*.md|LICENSE|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE*) ;;
               *) NEEDED=1 ;;
             esac
-          done <<< "$FILES"
+          done < /tmp/pr_files.txt
           echo "needed=$NEEDED" >> "$GITHUB_OUTPUT"
           if [ "$NEEDED" = "0" ]; then
-            echo "This PR changes only documentation / non-matrix CI config — the editor matrix cannot prove anything about it. Skipping."
+            echo "Documentation-only PR — the editor matrix cannot prove anything about it. Skipping."
+          else
+            echo "This PR touches runtime-capable files. A successful staging-integration run on THIS exact head is REQUIRED."
           fi
 
       - name: Require a successful staging-integration run on THIS head
