@@ -21,7 +21,7 @@
 //      is no test renderer, and no filter string is written in this file.
 import { describe, it, expect, beforeAll } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compileEditPlan } from '../../jobs/editorCompile.js'
@@ -89,6 +89,147 @@ describe('runtime identity — fail closed off the pin', () => {
     const m = execFileSync('fc-match', [CAPTION_FONT], { encoding: 'utf8' }).trim()
     console.log(`[media] fc-match ${CAPTION_FONT} -> ${m}`)
     expect(m.toLowerCase(), `fontconfig cannot resolve ${CAPTION_FONT}: ${m}`).toContain('dejavu')
+  })
+})
+
+// ------------------------------------------------- probe execution, hostile
+//
+// DELIBERATELY NOT GATED ON THE PIN. Everything below this block requires 5.1
+// because it reasons about rendered pixels; this block reasons about whether a
+// PROBE CAN TELL IT FAILED, which is version-independent — so it runs on any
+// ffmpeg, including a developer's, and is verified before a candidate is pushed.
+//
+// TWO DISTINCT FAILURE SHAPES, AND ONLY ONE OF THEM IS AN EXIT CODE. Both are
+// reproduced here against the real helpers, because assuming either would be
+// wrong:
+//
+//  A. THE PROCESS FAILS. Unreadable bytes, a missing file, or a truncation that
+//     removes a trailing `moov` atom: ffmpeg cannot open the input, exits
+//     non-zero, and may still print something parseable. The probes must refuse
+//     BEFORE parsing — checking only "did the output parse?" is what lets a
+//     partial run masquerade as a measurement.
+//
+//  B. THE PROCESS SUCCEEDS AND UNDER-REPORTS. This one is worse, and it is
+//     specific to the profile this editor actually emits. The frozen output
+//     profile sets `-movflags +faststart`, so the index sits at the FRONT of the
+//     file. Truncate such a file and ffmpeg opens it happily, decodes as far as
+//     the bytes go, treats the cut as end-of-stream, prints a plausible
+//     `I: -21.8 LUFS`, and EXITS 0. Measured here: a 55%-truncated 180-frame
+//     file decodes 91 frames with status 0.
+//
+//     No exit-status check can catch that, and this block does not pretend
+//     otherwise. What catches it is the render case's own frame-count bound
+//     (`frames > expected * 0.9`), so that bound is not a formality — it is the
+//     only thing standing between a half-written render and a green suite. The
+//     control below proves it rejects exactly this file.
+describe('probe execution — a failed or partial ffmpeg run can never become a measurement', () => {
+  let hostileDir = ''
+  let good = ''
+  let truncatedIndexed = ''   // +faststart: opens fine, decodes short, exits 0
+  let truncatedTrailing = ''  // no faststart: index lost, cannot be opened
+  let garbage = ''
+  const GOOD_FRAMES = 180     // 6 s at 30 fps
+
+  beforeAll(() => {
+    hostileDir = mkdtempSync(join(tmpdir(), 'hostile-'))
+    good = join(hostileDir, 'good.mp4')
+    truncatedIndexed = join(hostileDir, 'truncated-faststart.mp4')
+    truncatedTrailing = join(hostileDir, 'truncated-trailing-index.mp4')
+    garbage = join(hostileDir, 'garbage.mp4')
+    // Small, quick, and independent of the render fixtures: this block must be
+    // able to run before anything else in the file has succeeded.
+    const make = (out: string, faststart: boolean): void => {
+      execFileSync('ffmpeg', [
+        '-hide_banner', '-loglevel', 'error', '-nostdin',
+        '-f', 'lavfi', '-i', 'testsrc=s=320x240:r=30:d=6',
+        '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=6',
+        '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '30',
+        '-c:a', 'aac', '-ar', '48000', '-ac', '2', '-t', '6',
+        ...(faststart ? ['-movflags', '+faststart'] : []),
+        out, '-y',
+      ], { stdio: ['ignore', 'ignore', 'pipe'] })
+    }
+    // `good` carries +faststart because the production output profile does.
+    make(good, true)
+    const trailing = join(hostileDir, 'trailing.mp4')
+    make(trailing, false)
+    const cut = (src: string, dst: string): void => {
+      const b = readFileSync(src)
+      writeFileSync(dst, b.subarray(0, Math.floor(b.length * 0.55)))
+    }
+    cut(good, truncatedIndexed)
+    cut(trailing, truncatedTrailing)
+    writeFileSync(garbage, Buffer.alloc(4096, 0x41))
+  })
+
+  it('BASELINE: on a complete file the helpers return real measurements', () => {
+    // Without this the hostile cases below could all be passing because the
+    // helpers throw on everything.
+    expect(fullDecodeFrameCount(good)).toBeGreaterThan(GOOD_FRAMES * 0.9)
+    expect(Number.isFinite(measureLufs(good))).toBe(true)
+    expect(decodePcm(good).length).toBeGreaterThan(48000)
+    expect(frameRgb(good, 2000, 64, 48).length).toBe(64 * 48 * 3)
+  })
+
+  // ---- shape A: the process fails -----------------------------------------
+  it('A: a truncation that destroys the index must THROW, citing the exit', () => {
+    let threw: Error | null = null
+    try { fullDecodeFrameCount(truncatedTrailing) } catch (e) { threw = e as Error }
+    expect(threw, 'a failed decode was reported as a frame count').not.toBeNull()
+    // The message must come from the STATUS check, not from "I could not find a
+    // frame= line". Those are different failures and only one of them is honest
+    // about what happened; before the status check existed, this threw the other.
+    expect(threw!.message).toMatch(/exited|killed/i)
+    expect(threw!.message).not.toMatch(/^could not read a frame count/)
+    expect(() => measureLufs(truncatedTrailing)).toThrow(/exited|killed/i)
+  })
+
+  it('A: unreadable bytes must THROW from every helper', () => {
+    expect(() => fullDecodeFrameCount(garbage)).toThrow()
+    expect(() => measureLufs(garbage)).toThrow()
+    expect(() => decodePcm(garbage)).toThrow()
+    expect(() => frameRgb(garbage, 0, 64, 48)).toThrow()
+    expect(() => ffprobeJson(garbage)).toThrow()
+  })
+
+  it('A: a missing file must THROW from every helper', () => {
+    const gone = join(hostileDir, 'does-not-exist.mp4')
+    expect(() => fullDecodeFrameCount(gone)).toThrow()
+    expect(() => measureLufs(gone)).toThrow()
+    expect(() => decodePcm(gone)).toThrow()
+    expect(() => frameRgb(gone, 0, 64, 48)).toThrow()
+    expect(() => ffprobeJson(gone)).toThrow()
+  })
+
+  // ---- shape B: the process succeeds and under-reports ----------------------
+  it('B: a truncated +faststart file EXITS 0 — so the exit code proves nothing here', () => {
+    // Stated as a property of ffmpeg, verified rather than assumed. If a future
+    // version started failing on this input, this test turns red and the comment
+    // above stops being a lie.
+    const frames = fullDecodeFrameCount(truncatedIndexed)   // must NOT throw
+    expect(Number.isFinite(measureLufs(truncatedIndexed))).toBe(true)
+    expect(frames).toBeGreaterThan(0)
+    expect(frames, 'the truncated file decoded in full; the fixture is not truncated')
+      .toBeLessThan(GOOD_FRAMES * 0.9)
+  })
+
+  it('B: the frame-count bound is what rejects it, and it does', () => {
+    // THE control on the threshold. `frames > expected * 0.9` is the render
+    // case's bound; applying it to a genuinely half-written file must reject.
+    const frames = fullDecodeFrameCount(truncatedIndexed)
+    const passesTheRenderBound = frames > GOOD_FRAMES * 0.9
+    expect(passesTheRenderBound, `a truncated render decoded ${frames}/${GOOD_FRAMES} frames `
+      + 'and would have passed the render suite; the bound is too loose').toBe(false)
+    // And the same bound must ACCEPT the complete file, or it rejects everything
+    // and proves nothing.
+    expect(fullDecodeFrameCount(good) > GOOD_FRAMES * 0.9).toBe(true)
+  })
+
+  it('a frame decoded at the wrong size is refused rather than compared', () => {
+    // frameDiff returns Infinity on a size mismatch and readClockMs returns null,
+    // so a short buffer would surface as a PICTURE finding instead of a decode
+    // failure. The size is checked at the source instead.
+    expect(frameRgb(good, 1000, 64, 48).length).toBe(64 * 48 * 3)
   })
 })
 

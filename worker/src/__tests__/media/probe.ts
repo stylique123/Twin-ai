@@ -7,23 +7,42 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 /**
- * Run ffmpeg and return its DIAGNOSTIC OUTPUT.
+ * Run ffmpeg and return its DIAGNOSTIC OUTPUT, or throw.
  *
- * ffmpeg writes `-stats`, `ebur128` and every other progress/measurement line to
- * STDERR, never stdout. `execFileSync` returns STDOUT. The first version of this
- * file conflated the two, so `fullDecodeFrameCount` always returned 0 and
- * `measureLufs` always returned NaN — and because both degraded to a value
- * instead of an error, the mistake looked like a render defect rather than a
- * probe defect when it finally ran on the pin.
+ * THREE RULES, ENFORCED IN ONE PLACE. Each exists because breaking it produced a
+ * measurement that looked real:
  *
- * Two rules, and this helper exists to enforce both in one place:
- *   * read STDERR;
- *   * a probe that cannot parse what it needs THROWS. A probe that returns 0 or
- *     NaN on failure is indistinguishable from a real measurement of zero.
+ *  1. READ STDERR. ffmpeg writes `-stats`, `ebur128` and every other
+ *     progress/measurement line to stderr, never stdout, and `execFileSync`
+ *     returns stdout. Conflating them made `fullDecodeFrameCount` always return 0
+ *     and `measureLufs` always return NaN.
+ *
+ *  2. THE PROCESS MUST HAVE SUCCEEDED. Checking only that the output PARSES is
+ *     not enough: a TRUNCATED file decodes some frames, prints `frame=` lines and
+ *     an `I: … LUFS` summary, and THEN exits non-zero. Parsing that output would
+ *     report a partial decode as a complete one — a corrupt render passing as
+ *     valid evidence, which is the exact failure this harness exists to prevent.
+ *     So a non-zero status, a terminating signal, or a spawn error is fatal
+ *     BEFORE anything is parsed.
+ *
+ *  3. FAIL, DON'T DEGRADE. A probe that returns 0 frames or NaN LUFS when it
+ *     could not measure is indistinguishable from a real measurement of zero.
+ *     Callers throw rather than return a sentinel.
  */
 function ffmpegStderr(args: string[]): string {
   const r = spawnSync('ffmpeg', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+  const tail = (r.stderr ?? '').slice(-2000)
   if (r.error) throw new Error(`ffmpeg could not be executed: ${r.error.message}`)
+  if (r.signal !== null && r.signal !== undefined) {
+    throw new Error(`ffmpeg was killed by ${String(r.signal)}; its output is not a measurement:\n${tail}`)
+  }
+  if (r.status !== 0) {
+    throw new Error(
+      `ffmpeg exited ${String(r.status)} for: ffmpeg ${args.join(' ')}\n`
+      + `A non-zero exit means the decode did not complete. Any frame count or loudness `
+      + `figure in its output describes a PARTIAL decode and must not be read as evidence.\n${tail}`,
+    )
+  }
   const err = r.stderr ?? ''
   if (err.trim() === '') {
     throw new Error(`ffmpeg produced no diagnostic output for: ffmpeg ${args.join(' ')}`)
@@ -66,7 +85,18 @@ export function frameRgb(path: string, atMs: number, w = 108, h = 192): Buffer {
     '-frames:v', '1', '-vf', `scale=${w}:${h}`,
     '-pix_fmt', 'rgb24', '-f', 'rawvideo', tmp, '-y',
   ], { stdio: ['ignore', 'ignore', 'pipe'] })
-  return readFileSync(tmp)
+  const buf = readFileSync(tmp)
+  // Same rule as ffmpegStderr(2): a SHORT frame is not a frame. execFileSync
+  // already throws on a non-zero exit, but a partial write with a zero exit would
+  // otherwise flow into frameDiff (which returns Infinity on a size mismatch) or
+  // readClockMs (which returns null) and read as a picture-content finding.
+  if (buf.length !== w * h * 3) {
+    throw new Error(
+      `decoded frame at ${atMs}ms is ${buf.length} bytes, expected ${w * h * 3} `
+      + `(${w}x${h} rgb24) — a partial decode is not a frame`,
+    )
+  }
+  return buf
 }
 
 export const sha = (b: Buffer): string => createHash('sha256').update(b).digest('hex')
@@ -154,6 +184,7 @@ export function decodePcm(path: string): Int16Array {
     '-f', 's16le', tmp, '-y',
   ], { stdio: ['ignore', 'ignore', 'pipe'] })
   const b = readFileSync(tmp)
+  if (b.length < 2) throw new Error(`decoded PCM for ${path} is empty; that is not a measurement`)
   return new Int16Array(b.buffer, b.byteOffset, Math.floor(b.length / 2))
 }
 
