@@ -204,6 +204,23 @@ def walk(handlers, base, acc):
 # remedies, and the old output could not tell them apart. So the structure is
 # reported as KEY PATHS and COUNTS — names and sizes only, never values — which
 # makes an unfamiliar shape diagnosable instead of silently empty.
+# The ONLY key names that may be emitted. Everything else becomes "<key>",
+# preserving shape and counts while emitting no name at all.
+#
+# This is not paranoia about the word "password". The first version of this
+# function walked every key and printed its name, so `http_basic/accounts[0]/
+# username` and `certificate` reached the output — and a config is free to use
+# a secret AS a key (a token in a map, a header name, an internal hostname).
+# An allowlist is the only version of this whose safety does not depend on
+# guessing what a future config might be shaped like. The leak test caught this
+# on the very first realistic fixture.
+SAFE_KEYS = {
+    "apps", "http", "servers", "routes", "handle", "match", "host", "path",
+    "handler", "upstreams", "dial", "terminal", "listen", "group",
+    "subroute", "reverse_proxy", "file_server", "static_response", "encode",
+    "rewrite", "headers", "error", "vars", "tls", "automation", "policies",
+}
+
 def key_paths(node, prefix="", depth=0, out=None):
     if out is None:
         out = []
@@ -212,7 +229,8 @@ def key_paths(node, prefix="", depth=0, out=None):
     if isinstance(node, dict):
         for k in sorted(node.keys()):
             v = node[k]
-            path = prefix + "/" + k
+            safe = k if k in SAFE_KEYS else "<key>"
+            path = prefix + "/" + safe
             if isinstance(v, dict):
                 out.append("%s{%d}" % (path, len(v)))
                 key_paths(v, path, depth + 1, out)
