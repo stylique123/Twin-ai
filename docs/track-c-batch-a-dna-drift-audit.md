@@ -113,3 +113,83 @@ Consequences that must hold, derived from the findings rather than assumed:
   than decorative.
 - **Mutation:** a `goal` value arriving with provenance `inferred` must be
   refused at authority level 2, and the test must fail if that check is removed.
+
+---
+
+# Addendum — invariants added after the Batch A integration audit
+
+**These are implementation invariants, not contract changes.** The frozen contract
+(`docs/twinai-selective-transfer-reasoning-contract.md`, sha256
+`3f8816055c4f867978841a53ef30eb146d2073c3e17ead1697ab9614573bfa07`) is unchanged
+and its digest still verifies. Everything below makes an existing §6 requirement
+*enforceable*; none of it grants a new permission or relaxes one.
+
+An independent audit of Batch A at head `4fefd7b` found four ways a validator
+could pass without the invariant it named actually holding. The common shape: a
+check on the SHAPE of a value rather than on the value itself.
+
+## A — a digest check that checked only the digest's shape
+
+`validateCreativeTransferPlan` required `planSha256`, `brandTruthSha256` and
+`campaignIntentSha256` to be 64-hex. Any 64-hex string satisfied that, and
+`brandTruthSnapshotId` / `campaignIntentId` were not compared to anything at all.
+A plan could therefore pin a lineage that never existed and validate.
+
+- `ValidationContext` now carries the server-issued `brandTruthSnapshotId`,
+  `brandTruthSha256`, `campaignIntentId`, `campaignIntentSha256`, and a
+  per-reference `analysisSha256` map. Each is compared by exact value.
+- `planSha256` is DERIVED. `finalizeTransferPlan(plan, sha256)` computes it from
+  `canonicalTransferPlan` (which already excludes the digest field), and the
+  validator recomputes and refuses a mismatch. A model-supplied digest looked like
+  integrity while certifying nothing.
+- The hasher is injected rather than imported, because `@twinai/shared` is also
+  consumed by the web build and cannot depend on `node:crypto`.
+
+## B — `referenceSet` was bound to nothing
+
+Arbitrary `analysisId`, `analysisSha256` and `requestedDimensions` persisted
+unchecked, and migration `0095` enforced no plan-to-evidence relationship.
+
+- Every reference entry is compared to server-issued evidence: `analysisId` must
+  match the evidence set's, `analysisSha256` must match the server's pinned
+  digest, and `requestedDimensions` must equal the scope the CAMPAIGN INTENT
+  records — not a scope the plan asserts for itself.
+- The supplied evidence is re-validated, so a fabricated set cannot enter through
+  the context either.
+- `0095` gained a plan-to-evidence lineage trigger: every `referenceSet` entry
+  must correspond to a `reference_evidence_sets` row with the SAME owner, the
+  same `analysis_id` and the same `evidence_sha256`. This binds `service_role`
+  too, since triggers ignore RLS.
+
+## C — the model-output shape was open
+
+Extra keys survived, strings and arrays were unbounded, and `createdAt`,
+`modelIdentity` and `promptVersion` were unvalidated. A plan carrying a hidden
+`override` key or a megabyte of `observedTraits` validated and was then
+hash-persisted — the digest making the junk permanent rather than catching it.
+
+- Unknown keys are rejected recursively at plan, decision, reference and conflict
+  level.
+- Fixed byte and cardinality caps (`LIMITS`) are declared in the diff, before any
+  output was seen. Byte length, not character length, so a multi-byte payload
+  cannot slip a cap.
+- `createdAt` must be an ISO-8601 UTC instant; `modelIdentity` and
+  `promptVersion` must be plain bounded identifiers.
+
+## D — evidence IDs were derived but never re-derived
+
+`validateNormalizedEvidence` checked uniqueness, not derivation, so a fabricated
+normalized set with arbitrary ids passed — and a plan citing those ids then passed
+the membership gate, because that gate compares against the set rather than
+against the derivation.
+
+- Every id is recomputed from `(analysisId, type, per-type ordinal in emission
+  order)` and a mismatch is refused. A duplicated id now fails as *not derived*,
+  which is the stronger and more accurate reason.
+
+## Controls
+
+Shared suite: 354 passing (was 325). Gate-F: 26 assertions (was 21), including
+wrong-analysis, wrong-reference, wrong-digest, cross-owner and absent-referenceSet
+cases against the real migration. Every negative is paired with the positive that
+proves it is not passing vacuously.

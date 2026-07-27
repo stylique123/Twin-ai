@@ -193,10 +193,41 @@ describe('evidence ids are issued by the server and citations are checkable', ()
     expect(() => issueEvidenceId('ana-1', 'stated_cta', -1)).toThrow(EvidenceError)
   })
 
-  it('MUTATION: duplicate ids are refused', () => {
+  it('MUTATION: duplicate ids are refused — by DERIVATION, which is the stronger reason', () => {
+    // A duplicated id is by definition not the id the server would have issued
+    // for that position, so the recomputation catches it before the uniqueness
+    // check ever runs. Asserting the derivation message rather than the
+    // uniqueness one records which guard is actually load-bearing.
     const ev = clone(normalizeReferenceEvidence(input()))
     ev.items[1].evidenceId = ev.items[0].evidenceId
-    expect(() => validateNormalizedEvidence(ev)).toThrow(/duplicate evidence id/)
+    expect(() => validateNormalizedEvidence(ev)).toThrow(/was not issued by the server/)
+  })
+
+  it('MUTATION: a FABRICATED normalized set with arbitrary ids is refused', () => {
+    // THE defect this closes. Deriving ids proved nothing while the validator
+    // accepted whatever ids a set carried: an attacker-shaped set with plausible
+    // ids passed here, and a plan citing them then passed the membership gate,
+    // because that gate compares against the set rather than against the
+    // derivation.
+    const ev = clone(normalizeReferenceEvidence(input()))
+    for (const i of ev.items) i.evidenceId = `ev:${ANA}:${i.type}:0`
+    expect(() => validateNormalizedEvidence(ev)).toThrow(/was not issued by the server/)
+  })
+
+  it('MUTATION: renaming the analysis without re-issuing ids is refused', () => {
+    // The ids encode their analysis, so a set relabelled to another analysis no
+    // longer derives — which is what stops evidence being reattributed.
+    const ev = clone(normalizeReferenceEvidence(input()))
+    ev.analysisId = 'ana-2'
+    for (const i of ev.items) i.analysisId = 'ana-2'
+    expect(() => validateNormalizedEvidence(ev)).toThrow(/was not issued by the server/)
+  })
+
+  it('CONTROL: a genuinely re-normalized set for that analysis DOES validate', () => {
+    // Without this the two refusals above could be passing because the validator
+    // rejects any change at all.
+    const ev = normalizeReferenceEvidence(input({ analysisId: 'ana-2' }))
+    expect(() => validateNormalizedEvidence(ev)).not.toThrow()
   })
 
   it('MUTATION: an item naming a different analysis is refused', () => {

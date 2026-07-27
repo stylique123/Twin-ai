@@ -67,6 +67,7 @@ do \$\$ begin
   if not exists (select 1 from pg_roles where rolname = 'anon') then create role anon; end if;
 end \$\$;
 insert into auth.users values ('11111111-1111-4111-8111-111111111111');
+insert into auth.users values ('99999999-9999-4999-8999-999999999999');
 insert into public.brand_voices values ('22222222-2222-4222-8222-222222222222');
 insert into public.generations values ('33333333-3333-4333-8333-333333333333');
 insert into public.generations values ('44444444-4444-4444-8444-444444444444');
@@ -83,6 +84,9 @@ values ('bbbbbbbb-0000-4000-8000-000000000001','11111111-1111-4111-8111-11111111
         '33333333-3333-4333-8333-333333333333','{"schemaVersion":1}'::jsonb,'$SHA_B');
 insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256)
 values ('11111111-1111-4111-8111-111111111111','ref-1','ana-1','{"schemaVersion":1}'::jsonb,'$SHA_A');
+-- A SECOND OWNER with their own evidence, so cross-owner reuse is testable.
+insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256)
+values ('99999999-9999-4999-8999-999999999999','ref-9','ana-9','{"schemaVersion":1}'::jsonb,'$SHA_B');
 SQL
 }
 
@@ -112,21 +116,48 @@ bootstrap
 psql -q -v ON_ERROR_STOP=1 -f "$MIG" >/dev/null
 seed
 
-INS_PLAN="insert into public.creative_transfer_plans
+# A plan whose referenceSet matches the evidence row seeded above. `mkplan`
+# builds one from explicit parts so each hostile case varies exactly ONE field
+# instead of relying on fragile string substitution.
+mkplan(){ # $1 referenceId  $2 analysisId  $3 analysisSha256  $4 owner
+  local ref="$1" ana="$2" dig="$3" own="${4:-11111111-1111-4111-8111-111111111111}"
+  cat <<SQLP
+insert into public.creative_transfer_plans
+ (owner_id, generation_id, brand_truth_snapshot_id, brand_truth_sha256,
+  campaign_intent_id, campaign_intent_sha256, plan, plan_sha256, model_identity, prompt_version)
+ values ('$own','33333333-3333-4333-8333-333333333333',
+  'aaaaaaaa-0000-4000-8000-000000000001','$SHA_A',
+  'bbbbbbbb-0000-4000-8000-000000000001','$SHA_B',
+  '{"schemaVersion":1,"referenceSet":[{"referenceId":"$ref","analysisId":"$ana","analysisSha256":"$dig"}]}'::jsonb,
+  '$SHA_C','m','p')
+SQLP
+}
+INS_PLAN="$(mkplan ref-1 ana-1 "$SHA_A")"
+
+echo "== positive: a well-formed lineage inserts =="
+ok "$INS_PLAN" "plan with digests matching both pinned rows and owned evidence"
+
+echo "== lineage integrity (pinned snapshot/intent digests) =="
+no "${INS_PLAN/\'$SHA_A\',/\'$SHA_C\',}" "plan pinning a brand-truth digest the snapshot does not carry"
+no "${INS_PLAN/\'$SHA_B\',/\'$SHA_C\',}" "plan pinning a campaign-intent digest the intent does not carry"
+no "${INS_PLAN/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444}" \
+   "plan whose generation differs from its pinned intent's generation"
+
+echo "== plan -> evidence lineage (service_role cannot bypass it) =="
+# Each of these varies exactly ONE field of the referenceSet.
+no "$(mkplan ref-1 ana-forged "$SHA_A")" "referenceSet names an analysis nobody owns"
+no "$(mkplan ref-1 ana-1 "$SHA_C")"      "referenceSet pins an evidence digest never issued"
+no "$(mkplan ref-forged ana-1 "$SHA_A")" "referenceSet names a reference id the evidence row does not carry"
+# CROSS-OWNER: another account's evidence must not satisfy this owner's plan.
+no "$(mkplan ref-9 ana-9 "$SHA_B")"      "referenceSet cites ANOTHER owner's evidence"
+# An absent referenceSet is refused rather than treated as nothing-to-check.
+no "insert into public.creative_transfer_plans
  (owner_id, generation_id, brand_truth_snapshot_id, brand_truth_sha256,
   campaign_intent_id, campaign_intent_sha256, plan, plan_sha256, model_identity, prompt_version)
  values ('11111111-1111-4111-8111-111111111111','33333333-3333-4333-8333-333333333333',
   'aaaaaaaa-0000-4000-8000-000000000001','$SHA_A',
-  'bbbbbbbb-0000-4000-8000-000000000001','$SHA_B','{\"schemaVersion\":1}'::jsonb,'$SHA_C','m','p')"
-
-echo "== positive: a well-formed lineage inserts =="
-ok "$INS_PLAN" "plan with digests matching both pinned rows"
-
-echo "== lineage integrity =="
-no "${INS_PLAN/\'$SHA_A\'/\'$SHA_C\'}" "plan pinning a brand-truth digest the snapshot does not carry"
-no "${INS_PLAN/\'$SHA_B\'/\'$SHA_C\'}" "plan pinning a campaign-intent digest the intent does not carry"
-no "${INS_PLAN/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-444444444444}" \
-   "plan whose generation differs from its pinned intent's generation"
+  'bbbbbbbb-0000-4000-8000-000000000001','$SHA_B','{}'::jsonb,'$SHA_C','m','p')" \
+  "plan with no referenceSet at all"
 
 echo "== append-only (as the table owner; triggers ignore RLS) =="
 for t in brand_truth_snapshots campaign_intents reference_evidence_sets creative_transfer_plans; do

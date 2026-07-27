@@ -151,7 +151,7 @@ returns trigger
 language plpgsql
 set search_path = pg_catalog, public
 as $$
-declare bt text; ci text; gen uuid;
+declare bt text; ci text; gen uuid; e jsonb;
 begin
   select snapshot_sha256 into bt from public.brand_truth_snapshots where id = new.brand_truth_snapshot_id;
   if bt is distinct from new.brand_truth_sha256 then
@@ -174,6 +174,39 @@ begin
       new.generation_id, new.campaign_intent_id, coalesce(gen::text, '<missing>')
       using errcode = 'raise_exception';
   end if;
+
+  -- ---- PLAN -> EVIDENCE LINEAGE ------------------------------------------
+  --
+  -- The TS validator binds referenceSet to server-issued evidence, but it is not
+  -- on every write path — service_role bypasses RLS and could insert a plan whose
+  -- JSON referenceSet names an analysis nobody owns, or a digest nobody issued.
+  -- Then the pinned lineage would describe nothing, which is the same defect
+  -- class as a shape-only digest check.
+  --
+  -- So the join is enforced HERE: every entry in the plan's referenceSet must
+  -- correspond to a reference_evidence_sets row owned by the SAME owner, with a
+  -- matching analysis_id AND a matching evidence digest.
+  if jsonb_typeof(new.plan -> 'referenceSet') is distinct from 'array' then
+    raise exception 'transfer_plan_reference_set_missing: plan.referenceSet must be an array'
+      using errcode = 'raise_exception';
+  end if;
+
+  for e in select * from jsonb_array_elements(new.plan -> 'referenceSet') loop
+    if not exists (
+      select 1 from public.reference_evidence_sets r
+      where r.owner_id = new.owner_id
+        and r.reference_id = e ->> 'referenceId'
+        and r.analysis_id = e ->> 'analysisId'
+        and r.evidence_sha256 = e ->> 'analysisSha256'
+    ) then
+      raise exception
+        'transfer_plan_evidence_lineage_missing: referenceSet entry (reference %, analysis %, digest %) '
+        'has no owned normalized evidence row for owner %',
+        coalesce(e ->> 'referenceId', '<null>'), coalesce(e ->> 'analysisId', '<null>'),
+        coalesce(e ->> 'analysisSha256', '<null>'), new.owner_id
+        using errcode = 'raise_exception';
+    end if;
+  end loop;
 
   return new;
 end;

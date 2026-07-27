@@ -301,15 +301,60 @@ export function citableEvidence(ev: NormalizedReferenceEvidenceV1): EvidenceItem
   return ev.items.filter((i) => i.kind !== 'unknown')
 }
 
+/**
+ * Canonical JSON for a normalized evidence set, and its digest. This is what a
+ * plan pins: without it, a plan could name an analysis whose evidence has since
+ * been replaced, and the citation would still "resolve".
+ */
+export function canonicalEvidence(ev: NormalizedReferenceEvidenceV1): string {
+  const canon = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(canon)
+    if (v !== null && typeof v === 'object') {
+      const o = v as Record<string, unknown>
+      const out: Record<string, unknown> = {}
+      for (const k of Object.keys(o).sort()) out[k] = canon(o[k])
+      return out
+    }
+    return v
+  }
+  return JSON.stringify(canon(ev))
+}
+
 export function validateNormalizedEvidence(ev: NormalizedReferenceEvidenceV1): NormalizedReferenceEvidenceV1 {
   const fail = (m: string, code: string): never => { throw new EvidenceError(m, code) }
   if (ev.schemaVersion !== 1) fail('schemaVersion must be 1', 'evidence_schema_version')
+
+  // EVERY ID IS RECOMPUTED, NOT MERELY CHECKED FOR UNIQUENESS.
+  //
+  // Deriving ids was pointless while the validator accepted whatever ids the set
+  // happened to carry: a fabricated normalized set with arbitrary ids passed, and
+  // a plan citing those ids then passed the membership gate, because the gate
+  // compares against the set rather than against the derivation. The ids are
+  // recomputed here from (analysisId, type, per-type ordinal in emission order),
+  // so an id that was not issued by this exact function for this exact analysis
+  // is rejected.
+  const ordinals = new Map<EvidenceType, number>()
+  for (const i of ev.items) {
+    if (!EVIDENCE_TYPES.includes(i.type)) fail(`unknown evidence type ${i.type}`, 'evidence_type_unknown')
+    const n = ordinals.get(i.type) ?? 0
+    ordinals.set(i.type, n + 1)
+    let expected: string
+    try { expected = issueEvidenceId(ev.analysisId, i.type, n) } catch {
+      return fail(`evidence set carries an unusable analysisId ${JSON.stringify(ev.analysisId)}`, 'evidence_analysis_id_invalid')
+    }
+    if (i.evidenceId !== expected) {
+      fail(
+        `evidence id ${JSON.stringify(i.evidenceId)} was not issued by the server for this analysis; `
+        + `the ${n}th ${i.type} item must be ${JSON.stringify(expected)}`,
+        'evidence_id_not_derived',
+      )
+    }
+  }
 
   const seen = new Set<string>()
   for (const i of ev.items) {
     if (seen.has(i.evidenceId)) fail(`duplicate evidence id ${i.evidenceId}`, 'evidence_id_duplicate')
     seen.add(i.evidenceId)
-    if (!EVIDENCE_TYPES.includes(i.type)) fail(`unknown evidence type ${i.type}`, 'evidence_type_unknown')
     if (i.analysisId !== ev.analysisId) fail(`evidence ${i.evidenceId} names a different analysis`, 'evidence_analysis_mismatch')
     if (i.referenceId !== ev.referenceId) fail(`evidence ${i.evidenceId} names a different reference`, 'evidence_reference_mismatch')
     // An unknown must say why, and must not carry a value; a known must not
