@@ -17,13 +17,31 @@ import { readFileSync } from 'node:fs'
 /** Route verdicts. `routed` and `undetermined` both BLOCK; only `clear` passes. */
 export const ROUTE_VERDICTS = ['clear', 'routed', 'undetermined']
 
+/**
+ * The flags that decide routing. `routeMentionsUpstream` is the load-bearing one:
+ * a reverse_proxy's `{"dial":"host:port"}` is what actually sends traffic
+ * somewhere. The others widen the net.
+ *
+ * NETWORK-NAME PRESENCE IS NOT A SUBSTITUTE FOR AN UPSTREAM MATCH. A config can
+ * name a network and route nowhere near the target, and a config can reach the
+ * target without naming its network at all. It is reported because a hit is worth
+ * blocking on, not because it answers the question.
+ */
+export const ROUTE_FLAGS = [
+  'routeMentionsUpstream', 'routeMentionsName', 'routeMentionsPort',
+  'routeMentionsIp', 'routeMentionsNetwork',
+]
+
 export function routeVerdict(a) {
-  if (a.caddyReadable !== true) return 'undetermined'
-  const flags = ['routeMentionsName', 'routeMentionsPort', 'routeMentionsIp', 'routeMentionsNetwork']
-  // A null among the flags means that particular match never ran. The proxy
-  // config being readable is not enough; every probe must have produced an answer.
-  if (flags.some((k) => a[k] !== true && a[k] !== false)) return 'undetermined'
-  return flags.some((k) => a[k] === true) ? 'routed' : 'clear'
+  // The verdict comes from the LOADED configuration. A Caddyfile on disk may be
+  // one `import` among several and is adapted before use, so its readability
+  // says nothing — only the admin API's answer counts.
+  if (a.caddyRuntimeReadable !== true) return 'undetermined'
+  // A null among the flags means that match never produced an answer — including
+  // the upstream extraction finding nothing parseable, which is an unparsed
+  // config rather than an absence of upstreams.
+  if (ROUTE_FLAGS.some((k) => a[k] !== true && a[k] !== false)) return 'undetermined'
+  return ROUTE_FLAGS.some((k) => a[k] === true) ? 'routed' : 'clear'
 }
 
 export function reconstructionVerdict(a) {
@@ -61,7 +79,7 @@ export function decide(a) {
     blockers.push(`reconstruction is ${reconstruction}: removal could not be undone from the recorded evidence`)
   }
   if (route === 'routed') blockers.push('a live proxy route still references the target')
-  if (route === 'undetermined') blockers.push('the proxy configuration could not be read, so routing is unknown')
+  if (route === 'undetermined') blockers.push('the LOADED proxy configuration could not be read, so routing is unknown')
   return {
     route,
     reconstruction,
@@ -77,8 +95,10 @@ const FULL_CLEAR = {
   composePath: '/root/24_Backend/deploy/docker-compose.yml',
   composeExists: true, composeSha256: 'a'.repeat(64),
   composeValidates: true, composeHasService: true, composeServiceCount: 3,
-  caddyReadable: true, caddyConfigSha256: 'b'.repeat(64),
-  routeMentionsName: false, routeMentionsPort: false,
+  caddyPresent: true, caddyRuntimeReadable: true,
+  caddyAdminEndpoint: 'http://localhost:2019/config/',
+  caddyRuntimeConfigSha256: 'b'.repeat(64), caddyfileSha256: 'c'.repeat(64),
+  routeMentionsUpstream: false, routeMentionsName: false, routeMentionsPort: false,
   routeMentionsIp: false, routeMentionsNetwork: false,
 }
 
@@ -97,22 +117,47 @@ function selftest() {
   t('  …and a provable reconstruction', w({}).reconstruction, 'provable')
 
   // Routing: any one marker blocks.
-  for (const k of ['routeMentionsName', 'routeMentionsPort', 'routeMentionsIp', 'routeMentionsNetwork']) {
+  for (const k of ROUTE_FLAGS) {
     t(`${k} = true BLOCKS`, w({ [k]: true }).stopMayBeAuthorised, false)
     t(`  …with verdict routed`, w({ [k]: true }).route, 'routed')
   }
 
-  // Ambiguity is a failure, not a pass. Each of these is a way the probe can
-  // come back without an answer.
-  t('unreadable proxy config is UNDETERMINED, not clear', w({ caddyReadable: false }).route, 'undetermined')
-  t('  …and blocks', w({ caddyReadable: false }).stopMayBeAuthorised, false)
-  t('a missing caddyReadable field is UNDETERMINED', w({ caddyReadable: null }).route, 'undetermined')
+  // NEGATIVE CONTROL — a route that exists ONLY in the runtime config.
+  //
+  // This is the defect the first probe had: it read /etc/caddy/Caddyfile and
+  // called that the evidence. A route defined in an imported snippet, or pushed
+  // through the admin API after start, appears in the LOADED config and nowhere
+  // on disk. Here the on-disk file is unchanged (its hash is the same as the
+  // clear case) and only the runtime upstream matches — and it must block.
+  t('a route present ONLY in the runtime config BLOCKS',
+    w({ routeMentionsUpstream: true, caddyfileSha256: FULL_CLEAR.caddyfileSha256 }).stopMayBeAuthorised, false)
+  t('  …with verdict routed', w({ routeMentionsUpstream: true }).route, 'routed')
+
+  // NEGATIVE CONTROL — the admin API is unavailable.
+  t('an unavailable admin API is UNDETERMINED, not clear',
+    w({ caddyRuntimeReadable: false, caddyAdminEndpoint: null }).route, 'undetermined')
+  t('  …and blocks', w({ caddyRuntimeReadable: false }).stopMayBeAuthorised, false)
+  t('a readable Caddyfile does NOT rescue an unreadable runtime config',
+    w({ caddyRuntimeReadable: false, caddyfileSha256: 'd'.repeat(64) }).route, 'undetermined')
+  t('a missing caddyRuntimeReadable field is UNDETERMINED', w({ caddyRuntimeReadable: null }).route, 'undetermined')
+
+  // Ambiguity is a failure, not a pass.
   t('a null route flag is UNDETERMINED even when the config was readable',
     w({ routeMentionsIp: null }).route, 'undetermined')
   t('  …and blocks', w({ routeMentionsIp: null }).stopMayBeAuthorised, false)
+  t('an unparsed upstream list (null) is UNDETERMINED, not "no upstreams"',
+    w({ routeMentionsUpstream: null }).route, 'undetermined')
+  t('  …and blocks', w({ routeMentionsUpstream: null }).stopMayBeAuthorised, false)
   t('an absent route flag is UNDETERMINED', (() => {
     const a = { ...FULL_CLEAR }; delete a.routeMentionsNetwork; return decide(a).route
   })(), 'undetermined')
+  t('an absent upstream flag is UNDETERMINED', (() => {
+    const a = { ...FULL_CLEAR }; delete a.routeMentionsUpstream; return decide(a).route
+  })(), 'undetermined')
+  // …and the network flag alone must not be able to CLEAR anything: it is only
+  // ever additive. Proven by removing every other signal and flipping it.
+  t('network-name presence alone still BLOCKS (it is not a clearing signal)',
+    w({ routeMentionsNetwork: true }).stopMayBeAuthorised, false)
 
   // Reconstruction.
   t('a missing compose file is UNDETERMINED', w({ composeExists: false }).reconstruction, 'undetermined')
@@ -159,7 +204,10 @@ if (arg === '--selftest') {
   console.log(`  compose sha256        : ${String(audit.composeSha256)}`)
   console.log(`  compose validates     : ${String(audit.composeValidates)}`)
   console.log(`  service present       : ${String(audit.composeHasService)} (of ${String(audit.composeServiceCount)} services)`)
-  console.log(`  caddy config sha256   : ${String(audit.caddyConfigSha256)}`)
+  console.log(`  caddy admin endpoint  : ${String(audit.caddyAdminEndpoint)}`)
+  console.log(`  caddy RUNTIME sha256  : ${String(audit.caddyRuntimeConfigSha256)}`)
+  console.log(`  caddyfile sha256      : ${String(audit.caddyfileSha256)} (informational; not the verdict source)`)
+  console.log(`  upstream match        : ${String(audit.routeMentionsUpstream)}`)
   console.log(`  RECONSTRUCTION        : ${verdict.reconstruction}`)
   console.log(`  ROUTE                 : ${verdict.route}`)
   console.log('  rollback commands (secret-safe):')

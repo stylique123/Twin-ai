@@ -154,20 +154,18 @@ jobs:
       # The acceptance delta is only meaningful against a baseline collected from
       # the host AS IT IS NOW. An older artifact (the 174-record collection
       # predates a large build-cache change) would compare against a host that no
-      # longer exists and report a difference that has nothing to do with this
-      # retirement. Recorded here so the operator picks the right run id.
+      # longer exists.
+      #
+      # This was one jq expression — `jq -r '.sha256 // "unknown"'` — against a
+      # field that is actually called `report_sha256`. It printed "unknown" and
+      # exited zero, so the anchor recorded nothing and could not fail. Inline jq
+      # had nowhere to put a test; the script does, and it exits non-zero unless
+      # the digest is really there.
       - name: Record the acceptance baseline anchor
         if: inputs.stage == 'pre-stop-audit'
         run: |
           set -euo pipefail
-          {
-            echo "acceptance baseline anchor"
-            echo "  inventory sha256 : $(jq -r '.sha256 // "unknown"' inventory-before.json 2>/dev/null || echo unknown)"
-            echo "  record count     : $(jq -r '[.. | objects | select(has("class"))] | length' inventory-before.json 2>/dev/null || echo unknown)"
-            echo "  run id           : $GITHUB_RUN_ID"
-            echo "  note             : pass THIS run id as baseline_run_id to the accept stage."
-            echo "                     An older artifact describes a host that has since changed."
-          } | tee acceptance-baseline.txt
+          node scripts/ci/anchor_acceptance_baseline.mjs inventory-before.json | tee acceptance-baseline.txt
 
       - name: Record the rollback manifest and back up host-local data
         if: inputs.stage == 'manifest'
