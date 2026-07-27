@@ -8,7 +8,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   escapeAssText, hasUnescapedBrace, formatAssTime, renderAssDocument, buildAssCaptions,
-  assertNoOverrideBlock, assDocumentSha256,
+  assertNoOverrideBlock, assDocumentSha256, stripCatalogTags, ASS_EMPHASIS_OPEN,
 } from '../jobs/assCaptions.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
 import { EditPlanError, type EditPlanV1 } from '../jobs/editPlanContract.js'
@@ -140,13 +140,55 @@ describe('end-to-end injection resistance', () => {
     it(`a transcript word containing ${JSON.stringify(payload)} produces no live brace`, () => {
       const plan = planWithCaption(payload)
       const { document } = buildAssCaptions(plan, { fontName: 'Inter' })
+      // GATE-0 A2 changed this invariant from "no live brace at all" to "no live
+      // brace OUTSIDE the closed emphasis catalog". The catalog is stripped with
+      // the same shared function the guard uses, so the test cannot drift into
+      // permitting something the guard rejects, or vice versa.
       for (const line of document.split('\n')) {
-        if (line.startsWith('Dialogue:')) expect(hasUnescapedBrace(line)).toBe(false)
+        if (!line.startsWith('Dialogue:')) continue
+        expect(hasUnescapedBrace(stripCatalogTags(line).rest)).toBe(false)
       }
-      // The audit runs over the finished document too.
-      expect(() => assertNoOverrideBlock(document, plan.captions.cues.length)).not.toThrow()
+      const emphasisCount = plan.captions.cues.reduce((n, c) => n + c.emphasisWordIndices.length, 0)
+      expect(() => assertNoOverrideBlock(document, plan.captions.cues.length, emphasisCount)).not.toThrow()
     })
   }
+
+  // A2 CONTROL. The catalog is now permitted output, so the decisive question is
+  // no longer "are there braces" but "can TRANSCRIPT TEXT produce one". A word
+  // literally spelled as a catalog tag is the exact adversarial case: it must be
+  // escaped like any other text and must not be counted as an emphasis tag.
+  it('a transcript word spelled exactly like a catalog tag does NOT become one', () => {
+    const plan = planWithCaption(ASS_EMPHASIS_OPEN)
+    const { document } = buildAssCaptions(plan, { fontName: 'Inter' })
+    // Counted over the WHOLE document, not per line: emphasis lives on whichever
+    // cue owns the emphasised word, so a per-line count compares a single cue's
+    // tags against the document-wide total and fails on every other line.
+    let totalTags = 0
+    let sawEscapedPayload = false
+    for (const line of document.split('\n')) {
+      if (!line.startsWith('Dialogue:')) continue
+      const { rest, tags } = stripCatalogTags(line)
+      // Stripping the catalog must leave the ESCAPED payload behind, proving the
+      // text was escaped rather than emitted as a live tag.
+      expect(hasUnescapedBrace(rest)).toBe(false)
+      totalTags += tags
+      if (rest.includes('\\{')) sawEscapedPayload = true
+    }
+    const emphasised = plan.captions.cues.reduce((n, c) => n + c.emphasisWordIndices.length, 0)
+    expect(totalTags).toBe(emphasised * 2)
+    expect(sawEscapedPayload, 'the payload must appear in escaped form').toBe(true)
+  })
+
+  it('MUTATION CONTROL: an unbalanced emphasis tag fails the audit', () => {
+    // Without the balanced-pair count, a document carrying a stray or injected
+    // tag would pass. Proves that count is load-bearing.
+    const plan = planWithCaption('hello')
+    const { document } = buildAssCaptions(plan, { fontName: 'Inter' })
+    const tampered = document.replace(/^(Dialogue:.*)$/m, `$1${ASS_EMPHASIS_OPEN}`)
+    expect(tampered).not.toEqual(document)
+    const emphasised = plan.captions.cues.reduce((n, c) => n + c.emphasisWordIndices.length, 0)
+    expect(() => assertNoOverrideBlock(tampered, plan.captions.cues.length, emphasised)).toThrow()
+  })
 
   it('the payload really did reach the document — the test is not vacuous', () => {
     const plan = planWithCaption('{\\an8}top')

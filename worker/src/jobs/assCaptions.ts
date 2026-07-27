@@ -86,11 +86,52 @@ export interface AssStyleOptions {
   marginVerticalPx: number
 }
 
+// GATE-0 AMENDMENT A2 — the CLOSED emphasis catalog.
+//
+// Emphasis in ASS requires an override tag, and the injection guard rejects every
+// override block. Both halves were deliberate: the guard is what stops transcript
+// text from reaching a tag. So emphasis gets a two-member vocabulary and nothing
+// else — no colour, font, position, transform, karaoke or drawing mode.
+//
+// ONLY this file emits them, ONLY around a word whose index is in that cue's own
+// emphasisWordIndices, and ALWAYS as a balanced pair. `escapeAssText` is
+// unchanged, so a transcript word literally spelled "{\\b1}" still has its braces
+// escaped before it reaches here and cannot become a tag.
+export const ASS_EMPHASIS_OPEN = '{\\b1}'
+export const ASS_EMPHASIS_CLOSE = '{\\b0}'
+export const ASS_EMPHASIS_TAGS = [ASS_EMPHASIS_OPEN, ASS_EMPHASIS_CLOSE] as const
+
+/**
+ * Remove EXACT catalog members, and nothing else, returning the remainder plus a
+ * count of what was removed. The ONE definition of "which braces are permitted",
+ * shared by the guard and its tests so the audit and its proof cannot disagree.
+ */
+export function stripCatalogTags(s: string): { rest: string; tags: number } {
+  let rest = s
+  let tags = 0
+  for (const tag of ASS_EMPHASIS_TAGS) {
+    tags += rest.split(tag).length - 1
+    rest = rest.split(tag).join('')
+  }
+  return { rest, tags }
+}
+
 function dialogueLine(cue: PlanCue): string {
+  // The cue's wordIndices are parallel to the words its lines display, in order,
+  // so emphasis is applied POSITIONALLY rather than by matching text — the same
+  // reason the removed-word guard uses provenance.
+  const emphasised = new Set(cue.emphasisWordIndices)
+  let w = 0
+  const rendered = cue.lines.map((line) => line.split(' ').map((token) => {
+    const idx = cue.wordIndices[w]
+    w++
+    const esc = escapeAssText(token)
+    return emphasised.has(idx) ? `${ASS_EMPHASIS_OPEN}${esc}${ASS_EMPHASIS_CLOSE}` : esc
+  }).join(' '))
   // Lines are joined with the ASS hard line break `\N`, which is produced HERE
   // and can never come from the text, because every backslash in text has
   // already been doubled.
-  const body = cue.lines.map(escapeAssText).join('\\N')
+  const body = rendered.join('\\N')
   return `Dialogue: 0,${formatAssTime(cue.outputStartMs)},${formatAssTime(cue.outputEndMs)},${ASS_STYLE_NAME},,0,0,0,,${body}`
 }
 
@@ -118,7 +159,8 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
   ]
   for (const cue of plan.captions.cues) lines.push(dialogueLine(cue))
   const doc = `${lines.join('\n')}\n`
-  assertNoOverrideBlock(doc, plan.captions.cues.length)
+  const emphasisCount = plan.captions.cues.reduce((n, c) => n + c.emphasisWordIndices.length, 0)
+  assertNoOverrideBlock(doc, plan.captions.cues.length, emphasisCount)
   return doc
 }
 
@@ -127,13 +169,19 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
  * brace, and no event may have been split across physical lines. This does not
  * trust `escapeAssText`; it is the guard the mutation control removes.
  */
-export function assertNoOverrideBlock(doc: string, expectedEvents?: number): void {
+export function assertNoOverrideBlock(doc: string, expectedEvents?: number, expectedTags = 0): void {
   const physical = doc.split('\n')
   let events = 0
+  let tags = 0
   for (const line of physical) {
     if (!line.startsWith('Dialogue:')) continue
     events++
-    if (hasUnescapedBrace(line)) {
+    // AMENDMENT A2. Catalog members are removed before the live-brace audit, so
+    // the audit itself is unchanged in strength: anything that still looks like an
+    // override block after the catalog is stripped is rejected exactly as before.
+    const stripped = stripCatalogTags(line)
+    tags += stripped.tags
+    if (hasUnescapedBrace(stripped.rest)) {
       throw new EditPlanError('ass: dialogue event contains a live override block', 'output_caption_invalid')
     }
     // An ASS event has nine comma-separated header fields before the text, and
@@ -148,6 +196,14 @@ export function assertNoOverrideBlock(doc: string, expectedEvents?: number): voi
   if (expectedEvents !== undefined && events !== expectedEvents) {
     throw new EditPlanError(
       `ass: emitted ${events} events for ${expectedEvents} cues`, 'output_caption_invalid')
+  }
+  // Balanced-pair count. An emphasised word contributes exactly one open and one
+  // close, so any extra, missing or unpaired tag — whether from a compiler bug or
+  // a tampered document — fails closed rather than rendering something the plan
+  // did not describe.
+  if (tags !== expectedTags * 2) {
+    throw new EditPlanError(
+      `ass: ${tags} emphasis tags for ${expectedTags} emphasised words`, 'output_caption_invalid')
   }
 }
 
