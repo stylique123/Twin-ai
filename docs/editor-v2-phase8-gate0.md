@@ -127,10 +127,64 @@ unpinned analysis. There is no Decision → FFmpeg path.
 | True-peak ceiling | **−1.0 dBTP** |
 | Audio presets | `speech-clean-v1`, `speech-noisy-v1`, `speech-roomy-v1` |
 | Max zooms per video | **20** |
-| Transitions | `hard_cuts_only` default; `restrained` only at a verified scene boundary with handles both sides |
+| Transitions | `hard_cuts_only` — **the only policy the plan contract accepts.** See §4.1 |
+| Caption emphasis | rendered ONLY from the closed ASS tag catalog in §4.2 |
 | Filler auto-removal | **OFF — structurally rejected at compiler AND database** |
 | Music | only from a production-approved licensed catalog row; no eligible track ⇒ `music = null` + warning (a success, not a failure) |
 | Expected-duration tolerance | **± 250 ms** |
+
+### 4.1 Amendment A1 — `restrained` leaves the accepted plan contract
+
+**Why this amendment exists.** Correcting Batch 8.1 surfaced two places where the
+frozen contract contradicted itself. Under the stop rule the contract is updated
+ONCE and implementation restarts from it, rather than each contradiction being
+patched in code where it would become permanent.
+
+The original wording admitted `restrained` as an accepted `transitionPolicy`.
+`TRANSITION_POLICIES` listed it, the compiler emitted plans carrying it, and the
+Gate-0 fixture *defaulted* to it — while `buildFfmpegGraph` rejected it, correctly,
+because no crossfade is implemented. So the contract called a plan valid that the
+renderer could not render.
+
+Of the two available resolutions, implementing a crossfade now is the wrong one:
+it would add unproven render behaviour to a batch that already has six defects,
+and transitions belong to a later batch. **Expressible-but-unrenderable is the
+worse of the two states**, so the resolution is to narrow the contract:
+
+- `TRANSITION_POLICIES = ['hard_cuts_only']`. `restrained` is REJECTED at
+  validation, not at render time.
+- `timeline.segments[].transitionInOverlapMs` MUST be `0` for every segment.
+- The policy file keeps its `transitions` block for the owning batch to restore,
+  but nothing may read `restrainedOverlapMs` while this amendment stands.
+- Restoring `restrained` is a Gate-0 decision that requires a rendered,
+  frame-inspected crossfade — not a validator change.
+
+### 4.2 Amendment A2 — the closed ASS emphasis tag catalog
+
+Caption emphasis was unrenderable by construction, not merely unimplemented.
+Emphasis in ASS requires an override tag (`{\b1}`), and `assertNoOverrideBlock`
+rejected EVERY override block in the document. Both halves were deliberate: the
+guard exists because transcript text reaching an override tag is a subtitle
+injection. Removing the guard to allow emphasis would trade a missing feature for
+a security defect.
+
+The resolution keeps the guard and gives the renderer a closed vocabulary:
+
+- **`ASS_EMPHASIS_TAGS`** is a FROZEN catalog: `{\b1}` and `{\b0}` only. No
+  colour, no font, no position, no transform, no karaoke, no drawing mode.
+- Only `renderAssDocument` may emit them, only immediately around a word whose
+  index appears in that cue's `emphasisWordIndices`, and always in balanced
+  `{\b1}`…`{\b0}` pairs.
+- `escapeAssText` is unchanged: every brace originating in transcript text is
+  still escaped before this stage, so a word literally spelled `{\b1}` cannot
+  produce a tag.
+- `assertNoOverrideBlock` becomes `assertOnlyCatalogOverrides`: any override block
+  that is not exactly a catalog member fails `render_font_integrity_failed`, and
+  the count of emitted tags must equal twice the number of emphasised words —
+  so an unbalanced or injected tag fails closed.
+
+**Ownership is unchanged by this amendment.** One caption renderer, one escape
+function, one guard. No second styling path is introduced.
 
 ---
 

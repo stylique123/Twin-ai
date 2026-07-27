@@ -84,7 +84,7 @@ export function baseInput(overrides: Partial<CompileInput> = {}): CompileInput {
       hookTreatment: 'keep',
       hookStartWordIndex: null,
       captionPresetId: 'caption-clean-keyword-v1',
-      transitionPolicy: 'restrained',
+      transitionPolicy: 'hard_cuts_only',
       zoomRequests: [{ anchorWordIndex: 26, intensity: 'medium', reasonCode: 'emphasis_word' }],
     },
     ...overrides,

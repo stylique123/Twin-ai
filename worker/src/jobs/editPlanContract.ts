@@ -29,6 +29,29 @@ export const EDIT_PLAN_MAX_BYTES = 1048576
 // policy file bounds what the COMPILER may emit, these bound what the VALIDATOR
 // will accept from any source (including a plan read back out of the database).
 // A policy edit must never silently widen the contract.
+// THE one production output profile (Gate-0 §4). Every field is exact; there is
+// no range. Declared here rather than read from edit_policy_v1.json for the same
+// reason as the maxima above — this file does no I/O, and the validator must not
+// widen when the policy file is edited. `output.durationMs` is deliberately NOT
+// here: it is the only output field that legitimately varies per video.
+//
+// scripts/../editor-8-1-counterexamples.test.ts asserts this equals the policy
+// file field-for-field, so the deliberate duplicate cannot drift into a second,
+// disagreeing authority.
+export const FROZEN_OUTPUT_PROFILE = {
+  profileId: 'vertical-social-1080x1920-h264-aac-v1',
+  width: 1080,
+  height: 1920,
+  fpsNum: 30,
+  fpsDen: 1,
+  videoCodec: 'libx264',
+  audioCodec: 'aac',
+  pixelFormat: 'yuv420p',
+  audioSampleRateHz: 48000,
+  audioChannels: 2,
+  faststart: true,
+} as const
+
 export const MAX_ALLOWED_WINDOWS = 200
 export const MAX_SEGMENTS = 600
 export const MAX_REMOVALS = 1200
@@ -44,7 +67,18 @@ export const AUDIO_PRESET_IDS = ['speech-clean-v1', 'speech-noisy-v1', 'speech-r
 export const CAPTION_PRESET_IDS = [
   'caption-clean-keyword-v1', 'caption-punchy-word-v1', 'caption-minimal-subtitle-v1',
 ] as const
-export const TRANSITION_POLICIES = ['hard_cuts_only', 'restrained'] as const
+// GATE-0 AMENDMENT A1. `restrained` is NOT an accepted plan policy.
+//
+// It used to be listed here, the compiler emitted plans carrying it, and the
+// Gate-0 fixture defaulted to it — while buildFfmpegGraph rejected it, correctly,
+// because no crossfade is implemented. The contract therefore called a plan valid
+// that the renderer could not render. Expressible-but-unrenderable is the worse
+// of the two states, so the contract is narrowed rather than the renderer widened
+// with unproven behaviour in a batch that already had six defects.
+//
+// Restoring `restrained` is a Gate-0 decision requiring a rendered, frame-inspected
+// crossfade — not a change to this array. See docs/editor-v2-phase8-gate0.md §4.1.
+export const TRANSITION_POLICIES = ['hard_cuts_only'] as const
 export const TRANSITION_KINDS = ['crossfade'] as const
 export const ZOOM_REASON_CODES = ['emphasis_word', 'scene_open', 'retention_beat'] as const
 export const ZOOM_INTENSITIES = ['subtle', 'medium'] as const
@@ -398,6 +432,20 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
   }
   if (output.width % 2 !== 0 || output.height % 2 !== 0) fail('output: dimensions must be even')
 
+  // CX5. Broad numeric bounds are NOT a frozen profile. `int(width, 2, 8192)`
+  // accepts 720x1280, `token(videoCodec)` accepts libx265, and a plan carrying
+  // either would render an output the product never agreed to ship. There is
+  // exactly ONE production output profile; every field must equal it.
+  //
+  // The catalog is the policy file, not a copy of it declared here — a second
+  // copy is a second authority, and the two would eventually disagree.
+  for (const [k, want] of Object.entries(FROZEN_OUTPUT_PROFILE)) {
+    const got = (output as unknown as Record<string, unknown>)[k]
+    if (got !== want) {
+      fail(`output.${k}: ${JSON.stringify(got)} is not the frozen production profile (${JSON.stringify(want)})`)
+    }
+  }
+
   // -- timeline
   const tl = strictKeys(o.timeline, TIMELINE_KEYS, 'timeline')
   const rawSegs = arr(tl.segments, MAX_SEGMENTS, 'timeline.segments')
@@ -416,6 +464,12 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     if (seg.sourceEndMs <= seg.sourceStartMs) fail(`timeline.segments[${i}]: non-positive source length`)
     if (i === 0 && seg.transitionInOverlapMs !== 0) {
       fail('timeline.segments[0]: the first segment cannot have an inbound transition')
+    }
+    // AMENDMENT A1: with `restrained` gone, no segment may carry an overlap. This
+    // is enforced HERE as well as via video.transitions, so a plan cannot smuggle
+    // a non-zero overlap into the time map by omitting the transition record.
+    if (seg.transitionInOverlapMs !== 0) {
+      fail(`timeline.segments[${i}]: transitions are not supported (Gate-0 A1); overlap must be 0`)
     }
     return seg
   })
@@ -474,6 +528,39 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     for (const seg of segments) {
       if (rem.sourceStartMs < seg.sourceEndMs && seg.sourceStartMs < rem.sourceEndMs) {
         fail(`timeline.removals: removal [${rem.sourceStartMs},${rem.sourceEndMs}) intersects kept segment ${seg.index}`,
+          'edit_plan_divergent')
+      }
+    }
+  }
+
+  // CX4 — EXACT PARTITION. Everything above proves the pieces are individually
+  // well-formed and mutually disjoint. None of it proves they COVER the allowed
+  // source. Without this, a removal can be deleted, complexity.removalCount
+  // adjusted to match, and the plan validates while carrying source time that is
+  // neither kept nor explained as removed — media the user recorded that silently
+  // went nowhere. Self-consistency is not coverage.
+  //
+  // kept ∪ removed must equal allowedWindows EXACTLY: no gap, no spill outside.
+  {
+    const kept = segments.map((s) => ({ startMs: s.sourceStartMs, endMs: s.sourceEndMs }))
+    const rem = removals.map((r) => ({ startMs: r.sourceStartMs, endMs: r.sourceEndMs }))
+    const merged = [...kept, ...rem].sort((a, b) => a.startMs - b.startMs)
+      .reduce<Array<{ startMs: number; endMs: number }>>((acc, iv) => {
+        const last = acc[acc.length - 1]
+        if (last && iv.startMs <= last.endMs) last.endMs = Math.max(last.endMs, iv.endMs)
+        else acc.push({ ...iv })
+        return acc
+      }, [])
+    if (merged.length !== allowedWindows.length) {
+      fail(`timeline: kept+removed forms ${merged.length} spans but the source allows ${allowedWindows.length}`,
+        'edit_plan_divergent')
+    }
+    for (let i = 0; i < allowedWindows.length; i++) {
+      const w = allowedWindows[i]
+      const m = merged[i]
+      if (m.startMs !== w.startMs || m.endMs !== w.endMs) {
+        fail(`timeline: kept+removed span ${i} is [${m.startMs},${m.endMs}) but the allowed window is `
+          + `[${w.startMs},${w.endMs}) — source time is neither kept nor declared removed`,
           'edit_plan_divergent')
       }
     }

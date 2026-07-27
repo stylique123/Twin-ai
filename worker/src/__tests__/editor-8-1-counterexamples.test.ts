@@ -19,7 +19,7 @@ import { baseInput, policy } from './fixtures/editPlanFixture.js'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-const ASSETS = { sourcePath: '/tmp/src.mp4', subtitlePath: '/tmp/subs.ass', outputPath: '/tmp/out.mp4' }
+const ASSETS = { sourcePath: '/tmp/src.mp4', assPath: '/tmp/subs.ass', fontsDir: null, outputPath: '/tmp/out.mp4' }
 const STYLE = { playResX: 1080, playResY: 1920, fontName: 'Inter', fontSizePx: 72, marginVerticalPx: 320 }
 
 const CATALOG = JSON.parse(
@@ -38,18 +38,27 @@ describe('CX1 — timed zooms must actually be time-gated in the filter graph', 
   // A zoom at 1s and a zoom at 31s are different edits. If both produce the same
   // FFmpeg arguments, the renderer cannot be applying either of them at a time,
   // which means every zoom affects the whole video and multiple zooms compound.
+  // Zooms live at plan.video.zooms and use outputStartMs/outputEndMs. An earlier
+  // draft of this test read plan.zooms[0].startMs, which is undefined on both
+  // counts, so it failed with a TypeError rather than on the defect — red for the
+  // wrong reason is as useless as green for the wrong reason.
   it('two plans whose zooms differ only in TIME produce different ffmpeg args', () => {
     const early = clone(compile())
-    expect(early.zooms.length, 'fixture must produce at least one zoom').toBeGreaterThan(0)
+    expect(early.video.zooms.length, 'fixture must produce at least one zoom').toBeGreaterThan(0)
 
     const late = clone(early)
-    const span = early.zooms[0].endMs - early.zooms[0].startMs
-    // Move the zoom 20s later, staying inside the output duration.
-    const shift = 20000
-    expect(early.zooms[0].endMs + shift).toBeLessThanOrEqual(late.output.durationMs)
-    late.zooms[0].startMs = early.zooms[0].startMs + shift
-    late.zooms[0].endMs = late.zooms[0].startMs + span
+    const z0 = early.video.zooms[0]
+    const span = z0.outputEndMs - z0.outputStartMs
+    // Move the zoom to the very start of the output. Derived from the plan, not a
+    // magic constant, so it can never fall outside the duration — an earlier draft
+    // used a fixed 15s shift and failed the range guard instead of the defect.
+    late.video.zooms[0].outputStartMs = 0
+    late.video.zooms[0].outputEndMs = span
+    expect(z0.outputStartMs, 'the two zooms must actually differ in time')
+      .toBeGreaterThan(span)
 
+    // Both must still be structurally valid plans, so any difference in argv is
+    // attributable to the zoom time and nothing else.
     const argsEarly = buildFfmpegArgs(buildFfmpegGraph(validateEditPlan(early), ASSETS))
     const argsLate = buildFfmpegArgs(buildFfmpegGraph(validateEditPlan(late), ASSETS))
     expect(argsLate).not.toEqual(argsEarly)
@@ -57,13 +66,12 @@ describe('CX1 — timed zooms must actually be time-gated in the filter graph', 
 
   it('the zoom filter chain carries an enable window bounded by the zoom times', () => {
     const plan = compile()
-    const graph = buildFfmpegGraph(plan, ASSETS)
-    const argv = buildFfmpegArgs(graph).join(' ')
-    const z = plan.zooms[0]
+    const argv = buildFfmpegArgs(buildFfmpegGraph(plan, ASSETS)).join(' ')
+    const z = plan.video.zooms[0]
     // Whatever expression syntax is chosen, the zoom's own boundaries must appear
     // in the graph: a zoom that renders for the whole video is not this zoom.
     expect(argv).toMatch(/enable=/)
-    expect(argv).toContain(`${(z.startMs / 1000).toFixed(3)}`)
+    expect(argv).toContain((z.outputStartMs / 1000).toFixed(3))
   })
 })
 
