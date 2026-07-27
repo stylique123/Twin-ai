@@ -187,9 +187,69 @@ against the derivation.
   order)` and a mismatch is refused. A duplicated id now fails as *not derived*,
   which is the stronger and more accurate reason.
 
+## E — two digests were treated as one authority
+
+The frozen contract's `plan.referenceSet[].analysisSha256` pins the **upstream
+analysis bytes**. Migration 0095 compared it against
+`reference_evidence_sets.evidence_sha256`, which digests the **canonical
+normalized evidence** the row stores. Those are different artifacts: normalization
+is lossy and versioned, so one analysis can normalize to different evidence bytes.
+
+The join therefore accepted a plan pinning an analysis digest nobody ever issued,
+and would reject a correct plan the moment the normalizer changed. The pin
+described the wrong artifact in both directions.
+
+What made it invisible was the fixture: the seeded row used one value for both,
+so a trigger reading either column passed identically. The test proved a
+coincidence in the fixture, not a property of the lineage.
+
+- `reference_evidence_sets` gains a distinct `analysis_sha256`, NOT NULL and
+  hex-constrained. `evidence_sha256` keeps its meaning unchanged.
+- The trigger compares `plan.analysisSha256` to `analysis_sha256`.
+- The Gate-F fixture now seeds two **deliberately different** digests, and a new
+  case pins the normalized-evidence digest where the analysis digest belongs — a
+  real digest, right row, right owner, right analysis, wrong artifact. It can
+  only fail if the trigger reads the correct column.
+- `ValidationContext` names the exact source column for every field, because
+  there is no server builder yet and the obligation has to live somewhere it
+  will be read: the digests come from persisted rows, never from model output.
+
+**This is a clarification of the frozen contract, not a change to it.** The
+contract field keeps its name and meaning; the database was comparing it to the
+wrong column. `docs/twinai-selective-transfer-reasoning-contract.md` is untouched,
+sha256 `3f8816055c4f867978841a53ef30eb146d2073c3e17ead1697ab9614573bfa07`.
+
+## F — the map key was taken as proof of what the record was
+
+`ctx.evidence` is keyed by `referenceId`, and every downstream check trusted that
+key. Nothing compared it to the record's own `referenceId`.
+
+So evidence gathered for reference B, filed under key A, satisfied all of them:
+the set validates, the analysis ids agree because the plan simply names B's
+analysis, and the digest agrees because the server pinned B's. The plan then cited
+B's evidence as A's, and the pinned lineage recorded a provenance that never
+happened.
+
+- `ev.referenceId === r.referenceId` is now asserted explicitly.
+- A hostile test files REF2's genuine, server-issued evidence under REF's key and
+  adjusts the plan and context so that *every other check still passes*. It is
+  refused only by the new comparison.
+- A positive control runs the identical plan shape with each reference keeping
+  its own evidence, so the hostile case cannot be satisfied by a validator that
+  rejects everything.
+
 ## Controls
 
-Shared suite: 354 passing (was 325). Gate-F: 26 assertions (was 21), including
-wrong-analysis, wrong-reference, wrong-digest, cross-owner and absent-referenceSet
-cases against the real migration. Every negative is paired with the positive that
-proves it is not passing vacuously.
+Shared suite: **356 passing** (was 354; 58 in `creativeTransferPlan.test.ts`).
+Gate-F: **30 assertions** (was 26), including wrong-analysis, wrong-reference,
+wrong-digest, cross-owner, absent-referenceSet, the digest-conflation case and
+the NOT NULL / hex constraints on `analysis_sha256`, all against the real
+migration. Every negative is paired with the positive that proves it is not
+passing vacuously.
+
+Both new invariants were verified by mutation, not by inspection:
+
+| mutation | expected | observed |
+|---|---|---|
+| delete the `ev.referenceId` comparison | hostile test fails | 1 failed / 57 passed; control still passes |
+| revert the trigger to `evidence_sha256` | Gate-F fails | `GATE-F FAIL: legitimate statement REJECTED` on the positive plan |

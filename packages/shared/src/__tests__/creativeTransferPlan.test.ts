@@ -213,6 +213,35 @@ describe('referenceSet is bound to server-issued evidence and intent', () => {
     const ctx = { ...CTX, evidence: { ...CTX.evidence, [REF]: forged } }
     expect(() => validateCreativeTransferPlan(plan(), ctx)).toThrow(/was not issued by the server/)
   })
+
+  // ---- CROSS-REFERENCE SUBSTITUTION ---------------------------------------
+  //
+  // The map key was the only thing tying a record to a reference. This files
+  // REF2's genuine, server-issued, fully valid evidence under REF's key. Every
+  // other check still passes — the set validates, the analysis ids agree because
+  // the plan names REF2's analysis, and the digest agrees because the context
+  // pins REF2's. Only `ev.referenceId === r.referenceId` catches it.
+  it('HOSTILE: another reference\'s genuine evidence filed under this key is refused', () => {
+    const ctx: ValidationContext = {
+      ...CTX,
+      evidence: { ...CTX.evidence, [REF]: CTX.evidence[REF2] },
+      analysisSha256: { ...CTX.analysisSha256, [REF]: CTX.analysisSha256[REF2] },
+    }
+    const p = clone(draftPlan())
+    p.referenceSet[0].analysisId = ANA2
+    p.referenceSet[0].analysisSha256 = CTX.analysisSha256[REF2]
+    expect(() => validateCreativeTransferPlan(rehash(p), ctx))
+      .toThrow(/is labelled .*a reference cannot cite another reference's evidence/s)
+  })
+  // POSITIVE CONTROL: the identical construction with the evidence left in its
+  // OWN drawer must pass. Without this the test above would also pass on a
+  // validator that rejected every plan.
+  it('CONTROL: the same plan shape validates when each reference keeps its own evidence', () => {
+    const p = clone(draftPlan())
+    p.referenceSet[1].analysisId = ANA2
+    p.referenceSet[1].analysisSha256 = CTX.analysisSha256[REF2]
+    expect(() => validateCreativeTransferPlan(rehash(p), CTX)).not.toThrow()
+  })
 })
 
 // ================== the runtime shape is closed ============================
