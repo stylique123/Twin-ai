@@ -292,6 +292,29 @@ jobs:
         if: inputs.stage == 'accept'
         run: node scripts/ci/assert_vps_acceptance.mjs baseline/inventory-before.json inventory-after.json
 
+      # PROVE nothing changed that this stage was not authorised to change.
+      #
+      # Not a byte comparison of the two inventories — those differ every run
+      # because free space, log bytes, restart counts and image sizes move on
+      # their own. This compares only the structure ownership and safety depend
+      # on, permits declared-volatile values, and FAILS CLOSED on any field it
+      # has no policy for.
+      #
+      # Read-only stages authorise NOTHING, so any structural change at all is a
+      # finding. Mutating stages pass their authorised records explicitly.
+      - name: Structural delta (volatile values permitted, unknown fields fail closed)
+        if: always() && hashFiles('inventory-before.json') != '' && hashFiles('inventory-after.json') != ''
+        env:
+          STAGE: ${{ inputs.stage }}
+        run: |
+          set -euo pipefail
+          case "$STAGE" in
+            disable-restart|stop|remove-container|reclaim) AUTHORISED="containers/stylique-os" ;;
+            *) AUTHORISED="" ;;
+          esac
+          node scripts/ci/assert_structural_delta.mjs \
+            inventory-before.json inventory-after.json $AUTHORISED | tee structural-delta.txt
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -314,6 +337,7 @@ jobs:
             route-impact.json
             route-impact.sha256
             route-impact.txt
+            structural-delta.txt
             acceptance-baseline.txt
             backup-*.tar.gz
           if-no-files-found: warn
