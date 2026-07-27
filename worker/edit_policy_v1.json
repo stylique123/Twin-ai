@@ -1,0 +1,129 @@
+{
+  "_comment": "Editor v2 Phase 8 — FROZEN numeric policy authority (Gate-0 §4/§7). Every number the compiler uses lives here and nowhere else. Values marked (gate0) are frozen by docs/editor-v2-phase8-gate0.md §4 and may not be changed without a new Gate-0 decision; the rest were chosen at Batch 8.1 and are frozen from this point. ALL quantities are integers: times in milliseconds, gains in milli-dB, scales in milli-units (1060 == 1.060x). Floating point never enters the plan, so canonical bytes are identical across processes and architectures.",
+
+  "policyVersion": "edit-policy-v1",
+
+  "output": {
+    "profileId": "vertical-social-1080x1920-h264-aac-v1",
+    "width": 1080,
+    "height": 1920,
+    "fpsNum": 30,
+    "fpsDen": 1,
+    "videoCodec": "libx264",
+    "audioCodec": "aac",
+    "pixelFormat": "yuv420p",
+    "audioSampleRateHz": 48000,
+    "audioChannels": 2,
+    "faststart": true,
+    "maxDurationMs": 900000,
+    "minDurationMs": 1000,
+    "expectedDurationToleranceMs": 250
+  },
+
+  "source": {
+    "maxDurationMs": 900000
+  },
+
+  "loudness": {
+    "targetLufsMilli": -14000,
+    "toleranceLuMilli": 1000,
+    "truePeakCeilingDbtpMilli": -1000
+  },
+
+  "audio": {
+    "presetIds": ["speech-clean-v1", "speech-noisy-v1", "speech-roomy-v1"],
+    "defaultPresetId": "speech-clean-v1",
+    "noisySnrDbMilliMax": 18000,
+    "roomyEarlyEnergyRatioMilliMax": 350,
+    "presets": {
+      "speech-clean-v1": { "highpassHz": 80, "denoiseMilli": 0, "deesserMilli": 0 },
+      "speech-noisy-v1": { "highpassHz": 100, "denoiseMilli": 350, "deesserMilli": 150 },
+      "speech-roomy-v1": { "highpassHz": 110, "denoiseMilli": 200, "deesserMilli": 100 }
+    }
+  },
+
+  "cuts": {
+    "minKeptSegmentMs": 400,
+    "minPhonemeHandleMs": 60,
+    "maxCutsPerMinuteMilli": 30000,
+    "maxKeptSegments": 600,
+    "maxRemovals": 1200,
+    "emphasisPauseGuardMs": 350,
+    "sceneBoundaryGuardMs": 120,
+    "minRemovalMs": 120
+  },
+
+  "captions": {
+    "maxCues": 2000,
+    "maxLinesPerCue": 2,
+    "presetIds": [
+      "caption-clean-keyword-v1",
+      "caption-punchy-word-v1",
+      "caption-minimal-subtitle-v1"
+    ],
+    "presets": {
+      "caption-clean-keyword-v1": {
+        "maxWordsPerCue": 4,
+        "maxCharsPerLine": 22,
+        "minCueDurationMs": 700,
+        "maxCueDurationMs": 4000,
+        "maxCharsPerSecondMilli": 20000,
+        "fontSizePx": 72,
+        "marginVerticalPx": 320
+      },
+      "caption-punchy-word-v1": {
+        "maxWordsPerCue": 2,
+        "maxCharsPerLine": 16,
+        "minCueDurationMs": 500,
+        "maxCueDurationMs": 2500,
+        "maxCharsPerSecondMilli": 24000,
+        "fontSizePx": 88,
+        "marginVerticalPx": 360
+      },
+      "caption-minimal-subtitle-v1": {
+        "maxWordsPerCue": 8,
+        "maxCharsPerLine": 32,
+        "minCueDurationMs": 900,
+        "maxCueDurationMs": 5000,
+        "maxCharsPerSecondMilli": 17000,
+        "fontSizePx": 56,
+        "marginVerticalPx": 240
+      }
+    }
+  },
+
+  "zooms": {
+    "maxCount": 20,
+    "minSeparationMs": 1500,
+    "holdMs": 1200,
+    "easeInMs": 250,
+    "easeOutMs": 250,
+    "scaleMilli": { "subtle": 1060, "medium": 1120 }
+  },
+
+  "transitions": {
+    "defaultPolicy": "hard_cuts_only",
+    "restrainedOverlapMs": 120,
+    "minHandleMs": 200,
+    "maxCount": 40,
+    "kind": "crossfade"
+  },
+
+  "framing": {
+    "modeId": "cover-center-safe-v1",
+    "safeTopPx": 220,
+    "safeBottomPx": 320,
+    "safeLeftPx": 60,
+    "safeRightPx": 60
+  },
+
+  "cover": {
+    "minOffsetMs": 500,
+    "preferredOffsetMs": 1200
+  },
+
+  "limits": {
+    "maxWarnings": 200,
+    "maxPlanBytes": 1048576
+  }
+}
