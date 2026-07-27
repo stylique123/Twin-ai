@@ -106,30 +106,56 @@ def dials(handler):
             out.append(d)
     return out
 
-def walk(handlers, acc):
-    """
-    Handler chains nest (subroute, authentication). Descend all of them, and
-    keep each handler's OWN upstream list separate.
+def looks_like_handler_list(v):
+    return isinstance(v, list) and any(
+        isinstance(x, dict) and ("handler" in x or "handle" in x) for x in v)
 
-    Grouping per handler is what makes the remedy decidable. If the target and a
-    protected backend share ONE reverse_proxy's upstream list, dropping the
-    target entry leaves the protected one still serving. If they sit in DIFFERENT
-    handlers, dropping the target's handler leaves that path with no upstream at
-    all — a 502, not a clean removal. A route-level dial list cannot tell those
-    two apart, and they need opposite patches.
+def walk(handlers, base, acc):
     """
-    for h in handlers or []:
+    Descend the handler chain, recording each handler's OWN upstream list AND its
+    EXACT address in the loaded configuration.
+
+    Two reasons the address matters, both learned the hard way:
+
+    * Grouping per handler is what makes the remedy decidable. If the target and
+      a protected backend share ONE reverse_proxy's upstream list, dropping the
+      target entry leaves the protected one serving. If they sit in DIFFERENT
+      handlers, dropping the target's handler leaves that path with no upstream
+      at all.
+    * A patch that says "the handler" is not a patch. With two reverse_proxy
+      handlers each pairing the target with a DIFFERENT protected backend, a
+      route-level view produces one instruction and one fused keep-list, which
+      would cross-wire both handlers. Each handler needs its own address and its
+      own keep-list.
+
+    `base` is the admin-API path of the containing `handle` array, so a handler's
+    address is exactly what `PATCH /config/<path>` would take.
+
+    NESTING IS ONLY FOLLOWED WHERE IT IS CANONICALLY ADDRESSABLE. `subroute`
+    exposes `routes[k].handle[m]` and that path is exact. Any OTHER key holding
+    what looks like a handler list is a shape this script cannot address without
+    guessing, so the handler is marked unaddressable and the caller refuses
+    rather than emitting a patch aimed at a path that may not exist.
+    """
+    for j, h in enumerate(handlers or []):
         if not isinstance(h, dict):
             continue
+        path = "%s/%d" % (base, j)
         t = h.get("handler")
-        acc.append({"handler": t if isinstance(t, str) else None,
-                    "upstreamDials": dials(h)})
-        for sub in h.get("routes", []) or []:
+        unknown_nesting = [
+            k for k, v in h.items()
+            if k not in ("routes",) and looks_like_handler_list(v)
+        ]
+        acc.append({
+            "handlerPath": path,
+            "position": j,
+            "handler": t if isinstance(t, str) else None,
+            "upstreamDials": dials(h),
+            "addressable": len(unknown_nesting) == 0,
+        })
+        for k, sub in enumerate(h.get("routes", []) or []):
             if isinstance(sub, dict):
-                walk(sub.get("handle", []), acc)
-        for key in ("handler_chain", "handle"):
-            if isinstance(h.get(key), list):
-                walk(h[key], acc)
+                walk(sub.get("handle", []), "%s/routes/%d/handle" % (path, k), acc)
 
 rows = []
 servers = (((cfg.get("apps") or {}).get("http") or {}).get("servers") or {})
@@ -149,20 +175,20 @@ for srv_name, srv in servers.items():
             for pp in m.get("path", []) or []:
                 if isinstance(pp, str):
                     paths.append(pp)
+        route_path = "apps/http/servers/%s/routes/%d" % (srv_name, idx)
         acc = []
-        walk(route.get("handle", []), acc)
+        walk(route.get("handle", []), route_path + "/handle", acc)
         # ALLOWLIST: nothing but these keys is ever emitted, and every value in
-        # them is a route index, a domain, a path, a handler TYPE or a dial.
+        # them is a config path, a route index, a domain, a path, a handler TYPE
+        # or a dial.
         rows.append({
             "server": srv_name,
             "routeIndex": idx,
+            "routePath": route_path,
             "hostMatchers": hosts,
             "pathMatchers": paths,
             "handlerOrder": [h["handler"] for h in acc],
-            "handlers": [
-                {"position": i, "handler": h["handler"], "upstreamDials": h["upstreamDials"]}
-                for i, h in enumerate(acc)
-            ],
+            "handlers": acc,
             "upstreamDials": [d for h in acc for d in h["upstreamDials"]],
         })
 
