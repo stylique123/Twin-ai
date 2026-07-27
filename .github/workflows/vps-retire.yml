@@ -60,15 +60,23 @@ jobs:
 
       # The gate, before anything touches the host. `manifest` and `observe`
       # read only, so they run without the phrase; everything else needs it.
+      # INPUTS REACH SHELL ONLY THROUGH env. Writing `'${{ inputs.confirm }}'`
+      # SUBSTITUTES THE VALUE INTO THE SCRIPT TEXT before bash parses it, so a
+      # confirm containing a single quote closes the literal and everything after
+      # it is executed as script — and it would run BEFORE this gate decides
+      # anything, which is the worst possible place for it. Through `env` the value
+      # is data to the process and is never parsed as code. Every use is quoted.
       - name: Authorisation gate
+        env:
+          STAGE: ${{ inputs.stage }}
+          CONFIRM_INPUT: ${{ inputs.confirm }}
         run: |
           set -euo pipefail
-          STAGE='${{ inputs.stage }}'
           case "$STAGE" in
             manifest|observe|accept)
               echo "read-only stage '$STAGE' — no confirmation required" ;;
             disable-restart|stop|remove-container|reclaim)
-              if [ '${{ inputs.confirm }}' != "$CONFIRM_PHRASE" ]; then
+              if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then
                 echo "::error::stage '$STAGE' mutates the host and requires confirm=$CONFIRM_PHRASE"
                 exit 1
               fi
@@ -103,7 +111,9 @@ jobs:
 
       - name: Build the retirement plan for this stage (fail closed)
         if: inputs.stage != 'observe' && inputs.stage != 'accept'
-        run: node scripts/ci/plan_retirement.mjs inventory-before.json '${{ inputs.stage }}' --json plan.json | tee plan.txt
+        env:
+          STAGE: ${{ inputs.stage }}
+        run: node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt
 
       # ---- A3: rollback record + host-local persistent-data backup -----------
       - name: Record the rollback manifest and back up host-local data

@@ -14,6 +14,15 @@
 //   4. The executed commands must come from the generated plan, not from a
 //      literal list in the workflow — otherwise the generator's rules and what
 //      actually runs can drift apart.
+//   5. NO `${{ inputs.* }}` MAY BE INTERPOLATED INSIDE A `run:` BLOCK.
+//      GitHub substitutes the expression into the script TEXT before bash parses
+//      it, so a dispatch input containing a single quote closes the surrounding
+//      literal and the remainder executes as script. In the authorisation gate
+//      that ran BEFORE the gate decided anything. Inputs must reach shell only
+//      through step `env:`, where they are data to the process rather than code.
+//      Interpolation in `if:` conditions and in action `with:` parameters is
+//      fine — those are never parsed by a shell — so this check is deliberately
+//      scoped to run blocks and does not broaden to them.
 //
 //   node scripts/ci/check_vps_retire_safety.mjs
 //   node scripts/ci/check_vps_retire_safety.mjs --selftest
@@ -31,6 +40,32 @@ const READ_ONLY_DOCKER = new Set([
 const MUTATING_STAGES = ['disable-restart', 'stop', 'remove-container', 'reclaim']
 
 const strip = (s) => s.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
+
+/**
+ * Every `run:` block body. A step's script is the indented region following
+ * `run: |` (or a single-line `run:`), ending at the next key at the same or
+ * lower indentation. Comment lines are already stripped by the caller, so a
+ * comment EXPLAINING the footgun cannot trip the check.
+ */
+export function runBlocks(text) {
+  const out = []
+  const lines = strip(text).split('\n')
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\s*)run:\s*(\|-?|>-?)?\s*(.*)$/.exec(lines[i])
+    if (!m) continue
+    const indent = m[1].length
+    if (m[3]) { out.push(m[3]); continue }
+    const body = []
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '') { body.push(''); continue }
+      const ind = lines[j].length - lines[j].trimStart().length
+      if (ind <= indent) break
+      body.push(lines[j])
+    }
+    out.push(body.join('\n'))
+  }
+  return out
+}
 
 // Pull out every `docker <verb>[ <subverb>]` occurrence. Sub-verb is only kept
 // when the verb is one that HAS sub-verbs, so `docker ps -a` does not read as
@@ -89,6 +124,16 @@ export function evaluate({ collector, retireWf }) {
     if (wf.includes(`docker ${bad}`)) reasons.push(`retirement workflow uses \`docker ${bad}\` — a broad sweep ignores the classification`)
   }
 
+  // 5. No dispatch input may be substituted into script text.
+  //    Scoped to `run:` blocks: an `if:` condition or an action `with:` parameter
+  //    (e.g. run-id: ${'$'}{{ inputs.baseline_run_id }}) never reaches a shell, and
+  //    flagging those would be noise that trains people to ignore this check.
+  for (const m of runBlocks(retireWf)) {
+    for (const hit of m.matchAll(/\$\{\{\s*inputs\.([A-Za-z0-9_]+)\s*\}\}/g)) {
+      reasons.push(`run block interpolates \`inputs.${hit[1]}\` directly into shell — pass it through step env: and quote it`)
+    }
+  }
+
   // 4. Commands are read from the plan, not written in the workflow.
   if (!/jq -r '\.cmds\[\]' plan\.json/.test(wf)) {
     reasons.push('the execute step does not read its commands from plan.json — the generator and the executed list could drift apart')
@@ -102,7 +147,7 @@ export function evaluate({ collector, retireWf }) {
   return { ok: reasons.length === 0, reasons }
 }
 
-function selftest() {
+async function selftest() {
   let failed = 0
   const t = (name, got, exp) => { if (got === exp) console.log(`  ok: ${name}`); else { console.error(`SELFTEST FAIL: ${name} => ${got}, expected ${exp}`); failed++ } }
 
@@ -112,11 +157,17 @@ docker volume ls
 docker system df
 docker exec "$TW" du -sk /tmp
 docker network inspect "$nid"`
-  const retireWf = `          case "$STAGE" in
+  // The SAFE shape: inputs arrive through step env and are quoted in shell.
+  const retireWf = `      - name: Authorisation gate
+        env:
+          STAGE: \${{ inputs.stage }}
+          CONFIRM_INPUT: \${{ inputs.confirm }}
+        run: |
+          case "$STAGE" in
             manifest|observe|accept)
               echo "read-only stage" ;;
             disable-restart|stop|remove-container|reclaim)
-              if [ '\${{ inputs.confirm }}' != "$CONFIRM_PHRASE" ]; then exit 1; fi ;;
+              if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then exit 1; fi ;;
           esac
       - name: Execute the plan on the host
         run: |
@@ -148,11 +199,83 @@ docker network inspect "$nid"`
   t('a literal destructive command in the execute step is rejected',
     evaluate({ ...good, retireWf: retireWf.replace('cat exec.sh | ssh root@host bash -s', 'ssh root@host docker rmi everything') }).ok, false)
 
+  // ---- HOSTILE CONTROLS for the shell-injection class -----------------------
+  // The exact pattern that shipped, and had to be rejected.
+  const injectable = retireWf
+    .replace('          CONFIRM_INPUT: \\${{ inputs.confirm }}\n', '')
+    .replace('if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]', "if [ '\\${{ inputs.confirm }}' != \"$CONFIRM_PHRASE\" ]")
+  t('the shipped single-quoted inputs.confirm pattern is REJECTED',
+    evaluate({ ...good, retireWf: injectable }).ok, false)
+  t('inputs.stage interpolated into a run block is REJECTED',
+    evaluate({ ...good, retireWf: retireWf + "\n      - name: x\n        run: node plan.mjs '\\${{ inputs.stage }}'" }).ok, false)
+  t('an `if:` condition using inputs is FINE — never reaches a shell',
+    evaluate({ ...good, retireWf: retireWf + "\n      - name: y\n        if: inputs.stage == 'accept'\n        run: echo ok" }).ok, true)
+  t('an action `with:` parameter using inputs is FINE (baseline_run_id)',
+    evaluate({ ...good, retireWf: retireWf + "\n      - uses: actions/download-artifact@v4\n        with:\n          run-id: \\${{ inputs.baseline_run_id }}" }).ok, true)
+
+  // A hostile payload must neither execute nor authorise. Proven by running the
+  // real gate logic as a script with the value supplied THE WAY THE FIX DOES —
+  // through the environment — rather than asserting it from the shape of the YAML.
+  {
+    const { execFileSync } = await import('node:child_process')
+    const { writeFileSync, mkdtempSync } = await import('node:fs')
+    const { tmpdir } = await import('node:os')
+    const { join } = await import('node:path')
+    const dir = mkdtempSync(join(tmpdir(), 'gate-'))
+    const gate = join(dir, 'gate.sh')
+    // Byte-for-byte the shape the workflow now uses.
+    writeFileSync(gate, [
+      'set -euo pipefail',
+      'CONFIRM_PHRASE=RETIRE-STYLIQUE-OS',
+      'case "$STAGE" in',
+      '  manifest|observe|accept) echo READONLY ;;',
+      '  disable-restart|stop|remove-container|reclaim)',
+      '    if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then echo REFUSED; exit 1; fi',
+      '    echo AUTHORISED ;;',
+      '  *) echo UNKNOWN; exit 1 ;;',
+      'esac',
+    ].join('\n'))
+    const payloads = [
+      "' ; touch /tmp/pwned_gate ; echo '",
+      "'; echo INJECTED; #",
+      'x\nRETIRE-STYLIQUE-OS',
+      '$(touch /tmp/pwned_subst)',
+      '`touch /tmp/pwned_bt`',
+      'RETIRE-STYLIQUE-OS ',
+    ]
+    let allRefused = true
+    let anyExecuted = false
+    for (const payload of payloads) {
+      let out = ''
+      try {
+        out = execFileSync('bash', [gate], {
+          encoding: 'utf8',
+          env: { PATH: process.env.PATH, STAGE: 'reclaim', CONFIRM_INPUT: payload },
+        })
+      } catch (e) { out = String(e.stdout ?? '') }
+      if (out.includes('AUTHORISED')) allRefused = false
+      if (/INJECTED/.test(out)) anyExecuted = true
+    }
+    const { existsSync } = await import('node:fs')
+    for (const f of ['/tmp/pwned_gate', '/tmp/pwned_subst', '/tmp/pwned_bt']) {
+      if (existsSync(f)) anyExecuted = true
+    }
+    t('HOSTILE: no quote/newline/substitution payload authorises a mutating stage', allRefused, true)
+    t('HOSTILE: no payload executes as script', anyExecuted, false)
+    // Positive control: the real phrase MUST still authorise, or the two above
+    // would pass on a gate that refuses everything.
+    const okOut = execFileSync('bash', [gate], {
+      encoding: 'utf8',
+      env: { PATH: process.env.PATH, STAGE: 'reclaim', CONFIRM_INPUT: 'RETIRE-STYLIQUE-OS' },
+    })
+    t('CONTROL: the exact phrase still authorises', okOut.includes('AUTHORISED'), true)
+  }
+
   if (failed) { console.error(`vps-retire-safety selftest: ${failed} failed`); process.exit(1) }
   console.log('vps-retire-safety selftest: all cases passed'); process.exit(0)
 }
 
-if (process.argv.includes('--selftest')) selftest()
+if (process.argv.includes('--selftest')) await selftest()
 else {
   const { ok, reasons } = evaluate({
     collector: readFileSync(COLLECTOR, 'utf8'),
