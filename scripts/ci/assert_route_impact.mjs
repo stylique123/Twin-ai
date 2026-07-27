@@ -242,10 +242,21 @@ export function candidatePatch(a, impacted, allClassified) {
         configPath: `${h.handlerPath}/upstreams`,
         action: 'remove ONLY the target upstream from THIS handler',
         keepUpstreams: h.keepUpstreams,
+        // THE PRECONDITION BINDS WHAT THE STEP WRITES.
+        //
+        // An earlier revision asserted `<handlerPath> is still a reverse_proxy`
+        // and then `its upstream list is exactly [...]` — naming the PARENT
+        // object and leaving the array implicit. The step writes
+        // `<handlerPath>/upstreams`, so that is the path that has to be checked;
+        // a precondition on the container is not a precondition on the thing
+        // being replaced.
         preconditions: [
           ...commonPre,
           `${h.handlerPath} is still a ${h.handler}`,
-          `its upstream list is exactly [${h.upstreamDials.join(', ')}]`,
+          `${h.handlerPath}/upstreams exists and is exactly `
+            + JSON.stringify(h.upstreamDials.map((d) => ({ dial: d }))),
+          `${h.handlerPath}/upstreams has exactly ${h.upstreamDials.length} entr`
+            + `${h.upstreamDials.length === 1 ? 'y' : 'ies'}`,
         ],
         rehearsal: `PUT ${adminBase(a)}${h.handlerPath}/upstreams with exactly `
           + JSON.stringify(h.keepUpstreams.map((d) => ({ dial: d }))),
@@ -463,6 +474,14 @@ async function selftest() {
   t('a malformed runtime hash blocks', decide(probe({ caddyRuntimeConfigSha256: 'nope' })).patchable, false)
   t('would-orphan blocks the patch',
     decide(probe({ routes: [route({ handlers: [hdl(0, ['stylique-os:4100']), hdl(1, ['stylique-dashboard:80'])] })] })).patchable, false)
+  // Unaddressable shapes must fail closed at the DECIDE level too, not merely
+  // classify to `undetermined` somewhere out of sight.
+  t('an unaddressable impacted handler blocks the patch',
+    decide(probe({ routes: [route({ handlers: [hdl(0, ['stylique-os:4100', 'stylique-dashboard:80'], { addressable: false })] })] })).patchable, false)
+  t('a missing handler path blocks the patch',
+    decide(probe({ routes: [route({ handlers: [hdl(0, ['stylique-os:4100', 'stylique-dashboard:80'], { handlerPath: null })] })] })).patchable, false)
+  t('a route with no routePath blocks the patch',
+    decide(probe({ routes: [route({ routePath: null })] })).patchable, false)
   t('finding NO impacted route blocks (the probes disagree)',
     decide(probe({ routes: [route({ handlers: [hdl(0, ['postiz:5000'])] })] })).patchable, false)
 
@@ -492,8 +511,17 @@ async function selftest() {
     const fused = d.patch.steps.some((x) =>
       (x.keepUpstreams ?? []).includes('stylique-dashboard:80') && (x.keepUpstreams ?? []).includes('postiz:5000'))
     t('NO step fuses backends from different handlers', fused, false)
-    t('each step names its own current upstream list',
-      d.patch.steps[0].preconditions.some((x) => x.includes('[stylique-os:4100, stylique-dashboard:80]')), true)
+    t('each step names its OWN current upstream array, exactly',
+      d.patch.steps[0].preconditions.some((x) =>
+        x.includes(`${RP}/0/upstreams`) && x.includes(JSON.stringify([{ dial: 'stylique-os:4100' }, { dial: 'stylique-dashboard:80' }]))), true)
+    t('…and step 1 names ITS own, not step 0\'s',
+      d.patch.steps[1].preconditions.some((x) =>
+        x.includes(`${RP}/1/upstreams`) && x.includes(JSON.stringify([{ dial: 'stylique-os:4100' }, { dial: 'postiz:5000' }]))), true)
+    // The exact-path assertion must be exercised on SHARED-handler steps. Run
+    // only against the route-exclusive fixture it was vacuous: that step's
+    // configPath IS the route path, which its precondition trivially contains.
+    t('every SHARED step binds its exact /upstreams path',
+      d.patch.steps.every((x) => x.preconditions.some((pc) => pc.includes(x.configPath))), true)
   }
 
   console.log('-- positive controls: a single shared handler stays a single step')
@@ -519,8 +547,11 @@ async function selftest() {
     go.patch.steps.every((x) => x.preconditions.some((p) => p.includes('runtime config sha256 == ' + 'a'.repeat(64)))), true)
   t('every step carries the disk hash precondition',
     go.patch.steps.every((x) => x.preconditions.some((p) => p.includes('disk config') && p.includes('b'.repeat(64)))), true)
-  t('every step carries its own config path precondition',
-    go.patch.steps.every((x) => x.preconditions.some((p) => p.includes(x.configPath.replace(/\/upstreams$/, '')))), true)
+  // This assertion used to strip `/upstreams` from configPath before looking
+  // for it, so it passed while every precondition named only the parent object.
+  // A test written to pass rather than to prove. It now requires the FULL path.
+  t('every step binds its EXACT config path in a precondition',
+    go.patch.steps.every((x) => x.preconditions.some((p) => p.includes(x.configPath))), true)
 
   console.log('-- rollback restores CADDY ONLY')
   // The removed line was `docker update --restart=unless-stopped stylique-os`.
