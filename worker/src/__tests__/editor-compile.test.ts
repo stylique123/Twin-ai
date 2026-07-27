@@ -441,45 +441,52 @@ describe('hook treatment', () => {
   })
 })
 
-describe('transitions', () => {
-  it('restrained is honoured only at a verified scene boundary with handles', () => {
-    const { plan } = compileEditPlan({ ...baseInput(), policy: policy() })
-    expect(plan.video.transitionPolicy).toBe('restrained')
-    expect(plan.video.transitions).toEqual([
-      { index: 0, atSegmentIndex: EXPECTED.transitionAtSegmentIndex, kind: 'crossfade', overlapMs: EXPECTED.transitionOverlapMs },
-    ])
-    // The overlap is counted once, in the time map, and nowhere else.
-    const seg = plan.timeline.segments[EXPECTED.transitionAtSegmentIndex]
-    expect(seg.transitionInOverlapMs).toBe(EXPECTED.transitionOverlapMs)
-    expect(seg.outputStartMs).toBe(plan.timeline.segments[2].outputEndMs - EXPECTED.transitionOverlapMs)
+// GATE-0 AMENDMENT A1. These tests used to assert that `restrained` was honoured.
+// The contract no longer accepts it, so they assert the amendment instead: no
+// transition is ever emitted, every overlap is 0, and a request for one is
+// DOWNGRADED AND RECORDED rather than silently substituted.
+describe('transitions (Gate-0 A1: hard cuts only)', () => {
+  it('a requested restrained transition is downgraded, and the plan says so', () => {
+    // The fixture now defaults to hard_cuts_only (A1), so the request has to be
+    // made explicitly here — otherwise this test would assert a downgrade that
+    // was never asked for and pass for the wrong reason.
+    const input = baseInput()
+    input.decision.transitionPolicy = 'restrained'
+    const { plan } = compileEditPlan({ ...input, policy: policy() })
+    expect(plan.video.transitionPolicy).toBe('hard_cuts_only')
+    expect(plan.video.transitions).toEqual([])
+    // The downgrade must be visible IN the artifact. A plan that quietly renders
+    // hard cuts where a crossfade was asked for is the silent substitution the
+    // contract forbids; the warning is what makes it honest.
+    expect(plan.warnings).toContainEqual({
+      code: 'transition_policy_unsupported', detail: 'restrained_not_implemented_gate0_a1',
+    })
   })
 
-  it('an upload never gets a transition — it has no verified scene boundary', () => {
+  it('no segment carries an overlap, so the timeline is the sum of kept durations', () => {
+    const { plan } = compileEditPlan({ ...baseInput(), policy: policy() })
+    for (const s of plan.timeline.segments) expect(s.transitionInOverlapMs).toBe(0)
+    const sum = plan.timeline.segments.reduce((n, s) => n + (s.sourceEndMs - s.sourceStartMs), 0)
+    expect(plan.output.durationMs).toBe(sum)
+    expect(plan.output.durationMs).toBe(EXPECTED.outputDurationMs)
+  })
+
+  it('an upload behaves identically — there is no second transition path', () => {
     const input = baseInput()
     input.source = { origin: 'upload', durationMs: SOURCE_DURATION_MS, acceptedWindows: [] }
     const { plan } = compileEditPlan({ ...input, policy: policy() })
     expect(plan.video.transitions).toEqual([])
     expect(plan.video.transitionPolicy).toBe('hard_cuts_only')
-    expect(plan.warnings).toContainEqual({ code: 'transition_policy_downgraded', detail: 'upload_has_no_scene_boundary' })
   })
 
-  it('hard_cuts_only produces no transitions and no overlap anywhere', () => {
+  it('CONTROL: asking for hard cuts produces NO downgrade warning', () => {
+    // Without this, a compiler that emitted the warning unconditionally would
+    // satisfy the first test while telling the user nothing.
     const input = baseInput()
     input.decision.transitionPolicy = 'hard_cuts_only'
     const { plan } = compileEditPlan({ ...input, policy: policy() })
+    expect(plan.warnings.map((w) => w.code)).not.toContain('transition_policy_unsupported')
     expect(plan.video.transitions).toEqual([])
-    for (const s of plan.timeline.segments) expect(s.transitionInOverlapMs).toBe(0)
-    // Without the overlap the timeline is exactly 120 ms longer.
-    expect(plan.output.durationMs).toBe(EXPECTED.outputDurationMs + EXPECTED.transitionOverlapMs)
-  })
-
-  it('CONTROL: raising the handle requirement removes the transition', () => {
-    const p = policy()
-    p.transitions.minHandleMs = 100000
-    const { plan } = compileEditPlan({ ...baseInput(), policy: p })
-    expect(plan.video.transitions).toEqual([])
-    expect(plan.video.transitionPolicy).toBe('hard_cuts_only')
-    expect(plan.warnings.map((w) => w.code)).toContain('transition_skipped_no_handle')
   })
 })
 
@@ -591,8 +598,11 @@ describe('zooms', () => {
     const z = plan.video.zooms[0]
     expect(z.anchorWordIndex).toBe(26)
     expect(z.scaleMilli).toBe(1120) // medium
-    expect(z.outputStartMs).toBe(27000)
-    expect(z.outputEndMs).toBe(28200)
+    // GATE-0 A1: both shifted later by the 120 ms overlap that no longer exists.
+    // The anchor word and its source time are unchanged; only the source→output
+    // mapping moved, which is the point of removing the overlap.
+    expect(z.outputStartMs).toBe(27120)
+    expect(z.outputEndMs).toBe(28320)
     const owner = plan.timeline.segments.find((s) => z.outputStartMs >= s.outputStartMs && z.outputEndMs <= s.outputEndMs)
     expect(owner).toBeDefined()
   })

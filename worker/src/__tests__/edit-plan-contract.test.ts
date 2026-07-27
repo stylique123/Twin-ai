@@ -207,15 +207,30 @@ describe('every array is bounded and every cross-field law re-derived', () => {
     })))).toBe('edit_plan_divergent')
   })
 
-  it('rejects a transition whose overlap is not reflected in the time map', () => {
+  // GATE-0 A1. These previously asserted that a transition was accepted under
+  // `restrained` and rejected under `hard_cuts_only`. `restrained` is no longer an
+  // accepted policy, so the property under test is now simpler and stronger: NO
+  // plan may carry a transition or an overlap, by any route.
+  it('rejects the `restrained` policy outright', () => {
     expect(codeOf(() => validateEditPlan(mutate((p) => {
-      (p.video as { transitions: Array<Record<string, number>> }).transitions[0].overlapMs = 200
-    })))).toBe('edit_plan_divergent')
+      (p.video as Record<string, unknown>).transitionPolicy = 'restrained'
+    })))).toBe('edit_plan_invalid')
   })
 
-  it('rejects transitions declared under hard_cuts_only', () => {
+  it('rejects a declared transition record', () => {
     expect(codeOf(() => validateEditPlan(mutate((p) => {
-      (p.video as Record<string, unknown>).transitionPolicy = 'hard_cuts_only'
+      (p.video as { transitions: unknown[] }).transitions = [
+        { index: 0, atSegmentIndex: 1, kind: 'crossfade', overlapMs: 120 },
+      ]
+    })))).toBe('edit_plan_invalid')
+  })
+
+  it('rejects a non-zero segment overlap even with NO transition record', () => {
+    // The second half matters: without the segment-level check, an overlap could
+    // be smuggled into the time map simply by omitting the transition record that
+    // would otherwise have declared it.
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      (p.timeline as { segments: Array<Record<string, number>> }).segments[1].transitionInOverlapMs = 120
     })))).toBe('edit_plan_invalid')
   })
 

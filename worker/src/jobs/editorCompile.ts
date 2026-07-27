@@ -32,6 +32,10 @@ import {
   type PlanZoom, type PlanTransition, type AudioPresetId, type CaptionPresetId,
   type TransitionPolicy, type ZoomIntensity, type ZoomReasonCode, type SourceOrigin,
 } from './editPlanContract.js'
+// The Director's own union. Kept distinct from the plan's on purpose: what may be
+// REQUESTED and what may be RENDERED are different contracts, and conflating them
+// is what let `restrained` be simultaneously valid and unrenderable.
+import type { TransitionPolicy as DirectorTransitionPolicy } from './directorContract.js'
 
 export const EDIT_COMPILER_VERSION = 'edit-compiler-1'
 
@@ -298,7 +302,14 @@ export interface CompileDecision {
   hookTreatment: 'keep' | 'open_at_word'
   hookStartWordIndex: number | null
   captionPresetId: CaptionPresetId
-  transitionPolicy: TransitionPolicy
+  // The DIRECTOR's policy union, not the plan's. Gate-0 A1 narrowed what a PLAN
+  // may contain to `hard_cuts_only`; it did not narrow what the Director is
+  // allowed to ASK for, which is a separate contract with its own schema.
+  // Typing this field with the plan's union made the downgrade branch below
+  // unreachable and tripped TS2367 — the compiler correctly pointing out that a
+  // request the Director can still emit had become inexpressible at the boundary
+  // that exists to receive it.
+  transitionPolicy: DirectorTransitionPolicy
   zoomRequests: Array<{ anchorWordIndex: number; intensity: ZoomIntensity; reasonCode: ZoomReasonCode }>
 }
 export interface CompileIdentity {
@@ -673,30 +684,23 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   // sides. An upload has no verified scene boundary at all, so it always gets
   // hard cuts. When nothing qualifies the plan records `hard_cuts_only`, which
   // is the frozen default, rather than a policy it did not actually apply.
+  // GATE-0 AMENDMENT A1. No transitions are emitted, and every overlap is 0.
+  //
+  // The Director's own contract may still REQUEST `restrained` — that is a
+  // different object with its own schema, and narrowing it here would be a
+  // cross-track edit. What changed is what a PLAN may contain: `restrained` was
+  // accepted by the validator and refused by the renderer, so a plan could be
+  // valid and unrenderable at the same time.
+  //
+  // A requested-but-unavailable transition is DOWNGRADED AND RECORDED, never
+  // silently substituted: the warning is part of the plan, so "no crossfade here"
+  // is visible in the artifact rather than inferred from its absence. That is the
+  // same treatment the upload path already used for the same situation.
   const overlaps = new Array<number>(keptIntervals.length).fill(0)
   const transitions: PlanTransition[] = []
-  let transitionPolicy: TransitionPolicy = policy.transitions.defaultPolicy
-  if (decision.transitionPolicy === 'restrained' && input.source.origin === 'teleprompter') {
-    const overlap = policy.transitions.restrainedOverlapMs
-    const windowIndexOf = (ms: number): number => allowedDomain.findIndex((w) => ms >= w.startMs && ms < w.endMs)
-    for (let i = 1; i < keptIntervals.length && transitions.length < policy.transitions.maxCount; i++) {
-      const prev = keptIntervals[i - 1]
-      const cur = keptIntervals[i]
-      const crossesWindow = windowIndexOf(prev.startMs) !== windowIndexOf(cur.startMs)
-      if (!crossesWindow) continue
-      const prevLen = prev.endMs - prev.startMs
-      const curLen = cur.endMs - cur.startMs
-      if (prevLen < policy.transitions.minHandleMs + overlap || curLen < policy.transitions.minHandleMs + overlap) {
-        warn.add('transition_skipped_no_handle', `at_${i}`)
-        continue
-      }
-      overlaps[i] = overlap
-      transitions.push({ index: transitions.length, atSegmentIndex: i, kind: policy.transitions.kind, overlapMs: overlap })
-    }
-    if (transitions.length > 0) transitionPolicy = 'restrained'
-    else warn.add('transition_policy_downgraded', 'no_verified_boundary')
-  } else if (decision.transitionPolicy === 'restrained') {
-    warn.add('transition_policy_downgraded', 'upload_has_no_scene_boundary')
+  const transitionPolicy: TransitionPolicy = policy.transitions.defaultPolicy
+  if (decision.transitionPolicy === 'restrained') {
+    warn.add('transition_policy_unsupported', 'restrained_not_implemented_gate0_a1')
   }
 
   const timeMap = buildTimeMap(keptIntervals, overlaps)

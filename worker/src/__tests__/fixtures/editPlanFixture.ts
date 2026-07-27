@@ -104,15 +104,19 @@ export const EXPECTED = {
     { sourceStartMs: 0, sourceEndMs: 10460, outputStartMs: 0, outputEndMs: 10460 },
     { sourceStartMs: 10940, sourceEndMs: 13000, outputStartMs: 10460, outputEndMs: 12520 },
     { sourceStartMs: 14400, sourceEndMs: 20000, outputStartMs: 12520, outputEndMs: 18120 },
-    { sourceStartMs: 25000, sourceEndMs: 30000, outputStartMs: 18000, outputEndMs: 23000 },
-    { sourceStartMs: 33000, sourceEndMs: 50000, outputStartMs: 23000, outputEndMs: 40000 },
+    // GATE-0 A1: with no transitions, segment 3 no longer starts 120 ms early.
+    // The cursor recurrence is unchanged — outputStart[i] = outputEnd[i-1] -
+    // overlap[i] — it is just that every overlap[i] is now 0, so the timeline is
+    // exactly the sum of the kept durations. The old table encoded the single
+    // 120 ms restrained overlap here and in the total below.
+    { sourceStartMs: 25000, sourceEndMs: 30000, outputStartMs: 18120, outputEndMs: 23120 },
+    { sourceStartMs: 33000, sourceEndMs: 50000, outputStartMs: 23120, outputEndMs: 40120 },
   ],
   removals: [
     { sourceStartMs: 10460, sourceEndMs: 10940 },
     { sourceStartMs: 13000, sourceEndMs: 14400 },
     { sourceStartMs: 30000, sourceEndMs: 33000 },
   ],
-  outputDurationMs: 40000,
-  transitionOverlapMs: 120,
-  transitionAtSegmentIndex: 3,
+  // 10460 + 2060 + 5600 + 5000 + 17000 = 40120, with no overlap subtracted.
+  outputDurationMs: 40120,
 } as const

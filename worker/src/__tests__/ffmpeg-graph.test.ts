@@ -132,10 +132,19 @@ describe('the argument array', () => {
 })
 
 describe('unsupported instructions FAIL rather than substituting', () => {
-  it('a restrained transition is refused, not quietly rendered as a hard cut', () => {
+  // GATE-0 A1. The compiler can no longer produce a plan carrying a transition,
+  // so this can no longer be driven through compileEditPlan. The graph builder's
+  // refusal is still the last line of defence — a plan reaching it from anywhere
+  // else (a database row written by an older build, say) must still be refused
+  // rather than quietly rendered as a hard cut. Constructed directly, on purpose.
+  it('a transition reaching the graph builder is refused, not quietly rendered as a hard cut', () => {
     const plan = compileEditPlan({ ...baseInput(), policy: policy() }).plan
-    expect(plan.video.transitions.length).toBeGreaterThan(0)
-    expect(codeOf(() => buildFfmpegGraph(plan, ASSETS))).toBe('render_graph_invalid')
+    expect(plan.video.transitions).toEqual([])
+    const smuggled = JSON.parse(JSON.stringify(plan)) as typeof plan
+    ;(smuggled.video.transitions as unknown[]).push(
+      { index: 0, atSegmentIndex: 1, kind: 'crossfade', overlapMs: 120 },
+    )
+    expect(codeOf(() => buildFfmpegGraph(smuggled, ASSETS))).toBe('render_graph_invalid')
   })
 
   it('CONTROL: the identical plan with the transition removed builds fine', () => {
