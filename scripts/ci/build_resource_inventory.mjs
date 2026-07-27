@@ -19,6 +19,7 @@
 //   node scripts/ci/build_resource_inventory.mjs --selftest
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 
 export const CLASSES = [
   'active-twinai', 'twinai-rollback', 'stylique-os',
@@ -349,7 +350,15 @@ function selftest() {
   process.exit(0)
 }
 
-if (process.argv.includes('--selftest')) selftest()
+// Only act when this file IS the program. Without this, importing buildInventory
+// to construct a REAL-SHAPE fixture runs the CLI and exits 2 on the importer's
+// argv — so the test that exists to prove the shape would kill the process that
+// runs it. The same import-with-side-effects defect silently disabled
+// check_vps_retire_safety.mjs's own selftests once already.
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (!isEntry) { /* imported for its exports */ }
+else if (process.argv.includes('--selftest')) selftest()
 else {
   const [, , inFile, outFile] = process.argv
   if (!inFile) { console.error('usage: build_resource_inventory.mjs <raw> [out.json]'); process.exit(2) }

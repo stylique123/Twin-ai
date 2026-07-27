@@ -143,6 +143,20 @@ jobs:
           node scripts/ci/build_resource_inventory.mjs --selftest
           node scripts/ci/plan_retirement.mjs --selftest
           node scripts/ci/assert_vps_acceptance.mjs --selftest
+      # These two carry the live-host safety argument and were running only on a
+      # developer's machine: an unwired selftest is a selftest that has already
+      # stopped protecting anything.
+      #   route impact  — which Caddy route serves the target, and what patch is
+      #                   safe; upstream deletions must be exact and descending.
+      #   plan commands — the executor derives its shell from the same typed
+      #                   objects the comparator authorises.
+      #   structural    — a stage changed only what its bound plan permitted.
+      - name: VPS route-impact classification + patch generation (offline selftest)
+        run: node scripts/ci/assert_route_impact.mjs --selftest
+      - name: VPS plan execution + structural delta (typed manifest, least privilege)
+        run: |
+          node scripts/ci/emit_plan_commands.mjs --selftest
+          node scripts/ci/assert_structural_delta.mjs --selftest
       - name: Canonical docs free of stale legacy claims (Fly/Revideo/autoedit/3-type registry)
         run: |
           node scripts/ci/check_docs_no_stale_claims.mjs --selftest

@@ -118,6 +118,12 @@ jobs:
       # printed `::error::`, exited 1, and the step still reported SUCCESS. A
       # step named "fail closed" that cannot fail is the same defect class as a
       # guard that describes a rule without enforcing it.
+      #
+      # The plan is SEALED here: its typed resource manifest is hashed and bound
+      # to this stage, this commit (GITHUB_SHA) and the digest of the exact
+      # inventory it was derived from. Every later consumer re-verifies that
+      # binding, so a plan edited between steps, replayed against a host that has
+      # since changed, or reused for another stage, is refused rather than run.
       - name: Build the retirement plan for this stage (fail closed)
         if: inputs.stage != 'observe' && inputs.stage != 'accept'
         env:
@@ -125,6 +131,7 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt
+          sha256sum plan.json | tee plan.sha256
 
       # ---- A3: rollback record + host-local persistent-data backup -----------
       # A3.5 — READ-ONLY PRE-STOP AUDIT.
@@ -229,14 +236,23 @@ jobs:
           cat backup-hashes.txt || true
 
       # ---- A4: execute the derived plan --------------------------------------
-      # The commands come from plan.json, generated above. They are not written
-      # in this file, so a reviewer checks the generator's rules once rather than
-      # re-reading a command list that could drift from them.
+      # The commands come from plan.json's TYPED RESOURCE MANIFEST, generated
+      # above. Each line is built from the same object that authorises it, so a
+      # reviewer checks the generator's rules once rather than re-reading a
+      # command list that could drift from them — and the executor and the
+      # structural comparator cannot disagree about what was permitted.
+      #
+      # emit_plan_commands.mjs re-verifies the plan's binding first and prints
+      # nothing at all if it does not belong to this stage, this commit and this
+      # before-inventory.
       - name: Execute the plan on the host
         if: inputs.stage == 'disable-restart' || inputs.stage == 'stop' || inputs.stage == 'remove-container' || inputs.stage == 'reclaim'
+        env:
+          STAGE: ${{ inputs.stage }}
         run: |
           set -euo pipefail
-          jq -r '.cmds[]' plan.json > exec.sh
+          node scripts/ci/emit_plan_commands.mjs plan.json \
+            --stage "$STAGE" --before inventory-before.json > exec.sh
           echo "---- commands to be executed ----"; cat exec.sh; echo "---------------------------------"
           if [ ! -s exec.sh ]; then echo "plan is empty — nothing to do"; exit 0; fi
           # `set -e` on the remote: the first failure stops the rest, so a partial
@@ -269,8 +285,11 @@ jobs:
           grep -q 'ffprobe       : ok' health.txt || { echo "::error::ffprobe is no longer usable inside twinai-worker"; exit 1; }
           grep -q 'model present : yes' health.txt || { echo "::error::the pinned ASR model directory is gone"; exit 1; }
 
+      # EVERY stage, including the read-only ones. A read-only stage that cannot
+      # produce an after-inventory cannot prove it was read-only, and the
+      # structural delta below now runs for every stage without exception.
       - name: Re-collect the host state AFTER this stage
-        if: always() && inputs.stage != 'manifest'
+        if: always()
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
@@ -300,21 +319,41 @@ jobs:
       # evidence must FAIL, not silently pass. The script requires both files
       # and exits non-zero if either is missing or unparseable.
       #
-      # Authorisation is least-privilege and derived per stage: read-only stages
-      # authorise nothing; disable-restart only the policy field; stop only the
+      # NO STAGE EXEMPTION EITHER. `accept` used to be excluded, which made the
+      # one stage that reports "the retirement is complete and correct" the one
+      # stage that never proved it. It now compares the PRE-RETIREMENT baseline
+      # against the host as it is now, under a CUMULATIVE authorisation
+      # re-derived from that baseline by the same planner that drove the work.
+      #
+      # Authorisation is least-privilege and comes from the stage's own typed,
+      # bound plan: disable-restart only the policy field; stop only the
       # lifecycle fields; remove-container the container plus the exact endpoint
-      # departures it causes; reclaim ONLY the resources named in the approved
-      # plan. An authorisation that is never exercised is itself a failure.
+      # departures it causes; reclaim ONLY the typed resources the approved plan
+      # names. An authorisation that is never exercised is itself a failure.
       - name: Structural delta (least privilege; missing evidence fails)
-        if: always() && inputs.stage != 'accept'
+        if: always()
         env:
           STAGE: ${{ inputs.stage }}
         run: |
           set -euo pipefail
-          PLAN_ARG=""
-          if [ "$STAGE" = "reclaim" ]; then PLAN_ARG="--plan plan.json"; fi
+          # Written as `if`, not `case`: check_vps_retire_safety.mjs parses case
+          # arms to prove every mutating stage sits behind the confirm phrase,
+          # and a second, unrelated `case` in this file would put arms in front
+          # of that parser that are not authorisation arms at all.
+          BEFORE=inventory-before.json
+          PLAN_ARG="--plan plan.json"
+          if [ "$STAGE" = "accept" ]; then
+            # The acceptance baseline is the pre-retirement host, downloaded
+            # above. No single stage's plan describes the whole retirement, so
+            # the authorisation is re-derived from that baseline rather than read.
+            BEFORE=baseline/inventory-before.json
+            PLAN_ARG=""
+          elif [ "$STAGE" = "observe" ]; then
+            # The plan step is skipped for observe; it authorises nothing.
+            PLAN_ARG=""
+          fi
           node scripts/ci/assert_structural_delta.mjs \
-            inventory-before.json inventory-after.json \
+            "$BEFORE" inventory-after.json \
             --stage "$STAGE" $PLAN_ARG | tee structural-delta.txt
 
       - name: Upload evidence
@@ -329,6 +368,8 @@ jobs:
             report-after.txt
             plan.json
             plan.txt
+            plan.sha256
+            exec.sh
             health.txt
             rollback-manifest.json
             rollback-manifest.sha256

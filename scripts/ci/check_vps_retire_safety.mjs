@@ -188,9 +188,19 @@ export function evaluate({ collector, retireWf, remoteScripts, planStages = STAG
     }
   }
 
-  // 4. Commands are read from the plan, not written in the workflow.
-  if (!/jq -r '\.cmds\[\]' plan\.json/.test(wf)) {
-    reasons.push('the execute step does not read its commands from plan.json — the generator and the executed list could drift apart')
+  // 4. Commands are derived from the plan's TYPED manifest, not written in the
+  //    workflow and not re-parsed out of command strings. `jq -r '.cmds[]'` was
+  //    the previous shape: it ran strings that a separate regex in the
+  //    comparator then tried to turn back into authorisations, so a command
+  //    shape the regex did not anticipate executed with nothing authorising it.
+  if (!/node scripts\/ci\/emit_plan_commands\.mjs plan\.json/.test(wf)) {
+    reasons.push(
+      'the execute step does not derive its commands from the typed plan manifest via '
+      + 'emit_plan_commands.mjs — the executed list and the authorised operations could drift apart',
+    )
+  }
+  if (/jq -r '\.cmds\[\]' plan\.json/.test(wf)) {
+    reasons.push('the execute step reads plan command STRINGS — run the typed manifest instead, so what runs and what is authorised are one object')
   }
   // The execute step must not contain literal destructive docker calls.
   const execStep = wf.match(/name: Execute the plan on the host[\s\S]*?(?=\n      - name:)/)
@@ -236,6 +246,26 @@ export function evaluate({ collector, retireWf, remoteScripts, planStages = STAG
     }
   }
 
+  // 8. THE STRUCTURAL-DELTA STEP MAY NOT EXEMPT A STAGE.
+  //
+  //    It shipped as `if: always() && inputs.stage != 'accept'`, which excused
+  //    the one stage whose entire purpose is to declare the retirement complete
+  //    and correct. An exemption in a proof step is not a smaller proof; it is
+  //    the absence of one exactly where the claim is loudest. The same shape had
+  //    already been removed once from this step as a `hashFiles()` skip, which
+  //    disabled it precisely when a mutation ran and the after-collection failed.
+  const deltaStep = /name: Structural delta[^\n]*\n((?:[ \t]+[^\n]*\n)*?)[ \t]+run:/.exec(retireWf)
+  if (deltaStep === null) {
+    reasons.push('the workflow has no structural-delta step — nothing proves a stage changed only what it was authorised to')
+  } else {
+    for (const m of deltaStep[1].matchAll(/inputs\.stage\s*!=\s*'([a-z][a-z-]*)'/g)) {
+      reasons.push(`the structural-delta step exempts stage "${m[1]}" — a stage that proves nothing is a stage nobody is checking`)
+    }
+    if (/hashFiles\(/.test(deltaStep[1])) {
+      reasons.push('the structural-delta step is conditional on evidence existing — missing evidence must FAIL, not skip')
+    }
+  }
+
   return { ok: reasons.length === 0, reasons }
 }
 
@@ -264,8 +294,13 @@ docker network inspect "$nid"`
       - name: Execute the plan on the host
         run: |
           set -euo pipefail
-          jq -r '.cmds[]' plan.json > exec.sh
+          node scripts/ci/emit_plan_commands.mjs plan.json --stage "$STAGE" --before inventory-before.json > exec.sh
           cat exec.sh | ssh root@host bash -s
+      - name: Structural delta (least privilege; missing evidence fails)
+        if: always()
+        run: |
+          set -euo pipefail
+          node scripts/ci/assert_structural_delta.mjs a.json b.json --stage "$STAGE" | tee d.txt
       - name: Upload evidence
         run: true`
   const good = { collector, retireWf }
@@ -302,9 +337,21 @@ docker network inspect "$nid"`
   t('docker volume prune in the workflow is rejected',
     evaluate({ ...good, retireWf: retireWf + '\n        run: docker volume prune -f' }).ok, false)
   t('an execute step not reading plan.json is rejected',
-    evaluate({ ...good, retireWf: retireWf.replace("jq -r '.cmds[]' plan.json", 'echo docker rm x') }).ok, false)
+    evaluate({ ...good, retireWf: retireWf.replace(/node scripts\/ci\/emit_plan_commands\.mjs plan\.json[^\n]*/, 'echo docker rm x > exec.sh') }).ok, false)
+  t('an execute step that runs plan command STRINGS is rejected',
+    evaluate({ ...good, retireWf: retireWf.replace(/node scripts\/ci\/emit_plan_commands\.mjs plan\.json[^\n]*/, "jq -r '.cmds[]' plan.json > exec.sh") }).ok, false)
   t('a literal destructive command in the execute step is rejected',
     evaluate({ ...good, retireWf: retireWf.replace('cat exec.sh | ssh root@host bash -s', 'ssh root@host docker rmi everything') }).ok, false)
+
+  // ---- the EXEMPTED-PROOF class (rule 8) -----------------------------------
+  // Byte-for-byte the shape the audit rejected: the proof step excused the one
+  // stage that claims the retirement is finished.
+  t('a structural-delta step that exempts a stage is REJECTED',
+    evaluate({ ...good, retireWf: retireWf.replace('if: always()\n        run: |\n          set -euo pipefail\n          node scripts/ci/assert_structural_delta.mjs', "if: always() && inputs.stage != 'accept'\n        run: |\n          set -euo pipefail\n          node scripts/ci/assert_structural_delta.mjs") }).ok, false)
+  t('a structural-delta step gated on evidence EXISTING is REJECTED',
+    evaluate({ ...good, retireWf: retireWf.replace('if: always()\n        run: |\n          set -euo pipefail\n          node scripts/ci/assert_structural_delta.mjs', "if: always() && hashFiles('inventory-after.json') != ''\n        run: |\n          set -euo pipefail\n          node scripts/ci/assert_structural_delta.mjs") }).ok, false)
+  t('a workflow with NO structural-delta step at all is REJECTED',
+    evaluate({ ...good, retireWf: retireWf.replace(/      - name: Structural delta[\s\S]*?(?=      - name: Upload evidence)/, '') }).ok, false)
 
   // ---- the SWALLOWED-REFUSAL class (rule 6) --------------------------------
   // Byte-for-byte the shape that shipped and reported success on a refusal.
