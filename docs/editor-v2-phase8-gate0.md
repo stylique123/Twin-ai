@@ -108,7 +108,53 @@ be omitted**. Full shape as specified in the Phase 8 plan §5: `identity`, `sour
 - **Plan maximum serialized size: 1 MiB** for the 15-minute maximum.
 - Compilation is `O(words + candidates + segments + cues)` — no unbounded pairwise search.
 
-### 3.2 The single-owner rule
+### 3.2 The ONE time map (SPECIFICATION CORRECTION, 2026-07-27)
+
+**The originally frozen formula was wrong and is superseded.** It read:
+
+```
+outputStart[i] = outputEnd[i-1] - overlap[i]
+outputEnd[i]   = outputStart[i] + duration[i] - overlap[i]      <-- WRONG
+```
+
+Substituting the first line into the second yields
+`outputEnd[i] = outputEnd[i-1] + duration[i] - 2*overlap[i]` — the transition overlap is
+subtracted **twice**. That contradicts the frozen property "transition overlap counted
+once" and produces a timeline shorter than the material it contains.
+
+**Approved formula — overlap counted EXACTLY ONCE:**
+
+```
+outputStart[0] = 0
+outputEnd[0]   = duration[0]
+outputStart[i] = outputEnd[i-1] - overlap[i]
+outputEnd[i]   = outputStart[i] + duration[i]
+```
+
+Equivalently `outputEnd[i] = outputEnd[i-1] + duration[i] - overlap[i]`, therefore:
+
+```
+totalOutputDuration = sum(segmentDurations) - sum(transitionOverlaps)
+```
+
+**Seven laws, all asserted:**
+
+1. overlap is counted exactly once
+2. output duration is never negative
+3. each retained source interval maps monotonically
+4. no output region is unintentionally duplicated or omitted
+5. captions and audio use the **identical** time map
+6. zero-overlap transitions reduce to contiguous cuts
+7. total duration equals retained duration minus transition overlap, exactly once
+
+**Provenance — recorded, not buried.** This was a specification defect found by
+implementation: the Batch 8.1 compiler could not satisfy all seven frozen properties
+simultaneously under the literal reading, and said so instead of quietly picking one. The
+mutation control encoding the literal double-subtraction is **retained as a regression
+guard against the original defect**. This is a correction to a wrong specification, not
+post-hoc threshold tuning — no unrelated policy or threshold changed.
+
+### 3.3 The single-owner rule
 
 The renderer consumes **only** a validated EditPlan and verified local asset files. It
 never reads raw Director JSON, live brand settings, live scripts, browser state, or
