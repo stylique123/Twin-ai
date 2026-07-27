@@ -27,9 +27,22 @@ COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
 
 # System deps: ffmpeg (audio extract/convert + PCM/ebur128), python3 + pip
 # (faster-whisper + OpenCV), ca-certs.
+#
+# FFMPEG MAJOR IS PINNED AND ASSERTED. Render output is version-sensitive: filter
+# defaults and encoder behaviour move between majors, so a golden frame proven on
+# one major is not evidence for another. Debian bookworm ships the 5.1 series and
+# this image takes it deliberately, not incidentally. The build FAILS if the major
+# ever moves, rather than silently producing renders that no test has covered.
+#
+# EDITOR_FFMPEG_MAJOR is the single declaration; worker/src/jobs/ffmpegIdentity.ts
+# re-asserts it at runtime and the media tests refuse to emit golden evidence
+# under a different major.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg python3 python3-pip ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && ffmpeg -hide_banner -version | head -1 \
+    && ffmpeg -hide_banner -version | head -1 | grep -qE 'ffmpeg version 5\.1\.' \
+       || { echo "FATAL: expected ffmpeg 5.1.x (Debian bookworm); got: $(ffmpeg -hide_banner -version | head -1)"; exit 1; }
 
 WORKDIR /app
 

@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildFfmpegGraph, buildFfmpegArgs, serializeFilterGraph, ffmpegGraphSha256,
-  msToSecondsLiteral, milliToScalarLiteral,
+  msToSecondsLiteral, milliToScalarLiteral, checkExpr,
 } from '../jobs/ffmpegGraph.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
 import { EditPlanError, type EditPlanV1 } from '../jobs/editPlanContract.js'
@@ -24,9 +24,9 @@ const ASSETS = {
   fontsDir: '/opt/fonts',
   outputPath: '/var/tmp/edit/out.mp4',
 }
-// The fixture plan uses a `restrained` transition, which this batch's graph
-// builder does not implement — so the graph tests use the hard-cut plan and
-// exercise the restrained case as an explicit failure below.
+// GATE-0 A1: the fixture is hard-cuts-only now, so this helper is no longer
+// compensating for a restrained default — it is kept because these tests assert
+// the hard-cut graph shape explicitly rather than inheriting it.
 function hardCutPlan(): EditPlanV1 {
   const input = baseInput()
   input.decision.transitionPolicy = 'hard_cuts_only'
@@ -122,12 +122,32 @@ describe('the argument array', () => {
     expect(filter).toContain('loudnorm=I=-14.000:TP=-1.000:LRA=11')
   })
 
-  it('applies zooms in output order', () => {
+  // CX1. This asserted the OLD shape: one scale+crop pair per zoom, with a
+  // constant magnification. That shape is what made every zoom apply to the whole
+  // video and made multiple zooms compound. There is now exactly ONE zoompan node
+  // carrying every zoom window, because chaining per-zoom nodes would rescale an
+  // already-rescaled frame.
+  it('emits exactly one zoompan node carrying every zoom window', () => {
     const plan = hardCutPlan()
     const graph = buildFfmpegGraph(plan, ASSETS)
-    const zoomNodes = graph.nodes.filter((n) => n.id.startsWith('zoom') && !n.id.startsWith('zoomcrop'))
-    expect(zoomNodes).toHaveLength(plan.video.zooms.length)
-    expect(zoomNodes[0].args).toContainEqual({ key: 'w', value: 'iw*1.120' })
+    const zoomNodes = graph.nodes.filter((n) => n.filter === 'zoompan')
+    expect(zoomNodes).toHaveLength(1)
+    const z = zoomNodes[0].args.find((a) => a.key === 'z')
+    expect(z?.isExpr).toBe(true)
+    for (const zoom of plan.video.zooms) {
+      expect(String(z?.value)).toContain((zoom.outputStartMs / 1000).toFixed(3))
+      expect(String(z?.value)).toContain((zoom.outputEndMs / 1000).toFixed(3))
+    }
+  })
+
+  it('CONTROL: the expression channel still refuses a smuggled identifier', () => {
+    // Proves isExpr is a BOUNDED channel and not an escape hatch: only the
+    // whitelisted identifiers are expressible, so no plan-derived text could ride
+    // this path even if it were somehow marked as an expression.
+    expect(() => checkExpr('if(between(t,1,2),1.5,1)')).not.toThrow()
+    expect(() => checkExpr("drawtext(x)")).toThrow()
+    expect(() => checkExpr("1');drawbox=c=red:")).toThrow()
+    expect(() => checkExpr('t;1')).toThrow()
   })
 })
 

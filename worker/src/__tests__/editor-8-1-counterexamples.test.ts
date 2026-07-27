@@ -64,14 +64,19 @@ describe('CX1 — timed zooms must actually be time-gated in the filter graph', 
     expect(argsLate).not.toEqual(argsEarly)
   })
 
-  it('the zoom filter chain carries an enable window bounded by the zoom times', () => {
+  it('the zoom filter chain is bounded by the zoom times', () => {
     const plan = compile()
     const argv = buildFfmpegArgs(buildFfmpegGraph(plan, ASSETS)).join(' ')
     const z = plan.video.zooms[0]
-    // Whatever expression syntax is chosen, the zoom's own boundaries must appear
-    // in the graph: a zoom that renders for the whole video is not this zoom.
-    expect(argv).toMatch(/enable=/)
+    // This originally asserted `enable=`, which was an implementation GUESS on my
+    // part rather than a property of the product. `enable=` gates a filter wholly
+    // on or off; a zoom needs a magnification that VARIES with time, and gating
+    // scale/crop that way would jump-cut the frame size. The behaviour that
+    // actually matters is asserted instead: the zoom's own boundaries appear in
+    // the graph, so the magnification cannot apply to the whole video.
     expect(argv).toContain((z.outputStartMs / 1000).toFixed(3))
+    expect(argv).toContain((z.outputEndMs / 1000).toFixed(3))
+    expect(argv).toMatch(/zoompan/)
   })
 })
 

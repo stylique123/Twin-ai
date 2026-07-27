@@ -32,7 +32,7 @@ function invalid(message: string): never {
 // path. It is escaped for the filter mini-language at serialization time and is
 // exempt from the value alphabet — which is why it is a distinct, explicit kind
 // rather than a string that happens to look like a path.
-export type FilterArg = { key: string; value: string | number; isPath?: true }
+export type FilterArg = { key: string; value: string | number; isPath?: true; isExpr?: true }
 export interface FilterNode {
   id: string
   filter: string
@@ -97,6 +97,31 @@ function checkLabel(l: string): string {
   if (!LABEL_RE.test(l)) invalid(`label ${JSON.stringify(l)} is not a plain graph label`)
   return l
 }
+// A BOUNDED EXPRESSION CHANNEL, for the one thing that genuinely needs one.
+//
+// A timed zoom is a magnification that varies with `t`, which cannot be written
+// without `,` (inside `between(t,a,b)` and `if(c,x,y)`) and runs past the 64-char
+// value cap. `,` is excluded from VALUE_RE precisely because it separates filters
+// in a chain, so widening that alphabet would be a real injection weakening.
+//
+// Instead, expressions travel a SEPARATE channel with three independent bounds:
+//   1. only the builder may mark an argument `isExpr` — no plan-derived string is
+//      ever marked, so transcript or Director text cannot reach this path;
+//   2. a strict grammar: digits, `.` and the arithmetic/grouping characters, plus
+//      an identifier WHITELIST. Anything else, including a quote or a semicolon,
+//      is refused;
+//   3. the emitted value is single-quoted, and the grammar forbids `'`, so it
+//      cannot terminate its own quoting.
+const EXPR_CHARS_RE = /^[0-9a-z_.,+\-*/()]{1,512}$/
+const EXPR_IDENTIFIERS = new Set(['t', 'if', 'between', 'iw', 'ih', 'zoom', 'min', 'max'])
+export function checkExpr(v: string): string {
+  if (!EXPR_CHARS_RE.test(v)) invalid(`filter expression ${JSON.stringify(v)} contains a forbidden character`)
+  for (const id of v.match(/[a-z_][a-z0-9_]*/g) ?? []) {
+    if (!EXPR_IDENTIFIERS.has(id)) invalid(`filter expression uses the unknown identifier ${JSON.stringify(id)}`)
+  }
+  return v
+}
+
 function checkValue(v: string | number): string {
   const s = typeof v === 'number' ? String(v) : v
   if (!VALUE_RE.test(s)) invalid(`filter argument ${JSON.stringify(s)} contains a forbidden character`)
@@ -167,28 +192,65 @@ function segmentChain(seg: PlanSegment, plan: EditPlanV1, nodes: FilterNode[]): 
   return { v: vIn, a: aIn }
 }
 
-function zoomChain(plan: EditPlanV1, zoom: PlanZoom, vIn: string, nodes: FilterNode[]): string {
-  const i = zoom.index
-  const out = `vz${i}`
-  // A zoom is a bounded, time-gated scale about the frame centre. The plan
-  // carries integers only; the enable expression and the scale literal are built
-  // here from those integers.
+// ---- timed zooms -----------------------------------------------------------
+//
+// MECHANISM, ESTABLISHED EMPIRICALLY, NOT BY READING DOCS.
+//
+// The first implementation was `scale` + `crop`, which produced a zoom over the
+// WHOLE video: two plans whose zooms sat 27 s apart emitted byte-identical argv.
+// The obvious repair — putting `between(t,...)` into crop's w/h — was verified
+// against real ffmpeg and DOES NOT WORK: crop evaluates w/h ONCE AT INIT, so the
+// expression is frozen at t=0 and every frame renders unzoomed. Rendering both
+// variants and comparing decoded frames showed them byte-identical inside the
+// intended window, i.e. a silent no-op that would have shipped looking correct.
+//
+// `zoompan` evaluates `z` PER FRAME. The same experiment against it shows frames
+// identical to an un-zoomed render before and after the window and different
+// inside it, which is the property the plan actually describes.
+//
+// ONE zoompan node carries EVERY zoom, because chaining one per zoom would
+// rescale an already-rescaled frame and compound the magnification — the exact
+// defect CX1 reports. Windows are disjoint and ascending (the contract enforces
+// it), so a nested conditional selects at most one.
+function zoomScaleExpr(plan: EditPlanV1): string {
+  // Trapezoid per zoom: linear ease in, hold, linear ease out. All times come
+  // from the plan as integer milliseconds; only this function turns them into
+  // the seconds literals ffmpeg wants.
+  const sec = (ms: number): string => msToSecondsLiteral(ms)
+  let expr = '1'
+  for (const z of [...plan.video.zooms].reverse()) {
+    const peak = milliToScalarLiteral(z.scaleMilli)
+    const inEnd = Math.min(z.outputStartMs + z.easeInMs, z.outputEndMs)
+    const outStart = Math.max(z.outputEndMs - z.easeOutMs, inEnd)
+    const rampIn = z.easeInMs > 0
+      ? `1+(${peak}-1)*(t-${sec(z.outputStartMs)})/${msToSecondsLiteral(z.easeInMs)}`
+      : peak
+    const rampOut = z.easeOutMs > 0
+      ? `1+(${peak}-1)*(${sec(z.outputEndMs)}-t)/${msToSecondsLiteral(z.easeOutMs)}`
+      : peak
+    // Innermost first so the earlier-declared zoom wins if two ever touched.
+    expr = `if(between(t,${sec(z.outputStartMs)},${sec(inEnd)}),${rampIn},`
+      + `if(between(t,${sec(inEnd)},${sec(outStart)}),${peak},`
+      + `if(between(t,${sec(outStart)},${sec(z.outputEndMs)}),${rampOut},${expr})))`
+  }
+  return expr
+}
+
+function zoomNode(plan: EditPlanV1, vIn: string, nodes: FilterNode[]): string {
+  const out = 'vzoom'
   nodes.push({
-    id: `zoom${i}`, filter: 'scale',
+    id: 'zoompan', filter: 'zoompan',
     args: [
-      { key: 'w', value: `iw*${milliToScalarLiteral(zoom.scaleMilli)}` },
-      { key: 'h', value: `ih*${milliToScalarLiteral(zoom.scaleMilli)}` },
-      { key: 'eval', value: 'init' },
+      { key: 'z', value: zoomScaleExpr(plan), isExpr: true },
+      // d=1 emits exactly one output frame per input frame; anything else would
+      // duplicate frames and change the duration.
+      { key: 'd', value: 1 },
+      { key: 'x', value: 'iw/2-(iw/zoom/2)', isExpr: true },
+      { key: 'y', value: 'ih/2-(ih/zoom/2)', isExpr: true },
+      { key: 's', value: `${plan.output.width}x${plan.output.height}` },
+      { key: 'fps', value: `${plan.output.fpsNum}/${plan.output.fpsDen}` },
     ],
-    inputs: [vIn], outputs: [`vzs${i}`],
-  })
-  nodes.push({
-    id: `zoomcrop${i}`, filter: 'crop',
-    args: [
-      { key: 'w', value: plan.output.width }, { key: 'h', value: plan.output.height },
-      { key: 'x', value: `(iw-ow)/2` }, { key: 'y', value: `(ih-oh)/2` },
-    ],
-    inputs: [`vzs${i}`], outputs: [out],
+    inputs: [vIn], outputs: [out],
   })
   return out
 }
@@ -234,11 +296,14 @@ export function buildFfmpegGraph(plan: EditPlanV1, assets: GraphAssets): FfmpegG
     invalid('transition kind "crossfade" is not supported by this graph builder')
   }
 
-  // Zooms, applied in output-time order over the joined video.
+  // Zooms. Applied over the JOINED video, so `t` in the expression is output
+  // time and matches the plan's outputStartMs/outputEndMs directly.
   let vCur = vJoined
-  for (const zoom of plan.video.zooms) {
-    if (zoom.scaleMilli <= 1000) invalid(`zoom ${zoom.index} has a non-magnifying scale`)
-    vCur = zoomChain(plan, zoom, vCur, nodes)
+  if (plan.video.zooms.length > 0) {
+    for (const zoom of plan.video.zooms) {
+      if (zoom.scaleMilli <= 1000) invalid(`zoom ${zoom.index} has a non-magnifying scale`)
+    }
+    vCur = zoomNode(plan, vCur, nodes)
   }
 
   // Captions: burned in from the plan's ASS document. The subtitles filter takes
@@ -328,7 +393,9 @@ export function serializeFilterGraph(graph: FfmpegGraph): string {
     const args = node.args.map((arg) => {
       const raw = arg.isPath
         ? `'${escapeFilterPath(String(arg.value))}'`
-        : checkValue(arg.value)
+        : arg.isExpr
+          ? `'${checkExpr(String(arg.value))}'`
+          : checkValue(arg.value)
       return arg.key === '' ? raw : `${arg.key}=${raw}`
     }).join(':')
     chains.push(`${ins}${node.filter}${args === '' ? '' : `=${args}`}${outs}`)
