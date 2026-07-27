@@ -134,6 +134,8 @@ jobs:
         run: |
           node scripts/ci/check_vps_retire_safety.mjs --selftest
           node scripts/ci/check_vps_retire_safety.mjs
+      - name: Pre-stop audit verdict (fail-closed; undetermined must block like routed)
+        run: node scripts/ci/assert_pre_stop_audit.mjs --selftest
       - name: VPS resource classifier + retirement plan + acceptance gate (offline selftests)
         run: |
           node scripts/ci/build_resource_inventory.mjs --selftest

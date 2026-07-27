@@ -26,6 +26,7 @@ on:
         default: manifest
         options:
           - manifest          # A3 — record + back up. No host mutation.
+          - pre-stop-audit    # A3.5 — prove reconstruction + routing. No host mutation.
           - disable-restart   # A4.2 — stop the crash loop. Reversible.
           - stop              # A4.3 — stop the container. Reversible.
           - observe           # A4.4 — TwinAI health after the stop. Read-only.
@@ -36,7 +37,7 @@ on:
         description: 'Type RETIRE-STYLIQUE-OS to authorise a mutating stage. Read-only stages ignore it.'
         default: ''
       baseline_run_id:
-        description: 'accept stage only: the run id whose vps-retire-evidence artifact holds the BEFORE inventory.'
+        description: 'accept stage only: the run id whose vps-retire-evidence artifact holds the BEFORE inventory. Anchor this to the CURRENT inventory, not an older run — the host has changed since the 174-record collection and an obsolete baseline would make the acceptance delta meaningless.'
         default: ''
 
 permissions:
@@ -73,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$STAGE" in
-            manifest|observe|accept)
+            manifest|pre-stop-audit|observe|accept)
               echo "read-only stage '$STAGE' — no confirmation required" ;;
             disable-restart|stop|remove-container|reclaim)
               if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then
@@ -116,6 +117,58 @@ jobs:
         run: node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt
 
       # ---- A3: rollback record + host-local persistent-data backup -----------
+      # A3.5 — READ-ONLY PRE-STOP AUDIT.
+      #
+      # `stop` must not be dispatched on the strength of a manifest that records
+      # image/mounts/networks/ports/labels but NOT command or env, and that merely
+      # NAMES a compose file without proving anything about it. A name is not a
+      # reconstruction path.
+      #
+      # This stage settles two questions with evidence, and mutates nothing:
+      #   * can the container be rebuilt — file exists, hashes, `docker compose
+      #     config` validates it, and the service is really in it;
+      #   * is anything still routed to it — the ACTIVE proxy configuration is
+      #     matched against the container's name, its port, its IPs and its
+      #     networks.
+      #
+      # SECRET SAFETY IS STRUCTURAL, NOT EDITORIAL. `docker compose config`
+      # interpolates .env into its output, so the full render is never produced:
+      # only `-q` (validate, no output) and `--services` (names only). The proxy
+      # configuration is matched ON THE HOST and only booleans plus a sha256 come
+      # back, so hostnames and credentials never reach this log.
+      - name: Pre-stop audit (read-only; proves reconstruction and routing)
+        if: inputs.stage == 'pre-stop-audit'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/pre_stop_audit.sh > pre-stop-audit.json
+          # The probe returns ONE json object. Anything else means it failed in a
+          # way it could not report, which is the ambiguous case and must not pass.
+          jq -e 'type == "object"' pre-stop-audit.json > /dev/null \
+            || { echo "::error::the pre-stop probe did not return a JSON object"; exit 1; }
+          sha256sum pre-stop-audit.json | tee pre-stop-audit.sha256
+          # Fail-closed: undetermined blocks exactly as `routed` does.
+          node scripts/ci/assert_pre_stop_audit.mjs pre-stop-audit.json | tee pre-stop-audit.txt
+
+      # The acceptance delta is only meaningful against a baseline collected from
+      # the host AS IT IS NOW. An older artifact (the 174-record collection
+      # predates a large build-cache change) would compare against a host that no
+      # longer exists and report a difference that has nothing to do with this
+      # retirement. Recorded here so the operator picks the right run id.
+      - name: Record the acceptance baseline anchor
+        if: inputs.stage == 'pre-stop-audit'
+        run: |
+          set -euo pipefail
+          {
+            echo "acceptance baseline anchor"
+            echo "  inventory sha256 : $(jq -r '.sha256 // "unknown"' inventory-before.json 2>/dev/null || echo unknown)"
+            echo "  record count     : $(jq -r '[.. | objects | select(has("class"))] | length' inventory-before.json 2>/dev/null || echo unknown)"
+            echo "  run id           : $GITHUB_RUN_ID"
+            echo "  note             : pass THIS run id as baseline_run_id to the accept stage."
+            echo "                     An older artifact describes a host that has since changed."
+          } | tee acceptance-baseline.txt
+
       - name: Record the rollback manifest and back up host-local data
         if: inputs.stage == 'manifest'
         run: |
@@ -220,5 +273,9 @@ jobs:
             rollback-manifest.json
             rollback-manifest.sha256
             backup-hashes.txt
+            pre-stop-audit.json
+            pre-stop-audit.sha256
+            pre-stop-audit.txt
+            acceptance-baseline.txt
             backup-*.tar.gz
           if-no-files-found: warn

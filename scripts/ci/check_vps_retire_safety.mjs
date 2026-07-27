@@ -29,6 +29,11 @@
 import { readFileSync } from 'node:fs'
 
 const COLLECTOR = 'scripts/vps/collect_resource_inventory.sh'
+// Every script that is PIPED TO THE HOST over ssh. Each one is a remote-execution
+// surface and each must be provably read-only, not just the first one anybody
+// thought to check. Adding a script here is how a new remote probe gets covered;
+// forgetting to is caught by the workflow scan below.
+const REMOTE_SCRIPTS = [COLLECTOR, 'scripts/vps/pre_stop_audit.sh']
 const RETIRE_WF = '.github/workflows/vps-retire.yml'
 
 // Read-only docker invocations. Two-word forms are listed explicitly, because
@@ -36,7 +41,14 @@ const RETIRE_WF = '.github/workflows/vps-retire.yml'
 const READ_ONLY_DOCKER = new Set([
   'ps', 'images', 'inspect', 'logs', 'info', 'exec', 'network ls', 'network inspect',
   'volume ls', 'volume inspect', 'system df', 'container ls', 'image ls', 'image inspect',
+  // `docker compose` renders and validates without starting anything. The verb
+  // alone is allowed because `-f <file>` sits between it and its subcommand, so
+  // the parser cannot see the subcommand; the MUTATING subcommands are refused
+  // by name just below, which is the check that actually carries the weight.
+  'compose',
 ])
+// `docker compose` subcommands that change state. Refused wherever they appear.
+const MUTATING_COMPOSE = ['up', 'down', 'start', 'stop', 'restart', 'rm', 'kill', 'create', 'run', 'exec', 'pull', 'build']
 const MUTATING_STAGES = ['disable-restart', 'stop', 'remove-container', 'reclaim']
 
 const strip = (s) => s.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
@@ -80,13 +92,26 @@ export function dockerInvocations(text) {
   return out
 }
 
-export function evaluate({ collector, retireWf }) {
+export function evaluate({ collector, retireWf, remoteScripts }) {
   const reasons = []
 
-  // 1. Collector stays read-only.
-  for (const inv of new Set(dockerInvocations(collector))) {
-    if (!READ_ONLY_DOCKER.has(inv)) {
-      reasons.push(`collector uses a non-read-only docker invocation: "docker ${inv}"`)
+  // 1. EVERY remote script stays read-only, not just the collector.
+  //
+  // The audit that added the pre-stop probe added a SECOND script piped to the
+  // host. Checking only the collector would have left it unexamined — the same
+  // shape as the original defect, where the shared type described the data
+  // without constraining it.
+  const scripts = remoteScripts ?? { [COLLECTOR]: collector }
+  for (const [name, body] of Object.entries(scripts)) {
+    for (const inv of new Set(dockerInvocations(body))) {
+      if (!READ_ONLY_DOCKER.has(inv)) {
+        reasons.push(`${name} uses a non-read-only docker invocation: "docker ${inv}"`)
+      }
+    }
+    for (const sub of MUTATING_COMPOSE) {
+      if (new RegExp(`docker\\s+compose\\b[^\\n]*\\b${sub}\\b`).test(strip(body))) {
+        reasons.push(`${name} uses \`docker compose ... ${sub}\`, which changes state`)
+      }
     }
   }
 
@@ -122,6 +147,12 @@ export function evaluate({ collector, retireWf }) {
   //    only, and the plan emits it solely when Docker reports zero active entries.
   for (const bad of ['system prune', 'volume prune', 'image prune', 'container prune', 'network prune']) {
     if (wf.includes(`docker ${bad}`)) reasons.push(`retirement workflow uses \`docker ${bad}\` — a broad sweep ignores the classification`)
+  }
+  // …and no state-changing compose subcommand anywhere in the workflow either.
+  for (const sub of MUTATING_COMPOSE) {
+    if (new RegExp(`docker\\s+compose\\b[^\\n]*\\b${sub}\\b`).test(wf)) {
+      reasons.push(`retirement workflow uses \`docker compose ... ${sub}\` — that starts or stops services`)
+    }
   }
 
   // 5. No dispatch input may be substituted into script text.
@@ -186,6 +217,20 @@ docker network inspect "$nid"`
     evaluate({ ...good, collector: collector + '\ndocker system prune -a' }).ok, false)
   t('docker system df in the collector is FINE (read)',
     evaluate({ ...good, collector: 'docker system df' }).ok, true)
+
+  // ---- the SECOND remote surface -------------------------------------------
+  t('a mutating verb in ANY remote script is rejected, not just the collector',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker rm stylique-os' } }).ok, false)
+  t('a read-only second remote script passes',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker inspect x\ndocker compose -f f config -q' } }).ok, true)
+  t('`docker compose ... up` in a remote script is rejected',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker compose -f f up -d' } }).ok, false)
+  t('`docker compose ... down` in a remote script is rejected',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker compose -f f down' } }).ok, false)
+  t('`docker compose ... config` in a remote script is FINE (renders, starts nothing)',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker compose -f f config --services' } }).ok, true)
+  t('`docker compose ... up` in the WORKFLOW is rejected',
+    evaluate({ ...good, retireWf: retireWf + '\n        run: docker compose -f x up -d' }).ok, false)
   t('moving a mutating stage into the read-only arm is rejected',
     evaluate({ ...good, retireWf: retireWf.replace('manifest|observe|accept)', 'manifest|observe|accept|reclaim)') }).ok, false)
   t('dropping a mutating stage from the gated arm is rejected',
@@ -277,8 +322,10 @@ docker network inspect "$nid"`
 
 if (process.argv.includes('--selftest')) await selftest()
 else {
+  const remoteScripts = Object.fromEntries(REMOTE_SCRIPTS.map((f) => [f, readFileSync(f, 'utf8')]))
   const { ok, reasons } = evaluate({
     collector: readFileSync(COLLECTOR, 'utf8'),
+    remoteScripts,
     retireWf: readFileSync(RETIRE_WF, 'utf8'),
   })
   console.log(`vps-retire-safety: ${ok ? 'OK' : 'FAIL'}`)
