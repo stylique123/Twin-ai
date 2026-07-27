@@ -80,15 +80,29 @@ export function assess(before, after) {
   }
 
   // SURVIVAL. Checked here as well as in the structural delta, on purpose.
-  const counts = (inv) => ({
-    containers: (inv.containers ?? []).length, images: (inv.images ?? []).length,
-    volumes: (inv.volumes ?? []).length, networks: (inv.networks ?? []).length,
-  })
-  const cb = counts(before); const ca = counts(after)
-  facts.records = `containers ${cb.containers}->${ca.containers}, images ${cb.images}->${ca.images}, volumes ${cb.volumes}->${ca.volumes}, networks ${cb.networks}->${ca.networks}`
-  for (const k of Object.keys(cb)) {
-    if (cb[k] !== ca[k]) problems.push(`${k} count changed ${cb[k]} -> ${ca[k]} — a build-cache prune must not add or remove any record`)
+  //
+  // BY IDENTITY, NOT BY COUNT. The first version of this compared list LENGTHS,
+  // which is a measurement adjacent to the thing that matters: a prune that
+  // deleted one image and left one new one behind reports the same count and
+  // passes. Counting is how you check that a check ran; naming is how you check
+  // what survived.
+  const KEY = { containers: 'name', images: 'id', volumes: 'name', networks: 'name' }
+  const ids = (inv, k) => new Set((inv[k] ?? []).map((r) => r[KEY[k]]).filter((x) => typeof x === 'string'))
+  const summary = []
+  for (const k of Object.keys(KEY)) {
+    const b2 = ids(before, k); const a2 = ids(after, k)
+    const gone = [...b2].filter((x) => !a2.has(x))
+    const appeared = [...a2].filter((x) => !b2.has(x))
+    summary.push(`${k} ${b2.size}->${a2.size}`)
+    if (gone.length) problems.push(`${k} disappeared during a build-cache prune: ${gone.join(', ')}`)
+    if (appeared.length) problems.push(`${k} appeared during a build-cache prune: ${appeared.join(', ')}`)
+    // A list whose entries have no key at all cannot be compared by identity,
+    // and silently comparing nothing is the failure mode this replaced.
+    if ((before[k] ?? []).length !== b2.size || (after[k] ?? []).length !== a2.size) {
+      problems.push(`${k} contains records with no ${KEY[k]} — survival cannot be established by identity`)
+    }
   }
+  facts.records = summary.join(', ')
   const worker = (after.containers ?? []).find((c) => c.name === TWINAI)
   if (!worker) problems.push(`${TWINAI} is GONE after the prune`)
   else if (worker.status !== 'running') problems.push(`${TWINAI} is ${worker.status} after the prune`)
@@ -172,6 +186,23 @@ function selftest() {
     const a = clone(reclaimed()); mutate(a)
     t(`${label} -> FAIL`, assess(base(), a).ok, false)
   }
+  // THE CASE A COUNT CANNOT SEE. One image deleted, one appeared: the list is
+  // the same length and every count-based check passes. Survival is a statement
+  // about WHICH records exist, so it is compared by identity.
+  const swapped = clone(reclaimed())
+  swapped.images = swapped.images.filter((i) => i.id !== 'sha256:bbb')
+  swapped.images.push({ id: 'sha256:new', class: 'unknown-do-not-touch' })
+  t('SWAP: same count, different records -> FAIL', assess(base(), swapped).ok, false)
+  t('…and it names both sides', (() => {
+    const p = assess(base(), swapped).problems.join(' | ')
+    return /sha256:bbb/.test(p) && /sha256:new/.test(p)
+  })(), true)
+  t('CONTROL: a count-only check would NOT have caught it',
+    clone(reclaimed()).images.length === swapped.images.length, true)
+  // A record with no key at all cannot be compared by identity, and quietly
+  // comparing nothing is exactly what this replaced.
+  const keyless = clone(reclaimed()); keyless.volumes = [{ mountpoint: '/x' }]
+  t('a record with no key -> FAIL', assess(base(), keyless).ok, false)
 
   console.log('-- the protected facts are re-checked here too')
   const noWorker = clone(reclaimed()); noWorker.containers = noWorker.containers.filter((c) => c.name !== TWINAI)
