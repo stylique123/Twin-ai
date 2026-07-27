@@ -14,7 +14,7 @@ import {
 } from '../jobs/editPlanContract.js'
 import { compileEditPlan, assertNoRemovedWordIsCaptioned, buildTimeMap } from '../jobs/editorCompile.js'
 import { buildFfmpegGraph, buildFfmpegArgs } from '../jobs/ffmpegGraph.js'
-import { renderAssDocument } from '../jobs/assCaptions.js'
+import { renderAssDocument, buildAssCaptions } from '../jobs/assCaptions.js'
 import { baseInput, policy } from './fixtures/editPlanFixture.js'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -232,5 +232,52 @@ describe('CX6 — caption capacity must never silently drop words', () => {
     // contain fewer than that without saying so.
     expect((plan as EditPlanV1).complexity.cueCount).toEqual((plan as EditPlanV1).captions.cues.length)
     expect(captionedWords).toBeGreaterThan(0)
+  })
+})
+
+describe('CX7 — base framing must be consumed, not merely stored', () => {
+  // `video.framing` carries the safe area the output promises to respect. It was
+  // written into every plan and read by nothing: buildAssCaptions never looks at
+  // it, and the ASS Style line hardcodes MarginL/MarginR = 40 while the frozen
+  // policy declares safeLeftPx/safeRightPx = 60. Captions could therefore render
+  // 20px OUTSIDE the safe area the plan itself declared.
+  it('two plans differing only in framing safe insets produce different ASS bytes', () => {
+    const wide = clone(compile())
+    const narrow = clone(wide)
+    narrow.video.framing.safeLeftPx = 200
+    narrow.video.framing.safeRightPx = 200
+    narrow.video.framing.safeBottomPx = 700
+    expect(validateEditPlan(narrow)).toBeTruthy()
+
+    const a = buildAssCaptions(validateEditPlan(wide), { fontName: 'Inter' }).document
+    const b = buildAssCaptions(validateEditPlan(narrow), { fontName: 'Inter' }).document
+    expect(b).not.toEqual(a)
+  })
+
+  it('caption margins are never smaller than the declared safe area', () => {
+    const plan = compile()
+    const doc = buildAssCaptions(plan, { fontName: 'Inter' }).document
+    const style = doc.split('\n').find((l) => l.startsWith('Style:'))
+    expect(style, 'a Style line must exist').toBeTruthy()
+    // Trailing fields are ...,Alignment,MarginL,MarginR,MarginV,Encoding
+    const f = (style as string).split(',')
+    const marginL = Number(f[f.length - 4])
+    const marginR = Number(f[f.length - 3])
+    const marginV = Number(f[f.length - 2])
+    expect(marginL).toBeGreaterThanOrEqual(plan.video.framing.safeLeftPx)
+    expect(marginR).toBeGreaterThanOrEqual(plan.video.framing.safeRightPx)
+    expect(marginV).toBeGreaterThanOrEqual(plan.video.framing.safeBottomPx)
+  })
+
+  it('MUTATION CONTROL: the preset margin still wins when it is the larger one', () => {
+    // Proves the fix takes the MAXIMUM rather than blindly overwriting with the
+    // safe inset — otherwise a generous caption preset would be silently shrunk.
+    const plan = clone(compile())
+    plan.captions.marginVerticalPx = 900
+    plan.video.framing.safeBottomPx = 100
+    const doc = buildAssCaptions(validateEditPlan(plan), { fontName: 'Inter' }).document
+    const style = doc.split('\n').find((l) => l.startsWith('Style:')) as string
+    const f = style.split(',')
+    expect(Number(f[f.length - 2])).toBe(900)
   })
 })

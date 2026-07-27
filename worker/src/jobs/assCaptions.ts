@@ -84,6 +84,11 @@ export interface AssStyleOptions {
   fontName: string
   fontSizePx: number
   marginVerticalPx: number
+  // CX7 — the plan's declared safe area. Previously the Style line hardcoded
+  // MarginL/MarginR = 40 while the frozen policy declares safeLeftPx/Right = 60,
+  // so captions could render OUTSIDE the safe area the plan itself promised.
+  marginLeftPx: number
+  marginRightPx: number
 }
 
 // GATE-0 AMENDMENT A2 — the CLOSED emphasis catalog.
@@ -152,7 +157,8 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
       + ' Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline,'
       + ' Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     `Style: ${ASS_STYLE_NAME},${style.fontName},${style.fontSizePx},&H00FFFFFF,&H00FFFFFF,&H00000000,`
-      + `&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,${style.marginVerticalPx},1`,
+      + `&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,`
+      + `${style.marginLeftPx},${style.marginRightPx},${style.marginVerticalPx},1`,
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
@@ -214,12 +220,21 @@ export function assDocumentSha256(doc: string): string {
 export function buildAssCaptions(plan: EditPlanV1, opts: { fontName: string }): {
   document: string; sha256: string; eventCount: number
 } {
+  // CX7 — BASE FRAMING IS CONSUMED HERE. The safe area is a floor, not an
+  // override: the MAXIMUM of the caption preset's margin and the plan's declared
+  // safe inset wins. Overwriting with the inset would silently SHRINK a generous
+  // preset, which is a different bug in the opposite direction; taking the max
+  // means a caption can never sit outside the safe area and never gets pulled in
+  // tighter than the preset intended.
+  const f = plan.video.framing
   const document = renderAssDocument(plan, {
     playResX: plan.output.width,
     playResY: plan.output.height,
     fontName: opts.fontName,
     fontSizePx: plan.captions.fontSizePx,
-    marginVerticalPx: plan.captions.marginVerticalPx,
+    marginVerticalPx: Math.max(plan.captions.marginVerticalPx, f.safeBottomPx),
+    marginLeftPx: f.safeLeftPx,
+    marginRightPx: f.safeRightPx,
   })
   return { document, sha256: assDocumentSha256(document), eventCount: plan.captions.cues.length }
 }
