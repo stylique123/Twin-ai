@@ -27,6 +27,7 @@ on:
         options:
           - manifest          # A3 — record + back up. No host mutation.
           - pre-stop-audit    # A3.5 — prove reconstruction + routing. No host mutation.
+          - route-impact      # A3.6 — WHICH route, and a candidate patch. No host mutation.
           - disable-restart   # A4.2 — stop the crash loop. Reversible.
           - stop              # A4.3 — stop the container. Reversible.
           - observe           # A4.4 — TwinAI health after the stop. Read-only.
@@ -74,7 +75,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$STAGE" in
-            manifest|pre-stop-audit|observe|accept)
+            manifest|pre-stop-audit|route-impact|observe|accept)
               echo "read-only stage '$STAGE' — no confirmation required" ;;
             disable-restart|stop|remove-container|reclaim)
               if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then
@@ -159,6 +160,33 @@ jobs:
           sha256sum pre-stop-audit.json | tee pre-stop-audit.sha256
           # Fail-closed: undetermined blocks exactly as `routed` does.
           node scripts/ci/assert_pre_stop_audit.mjs pre-stop-audit.json | tee pre-stop-audit.txt
+
+      # ---- A3.6: WHICH ROUTE, AND WHAT WOULD REMOVE IT ----------------------
+      #
+      # pre-stop-audit answered "is anything routed here?" with `true`. That is
+      # the right shape for a gate and the wrong shape for a remedy: it cannot
+      # say whether the route serves ONLY stylique-os or also fronts a protected
+      # container, and those need opposite patches.
+      #
+      # This stage returns the structure — host and path matchers, handler order,
+      # per-handler upstream dials — classifies each impacted route, and emits a
+      # candidate patch, its rollback and its validation plan.
+      #
+      # IT RELOADS NOTHING AND CHANGES NOTHING. The patch is text to be reviewed.
+      # Secret safety is an allowlist in the probe: only route indices, host and
+      # path matchers, handler TYPE names and dials are ever emitted, so no
+      # future config shape can leak a credential through it.
+      - name: Route impact (read-only; classifies the route and drafts the patch)
+        if: inputs.stage == 'route-impact'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/route_impact_audit.sh > route-impact.json
+          jq -e 'type == "object"' route-impact.json > /dev/null \
+            || { echo "::error::the route-impact probe did not return a JSON object"; exit 1; }
+          sha256sum route-impact.json | tee route-impact.sha256
+          node scripts/ci/assert_route_impact.mjs route-impact.json | tee route-impact.txt
 
       # The acceptance delta is only meaningful against a baseline collected from
       # the host AS IT IS NOW. An older artifact (the 174-record collection
@@ -283,6 +311,9 @@ jobs:
             pre-stop-audit.json
             pre-stop-audit.sha256
             pre-stop-audit.txt
+            route-impact.json
+            route-impact.sha256
+            route-impact.txt
             acceptance-baseline.txt
             backup-*.tar.gz
           if-no-files-found: warn

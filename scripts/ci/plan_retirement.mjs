@@ -31,9 +31,9 @@ import { pathToFileURL } from 'node:url'
 // workflow swallowed the non-zero exit so the step named "fail closed" reported
 // success. check_vps_retire_safety.mjs now proves this table and the workflow's
 // authorisation arms cannot drift apart again.
-export const STAGES = ['manifest', 'pre-stop-audit', 'disable-restart', 'stop', 'remove-container', 'reclaim']
+export const STAGES = ['manifest', 'pre-stop-audit', 'route-impact', 'disable-restart', 'stop', 'remove-container', 'reclaim']
 /** Stages that plan NO commands. They are here to be known, not to act. */
-export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit'])
+export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit', 'route-impact'])
 const TARGET = 'stylique-os'
 const TWINAI = 'twinai-worker'
 const DELETABLE = new Set(['stylique-os', 'proven-orphaned'])
@@ -75,8 +75,8 @@ export function plan(inv, stage) {
   // command list, so the honest plan is an empty one. It still runs the
   // preconditions above on purpose: a host whose twinai-worker is missing or
   // misclassified is not a host to be auditing a retirement on.
-  if (stage === 'pre-stop-audit') {
-    notes.push('read-only stage: no command is planned; the evidence is the pre-stop probe verdict')
+  if (stage === 'pre-stop-audit' || stage === 'route-impact') {
+    notes.push('read-only stage: no command is planned; the evidence is the probe verdict')
     if (!target) notes.push(`${TARGET} is not present on this host`)
     return { stage, cmds, notes, backups: [] }
   }
@@ -206,6 +206,7 @@ function selftest() {
   // to the preconditions — a read-only stage that skipped them would be a
   // second, weaker path through this file.
   t('pre-stop-audit is a known stage', () => plan(base(), 'pre-stop-audit'), false)
+  t('route-impact is a known stage', () => plan(base(), 'route-impact'), false)
   t('an unknown stage still throws', () => plan(base(), 'not-a-stage'), true)
   t('pre-stop-audit still enforces the preconditions', () => {
     const i = base(); i.containers = i.containers.filter((c) => c.name !== TWINAI)
@@ -232,6 +233,7 @@ function selftest() {
   const has = (s) => r.cmds.some((c) => c.includes(s))
   const check = (name, cond) => { if (cond) console.log(`  ok: ${name}`); else { console.error(`SELFTEST FAIL: ${name}`); failed++ } }
   check('pre-stop-audit plans ZERO commands', plan(base(), 'pre-stop-audit').cmds.length === 0)
+  check('route-impact plans ZERO commands', plan(base(), 'route-impact').cmds.length === 0)
   check('pre-stop-audit takes no backups', plan(base(), 'pre-stop-audit').backups.length === 0)
   check('reclaim removes the stylique image by id', has('docker rmi sha256:s'))
   check('reclaim NEVER removes the active twinai image', !has('sha256:a'))

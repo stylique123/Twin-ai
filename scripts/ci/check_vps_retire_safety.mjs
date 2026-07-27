@@ -46,7 +46,7 @@ const COLLECTOR = 'scripts/vps/collect_resource_inventory.sh'
 // surface and each must be provably read-only, not just the first one anybody
 // thought to check. Adding a script here is how a new remote probe gets covered;
 // forgetting to is caught by the workflow scan below.
-const REMOTE_SCRIPTS = [COLLECTOR, 'scripts/vps/pre_stop_audit.sh']
+const REMOTE_SCRIPTS = [COLLECTOR, 'scripts/vps/pre_stop_audit.sh', 'scripts/vps/route_impact_audit.sh']
 const RETIRE_WF = '.github/workflows/vps-retire.yml'
 
 // Read-only docker invocations. Two-word forms are listed explicitly, because
