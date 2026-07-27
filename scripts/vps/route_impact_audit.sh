@@ -85,6 +85,15 @@ boot_file_sha=""
 boot_compose_file=""
 boot_compose_dir=""
 boot_compose_resolved=""
+caddy_pid=""
+id_host_source=""
+id_proc_root=""
+id_container=""
+findmnt_host=""
+mountinfo_rel=""
+caddy_argv=""
+caddy_env_keys=""
+keypaths_json="null"
 
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CTR"; then
   caddy_present=true
@@ -189,7 +198,40 @@ def walk(handlers, base, acc):
             if isinstance(sub, dict):
                 walk(sub.get("handle", []), "%s/routes/%d/handle" % (path, k), acc)
 
+# ---- SHAPE EVIDENCE ------------------------------------------------------
+# Run 30302057188 parsed ZERO routes from a readable config. "Zero routes" and
+# "a shape this parser does not understand" are different facts with different
+# remedies, and the old output could not tell them apart. So the structure is
+# reported as KEY PATHS and COUNTS — names and sizes only, never values — which
+# makes an unfamiliar shape diagnosable instead of silently empty.
+def key_paths(node, prefix="", depth=0, out=None):
+    if out is None:
+        out = []
+    if depth > 6 or len(out) > 400:
+        return out
+    if isinstance(node, dict):
+        for k in sorted(node.keys()):
+            v = node[k]
+            path = prefix + "/" + k
+            if isinstance(v, dict):
+                out.append("%s{%d}" % (path, len(v)))
+                key_paths(v, path, depth + 1, out)
+            elif isinstance(v, list):
+                out.append("%s[%d]" % (path, len(v)))
+                if v and isinstance(v[0], (dict, list)):
+                    key_paths(v[0], path + "[0]", depth + 1, out)
+            else:
+                out.append(path)
+    elif isinstance(node, list):
+        out.append("%s[%d]" % (prefix, len(node)))
+        if node and isinstance(node[0], (dict, list)):
+            key_paths(node[0], prefix + "[0]", depth + 1, out)
+    return out
+
 rows = []
+# Server names are DYNAMIC (srv0, or whatever the Caddyfile adapter emitted).
+# Iterating the dict is what makes this work for any name; hard-coding one was
+# never viable and assuming a familiar one is how zero routes gets reported.
 servers = (((cfg.get("apps") or {}).get("http") or {}).get("servers") or {})
 for srv_name, srv in servers.items():
     if not isinstance(srv, dict):
@@ -224,9 +266,22 @@ for srv_name, srv in servers.items():
             "upstreamDials": [d for h in acc for d in h["upstreamDials"]],
         })
 
-print(json.dumps(rows))
+print(json.dumps({"routes": rows, "keyPaths": key_paths(cfg),
+                  "serverNames": sorted(servers.keys()),
+                  "serverCount": len(servers),
+                  "routeCountByServer": {k: len((v or {}).get("routes") or []) for k, v in servers.items() if isinstance(v, dict)}}))
 ' 2>/dev/null)"
-      if [ -n "$routes_json" ] && [ "$routes_json" != "null" ]; then parse_ok=true; else parse_ok=false; routes_json="null"; fi
+      if [ -n "$routes_json" ] && [ "$routes_json" != "null" ]; then
+        combined="$routes_json"
+        routes_json="$(printf '%s' "$combined" | python3 -c 'import json,sys;print(json.dumps(json.load(sys.stdin)["routes"]))' 2>/dev/null)"
+        keypaths_json="$(printf '%s' "$combined" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+print(json.dumps({"keyPaths":d["keyPaths"],"serverNames":d["serverNames"],
+                  "serverCount":d["serverCount"],"routeCountByServer":d["routeCountByServer"]}))' 2>/dev/null)"
+        [ -z "$keypaths_json" ] && keypaths_json="null"
+        if [ -n "$routes_json" ] && [ "$routes_json" != "null" ]; then parse_ok=true; else parse_ok=false; routes_json="null"; fi
+      else parse_ok=false; routes_json="null"; fi
     else
       # No parser: structure is unavailable. NOT "no routes".
       parse_ok=false
@@ -335,6 +390,66 @@ else:
     fi
   fi
 
+  # ---- FILE IDENTITY TRIANGULATION -----------------------------------------
+  #
+  # Run 30302057188 found the host bind source and the container's file hashing
+  # DIFFERENTLY across a direct bind mount. That is not a detail; it means an
+  # edit to the "obvious" host path would land in a file Caddy is not reading.
+  #
+  # Three views of the same nominal file, each with dev:inode:size:mtime:sha256:
+  #
+  #   A. the host bind SOURCE                    /srv/caddy/Caddyfile
+  #   B. the container's root as the HOST sees it /proc/<PID>/root/etc/caddy/Caddyfile
+  #   C. the container's own view                 docker exec cat /etc/caddy/Caddyfile
+  #
+  # A FILE bind is pinned to an inode at container start. If the host file was
+  # later replaced atomically (write-temp + rename, which every sane editor and
+  # config manager does), the container keeps reading the ORIGINAL inode while
+  # the host path now names a NEW one. Then A != B == C, and the inodes differ.
+  # That single comparison distinguishes it from mount layering, from a second
+  # writer inside the container, and from a wrong path — which need different
+  # remedies. Collecting more facts would not separate them; this does.
+  stat_id() {  # dev:inode:size:mtime:sha256 for a path, or "absent"
+    if [ -e "$1" ]; then
+      printf '%s:%s' "$(stat -c '%d:%i:%s:%Y' "$1" 2>/dev/null)" \
+        "$(sha256sum "$1" 2>/dev/null | cut -d' ' -f1)"
+    else
+      printf 'absent'
+    fi
+  }
+
+  caddy_pid="$(docker inspect "$CADDY_CTR" --format '{{.State.Pid}}' 2>/dev/null)"
+
+  if [ -n "$boot_mount_root" ]; then
+    id_host_source="$(stat_id "$boot_mount_root")"
+  fi
+  if [ -n "$caddy_pid" ] && [ "$caddy_pid" != "0" ] && [ -n "$disk_path" ]; then
+    id_proc_root="$(stat_id "/proc/$caddy_pid/root$disk_path")"
+    # The container's OWN view, via its filesystem rather than the host's.
+    c_in="$(docker exec "$CADDY_CTR" sh -c "sha256sum '$disk_path' 2>/dev/null | cut -d' ' -f1" 2>/dev/null)"
+    c_st="$(docker exec "$CADDY_CTR" sh -c "stat -c '%d:%i:%s:%Y' '$disk_path' 2>/dev/null" 2>/dev/null)"
+    [ -n "$c_st" ] && id_container="$c_st:$c_in"
+  fi
+
+  # ---- MOUNT LAYERING ------------------------------------------------------
+  # A second mount over the same target explains a divergence that inodes alone
+  # would not. Paths and filesystem types only; no file contents.
+  if [ -n "$boot_mount_root" ] && command -v findmnt >/dev/null 2>&1; then
+    findmnt_host="$(findmnt -T "$boot_mount_root" -no TARGET,SOURCE,FSTYPE 2>/dev/null | tr -s ' ' | head -3 | tr '\n' ';')"
+  fi
+  if [ -n "$caddy_pid" ] && [ -r "/proc/$caddy_pid/mountinfo" ] && [ -n "$disk_path" ]; then
+    # Only lines whose mount point is at or above the config path.
+    mountinfo_rel="$(awk -v p="$disk_path" '{ mp=$5; if (index(p, mp)==1 || mp==p) print $5" "$4" "$(NF-2) }' \
+      "/proc/$caddy_pid/mountinfo" 2>/dev/null | sort -u | head -6 | tr '\n' ';')"
+  fi
+
+  # ---- HOW CADDY WAS ACTUALLY STARTED --------------------------------------
+  # `--config` and `--adapter` decide WHICH file is authoritative. Argv is
+  # emitted; environment is emitted as KEY NAMES ONLY, never values.
+  caddy_argv="$(docker inspect "$CADDY_CTR" --format '{{.Path}} {{range .Args}}{{.}} {{end}}' 2>/dev/null)"
+  caddy_env_keys="$(docker inspect "$CADDY_CTR" --format '{{range .Config.Env}}{{.}}
+{{end}}' 2>/dev/null | cut -d= -f1 | sort -u | tr '\n' ' ')"
+
   # Compose provenance. `config_files` is often RELATIVE to the project working
   # dir; presenting a relative label as a path sends people to a file that does
   # not exist from where they are standing. Resolve it when both halves are
@@ -387,6 +502,15 @@ printf '"caddyBootFileSha256":%s,' "$(j_str "$boot_file_sha")"
 printf '"caddyComposeFileLabel":%s,' "$(j_str "$boot_compose_file")"
 printf '"caddyComposeDir":%s,' "$(j_str "$boot_compose_dir")"
 printf '"caddyComposeFileResolved":%s,' "$(j_str "$boot_compose_resolved")"
+printf '"caddyPid":%s,' "$(j_str "$caddy_pid")"
+printf '"fileIdHostSource":%s,' "$(j_str "$id_host_source")"
+printf '"fileIdProcRoot":%s,' "$(j_str "$id_proc_root")"
+printf '"fileIdContainer":%s,' "$(j_str "$id_container")"
+printf '"findmntHostSource":%s,' "$(j_str "$findmnt_host")"
+printf '"mountinfoRelevant":%s,' "$(j_str "$mountinfo_rel")"
+printf '"caddyArgv":%s,' "$(j_str "$caddy_argv")"
+printf '"caddyEnvKeys":%s,' "$(j_str "$caddy_env_keys")"
+printf '"configKeyPaths":%s,' "$keypaths_json"
 printf '"parserAvailable":%s,' "$(if [ -n "$PARSER" ]; then printf 'true'; else printf 'false'; fi)"
 printf '"parsed":%s,' "$(j_bool "$parse_ok")"
 printf '"routes":%s' "$routes_json"

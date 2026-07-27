@@ -147,6 +147,75 @@ export function classifyRoute(route, targetIds, protectedIds) {
   return { ...base, verdict: 'route-exclusive', reason: 'every upstream in this route reaches only the target' }
 }
 
+/** Split "dev:inode:size:mtime:sha256" into parts, or null. */
+export function fileId(v) {
+  if (typeof v !== 'string' || v === 'absent' || v.length === 0) return null
+  const p = v.split(':')
+  if (p.length !== 5) return null
+  return { dev: p[0], inode: p[1], size: p[2], mtime: p[3], sha256: p[4] }
+}
+
+/**
+ * WHY do the host path and the container disagree? Naming the cause is the
+ * point — each cause needs a DIFFERENT remedy, and "they differ" needs none of
+ * them safely.
+ *
+ *   stale-file-bind   a FILE bind is pinned to an inode at container start. An
+ *                     atomic host replace (write-temp + rename — what every
+ *                     sane editor does) leaves the container reading the OLD
+ *                     inode while the host path names a NEW one. Editing the
+ *                     host file then changes nothing Caddy can see, and a
+ *                     reload will not help: the bind must be re-established,
+ *                     which means recreating the container.
+ *   mount-layering    something is mounted over the target; the host path is
+ *                     simply not the file in play.
+ *   container-write   the container's own view differs from the host's view of
+ *                     the container root — something writes inside.
+ *
+ * This function REPORTS. It does not choose a remedy: the audit was explicit
+ * that a conclusion may not be encoded before the probe proves it.
+ */
+export function divergenceCause(a) {
+  const host = fileId(a.fileIdHostSource)
+  const proc = fileId(a.fileIdProcRoot)
+  const ctr = fileId(a.fileIdContainer)
+
+  if (host === null || proc === null) {
+    return { cause: 'undetermined', detail: 'one of the three file views could not be stat-ed' }
+  }
+  // ORDER MATTERS. Checking host-vs-proc first and returning `consistent` on a
+  // match hides a container-side write entirely: the host and the host's view of
+  // the container root can agree perfectly while the container's OWN view has
+  // been overwritten. All three views must agree before anything is consistent.
+  if (ctr !== null && proc.sha256 !== ctr.sha256) {
+    return {
+      cause: 'container-write',
+      detail: `the container's own view (${ctr.sha256.slice(0, 12)}) differs from the host's view of `
+        + `the container root (${proc.sha256.slice(0, 12)}) — something writes inside the container`,
+    }
+  }
+  if (host.sha256 === proc.sha256) {
+    return { cause: 'consistent', detail: 'all available views of the boot file agree' }
+  }
+  const layered = typeof a.mountinfoRelevant === 'string'
+    && a.mountinfoRelevant.split(';').filter((x) => x.trim().length > 0).length > 1
+  if (layered) {
+    return {
+      cause: 'mount-layering',
+      detail: `more than one mount covers ${a.caddyDiskConfigPath}; the host bind source is not the file in play`,
+    }
+  }
+  if (host.inode !== proc.inode) {
+    return {
+      cause: 'stale-file-bind',
+      detail: `the bind is pinned to inode ${proc.inode} but the host path now names inode ${host.inode} — `
+        + 'the host file was replaced atomically after the container started, so the container still reads '
+        + 'the original inode. A host-file edit is invisible to Caddy and a reload cannot rebind it.',
+    }
+  }
+  return { cause: 'undetermined', detail: 'contents differ but inode, layering and container-write are all ruled out' }
+}
+
 export function decide(a) {
   const blockers = []
   if (a === null || typeof a !== 'object') throw new RouteImpactError('probe output is not a JSON object')
@@ -176,6 +245,21 @@ export function decide(a) {
   const dres = durableResolution(a)
   if (!dres.ok) blockers.push(`durable edit location unproven: ${dres.reason}`)
 
+  // Naming the cause never authorises anything — it makes the refusal
+  // actionable. Only `consistent` is compatible with a patch at all.
+  const div = divergenceCause(a)
+  if (div.cause !== 'consistent') {
+    blockers.push(`host/container file divergence [${div.cause}]: ${div.detail}`)
+  }
+
+  // ZERO PARSED ROUTES IS NOT "NO ROUTES". Report the shape so an unfamiliar
+  // config is diagnosable rather than silently empty.
+  const shape = a.configKeyPaths ?? null
+  if (a.parsed === true && Array.isArray(a.routes) && a.routes.length === 0) {
+    blockers.push('the configuration parsed but yielded zero routes — that is an unrecognised shape, '
+      + 'not evidence that nothing is routed; the pre-stop audit already proved an upstream exists')
+  }
+
   if (blockers.length === 0 && impacted.length === 0) {
     blockers.push('no route reaches the target, yet the pre-stop audit said one does — the two probes disagree and that must be resolved before either is trusted')
   }
@@ -190,6 +274,10 @@ export function decide(a) {
     mountType: a.caddyBootMountType ?? null,
     hostBootFile: dres.hostFile,
     hostBootFileSha256: a.caddyBootFileSha256 ?? null,
+    divergence: div,
+    configShape: shape,
+    caddyArgv: a.caddyArgv ?? null,
+    caddyEnvKeys: a.caddyEnvKeys ?? null,
     classified, impacted,
     patch: blockers.length === 0 ? candidatePatch(a, impacted, classified.filter(Boolean)) : null,
     patchable: blockers.length === 0,
@@ -471,6 +559,16 @@ export function render(d) {
   L.push(`  mount                 : ${String(d.mountRoot)} -> ${String(d.mountDest)} (${String(d.mountType)})`)
   L.push(`  RESOLVED HOST FILE    : ${String(d.hostBootFile)} (sha256 ${String(d.hostBootFileSha256)})`)
   L.push(`  routes examined       : ${d.classified.length}, impacted: ${d.impacted.length}`)
+  L.push(`  FILE DIVERGENCE       : ${d.divergence.cause}`)
+  L.push(`      ${d.divergence.detail}`)
+  L.push(`  caddy argv            : ${String(d.caddyArgv)}`)
+  L.push(`  caddy env KEYS        : ${String(d.caddyEnvKeys)}`)
+  if (d.configShape) {
+    L.push(`  servers               : ${JSON.stringify(d.configShape.serverNames)} (${d.configShape.serverCount})`)
+    L.push(`  routes per server     : ${JSON.stringify(d.configShape.routeCountByServer)}`)
+    L.push('  config key paths (names + counts only):')
+    for (const kp of (d.configShape.keyPaths ?? []).slice(0, 40)) L.push(`      ${kp}`)
+  }
   for (const c of d.impacted) {
     L.push(`  -- ${c.server} route ${c.routeIndex} [${c.verdict}]`)
     L.push(`       host matchers   : ${c.hostMatchers.join(', ') || '(none — catch-all)'}`)
@@ -566,6 +664,15 @@ function probe(over = {}) {
     caddyBootFileHostPath: '/root/caddy/Caddyfile',
     caddyBootFileIsRegular: true, caddyBootFileReadable: true, caddyBootFileWritable: true,
     caddyBootFileSha256: 'b'.repeat(64),
+    // Three consistent views: same inode, same bytes, no layering.
+    caddyPid: '4242',
+    fileIdHostSource: `2049:9001:812:1750000000:${'b'.repeat(64)}`,
+    fileIdProcRoot: `2049:9001:812:1750000000:${'b'.repeat(64)}`,
+    fileIdContainer: `2049:9001:812:1750000000:${'b'.repeat(64)}`,
+    mountinfoRelevant: '/etc/caddy/Caddyfile /srv/caddy/Caddyfile ext4;',
+    caddyArgv: 'caddy run --config /etc/caddy/Caddyfile --adapter caddyfile',
+    caddyEnvKeys: 'PATH XDG_CONFIG_HOME XDG_DATA_HOME',
+    configKeyPaths: { keyPaths: ['/apps{1}', '/apps/http{1}'], serverNames: ['srv0'], serverCount: 1, routeCountByServer: { srv0: 1 } },
     caddyComposeFileLabel: 'docker-compose.yml',
     caddyComposeDir: '/root/24_Backend/deploy',
     caddyComposeFileResolved: '/root/24_Backend/deploy/docker-compose.yml',
@@ -869,6 +976,51 @@ async function selftest() {
   console.log('-- durability')
   t('a non-file-booted config yields no patch at all',
     decide(probe({ caddyDiskConfigIsBootSource: false })).patch, null)
+
+  console.log('-- FILE DIVERGENCE: naming the cause, not just refusing')
+  const H = (inode, sha) => `2049:${inode}:812:1750000000:${sha}`
+  t('CONTROL: three agreeing views are consistent', divergenceCause(probe()).cause, 'consistent')
+  // THE LIVE CASE from run 30302057188: host and container hash differently.
+  t('a stale FILE bind (inode moved, contents differ) is named',
+    divergenceCause(probe({
+      fileIdHostSource: H('9999', 'c'.repeat(64)),
+      fileIdProcRoot: H('9001', 'b'.repeat(64)),
+      fileIdContainer: H('9001', 'b'.repeat(64)),
+    })).cause, 'stale-file-bind')
+  t('…and says a reload cannot fix it',
+    divergenceCause(probe({
+      fileIdHostSource: H('9999', 'c'.repeat(64)), fileIdProcRoot: H('9001', 'b'.repeat(64)),
+      fileIdContainer: H('9001', 'b'.repeat(64)),
+    })).detail.includes('reload cannot rebind'), true)
+  t('mount LAYERING is distinguished from a stale bind',
+    divergenceCause(probe({
+      fileIdHostSource: H('9999', 'c'.repeat(64)), fileIdProcRoot: H('9001', 'b'.repeat(64)),
+      fileIdContainer: H('9001', 'b'.repeat(64)),
+      mountinfoRelevant: '/etc/caddy /srv/caddy ext4;/etc/caddy/Caddyfile /other/src overlay;',
+    })).cause, 'mount-layering')
+  t('a CONTAINER-side write is distinguished from both',
+    divergenceCause(probe({
+      fileIdHostSource: H('9001', 'b'.repeat(64)), fileIdProcRoot: H('9001', 'b'.repeat(64)),
+      fileIdContainer: H('9001', 'd'.repeat(64)),
+    })).cause, 'container-write')
+  t('an unstat-able view is undetermined, never guessed',
+    divergenceCause(probe({ fileIdHostSource: 'absent' })).cause, 'undetermined')
+  t('a malformed identity string is undetermined',
+    divergenceCause(probe({ fileIdProcRoot: 'garbage' })).cause, 'undetermined')
+  t('ANY non-consistent cause blocks the patch',
+    decide(probe({ fileIdHostSource: H('9999', 'c'.repeat(64)) })).patchable, false)
+
+  console.log('-- ZERO PARSED ROUTES IS NOT "NO ROUTES"')
+  t('a parsed config with zero routes BLOCKS',
+    decide(probe({ routes: [] })).patchable, false)
+  t('…and says so as an unrecognised shape',
+    decide(probe({ routes: [] })).blockers.some((b) => b.includes('unrecognised shape')), true)
+  t('the config shape is reported for diagnosis',
+    decide(probe({ routes: [] })).configShape.serverNames[0], 'srv0')
+  t('caddy argv is surfaced so --config/--adapter are visible',
+    /--adapter caddyfile/.test(decide(probe()).caddyArgv), true)
+  t('env is KEY NAMES only — no values',
+    /=/.test(decide(probe()).caddyEnvKeys ?? ''), false)
 
   console.log('-- NOTHING MUTATES')
   const all = JSON.stringify(decide(probe()).patch)
