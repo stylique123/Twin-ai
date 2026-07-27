@@ -108,22 +108,74 @@ export const FIELD_POLICY = {
     ],
     volatile: ['restarts', 'logSizeKb'],
     derived: ['class', 'evidence'],
+    // `docker inspect` does not promise an order for these. See UNORDERED below.
+    unordered: ['mounts', 'networks'],
   },
   images: {
     structural: ['id', 'tags', 'repoDigests'],
     volatile: ['sizeBytes', 'created'],
     derived: ['class', 'evidence'],
+    unordered: ['tags', 'repoDigests'],
   },
   volumes: {
     structural: ['name', 'driver', 'mountpoint', 'labels', 'dbFiles'],
     volatile: ['sizeKb'],
     derived: ['class', 'evidence'],
+    unordered: [],
   },
   networks: {
     structural: ['id', 'name', 'driver', 'containers'],
     volatile: [],
     derived: ['class', 'evidence'],
+    unordered: ['containers'],
   },
+}
+
+/**
+ * ARRAY FIELDS WHOSE ORDER CARRIES NO MEANING.
+ *
+ * A container's mounts, its network list, an image's tags and a network's
+ * membership are SETS. Docker returns them in whatever order it likes, and run
+ * 30315239508 proved it: `containers/postiz.mounts` was reported changed when
+ * `/config` and `/uploads` simply swapped places — both mounts present on both
+ * sides, nothing about the host different.
+ *
+ * That is a FALSE POSITIVE, and a costly kind. This comparator's whole argument
+ * is that volatility is declared per field so the diff stays worth reading; a
+ * guard that fires on ordering noise is one people learn to ignore, and an
+ * ignored guard launders a real change as more expected noise. The same
+ * reasoning was already applied to `listening` and simply not carried across.
+ *
+ * Comparing as a set is NOT weaker: every element still has to be present on
+ * both sides, and a genuine add, drop or edit still fails. Only position stops
+ * mattering — and position was never a fact about the host.
+ */
+const asSet = (v) => (Array.isArray(v) ? `[${v.map(canon).sort().join(',')}]` : canon(v))
+const compareField = (policy, field, value) =>
+  (policy.unordered ?? []).includes(field) ? asSet(value) : canon(value)
+
+/**
+ * What actually differs between two array-valued fields, by element.
+ *
+ * The finding used to print each side truncated to 120 characters, which on a
+ * mounts array is two indistinguishable blobs of JSON and no way to tell what
+ * moved. Diagnosing run 30315239508 required reading the raw artifact. A
+ * finding you cannot act on from its own text is half a finding.
+ */
+function elementDiff(before, after) {
+  if (!Array.isArray(before) || !Array.isArray(after)) return null
+  const b = before.map(canon); const a = after.map(canon)
+  const bc = new Map(); const ac = new Map()
+  for (const x of b) bc.set(x, (bc.get(x) ?? 0) + 1)
+  for (const x of a) ac.set(x, (ac.get(x) ?? 0) + 1)
+  const gone = []; const added = []
+  for (const [x, n] of bc) { const d = n - (ac.get(x) ?? 0); for (let i = 0; i < d; i++) gone.push(x) }
+  for (const [x, n] of ac) { const d = n - (bc.get(x) ?? 0); for (let i = 0; i < d; i++) added.push(x) }
+  if (gone.length === 0 && added.length === 0) return 'reordered only (no element added or removed)'
+  const part = []
+  if (gone.length) part.push(`REMOVED ${gone.map((x) => x.slice(0, 200)).join(' | ')}`)
+  if (added.length) part.push(`ADDED ${added.map((x) => x.slice(0, 200)).join(' | ')}`)
+  return part.join('; ')
 }
 
 /**
@@ -468,6 +520,9 @@ export function structuralDelta(before, after, auths = []) {
   for (const t of RECORD_ROOTS) {
     const policy = FIELD_POLICY[t]
     const known = new Set([...policy.structural, ...policy.volatile, ...policy.derived])
+    for (const f of policy.unordered ?? []) {
+      if (!policy.structural.includes(f)) throw new DeltaError(`${t}: "${f}" is declared unordered but is not a structural field`)
+    }
     const key = KEY_OF[t]
     const b = new Map(before[t].map((r) => [r[key], r]))
     const a = new Map(after[t].map((r) => [r[key], r]))
@@ -494,20 +549,23 @@ export function structuralDelta(before, after, auths = []) {
       const changeAuth = find('change', t, k)
       const epAuth = find('remove-endpoint', t, k)
       for (const f of policy.structural) {
-        const bv = canon(rec[f]); const av = canon(after2[f])
+        const bv = compareField(policy, f, rec[f]); const av = compareField(policy, f, after2[f])
         if (bv === av) continue
 
         // A remove-endpoint authorisation permits EXACTLY one name leaving the
         // list — not an arbitrary rewrite of it.
         if (epAuth !== undefined && f === 'containers' && Array.isArray(rec[f]) && Array.isArray(after2[f])) {
           const expect = rec[f].filter((x) => x !== epAuth.endpoint)
-          if (canon(expect) === av) { used.add(canon(epAuth)); continue }
+          if (compareField(policy, f, expect) === av) { used.add(canon(epAuth)); continue }
           add('changed', t, k, f,
             `${t}/${k}.${f}: authorised only to drop ${epAuth.endpoint}, but changed ${bv} -> ${av}`)
           continue
         }
         if (changeAuth !== undefined && changeAuth.fields.includes(f)) { used.add(canon(changeAuth)); continue }
-        add('changed', t, k, f, `${t}/${k}.${f}: ${bv.slice(0, 120)} -> ${av.slice(0, 120)}`)
+        const detail = elementDiff(rec[f], after2[f])
+        add('changed', t, k, f, detail !== null
+          ? `${t}/${k}.${f}: ${detail}`
+          : `${t}/${k}.${f}: ${bv.slice(0, 200)} -> ${av.slice(0, 200)}`)
       }
     }
     for (const k of a.keys()) {
@@ -672,6 +730,90 @@ async function selftest() {
     JSON.stringify(inv()) === JSON.stringify(volatileOnly), false)
   t('any structural change under a read-only stage fails',
     run(inv(), (() => { const a = clone(inv()); ctr(a, TARGET).policy = 'no'; return a })(), 'route-impact').ok, false)
+
+  console.log('-- ORDER IS NOT A FACT ABOUT THE HOST (regression: run 30315239508)')
+  // THE EXACT PRODUCTION FAILURE. postiz has two mounts; docker returned them
+  // in the other order and the comparator called it an unauthorised change.
+  const swapMounts = clone(inv())
+  ctr(swapMounts, TARGET).mounts = [...ctr(swapMounts, TARGET).mounts].reverse()
+  t('reordered mounts are NOT a change', run(inv(), swapMounts, 'route-impact').ok, true)
+  const twoMounts = () => {
+    const i = clone(inv())
+    ctr(i, TARGET).mounts = [
+      { type: 'volume', name: 'cfg', source: '/v/cfg', destination: '/config', rw: true },
+      { type: 'volume', name: 'upl', source: '/v/upl', destination: '/uploads', rw: true },
+    ]
+    return i
+  }
+  t('REPRO: /config and /uploads swapping places passes', (() => {
+    const a = twoMounts(); ctr(a, TARGET).mounts = [...ctr(a, TARGET).mounts].reverse()
+    return run(twoMounts(), a, 'route-impact').ok
+  })(), true)
+  t('reordered networks are NOT a change', (() => {
+    const a = clone(inv()); ctr(a, TARGET).networks = [...ctr(a, TARGET).networks].reverse()
+    return run(inv(), a, 'route-impact').ok
+  })(), true)
+  t('reordered image tags are NOT a change', (() => {
+    const b = clone(inv()); const a = clone(inv())
+    img(b, 'sha256:0200').tags = ['x:1', 'y:2']; img(a, 'sha256:0200').tags = ['y:2', 'x:1']
+    return run(b, a, 'route-impact').ok
+  })(), true)
+  t('reordered network membership is NOT a change', (() => {
+    const a = clone(inv()); net(a, 'styliquenet').containers = [...net(a, 'styliquenet').containers].reverse()
+    return run(inv(), a, 'route-impact').ok
+  })(), true)
+
+  // …AND THE SET COMPARISON IS NOT WEAKER. Every element must still be there.
+  t('a mount ADDED still fails', (() => {
+    const a = twoMounts()
+    ctr(a, TARGET).mounts.push({ type: 'bind', name: '', source: '/etc/shadow', destination: '/x', rw: true })
+    return run(twoMounts(), a, 'route-impact').ok
+  })(), false)
+  t('a mount REMOVED still fails', (() => {
+    const a = twoMounts(); ctr(a, TARGET).mounts = ctr(a, TARGET).mounts.slice(0, 1)
+    return run(twoMounts(), a, 'route-impact').ok
+  })(), false)
+  t('a mount turned WRITABLE still fails', (() => {
+    const a = twoMounts(); ctr(a, TARGET).mounts[0].rw = false
+    return run(twoMounts(), a, 'route-impact').ok
+  })(), false)
+  t('a network membership REMOVED still fails', (() => {
+    const a = clone(inv()); net(a, 'styliquenet').containers = ['stylique-caddy']
+    return run(inv(), a, 'route-impact').ok
+  })(), false)
+  t('an image tag REMOVED still fails', (() => {
+    const a = clone(inv()); img(a, 'sha256:0200').tags = []
+    return run(inv(), a, 'route-impact').ok
+  })(), false)
+
+  // THE FINDING MUST SAY WHAT MOVED. Diagnosing 30315239508 needed the artifact
+  // because the message was two truncated blobs of JSON.
+  t('the finding NAMES the added element', (() => {
+    const a = twoMounts()
+    ctr(a, TARGET).mounts.push({ type: 'bind', name: '', source: '/etc/shadow', destination: '/x', rw: true })
+    const d = run(twoMounts(), a, 'route-impact')
+    return d.findings.some((f) => /ADDED/.test(f.detail) && /etc\/shadow/.test(f.detail))
+  })(), true)
+  t('…and the removed element', (() => {
+    const a = twoMounts(); ctr(a, TARGET).mounts = ctr(a, TARGET).mounts.slice(0, 1)
+    const d = run(twoMounts(), a, 'route-impact')
+    return d.findings.some((f) => /REMOVED/.test(f.detail) && /uploads/.test(f.detail))
+  })(), true)
+  // An endpoint departure must still be recognised when the list also reorders.
+  t('remove-container still works when the network list is REORDERED', (() => {
+    const b = clone(inv()); ctr(b, TARGET).status = 'exited'
+    const a = clone(b)
+    a.containers = a.containers.filter((c) => c.name !== TARGET)
+    for (const n of a.networks) n.containers = [...n.containers.filter((x) => x !== TARGET)].reverse()
+    return run(b, a, 'remove-container').ok
+  })(), true)
+  t('a field declared unordered but not structural is a hard error', (() => {
+    const saved = FIELD_POLICY.containers.unordered
+    FIELD_POLICY.containers.unordered = ['restarts']
+    try { run(inv(), inv(), 'route-impact'); return false }
+    catch (e) { return e instanceof DeltaError }
+    finally { FIELD_POLICY.containers.unordered = saved }
+  })(), true)
 
   console.log('-- NON-RECORD ROOTS are compared, not merely schema-checked')
   const rootCase = (name, mutate, expectOk) => {
