@@ -113,6 +113,68 @@ jobs:
             echo "  registry=[$registry] override=[$override] test_allow=[$test_allow] test_manifest=[$test_manifest] revideo=$revideo port4500=$port4500 legacy_env=$legacy_env"
           } >&2
 
+          # ---- Phase 8 Gate-0 capacity inventory (READ-ONLY) --------------------
+          # Rendering re-encodes frames; analysis only reads them. The Phase-6 analysis
+          # figures (0.58x realtime, 92 MiB RSS) do NOT predict encode cost, so Phase 8
+          # needs the real hardware envelope before its capacity thresholds mean anything.
+          # Every command below inspects; none mutates. No new SSH path, no new secret.
+          cpu_count=$(nproc 2>/dev/null || true)
+          cpu_model=$(awk -F': ' '/^model name/{print $2; exit}' /proc/cpuinfo 2>/dev/null | tr -s ' ' || true)
+          mem_total_kb=$(awk '/^MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || true)
+          mem_avail_kb=$(awk '/^MemAvailable:/{print $2}' /proc/meminfo 2>/dev/null || true)
+          swap_total_kb=$(awk '/^SwapTotal:/{print $2}' /proc/meminfo 2>/dev/null || true)
+          swap_free_kb=$(awk '/^SwapFree:/{print $2}' /proc/meminfo 2>/dev/null || true)
+          # Root filesystem and the Docker data root — the render temp dir lives under
+          # the container, so Docker's filesystem is the one that actually constrains a render.
+          fs_root_avail_kb=$(df -Pk / 2>/dev/null | awk 'NR==2{print $4}' || true)
+          fs_root_pct=$(df -Pk / 2>/dev/null | awk 'NR==2{print $5}' | tr -d '%' || true)
+          docker_root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null || true)
+          fs_docker_avail_kb=$(df -Pk "${docker_root:-/var/lib/docker}" 2>/dev/null | awk 'NR==2{print $4}' || true)
+          # In-container free space at the worker's temp root: what a render can actually use.
+          ctr_tmp_avail_kb=$(docker exec "$C" df -Pk /tmp 2>/dev/null | awk 'NR==2{print $4}' || true)
+          image_id=$(docker inspect "$C" --format '{{.Image}}' 2>/dev/null || true)
+          image_ref=$(docker inspect "$C" --format '{{.Config.Image}}' 2>/dev/null || true)
+          image_digest=$(docker inspect "$C" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)
+          created=$(docker inspect "$C" --format '{{.Created}}' 2>/dev/null || true)
+          started=$(docker inspect "$C" --format '{{.State.StartedAt}}' 2>/dev/null || true)
+          uptime_s=$(awk '{print int($1)}' /proc/uptime 2>/dev/null || true)
+          loadavg=$(awk '{print $1"|"$2"|"$3}' /proc/loadavg 2>/dev/null || true)
+          # NOT a measure of active work. This counts "claimed" lines in the last 400 log
+          # lines — a historical record of claims that includes long-finished jobs. Actual
+          # active/running jobs and live leases come from the DATABASE, queried separately
+          # with before/after timestamps. Reporting log lines as active work would be a lie.
+          claims=$(docker logs --tail 400 "$C" 2>&1 | grep -c '"msg":"claimed"' || true)
+          ffmpeg_ver=$(docker exec "$C" ffmpeg -hide_banner -version 2>/dev/null | head -1 || true)
+          ffprobe_ok=$(docker exec "$C" ffprobe -hide_banner -version >/dev/null 2>&1 && echo 1 || echo 0)
+          # Other containers on the box — #203 asks whether anything is restart-looping.
+          other_restarts=$(docker ps -a --format '{{.Names}}' 2>/dev/null | while read -r n; do
+            [ "$n" = "$C" ] && continue
+            r=$(docker inspect "$n" --format '{{.RestartCount}}' 2>/dev/null || echo 0)
+            printf '%s:%s ' "$n" "$r"
+          done || true)
+
+          emit OBS_CPU_COUNT "$cpu_count"
+          emit OBS_CPU_MODEL "$cpu_model"
+          emit OBS_MEM_TOTAL_KB "$mem_total_kb"
+          emit OBS_MEM_AVAIL_KB "$mem_avail_kb"
+          emit OBS_SWAP_TOTAL_KB "$swap_total_kb"
+          emit OBS_SWAP_FREE_KB "$swap_free_kb"
+          emit OBS_FS_ROOT_AVAIL_KB "$fs_root_avail_kb"
+          emit OBS_FS_ROOT_USED_PCT "$fs_root_pct"
+          emit OBS_FS_DOCKER_AVAIL_KB "$fs_docker_avail_kb"
+          emit OBS_CTR_TMP_AVAIL_KB "$ctr_tmp_avail_kb"
+          emit OBS_IMAGE_ID "$image_id"
+          emit OBS_IMAGE_REF "$image_ref"
+          emit OBS_IMAGE_REVISION "$image_digest"
+          emit OBS_CREATED "$created"
+          emit OBS_STARTED "$started"
+          emit OBS_UPTIME_S "$uptime_s"
+          emit OBS_LOADAVG "$loadavg"
+          emit OBS_RECENT_CLAIM_LOG_LINES "$claims"
+          emit OBS_FFMPEG_VERSION "$ffmpeg_ver"
+          emit OBS_FFPROBE_OK "$ffprobe_ok"
+          emit OBS_OTHER_RESTARTS "$other_restarts"
+
           emit OBS_SHA "$sha"
           emit OBS_STATUS "$status"
           emit OBS_HEALTH "$health"
@@ -133,6 +195,109 @@ jobs:
           DIAG
           echo "---- captured facts.env ----"
           cat facts.env
+
+      # Phase 8 Gate-0 capacity inventory report. Runs BEFORE the sign-off assert so
+      # the inventory is captured even when the assert fails on drift (which is exactly
+      # what happened on 2026-07-26: SHA drift failed the run and the facts were only
+      # visible by reading raw logs). Informational by design — it never fails the run,
+      # because a capacity fact is evidence, not a gate.
+      # Host-key pinning must be PROVEN, not asserted. Reaching this step means the
+      # StrictHostKeyChecking=yes session above returned 0 under `set -e`, i.e. the pinned
+      # key verified. We record that fact plus a SHA-256 of the pinned known_hosts entry —
+      # an identity commitment, not the material (a host public key is not secret, but we
+      # publish only its digest so the report never carries key bytes).
+      - name: Record host-key verification proof
+        run: |
+          set -euo pipefail
+          KH="$HOME/.ssh/known_hosts_vps"
+          [ -s "$KH" ] || { echo "::error::pinned known_hosts missing after a successful SSH — refusing to claim pinning"; exit 1; }
+          {
+            echo "OBS_KNOWN_HOSTS_SHA256=$(sha256sum "$KH" | cut -d' ' -f1)"
+            echo "OBS_SSH_STRICT_VERIFIED=1"
+          } >> facts.env
+
+      - name: Phase 8 capacity inventory (informational, hashed report)
+        if: always()
+        run: |
+          set -euo pipefail
+          set -a; . ./facts.env; set +a
+          kb2g() { awk -v k="${1:-0}" 'BEGIN{ if (k=="") k=0; printf "%.2f", k/1048576 }'; }
+          python3 - <<'PYEOF' > vps-inventory.json
+          import json, os, hashlib
+          def g(k, d=''): return os.environ.get(k, d)
+          def parse_restarts(raw):
+              # wire format is 'name:count name:count '. Emitted structured so every
+              # count can be validated instead of eyeballed in a blob of text.
+              out = []
+              for tok in (raw or '').split():
+                  if ':' not in tok: continue
+                  n, _, c = tok.rpartition(':')
+                  try: out.append({'name': n, 'restarts': int(c)})
+                  except ValueError: out.append({'name': n, 'restarts': None})
+              return sorted(out, key=lambda e: e['name'])
+          def kb(k):
+              v = g(k, '')
+              try: return int(v)
+              except Exception: return None
+          # NOTE: only non-secret facts are emitted. No env dumps, no keys, no tokens,
+          # no signed URLs. Image *identity* only, never registry credentials.
+          inv = {
+            'schema': 'vps-inventory-1',
+            'ssh': {'strict_host_key_verified': g('OBS_SSH_STRICT_VERIFIED') == '1',
+                    'known_hosts_sha256': g('OBS_KNOWN_HOSTS_SHA256')},
+            'cpu':   {'count': kb('OBS_CPU_COUNT'), 'model': g('OBS_CPU_MODEL')},
+            'memory':{'total_kb': kb('OBS_MEM_TOTAL_KB'), 'available_kb': kb('OBS_MEM_AVAIL_KB')},
+            'swap':  {'total_kb': kb('OBS_SWAP_TOTAL_KB'), 'free_kb': kb('OBS_SWAP_FREE_KB')},
+            'disk':  {'root_avail_kb': kb('OBS_FS_ROOT_AVAIL_KB'),
+                      'root_used_pct': kb('OBS_FS_ROOT_USED_PCT'),
+                      'docker_avail_kb': kb('OBS_FS_DOCKER_AVAIL_KB'),
+                      'container_tmp_avail_kb': kb('OBS_CTR_TMP_AVAIL_KB')},
+            'container': {'status': g('OBS_STATUS'), 'health': g('OBS_HEALTH'),
+                          'restarts': kb('OBS_RESTARTS'), 'created': g('OBS_CREATED'),
+                          'started': g('OBS_STARTED'),
+                          'image_id': g('OBS_IMAGE_ID'), 'image_ref': g('OBS_IMAGE_REF'),
+                          'image_revision': g('OBS_IMAGE_REVISION')},
+            'worker': {'deployed_sha': g('OBS_SHA'), 'registry': g('OBS_REGISTRY').replace('\\',''),
+                       'recent_claim_log_lines': kb('OBS_RECENT_CLAIM_LOG_LINES')},
+            'media':  {'ffmpeg_version': g('OBS_FFMPEG_VERSION'), 'ffprobe_ok': g('OBS_FFPROBE_OK')},
+            'host':   {'uptime_s': kb('OBS_UPTIME_S'), 'loadavg': g('OBS_LOADAVG'),
+                       'other_container_restarts': parse_restarts(g('OBS_OTHER_RESTARTS'))},
+          }
+          # ensure_ascii=False is REQUIRED for cross-runtime parity: Python escapes
+          # non-ASCII by default (\u00ae) while JS JSON.stringify emits the raw
+          # character, so a CPU model containing (R) would hash differently in the
+          # validator and be rejected as 'substituted'. Verified by a parity test.
+          body = json.dumps(inv, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+          inv['report_sha256'] = hashlib.sha256(body.encode()).hexdigest()
+          print(json.dumps(inv, sort_keys=True, indent=2, ensure_ascii=False))
+          PYEOF
+          echo "===== PHASE 8 CAPACITY INVENTORY ====="
+          cat vps-inventory.json
+          echo "====================================="
+          echo "CPU      : ${OBS_CPU_COUNT:-?} x ${OBS_CPU_MODEL:-?}"
+          echo "RAM      : $(kb2g "${OBS_MEM_TOTAL_KB:-0}") GiB total / $(kb2g "${OBS_MEM_AVAIL_KB:-0}") GiB available"
+          echo "Swap     : $(kb2g "${OBS_SWAP_TOTAL_KB:-0}") GiB total / $(kb2g "${OBS_SWAP_FREE_KB:-0}") GiB free"
+          echo "Disk     : root $(kb2g "${OBS_FS_ROOT_AVAIL_KB:-0}") GiB free (${OBS_FS_ROOT_USED_PCT:-?}% used) | docker $(kb2g "${OBS_FS_DOCKER_AVAIL_KB:-0}") GiB | ctr /tmp $(kb2g "${OBS_CTR_TMP_AVAIL_KB:-0}") GiB"
+          echo "Load     : ${OBS_LOADAVG:-?}  uptime ${OBS_UPTIME_S:-?}s"
+          echo "ClaimLog : ${OBS_RECENT_CLAIM_LOG_LINES:-?} 'claimed' lines in last 400 (NOT active work)"
+          echo "Other ctr: ${OBS_OTHER_RESTARTS:-none}"
+
+      - name: Upload inventory report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vps-inventory
+          path: vps-inventory.json
+          if-no-files-found: error
+
+      # GATE-0 ACCEPTANCE. The report stays informational for the sign-off, but a Gate-0
+      # row cannot be closed on an inventory with missing, null, out-of-range or
+      # SUBSTITUTED facts. This validates required fields and ranges, and recomputes
+      # report_sha256 over the body. Runs AFTER upload so the artifact survives a
+      # rejection — you can inspect exactly what failed.
+      - name: Validate inventory (fail closed)
+        if: always()
+        run: node scripts/ci/validate_vps_inventory.mjs vps-inventory.json
 
       - name: Assert sign-off snapshot (fail-closed)
         run: |
