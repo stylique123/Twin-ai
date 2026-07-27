@@ -173,6 +173,55 @@ jobs:
           emit OBS_RECENT_CLAIM_LOG_LINES "$claims"
           emit OBS_FFMPEG_VERSION "$ffmpeg_ver"
           emit OBS_FFPROBE_OK "$ffprobe_ok"
+          # ---- stylique-os crash-loop diagnosis (READ-ONLY) ----------------------
+          # The 2026-07-27 inventory recorded stylique-os at 23028 restarts while every
+          # other container sat at 0. That is a hard crash loop on the box that will run
+          # Phase 8 renders, so it needs a cause, not just a count.
+          #
+          # STRICTLY READ-ONLY: inspect + logs + ps only. This never restarts, stops,
+          # kills, removes or edits the container. A crash-looping container is still
+          # evidence; destroying its state would destroy the diagnosis.
+          SO=stylique-os
+          so_exists=$(docker ps -a --format '{{.Names}}' 2>/dev/null | grep -cx "$SO" || true)
+          if [ "${so_exists:-0}" -ge 1 ]; then
+            so_image=$(docker inspect "$SO" --format '{{.Config.Image}}' 2>/dev/null || true)
+            so_imageid=$(docker inspect "$SO" --format '{{.Image}}' 2>/dev/null || true)
+            so_state=$(docker inspect "$SO" --format '{{.State.Status}}' 2>/dev/null || true)
+            so_exit=$(docker inspect "$SO" --format '{{.State.ExitCode}}' 2>/dev/null || true)
+            so_oom=$(docker inspect "$SO" --format '{{.State.OOMKilled}}' 2>/dev/null || true)
+            so_err=$(docker inspect "$SO" --format '{{.State.Error}}' 2>/dev/null || true)
+            so_restarts=$(docker inspect "$SO" --format '{{.RestartCount}}' 2>/dev/null || true)
+            so_policy=$(docker inspect "$SO" --format '{{.HostConfig.RestartPolicy.Name}}:{{.HostConfig.RestartPolicy.MaximumRetryCount}}' 2>/dev/null || true)
+            so_started=$(docker inspect "$SO" --format '{{.State.StartedAt}}' 2>/dev/null || true)
+            so_finished=$(docker inspect "$SO" --format '{{.State.FinishedAt}}' 2>/dev/null || true)
+            so_memlimit=$(docker inspect "$SO" --format '{{.HostConfig.Memory}}' 2>/dev/null || true)
+            so_health=$(docker inspect "$SO" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null || true)
+            # Tail only. Redact anything shaped like a credential BEFORE it leaves the host:
+            # key=value secrets, bearer tokens, JWTs, and any URL carrying userinfo.
+            so_logs=$(docker logs --tail 60 "$SO" 2>&1 \
+              | sed -E 's/(password|passwd|secret|token|api[_-]?key|apikey|authorization)[=:][^[:space:]"]*/\1=[REDACTED]/gI' \
+              | sed -E 's/(Bearer|Basic)[[:space:]]+[A-Za-z0-9._~+\/-]+=*/\1 [REDACTED]/g' \
+              | sed -E 's/eyJ[A-Za-z0-9._-]{20,}/[REDACTED_JWT]/g' \
+              | sed -E 's#([a-z][a-z0-9+.-]*://)[^/[:space:]@]+@#\1[REDACTED]@#g' \
+              | tail -c 6000 || true)
+          else
+            so_state=absent
+          fi
+          emit OBS_SO_EXISTS "$so_exists"
+          emit OBS_SO_IMAGE "${so_image:-}"
+          emit OBS_SO_IMAGE_ID "${so_imageid:-}"
+          emit OBS_SO_STATE "${so_state:-}"
+          emit OBS_SO_EXIT_CODE "${so_exit:-}"
+          emit OBS_SO_OOMKILLED "${so_oom:-}"
+          emit OBS_SO_ERROR "${so_err:-}"
+          emit OBS_SO_RESTARTS "${so_restarts:-}"
+          emit OBS_SO_RESTART_POLICY "${so_policy:-}"
+          emit OBS_SO_STARTED "${so_started:-}"
+          emit OBS_SO_FINISHED "${so_finished:-}"
+          emit OBS_SO_MEM_LIMIT "${so_memlimit:-}"
+          emit OBS_SO_HEALTH "${so_health:-}"
+          emit OBS_SO_LOGS "${so_logs:-}"
+
           emit OBS_OTHER_RESTARTS "$other_restarts"
 
           emit OBS_SHA "$sha"
@@ -281,6 +330,32 @@ jobs:
           echo "Load     : ${OBS_LOADAVG:-?}  uptime ${OBS_UPTIME_S:-?}s"
           echo "ClaimLog : ${OBS_RECENT_CLAIM_LOG_LINES:-?} 'claimed' lines in last 400 (NOT active work)"
           echo "Other ctr: ${OBS_OTHER_RESTARTS:-none}"
+
+      # Read-only crash-loop diagnosis, printed separately from the capacity inventory
+      # so it survives a failing sign-off assert and is not mixed into the hashed report.
+      - name: stylique-os crash-loop diagnosis (read-only)
+        if: always()
+        run: |
+          set -euo pipefail
+          set -a; . ./facts.env; set +a
+          echo "===== stylique-os DIAGNOSIS (read-only; container untouched) ====="
+          if [ "${OBS_SO_EXISTS:-0}" = "0" ]; then
+            echo "container not present on this host"; exit 0
+          fi
+          echo "image          : ${OBS_SO_IMAGE:-?}"
+          echo "image id       : ${OBS_SO_IMAGE_ID:-?}"
+          echo "state          : ${OBS_SO_STATE:-?}   health: ${OBS_SO_HEALTH:-?}"
+          echo "exit code      : ${OBS_SO_EXIT_CODE:-?}"
+          echo "OOMKilled      : ${OBS_SO_OOMKILLED:-?}"
+          echo "state error    : ${OBS_SO_ERROR:-<none>}"
+          echo "restart count  : ${OBS_SO_RESTARTS:-?}"
+          echo "restart policy : ${OBS_SO_RESTART_POLICY:-?}"
+          echo "memory limit   : ${OBS_SO_MEM_LIMIT:-0} bytes (0 = unlimited)"
+          echo "started / finished: ${OBS_SO_STARTED:-?}  /  ${OBS_SO_FINISHED:-?}"
+          echo
+          echo "----- last 60 log lines (credentials redacted on the host) -----"
+          printf '%s\n' "${OBS_SO_LOGS:-<no logs>}"
+          echo "----- end -----"
 
       - name: Upload inventory report
         if: always()
