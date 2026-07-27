@@ -24,9 +24,22 @@
 //      fine — those are never parsed by a shell — so this check is deliberately
 //      scoped to run blocks and does not broaden to them.
 //
+//   6. NO `run:` BLOCK MAY PIPE WITHOUT `pipefail`. A pipeline's exit status is
+//      its LAST command's, so `node guard.mjs | tee out.txt` reports tee's zero
+//      however loudly the guard refused. This is not hypothetical: run
+//      30290680691 dispatched `pre-stop-audit`, the planner refused with
+//      `unknown stage`, and the step named "fail closed" reported success.
+//      A guard whose failure cannot be observed is not a guard.
+//   7. THE PLANNER'S STAGE TABLE AND THE WORKFLOW'S AUTHORISATION ARMS MAY NOT
+//      DRIFT. Every stage the gate accepts and the plan step does not skip must
+//      be a stage plan_retirement.mjs knows. That drift is what produced the
+//      refusal above: `pre-stop-audit` was added to the workflow's read-only arm
+//      and never to STAGES.
+//
 //   node scripts/ci/check_vps_retire_safety.mjs
 //   node scripts/ci/check_vps_retire_safety.mjs --selftest
 import { readFileSync } from 'node:fs'
+import { STAGES } from './plan_retirement.mjs'
 
 const COLLECTOR = 'scripts/vps/collect_resource_inventory.sh'
 // Every script that is PIPED TO THE HOST over ssh. Each one is a remote-execution
@@ -92,7 +105,17 @@ export function dockerInvocations(text) {
   return out
 }
 
-export function evaluate({ collector, retireWf, remoteScripts }) {
+/**
+ * Stages named in the plan step's `if:`, which is written as a chain of
+ * `inputs.stage != 'x'` — the stages that never reach the planner at all.
+ */
+export function plannerSkippedStages(text) {
+  const step = /name: Build the retirement plan[^\n]*\n((?:[ \t]+[^\n]*\n)*?)[ \t]+run:/.exec(text)
+  if (!step) return null
+  return new Set([...step[1].matchAll(/inputs\.stage\s*!=\s*'([a-z][a-z-]*)'/g)].map((m) => m[1]))
+}
+
+export function evaluate({ collector, retireWf, remoteScripts, planStages = STAGES }) {
   const reasons = []
 
   // 1. EVERY remote script stays read-only, not just the collector.
@@ -175,6 +198,44 @@ export function evaluate({ collector, retireWf, remoteScripts }) {
     reasons.push('the execute step contains a literal destructive docker command instead of only the generated plan')
   }
 
+  // 6. A pipeline in a `run:` block must not be able to hide a non-zero exit.
+  //
+  //    `||` is excluded (that is an or-list, not a pipe). A `|` inside a jq
+  //    filter would be flagged too — that is deliberate rather than tolerated:
+  //    the fix is one line, it is correct in every case, and a checker that
+  //    tries to parse quoting to spare a true statement is a checker that can
+  //    be fooled by quoting.
+  for (const block of runBlocks(retireWf)) {
+    const piped = block
+      // A `case` arm header alternates with `|` and is not a pipeline:
+      // `manifest|pre-stop-audit|observe|accept)` is one pattern list, and the
+      // authorisation gate is written entirely out of them.
+      .replace(/^[ \t]*[a-z*][a-z0-9|*_-]*\)/gm, '')
+      .split('\n').some((l) => /[^|\s]\s*\|(?!\|)\s*[^|\s]/.test(l))
+    if (piped && !/set\s+-[a-z]*o?\s*[a-z]*\bpipefail\b|set\s+-o\s+pipefail/.test(block)) {
+      reasons.push(
+        'a run block pipes without `set -o pipefail`, so the exit status is the LAST command\'s '
+        + `and a refusal upstream would report success: ${JSON.stringify(block.trim().slice(0, 90))}`,
+      )
+    }
+  }
+
+  // 7. The gate's stages and the planner's stage table may not drift apart.
+  //    Only checked where the plan step actually exists, so the selftest's
+  //    minimal fixtures are not required to carry one.
+  const skipped = plannerSkippedStages(retireWf)
+  if (skipped) {
+    for (const stage of new Set(arms.flatMap((a) => a.stages))) {
+      if (stage === '*' || skipped.has(stage)) continue
+      if (!planStages.includes(stage)) {
+        reasons.push(
+          `stage "${stage}" is accepted by the authorisation gate and reaches the plan step, `
+          + 'but plan_retirement.mjs does not list it in STAGES — the planner will refuse at run time',
+        )
+      }
+    }
+  }
+
   return { ok: reasons.length === 0, reasons }
 }
 
@@ -202,6 +263,7 @@ docker network inspect "$nid"`
           esac
       - name: Execute the plan on the host
         run: |
+          set -euo pipefail
           jq -r '.cmds[]' plan.json > exec.sh
           cat exec.sh | ssh root@host bash -s
       - name: Upload evidence
@@ -243,6 +305,50 @@ docker network inspect "$nid"`
     evaluate({ ...good, retireWf: retireWf.replace("jq -r '.cmds[]' plan.json", 'echo docker rm x') }).ok, false)
   t('a literal destructive command in the execute step is rejected',
     evaluate({ ...good, retireWf: retireWf.replace('cat exec.sh | ssh root@host bash -s', 'ssh root@host docker rmi everything') }).ok, false)
+
+  // ---- the SWALLOWED-REFUSAL class (rule 6) --------------------------------
+  // Byte-for-byte the shape that shipped and reported success on a refusal.
+  const swallowed = "\n      - name: z\n        run: node scripts/ci/plan_retirement.mjs inv.json \"$STAGE\" | tee plan.txt"
+  t('a single-line `run:` that pipes without pipefail is REJECTED',
+    evaluate({ ...good, retireWf: retireWf + swallowed }).ok, false)
+  t('the same pipeline WITH pipefail passes',
+    evaluate({ ...good, retireWf: retireWf + "\n      - name: z\n        run: |\n          set -euo pipefail\n          node x.mjs | tee plan.txt" }).ok, true)
+  t('`||` is an or-list, not a pipe, and is not flagged',
+    evaluate({ ...good, retireWf: retireWf + "\n      - name: z\n        run: test -f x || exit 1" }).ok, true)
+
+  // ---- the STAGE-TABLE DRIFT class (rule 7) --------------------------------
+  // A fixture that HAS a plan step, so rule 7 is live for these cases.
+  const wfWithPlan = retireWf.replace(
+    '      - name: Execute the plan on the host',
+    [
+      '      - name: Build the retirement plan for this stage (fail closed)',
+      "        if: inputs.stage != 'observe' && inputs.stage != 'accept'",
+      '        run: |',
+      '          set -euo pipefail',
+      '          node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt',
+      '      - name: Execute the plan on the host',
+    ].join('\n'),
+  )
+  const planned = { ...good, retireWf: wfWithPlan }
+  t('CONTROL: rule 7 is live on a workflow that has a plan step',
+    evaluate({ ...planned, planStages: ['manifest', 'observe-only-not-a-stage', 'disable-restart', 'stop', 'remove-container', 'reclaim'] }).ok, true)
+  // The EXACT drift that produced run 30290680691's swallowed refusal.
+  t('a gate stage missing from the planner STAGES is REJECTED',
+    evaluate({
+      ...planned,
+      retireWf: wfWithPlan.replace('manifest|observe|accept)', 'manifest|pre-stop-audit|observe|accept)'),
+      planStages: ['manifest', 'disable-restart', 'stop', 'remove-container', 'reclaim'],
+    }).ok, false)
+  t('…and it passes once STAGES lists it',
+    evaluate({
+      ...planned,
+      retireWf: wfWithPlan.replace('manifest|observe|accept)', 'manifest|pre-stop-audit|observe|accept)'),
+      planStages: ['manifest', 'pre-stop-audit', 'disable-restart', 'stop', 'remove-container', 'reclaim'],
+    }).ok, true)
+  t('a stage the plan step SKIPS need not be in STAGES (observe/accept)',
+    evaluate({ ...planned, planStages: ['manifest', 'disable-restart', 'stop', 'remove-container', 'reclaim'] }).ok, true)
+  t('the REAL workflow and the REAL STAGES agree',
+    evaluate({ collector, remoteScripts: Object.fromEntries(REMOTE_SCRIPTS.map((f) => [f, readFileSync(f, 'utf8')])), retireWf: readFileSync(RETIRE_WF, 'utf8') }).ok, true)
 
   // ---- HOSTILE CONTROLS for the shell-injection class -----------------------
   // The exact pattern that shipped, and had to be rejected.

@@ -110,11 +110,20 @@ jobs:
             root@"$VPS_HOST" bash -s < scripts/vps/collect_resource_inventory.sh > raw-before.tsv
           node scripts/ci/build_resource_inventory.mjs raw-before.tsv inventory-before.json | tee report-before.txt
 
+      # `| tee` without `pipefail` reports the exit status of TEE, not of the
+      # command that produced the output. This step was a single-line `run:` —
+      # so it ran under the default `bash -e` with no `set -o pipefail` — and on
+      # run 30290680691 the planner refused (`unknown stage: pre-stop-audit`),
+      # printed `::error::`, exited 1, and the step still reported SUCCESS. A
+      # step named "fail closed" that cannot fail is the same defect class as a
+      # guard that describes a rule without enforcing it.
       - name: Build the retirement plan for this stage (fail closed)
         if: inputs.stage != 'observe' && inputs.stage != 'accept'
         env:
           STAGE: ${{ inputs.stage }}
-        run: node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt
+        run: |
+          set -euo pipefail
+          node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt
 
       # ---- A3: rollback record + host-local persistent-data backup -----------
       # A3.5 — READ-ONLY PRE-STOP AUDIT.

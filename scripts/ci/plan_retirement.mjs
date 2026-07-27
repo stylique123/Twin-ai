@@ -20,8 +20,20 @@
 //   node scripts/ci/plan_retirement.mjs <inventory.json> <stage> [--json out]
 //   node scripts/ci/plan_retirement.mjs --selftest
 import { readFileSync, writeFileSync } from 'node:fs'
+import { pathToFileURL } from 'node:url'
 
-export const STAGES = ['manifest', 'disable-restart', 'stop', 'remove-container', 'reclaim']
+// Every stage the plan step may be asked to plan for. `observe` and `accept`
+// never reach this script — the workflow skips the plan step for them — but
+// every OTHER dispatchable stage must be here, including the read-only ones.
+// A stage the workflow accepts and this table does not is a refusal at plan
+// time, and a refusal is only safe if it is actually seen: run 30290680691
+// dispatched `pre-stop-audit`, this threw `unknown stage`, and `| tee` in the
+// workflow swallowed the non-zero exit so the step named "fail closed" reported
+// success. check_vps_retire_safety.mjs now proves this table and the workflow's
+// authorisation arms cannot drift apart again.
+export const STAGES = ['manifest', 'pre-stop-audit', 'disable-restart', 'stop', 'remove-container', 'reclaim']
+/** Stages that plan NO commands. They are here to be known, not to act. */
+export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit'])
 const TARGET = 'stylique-os'
 const TWINAI = 'twinai-worker'
 const DELETABLE = new Set(['stylique-os', 'proven-orphaned'])
@@ -57,6 +69,16 @@ export function plan(inv, stage) {
   const emit = (cls, what, cmd) => {
     if (!DELETABLE.has(cls)) throw new PlanError(`refusing to act on "${what}": classed ${cls}, which is not deletable`)
     cmds.push(cmd)
+  }
+
+  // `pre-stop-audit` plans nothing. Its evidence is the probe's verdict, not a
+  // command list, so the honest plan is an empty one. It still runs the
+  // preconditions above on purpose: a host whose twinai-worker is missing or
+  // misclassified is not a host to be auditing a retirement on.
+  if (stage === 'pre-stop-audit') {
+    notes.push('read-only stage: no command is planned; the evidence is the pre-stop probe verdict')
+    if (!target) notes.push(`${TARGET} is not present on this host`)
+    return { stage, cmds, notes, backups: [] }
   }
 
   if (stage === 'manifest') {
@@ -179,6 +201,17 @@ function selftest() {
   t('manifest stage works', () => plan(base(), 'manifest'), false)
   t('stop stage works', () => plan(base(), 'stop'), false)
 
+  // The stage whose absence from STAGES threw `unknown stage` on run
+  // 30290680691. It must be KNOWN, must plan nothing, and must still be subject
+  // to the preconditions — a read-only stage that skipped them would be a
+  // second, weaker path through this file.
+  t('pre-stop-audit is a known stage', () => plan(base(), 'pre-stop-audit'), false)
+  t('an unknown stage still throws', () => plan(base(), 'not-a-stage'), true)
+  t('pre-stop-audit still enforces the preconditions', () => {
+    const i = base(); i.containers = i.containers.filter((c) => c.name !== TWINAI)
+    return plan(i, 'pre-stop-audit')
+  }, true)
+
   // PRECONDITIONS
   t('missing twinai-worker aborts', () => {
     const i = base(); i.containers = i.containers.filter((c) => c.name !== TWINAI); return plan(i, 'stop')
@@ -198,6 +231,8 @@ function selftest() {
   const r = plan(removed(), 'reclaim')
   const has = (s) => r.cmds.some((c) => c.includes(s))
   const check = (name, cond) => { if (cond) console.log(`  ok: ${name}`); else { console.error(`SELFTEST FAIL: ${name}`); failed++ } }
+  check('pre-stop-audit plans ZERO commands', plan(base(), 'pre-stop-audit').cmds.length === 0)
+  check('pre-stop-audit takes no backups', plan(base(), 'pre-stop-audit').backups.length === 0)
   check('reclaim removes the stylique image by id', has('docker rmi sha256:s'))
   check('reclaim NEVER removes the active twinai image', !has('sha256:a'))
   check('reclaim NEVER removes the rollback image', !has('sha256:p'))
@@ -231,7 +266,14 @@ function selftest() {
   console.log('plan-retirement selftest: all cases passed'); process.exit(0)
 }
 
-if (process.argv.includes('--selftest')) selftest()
+// Only act when this file IS the program. Without this, `import { STAGES }` from
+// another script runs the whole CLI — check_vps_retire_safety.mjs --selftest ran
+// the PLANNER's selftest and exited 0, so its own cases silently never ran. An
+// import with side effects is another way for a guard to disappear quietly.
+const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
+
+if (!isEntry) { /* imported for its exports */ }
+else if (process.argv.includes('--selftest')) selftest()
 else {
   const [, , invFile, stage] = process.argv
   if (!invFile || !stage) { console.error('usage: plan_retirement.mjs <inventory.json> <stage> [--json out]'); process.exit(2) }
