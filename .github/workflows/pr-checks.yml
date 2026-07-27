@@ -125,6 +125,20 @@ jobs:
         run: |
           node scripts/ci/check_vps_diag_authority.mjs --selftest
           node scripts/ci/check_vps_diag_authority.mjs
+      # The retirement tooling can delete things on the box that runs production
+      # renders. These freeze the properties that make that safe: the read-only
+      # collector stays read-only, every mutating stage stays behind the confirm
+      # phrase, no broad prune sweeps, and the executed commands keep coming from
+      # the generated plan rather than a literal list.
+      - name: VPS retirement safety (read-only collector; gated mutating stages)
+        run: |
+          node scripts/ci/check_vps_retire_safety.mjs --selftest
+          node scripts/ci/check_vps_retire_safety.mjs
+      - name: VPS resource classifier + retirement plan + acceptance gate (offline selftests)
+        run: |
+          node scripts/ci/build_resource_inventory.mjs --selftest
+          node scripts/ci/plan_retirement.mjs --selftest
+          node scripts/ci/assert_vps_acceptance.mjs --selftest
       - name: Canonical docs free of stale legacy claims (Fly/Revideo/autoedit/3-type registry)
         run: |
           node scripts/ci/check_docs_no_stale_claims.mjs --selftest

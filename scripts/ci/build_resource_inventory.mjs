@@ -256,6 +256,17 @@ export function renderTable(inv) {
     }
   }
   L.push('')
+  // A4.1 evidence: does anything actually ROUTE to stylique-os? A reverse proxy
+  // is the only way traffic reaches it, so its config is the place to look.
+  L.push('Reverse-proxy references (A4.1 live-route dependency):')
+  if (!inv.proxyRefs.length) L.push('  (no reverse-proxy container found)')
+  for (const p of inv.proxyRefs) L.push(`  ${p.proxy}: ${p.hits || 'none'}`)
+  L.push('')
+  L.push('TwinAI facts:')
+  for (const [k, v] of Object.entries(inv.twinai)) L.push(`  ${k.padEnd(20)} ${v}`)
+  L.push('  rollback image candidates:')
+  for (const i of inv.twinaiImages) L.push(`    ${i.tag}  ${i.size}  ${i.created}`)
+  L.push('')
   const byClass = {}
   for (const list of [inv.containers, inv.images, inv.volumes, inv.networks]) {
     for (const r of list) byClass[r.class] = (byClass[r.class] ?? 0) + 1
