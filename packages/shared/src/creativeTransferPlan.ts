@@ -18,6 +18,7 @@ import {
 } from './campaignIntent.js'
 import {
   type NormalizedReferenceEvidenceV1, assertEvidenceIdsAreIssued,
+  validateNormalizedEvidence,
 } from './referenceEvidence.js'
 import type { BrandTruthSnapshotV1 } from './brandTruth.js'
 
@@ -96,13 +97,84 @@ export class TransferPlanError extends Error {
 
 const HEX64 = /^[0-9a-f]{64}$/
 
-/** The server-side facts a plan is validated AGAINST. None come from the plan. */
+/**
+ * THE SERVER-ISSUED FACTS. None of these come from the plan, and that is the
+ * whole point: a validator that checks a digest's SHAPE accepts any 64-hex
+ * string, so `brandTruthSha256`, `campaignIntentSha256` and the snapshot/intent
+ * IDs were decorative — a plan could pin a lineage that never existed and pass.
+ * They are now compared to exact values the server holds.
+ */
 export interface ValidationContext {
   brandTruth: BrandTruthSnapshotV1
   intent: CampaignIntentV1
+  /** The row id and digest the server actually persisted for that snapshot. */
+  brandTruthSnapshotId: string
+  brandTruthSha256: string
+  campaignIntentId: string
+  campaignIntentSha256: string
   /** Normalized evidence per reference, keyed by referenceId. */
   evidence: Record<string, NormalizedReferenceEvidenceV1>
+  /**
+   * The analysis digest the server pinned for each reference. A plan naming an
+   * `analysisSha256` the server never issued would otherwise persist unchecked,
+   * and a citation into replaced evidence would still "resolve".
+   */
+  analysisSha256: Record<string, string>
+  /**
+   * The digest function, supplied by the caller.
+   *
+   * This module is in @twinai/shared, which the web build also consumes, so it
+   * cannot import `node:crypto`. Injecting the hasher keeps the contract
+   * runtime-agnostic AND makes the dependency explicit — the same reason
+   * brandTruth and campaignIntent expose `canonical*` and leave hashing to the
+   * caller.
+   */
+  sha256: (s: string) => string
 }
+
+// ---- FIXED, PREDECLARED BOUNDS ---------------------------------------------
+//
+// Model output was structurally open: extra keys survived, strings and arrays
+// were unbounded, and `createdAt`/`modelIdentity`/`promptVersion` were unchecked.
+// A plan carrying a hidden `override` key, a megabyte of `observedTraits`, or a
+// nonsense timestamp validated and was then HASH-PERSISTED — the digest making
+// the junk permanent rather than catching it.
+//
+// These caps are fixed here, in the diff, before any output is seen (§7 Step 4:
+// never tune after seeing a desired result without a version bump).
+export const LIMITS = {
+  instruction: 600,
+  trait: 200,
+  traitsPerDecision: 12,
+  constraint: 300,
+  constraintsPerDecision: 8,
+  reasonCode: 64,
+  identity: 128,
+  references: 8,
+  conflicts: 32,
+  conflictReferences: 8,
+  evidenceIdsPerDecision: 24,
+  evidenceId: 160,
+  uuidish: 128,
+} as const
+
+const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/
+const PLAIN_ID = /^[A-Za-z0-9_.:-]{1,128}$/
+
+/** Keys a DECISION may carry. Anything else is a channel nobody reviewed. */
+const DECISION_KEYS = new Set([
+  'dimension', 'action', 'primaryReferenceId', 'secondaryReferenceId',
+  'evidenceIds', 'observedTraits', 'adaptedInstruction', 'confidenceMilli',
+  'rationaleCode', 'constraints',
+])
+const PLAN_KEYS = new Set([
+  'schemaVersion', 'generationId', 'brandTruthSnapshotId', 'brandTruthSha256',
+  'campaignIntentId', 'campaignIntentSha256', 'referenceSet', 'decisions',
+  'conflicts', 'prohibitedTransfers', 'modelIdentity', 'promptVersion',
+  'createdAt', 'planSha256',
+])
+const REFERENCE_KEYS = new Set(['referenceId', 'analysisId', 'analysisSha256', 'requestedDimensions'])
+const CONFLICT_KEYS = new Set(['dimension', 'referenceIds', 'resolution', 'reasonCode'])
 
 /**
  * Business facts that may never appear in a bounded instruction (§5 level 1,
@@ -123,19 +195,116 @@ function businessFactValues(bt: BrandTruthSnapshotV1): string[] {
   return out
 }
 
+/** sha256 of the canonical plan, with planSha256 itself excluded. */
+export function computePlanSha256(plan: CreativeTransferPlanV1, sha256: (s: string) => string): string {
+  return sha256(canonicalTransferPlan(plan))
+}
+
+/**
+ * FINALIZE. The plan's own digest is DERIVED, never accepted from model output.
+ *
+ * A model-supplied `planSha256` is worse than useless: it looks like integrity
+ * while certifying nothing, so mutated plan bytes carrying an unchanged hash
+ * passed. Callers must finalize before persisting, and the validator refuses a
+ * plan whose digest does not match its bytes.
+ */
+export function finalizeTransferPlan(
+  plan: CreativeTransferPlanV1, sha256: (s: string) => string,
+): CreativeTransferPlanV1 {
+  return { ...plan, planSha256: computePlanSha256(plan, sha256) }
+}
+
+/** Recursive unknown-key rejection. An unreviewed key is an unreviewed channel. */
+function assertKeys(o: unknown, allowed: Set<string>, where: string, fail: (m: string, c: string) => never): void {
+  if (o === null || typeof o !== 'object' || Array.isArray(o)) {
+    fail(`${where} must be an object`, 'plan_shape_invalid')
+  }
+  for (const k of Object.keys(o as Record<string, unknown>)) {
+    if (!allowed.has(k)) {
+      fail(
+        `${where} carries the unknown key ${JSON.stringify(k)}; a plan may not introduce fields `
+        + 'nobody validates, and hashing one only makes it permanent',
+        'plan_unknown_key',
+      )
+    }
+  }
+}
+
+function assertString(v: unknown, max: number, where: string, fail: (m: string, c: string) => never): string {
+  if (typeof v !== 'string') fail(`${where} must be a string`, 'plan_shape_invalid')
+  const s = v as string
+  // Bytes, not characters: a multi-byte payload must not slip a length cap.
+  const bytes = new TextEncoder().encode(s).length
+  if (bytes > max) fail(`${where} is ${bytes} bytes, over the ${max}-byte cap`, 'plan_field_too_large')
+  return s
+}
+
 export function validateCreativeTransferPlan(
   plan: CreativeTransferPlanV1, ctx: ValidationContext,
 ): CreativeTransferPlanV1 {
   const fail = (m: string, code: string): never => { throw new TransferPlanError(m, code) }
 
+  assertKeys(plan, PLAN_KEYS, 'plan', fail)
   if (plan.schemaVersion !== 1) fail('schemaVersion must be 1', 'plan_schema_version')
   for (const [name, v] of [
     ['brandTruthSha256', plan.brandTruthSha256],
     ['campaignIntentSha256', plan.campaignIntentSha256],
     ['planSha256', plan.planSha256],
   ] as const) {
-    if (!HEX64.test(v)) fail(`${name} must be a lowercase sha256 hex digest`, 'plan_digest_malformed')
+    if (typeof v !== 'string' || !HEX64.test(v)) fail(`${name} must be a lowercase sha256 hex digest`, 'plan_digest_malformed')
   }
+
+  // ---- BOUND TO SERVER-ISSUED LINEAGE, not merely well-shaped --------------
+  if (plan.brandTruthSnapshotId !== ctx.brandTruthSnapshotId) {
+    fail(
+      `plan pins brand-truth snapshot ${plan.brandTruthSnapshotId} but the server issued `
+      + `${ctx.brandTruthSnapshotId}`,
+      'plan_brand_truth_id_mismatch',
+    )
+  }
+  if (plan.brandTruthSha256 !== ctx.brandTruthSha256) {
+    fail('plan pins a brand-truth digest the server did not issue', 'plan_brand_truth_digest_mismatch')
+  }
+  if (plan.campaignIntentId !== ctx.campaignIntentId) {
+    fail(
+      `plan pins campaign intent ${plan.campaignIntentId} but the server issued ${ctx.campaignIntentId}`,
+      'plan_campaign_intent_id_mismatch',
+    )
+  }
+  if (plan.campaignIntentSha256 !== ctx.campaignIntentSha256) {
+    fail('plan pins a campaign-intent digest the server did not issue', 'plan_campaign_intent_digest_mismatch')
+  }
+
+  // ---- THE PLAN'S OWN DIGEST MUST DESCRIBE ITS OWN BYTES -------------------
+  if (typeof ctx.sha256 !== 'function') {
+    fail('the validation context must supply a sha256 function', 'plan_no_digest_function')
+  }
+  if (plan.planSha256 !== computePlanSha256(plan, ctx.sha256)) {
+    fail(
+      'planSha256 does not match the canonical plan bytes; the digest must be DERIVED by '
+      + 'finalizeTransferPlan, never carried over from model output',
+      'plan_digest_not_derived',
+    )
+  }
+
+  // ---- envelope metadata ---------------------------------------------------
+  assertString(plan.modelIdentity, LIMITS.identity, 'modelIdentity', fail)
+  assertString(plan.promptVersion, LIMITS.identity, 'promptVersion', fail)
+  if (!PLAIN_ID.test(plan.modelIdentity)) fail('modelIdentity must be a plain identifier', 'plan_identity_invalid')
+  if (!PLAIN_ID.test(plan.promptVersion)) fail('promptVersion must be a plain identifier', 'plan_identity_invalid')
+  if (typeof plan.createdAt !== 'string' || !ISO_UTC.test(plan.createdAt)
+      || Number.isNaN(Date.parse(plan.createdAt))) {
+    fail('createdAt must be an ISO-8601 UTC instant', 'plan_created_at_invalid')
+  }
+  assertString(plan.generationId, LIMITS.uuidish, 'generationId', fail)
+
+  if (!Array.isArray(plan.referenceSet) || plan.referenceSet.length > LIMITS.references) {
+    fail(`referenceSet must be an array of at most ${LIMITS.references}`, 'plan_field_too_large')
+  }
+  if (!Array.isArray(plan.conflicts) || plan.conflicts.length > LIMITS.conflicts) {
+    fail(`conflicts must be an array of at most ${LIMITS.conflicts}`, 'plan_field_too_large')
+  }
+
   if (plan.generationId !== ctx.intent.generationId) {
     fail(
       `plan is for generation ${plan.generationId} but the intent is for ${ctx.intent.generationId}`,
@@ -148,6 +317,7 @@ export function validateCreativeTransferPlan(
   const intentRefs = new Set(ctx.intent.references.map((r) => r.referenceId))
   const planRefs = new Set<string>()
   for (const r of plan.referenceSet) {
+    assertKeys(r, REFERENCE_KEYS, `referenceSet[${r.referenceId}]`, fail)
     if (!intentRefs.has(r.referenceId)) {
       fail(
         `reference ${r.referenceId} is in the plan but not in the campaign intent; `
@@ -157,9 +327,49 @@ export function validateCreativeTransferPlan(
     }
     if (planRefs.has(r.referenceId)) fail(`reference ${r.referenceId} appears twice`, 'plan_reference_duplicate')
     planRefs.add(r.referenceId)
-    if (!HEX64.test(r.analysisSha256)) fail(`reference ${r.referenceId} has a malformed analysis digest`, 'plan_digest_malformed')
-    if (ctx.evidence[r.referenceId] === undefined) {
+    if (typeof r.analysisSha256 !== 'string' || !HEX64.test(r.analysisSha256)) {
+      fail(`reference ${r.referenceId} has a malformed analysis digest`, 'plan_digest_malformed')
+    }
+    const ev = ctx.evidence[r.referenceId]
+    if (ev === undefined) {
       fail(`no normalized evidence was supplied for reference ${r.referenceId}`, 'plan_evidence_missing')
+    }
+
+    // ---- THE REFERENCE SET IS BOUND TO SERVER-ISSUED EVIDENCE AND INTENT ---
+    //
+    // Previously a plan could name any analysisId, any analysisSha256 and any
+    // requestedDimensions and they would persist unchecked — so the pinned
+    // lineage described nothing. Each field is now compared to what the server
+    // holds, and the evidence set itself is re-validated so a fabricated set
+    // cannot be smuggled in through the context either.
+    validateNormalizedEvidence(ev)
+    if (ev.analysisId !== r.analysisId) {
+      fail(
+        `reference ${r.referenceId} names analysis ${r.analysisId} but the server issued evidence `
+        + `for ${ev.analysisId}`,
+        'plan_analysis_id_mismatch',
+      )
+    }
+    const pinned = ctx.analysisSha256[r.referenceId]
+    if (typeof pinned !== 'string' || !HEX64.test(pinned)) {
+      fail(`the server pinned no analysis digest for reference ${r.referenceId}`, 'plan_analysis_digest_unpinned')
+    }
+    if (r.analysisSha256 !== pinned) {
+      fail(
+        `reference ${r.referenceId} pins analysis digest ${r.analysisSha256}, which the server did not issue`,
+        'plan_analysis_digest_mismatch',
+      )
+    }
+    // The scope the USER requested, not a scope the plan asserts for itself.
+    const intentRef = ctx.intent.references.find((x) => x.referenceId === r.referenceId)
+    const requested = intentRef?.requestedDimensions.value ?? []
+    const declared = [...(r.requestedDimensions ?? [])].sort()
+    const expected = [...requested].sort()
+    if (declared.length !== expected.length || declared.some((v, i) => v !== expected[i])) {
+      fail(
+        `reference ${r.referenceId} declares a requested scope the campaign intent does not contain`,
+        'plan_requested_scope_mismatch',
+      )
     }
   }
 
@@ -182,6 +392,20 @@ export function validateCreativeTransferPlan(
 
   for (const d of plan.decisions) {
     const where = `decision[${d.dimension}]`
+    assertKeys(d, DECISION_KEYS, where, fail)
+    if (!Array.isArray(d.evidenceIds) || d.evidenceIds.length > LIMITS.evidenceIdsPerDecision) {
+      fail(`${where}: evidenceIds must be an array of at most ${LIMITS.evidenceIdsPerDecision}`, 'plan_field_too_large')
+    }
+    for (const id of d.evidenceIds) assertString(id, LIMITS.evidenceId, `${where}.evidenceIds[]`, fail)
+    if (!Array.isArray(d.observedTraits) || d.observedTraits.length > LIMITS.traitsPerDecision) {
+      fail(`${where}: observedTraits must be an array of at most ${LIMITS.traitsPerDecision}`, 'plan_field_too_large')
+    }
+    for (const t of d.observedTraits) assertString(t, LIMITS.trait, `${where}.observedTraits[]`, fail)
+    if (!Array.isArray(d.constraints) || d.constraints.length > LIMITS.constraintsPerDecision) {
+      fail(`${where}: constraints must be an array of at most ${LIMITS.constraintsPerDecision}`, 'plan_field_too_large')
+    }
+    for (const c of d.constraints) assertString(c, LIMITS.constraint, `${where}.constraints[]`, fail)
+    assertString(d.adaptedInstruction, LIMITS.instruction, `${where}.adaptedInstruction`, fail)
     if (!(['transfer', 'adapt', 'reject', 'brand_default'] as string[]).includes(d.action)) {
       fail(`${where}: unknown action ${JSON.stringify(d.action)}`, 'plan_action_unknown')
     }
@@ -314,6 +538,11 @@ export function validateCreativeTransferPlan(
   }
 
   for (const c of plan.conflicts) {
+    assertKeys(c, CONFLICT_KEYS, `conflict[${String(c.dimension)}]`, fail)
+    assertString(c.reasonCode, LIMITS.reasonCode, `conflict[${String(c.dimension)}].reasonCode`, fail)
+    if (!Array.isArray(c.referenceIds) || c.referenceIds.length > LIMITS.conflictReferences) {
+      fail(`conflict on ${c.dimension}: referenceIds must be an array of at most ${LIMITS.conflictReferences}`, 'plan_field_too_large')
+    }
     if (!TRANSFER_DIMENSIONS.includes(c.dimension)) {
       fail(`conflict names unknown dimension ${c.dimension}`, 'plan_dimension_unknown')
     }
