@@ -1,72 +1,67 @@
 #!/usr/bin/env node
-// Prove that a stage changed NOTHING it was not authorised to change.
+// Prove that a stage changed NOTHING it was not authorised to change — where
+// "authorised" means one named field of one named record, not a record-wide pass.
 //
 // WHY A BYTE COMPARISON IS THE WRONG TEST
 // ---------------------------------------
-// Every earlier stage reported "the host is unchanged" by pointing at the disk
-// figure and the health probe. That is an impression, not a proof. But the
-// obvious fix — diff the two inventory JSONs — is WORSE THAN USELESS: they
-// differ on every run for reasons nobody did. In run 30290680691 alone,
-// `ctr_tmp_avail_kb` moved 24568432 -> 24568432 between the before and after
-// collections, seconds apart, because a container wrote a temp file. Sizes,
-// timestamps, free-space counters and log bytes all drift on their own.
+// The two inventory JSONs differ on every run for reasons nobody caused: free
+// space, log bytes, restart counts and image sizes all drift. A comparator that
+// flags those is one people learn to ignore, and a comparator people ignore
+// launders a real change as more expected noise. So volatility is declared per
+// field, in the diff, before any run is seen.
 //
-// A comparator that flags those is a comparator people learn to ignore, and a
-// comparator people ignore is worse than none: it launders a real change as
-// more expected noise.
+// WHY RECORD-WIDE AUTHORISATION IS ALSO WRONG
+// -------------------------------------------
+// The first version of this file took a set of `type/key` strings and skipped
+// EVERY structural field of an authorised record. `disable-restart` is meant to
+// permit exactly one field — the restart policy — but that design would have
+// waved through a simultaneous change to imageId, mounts, ports, networks,
+// memLimit, labels or status on the same container, and its positive control
+// proved only that overbroad authorisation works. Least privilege has to be
+// expressible or it is not enforced.
 //
-// So this compares the STRUCTURE that ownership and safety depend on, and
-// explicitly permits the values that move by themselves. Volatility is declared
-// per field, in the diff, before any run is seen.
+// Authorisations are therefore TYPED OPERATIONS:
 //
-// UNKNOWN FIELDS FAIL CLOSED. A field this file has never heard of is not
-// assumed volatile — a future inventory field carrying real ownership meaning
-// would otherwise be silently unwatched, which is exactly how the earlier
-// guards in this lane went blind.
+//   { op: 'change',         type, key, fields: [...] }   only those fields
+//   { op: 'remove',         type, key }                  that record may vanish
+//   { op: 'add',            type, key }                  that record may appear
+//   { op: 'remove-endpoint',type, key, endpoint }        one name leaves a list
 //
-//   node scripts/ci/assert_structural_delta.mjs before.json after.json
+// A field not explicitly named still compares. An authorisation that is never
+// exercised is itself a finding: the stage did not do what it declared, and a
+// plan that over-declares is a plan nobody is really reading.
+//
+//   node scripts/ci/assert_structural_delta.mjs <before.json> <after.json> \
+//        --stage <stage> [--plan plan.json]
 //   node scripts/ci/assert_structural_delta.mjs --selftest
 import { readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
-/**
- * Per record type: which fields are STRUCTURAL (compared) and which are
- * VOLATILE (permitted to move). Every field of every record must appear in one
- * list or the other, or the comparator refuses.
- */
+const TARGET = 'stylique-os'
+
+/** Per record type: STRUCTURAL fields are compared; VOLATILE ones may move. */
 export const FIELD_POLICY = {
   containers: {
-    // Identity, ownership and the safety contract.
     structural: [
       'name', 'status', 'policy', 'imageRef', 'imageId', 'project', 'labels',
       'mounts', 'ports', 'networks', 'health', 'memLimit', 'exitCode', 'created',
     ],
-    // `restarts` moves on its own for a crash-looping container — which is the
-    // whole reason stylique-os is being retired. `logSizeKb` grows whenever
-    // anything logs.
     volatile: ['restarts', 'logSizeKb'],
   },
-  images: {
-    structural: ['id', 'tags', 'repoDigests', 'class'],
-    volatile: ['sizeBytes', 'created'],
-  },
+  images: { structural: ['id', 'tags', 'repoDigests', 'class'], volatile: ['sizeBytes', 'created'] },
   volumes: {
-    // Ownership is mountpoint + who mounts it + whether it holds a database.
     structural: ['name', 'driver', 'mountpoint', 'labels', 'dbFiles', 'class', 'evidence'],
     volatile: ['sizeKb'],
   },
-  networks: {
-    // `containers` IS structural: an endpoint appearing or vanishing is a
-    // topology change, not noise.
-    structural: ['id', 'name', 'driver', 'containers', 'class'],
-    volatile: [],
-  },
+  networks: { structural: ['id', 'name', 'driver', 'containers', 'class'], volatile: [] },
 }
-
-/** Record types compared by key. */
 export const TYPES = Object.keys(FIELD_POLICY)
-/** The key that identifies a record within its type. */
 const KEY_OF = { containers: 'name', images: 'id', volumes: 'name', networks: 'name' }
+/** Top-level inventory keys that are not record arrays but are expected. */
+export const NON_RECORD_ROOT_KEYS = [
+  'fs', 'inodes', 'dockerDf', 'hostDirs', 'ctrLogs', 'proxyRefs', 'twinai', 'report_sha256',
+]
 
 export class DeltaError extends Error {
   constructor(message) { super(message); this.name = 'DeltaError' }
@@ -79,40 +74,154 @@ const canon = (v) => {
   }
   return JSON.stringify(v)
 }
+export const sha256 = (s) => createHash('sha256').update(s).digest('hex')
 
 /**
- * Compare one inventory against another.
+ * The inventory must be exactly the shape this comparator understands.
  *
- * `authorised` names records this stage was allowed to change or remove, as
- * `type/key`. Everything else must be structurally identical.
+ * Unknown ROOT keys were previously ignored entirely — only record fields were
+ * checked — so a whole new top-level section could carry ownership meaning and
+ * go unwatched. Duplicate record keys were collapsed by Map construction, so a
+ * malformed inventory listing a container twice would silently compare only the
+ * last one.
  */
-export function structuralDelta(before, after, authorised = []) {
+export function validateInventory(inv, label) {
+  const problems = []
+  if (inv === null || typeof inv !== 'object' || Array.isArray(inv)) {
+    throw new DeltaError(`${label} is not a JSON object`)
+  }
+  const known = new Set([...TYPES, ...NON_RECORD_ROOT_KEYS])
+  for (const k of Object.keys(inv)) {
+    if (!known.has(k)) problems.push(`${label}: unknown top-level key ${JSON.stringify(k)}`)
+  }
+  for (const t of TYPES) {
+    const v = inv[t]
+    if (!Array.isArray(v)) { problems.push(`${label}.${t} is missing or not an array`); continue }
+    const seen = new Set()
+    for (const r of v) {
+      if (r === null || typeof r !== 'object' || Array.isArray(r)) {
+        problems.push(`${label}.${t} contains a non-object record`); continue
+      }
+      const k = r[KEY_OF[t]]
+      if (typeof k !== 'string' || k.length === 0) {
+        problems.push(`${label}.${t} has a record with a missing or empty ${KEY_OF[t]}`); continue
+      }
+      if (seen.has(k)) problems.push(`${label}.${t} lists ${JSON.stringify(k)} more than once`)
+      seen.add(k)
+    }
+  }
+  return problems
+}
+
+/** Reject malformed, duplicated, wildcard or unknown authorisations. */
+export function validateAuthorisations(auths) {
+  const problems = []
+  const seen = new Set()
+  for (const a of auths) {
+    const sig = canon(a)
+    if (seen.has(sig)) problems.push(`duplicate authorisation ${sig}`)
+    seen.add(sig)
+    if (!['change', 'remove', 'add', 'remove-endpoint'].includes(a?.op)) {
+      problems.push(`unknown authorisation op ${JSON.stringify(a?.op)}`); continue
+    }
+    if (!TYPES.includes(a?.type)) { problems.push(`unknown authorisation type ${JSON.stringify(a?.type)}`); continue }
+    if (typeof a.key !== 'string' || a.key.length === 0 || a.key === '*') {
+      problems.push(`authorisation key must be an exact non-wildcard name (got ${JSON.stringify(a.key)})`)
+    }
+    if (a.op === 'change') {
+      if (!Array.isArray(a.fields) || a.fields.length === 0) {
+        problems.push(`change authorisation for ${a.type}/${a.key} names no fields`)
+      } else {
+        for (const f of a.fields) {
+          if (f === '*') problems.push(`wildcard field in ${a.type}/${a.key}`)
+          else if (!FIELD_POLICY[a.type].structural.includes(f)) {
+            problems.push(`${a.type}/${a.key}: ${JSON.stringify(f)} is not a structural field`)
+          }
+        }
+      }
+    }
+    if (a.op === 'remove-endpoint' && (typeof a.endpoint !== 'string' || a.endpoint.length === 0)) {
+      problems.push(`remove-endpoint for ${a.type}/${a.key} names no endpoint`)
+    }
+  }
+  return problems
+}
+
+/**
+ * Authorisations for a stage, derived from the BEFORE inventory and, for
+ * reclaim, byte-exactly from the approved plan.
+ *
+ * Read-only stages authorise nothing at all. Nothing here is generic: reclaim
+ * never gets a blanket container exemption, and remove-container's network
+ * changes are pinned to the endpoints the target was actually attached to.
+ */
+export function authorisationsForStage(stage, before, plan = null) {
+  switch (stage) {
+    case 'manifest': case 'pre-stop-audit': case 'route-impact':
+    case 'observe': case 'accept':
+      return []
+    case 'disable-restart':
+      return [{ op: 'change', type: 'containers', key: TARGET, fields: ['policy'] }]
+    case 'stop':
+      // The lifecycle fields a stop legitimately moves — and only those. A stop
+      // that also changed the image or the mounts is not a stop.
+      return [{ op: 'change', type: 'containers', key: TARGET, fields: ['status', 'exitCode', 'health'] }]
+    case 'remove-container': {
+      const auths = [{ op: 'remove', type: 'containers', key: TARGET }]
+      // The endpoint necessarily leaves every network it was attached to. Pin
+      // that to the networks recorded BEFORE, one endpoint each, rather than
+      // exempting the `containers` field wholesale.
+      for (const n of before.networks ?? []) {
+        if (Array.isArray(n.containers) && n.containers.includes(TARGET)) {
+          auths.push({ op: 'remove-endpoint', type: 'networks', key: n.name, endpoint: TARGET })
+        }
+      }
+      return auths
+    }
+    case 'reclaim': {
+      if (plan === null) throw new DeltaError('reclaim requires the approved plan to derive its authorisations')
+      const cmds = Array.isArray(plan.cmds) ? plan.cmds : []
+      const auths = []
+      for (const c of cmds) {
+        let m
+        if ((m = /^docker rmi (\S+)$/.exec(c))) auths.push({ op: 'remove', type: 'images', key: m[1] })
+        else if ((m = /^docker network rm (\S+)$/.exec(c))) auths.push({ op: 'remove', type: 'networks', key: m[1] })
+        else if ((m = /^docker volume rm (\S+)$/.exec(c))) auths.push({ op: 'remove', type: 'volumes', key: m[1] })
+        // builder prune and journal vacuum touch no inventory record.
+      }
+      return auths
+    }
+    default:
+      throw new DeltaError(`unknown stage ${JSON.stringify(stage)}`)
+  }
+}
+
+/** Compare, enforcing each authorisation exactly and requiring each be used. */
+export function structuralDelta(before, after, auths = []) {
   const findings = []
-  const ok = new Set(authorised)
+  const add = (kind, type, key, field, detail) => findings.push({ kind, type, key, field, detail })
+
+  for (const p of validateInventory(before, 'before')) add('schema', null, null, null, p)
+  for (const p of validateInventory(after, 'after')) add('schema', null, null, null, p)
+  for (const p of validateAuthorisations(auths)) add('bad_authorisation', null, null, null, p)
+  if (findings.length > 0) return { ok: false, findings, exercised: [] }
+
+  const used = new Set()
+  const find = (op, type, key) => auths.find((a) => a.op === op && a.type === type && a.key === key)
 
   for (const t of TYPES) {
     const policy = FIELD_POLICY[t]
     const known = new Set([...policy.structural, ...policy.volatile])
     const key = KEY_OF[t]
+    const b = new Map(before[t].map((r) => [r[key], r]))
+    const a = new Map(after[t].map((r) => [r[key], r]))
 
-    const list = (inv) => {
-      const v = inv?.[t]
-      if (!Array.isArray(v)) throw new DeltaError(`inventory.${t} is missing or not an array`)
-      return v
-    }
-    const b = new Map(list(before).map((r) => [r?.[key], r]))
-    const a = new Map(list(after).map((r) => [r?.[key], r]))
-
-    // UNKNOWN FIELDS FAIL CLOSED, on both sides.
     for (const [side, m] of [['before', b], ['after', a]]) {
       for (const [k, rec] of m) {
-        for (const f of Object.keys(rec ?? {})) {
+        for (const f of Object.keys(rec)) {
           if (!known.has(f)) {
-            findings.push({
-              type: t, key: k, field: f, kind: 'unknown_field',
-              detail: `${side}.${t}[${k}] carries field "${f}", which this comparator has no policy for. `
-                + 'A field with no declared volatility is not assumed safe.',
-            })
+            add('unknown_field', t, k, f,
+              `${side}.${t}[${k}] carries field "${f}", which has no declared volatility policy`)
           }
         }
       }
@@ -120,72 +229,81 @@ export function structuralDelta(before, after, authorised = []) {
 
     for (const [k, rec] of b) {
       if (!a.has(k)) {
-        if (!ok.has(`${t}/${k}`)) {
-          findings.push({ type: t, key: k, field: null, kind: 'removed', detail: `${t}/${k} vanished and was not authorised` })
-        }
+        const auth = find('remove', t, k)
+        if (auth === undefined) add('removed', t, k, null, `${t}/${k} vanished and no removal was authorised`)
+        else used.add(canon(auth))
         continue
       }
-      if (ok.has(`${t}/${k}`)) continue
       const after2 = a.get(k)
+      const changeAuth = find('change', t, k)
+      const epAuth = find('remove-endpoint', t, k)
       for (const f of policy.structural) {
-        const bv = canon(rec?.[f]); const av = canon(after2?.[f])
-        if (bv !== av) {
-          findings.push({
-            type: t, key: k, field: f, kind: 'changed',
-            detail: `${t}/${k}.${f}: ${bv.slice(0, 120)} -> ${av.slice(0, 120)}`,
-          })
+        const bv = canon(rec[f]); const av = canon(after2[f])
+        if (bv === av) continue
+
+        // A remove-endpoint authorisation permits EXACTLY one name leaving the
+        // list — not an arbitrary rewrite of it.
+        if (epAuth !== undefined && f === 'containers' && Array.isArray(rec[f]) && Array.isArray(after2[f])) {
+          const expect = rec[f].filter((x) => x !== epAuth.endpoint)
+          if (canon(expect) === av) { used.add(canon(epAuth)); continue }
+          add('changed', t, k, f,
+            `${t}/${k}.${f}: authorised only to drop ${epAuth.endpoint}, but changed ${bv} -> ${av}`)
+          continue
         }
+        if (changeAuth !== undefined && changeAuth.fields.includes(f)) { used.add(canon(changeAuth)); continue }
+        add('changed', t, k, f, `${t}/${k}.${f}: ${bv.slice(0, 120)} -> ${av.slice(0, 120)}`)
       }
     }
     for (const k of a.keys()) {
-      if (!b.has(k) && !ok.has(`${t}/${k}`)) {
-        findings.push({ type: t, key: k, field: null, kind: 'added', detail: `${t}/${k} appeared and was not authorised` })
-      }
+      if (b.has(k)) continue
+      const auth = find('add', t, k)
+      if (auth === undefined) add('added', t, k, null, `${t}/${k} appeared and no addition was authorised`)
+      else used.add(canon(auth))
     }
   }
 
-  return { ok: findings.length === 0, findings }
+  // AN UNEXERCISED AUTHORISATION IS A FINDING. It means the stage did not do
+  // what its plan declared, and an over-declared plan is one nobody is reading.
+  for (const auth of auths) {
+    if (!used.has(canon(auth))) {
+      add('unused_authorisation', auth.type, auth.key, null,
+        `authorised ${auth.op} on ${auth.type}/${auth.key}${auth.fields ? ` (${auth.fields.join(',')})` : ''} never happened`)
+    }
+  }
+
+  return { ok: findings.length === 0, findings, exercised: [...used] }
 }
 
-export function render(d) {
-  const L = ['== structural delta (volatile values permitted) =='];
-  if (d.ok) L.push('  no unauthorised structural change')
+export function render(d, ctx = {}) {
+  const L = ['== structural delta (volatile values permitted; least-privilege authorisation) ==']
+  for (const [k, v] of Object.entries(ctx)) L.push(`  ${k.padEnd(22)}: ${v}`)
+  if (d.ok) L.push('  no unauthorised structural change; every authorisation was exercised')
   for (const f of d.findings) L.push(`  [${f.kind}] ${f.detail}`)
   L.push(`  UNAUTHORISED STRUCTURAL DELTA: ${d.ok ? 'none' : d.findings.length}`)
   return L.join('\n')
 }
 
 // ------------------------------------------------------------------ selftest
-const inv = (over = {}) => ({
-  containers: [{
-    name: 'twinai-worker', status: 'running', policy: 'unless-stopped',
-    imageRef: 'twinai-worker:latest', imageId: 'sha256:0200', project: null, labels: '',
-    mounts: [], ports: '', networks: ['bridge'], health: 'healthy', memLimit: 0,
-    exitCode: 0, created: 'c1', restarts: 0, logSizeKb: 10,
-  }, {
-    // The REAL pre-retirement state: crash-looping under unless-stopped. An
-    // earlier version of this fixture already had it exited/no, so the
-    // "stopped without authorisation" control mutated nothing and passed
-    // vacuously — the control caught its own vacuity.
-    name: 'stylique-os', status: 'restarting', policy: 'unless-stopped',
-    imageRef: 'stylique-os:latest', imageId: 'sha256:bbbb', project: 'deploy', labels: '',
-    mounts: [{ type: 'volume', name: 'oo-data', source: '/v/oo', destination: '/data', rw: false }],
-    ports: '', networks: ['styliquenet'], health: 'unhealthy', memLimit: 0,
-    exitCode: 0, created: 'c2', restarts: 23329, logSizeKb: 133000,
-  }],
-  images: [{ id: 'sha256:0200', tags: ['twinai-worker:latest'], repoDigests: [], class: 'active-twinai', sizeBytes: 1, created: 'x' }],
-  volumes: [{ name: 'oo-data', driver: 'local', mountpoint: '/v/oo', labels: '', dbFiles: '', class: 'shared-do-not-touch', evidence: 'mounted by stylique-os,infallible_hawking', sizeKb: 4 }],
-  networks: [{ id: 'n1', name: 'styliquenet', driver: 'bridge', containers: ['stylique-caddy', 'stylique-dashboard'], class: 'unknown-do-not-touch' }],
-  ...over,
+const inv = () => ({
+  containers: [
+    { name: 'twinai-worker', status: 'running', policy: 'unless-stopped', imageRef: 'twinai-worker:latest', imageId: 'sha256:0200', project: null, labels: '', mounts: [], ports: '', networks: ['bridge'], health: 'healthy', memLimit: 0, exitCode: 0, created: 'c1', restarts: 0, logSizeKb: 10 },
+    { name: TARGET, status: 'restarting', policy: 'unless-stopped', imageRef: 'stylique-os:latest', imageId: 'sha256:bbbb', project: 'deploy', labels: '', mounts: [{ type: 'volume', name: 'oo-data', source: '/v/oo', destination: '/data', rw: false }], ports: '', networks: ['styliquenet', 'deploy_default'], health: 'unhealthy', memLimit: 0, exitCode: 0, created: 'c2', restarts: 23329, logSizeKb: 133000 },
+  ],
+  images: [
+    { id: 'sha256:0200', tags: ['twinai-worker:latest'], repoDigests: [], class: 'active-twinai', sizeBytes: 1, created: 'x' },
+    { id: 'sha256:sty1', tags: ['stylique-os:v1'], repoDigests: [], class: 'stylique-os', sizeBytes: 1, created: 'x' },
+  ],
+  volumes: [
+    { name: 'oo-data', driver: 'local', mountpoint: '/v/oo', labels: '', dbFiles: '', class: 'shared-do-not-touch', evidence: 'mounted by stylique-os,infallible_hawking', sizeKb: 4 },
+    { name: 'dead-vol', driver: 'local', mountpoint: '/v/d', labels: '', dbFiles: '', class: 'proven-orphaned', evidence: 'unmounted', sizeKb: 1 },
+  ],
+  networks: [
+    { id: 'n1', name: 'styliquenet', driver: 'bridge', containers: ['stylique-caddy', TARGET], class: 'unknown-do-not-touch' },
+    { id: 'n2', name: 'deploy_default', driver: 'bridge', containers: [TARGET, 'stylique-chrome'], class: 'unknown-do-not-touch' },
+  ],
 })
-
-/** Deep-clone then mutate one field of one record. */
-function mutate(base, type, key, field, value) {
-  const c = JSON.parse(JSON.stringify(base))
-  const k = KEY_OF[type]
-  c[type].find((r) => r[k] === key)[field] = value
-  return c
-}
+const clone = (o) => JSON.parse(JSON.stringify(o))
+const ctr = (i, n) => i.containers.find((c) => c.name === n)
 
 async function selftest() {
   let failed = 0
@@ -193,80 +311,113 @@ async function selftest() {
     if (got === exp) console.log(`  ok: ${name}`)
     else { console.error(`SELFTEST FAIL: ${name} => ${JSON.stringify(got)}, expected ${JSON.stringify(exp)}`); failed++ }
   }
+  const run = (b, a, stage, plan = null) => structuralDelta(b, a, authorisationsForStage(stage, b, plan))
 
-  console.log('-- POSITIVE CONTROL: identical inventories pass')
-  t('identical inventories have no delta', structuralDelta(inv(), inv()).ok, true)
-
-  console.log('-- VOLATILE values are permitted')
-  // THE OLD-BEHAVIOUR COUNTEREXAMPLE. A byte/JSON comparison fails on all of
-  // these, every run, for reasons nobody caused.
-  const volatileOnly = mutate(
-    mutate(mutate(inv(), 'containers', 'stylique-os', 'restarts', 23400),
-      'containers', 'twinai-worker', 'logSizeKb', 99999),
-    'volumes', 'oo-data', 'sizeKb', 4096)
+  console.log('-- read-only stages authorise NOTHING')
+  for (const s of ['manifest', 'pre-stop-audit', 'route-impact', 'observe', 'accept']) {
+    t(`${s} authorises nothing`, authorisationsForStage(s, inv()).length, 0)
+  }
+  t('a read-only stage passes on an unchanged host', run(inv(), inv(), 'route-impact').ok, true)
+  const volatileOnly = clone(inv())
+  ctr(volatileOnly, TARGET).restarts = 23400
+  ctr(volatileOnly, 'twinai-worker').logSizeKb = 99999
   volatileOnly.images[0].sizeBytes = 987654321
-  volatileOnly.images[0].created = 'later'
-  t('restarts, log size, volume size, image size+created all drift freely',
-    structuralDelta(inv(), volatileOnly).ok, true)
-  t('OLD BEHAVIOUR: a raw JSON comparison would have flagged that as a change',
+  volatileOnly.volumes[0].sizeKb = 4096
+  t('volatile drift alone passes', run(inv(), volatileOnly, 'route-impact').ok, true)
+  t('OLD BEHAVIOUR: a raw JSON compare would have flagged that',
     JSON.stringify(inv()) === JSON.stringify(volatileOnly), false)
+  t('any structural change under a read-only stage fails',
+    run(inv(), (() => { const a = clone(inv()); ctr(a, TARGET).policy = 'no'; return a })(), 'route-impact').ok, false)
 
-  console.log('-- one mutation per PROTECTED field class')
-  const cases = [
-    ['container image identity', mutate(inv(), 'containers', 'twinai-worker', 'imageId', 'sha256:DEAD')],
-    ['container restart policy', mutate(inv(), 'containers', 'twinai-worker', 'policy', 'no')],
-    ['container status', mutate(inv(), 'containers', 'twinai-worker', 'status', 'exited')],
-    ['container health contract', mutate(inv(), 'containers', 'twinai-worker', 'health', 'unhealthy')],
-    ['container ports', mutate(inv(), 'containers', 'twinai-worker', 'ports', '0.0.0.0:9999->9999/tcp')],
-    ['container networks', mutate(inv(), 'containers', 'twinai-worker', 'networks', ['bridge', 'styliquenet'])],
-    ['container mounts', mutate(inv(), 'containers', 'stylique-os', 'mounts', [])],
-    ['container memory limit', mutate(inv(), 'containers', 'twinai-worker', 'memLimit', 1073741824)],
-    ['protected image identity', mutate(inv(), 'images', 'sha256:0200', 'tags', ['twinai-worker:tampered'])],
-    ['image classification', mutate(inv(), 'images', 'sha256:0200', 'class', 'stylique-os')],
-    ['volume ownership evidence', mutate(inv(), 'volumes', 'oo-data', 'evidence', 'mounted by nobody')],
-    ['volume mountpoint', mutate(inv(), 'volumes', 'oo-data', 'mountpoint', '/v/elsewhere')],
-    ['volume DATABASE marker', mutate(inv(), 'volumes', 'oo-data', 'dbFiles', 'PG_VERSION')],
-    ['volume classification', mutate(inv(), 'volumes', 'oo-data', 'class', 'proven-orphaned')],
-    ['network endpoints', mutate(inv(), 'networks', 'styliquenet', 'containers', ['stylique-caddy'])],
-    ['network driver', mutate(inv(), 'networks', 'styliquenet', 'driver', 'host')],
-  ]
-  for (const [label, after] of cases) {
-    t(`${label} is DETECTED`, structuralDelta(inv(), after).ok, false)
+  console.log('-- disable-restart: ONLY the policy field')
+  const dr = clone(inv()); ctr(dr, TARGET).policy = 'no'
+  t('POSITIVE: the exact allowed delta passes', run(inv(), dr, 'disable-restart').ok, true)
+  // THE HOLE THE AUDIT FOUND: record-wide authorisation waved these through.
+  for (const [label, f, v] of [
+    ['image identity', 'imageId', 'sha256:DEAD'], ['mounts', 'mounts', []],
+    ['networks', 'networks', ['styliquenet']], ['ports', 'ports', '0.0.0.0:9999->9999/tcp'],
+    ['memory limit', 'memLimit', 1073741824], ['labels', 'labels', 'x=1'],
+    ['status', 'status', 'exited'],
+  ]) {
+    const bad = clone(dr); ctr(bad, TARGET)[f] = v
+    t(`disable-restart cannot hide a ${label} change`, run(inv(), bad, 'disable-restart').ok, false)
   }
 
-  console.log('-- appearance and disappearance')
-  const removed = JSON.parse(JSON.stringify(inv())); removed.containers.pop()
-  t('an unauthorised removal is detected', structuralDelta(inv(), removed).ok, false)
-  t('…but an AUTHORISED removal passes', structuralDelta(inv(), removed, ['containers/stylique-os']).ok, true)
-  const added = JSON.parse(JSON.stringify(inv()))
-  added.volumes.push({ name: 'sneaky', driver: 'local', mountpoint: '/v/x', labels: '', dbFiles: '', class: 'proven-orphaned', evidence: 'e', sizeKb: 1 })
-  t('an unauthorised appearance is detected', structuralDelta(inv(), added).ok, false)
+  console.log('-- stop: ONLY the lifecycle fields')
+  const st = clone(inv()); const s2 = ctr(st, TARGET)
+  s2.status = 'exited'; s2.exitCode = 137; s2.health = 'none'
+  t('POSITIVE: the exact allowed delta passes', run(inv(), st, 'stop').ok, true)
+  for (const [label, f, v] of [['policy', 'policy', 'no'], ['image', 'imageId', 'sha256:DEAD'], ['mounts', 'mounts', []]]) {
+    const bad = clone(st); ctr(bad, TARGET)[f] = v
+    t(`stop cannot hide a ${label} change`, run(inv(), bad, 'stop').ok, false)
+  }
 
-  console.log('-- UNKNOWN fields fail closed')
-  const extra = JSON.parse(JSON.stringify(inv()))
-  extra.containers[0].capAdd = ['SYS_ADMIN']
-  t('a field with no declared policy blocks', structuralDelta(inv(), extra).ok, false)
-  t('…and names the field',
-    structuralDelta(inv(), extra).findings.some((f) => f.field === 'capAdd' && f.kind === 'unknown_field'), true)
-  t('an unknown field on the BEFORE side blocks too', structuralDelta(extra, inv()).ok, false)
+  console.log('-- remove-container: the container plus ITS endpoints only')
+  const rm = clone(inv())
+  rm.containers = rm.containers.filter((c) => c.name !== TARGET)
+  for (const n of rm.networks) n.containers = n.containers.filter((x) => x !== TARGET)
+  t('POSITIVE: removal plus its own endpoint departures passes', run(inv(), rm, 'remove-container').ok, true)
+  const rmBad = clone(rm)
+  rmBad.networks.find((n) => n.name === 'styliquenet').containers = []
+  t('cannot hide ANOTHER endpoint leaving the same network', run(inv(), rmBad, 'remove-container').ok, false)
+  const rmBad2 = clone(rm); rmBad2.volumes = rmBad2.volumes.filter((v) => v.name !== 'dead-vol')
+  t('cannot hide an unrelated resource removal', run(inv(), rmBad2, 'remove-container').ok, false)
+  const rmBad3 = clone(rm); ctr(rmBad3, 'twinai-worker').imageId = 'sha256:DEAD'
+  t('cannot hide a change to a surviving container', run(inv(), rmBad3, 'remove-container').ok, false)
 
-  console.log('-- NON-VACUITY: the comparator sees a real unauthorised change')
-  // Not a synthetic field flip: the exact shape of an unauthorised mutation —
-  // stylique-os stopped WITHOUT authorisation, while everything else holds.
-  const stoppedUnauthorised = mutate(inv(), 'containers', 'stylique-os', 'status', 'exited')
-  stoppedUnauthorised.containers.find((c) => c.name === 'stylique-os').policy = 'no'
-  const d = structuralDelta(inv(), stoppedUnauthorised)
-  t('an unauthorised policy change is caught', d.ok, false)
-  t('…and is attributed to the right record and field',
-    d.findings.some((f) => f.type === 'containers' && f.key === 'stylique-os' && f.field === 'policy'), true)
-  // …and the SAME change, authorised, passes. Without this the check above
-  // could be satisfied by a comparator that rejects everything.
-  t('CONTROL: the same change PASSES when authorised',
-    structuralDelta(inv(), stoppedUnauthorised, ['containers/stylique-os']).ok, true)
+  console.log('-- reclaim: derived byte-exactly from the approved plan')
+  const gone = clone(inv()); gone.containers = gone.containers.filter((c) => c.name !== TARGET)
+  for (const n of gone.networks) n.containers = n.containers.filter((x) => x !== TARGET)
+  const plan = { cmds: ['docker rmi sha256:sty1', 'docker volume rm dead-vol', 'docker builder prune --all --force'] }
+  const reclaimed = clone(gone)
+  reclaimed.images = reclaimed.images.filter((i) => i.id !== 'sha256:sty1')
+  reclaimed.volumes = reclaimed.volumes.filter((v) => v.name !== 'dead-vol')
+  t('POSITIVE: exactly the planned resources pass', run(gone, reclaimed, 'reclaim', plan).ok, true)
+  t('reclaim gets NO generic container exemption',
+    authorisationsForStage('reclaim', gone, plan).some((a) => a.type === 'containers'), false)
+  const unplanned = clone(reclaimed)
+  unplanned.volumes = unplanned.volumes.filter((v) => v.name !== 'oo-data')
+  t('deleting an UNPLANNED resource fails', run(gone, unplanned, 'reclaim', plan).ok, false)
+  t('a plan-less reclaim throws', (() => {
+    try { authorisationsForStage('reclaim', gone, null); return false } catch (e) { return e instanceof DeltaError }
+  })(), true)
 
-  console.log('-- malformed input refuses')
-  t('a missing array throws', (() => {
-    try { structuralDelta({ containers: [] }, inv()); return false } catch (e) { return e instanceof DeltaError }
+  console.log('-- an UNEXERCISED authorisation is a finding')
+  t('disable-restart that changed nothing fails', run(inv(), inv(), 'disable-restart').ok, false)
+  t('…and says the authorisation was never used',
+    run(inv(), inv(), 'disable-restart').findings.some((f) => f.kind === 'unused_authorisation'), true)
+
+  console.log('-- authorisation hygiene')
+  const A = (o) => validateAuthorisations([o]).length > 0
+  t('a wildcard key is rejected', A({ op: 'change', type: 'containers', key: '*', fields: ['policy'] }), true)
+  t('a wildcard field is rejected', A({ op: 'change', type: 'containers', key: 'x', fields: ['*'] }), true)
+  t('an unknown type is rejected', A({ op: 'change', type: 'secrets', key: 'x', fields: ['a'] }), true)
+  t('an unknown field is rejected', A({ op: 'change', type: 'containers', key: 'x', fields: ['nope'] }), true)
+  t('a VOLATILE field cannot be authorised', A({ op: 'change', type: 'containers', key: 'x', fields: ['restarts'] }), true)
+  t('an empty field list is rejected', A({ op: 'change', type: 'containers', key: 'x', fields: [] }), true)
+  t('duplicate authorisations are rejected', validateAuthorisations([
+    { op: 'remove', type: 'images', key: 'i' }, { op: 'remove', type: 'images', key: 'i' }]).length > 0, true)
+  t('CONTROL: a well-formed authorisation is accepted',
+    A({ op: 'change', type: 'containers', key: TARGET, fields: ['policy'] }), false)
+
+  console.log('-- inventory schema')
+  const badRoot = clone(inv()); badRoot.somethingNew = { a: 1 }
+  t('an unknown ROOT key fails', run(inv(), badRoot, 'route-impact').ok, false)
+  const dup = clone(inv()); dup.containers.push(clone(ctr(inv(), TARGET)))
+  t('a duplicate record key fails', run(inv(), dup, 'route-impact').ok, false)
+  const noKey = clone(inv()); delete ctr(noKey, TARGET).name
+  t('a missing record key fails', run(inv(), noKey, 'route-impact').ok, false)
+  const emptyKey = clone(inv()); ctr(emptyKey, TARGET).name = ''
+  t('an empty record key fails', run(inv(), emptyKey, 'route-impact').ok, false)
+  const notArr = clone(inv()); notArr.volumes = {}
+  t('a non-array record section fails', run(inv(), notArr, 'route-impact').ok, false)
+  const extraField = clone(inv()); ctr(extraField, 'twinai-worker').capAdd = ['SYS_ADMIN']
+  t('an unknown record FIELD fails', run(inv(), extraField, 'route-impact').ok, false)
+  t('CONTROL: known non-record root keys are fine', (() => {
+    const b = clone(inv()); const a = clone(inv())
+    b.report_sha256 = 'a'.repeat(64); a.report_sha256 = 'b'.repeat(64)
+    b.fs = { root: {} }; a.fs = { root: {} }
+    return run(b, a, 'route-impact').ok
   })(), true)
 
   if (failed) { console.error(`structural-delta selftest: ${failed} failed`); process.exit(1) }
@@ -277,12 +428,38 @@ const isEntry = process.argv[1] && import.meta.url === pathToFileURL(process.arg
 if (!isEntry) { /* imported for its exports */ }
 else if (process.argv.includes('--selftest')) await selftest()
 else {
-  const [, , beforeF, afterF, ...rest] = process.argv
-  if (!beforeF || !afterF) { console.error('usage: assert_structural_delta.mjs <before.json> <after.json> [type/key ...]'); process.exit(2) }
-  let d
+  const argv = process.argv.slice(2)
+  const flag = (n) => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : null }
+  const [beforeF, afterF] = argv.filter((x) => !x.startsWith('--') && argv[argv.indexOf(x) - 1] !== '--stage' && argv[argv.indexOf(x) - 1] !== '--plan')
+  const stage = flag('--stage')
+  const planF = flag('--plan')
+  if (!beforeF || !afterF || !stage) {
+    console.error('usage: assert_structural_delta.mjs <before.json> <after.json> --stage <stage> [--plan plan.json]')
+    process.exit(2)
+  }
+  // BOTH FILES ARE REQUIRED. The previous workflow step skipped itself when an
+  // inventory was missing — most dangerous exactly when a mutation ran and the
+  // after-collection failed. Missing evidence fails; it does not skip.
+  let before; let after; let plan = null
+  try { before = JSON.parse(readFileSync(beforeF, 'utf8')) }
+  catch (e) { console.error(`::error::before inventory ${beforeF} is missing or invalid: ${e.message}`); process.exit(1) }
+  try { after = JSON.parse(readFileSync(afterF, 'utf8')) }
+  catch (e) { console.error(`::error::after inventory ${afterF} is missing or invalid: ${e.message}`); process.exit(1) }
+  if (planF !== null) {
+    try { plan = JSON.parse(readFileSync(planF, 'utf8')) }
+    catch (e) { console.error(`::error::plan ${planF} is missing or invalid: ${e.message}`); process.exit(1) }
+  }
+  let auths; let d
   try {
-    d = structuralDelta(JSON.parse(readFileSync(beforeF, 'utf8')), JSON.parse(readFileSync(afterF, 'utf8')), rest)
+    auths = authorisationsForStage(stage, before, plan)
+    d = structuralDelta(before, after, auths)
   } catch (e) { console.error(`::error::structural delta could not be computed: ${e.message}`); process.exit(1) }
-  console.log(render(d))
+  console.log(render(d, {
+    stage,
+    candidateSha: process.env.GITHUB_SHA ?? '(unset)',
+    beforeInventorySha256: sha256(readFileSync(beforeF, 'utf8')),
+    planSha256: planF === null ? '(no plan)' : sha256(readFileSync(planF, 'utf8')),
+    authorisations: JSON.stringify(auths),
+  }))
   if (!d.ok) { console.error('::error::the host changed structurally in a way this stage did not authorise'); process.exit(1) }
 }
