@@ -103,6 +103,23 @@ const HEX64 = /^[0-9a-f]{64}$/
  * string, so `brandTruthSha256`, `campaignIntentSha256` and the snapshot/intent
  * IDs were decorative — a plan could pin a lineage that never existed and pass.
  * They are now compared to exact values the server holds.
+ *
+ * EVERY FIELD HERE MUST BE READ FROM A PERSISTED ROW, NEVER FROM MODEL OUTPUT.
+ * That is not a style note — it is the only thing that makes the comparisons
+ * mean anything. Validating a plan against a context the same model turn
+ * produced compares a claim to itself. Concretely, the caller populates:
+ *
+ *   brandTruthSnapshotId / brandTruthSha256
+ *       brand_truth_snapshots.id / .snapshot_sha256
+ *   campaignIntentId / campaignIntentSha256
+ *       campaign_intents.id / .intent_sha256
+ *   evidence[refId]        reference_evidence_sets.evidence  (the normalized set)
+ *   analysisSha256[refId]  reference_evidence_sets.analysis_sha256
+ *
+ * Note the last one especially: it is `analysis_sha256`, the digest of the
+ * UPSTREAM ANALYSIS BYTES — not `evidence_sha256`, which digests the normalized
+ * evidence this row stores. Migration 0095 enforces the same distinction in the
+ * database, and the two must not be conflated in either place.
  */
 export interface ValidationContext {
   brandTruth: BrandTruthSnapshotV1
@@ -343,6 +360,21 @@ export function validateCreativeTransferPlan(
     // holds, and the evidence set itself is re-validated so a fabricated set
     // cannot be smuggled in through the context either.
     validateNormalizedEvidence(ev)
+    // THE MAP KEY IS NOT PROOF OF WHAT THE RECORD IS.
+    //
+    // `ctx.evidence` is keyed by referenceId, and every check below trusted that
+    // key. Nothing compared it to the record's OWN `referenceId`, so evidence
+    // gathered for reference B, filed under key A, satisfied all of them: the
+    // analysis ids agree (the plan simply names B's analysis), the digest agrees
+    // (the server pinned B's), and the plan then cites B's evidence as if it were
+    // A's. The record must agree with the drawer it was filed in.
+    if (ev.referenceId !== r.referenceId) {
+      fail(
+        `the evidence supplied for reference ${r.referenceId} is labelled ${ev.referenceId}; `
+        + 'a reference cannot cite another reference\'s evidence',
+        'plan_evidence_reference_mismatch',
+      )
+    }
     if (ev.analysisId !== r.analysisId) {
       fail(
         `reference ${r.referenceId} names analysis ${r.analysisId} but the server issued evidence `

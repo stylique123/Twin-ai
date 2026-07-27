@@ -44,6 +44,16 @@ for _ in $(seq 1 30); do "$PGBIN/pg_isready" -q && break || sleep 0.3; done
 SHA_A="$(printf 'a%.0s' $(seq 1 64))"
 SHA_B="$(printf 'b%.0s' $(seq 1 64))"
 SHA_C="$(printf 'c%.0s' $(seq 1 64))"
+# The two evidence digests are DELIBERATELY DIFFERENT. `evidence_sha256` digests
+# the canonical normalized evidence; `analysis_sha256` digests the upstream
+# analysis bytes the plan pins as `analysisSha256`. The earlier fixture used one
+# value for both, so a trigger comparing the WRONG column still passed — the
+# test proved the fixture's coincidence, not the lineage. Keeping them distinct
+# is what makes the conflation control below able to fail.
+SHA_EV="$(printf 'e%.0s' $(seq 1 64))"   # normalized evidence bytes  (owner 1)
+SHA_AN="$(printf 'f%.0s' $(seq 1 64))"   # upstream analysis bytes    (owner 1)
+SHA_EV9="$(printf '1%.0s' $(seq 1 64))"  # normalized evidence bytes  (owner 9)
+SHA_AN9="$(printf '2%.0s' $(seq 1 64))"  # upstream analysis bytes    (owner 9)
 
 # Stand-ins for the objects 0095 references but does not create. The migration is
 # applied VERBATIM; only its external dependencies are faked, so nothing about the
@@ -82,11 +92,11 @@ values ('aaaaaaaa-0000-4000-8000-000000000001','11111111-1111-4111-8111-11111111
 insert into public.campaign_intents (id, owner_id, generation_id, intent, intent_sha256)
 values ('bbbbbbbb-0000-4000-8000-000000000001','11111111-1111-4111-8111-111111111111',
         '33333333-3333-4333-8333-333333333333','{"schemaVersion":1}'::jsonb,'$SHA_B');
-insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256)
-values ('11111111-1111-4111-8111-111111111111','ref-1','ana-1','{"schemaVersion":1}'::jsonb,'$SHA_A');
+insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256, analysis_sha256)
+values ('11111111-1111-4111-8111-111111111111','ref-1','ana-1','{"schemaVersion":1}'::jsonb,'$SHA_EV','$SHA_AN');
 -- A SECOND OWNER with their own evidence, so cross-owner reuse is testable.
-insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256)
-values ('99999999-9999-4999-8999-999999999999','ref-9','ana-9','{"schemaVersion":1}'::jsonb,'$SHA_B');
+insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256, analysis_sha256)
+values ('99999999-9999-4999-8999-999999999999','ref-9','ana-9','{"schemaVersion":1}'::jsonb,'$SHA_EV9','$SHA_AN9');
 SQL
 }
 
@@ -132,7 +142,7 @@ insert into public.creative_transfer_plans
   '$SHA_C','m','p')
 SQLP
 }
-INS_PLAN="$(mkplan ref-1 ana-1 "$SHA_A")"
+INS_PLAN="$(mkplan ref-1 ana-1 "$SHA_AN")"
 
 echo "== positive: a well-formed lineage inserts =="
 ok "$INS_PLAN" "plan with digests matching both pinned rows and owned evidence"
@@ -145,11 +155,29 @@ no "${INS_PLAN/33333333-3333-4333-8333-333333333333/44444444-4444-4444-8444-4444
 
 echo "== plan -> evidence lineage (service_role cannot bypass it) =="
 # Each of these varies exactly ONE field of the referenceSet.
-no "$(mkplan ref-1 ana-forged "$SHA_A")" "referenceSet names an analysis nobody owns"
-no "$(mkplan ref-1 ana-1 "$SHA_C")"      "referenceSet pins an evidence digest never issued"
-no "$(mkplan ref-forged ana-1 "$SHA_A")" "referenceSet names a reference id the evidence row does not carry"
+no "$(mkplan ref-1 ana-forged "$SHA_AN")" "referenceSet names an analysis nobody owns"
+no "$(mkplan ref-1 ana-1 "$SHA_C")"       "referenceSet pins an analysis digest never issued"
+no "$(mkplan ref-forged ana-1 "$SHA_AN")" "referenceSet names a reference id the evidence row does not carry"
 # CROSS-OWNER: another account's evidence must not satisfy this owner's plan.
-no "$(mkplan ref-9 ana-9 "$SHA_B")"      "referenceSet cites ANOTHER owner's evidence"
+no "$(mkplan ref-9 ana-9 "$SHA_AN9")"     "referenceSet cites ANOTHER owner's evidence"
+
+# ---- THE CONFLATION CONTROL ------------------------------------------------
+#
+# `analysisSha256` pins the UPSTREAM ANALYSIS bytes. This plan pins the row's
+# NORMALIZED-EVIDENCE digest instead — a real digest, on the right row, owned by
+# the right owner, for the right analysis. It is wrong only in WHICH artifact it
+# identifies.
+#
+# This is the case the previous fixture could not express: it used one value for
+# both columns, so a trigger comparing `evidence_sha256` passed identically to
+# one comparing `analysis_sha256`. With the two deliberately distinct, this line
+# fails if and only if the trigger reads the correct column.
+no "$(mkplan ref-1 ana-1 "$SHA_EV")"      "referenceSet pins the NORMALIZED-EVIDENCE digest where the ANALYSIS digest belongs"
+# …and the mirror: the analysis digest must not be accepted as the evidence one.
+ok "select 1 from public.reference_evidence_sets
+    where reference_id = 'ref-1' and evidence_sha256 = '$SHA_EV' and analysis_sha256 = '$SHA_AN'
+      and evidence_sha256 <> analysis_sha256" \
+   "CONTROL: the seeded row really does carry two DIFFERENT digests"
 # An absent referenceSet is refused rather than treated as nothing-to-check.
 no "insert into public.creative_transfer_plans
  (owner_id, generation_id, brand_truth_snapshot_id, brand_truth_sha256,
@@ -178,10 +206,18 @@ no "insert into public.brand_truth_snapshots (owner_id, snapshot, snapshot_sha25
     values ('11111111-1111-4111-8111-111111111111','[]'::jsonb,'$SHA_C')" "snapshot that is not an object"
 
 echo "== one normalized evidence set per analysis =="
-ok "insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256)
-    values ('11111111-1111-4111-8111-111111111111','ref-2','ana-2','{}'::jsonb,'$SHA_A')" "a set for a NEW analysis"
+ok "insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256, analysis_sha256)
+    values ('11111111-1111-4111-8111-111111111111','ref-2','ana-2','{}'::jsonb,'$SHA_A','$SHA_B')" "a set for a NEW analysis"
+no "insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256, analysis_sha256)
+    values ('11111111-1111-4111-8111-111111111111','ref-1','ana-1','{}'::jsonb,'$SHA_B','$SHA_C')" "second set for the SAME analysis (ana-1, seeded)"
+
+echo "== the analysis digest is a required, well-formed column =="
+# NOT NULL and the hex constraint are what stop `analysis_sha256` degrading into
+# an optional field that the lineage join then silently never matches.
 no "insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256)
-    values ('11111111-1111-4111-8111-111111111111','ref-1','ana-1','{}'::jsonb,'$SHA_B')" "second set for the SAME analysis (ana-1, seeded)"
+    values ('11111111-1111-4111-8111-111111111111','ref-3','ana-3','{}'::jsonb,'$SHA_A')" "evidence row with NO analysis_sha256"
+no "insert into public.reference_evidence_sets (owner_id, reference_id, analysis_id, evidence, evidence_sha256, analysis_sha256)
+    values ('11111111-1111-4111-8111-111111111111','ref-3','ana-3','{}'::jsonb,'$SHA_A','not-a-digest')" "evidence row with a malformed analysis_sha256"
 
 echo "== client role: read yes, write no =="
 # RLS is FORCEd, so even a table owner is subject to policy when acting as the

@@ -65,16 +65,52 @@ create table if not exists public.reference_evidence_sets (
   analysis_id       text not null,
   schema_version    int  not null default 1,
   evidence          jsonb not null,
+  -- TWO DIGESTS, TWO AUTHORITIES. They are not interchangeable and the contract
+  -- does not treat them as such:
+  --
+  --   evidence_sha256 — the digest of the CANONICAL NORMALIZED EVIDENCE stored
+  --     in `evidence`. It identifies what this row holds.
+  --   analysis_sha256 — the digest of the UPSTREAM ANALYSIS BYTES the evidence
+  --     was normalized FROM. It identifies where this row came from, and it is
+  --     what the contract's `plan.referenceSet[].analysisSha256` pins (§6).
+  --
+  -- Normalization is lossy and versioned, so one analysis can normalize to
+  -- different evidence bytes; the two digests therefore differ in general and
+  -- coincide only by accident. An earlier revision of this trigger compared the
+  -- plan's `analysisSha256` against `evidence_sha256`. That conflation would
+  -- accept a plan pinning an analysis digest nobody ever issued, and reject a
+  -- correct plan the moment the normalizer changed — the pin would describe the
+  -- wrong artifact in both directions.
   evidence_sha256   text not null,
+  analysis_sha256   text not null,
   created_at        timestamptz not null default now(),
   constraint reference_evidence_schema_version_v1 check (schema_version = 1),
   constraint reference_evidence_sha_hex check (evidence_sha256 ~ '^[0-9a-f]{64}$'),
+  constraint reference_evidence_analysis_sha_hex check (analysis_sha256 ~ '^[0-9a-f]{64}$'),
   constraint reference_evidence_is_object check (jsonb_typeof(evidence) = 'object'),
   -- §6: evidence ids are SERVER-ISSUED and derived from the analysis id, so an
   -- analysis has exactly one normalized set. A second row for the same analysis
   -- would make a cited id ambiguous.
   constraint reference_evidence_analysis_unique unique (owner_id, analysis_id)
 );
+
+-- `create table if not exists` does not add a column to a table an earlier run
+-- of this migration already created. There are no rows anywhere yet, so the
+-- NOT NULL is set unconditionally: if a row ever did exist this would fail
+-- loudly rather than leave the digest nullable, and a nullable analysis_sha256
+-- is exactly the "pin that describes nothing" this column exists to prevent.
+alter table public.reference_evidence_sets add column if not exists analysis_sha256 text;
+alter table public.reference_evidence_sets alter column analysis_sha256 set not null;
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'reference_evidence_analysis_sha_hex'
+      and conrelid = 'public.reference_evidence_sets'::regclass
+  ) then
+    alter table public.reference_evidence_sets
+      add constraint reference_evidence_analysis_sha_hex check (analysis_sha256 ~ '^[0-9a-f]{64}$');
+  end if;
+end $$;
 
 -- ------------------------------------------------------- creative transfer plan
 create table if not exists public.creative_transfer_plans (
@@ -185,7 +221,13 @@ begin
   --
   -- So the join is enforced HERE: every entry in the plan's referenceSet must
   -- correspond to a reference_evidence_sets row owned by the SAME owner, with a
-  -- matching analysis_id AND a matching evidence digest.
+  -- matching analysis_id AND a matching ANALYSIS digest.
+  --
+  -- `analysisSha256` is compared to `analysis_sha256`, NOT to `evidence_sha256`.
+  -- Those name different bytes (see the column comments above); comparing the
+  -- contract's analysis digest to the normalized-evidence digest would be a
+  -- check that passes only when the two happen to be equal, which is a property
+  -- of the fixture rather than of the lineage.
   if jsonb_typeof(new.plan -> 'referenceSet') is distinct from 'array' then
     raise exception 'transfer_plan_reference_set_missing: plan.referenceSet must be an array'
       using errcode = 'raise_exception';
@@ -197,7 +239,7 @@ begin
       where r.owner_id = new.owner_id
         and r.reference_id = e ->> 'referenceId'
         and r.analysis_id = e ->> 'analysisId'
-        and r.evidence_sha256 = e ->> 'analysisSha256'
+        and r.analysis_sha256 = e ->> 'analysisSha256'
     ) then
       raise exception
         'transfer_plan_evidence_lineage_missing: referenceSet entry (reference %, analysis %, digest %) '
