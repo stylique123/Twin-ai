@@ -357,12 +357,41 @@ jobs:
           printf '%s\n' "${OBS_SO_LOGS:-<no logs>}"
           echo "----- end -----"
 
+      # ---- Lane A1: full host resource inventory (READ-ONLY) -----------------
+      # The capacity inventory above answers "can this box render". This answers
+      # a different question — "what is ON this box, who owns it, and why is the
+      # disk 84% full" — which is the prerequisite for retiring anything safely.
+      #
+      # The collector is a reviewed file (scripts/vps/collect_resource_inventory.sh)
+      # piped over the SAME pinned-host-key SSH path, not an inline heredoc, so the
+      # exact bytes that run on the host are the exact bytes in the diff. It never
+      # reads container environment or secret files, and every value it does emit
+      # is redacted on the host before it leaves.
+      - name: Host resource inventory (read-only, classified)
+        if: always()
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts_vps"; chmod 600 "$HOME/.ssh/known_hosts_vps"
+          ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts_vps" \
+            root@"$VPS_HOST" bash -s < scripts/vps/collect_resource_inventory.sh > raw-inventory.tsv
+          echo "collected $(wc -l < raw-inventory.tsv) records"
+          node scripts/ci/build_resource_inventory.mjs raw-inventory.tsv vps-resource-inventory.json
+
       - name: Upload inventory report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vps-inventory
-          path: vps-inventory.json
+          path: |
+            vps-inventory.json
+            vps-resource-inventory.json
           if-no-files-found: error
 
       # GATE-0 ACCEPTANCE. The report stays informational for the sign-off, but a Gate-0
