@@ -51,7 +51,7 @@ import { pathToFileURL } from 'node:url'
 // workflow swallowed the non-zero exit so the step named "fail closed" reported
 // success. check_vps_retire_safety.mjs now proves this table and the workflow's
 // authorisation arms cannot drift apart again.
-export const STAGES = ['manifest', 'pre-stop-audit', 'route-impact', 'disable-restart', 'stop', 'remove-container', 'reclaim']
+export const STAGES = ['manifest', 'pre-stop-audit', 'route-impact', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim']
 /** Stages that plan NO commands. They are here to be known, not to act. */
 export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit', 'route-impact'])
 const TARGET = 'stylique-os'
@@ -237,6 +237,44 @@ export function plan(inv, stage) {
     }
   }
 
+  // ---- BUILD CACHE ONLY, AND DELIBERATELY OUT OF SEQUENCE -------------------
+  //
+  // The disk pressure this whole retirement exists to relieve is 84% used with
+  // 23 GiB free against a 30 GiB target. The single largest consumer is Docker
+  // BUILD CACHE — 68.3 GB, of which Docker itself reports 65.1 GB reclaimable
+  // and ZERO active. Reclaiming it alone clears the threshold.
+  //
+  // None of that has anything to do with stylique-os, its volumes, or the Caddy
+  // route still pointing at it. Those are a genuinely hard problem — the host
+  // and container Caddyfiles diverge and no route could be parsed — and leaving
+  // 60 GiB of provably-unused cache trapped behind that investigation is a
+  // sequencing accident, not a safety property.
+  //
+  // So this stage does exactly one thing and authorises NOTHING. `builder prune`
+  // reaches the build cache only: no image, volume, network or container record
+  // may change, and the structural comparator is given an empty authorisation
+  // set precisely so that any record that does move is a failure. The container
+  // being retired may still be present and running; this stage does not care and
+  // must never be made to.
+  //
+  // NOT `docker system prune`: that would also sweep the dangling images,
+  // stopped containers and unused networks this plan deliberately refuses to
+  // touch without classification.
+  if (stage === 'reclaim-build-cache') {
+    const bc = buildCacheReclaimable(inv)
+    if (!bc) throw new PlanError('refusing: docker system df reported no build-cache row, so there is no evidence of what would be reclaimed')
+    if (bc.active > 0) {
+      throw new PlanError(`refusing: ${bc.active} build-cache entries are ACTIVE — a running build depends on them`)
+    }
+    if (bc.entries === 0) throw new PlanError('refusing: the build cache is already empty — nothing to reclaim')
+    bare(['docker', 'builder', 'prune', '--all', '--force'])
+    notes.push(`build cache: ${bc.entries} entries, 0 active, ${bc.size} total, ${bc.reclaimable} reclaimable`)
+    notes.push('touches the build cache ONLY: no container, image, volume or network record may change')
+    notes.push(`${TARGET} is ${target ? `present (${target.status}) and is NOT acted on by this stage` : 'not present; irrelevant to this stage'}`)
+    notes.push('NOT REVERSIBLE, and does not need to be: build cache is regenerable by rebuilding. No application data is touched.')
+    return done()
+  }
+
   // The container must exist for the stages that ACT ON IT. `reclaim` is the
   // opposite case: it runs only once the container is already gone, and its own
   // guard below refuses if it is still there.
@@ -419,6 +457,43 @@ function selftest() {
   const activeCache = () => { const i = removed(); i.dockerDf[0].active = 12; return i }
   check('MUTATION: active build cache is not pruned', !plan(activeCache(), 'reclaim').cmds.some((c) => c.includes('builder prune')))
   check('control: with zero active it IS pruned', plan(removed(), 'reclaim').cmds.some((c) => c.includes('builder prune')))
+
+  // ---- BUILD-CACHE-ONLY STAGE ----------------------------------------------
+  console.log('-- reclaim-build-cache: one command, zero authorisations')
+  t('reclaim-build-cache is a known stage', () => plan(base(), 'reclaim-build-cache'), false)
+  const rbc = plan(base(), 'reclaim-build-cache')
+  check('it plans exactly ONE command', rbc.resources.length === 1)
+  check('…which is builder prune, never system prune',
+    rbc.cmds[0] === 'docker builder prune --all --force')
+  check('…typed `none`, so it authorises no inventory record at all',
+    rbc.resources[0].op === 'none' && rbc.resources[0].type === null && rbc.resources[0].key === null)
+  // THE POINT OF THE STAGE: it must not be blocked by the container it has
+  // nothing to do with. base() carries stylique-os; a running one must be fine.
+  check('it runs while stylique-os is still PRESENT', plan(base(), 'reclaim-build-cache').resources.length === 1)
+  t('…and while stylique-os is RUNNING', () => {
+    const i = base(); i.containers[1].status = 'running'; return plan(i, 'reclaim-build-cache')
+  }, false)
+  t('…and when stylique-os is already gone', () => plan(removed(), 'reclaim-build-cache'), false)
+  // MUTATION CONTROLS — each guard is load-bearing.
+  t('MUTATION: an ACTIVE build cache is refused', () => {
+    const i = base(); i.dockerDf[0].active = 12; return plan(i, 'reclaim-build-cache')
+  }, true)
+  t('MUTATION: an already-empty cache is refused (nothing to prove)', () => {
+    const i = base(); i.dockerDf[0].total = 0; return plan(i, 'reclaim-build-cache')
+  }, true)
+  t('MUTATION: no build-cache row at all is refused (no evidence)', () => {
+    const i = base(); i.dockerDf = []; return plan(i, 'reclaim-build-cache')
+  }, true)
+  t('MUTATION: it still enforces the twinai-worker precondition', () => {
+    const i = base(); i.containers = i.containers.filter((c) => c.name !== TWINAI)
+    return plan(i, 'reclaim-build-cache')
+  }, true)
+  t('MUTATION: it still enforces the rollback-image precondition', () => {
+    const i = base(); i.images = i.images.filter((x) => x.class !== 'twinai-rollback')
+    return plan(i, 'reclaim-build-cache')
+  }, true)
+  check('it names NO image, volume, network or container',
+    !rbc.resources.some((r) => r.type !== null))
 
   // ---- THE TYPED RESOURCE MANIFEST ----------------------------------------
   console.log('-- typed plan manifest: the command and the authorisation are one object')

@@ -62,7 +62,7 @@ const READ_ONLY_DOCKER = new Set([
 ])
 // `docker compose` subcommands that change state. Refused wherever they appear.
 const MUTATING_COMPOSE = ['up', 'down', 'start', 'stop', 'restart', 'rm', 'kill', 'create', 'run', 'exec', 'pull', 'build']
-const MUTATING_STAGES = ['disable-restart', 'stop', 'remove-container', 'reclaim']
+const MUTATING_STAGES = ['reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim']
 
 const strip = (s) => s.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
 
@@ -288,7 +288,7 @@ docker network inspect "$nid"`
           case "$STAGE" in
             manifest|observe|accept)
               echo "read-only stage" ;;
-            disable-restart|stop|remove-container|reclaim)
+            reclaim-build-cache|disable-restart|stop|remove-container|reclaim)
               if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then exit 1; fi ;;
           esac
       - name: Execute the plan on the host
@@ -331,7 +331,7 @@ docker network inspect "$nid"`
   t('moving a mutating stage into the read-only arm is rejected',
     evaluate({ ...good, retireWf: retireWf.replace('manifest|observe|accept)', 'manifest|observe|accept|reclaim)') }).ok, false)
   t('dropping a mutating stage from the gated arm is rejected',
-    evaluate({ ...good, retireWf: retireWf.replace('disable-restart|stop|remove-container|reclaim)', 'disable-restart|stop)') }).ok, false)
+    evaluate({ ...good, retireWf: retireWf.replace('reclaim-build-cache|disable-restart|stop|remove-container|reclaim)', 'disable-restart|stop)') }).ok, false)
   t('docker system prune in the workflow is rejected',
     evaluate({ ...good, retireWf: retireWf + '\n        run: docker system prune -af' }).ok, false)
   t('docker volume prune in the workflow is rejected',
@@ -378,7 +378,7 @@ docker network inspect "$nid"`
   )
   const planned = { ...good, retireWf: wfWithPlan }
   t('CONTROL: rule 7 is live on a workflow that has a plan step',
-    evaluate({ ...planned, planStages: ['manifest', 'observe-only-not-a-stage', 'disable-restart', 'stop', 'remove-container', 'reclaim'] }).ok, true)
+    evaluate({ ...planned, planStages: ['manifest', 'observe-only-not-a-stage', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim'] }).ok, true)
   // The EXACT drift that produced run 30290680691's swallowed refusal.
   t('a gate stage missing from the planner STAGES is REJECTED',
     evaluate({
@@ -390,10 +390,10 @@ docker network inspect "$nid"`
     evaluate({
       ...planned,
       retireWf: wfWithPlan.replace('manifest|observe|accept)', 'manifest|pre-stop-audit|observe|accept)'),
-      planStages: ['manifest', 'pre-stop-audit', 'disable-restart', 'stop', 'remove-container', 'reclaim'],
+      planStages: ['manifest', 'pre-stop-audit', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim'],
     }).ok, true)
   t('a stage the plan step SKIPS need not be in STAGES (observe/accept)',
-    evaluate({ ...planned, planStages: ['manifest', 'disable-restart', 'stop', 'remove-container', 'reclaim'] }).ok, true)
+    evaluate({ ...planned, planStages: ['manifest', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim'] }).ok, true)
   t('the REAL workflow and the REAL STAGES agree',
     evaluate({ collector, remoteScripts: Object.fromEntries(REMOTE_SCRIPTS.map((f) => [f, readFileSync(f, 'utf8')])), retireWf: readFileSync(RETIRE_WF, 'utf8') }).ok, true)
 
@@ -427,7 +427,7 @@ docker network inspect "$nid"`
       'CONFIRM_PHRASE=RETIRE-STYLIQUE-OS',
       'case "$STAGE" in',
       '  manifest|observe|accept) echo READONLY ;;',
-      '  disable-restart|stop|remove-container|reclaim)',
+      '  reclaim-build-cache|disable-restart|stop|remove-container|reclaim)',
       '    if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then echo REFUSED; exit 1; fi',
       '    echo AUTHORISED ;;',
       '  *) echo UNKNOWN; exit 1 ;;',

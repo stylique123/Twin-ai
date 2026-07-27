@@ -354,7 +354,12 @@ export function authorisationsForStage(stage, before, plan = null) {
     return []
   }
   if (stage === 'accept') return acceptAuthorisations(before)
-  if (!['disable-restart', 'stop', 'remove-container', 'reclaim'].includes(stage)) {
+  // `reclaim-build-cache` mutates the host but authorises NO inventory record.
+  // Its plan carries a single `none`-typed command, so the loop below produces
+  // an empty authorisation set — and that is the whole proof: every container,
+  // image, volume and network must be structurally identical afterwards, or the
+  // stage did more than prune a build cache.
+  if (!['reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim'].includes(stage)) {
     throw new DeltaError(`unknown stage ${JSON.stringify(stage)}`)
   }
   if (plan === null || !Array.isArray(plan.resources)) {
@@ -810,6 +815,31 @@ async function selftest() {
     try { authorisationsForStage('reclaim', gone(), { cmds: ['docker rmi sha256:bbbb'] }); return false }
     catch (e) { return e instanceof DeltaError }
   })(), true)
+
+  console.log('-- reclaim-build-cache: mutating, but authorises NOTHING')
+  const cachePlan = planned(inv(), 'reclaim-build-cache')
+  t('its plan carries exactly one command', cachePlan.resources.length, 1)
+  t('…and it authorises zero records',
+    authorisationsForStage('reclaim-build-cache', inv(), cachePlan).length, 0)
+  t('POSITIVE: an unchanged record set passes', run(inv(), inv(), 'reclaim-build-cache', cachePlan).ok, true)
+  t('…including alongside heavy dockerDf and disk movement', (() => {
+    const a = clone(inv())
+    a.dockerDf[0] = { type: 'Build Cache', total: 0, active: 0, size: '0B', sizeBytes: 0, reclaimable: '0B' }
+    a.fs.root.availKb = 90000000; a.fs.root.usedPct = 41
+    return run(inv(), a, 'reclaim-build-cache', cachePlan).ok
+  })(), true)
+  // A build-cache prune that touched ANY record is not a build-cache prune.
+  for (const [label, mutate] of [
+    ['an image vanished', (a) => { a.images = a.images.filter((i) => i.id !== 'sha256:dang') }],
+    ['a volume vanished', (a) => { a.volumes = a.volumes.filter((v) => v.name !== 'dead-vol') }],
+    ['a network vanished', (a) => { a.networks = a.networks.filter((n) => n.name !== 'deploy_default') }],
+    ['a container vanished', (a) => { a.containers = a.containers.filter((c) => c.name !== TARGET) }],
+    ['the worker image changed', (a) => { ctr(a, 'twinai-worker').imageId = 'sha256:DEAD' }],
+    ['the pinned model path moved', (a) => { a.twinai.model_path = '/opt/models/other' }],
+  ]) {
+    const a = clone(inv()); mutate(a)
+    t(`reclaim-build-cache cannot hide that ${label}`, run(inv(), a, 'reclaim-build-cache', cachePlan).ok, false)
+  }
 
   console.log('-- accept: cumulative, re-derived from the baseline')
   const acceptAuths = authorisationsForStage('accept', inv(), null)
