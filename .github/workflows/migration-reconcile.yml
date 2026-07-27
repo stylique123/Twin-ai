@@ -1,0 +1,84 @@
+# Migration-ledger reconciliation for 0090-0093.
+#
+# Migrations 0090-0093 are APPLIED to staging but only 0090 is recorded in
+# supabase_migrations.schema_migrations, because the staging-integration workflow
+# applies them with `psql -f` rather than the migration tool. The ledger
+# under-reports reality.
+#
+# This workflow PROVES staging's schema already matches the committed migrations
+# exactly — object by object, including ADDITIVE drift — and only then repairs
+# the ledger ROWS. It never applies a migration to staging.
+#
+# REPORT-ONLY BY DEFAULT. The mutating path requires the `repair_ledger` input to
+# be set to true explicitly, on a manual dispatch. There is no schedule and no
+# push trigger: nothing here runs itself.
+name: migration-reconcile (0090-0093)
+
+on:
+  workflow_dispatch:
+    inputs:
+      repair_ledger:
+        description: 'Write the missing ledger rows. Leave false for a report-only run. Only takes effect if the schema comparison is an EXACT match.'
+        type: boolean
+        default: false
+        required: false
+
+# Read-only for the repo. The only write this workflow can perform is the ledger
+# repair against the staging database, gated on the input above.
+permissions:
+  contents: read
+
+concurrency:
+  group: migration-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - name: Install PostgreSQL (client + server for the disposable expected DB)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql postgresql-contrib
+
+      - name: Install the Supabase CLI (the repair uses the official tool)
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      # Runs the hostile suite BEFORE going anywhere near staging. If the guard
+      # cannot prove itself locally, its verdict about staging is worthless.
+      - name: Self-test — expected-state build + hostile suite + mutation controls
+        run: bash scripts/db-tests/migration-reconcile/run.sh
+
+      - name: Verify staging (READ ONLY) — and repair the ledger only on an exact match
+        env:
+          STAGING_DB_URL: ${{ secrets.STAGING_DB_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${STAGING_DB_URL:-}" ]; then
+            echo "::error::STAGING_DB_URL secret is not set — cannot read the staging schema."
+            exit 1
+          fi
+          # STAGING ONLY. Production (jmdecibuytznsonrasxw) is never referenced.
+          # lib/ledger_state.sh re-checks this before the one mutating step; this
+          # is the outer belt to the inner braces.
+          case "$STAGING_DB_URL" in
+            *jmdecibuytznsonrasxw*)
+              echo "::error::STAGING_DB_URL points at the PRODUCTION project ref — refusing."; exit 1 ;;
+            *otgzjsagybpgtwweuptj*) : ;;
+            *) echo "::error::STAGING_DB_URL does not point at the staging project ref — refusing."; exit 1 ;;
+          esac
+          if [ "${{ inputs.repair_ledger }}" = "true" ]; then
+            echo "::notice::repair_ledger=true — the ledger WILL be written if (and only if) the schemas match exactly."
+            bash scripts/db-tests/migration-reconcile/run.sh --verify --repair-ledger --skip-hostile
+          else
+            echo "::notice::report-only run (repair_ledger=false). Nothing will be written."
+            bash scripts/db-tests/migration-reconcile/run.sh --verify --skip-hostile
+          fi

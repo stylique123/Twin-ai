@@ -249,6 +249,13 @@ jobs:
         run: bash scripts/db-tests/gate-d/run.sh
       - name: Gate-E (Decision v2 DB guard + hostile matrix)
         run: bash scripts/db-tests/gate-e/run.sh
+      # The migration-reconcile guard's LOCAL half: build the expected state for
+      # 0090-0093 in a disposable database and run the full hostile suite (24
+      # divergences + positive control + 3 mutation controls). No secrets, no
+      # network, staging never touched. The staging comparison and the ledger
+      # repair live in .github/workflows/migration-reconcile.yml.
+      - name: migration-reconcile (expected-state build + hostile suite + mutation controls)
+        run: bash scripts/db-tests/migration-reconcile/run.sh
 
   # Phase-7 Gate 0 MANDATORY real-token evidence: run the provider countTokens on
   # the EXACT maximum-legal Director envelope and FAIL CLOSED if GEMINI_API_KEY is
