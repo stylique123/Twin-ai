@@ -102,8 +102,25 @@ const pinned = (): boolean => {
 interface Rendered {
   plan: EditPlanV1
   out: string
+  /** argv as executed, including this run's own temp paths. */
   argv: string[]
-  graphSha: string
+  /**
+   * The graph SHA and argv with the ASSET PATHS HELD FIXED.
+   *
+   * The executed graph necessarily names this run's temp files, so its SHA
+   * differs between two runs of the SAME plan for a reason that has nothing to do
+   * with determinism. Comparing the executed SHA was a test defect, not a finding:
+   * it fails on any correct renderer. Determinism is about the plan-to-graph
+   * mapping, so the comparison holds the paths constant and varies only the plan.
+   */
+  canonicalGraphSha: string
+  canonicalArgv: string[]
+}
+
+const CANON_ASSETS = {
+  sourcePath: '/var/tmp/media/source.mp4',
+  assPath: '/var/tmp/media/captions.ass',
+  outputPath: '/var/tmp/media/out.mp4',
 }
 
 /** Read the fixture's binary clock from an output frame -> SOURCE time in ms. */
@@ -148,7 +165,19 @@ function renderOnce(
   })
   const argv = buildFfmpegArgs(graph)
   execFileSync('ffmpeg', argv, { stdio: ['ignore', 'ignore', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
-  return { plan, out, argv, graphSha: ffmpegGraphSha256(graph) }
+
+  // The same plan, built against FIXED asset paths — the determinism comparison.
+  const canonGraph = buildFfmpegGraph(plan, {
+    sourcePath: CANON_ASSETS.sourcePath,
+    assPath: assPath === null ? null : CANON_ASSETS.assPath,
+    fontsDir: null,
+    outputPath: CANON_ASSETS.outputPath,
+  })
+  return {
+    plan, out, argv,
+    canonicalGraphSha: ffmpegGraphSha256(canonGraph),
+    canonicalArgv: buildFfmpegArgs(canonGraph),
+  }
 }
 
 // Renders are the expensive part (a 40 s 1080x1920 encode each), so a render is
@@ -372,9 +401,13 @@ describe.runIf(pinned())('real renders from both fixtures', () => {
     const a = base(kind)
     const b = render(fixtures[kind], `det-${kind}`)
     expect(canonicalEditPlan(b.plan)).toEqual(canonicalEditPlan(a.plan))
-    expect(b.graphSha).toEqual(a.graphSha)
-    // argv differs only by the output path, which is per-run by construction.
-    expect(b.argv.slice(0, -1)).toEqual(a.argv.slice(0, -1))
+    // Paths held fixed, so the only thing that could differ is the plan-to-graph
+    // mapping — which is what determinism actually claims.
+    expect(b.canonicalGraphSha).toEqual(a.canonicalGraphSha)
+    expect(b.canonicalArgv).toEqual(a.canonicalArgv)
+    // CONTROL: the comparison is not vacuous. The EXECUTED argv did differ, by
+    // the per-run temp paths, so an equality that ignored the plan would fail.
+    expect(b.argv).not.toEqual(a.argv)
     // Decoded, not container bytes: mp4 headers carry timestamps and are expected
     // to differ, so comparing file hashes would fail for a reason that has nothing
     // to do with the render.

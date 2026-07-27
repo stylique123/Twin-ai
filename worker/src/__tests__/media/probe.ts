@@ -1,10 +1,35 @@
 // Decoding helpers. Everything the harness asserts comes from here: ffprobe JSON,
 // decoded RGB frames, and decoded PCM. Nothing in the harness may assert from argv
 // or from a container header.
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+
+/**
+ * Run ffmpeg and return its DIAGNOSTIC OUTPUT.
+ *
+ * ffmpeg writes `-stats`, `ebur128` and every other progress/measurement line to
+ * STDERR, never stdout. `execFileSync` returns STDOUT. The first version of this
+ * file conflated the two, so `fullDecodeFrameCount` always returned 0 and
+ * `measureLufs` always returned NaN — and because both degraded to a value
+ * instead of an error, the mistake looked like a render defect rather than a
+ * probe defect when it finally ran on the pin.
+ *
+ * Two rules, and this helper exists to enforce both in one place:
+ *   * read STDERR;
+ *   * a probe that cannot parse what it needs THROWS. A probe that returns 0 or
+ *     NaN on failure is indistinguishable from a real measurement of zero.
+ */
+function ffmpegStderr(args: string[]): string {
+  const r = spawnSync('ffmpeg', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 })
+  if (r.error) throw new Error(`ffmpeg could not be executed: ${r.error.message}`)
+  const err = r.stderr ?? ''
+  if (err.trim() === '') {
+    throw new Error(`ffmpeg produced no diagnostic output for: ffmpeg ${args.join(' ')}`)
+  }
+  return err
+}
 
 export function ffprobeJson(path: string): Record<string, unknown> {
   const out = execFileSync('ffprobe', [
@@ -20,12 +45,16 @@ export function ffprobeJson(path: string): Record<string, unknown> {
  * rather than passing a header-only check.
  */
 export function fullDecodeFrameCount(path: string): number {
-  const err = execFileSync('ffmpeg', [
+  const err = ffmpegStderr([
     '-hide_banner', '-nostdin', '-v', 'error', '-stats',
     '-i', path, '-f', 'null', '-',
-  ], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
-  const m = [...String(err).matchAll(/frame=\s*(\d+)/g)].pop()
-  return m ? Number(m[1]) : 0
+  ])
+  const m = [...err.matchAll(/frame=\s*(\d+)/g)].pop()
+  // No `frame=` line means the decode did not report progress, which is NOT the
+  // same as decoding zero frames. Returning 0 here would report a probe failure
+  // as a render failure.
+  if (!m) throw new Error(`could not read a frame count from ffmpeg's stats output:\n${err.slice(-2000)}`)
+  return Number(m[1])
 }
 
 /** One decoded frame at an exact output time, as raw RGB24 bytes. */
@@ -130,12 +159,17 @@ export function decodePcm(path: string): Int16Array {
 
 /** Integrated loudness (LUFS) measured by ffmpeg's own ebur128. */
 export function measureLufs(path: string): number {
-  const err = execFileSync('ffmpeg', [
+  const err = ffmpegStderr([
     '-hide_banner', '-nostdin', '-i', path,
     '-af', 'ebur128=framelog=verbose', '-f', 'null', '-',
-  ], { encoding: 'utf8', stdio: ['ignore', 'ignore', 'pipe'], maxBuffer: 64 * 1024 * 1024 })
-  const m = /I:\s*(-?[\d.]+)\s*LUFS/g
-  const hits = [...String(err).matchAll(m)]
-  if (hits.length === 0) return NaN
-  return Number(hits[hits.length - 1][1])
+  ])
+  const hits = [...err.matchAll(/I:\s*(-?[\d.]+)\s*LUFS/g)]
+  // NaN would propagate into `Math.abs(lufs - target)` and read as an
+  // out-of-tolerance measurement rather than as "nothing was measured".
+  if (hits.length === 0) {
+    throw new Error(`ebur128 reported no integrated loudness for ${path}:\n${err.slice(-2000)}`)
+  }
+  const v = Number(hits[hits.length - 1][1])
+  if (!Number.isFinite(v)) throw new Error(`ebur128 integrated loudness is not finite: ${hits[hits.length - 1][1]}`)
+  return v
 }
