@@ -1,0 +1,224 @@
+# Staged, gated retirement of the stylique-os container and its host-local
+# resources. Separate from vps-diag.yml on purpose: that workflow is the
+# fail-closed SIGN-OFF authority and must keep taking no caller inputs
+# (scripts/ci/check_vps_diag_authority.mjs enforces that). This one is the
+# opposite kind of thing — it takes inputs, and its mutating stages are gated
+# behind them.
+#
+# EVERY RUN RE-DERIVES THE PLAN FROM THE LIVE HOST. Nothing here contains a
+# hand-written list of things to delete. scripts/ci/plan_retirement.mjs reads a
+# freshly collected, freshly classified inventory and emits the exact commands;
+# a resource classed anything other than `stylique-os` or `proven-orphaned`
+# cannot enter the plan, and an attempt to include one aborts the run rather
+# than producing a quietly smaller plan.
+#
+# REPORT-ONLY BY DEFAULT: `stage: manifest` reads and records, and writes
+# nothing to the host. Mutating stages additionally require `confirm` to equal
+# the exact phrase below. Both conditions, not either.
+name: VPS retire stylique-os (staged, gated)
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Which stage to run. They are ordered; run them one at a time and read the output between.'
+        type: choice
+        default: manifest
+        options:
+          - manifest          # A3 — record + back up. No host mutation.
+          - disable-restart   # A4.2 — stop the crash loop. Reversible.
+          - stop              # A4.3 — stop the container. Reversible.
+          - observe           # A4.4 — TwinAI health after the stop. Read-only.
+          - remove-container  # A4.5 — remove the stopped container.
+          - reclaim           # A4.6/8/10 — images, networks, volumes, build cache, logs.
+          - accept            # A5 — re-inventory and assert the acceptance gate.
+      confirm:
+        description: 'Type RETIRE-STYLIQUE-OS to authorise a mutating stage. Read-only stages ignore it.'
+        default: ''
+      baseline_run_id:
+        description: 'accept stage only: the run id whose vps-retire-evidence artifact holds the BEFORE inventory.'
+        default: ''
+
+permissions:
+  contents: read
+  actions: read       # accept stage downloads the baseline artifact
+
+concurrency:
+  group: vps-retire
+  cancel-in-progress: false
+
+env:
+  VPS_HOST: 138.201.119.239
+  CONFIRM_PHRASE: RETIRE-STYLIQUE-OS
+
+jobs:
+  retire:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # The gate, before anything touches the host. `manifest` and `observe`
+      # read only, so they run without the phrase; everything else needs it.
+      # INPUTS REACH SHELL ONLY THROUGH env. Writing `'${{ inputs.confirm }}'`
+      # SUBSTITUTES THE VALUE INTO THE SCRIPT TEXT before bash parses it, so a
+      # confirm containing a single quote closes the literal and everything after
+      # it is executed as script — and it would run BEFORE this gate decides
+      # anything, which is the worst possible place for it. Through `env` the value
+      # is data to the process and is never parsed as code. Every use is quoted.
+      - name: Authorisation gate
+        env:
+          STAGE: ${{ inputs.stage }}
+          CONFIRM_INPUT: ${{ inputs.confirm }}
+        run: |
+          set -euo pipefail
+          case "$STAGE" in
+            manifest|observe|accept)
+              echo "read-only stage '$STAGE' — no confirmation required" ;;
+            disable-restart|stop|remove-container|reclaim)
+              if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then
+                echo "::error::stage '$STAGE' mutates the host and requires confirm=$CONFIRM_PHRASE"
+                exit 1
+              fi
+              echo "mutating stage '$STAGE' authorised" ;;
+            *) echo "::error::unknown stage '$STAGE'"; exit 1 ;;
+          esac
+
+      - name: SSH key material (pinned host key)
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VPS_SSH_KEY:-}" ]; then echo "::error::VPS_SSH_KEY not set"; exit 1; fi
+          if [ -z "${VPS_KNOWN_HOSTS:-}" ]; then
+            echo "::error::VPS_KNOWN_HOSTS not set — refusing to SSH without a pinned host key (MITM risk)."
+            exit 1
+          fi
+          mkdir -p ~/.ssh; chmod 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/id_ed25519; chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts_vps; chmod 600 ~/.ssh/known_hosts_vps
+
+      # A fresh look every single time. A plan built from a stale inventory is
+      # exactly the failure this design exists to prevent.
+      - name: Collect + classify the CURRENT host state
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/collect_resource_inventory.sh > raw-before.tsv
+          node scripts/ci/build_resource_inventory.mjs raw-before.tsv inventory-before.json | tee report-before.txt
+
+      - name: Build the retirement plan for this stage (fail closed)
+        if: inputs.stage != 'observe' && inputs.stage != 'accept'
+        env:
+          STAGE: ${{ inputs.stage }}
+        run: node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt
+
+      # ---- A3: rollback record + host-local persistent-data backup -----------
+      - name: Record the rollback manifest and back up host-local data
+        if: inputs.stage == 'manifest'
+        run: |
+          set -euo pipefail
+          jq '.record' plan.json > rollback-manifest.json
+          sha256sum rollback-manifest.json | tee rollback-manifest.sha256
+          # Back up ONLY the volumes this run would later delete. Read straight
+          # from the host mountpoint — no `docker run`, so no image is pulled and
+          # nothing is created on the host.
+          jq -r '.backups[]? | "\(.volume)\t\(.mountpoint)"' plan.json > backups.tsv
+          : > backup-hashes.txt
+          while IFS=$'\t' read -r vol mp; do
+            [ -n "${vol:-}" ] || continue
+            echo "backing up volume $vol from $mp"
+            ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+              root@"$VPS_HOST" "tar czf - -C '$mp' ." > "backup-$vol.tar.gz"
+            sha256sum "backup-$vol.tar.gz" >> backup-hashes.txt
+          done < backups.tsv
+          if [ ! -s backups.tsv ]; then
+            echo "no stylique-os-exclusive volumes exist — nothing to back up (shared volumes are listed in the plan notes and are NOT deleted)"
+          fi
+          cat backup-hashes.txt || true
+
+      # ---- A4: execute the derived plan --------------------------------------
+      # The commands come from plan.json, generated above. They are not written
+      # in this file, so a reviewer checks the generator's rules once rather than
+      # re-reading a command list that could drift from them.
+      - name: Execute the plan on the host
+        if: inputs.stage == 'disable-restart' || inputs.stage == 'stop' || inputs.stage == 'remove-container' || inputs.stage == 'reclaim'
+        run: |
+          set -euo pipefail
+          jq -r '.cmds[]' plan.json > exec.sh
+          echo "---- commands to be executed ----"; cat exec.sh; echo "---------------------------------"
+          if [ ! -s exec.sh ]; then echo "plan is empty — nothing to do"; exit 0; fi
+          # `set -e` on the remote: the first failure stops the rest, so a partial
+          # plan cannot run on past an error it should have halted at.
+          { echo 'set -euo pipefail'; cat exec.sh; } | ssh -i ~/.ssh/id_ed25519 \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s
+
+      # ---- A4.4: TwinAI must be provably unaffected ---------------------------
+      - name: Observe TwinAI health
+        if: always() && inputs.stage != 'manifest'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s > health.txt <<'PROBE'
+          set -uo pipefail
+          C=twinai-worker
+          echo "status        : $(docker inspect "$C" --format '{{.State.Status}}' 2>/dev/null)"
+          echo "health        : $(docker inspect "$C" --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' 2>/dev/null)"
+          echo "restarts      : $(docker inspect "$C" --format '{{.RestartCount}}' 2>/dev/null)"
+          echo "registry      : $(docker logs "$C" 2>&1 | grep '"msg":"worker up"' | tail -1 | sed -n 's/.*"types":\[\([^]]*\)\].*/\1/p')"
+          echo "ffprobe       : $(docker exec "$C" ffprobe -hide_banner -version >/dev/null 2>&1 && echo ok || echo FAILED)"
+          echo "model present : $(docker exec "$C" sh -c 'test -d "$EDITOR_SPEECH_MODEL_PATH" && echo yes || echo NO' 2>/dev/null)"
+          echo "storage reach : $(docker exec "$C" sh -c 'command -v node >/dev/null && echo node-ok || echo no-node' 2>/dev/null)"
+          echo "recent errors : $(docker logs --tail 200 "$C" 2>&1 | grep -ci '"level":"error"' || echo 0)"
+          PROBE
+          cat health.txt
+          grep -q 'status        : running' health.txt || { echo "::error::twinai-worker is NOT running after this stage"; exit 1; }
+          grep -q 'ffprobe       : ok' health.txt || { echo "::error::ffprobe is no longer usable inside twinai-worker"; exit 1; }
+          grep -q 'model present : yes' health.txt || { echo "::error::the pinned ASR model directory is gone"; exit 1; }
+
+      - name: Re-collect the host state AFTER this stage
+        if: always() && inputs.stage != 'manifest'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/collect_resource_inventory.sh > raw-after.tsv
+          node scripts/ci/build_resource_inventory.mjs raw-after.tsv inventory-after.json | tee report-after.txt
+
+      # ---- A5: the acceptance gate -------------------------------------------
+      - name: Download the BEFORE baseline
+        if: inputs.stage == 'accept'
+        uses: actions/download-artifact@v4
+        with:
+          name: vps-retire-evidence
+          run-id: ${{ inputs.baseline_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: baseline
+
+      - name: Acceptance gate (fixed thresholds, fail closed)
+        if: inputs.stage == 'accept'
+        run: node scripts/ci/assert_vps_acceptance.mjs baseline/inventory-before.json inventory-after.json
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vps-retire-evidence
+          path: |
+            inventory-before.json
+            inventory-after.json
+            report-before.txt
+            report-after.txt
+            plan.json
+            plan.txt
+            health.txt
+            rollback-manifest.json
+            rollback-manifest.sha256
+            backup-hashes.txt
+            backup-*.tar.gz
+          if-no-files-found: warn
