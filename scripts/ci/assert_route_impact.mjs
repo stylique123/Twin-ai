@@ -170,6 +170,12 @@ export function decide(a) {
     if (c.verdict === 'undetermined') blockers.push(`route ${c.server}#${c.routeIndex}: ${c.reason}`)
     if (c.verdict === 'would-orphan') blockers.push(`route ${c.server}#${c.routeIndex}: ${c.reason}`)
   }
+  // An unproven durable location blocks the whole patch. A remedy that cannot
+  // be made durable would be reverted by the next container restart, silently
+  // restoring a route to a stopped container.
+  const dres = durableResolution(a)
+  if (!dres.ok) blockers.push(`durable edit location unproven: ${dres.reason}`)
+
   if (blockers.length === 0 && impacted.length === 0) {
     blockers.push('no route reaches the target, yet the pre-stop audit said one does — the two probes disagree and that must be resolved before either is trusted')
   }
@@ -179,6 +185,11 @@ export function decide(a) {
     diskConfigPath: a.caddyDiskConfigPath ?? null,
     diskConfigSha256: a.caddyDiskConfigSha256 ?? null,
     diskIsBootSource: a.caddyDiskConfigIsBootSource ?? null,
+    mountRoot: a.caddyBootMountRoot ?? null,
+    mountDest: a.caddyBootMountDest ?? null,
+    mountType: a.caddyBootMountType ?? null,
+    hostBootFile: dres.hostFile,
+    hostBootFileSha256: a.caddyBootFileSha256 ?? null,
     classified, impacted,
     patch: blockers.length === 0 ? candidatePatch(a, impacted, classified.filter(Boolean)) : null,
     patchable: blockers.length === 0,
@@ -322,28 +333,83 @@ export function candidatePatch(a, impacted, allClassified) {
 const adminBase = (a) => a.caddyAdminEndpoint ?? 'http://localhost:2019/config/'
 
 /**
- * Where a durable edit would actually be written — or a refusal.
+ * Resolve — and PROVE — where a durable edit would actually be written.
  *
- * A container path is not an edit location. `/etc/caddy/Caddyfile` is durable
- * only if it comes from a WRITABLE bind mount whose host source we can name. If
- * it is baked into the image, or on a read-only mount, editing "the Caddyfile"
- * is not a thing anyone can do, and saying so would send a reviewer to a file
- * that either does not persist or cannot be written.
+ * A container path is not an edit location, and neither is a MOUNT ROOT. If
+ * /etc/caddy is bind-mounted from /root/caddy and the boot file is
+ * /etc/caddy/Caddyfile, the file to edit is /root/caddy/Caddyfile. An earlier
+ * revision emitted the mount Source, so a directory mount sent a reviewer to a
+ * DIRECTORY. Its positive test hid this by using an exact-file mount, where
+ * Source happens to already end in Caddyfile.
+ *
+ * The mapping is not trusted on its shape. The host file's own sha256 must equal
+ * the sha256 read from inside the container: if the two disagree, the mapping
+ * resolved to a DIFFERENT FILE and every instruction built on it is aimed at the
+ * wrong place. That single comparison catches a wrong mount, a stale path and a
+ * symlink surprise at once.
  */
-export function durableEditFor(a, what) {
+export function durableResolution(a) {
+  const fail = (reason) => ({ ok: false, reason, hostFile: null })
   if (a.caddyDiskConfigIsBootSource !== true || typeof a.caddyDiskConfigPath !== 'string') {
-    return 'REFUSED: the loaded configuration is not booted from a file on disk; no durable edit location exists'
+    return fail('the loaded configuration is not booted from a file on disk; no durable edit location exists')
   }
-  if (typeof a.caddyBootMountSource !== 'string' || a.caddyBootMountSource.length === 0) {
-    return `REFUSED: ${a.caddyDiskConfigPath} is not backed by a nameable host mount `
-      + '(baked into the image, or an unresolved volume) — a durable edit target cannot be named'
+  const host = a.caddyBootFileHostPath
+  if (typeof host !== 'string' || host.length === 0) {
+    return fail(`${a.caddyDiskConfigPath} could not be mapped through any container mount `
+      + '(baked into the image, or an unresolved mapping) — no durable edit target exists')
   }
-  if (a.caddyBootMountWritable !== true) {
-    return `REFUSED: ${a.caddyBootMountSource} is mounted read-only; a durable edit cannot be written there`
+  if (!host.startsWith('/')) {
+    return fail(`the resolved boot file ${JSON.stringify(host)} is not an absolute host path`)
   }
-  const compose = typeof a.caddyComposeFile === 'string' && a.caddyComposeFile.length > 0
-    ? ` (compose source: ${a.caddyComposeFile})` : ''
-  return `on the HOST at ${a.caddyBootMountSource} (mounted ${a.caddyDiskConfigPath}${compose}): ${what}`
+  // Naming a directory as "the file to edit" is the defect this exists to stop.
+  if (typeof a.caddyBootMountRoot === 'string' && host === a.caddyBootMountRoot
+      && typeof a.caddyBootMountDest === 'string' && a.caddyBootMountDest !== a.caddyDiskConfigPath) {
+    return fail(`the resolution collapsed to the mount root ${host}, which is a directory, not the boot file`)
+  }
+  if (a.caddyBootFileIsRegular !== true) return fail(`${host} is not a regular file on the host`)
+  if (a.caddyBootFileReadable !== true) return fail(`${host} is not readable on the host`)
+  if (a.caddyBootFileWritable !== true) return fail(`${host} is not writable; a durable edit cannot be written there`)
+  if (typeof a.caddyBootFileSha256 !== 'string' || !HEX64.test(a.caddyBootFileSha256)) {
+    return fail(`${host} has no usable sha256, so the mapping cannot be proven`)
+  }
+  if (typeof a.caddyDiskConfigSha256 !== 'string' || !HEX64.test(a.caddyDiskConfigSha256)) {
+    return fail('the container-read config sha256 is missing or malformed, so the mapping cannot be proven')
+  }
+  if (a.caddyBootFileSha256 !== a.caddyDiskConfigSha256) {
+    return fail(`${host} hashes ${a.caddyBootFileSha256} but the container reads `
+      + `${a.caddyDiskConfigSha256} at ${a.caddyDiskConfigPath} — the mapping resolved to a DIFFERENT file`)
+  }
+  return { ok: true, reason: null, hostFile: host, mountType: a.caddyBootMountType ?? null }
+}
+
+/**
+ * Compose provenance, only when it is actually actionable.
+ *
+ * `com.docker.compose.project.config_files` is frequently RELATIVE to the
+ * project working dir. Printing it as though it were a path sends people to a
+ * file that does not exist from where they are standing, so an unresolved label
+ * is reported as informational and never as a source path.
+ */
+export function composeProvenance(a) {
+  const r = a.caddyComposeFileResolved
+  if (typeof r === 'string' && r.startsWith('/')) return { resolved: r, informational: null }
+  const label = a.caddyComposeFileLabel
+  if (typeof label === 'string' && label.length > 0) {
+    return { resolved: null, informational: `compose label ${JSON.stringify(label)} (UNRESOLVED — relative to an unknown working dir; not an edit path)` }
+  }
+  return { resolved: null, informational: null }
+}
+
+export function durableEditFor(a, what) {
+  const d = durableResolution(a)
+  if (!d.ok) return `REFUSED: ${d.reason}`
+  const c = composeProvenance(a)
+  // ONLY the resolved FILE is ever named. Never the mount directory.
+  const suffix = c.resolved ? ` (compose source: ${c.resolved})`
+    : (c.informational ? ` (${c.informational})` : '')
+  const vol = d.mountType === 'volume'
+    ? ' [NOTE: this is a named VOLUME, not a bind mount — editing it bypasses the volume\'s own lifecycle]' : ''
+  return `edit the HOST FILE ${d.hostFile}${suffix}${vol}: ${what}`
 }
 
 /**
@@ -402,6 +468,8 @@ export function render(d) {
   L.push(`  runtime config sha256 : ${d.runtimeSha256}`)
   L.push(`  disk config           : ${d.diskConfigPath} (sha256 ${d.diskConfigSha256})`)
   L.push(`  disk is boot source   : ${String(d.diskIsBootSource)}`)
+  L.push(`  mount                 : ${String(d.mountRoot)} -> ${String(d.mountDest)} (${String(d.mountType)})`)
+  L.push(`  RESOLVED HOST FILE    : ${String(d.hostBootFile)} (sha256 ${String(d.hostBootFileSha256)})`)
   L.push(`  routes examined       : ${d.classified.length}, impacted: ${d.impacted.length}`)
   for (const c of d.impacted) {
     L.push(`  -- ${c.server} route ${c.routeIndex} [${c.verdict}]`)
@@ -490,10 +558,17 @@ function probe(over = {}) {
     caddyRuntimeReadable: true, caddyRuntimeConfigSha256: 'a'.repeat(64),
     caddyDiskConfigPath: '/etc/caddy/Caddyfile', caddyDiskConfigSha256: 'b'.repeat(64),
     caddyDiskConfigIsBootSource: true,
-    caddyBootMountSource: '/root/24_Backend/deploy/Caddyfile',
-    caddyBootMountWritable: true, caddyBootMountType: 'bind',
-    caddyComposeFile: '/root/24_Backend/deploy/docker-compose.yml',
+    // A DIRECTORY mount, deliberately: the previous fixture used an exact-file
+    // mount, where Source already ends in Caddyfile, and that coincidence hid
+    // the resolver defect entirely.
+    caddyBootMountRoot: '/root/caddy', caddyBootMountDest: '/etc/caddy',
+    caddyBootMountType: 'bind', caddyBootMountWritable: true,
+    caddyBootFileHostPath: '/root/caddy/Caddyfile',
+    caddyBootFileIsRegular: true, caddyBootFileReadable: true, caddyBootFileWritable: true,
+    caddyBootFileSha256: 'b'.repeat(64),
+    caddyComposeFileLabel: 'docker-compose.yml',
     caddyComposeDir: '/root/24_Backend/deploy',
+    caddyComposeFileResolved: '/root/24_Backend/deploy/docker-compose.yml',
     parserAvailable: true, parsed: true,
     routes: [route()],
     ...over,
@@ -670,15 +745,68 @@ async function selftest() {
       JSON.stringify(asc) === JSON.stringify(st.deletePaths), false)
   }
 
-  console.log('-- durable edit location must be NAMED or REFUSED')
-  t('a writable bind mount is named as the host path',
-    decide(probe()).patch.steps[0].durableEdit.includes('/root/24_Backend/deploy/Caddyfile'), true)
-  t('a READ-ONLY mount refuses',
-    decide(probe({ caddyBootMountWritable: false })).patch.steps[0].durableEdit.startsWith('REFUSED'), true)
-  t('an unnameable mount (baked into the image) refuses',
-    decide(probe({ caddyBootMountSource: '' })).patch.steps[0].durableEdit.startsWith('REFUSED'), true)
-  t('a non-file-booted config refuses',
-    decide(probe({ caddyDiskConfigIsBootSource: false })).patch.steps[0].durableEdit.startsWith('REFUSED'), true)
+  console.log('-- durable edit location: DIRECTORY-MOUNT resolution')
+  // THE 8b98a24 DEFECT. /etc/caddy mounted from /root/caddy, boot file
+  // /etc/caddy/Caddyfile. The old resolver emitted the mount Source —
+  // /root/caddy — a DIRECTORY. The old positive test used an exact-file mount,
+  // where Source already ends in Caddyfile, so it could never have caught this.
+  {
+    const d = decide(probe())
+    t('a directory mount resolves to the FILE, not the mount root',
+      d.patch.steps[0].durableEdit.includes('/root/caddy/Caddyfile'), true)
+    t('the mount ROOT is never named as the thing to edit',
+      /edit the HOST FILE \/root\/caddy(?!\/)/.test(d.patch.steps[0].durableEdit), false)
+    t('the resolved file is reported alongside its hash', d.hostBootFile, '/root/caddy/Caddyfile')
+  }
+  // Control: an exact-file mount still works, and Source IS the file.
+  t('an exact-file mount resolves to Source itself',
+    decide(probe({ caddyBootMountDest: '/etc/caddy/Caddyfile', caddyBootMountRoot: '/root/deploy/Caddyfile',
+      caddyBootFileHostPath: '/root/deploy/Caddyfile' })).patch.steps[0].durableEdit
+      .includes('/root/deploy/Caddyfile'), true)
+  // The collapse case, asserted directly.
+  t('resolving to the mount root of a DIRECTORY mount is refused',
+    durableResolution({ ...probe(), caddyBootFileHostPath: '/root/caddy' }).ok, false)
+
+  console.log('-- durable edit location must be PROVEN or REFUSED')
+  t('a READ-ONLY file refuses',
+    decide(probe({ caddyBootFileWritable: false })).patchable, false)
+  t('a non-regular file refuses',
+    decide(probe({ caddyBootFileIsRegular: false })).patchable, false)
+  t('an unreadable file refuses', decide(probe({ caddyBootFileReadable: false })).patchable, false)
+  t('an unmapped path (baked into the image) refuses',
+    decide(probe({ caddyBootFileHostPath: '' })).patchable, false)
+  t('a relative resolved path refuses',
+    decide(probe({ caddyBootFileHostPath: 'caddy_cfg/Caddyfile' })).patchable, false)
+  t('a non-file-booted config refuses', decide(probe({ caddyDiskConfigIsBootSource: false })).patchable, false)
+  // HASH MUTATION CONTROL: the host file and the container-read file must be
+  // the same bytes, or the mapping found a different file.
+  t('a host/container sha256 MISMATCH refuses',
+    decide(probe({ caddyBootFileSha256: 'c'.repeat(64) })).patchable, false)
+  t('…and says so explicitly',
+    decide(probe({ caddyBootFileSha256: 'c'.repeat(64) })).blockers
+      .some((b) => b.includes('DIFFERENT file')), true)
+  t('CONTROL: matching hashes are patchable', decide(probe()).patchable, true)
+
+  console.log('-- named volumes are resolvable but labelled')
+  {
+    const vol = probe({
+      caddyBootMountType: 'volume', caddyBootMountRoot: '/var/lib/docker/volumes/caddy_cfg/_data',
+      caddyBootFileHostPath: '/var/lib/docker/volumes/caddy_cfg/_data/Caddyfile',
+    })
+    const d = decide(vol)
+    t('a named volume with a real host path IS patchable', d.patchable, true)
+    t('…and is explicitly labelled a volume, not a bind',
+      d.patch.steps[0].durableEdit.includes('named VOLUME'), true)
+  }
+
+  console.log('-- compose provenance is resolved or marked unresolved')
+  t('an absolute resolved compose file is named',
+    decide(probe()).patch.steps[0].durableEdit.includes('/root/24_Backend/deploy/docker-compose.yml'), true)
+  t('an UNRESOLVED relative label is never presented as a path',
+    decide(probe({ caddyComposeFileResolved: '' })).patch.steps[0].durableEdit.includes('UNRESOLVED'), true)
+  t('…and the bare relative label is not offered as a source path',
+    /compose source: docker-compose\.yml/.test(
+      decide(probe({ caddyComposeFileResolved: '' })).patch.steps[0].durableEdit), false)
 
   console.log('-- fingerprints bind the exact surviving dial set')
   {
@@ -739,8 +867,8 @@ async function selftest() {
   }
 
   console.log('-- durability')
-  t('a non-file-booted config refuses to name a durable edit',
-    decide(probe({ caddyDiskConfigIsBootSource: false })).patch.steps[0].durableEdit.startsWith('REFUSED'), true)
+  t('a non-file-booted config yields no patch at all',
+    decide(probe({ caddyDiskConfigIsBootSource: false })).patch, null)
 
   console.log('-- NOTHING MUTATES')
   const all = JSON.stringify(decide(probe()).patch)

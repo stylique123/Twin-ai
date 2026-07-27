@@ -73,11 +73,18 @@ disk_sha=""
 disk_is_source=""
 routes_json="null"
 parse_ok=""
-boot_mount_source=""
+boot_mount_root=""
+boot_mount_dest=""
 boot_mount_rw=""
 boot_mount_type=""
+boot_file_host=""
+boot_file_regular=""
+boot_file_readable=""
+boot_file_writable=""
+boot_file_sha=""
 boot_compose_file=""
 boot_compose_dir=""
+boot_compose_resolved=""
 
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CTR"; then
   caddy_present=true
@@ -253,32 +260,98 @@ print(json.dumps(rows))
 
   # ---- WHERE A DURABLE EDIT WOULD ACTUALLY BE WRITTEN -----------------------
   #
-  # A container path is not an edit location. If /etc/caddy/Caddyfile lives on a
-  # bind mount, the durable edit is to the HOST source; if it is baked into the
-  # image or sits on a read-only mount, there is no in-place durable edit at all
-  # and saying "edit the Caddyfile" would be false. So the mount is resolved and
-  # its writability recorded, and the caller refuses a durable patch unless the
-  # writable source can be named exactly.
-  if [ -n "$disk_path" ]; then
-    mount_line="$(docker inspect "$CADDY_CTR" \
-      --format '{{range .Mounts}}{{.Destination}}|{{.Source}}|{{.RW}}|{{.Type}}
-{{end}}' 2>/dev/null | while IFS='|' read -r dest src rw typ; do
-        [ -z "$dest" ] && continue
-        case "$disk_path" in
-          "$dest"|"$dest"/*) printf '%s|%s|%s' "$src" "$rw" "$typ"; break ;;
-        esac
-      done)"
-    if [ -n "$mount_line" ]; then
-      boot_mount_source="$(printf '%s' "$mount_line" | cut -d'|' -f1)"
-      boot_mount_rw="$(printf '%s' "$mount_line" | cut -d'|' -f2)"
-      boot_mount_type="$(printf '%s' "$mount_line" | cut -d'|' -f3)"
+  # A container path is not an edit location, and NEITHER IS A MOUNT ROOT.
+  # If /etc/caddy is bind-mounted from /root/caddy and the boot file is
+  # /etc/caddy/Caddyfile, then the file to edit is /root/caddy/Caddyfile —
+  # naming /root/caddy sends a reviewer to a DIRECTORY and any edit "there"
+  # either fails or lands in the wrong place.
+  #
+  # So the container path is mapped through the mount to an exact HOST FILE:
+  #   exact-file mount (Destination == disk path) -> Source
+  #   directory mount  (disk path under Destination) -> Source + relative part
+  # Matching is boundary-safe, so /etc/caddy2 never matches a /etc/caddy mount,
+  # and the most specific (longest Destination) mount wins.
+  #
+  # The resolution is then PROVEN rather than asserted: the host path must be a
+  # regular, readable, writable file, and its host-side sha256 must equal the
+  # sha256 read from inside the container. If those two digests disagree, the
+  # mapping is wrong — a different file — and the caller refuses.
+  if [ -n "$disk_path" ] && [ -n "$PARSER" ]; then
+    mounts_raw="$(docker inspect "$CADDY_CTR" \
+      --format '{{range .Mounts}}{{.Destination}}	{{.Source}}	{{.RW}}	{{.Type}}
+{{end}}' 2>/dev/null)"
+    resolved="$(printf '%s' "$mounts_raw" | DISK_PATH="$disk_path" python3 -c '
+import os, sys, json
+
+disk = os.environ["DISK_PATH"]
+best = None
+for line in sys.stdin:
+    parts = line.rstrip("\n").split("\t")
+    if len(parts) < 4:
+        continue
+    dest, src, rw, typ = parts[0], parts[1], parts[2], parts[3]
+    if not dest or not src:
+        continue
+    d = dest.rstrip("/") or "/"
+    # BOUNDARY-SAFE. "startswith(d)" alone would match /etc/caddy2 against a
+    # /etc/caddy mount and resolve to a file that does not exist.
+    if disk == d:
+        rel = ""
+    elif disk.startswith(d + "/"):
+        rel = disk[len(d) + 1:]
+    else:
+        continue
+    # Most specific mount wins: a /etc/caddy mount beats a / mount.
+    if best is None or len(d) > len(best[0]):
+        best = (d, src, rw, typ, rel)
+
+if best is None:
+    print(json.dumps({"mapped": False}))
+else:
+    d, src, rw, typ, rel = best
+    host = src if rel == "" else os.path.join(src, rel)
+    print(json.dumps({
+        "mapped": True, "dest": d, "root": src, "rw": rw, "type": typ,
+        "rel": rel, "host": host,
+    }))
+' 2>/dev/null)"
+
+    if [ -n "$resolved" ]; then
+      boot_mount_root="$(printf '%s' "$resolved" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("root") or "")' 2>/dev/null)"
+      boot_mount_dest="$(printf '%s' "$resolved" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("dest") or "")' 2>/dev/null)"
+      boot_mount_type="$(printf '%s' "$resolved" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("type") or "")' 2>/dev/null)"
+      boot_mount_rw="$(printf '%s' "$resolved" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("rw") or "")' 2>/dev/null)"
+      boot_file_host="$(printf '%s' "$resolved" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("host") or "")' 2>/dev/null)"
+    fi
+
+    # The resolved path must be a real, writable, regular file ON THE HOST.
+    if [ -n "$boot_file_host" ]; then
+      if [ -f "$boot_file_host" ]; then boot_file_regular=true; else boot_file_regular=false; fi
+      if [ -r "$boot_file_host" ]; then boot_file_readable=true; else boot_file_readable=false; fi
+      if [ -w "$boot_file_host" ]; then boot_file_writable=true; else boot_file_writable=false; fi
+      if [ "$boot_file_regular" = true ] && [ "$boot_file_readable" = true ]; then
+        boot_file_sha="$(sha256sum "$boot_file_host" 2>/dev/null | cut -d' ' -f1)"
+      fi
     fi
   fi
-  # The compose project/file this container was created from, if any.
+
+  # Compose provenance. `config_files` is often RELATIVE to the project working
+  # dir; presenting a relative label as a path sends people to a file that does
+  # not exist from where they are standing. Resolve it when both halves are
+  # known, and mark it unresolved otherwise rather than guessing.
   boot_compose_file="$(docker inspect "$CADDY_CTR" \
     --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' 2>/dev/null)"
   boot_compose_dir="$(docker inspect "$CADDY_CTR" \
     --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)"
+  case "$boot_compose_file" in
+    /*) boot_compose_resolved="$boot_compose_file" ;;
+    '') boot_compose_resolved="" ;;
+    *)  if [ -n "$boot_compose_dir" ]; then
+          boot_compose_resolved="$boot_compose_dir/$boot_compose_file"
+        else
+          boot_compose_resolved=""
+        fi ;;
+  esac
 else
   runtime_readable=false
 fi
@@ -302,11 +375,18 @@ printf '"caddyRuntimeConfigSha256":%s,' "$(j_str "$runtime_sha")"
 printf '"caddyDiskConfigPath":%s,' "$(j_str "$disk_path")"
 printf '"caddyDiskConfigSha256":%s,' "$(j_str "$disk_sha")"
 printf '"caddyDiskConfigIsBootSource":%s,' "$(j_bool "$disk_is_source")"
-printf '"caddyBootMountSource":%s,' "$(j_str "$boot_mount_source")"
-printf '"caddyBootMountWritable":%s,' "$(j_bool "$(printf '%s' "$boot_mount_rw" | tr 'A-Z' 'a-z')")"
+printf '"caddyBootMountRoot":%s,' "$(j_str "$boot_mount_root")"
+printf '"caddyBootMountDest":%s,' "$(j_str "$boot_mount_dest")"
 printf '"caddyBootMountType":%s,' "$(j_str "$boot_mount_type")"
-printf '"caddyComposeFile":%s,' "$(j_str "$boot_compose_file")"
+printf '"caddyBootMountWritable":%s,' "$(j_bool "$(printf '%s' "$boot_mount_rw" | tr 'A-Z' 'a-z')")"
+printf '"caddyBootFileHostPath":%s,' "$(j_str "$boot_file_host")"
+printf '"caddyBootFileIsRegular":%s,' "$(j_bool "$boot_file_regular")"
+printf '"caddyBootFileReadable":%s,' "$(j_bool "$boot_file_readable")"
+printf '"caddyBootFileWritable":%s,' "$(j_bool "$boot_file_writable")"
+printf '"caddyBootFileSha256":%s,' "$(j_str "$boot_file_sha")"
+printf '"caddyComposeFileLabel":%s,' "$(j_str "$boot_compose_file")"
 printf '"caddyComposeDir":%s,' "$(j_str "$boot_compose_dir")"
+printf '"caddyComposeFileResolved":%s,' "$(j_str "$boot_compose_resolved")"
 printf '"parserAvailable":%s,' "$(if [ -n "$PARSER" ]; then printf 'true'; else printf 'false'; fi)"
 printf '"parsed":%s,' "$(j_bool "$parse_ok")"
 printf '"routes":%s' "$routes_json"
