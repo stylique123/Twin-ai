@@ -108,6 +108,27 @@ jobs:
             echo "WORKER_GIT_SHA=$WORKER_GIT_SHA"
             node --version
           '
+          echo "image size: $(docker image inspect "$IMAGE_REF" --format '{{.Size}}') bytes"
+
+          # THE IMAGE IS THE ONE THAT SHIPS, NOT A LOOKALIKE THAT HAPPENS TO HAVE
+          # FFMPEG. This is asserted rather than inferred: the build completed in
+          # ~60 s, which is fast for a Dockerfile that installs the ML stack and
+          # pre-downloads the pinned Whisper snapshots, and "it was probably fine"
+          # is not evidence. If any of these is missing, the harness has been
+          # running against something other than production and the whole
+          # exact-image claim is void — so it fails here rather than being
+          # discovered later.
+          docker run --rm --entrypoint /bin/sh "$IMAGE_REF" -c '
+            set -e
+            test -f /app/dist/index.js               || { echo "FATAL: compiled worker missing"; exit 1; }
+            test -f /app/analysis_rules_v1.json      || { echo "FATAL: frozen analysis rules missing"; exit 1; }
+            test -f /app/Dockerfile                  || { echo "FATAL: provenance Dockerfile missing"; exit 1; }
+            test -f /app/models/face_detection_yunet_2023mar.onnx || { echo "FATAL: pinned face model missing"; exit 1; }
+            test -d "$EDITOR_SPEECH_MODEL_PATH"      || { echo "FATAL: pinned Whisper snapshot missing at $EDITOR_SPEECH_MODEL_PATH"; exit 1; }
+            python3 -c "import faster_whisper, cv2; print(\"python ML stack present\")"
+            test ! -d /app/node_modules/typescript   || { echo "FATAL: dev dependencies were baked into the shipped image"; exit 1; }
+            echo "image content verified: compiled app, frozen rules, pinned models, prod-only deps"
+          '
           # The image must have been stamped with the head under test, or the
           # harness would be rendering with code from some other commit.
           BAKED=$(docker run --rm --entrypoint /bin/sh "$IMAGE_REF" -c 'printf %s "$WORKER_GIT_SHA"')
