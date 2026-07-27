@@ -99,10 +99,11 @@ function checkLabel(l: string): string {
 }
 // A BOUNDED EXPRESSION CHANNEL, for the one thing that genuinely needs one.
 //
-// A timed zoom is a magnification that varies with `t`, which cannot be written
-// without `,` (inside `between(t,a,b)` and `if(c,x,y)`) and runs past the 64-char
-// value cap. `,` is excluded from VALUE_RE precisely because it separates filters
-// in a chain, so widening that alphabet would be a real injection weakening.
+// A timed zoom is a magnification that varies with output time, which cannot be
+// written without `,` (inside `between(on,a,b)` and `if(c,x,y)`) and runs past the
+// 64-char value cap. `,` is excluded from VALUE_RE precisely because it separates
+// filters in a chain, so widening that alphabet would be a real injection
+// weakening.
 //
 // Instead, expressions travel a SEPARATE channel with three independent bounds:
 //   1. only the builder may mark an argument `isExpr` — no plan-derived string is
@@ -113,7 +114,9 @@ function checkLabel(l: string): string {
 //   3. the emitted value is single-quoted, and the grammar forbids `'`, so it
 //      cannot terminate its own quoting.
 const EXPR_CHARS_RE = /^[0-9a-z_.,+\-*/()]{1,512}$/
-const EXPR_IDENTIFIERS = new Set(['t', 'if', 'between', 'iw', 'ih', 'zoom', 'min', 'max'])
+// `t` is deliberately ABSENT. zoompan's expression scope does not define it (see
+// zoomScaleExpr), and allowing it here would let the broken construct back in.
+const EXPR_IDENTIFIERS = new Set(['on', 'if', 'between', 'iw', 'ih', 'zoom', 'min', 'max'])
 export function checkExpr(v: string): string {
   if (!EXPR_CHARS_RE.test(v)) invalid(`filter expression ${JSON.stringify(v)} contains a forbidden character`)
   for (const id of v.match(/[a-z_][a-z0-9_]*/g) ?? []) {
@@ -212,26 +215,60 @@ function segmentChain(seg: PlanSegment, plan: EditPlanV1, nodes: FilterNode[]): 
 // rescale an already-rescaled frame and compound the magnification — the exact
 // defect CX1 reports. Windows are disjoint and ascending (the contract enforces
 // it), so a nested conditional selects at most one.
+/**
+ * Output milliseconds -> zoompan's output FRAME INDEX, using the frozen output
+ * frame rate. Integer arithmetic with round-half-up, so the same plan yields the
+ * same literal on every machine.
+ */
+export function msToOutputFrame(ms: number, fpsNum: number, fpsDen: number): number {
+  if (!Number.isInteger(ms) || ms < 0) invalid(`time ${String(ms)} is not a non-negative integer ms value`)
+  if (!Number.isInteger(fpsNum) || fpsNum <= 0 || !Number.isInteger(fpsDen) || fpsDen <= 0) {
+    invalid('output frame rate must be a positive integer ratio')
+  }
+  return Math.floor((ms * fpsNum + 500 * fpsDen) / (MS_PER_S * fpsDen))
+}
+
 function zoomScaleExpr(plan: EditPlanV1): string {
-  // Trapezoid per zoom: linear ease in, hold, linear ease out. All times come
-  // from the plan as integer milliseconds; only this function turns them into
-  // the seconds literals ffmpeg wants.
-  const sec = (ms: number): string => msToSecondsLiteral(ms)
+  // Trapezoid per zoom: linear ease in, hold, linear ease out.
+  //
+  // THE RAMP IS DRIVEN BY `on`, NOT `t`, AND THAT IS NOT A STYLE CHOICE.
+  // zoompan's expression scope does NOT define `t`. Feeding it `between(t,...)`
+  // makes ffmpeg fail at filter-configuration time with "Unknown function", so
+  // NOTHING renders:
+  //     [Parsed_zoompan] [Eval] Unknown function in 't,27.120,27.370),...'
+  //     Failed to configure output pad on Parsed_zoompan
+  // That was found by executing the real graph, not by reading it — the argv was
+  // well-formed and every offline assertion about it passed.
+  //
+  // `on` is zoompan's OUTPUT FRAME COUNT, present since the filter was
+  // introduced and unambiguous. The output frame rate is frozen in the plan's
+  // output profile, so an output millisecond maps to an exact frame index and
+  // the window boundaries become integers — which is what they physically are,
+  // since a zoom can only start on a frame.
+  const fpsNum = plan.output.fpsNum
+  const fpsDen = plan.output.fpsDen
+  const fr = (ms: number): number => msToOutputFrame(ms, fpsNum, fpsDen)
   let expr = '1'
   for (const z of [...plan.video.zooms].reverse()) {
     const peak = milliToScalarLiteral(z.scaleMilli)
-    const inEnd = Math.min(z.outputStartMs + z.easeInMs, z.outputEndMs)
-    const outStart = Math.max(z.outputEndMs - z.easeOutMs, inEnd)
-    const rampIn = z.easeInMs > 0
-      ? `1+(${peak}-1)*(t-${sec(z.outputStartMs)})/${msToSecondsLiteral(z.easeInMs)}`
+    const start = fr(z.outputStartMs)
+    const end = fr(z.outputEndMs)
+    const inEnd = Math.min(fr(z.outputStartMs + z.easeInMs), end)
+    const outStart = Math.max(fr(z.outputEndMs - z.easeOutMs), inEnd)
+    // Ease spans are measured in FRAMES between the same boundaries the
+    // conditions use, so the ramp reaches exactly `peak` at `inEnd` and exactly
+    // 1 at `end` — no residual step at either edge. A degenerate span (both
+    // boundaries on one frame) collapses to the peak rather than dividing by 0.
+    const rampIn = inEnd > start
+      ? `1+(${peak}-1)*(on-${start})/${inEnd - start}`
       : peak
-    const rampOut = z.easeOutMs > 0
-      ? `1+(${peak}-1)*(${sec(z.outputEndMs)}-t)/${msToSecondsLiteral(z.easeOutMs)}`
+    const rampOut = end > outStart
+      ? `1+(${peak}-1)*(${end}-on)/${end - outStart}`
       : peak
     // Innermost first so the earlier-declared zoom wins if two ever touched.
-    expr = `if(between(t,${sec(z.outputStartMs)},${sec(inEnd)}),${rampIn},`
-      + `if(between(t,${sec(inEnd)},${sec(outStart)}),${peak},`
-      + `if(between(t,${sec(outStart)},${sec(z.outputEndMs)}),${rampOut},${expr})))`
+    expr = `if(between(on,${start},${inEnd}),${rampIn},`
+      + `if(between(on,${inEnd},${outStart}),${peak},`
+      + `if(between(on,${outStart},${end}),${rampOut},${expr})))`
   }
   return expr
 }

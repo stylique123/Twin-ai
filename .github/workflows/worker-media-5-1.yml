@@ -1,0 +1,186 @@
+# REAL FFmpeg 5.1 media evidence for the Editor v2 renderer.
+#
+# WHY THIS IS A SEPARATE WORKFLOW, AND WHY IT BUILDS THE WHOLE IMAGE
+# ------------------------------------------------------------------
+# Batch 8.1 produced a defect that no argv assertion could have found: the zoom
+# implementation used `crop` with a time predicate, which ffmpeg evaluates ONCE at
+# filter init. The argv was perfect. The filter string was perfect. The decoded
+# frames were byte-identical to an unzoomed render. Only executing ffmpeg and
+# comparing decoded pixels exposed it.
+#
+# So this job executes real renders — and it executes them inside the EXACT image
+# production runs, built here from worker/Dockerfile at the head under test. Not a
+# fresh `node:22-bookworm-slim` plus `apt-get install ffmpeg`: that would be a
+# LOOKALIKE, and a lookalike proves nothing about the binary the worker actually
+# invokes. The image build carries its own 5.1.x assertion, so a base-image or
+# Debian-suite move fails the build rather than silently producing renders under
+# an ffmpeg no test has covered.
+#
+# The harness itself refuses to emit evidence off the 5.1 pin (ffmpegIdentity.ts),
+# which is what makes a green local run on a developer's ffmpeg 6.1 impossible
+# rather than merely discouraged.
+#
+# COST: the image build downloads the pinned Whisper snapshots (~2 GB), so this is
+# deliberately NOT on every pull_request. It runs on the editor phase branches and
+# on dispatch — the same shape as staging-integration, for the same reason.
+name: worker-media-5-1
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'rebuild/editor-v2-*'
+      - 'track-a/*'
+
+# One render matrix at a time: these are CPU-bound ffmpeg encodes and overlapping
+# runs would only make each slower.
+concurrency:
+  group: worker-media-5-1-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  media:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image carries Whisper snapshots + OpenCV wheels + a full Debian
+      # userland. The default runner image leaves ~14 GB free, which is enough only
+      # if the preinstalled toolchains we do not use are dropped first.
+      - name: Reclaim disk for the image build
+        run: |
+          set -euo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+                      /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+
+      # Node 22 on the HOST as well as in the image: the dev dependency tree
+      # (vitest and its esbuild/rollup native binaries) is installed here and then
+      # mounted, so it must have been resolved for the same runtime it runs on.
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+
+      # BEFORE the ~20-minute image build. worker/tsconfig.json excludes
+      # __tests__, so the normal `tsc --noEmit` never sees this harness; a type
+      # error in it would otherwise be discovered only after the whole image was
+      # built and the runner had already burned the time.
+      - name: Typecheck the media harness (cheap, fails before the image build)
+        working-directory: worker
+        run: |
+          npm ci
+          npx tsc --noEmit --strict --target ES2022 --module NodeNext \
+            --moduleResolution NodeNext --types node --esModuleInterop \
+            --skipLibCheck --resolveJsonModule \
+            src/__tests__/media/realRender.media.test.ts
+
+      - name: Build the EXACT production worker image at this head
+        id: image
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA}"
+          echo "building worker/Dockerfile at $SHA"
+          # Same build arg deploy-worker.yml passes. No --target: this is the
+          # runtime stage, i.e. the image that ships.
+          docker build \
+            --build-arg "WORKER_GIT_SHA=$SHA" \
+            -t "twinai-worker:media-$SHA" \
+            -f worker/Dockerfile worker
+          IMAGE_ID=$(docker image inspect "twinai-worker:media-$SHA" --format '{{.Id}}')
+          echo "image_ref=twinai-worker:media-$SHA" >> "$GITHUB_OUTPUT"
+          echo "image_id=$IMAGE_ID" >> "$GITHUB_OUTPUT"
+          echo "image id: $IMAGE_ID"
+
+      - name: Image self-report (ffmpeg, font, injected commit)
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          # Independent of the harness: what the built image says about itself.
+          docker run --rm --entrypoint /bin/sh "$IMAGE_REF" -c '
+            ffmpeg -hide_banner -version | head -1
+            ffprobe -hide_banner -version | head -1
+            fc-match "DejaVu Sans"
+            echo "WORKER_GIT_SHA=$WORKER_GIT_SHA"
+            node --version
+          '
+          # The image must have been stamped with the head under test, or the
+          # harness would be rendering with code from some other commit.
+          BAKED=$(docker run --rm --entrypoint /bin/sh "$IMAGE_REF" -c 'printf %s "$WORKER_GIT_SHA"')
+          if [ "$BAKED" != "$GITHUB_SHA" ]; then
+            echo "::error::Image was stamped $BAKED but this run is $GITHUB_SHA."
+            exit 1
+          fi
+
+      # NOTE ON THE MOUNT. Dev dependencies (vitest and its native esbuild/rollup
+      # binaries) were installed on the HOST in the typecheck step above and are
+      # mounted into the container. They are never baked into the image:
+      # `check_build_provenance.mjs` requires the shipped image to carry production
+      # dependencies only, and a test runner must not change what ships. What the
+      # harness actually exercises — ffmpeg, ffprobe, fontconfig, the fonts, node,
+      # the whole Debian userland — is entirely the image's.
+      - name: Run the real-media harness INSIDE the production image
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.image_ref }}
+          IMAGE_ID: ${{ steps.image.outputs.image_id }}
+        run: |
+          set -euo pipefail
+          # --user: the harness writes only /tmp (inside the container) and vitest's
+          # cache under the mounted node_modules. Running as root would leave
+          # root-owned files on the host and break the off-pin control below.
+          docker run --rm \
+            --user "$(id -u):$(id -g)" \
+            -v "$PWD/worker:/harness" \
+            -w /harness \
+            -e "WORKER_IMAGE_SHA=$GITHUB_SHA" \
+            -e "WORKER_IMAGE_ID=$IMAGE_ID" \
+            -e HOME=/tmp \
+            --entrypoint /bin/sh \
+            "$IMAGE_REF" -c \
+            'node node_modules/vitest/vitest.mjs run --config vitest.media.config.ts --reporter=verbose'
+
+      # The pin is only load-bearing if the refusal actually fires. Prove it by
+      # running the SAME harness against an ffmpeg that is NOT 5.1 and requiring a
+      # non-zero exit, for the right reason. A green here would mean the gate is
+      # decorative — and a decorative gate is how frames proven under one major get
+      # quietly accepted as evidence for another.
+      #
+      # The runner's own Ubuntu ffmpeg is the control: it is a genuinely different
+      # major, it needs no second image, and it reproduces exactly what a developer
+      # machine does. (This is the same refusal observed locally on 6.1.1.)
+      - name: MUTATION CONTROL — the harness must REFUSE off the 5.1 pin
+        working-directory: worker
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fontconfig fonts-dejavu-core
+          OFF=$(ffmpeg -hide_banner -version | head -1)
+          echo "off-pin ffmpeg: $OFF"
+          case "$OFF" in
+            *"ffmpeg version 5.1."*)
+              echo "::error::The control binary IS the pinned 5.1 series ($OFF), so it proves nothing about the refusal. This control must run on a different major."
+              exit 1 ;;
+          esac
+          set +e
+          # WORKER_IMAGE_SHA is deliberately supplied so the ONLY thing wrong here
+          # is the ffmpeg version — otherwise a missing-env failure could be
+          # mistaken for the version refusal.
+          WORKER_IMAGE_SHA="$GITHUB_SHA" \
+            node node_modules/vitest/vitest.mjs run --config vitest.media.config.ts \
+            > /tmp/offpin.log 2>&1
+          RC=$?
+          set -e
+          tail -40 /tmp/offpin.log
+          if [ "$RC" -eq 0 ]; then
+            echo "::error::The media harness PASSED on ffmpeg that is not 5.1. The version gate is not fail-closed — golden frames could be produced under an unproven major."
+            exit 1
+          fi
+          if ! grep -q 'REFUSED' /tmp/offpin.log; then
+            echo "::error::The harness failed off-pin, but not with the version refusal. It must fail for the RIGHT reason, or this control does not test the gate."
+            exit 1
+          fi
+          echo "OK: off the pin the harness refuses, and says why."

@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildFfmpegGraph, buildFfmpegArgs, serializeFilterGraph, ffmpegGraphSha256,
-  msToSecondsLiteral, milliToScalarLiteral, checkExpr,
+  msToSecondsLiteral, milliToScalarLiteral, checkExpr, msToOutputFrame,
 } from '../jobs/ffmpegGraph.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
 import { EditPlanError, type EditPlanV1 } from '../jobs/editPlanContract.js'
@@ -134,20 +134,32 @@ describe('the argument array', () => {
     expect(zoomNodes).toHaveLength(1)
     const z = zoomNodes[0].args.find((a) => a.key === 'z')
     expect(z?.isExpr).toBe(true)
+    // Windows are expressed in zoompan's OUTPUT FRAME COUNT, not seconds, because
+    // zoompan's expression scope has no `t` — feeding it one fails filter
+    // configuration outright and nothing renders (proven by real execution; see
+    // zoomScaleExpr). The frozen output frame rate makes the mapping exact.
     for (const zoom of plan.video.zooms) {
-      expect(String(z?.value)).toContain((zoom.outputStartMs / 1000).toFixed(3))
-      expect(String(z?.value)).toContain((zoom.outputEndMs / 1000).toFixed(3))
+      const startFrame = msToOutputFrame(zoom.outputStartMs, plan.output.fpsNum, plan.output.fpsDen)
+      const endFrame = msToOutputFrame(zoom.outputEndMs, plan.output.fpsNum, plan.output.fpsDen)
+      expect(startFrame).not.toEqual(endFrame)   // a window that spans no frame is not a window
+      expect(String(z?.value)).toContain(`between(on,${startFrame},`)
+      expect(String(z?.value)).toContain(`,${endFrame})`)
     }
+    // And the identifier that DOES NOT EXIST in zoompan must not appear.
+    expect(String(z?.value)).not.toMatch(/\bt\b/)
   })
 
   it('CONTROL: the expression channel still refuses a smuggled identifier', () => {
     // Proves isExpr is a BOUNDED channel and not an escape hatch: only the
     // whitelisted identifiers are expressible, so no plan-derived text could ride
     // this path even if it were somehow marked as an expression.
-    expect(() => checkExpr('if(between(t,1,2),1.5,1)')).not.toThrow()
-    expect(() => checkExpr("drawtext(x)")).toThrow()
+    expect(() => checkExpr('if(between(on,1,2),1.5,1)')).not.toThrow()
+    expect(() => checkExpr('drawtext(x)')).toThrow()
     expect(() => checkExpr("1');drawbox=c=red:")).toThrow()
-    expect(() => checkExpr('t;1')).toThrow()
+    expect(() => checkExpr('on;1')).toThrow()
+    // `t` is refused BY NAME. It is not a hostile identifier — it is the one that
+    // silently broke the renderer, and the whitelist is where that stays fixed.
+    expect(() => checkExpr('if(between(t,1,2),1.5,1)')).toThrow()
   })
 })
 

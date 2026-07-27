@@ -26,7 +26,14 @@ FROM node:22-bookworm-slim
 COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
 
 # System deps: ffmpeg (audio extract/convert + PCM/ebur128), python3 + pip
-# (faster-whisper + OpenCV), ca-certs.
+# (faster-whisper + OpenCV), ca-certs, and the CAPTION FONT.
+#
+# fonts-dejavu-core + fontconfig are NOT incidental. libass resolves the ASS
+# `Style:` font by NAME through fontconfig; with no font installed it falls back
+# to whatever it can find, and with nothing at all it draws nothing — a render
+# that succeeds, encodes cleanly, and ships with invisible captions. Debian's
+# ffmpeg does not guarantee either package, so the caption font is declared here
+# and asserted below rather than inherited by luck.
 #
 # FFMPEG MAJOR IS PINNED AND ASSERTED. Render output is version-sensitive: filter
 # defaults and encoder behaviour move between majors, so a golden frame proven on
@@ -38,11 +45,13 @@ COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
 # re-asserts it at runtime and the media tests refuse to emit golden evidence
 # under a different major.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ffmpeg python3 python3-pip ca-certificates \
+      ffmpeg python3 python3-pip ca-certificates fontconfig fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/* \
     && ffmpeg -hide_banner -version | head -1 \
-    && ffmpeg -hide_banner -version | head -1 | grep -qE 'ffmpeg version 5\.1\.' \
-       || { echo "FATAL: expected ffmpeg 5.1.x (Debian bookworm); got: $(ffmpeg -hide_banner -version | head -1)"; exit 1; }
+    && { ffmpeg -hide_banner -version | head -1 | grep -qE 'ffmpeg version 5\.1\.' \
+       || { echo "FATAL: expected ffmpeg 5.1.x (Debian bookworm); got: $(ffmpeg -hide_banner -version | head -1)"; exit 1; }; } \
+    && { fc-match 'DejaVu Sans' | grep -qi 'DejaVu' \
+       || { echo "FATAL: caption font 'DejaVu Sans' does not resolve; libass would render blank captions."; fc-match 'DejaVu Sans'; exit 1; }; }
 
 WORKDIR /app
 

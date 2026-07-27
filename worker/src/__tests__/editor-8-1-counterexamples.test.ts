@@ -13,7 +13,7 @@ import {
   type EditPlanV1,
 } from '../jobs/editPlanContract.js'
 import { compileEditPlan, assertNoRemovedWordIsCaptioned, buildTimeMap } from '../jobs/editorCompile.js'
-import { buildFfmpegGraph, buildFfmpegArgs } from '../jobs/ffmpegGraph.js'
+import { buildFfmpegGraph, buildFfmpegArgs, msToOutputFrame } from '../jobs/ffmpegGraph.js'
 import { renderAssDocument, buildAssCaptions } from '../jobs/assCaptions.js'
 import { baseInput, policy } from './fixtures/editPlanFixture.js'
 import { readFileSync } from 'node:fs'
@@ -74,8 +74,14 @@ describe('CX1 — timed zooms must actually be time-gated in the filter graph', 
     // scale/crop that way would jump-cut the frame size. The behaviour that
     // actually matters is asserted instead: the zoom's own boundaries appear in
     // the graph, so the magnification cannot apply to the whole video.
-    expect(argv).toContain((z.outputStartMs / 1000).toFixed(3))
-    expect(argv).toContain((z.outputEndMs / 1000).toFixed(3))
+    //
+    // Boundaries are OUTPUT FRAME INDICES. zoompan has no `t` in scope, so the
+    // seconds form this test first asserted made ffmpeg fail to configure the
+    // filter at all — every frame unrendered, with argv that read correctly.
+    const f = (ms: number): number => msToOutputFrame(ms, plan.output.fpsNum, plan.output.fpsDen)
+    expect(f(z.outputStartMs)).not.toEqual(f(z.outputEndMs))
+    expect(argv).toContain(`between(on,${f(z.outputStartMs)},`)
+    expect(argv).toContain(`,${f(z.outputEndMs)})`)
     expect(argv).toMatch(/zoompan/)
   })
 })

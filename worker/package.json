@@ -9,7 +9,8 @@
     "start": "node --enable-source-maps dist/index.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:media": "vitest run --config vitest.media.config.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0"
