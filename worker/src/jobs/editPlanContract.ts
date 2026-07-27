@@ -29,6 +29,18 @@ export const EDIT_PLAN_MAX_BYTES = 1048576
 // policy file bounds what the COMPILER may emit, these bound what the VALIDATOR
 // will accept from any source (including a plan read back out of the database).
 // A policy edit must never silently widen the contract.
+
+export const MAX_ALLOWED_WINDOWS = 200
+export const MAX_SEGMENTS = 600
+export const MAX_REMOVALS = 1200
+export const MAX_CUES = 2000
+export const MAX_CUE_LINES = 2
+export const MAX_CUE_EMPHASIS = 16
+export const MAX_ZOOMS = 20
+export const MAX_TRANSITIONS = 40
+export const MAX_WARNINGS = 200
+export const MAX_CUE_LINE_CHARS = 200
+
 // THE one production output profile (Gate-0 §4). Every field is exact; there is
 // no range. Declared here rather than read from edit_policy_v1.json for the same
 // reason as the maxima above — this file does no I/O, and the validator must not
@@ -51,17 +63,6 @@ export const FROZEN_OUTPUT_PROFILE = {
   audioChannels: 2,
   faststart: true,
 } as const
-
-export const MAX_ALLOWED_WINDOWS = 200
-export const MAX_SEGMENTS = 600
-export const MAX_REMOVALS = 1200
-export const MAX_CUES = 2000
-export const MAX_CUE_LINES = 2
-export const MAX_CUE_EMPHASIS = 16
-export const MAX_ZOOMS = 20
-export const MAX_TRANSITIONS = 40
-export const MAX_WARNINGS = 200
-export const MAX_CUE_LINE_CHARS = 200
 
 export const AUDIO_PRESET_IDS = ['speech-clean-v1', 'speech-noisy-v1', 'speech-roomy-v1'] as const
 export const CAPTION_PRESET_IDS = [
@@ -154,6 +155,12 @@ export interface PlanCue {
   outputStartMs: number
   outputEndMs: number
   lines: string[]
+  // CX3 — POSITIONAL PROVENANCE. The transcript word indices this cue displays,
+  // ascending. Without it the only link between a cue and the transcript is its
+  // text, and text cannot distinguish a removed word from an identical word that
+  // legitimately occurs elsewhere. That ambiguity is what made the removed-word
+  // guard unenforceable.
+  wordIndices: number[]
   emphasisWordIndices: number[]
 }
 export interface PlanCaptions {
@@ -317,7 +324,7 @@ const SEGMENT_KEYS = ['index', 'sourceStartMs', 'sourceEndMs', 'outputStartMs', 
   'transitionInOverlapMs'] as const
 const REMOVAL_KEYS = ['sourceStartMs', 'sourceEndMs', 'origin', 'ref', 'reasonCode'] as const
 const TIMELINE_KEYS = ['segments', 'removals', 'cutsPerMinuteMilli'] as const
-const CUE_KEYS = ['index', 'outputStartMs', 'outputEndMs', 'lines', 'emphasisWordIndices'] as const
+const CUE_KEYS = ['index', 'outputStartMs', 'outputEndMs', 'lines', 'wordIndices', 'emphasisWordIndices'] as const
 const CAPTIONS_KEYS = ['presetId', 'fontSizePx', 'marginVerticalPx', 'cues'] as const
 const ZOOM_KEYS = ['index', 'outputStartMs', 'outputEndMs', 'scaleMilli', 'intensity', 'reasonCode',
   'anchorWordIndex', 'easeInMs', 'easeOutMs'] as const
@@ -590,6 +597,15 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
       return ln
     })
     if (lines.length === 0) fail(`captions.cues[${i}]: no lines`)
+    const rawWi = arr(cc.wordIndices, MAX_CUES, `captions.cues[${i}].wordIndices`)
+    if (rawWi.length === 0) fail(`captions.cues[${i}].wordIndices: empty — a cue must say which words it shows`)
+    let prevW = -1
+    const wordIndices = rawWi.map((w, j) => {
+      const val = int(w, 0, 1_000_000, `captions.cues[${i}].wordIndices[${j}]`)
+      if (val <= prevW) fail(`captions.cues[${i}].wordIndices: not strictly ascending`)
+      prevW = val
+      return val
+    })
     const emph = arr(cc.emphasisWordIndices, MAX_CUE_EMPHASIS, `captions.cues[${i}].emphasisWordIndices`)
     let prevE = -1
     const emphasisWordIndices = emph.map((e, j) => {
@@ -598,7 +614,14 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
       prevE = val
       return val
     })
-    return { index, outputStartMs, outputEndMs, lines, emphasisWordIndices }
+    // Emphasis must be a SUBSET of what the cue actually shows. Emphasising a
+    // word that is not in the cue is either a compiler bug or a tampered plan.
+    for (const e of emphasisWordIndices) {
+      if (!wordIndices.includes(e)) {
+        fail(`captions.cues[${i}].emphasisWordIndices: ${e} is not among the cue's own wordIndices`)
+      }
+    }
+    return { index, outputStartMs, outputEndMs, lines, wordIndices, emphasisWordIndices }
   })
   const captions: PlanCaptions = {
     presetId: oneOf(cap.presetId, CAPTION_PRESET_IDS, 'captions.presetId'),

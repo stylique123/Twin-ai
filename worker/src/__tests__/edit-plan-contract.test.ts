@@ -370,7 +370,9 @@ describe('canonical serialization and hash', () => {
     const plan = JSON.parse(JSON.stringify(goodPlan())) as EditPlanV1
     plan.captions.cues = Array.from({ length: 2000 }, (_, i) => ({
       index: i, outputStartMs: i * 20, outputEndMs: i * 20 + 19,
-      lines: [fill, fill], emphasisWordIndices: [],
+      // wordIndices is required provenance (CX3); these synthetic cues are about
+      // the SIZE cap, so any well-formed ascending index list serves.
+      lines: [fill, fill], wordIndices: [i], emphasisWordIndices: [],
     }))
     plan.complexity.cueCount = 2000
     return plan

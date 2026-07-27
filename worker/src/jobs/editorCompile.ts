@@ -950,7 +950,20 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
   const pending = [...staged]
   const flush = (): void => {
     if (group.length === 0) return
-    if (cues.length >= maxCues) { group = []; return }
+    // CX6 — FAIL CLOSED. This used to `group = []; return`, discarding the words
+    // and every group after it. The plan then validated, rendered, and shipped a
+    // video whose captions simply stopped part-way through, with nothing in the
+    // artifact recording that it had happened. Silent truncation of the user's own
+    // words is the worst available outcome; a refusal is recoverable, a video that
+    // quietly loses its second half is not.
+    //
+    // No new error code: `edit_plan_too_large` is the frozen permanent code for a
+    // plan that cannot be represented within the contract's bounds.
+    if (cues.length >= maxCues) {
+      throw new EditPlanError(
+        `captions: ${maxCues} cue limit reached with ${group.length + pending.length} words still to place`,
+        'edit_plan_too_large')
+    }
     const texts = group.map((g) => g.text)
     let lines = layoutLines(texts, preset.maxCharsPerLine, maxLines)
     while (lines === null && group.length > 1) {
@@ -981,8 +994,11 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     if (endMs - startMs > preset.maxCueDurationMs) endMs = startMs + preset.maxCueDurationMs
     if (endMs > outputDurationMs) endMs = outputDurationMs
     if (endMs <= startMs) { group = []; return }
-    const emphasisWordIndices = group.map((g) => g.index).filter((i) => emphasisSet.has(i)).slice(0, MAX_CUE_EMPHASIS)
-    cues.push({ index: cues.length, outputStartMs: startMs, outputEndMs: endMs, lines, emphasisWordIndices })
+    // CX3 — recorded AFTER the layout loop above, which can hand a tail word back
+    // to `pending`. Taking it before would claim words the cue does not display.
+    const wordIndices = group.map((g) => g.index)
+    const emphasisWordIndices = wordIndices.filter((i) => emphasisSet.has(i)).slice(0, MAX_CUE_EMPHASIS)
+    cues.push({ index: cues.length, outputStartMs: startMs, outputEndMs: endMs, lines, wordIndices, emphasisWordIndices })
     group = []
   }
   // The next hard stop after a staged word: the start of the following staged
@@ -1020,24 +1036,48 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
 export function assertNoRemovedWordIsCaptioned(
   plan: EditPlanV1, words: CompileWord[], timeMap: TimeMap,
 ): void {
-  const captionedText = new Set<string>()
-  for (const cue of plan.captions.cues) for (const line of cue.lines) {
-    for (const tok of line.split(' ')) captionedText.add(tok)
-  }
+  // CX3. The previous implementation mapped each removed word's source time to an
+  // output time and skipped when that was null — but a removed word has NO output
+  // time BY DEFINITION, so `mapped === null` was true for every word the check
+  // existed to catch, and the loop body was unreachable. It could not fail. The
+  // comment describing the intent was correct; the code did the opposite.
+  //
+  // Provenance replaces inference. Each cue now records the transcript indices it
+  // displays, so membership is read directly instead of being reconstructed from
+  // text (which cannot tell a removed word from an identical word elsewhere) or
+  // from a timestamp the removed word does not have.
+  const removed = new Set<number>()
   for (let i = 0; i < words.length; i++) {
     const w = words[i]
-    const inside = timeMap.pieces.some((p) => w.startMs >= p.sourceStartMs && w.endMs <= p.sourceEndMs)
-    if (inside) continue
-    // A removed word's exact token may legitimately also occur elsewhere in the
-    // transcript, so text alone is not proof. The decisive check is positional:
-    // no cue may cover the removed word's output time, because it has none.
-    const mapped = mapSourceToOutput(timeMap, w.startMs)
-    if (mapped === null) continue
-    for (const cue of plan.captions.cues) {
-      if (mapped >= cue.outputStartMs && mapped < cue.outputEndMs && captionedText.has(w.text)) {
+    const kept = timeMap.pieces.some((p) => w.startMs >= p.sourceStartMs && w.endMs <= p.sourceEndMs)
+    if (!kept) removed.add(i)
+  }
+  for (const cue of plan.captions.cues) {
+    for (const wi of cue.wordIndices) {
+      if (removed.has(wi)) {
         throw new EditPlanError(
-          `captions: removed word ${i} appears in cue ${cue.index}`, 'edit_plan_divergent')
+          `captions: removed word ${wi} appears in cue ${cue.index}`, 'edit_plan_divergent')
       }
+      if (wi >= words.length) {
+        throw new EditPlanError(
+          `captions: cue ${cue.index} cites word ${wi}, which is not in the transcript`, 'edit_plan_divergent')
+      }
+    }
+    // Provenance must match what is actually on screen, or a tampered plan could
+    // declare innocent indices while displaying removed text. Compare the cue's
+    // rendered tokens against the words its own indices name.
+    //
+    // Compared as JOINED STRINGS, not as token arrays. A transcript word may
+    // itself contain a space (the ASS injection fixtures rely on exactly that),
+    // so splitting the rendered lines on spaces does not invert the layout and
+    // produced a false positive on legitimate text. Line layout joins words with
+    // a single space, so `lines.join(' ')` reconstructs the same sequence that
+    // joining the claimed words produces — the comparison is exact either way.
+    const shown = cue.lines.join(' ')
+    const claimed = cue.wordIndices.map((wi) => words[wi]?.text ?? '').join(' ')
+    if (shown !== claimed) {
+      throw new EditPlanError(
+        `captions: cue ${cue.index} text does not match the words its wordIndices name`, 'edit_plan_divergent')
     }
   }
 }
