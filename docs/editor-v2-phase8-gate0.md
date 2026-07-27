@@ -6,8 +6,19 @@ assumed from the plan document).
 **Frozen:** 2026-07-26. Nothing in this document changes after seeing results.
 
 Phase 8 is one vertical delivery: Decision v2 → one canonical EditPlan → one typed FFmpeg
-renderer → MP4 + cover → full validation → atomic completion. **No implementation may
-begin until every row in §10 is closed or explicitly blocked.**
+renderer → MP4 + cover → full validation → atomic completion.
+
+**Gate-0 prerequisites are of two kinds, and they gate different things** (CTO sequencing,
+amended 2026-07-27):
+
+- **Contract prerequisites** — §§2–9 below. All closed. These permit **isolated offline
+  implementation** to begin: pure deterministic code with no stateful dependency.
+- **Stateful prerequisites** — the VPS capacity inventory and the migration ledger
+  reconciliation. These remain **absolute blockers** for any database/RPC work, any
+  staging run, candidate acceptance, merge, and deployment.
+
+Offline work proceeding under the contract prerequisites is **unmergeable** until both
+stateful gates pass, and must then be rebased and re-proven on the exact final head.
 
 ---
 
@@ -240,7 +251,28 @@ queued renders.
 
 ---
 
-## 10. Gate-0 row status
+## 10. Lane discipline (what may proceed, and where)
+
+| Lane | Scope | Gated by |
+|---|---|---|
+| **1 — this session** | finish #208's bounded VPS inventory; keep this document truthful | — |
+| **2 — fresh context** | redesign migration reconciliation from scratch. The previous algorithm is DISABLED and must not be reused: it mutated staging before deciding whether drift existed, could not see additive drift, and its hostile suite never executed the real guard | — |
+| **3 — fresh offline worktree** | Batch 8.1 and the database-independent part of Batch 8.3 | contract prerequisites only |
+
+### 10.1 Offline lane boundary (absolute)
+
+**May contain:** EditPlanV1 schema and validator; canonical serialization and hash;
+interval / cut / time-map compiler; caption cue generation; framing, zoom, transition and
+audio instruction builders; the typed FFmpeg graph and argument builder; unit, property,
+golden and real-media tests.
+
+**May NOT contain:** any migration, RPC, edge function, database, storage, provider,
+network, staging, production or deployment change.
+
+Complete a coherent, locally green batch before **one** draft candidate push. That
+candidate stays unmergeable until both stateful gates pass.
+
+## 11. Gate-0 row status
 
 | Row | State |
 |---|---|
@@ -255,10 +287,10 @@ queued renders.
 | Non-vacuous fixture matrix | ✅ frozen (§8) |
 | Capacity thresholds | ✅ frozen (§9) |
 | Migration audit (hashes, grants, RLS, triggers, staging parity) | ✅ closed (§1.1) |
-| **VPS capacity inventory, validated** | 🟡 PR #208 in flight |
-| **Staging ledger repair + `migration list` parity** | 🔴 **BLOCKED — credentials** |
+| **VPS capacity inventory, validated** (STATEFUL) | 🟡 PR #208 in flight |
+| **Migration ledger reconciliation** (STATEFUL) | 🔴 OPEN — previous algorithm DISABLED as unsafe; redesign required (lane 2) |
 
-## 11. Explicitly out of scope for Phase 8
+## 12. Explicitly out of scope for Phase 8
 
 A second editor; manual timeline; EDL/refine screen; a second Director call, EditPlan or
 renderer; Revideo, Chromium rendering or a managed rendering service; arbitrary FFmpeg
