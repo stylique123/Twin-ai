@@ -79,20 +79,24 @@ export function classifyRoute(route, targetIds, protectedIds) {
   let unknownDial = false
 
   for (const h of route.handlers) {
-    const dials = Array.isArray(h?.upstreamDials) ? h.upstreamDials : []
+    // The INDEXED array is authoritative. `upstreamDials` is a convenience view
+    // and must never be the thing a patch is built from: rebuilding an upstream
+    // object from its dial alone discards every other field Caddy allows on it.
+    const ups = Array.isArray(h?.upstreams)
+      ? h.upstreams
+      : (Array.isArray(h?.upstreamDials) ? h.upstreamDials.map((d, i) => ({ index: i, dial: d, extraKeyCount: 0 })) : [])
     const keep = []
-    let hTarget = 0
-    let hOther = 0
-    for (const d of dials) {
+    const targets = []
+    for (const u of ups) {
+      const d = u?.dial
       const t = dialMatches(d, targetIds)
       const p = dialMatches(d, protectedIds)
-      if (t === null || p === null) { unknownDial = true; continue }
-      if (t) { hTarget++; continue }
+      if (t === null || p === null || typeof u?.index !== 'number') { unknownDial = true; continue }
+      if (t) { targets.push({ index: u.index, dial: d }); continue }
       // Protected OR unrecognised. An unrecognised backend is not the target, so
       // it must survive: stranding something we failed to identify is the same
       // mistake as stranding something we did.
-      hOther++
-      keep.push(d)
+      keep.push({ index: u.index, dial: d, extraKeyCount: u.extraKeyCount ?? 0 })
       void p
     }
     handlers.push({
@@ -100,9 +104,11 @@ export function classifyRoute(route, targetIds, protectedIds) {
       position: h?.position ?? null,
       handler: h?.handler ?? null,
       addressable: h?.addressable === true,
-      upstreamDials: dials,
+      upstreams: ups,
+      upstreamDials: ups.map((u) => u?.dial).filter((d) => typeof d === 'string'),
+      targetUpstreams: targets,
       keepUpstreams: keep,
-      role: hTarget > 0 ? (hOther > 0 ? 'shared' : 'target-only') : (hOther > 0 ? 'other-only' : 'no-upstreams'),
+      role: targets.length > 0 ? (keep.length > 0 ? 'shared' : 'target-only') : (keep.length > 0 ? 'other-only' : 'no-upstreams'),
     })
   }
 
@@ -223,9 +229,7 @@ export function candidatePatch(a, impacted, allClassified) {
           `its full upstream list is exactly [${c.upstreamDials.join(', ')}]`,
         ],
         rehearsal: `curl -s -X DELETE "${adminBase(a)}${c.routePath}"`,
-        durableEdit: durable
-          ? `in ${a.caddyDiskConfigPath}, delete the site block for ${c.hostMatchers.join(', ') || '(catch-all)'}`
-          : 'the loaded config is not booted from a file on disk; the durable location must be established before any edit',
+        durableEdit: durableEditFor(a, `delete the site block for ${c.hostMatchers.join(', ') || '(catch-all)'}`),
       })
       continue
     }
@@ -234,35 +238,52 @@ export function candidatePatch(a, impacted, allClassified) {
 
     // ONE STEP PER IMPACTED HANDLER. Never a route-wide keep-list: two handlers
     // each pairing the target with a different protected backend must produce
-    // two separate instructions with two separate keep-lists.
+    // two separate instructions with two separate address sets.
     for (const h of c.handlers) {
       if (h.role !== 'shared') continue
+
+      // DELETE THE TARGET ENTRIES. DO NOT REBUILD THE ARRAY.
+      //
+      // The previous revision emitted `PUT <handler>/upstreams` with the keep
+      // list re-serialised as `[{dial}, …]`. That is lossless only if a dial is
+      // the ONLY field an upstream carries — and Caddy allows more
+      // (`max_requests`, per-upstream health overrides, …). A protected backend
+      // configured with any of them would have had it silently stripped by a
+      // patch whose stated purpose was to leave it alone.
+      //
+      // Deleting the target entries by exact index touches nothing else. The
+      // survivors are never read, re-encoded or written.
+      //
+      // DESCENDING ORDER IS NOT A STYLE CHOICE. Removing index 1 shifts index 2
+      // down to 1; ascending deletion of [1,2] removes 1 and then whatever
+      // moved into 2, which is a survivor.
+      const targetsDesc = [...h.targetUpstreams].sort((a2, b2) => b2.index - a2.index)
       steps.push({
         where: `${where}, handler ${h.position} (${h.handler})`,
         configPath: `${h.handlerPath}/upstreams`,
-        action: 'remove ONLY the target upstream from THIS handler',
-        keepUpstreams: h.keepUpstreams,
-        // THE PRECONDITION BINDS WHAT THE STEP WRITES.
-        //
-        // An earlier revision asserted `<handlerPath> is still a reverse_proxy`
-        // and then `its upstream list is exactly [...]` — naming the PARENT
-        // object and leaving the array implicit. The step writes
-        // `<handlerPath>/upstreams`, so that is the path that has to be checked;
-        // a precondition on the container is not a precondition on the thing
-        // being replaced.
+        action: 'DELETE only the target upstream entries, by index, descending',
+        targetUpstreams: targetsDesc,
+        keepUpstreams: h.keepUpstreams.map((k) => k.dial),
+        ordering: 'delete in DESCENDING index order — removing a lower index shifts every higher one down',
+        deletePaths: targetsDesc.map((u) => `${h.handlerPath}/upstreams/${u.index}`),
         preconditions: [
           ...commonPre,
           `${h.handlerPath} is still a ${h.handler}`,
-          `${h.handlerPath}/upstreams exists and is exactly `
-            + JSON.stringify(h.upstreamDials.map((d) => ({ dial: d }))),
-          `${h.handlerPath}/upstreams has exactly ${h.upstreamDials.length} entr`
-            + `${h.upstreamDials.length === 1 ? 'y' : 'ies'}`,
+          `${h.handlerPath}/upstreams has exactly ${h.upstreams.length} entr`
+            + `${h.upstreams.length === 1 ? 'y' : 'ies'}`,
+          `${h.handlerPath}/upstreams in order is exactly `
+            + JSON.stringify(h.upstreams.map((u) => ({ index: u.index, dial: u.dial }))),
+          ...targetsDesc.map((u) => `${h.handlerPath}/upstreams/${u.index} has dial ${u.dial}`),
+          `after deletion ${h.handlerPath}/upstreams must still contain exactly `
+            + `[${h.keepUpstreams.map((k) => k.dial).join(', ')}] and must not be empty`,
         ],
-        rehearsal: `PUT ${adminBase(a)}${h.handlerPath}/upstreams with exactly `
-          + JSON.stringify(h.keepUpstreams.map((d) => ({ dial: d }))),
-        durableEdit: durable
-          ? `in ${a.caddyDiskConfigPath}, remove the ${a.target} "to" entry from THIS reverse_proxy only, leaving ${h.keepUpstreams.join(', ') || '(nothing — refuse)'}`
-          : 'the loaded config is not booted from a file on disk; the durable location must be established before any edit',
+        rehearsal: targetsDesc
+          .map((u) => `curl -s -X DELETE "${adminBase(a)}${h.handlerPath}/upstreams/${u.index}"   # ${u.dial}`)
+          .join('\n                    '),
+        losslessness: `the ${h.keepUpstreams.length} surviving upstream object(s) are never rewritten; `
+          + `${h.keepUpstreams.filter((k) => (k.extraKeyCount ?? 0) > 0).length} of them carry fields beyond \`dial\` `
+          + 'which a whole-array PUT would have discarded',
+        durableEdit: durableEditFor(a, `remove the ${a.target} "to" entry from THIS reverse_proxy only, leaving ${h.keepUpstreams.map((k) => k.dial).join(', ') || '(nothing — refuse)'}`),
       })
     }
   }
@@ -301,6 +322,31 @@ export function candidatePatch(a, impacted, allClassified) {
 const adminBase = (a) => a.caddyAdminEndpoint ?? 'http://localhost:2019/config/'
 
 /**
+ * Where a durable edit would actually be written — or a refusal.
+ *
+ * A container path is not an edit location. `/etc/caddy/Caddyfile` is durable
+ * only if it comes from a WRITABLE bind mount whose host source we can name. If
+ * it is baked into the image, or on a read-only mount, editing "the Caddyfile"
+ * is not a thing anyone can do, and saying so would send a reviewer to a file
+ * that either does not persist or cannot be written.
+ */
+export function durableEditFor(a, what) {
+  if (a.caddyDiskConfigIsBootSource !== true || typeof a.caddyDiskConfigPath !== 'string') {
+    return 'REFUSED: the loaded configuration is not booted from a file on disk; no durable edit location exists'
+  }
+  if (typeof a.caddyBootMountSource !== 'string' || a.caddyBootMountSource.length === 0) {
+    return `REFUSED: ${a.caddyDiskConfigPath} is not backed by a nameable host mount `
+      + '(baked into the image, or an unresolved volume) — a durable edit target cannot be named'
+  }
+  if (a.caddyBootMountWritable !== true) {
+    return `REFUSED: ${a.caddyBootMountSource} is mounted read-only; a durable edit cannot be written there`
+  }
+  const compose = typeof a.caddyComposeFile === 'string' && a.caddyComposeFile.length > 0
+    ? ` (compose source: ${a.caddyComposeFile})` : ''
+  return `on the HOST at ${a.caddyBootMountSource} (mounted ${a.caddyDiskConfigPath}${compose}): ${what}`
+}
+
+/**
  * The exact before/after probes a future mutating stage must run.
  *
  * "Check the dashboard still works" is not a check. Each entry names a concrete
@@ -313,6 +359,18 @@ export function fingerprintPlan(a, impacted, allClassified) {
   const add = (c, kind) => {
     const hosts = c.hostMatchers.length ? c.hostMatchers : ['(catch-all)']
     const paths = c.pathMatchers.length ? c.pathMatchers : ['/']
+    // For a shared handler, "the endpoint still answers" is far too weak: it can
+    // answer while a survivor has lost its metadata, or while the handler has
+    // been emptied and Caddy is returning someone else's route. Bind the exact
+    // surviving dial set, per handler, and require the handler to stay non-empty.
+    const perHandler = (c.handlers ?? [])
+      .filter((h) => h.role === 'shared')
+      .map((h) => ({
+        handlerPath: h.handlerPath,
+        mustRemainExactly: h.keepUpstreams.map((k) => k.dial),
+        mustNotBeEmpty: true,
+        mustNotContain: h.targetUpstreams.map((t) => t.dial),
+      }))
     for (const host of hosts) {
       for (const p of paths) {
         out.push({
@@ -325,6 +383,7 @@ export function fingerprintPlan(a, impacted, allClassified) {
             `response header fingerprint (server, content-type, content-length) for ${host}${p.replace(/\*$/, '')}`,
             `the upstream list at that route's handlers, read back from the admin API`,
           ],
+          handlerAssertions: perHandler,
         })
       }
     }
@@ -359,6 +418,11 @@ export function render(d) {
       L.push(`        config path : ${s.configPath}`)
       L.push(`        action      : ${s.action}`)
       if (s.keepUpstreams) L.push(`        keep        : ${s.keepUpstreams.join(', ') || '(none — would orphan)'}`)
+      if (s.deletePaths) {
+        L.push('        delete ONLY (descending index order):')
+        for (const dp of s.deletePaths) L.push(`          ${dp}`)
+      }
+      if (s.losslessness) L.push(`        lossless    : ${s.losslessness}`)
       if (s.ordering) L.push(`        ordering    : ${s.ordering}`)
       L.push('        preconditions (all must hold immediately before applying):')
       for (const p of s.preconditions) L.push(`          - ${p}`)
@@ -371,6 +435,10 @@ export function render(d) {
     for (const f of d.patch.fingerprints) {
       L.push(`    [${f.kind}] ${f.host}${f.path}  -> ${f.expectation}`)
       for (const r of f.record) L.push(`        record: ${r}`)
+      for (const ha of f.handlerAssertions ?? []) {
+        L.push(`        AFTER ${ha.handlerPath}/upstreams must be exactly [${ha.mustRemainExactly.join(', ')}]`)
+        L.push(`              and must be non-empty, and must NOT contain [${ha.mustNotContain.join(', ')}]`)
+      }
     }
     L.push('  VALIDATION PLAN:')
     for (const v of d.patch.validation) L.push(`    ${v}`)
@@ -385,11 +453,21 @@ const TARGET_IDS = ['stylique-os', '172.18.0.5']
 const PROT_IDS = ['stylique-dashboard', 'twinai-worker', '172.18.0.9']
 
 const RP = 'apps/http/servers/srv0/routes/0/handle'
-/** One handler, addressed the way the probe addresses it. */
+/**
+ * One handler, addressed the way the probe addresses it.
+ * `dials` may be plain strings, or [dial, extraKeyCount] to model an upstream
+ * carrying fields beyond `dial` (max_requests and friends).
+ */
 function hdl(position, dials, over = {}) {
+  const ups = dials.map((d, i) => Array.isArray(d)
+    ? { index: i, dial: d[0], extraKeyCount: d[1] }
+    : { index: i, dial: d, extraKeyCount: 0 })
   return {
     handlerPath: `${RP}/${position}`, position, handler: 'reverse_proxy',
-    upstreamDials: dials, addressable: true, ...over,
+    upstreams: ups,
+    upstreamDials: ups.map((u) => u.dial),
+    upstreamCount: ups.length,
+    addressable: true, ...over,
   }
 }
 
@@ -412,6 +490,10 @@ function probe(over = {}) {
     caddyRuntimeReadable: true, caddyRuntimeConfigSha256: 'a'.repeat(64),
     caddyDiskConfigPath: '/etc/caddy/Caddyfile', caddyDiskConfigSha256: 'b'.repeat(64),
     caddyDiskConfigIsBootSource: true,
+    caddyBootMountSource: '/root/24_Backend/deploy/Caddyfile',
+    caddyBootMountWritable: true, caddyBootMountType: 'bind',
+    caddyComposeFile: '/root/24_Backend/deploy/docker-compose.yml',
+    caddyComposeDir: '/root/24_Backend/deploy',
     parserAvailable: true, parsed: true,
     routes: [route()],
     ...over,
@@ -507,16 +589,28 @@ async function selftest() {
       JSON.stringify(d.patch.steps[0].keepUpstreams), JSON.stringify(['stylique-dashboard:80']))
     t('step 1 keeps ONLY its own backend',
       JSON.stringify(d.patch.steps[1].keepUpstreams), JSON.stringify(['postiz:5000']))
+    t('step 0 deletes ONLY its own target index', JSON.stringify(d.patch.steps[0].deletePaths), JSON.stringify([`${RP}/0/upstreams/0`]))
+    t('step 1 deletes ONLY its own target index', JSON.stringify(d.patch.steps[1].deletePaths), JSON.stringify([`${RP}/1/upstreams/0`]))
+    // Scoped to what would actually be RUN. The losslessness note mentions the
+    // word PUT to explain what is no longer done; prose is not an instruction.
+    t('no rehearsal issues a PUT or whole-array write',
+      d.patch.steps.some((x) => /\bPUT\b|\bPATCH\b/.test(x.rehearsal ?? '')), false)
+    t('every shared step rehearses DELETE only',
+      d.patch.steps.every((x) => (x.rehearsal ?? '').includes('-X DELETE')), true)
     // The exact fusion that made the old output invalid.
     const fused = d.patch.steps.some((x) =>
       (x.keepUpstreams ?? []).includes('stylique-dashboard:80') && (x.keepUpstreams ?? []).includes('postiz:5000'))
     t('NO step fuses backends from different handlers', fused, false)
-    t('each step names its OWN current upstream array, exactly',
+    t('each step names its OWN ordered index/dial list',
       d.patch.steps[0].preconditions.some((x) =>
-        x.includes(`${RP}/0/upstreams`) && x.includes(JSON.stringify([{ dial: 'stylique-os:4100' }, { dial: 'stylique-dashboard:80' }]))), true)
+        x.includes(`${RP}/0/upstreams`) && x.includes(JSON.stringify([
+          { index: 0, dial: 'stylique-os:4100' }, { index: 1, dial: 'stylique-dashboard:80' }]))), true)
     t('…and step 1 names ITS own, not step 0\'s',
       d.patch.steps[1].preconditions.some((x) =>
-        x.includes(`${RP}/1/upstreams`) && x.includes(JSON.stringify([{ dial: 'stylique-os:4100' }, { dial: 'postiz:5000' }]))), true)
+        x.includes(`${RP}/1/upstreams`) && x.includes(JSON.stringify([
+          { index: 0, dial: 'stylique-os:4100' }, { index: 1, dial: 'postiz:5000' }]))), true)
+    t('each step binds each target index AND its dial',
+      d.patch.steps[0].preconditions.some((x) => x.includes(`${RP}/0/upstreams/0 has dial stylique-os:4100`)), true)
     // The exact-path assertion must be exercised on SHARED-handler steps. Run
     // only against the route-exclusive fixture it was vacuous: that step's
     // configPath IS the route path, which its precondition trivially contains.
@@ -532,6 +626,70 @@ async function selftest() {
     t('…keeping only the protected backend',
       JSON.stringify(d.patch.steps[0].keepUpstreams), JSON.stringify(['stylique-dashboard:80']))
     t('…addressed at that handler, not the route', d.patch.steps[0].configPath, `${RP}/0/upstreams`)
+  }
+
+  console.log('-- LOSSLESSNESS: a protected upstream carrying extra metadata')
+  // The 0a91974 defect. `stylique-dashboard` has max_requests (extraKeyCount 1).
+  // The old rehearsal PUT the whole array rebuilt from {dial} only, silently
+  // discarding it. The corrected plan must never write that object at all.
+  {
+    const meta = route({ handlers: [hdl(0, ['stylique-os:4100', ['stylique-dashboard:80', 1]])] })
+    const d = decide(probe({ routes: [meta] }))
+    t('it is patchable', d.patchable, true)
+    const st = d.patch.steps[0]
+    t('the step DELETES rather than replaces', st.action.startsWith('DELETE only'), true)
+    t('it deletes exactly the target index', JSON.stringify(st.deletePaths), JSON.stringify([`${RP}/0/upstreams/0`]))
+    // The decisive assertion: the protected entry's ADDRESS never appears in
+    // anything the step would write.
+    t('the protected upstream index is NEVER a write target',
+      (st.deletePaths ?? []).some((x) => x.endsWith('/upstreams/1')), false)
+    t('no serialised {dial} array is emitted for the survivors',
+      /\{"dial":"stylique-dashboard:80"\}/.test(st.rehearsal ?? ''), false)
+    t('the step states its losslessness and counts the metadata-bearing survivor',
+      /1 of them carry fields beyond/.test(st.losslessness), true)
+    t('a precondition requires the survivor to remain after deletion',
+      st.preconditions.some((x) => x.includes('must still contain exactly [stylique-dashboard:80]')), true)
+  }
+
+  console.log('-- MULTIPLE target entries + index shift')
+  {
+    const multi = route({ handlers: [hdl(0, [
+      'stylique-os:4100', 'stylique-dashboard:80', 'stylique-os:4101', 'postiz:5000'])] })
+    const d = decide(probe({ routes: [multi], protectedIdentities: 'stylique-dashboard postiz twinai-worker' }))
+    const st = d.patch.steps[0]
+    t('both target entries are deleted', st.deletePaths.length, 2)
+    // 2 BEFORE 0. Ascending would delete 0, shifting index 2 down to 1, and the
+    // second delete would then remove stylique-dashboard.
+    t('deletes are ordered DESCENDING by index',
+      JSON.stringify(st.deletePaths), JSON.stringify([`${RP}/0/upstreams/2`, `${RP}/0/upstreams/0`]))
+    t('the ordering hazard is stated', /DESCENDING/.test(st.ordering), true)
+    t('both survivors are kept', JSON.stringify(st.keepUpstreams), JSON.stringify(['stylique-dashboard:80', 'postiz:5000']))
+    // MUTATION CONTROL: ascending order would strand a protected backend.
+    const asc = [...st.deletePaths].sort()
+    t('CONTROL: ascending order differs — it is not accidentally the same',
+      JSON.stringify(asc) === JSON.stringify(st.deletePaths), false)
+  }
+
+  console.log('-- durable edit location must be NAMED or REFUSED')
+  t('a writable bind mount is named as the host path',
+    decide(probe()).patch.steps[0].durableEdit.includes('/root/24_Backend/deploy/Caddyfile'), true)
+  t('a READ-ONLY mount refuses',
+    decide(probe({ caddyBootMountWritable: false })).patch.steps[0].durableEdit.startsWith('REFUSED'), true)
+  t('an unnameable mount (baked into the image) refuses',
+    decide(probe({ caddyBootMountSource: '' })).patch.steps[0].durableEdit.startsWith('REFUSED'), true)
+  t('a non-file-booted config refuses',
+    decide(probe({ caddyDiskConfigIsBootSource: false })).patch.steps[0].durableEdit.startsWith('REFUSED'), true)
+
+  console.log('-- fingerprints bind the exact surviving dial set')
+  {
+    const d = decide(probe({ routes: [route({ handlers: [hdl(0, ['stylique-os:4100', ['stylique-dashboard:80', 2]])] })] }))
+    const fp = d.patch.fingerprints.find((f) => f.kind === 'impacted')
+    t('an impacted fingerprint carries per-handler assertions', (fp.handlerAssertions ?? []).length, 1)
+    t('…requiring the exact surviving dial set',
+      JSON.stringify(fp.handlerAssertions[0].mustRemainExactly), JSON.stringify(['stylique-dashboard:80']))
+    t('…requiring the handler to stay non-empty', fp.handlerAssertions[0].mustNotBeEmpty, true)
+    t('…and requiring the target dial to be gone',
+      JSON.stringify(fp.handlerAssertions[0].mustNotContain), JSON.stringify(['stylique-os:4100']))
   }
 
   console.log('-- the route-exclusive GO case')
@@ -582,7 +740,7 @@ async function selftest() {
 
   console.log('-- durability')
   t('a non-file-booted config refuses to name a durable edit',
-    decide(probe({ caddyDiskConfigIsBootSource: false })).patch.steps[0].durableEdit.includes('must be established'), true)
+    decide(probe({ caddyDiskConfigIsBootSource: false })).patch.steps[0].durableEdit.startsWith('REFUSED'), true)
 
   console.log('-- NOTHING MUTATES')
   const all = JSON.stringify(decide(probe()).patch)

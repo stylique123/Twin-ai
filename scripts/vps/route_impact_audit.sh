@@ -73,6 +73,11 @@ disk_sha=""
 disk_is_source=""
 routes_json="null"
 parse_ok=""
+boot_mount_source=""
+boot_mount_rw=""
+boot_mount_type=""
+boot_compose_file=""
+boot_compose_dir=""
 
 if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CTR"; then
   caddy_present=true
@@ -97,13 +102,30 @@ try:
 except Exception:
     print("null"); sys.exit(0)
 
-def dials(handler):
-    """Every upstream dial under one handler, at any nesting depth."""
+def upstreams(handler):
+    """
+    Each upstream as {index, dial, extraKeyCount}.
+
+    THE INDEX IS THE POINT. A patch that rebuilds the array from dials alone
+    destroys every other per-upstream field Caddy allows — `max_requests`,
+    health-check overrides, dial timeouts — for the backends it was supposed to
+    leave untouched. Recording the index lets the remedy DELETE the target
+    entries by address and never rewrite the survivors at all.
+
+    `extraKeyCount` is a COUNT, never the keys or values: it is the evidence that
+    an entry is more than a dial, without emitting whatever that more is.
+    """
     out = []
-    for u in handler.get("upstreams", []) or []:
+    for i, u in enumerate(handler.get("upstreams", []) or []):
+        if not isinstance(u, dict):
+            out.append({"index": i, "dial": None, "extraKeyCount": None})
+            continue
         d = u.get("dial")
-        if isinstance(d, str):
-            out.append(d)
+        out.append({
+            "index": i,
+            "dial": d if isinstance(d, str) else None,
+            "extraKeyCount": len([k for k in u.keys() if k != "dial"]),
+        })
     return out
 
 def looks_like_handler_list(v):
@@ -146,11 +168,14 @@ def walk(handlers, base, acc):
             k for k, v in h.items()
             if k not in ("routes",) and looks_like_handler_list(v)
         ]
+        ups = upstreams(h)
         acc.append({
             "handlerPath": path,
             "position": j,
             "handler": t if isinstance(t, str) else None,
-            "upstreamDials": dials(h),
+            "upstreams": ups,
+            "upstreamDials": [u["dial"] for u in ups if u["dial"] is not None],
+            "upstreamCount": len(ups),
             "addressable": len(unknown_nesting) == 0,
         })
         for k, sub in enumerate(h.get("routes", []) or []):
@@ -225,6 +250,35 @@ print(json.dumps(rows))
     '') disk_is_source="" ;;
     *) disk_is_source=false ;;
   esac
+
+  # ---- WHERE A DURABLE EDIT WOULD ACTUALLY BE WRITTEN -----------------------
+  #
+  # A container path is not an edit location. If /etc/caddy/Caddyfile lives on a
+  # bind mount, the durable edit is to the HOST source; if it is baked into the
+  # image or sits on a read-only mount, there is no in-place durable edit at all
+  # and saying "edit the Caddyfile" would be false. So the mount is resolved and
+  # its writability recorded, and the caller refuses a durable patch unless the
+  # writable source can be named exactly.
+  if [ -n "$disk_path" ]; then
+    mount_line="$(docker inspect "$CADDY_CTR" \
+      --format '{{range .Mounts}}{{.Destination}}|{{.Source}}|{{.RW}}|{{.Type}}
+{{end}}' 2>/dev/null | while IFS='|' read -r dest src rw typ; do
+        [ -z "$dest" ] && continue
+        case "$disk_path" in
+          "$dest"|"$dest"/*) printf '%s|%s|%s' "$src" "$rw" "$typ"; break ;;
+        esac
+      done)"
+    if [ -n "$mount_line" ]; then
+      boot_mount_source="$(printf '%s' "$mount_line" | cut -d'|' -f1)"
+      boot_mount_rw="$(printf '%s' "$mount_line" | cut -d'|' -f2)"
+      boot_mount_type="$(printf '%s' "$mount_line" | cut -d'|' -f3)"
+    fi
+  fi
+  # The compose project/file this container was created from, if any.
+  boot_compose_file="$(docker inspect "$CADDY_CTR" \
+    --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' 2>/dev/null)"
+  boot_compose_dir="$(docker inspect "$CADDY_CTR" \
+    --format '{{index .Config.Labels "com.docker.compose.project.working_dir"}}' 2>/dev/null)"
 else
   runtime_readable=false
 fi
@@ -248,6 +302,11 @@ printf '"caddyRuntimeConfigSha256":%s,' "$(j_str "$runtime_sha")"
 printf '"caddyDiskConfigPath":%s,' "$(j_str "$disk_path")"
 printf '"caddyDiskConfigSha256":%s,' "$(j_str "$disk_sha")"
 printf '"caddyDiskConfigIsBootSource":%s,' "$(j_bool "$disk_is_source")"
+printf '"caddyBootMountSource":%s,' "$(j_str "$boot_mount_source")"
+printf '"caddyBootMountWritable":%s,' "$(j_bool "$(printf '%s' "$boot_mount_rw" | tr 'A-Z' 'a-z')")"
+printf '"caddyBootMountType":%s,' "$(j_str "$boot_mount_type")"
+printf '"caddyComposeFile":%s,' "$(j_str "$boot_compose_file")"
+printf '"caddyComposeDir":%s,' "$(j_str "$boot_compose_dir")"
 printf '"parserAvailable":%s,' "$(if [ -n "$PARSER" ]; then printf 'true'; else printf 'false'; fi)"
 printf '"parsed":%s,' "$(j_bool "$parse_ok")"
 printf '"routes":%s' "$routes_json"
