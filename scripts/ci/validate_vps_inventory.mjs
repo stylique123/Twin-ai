@@ -10,6 +10,7 @@
 //       node scripts/ci/validate_vps_inventory.mjs --selftest   hostile cases
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
+import { execFileSync } from 'node:child_process'
 
 // Ranges are deliberately WIDE. Their job is to catch a broken/substituted capture
 // (zero CPUs, absent RAM, a 4 EiB disk from a parse error), not to encode an opinion
@@ -23,6 +24,8 @@ const REQUIRED = {
   'disk.docker_avail_kb': { min: 0, max: 1024 * 1024 * 1024 },
   'disk.container_tmp_avail_kb': { min: 0, max: 1024 * 1024 * 1024 },
   'swap.total_kb': { min: 0, max: 1024 * 1024 * 1024 },
+  'swap.free_kb': { min: 0, max: 1024 * 1024 * 1024 },
+  'disk.root_used_pct': { min: 0, max: 100 },
   'container.restarts': { min: 0, max: 100000 },
   'host.uptime_s': { min: 1, max: 10 * 365 * 24 * 3600 },
 }
@@ -92,6 +95,17 @@ export function validateInventory(inv) {
   if (typeof kh !== 'string' || !/^[0-9a-f]{64}$/.test(kh)) errs.push('ssh.known_hosts_sha256 missing or not 64-hex')
 
   // The container must actually be up; a stopped container's facts describe nothing.
+  // Other-container restarts must be STRUCTURED so every count is checkable. A flat
+  // string could hide an unparsed or absurd value behind text that merely looks fine.
+  const ocr = get(inv, 'host.other_container_restarts')
+  if (!Array.isArray(ocr)) errs.push('host.other_container_restarts: not an array')
+  else for (const [i, e] of ocr.entries()) {
+    if (!e || typeof e !== 'object') { errs.push(`other_container_restarts[${i}]: not an object`); continue }
+    if (typeof e.name !== 'string' || e.name.trim() === '') errs.push(`other_container_restarts[${i}].name: missing/empty`)
+    if (typeof e.restarts !== 'number' || !Number.isInteger(e.restarts) || e.restarts < 0 || e.restarts > 100000) {
+      errs.push(`other_container_restarts[${i}].restarts: not an integer in [0,100000] (${JSON.stringify(e.restarts)})`)
+    }
+  }
   const st = get(inv, 'container.status')
   if (st && st !== 'running') errs.push(`container.status is ${st}, expected running`)
   return errs
@@ -119,7 +133,7 @@ function good() {
     container: { status: 'running', health: 'healthy', restarts: 0, created: '2026-07-01T00:00:00Z', started: '2026-07-01T00:00:05Z', image_id: 'sha256:abc', image_ref: 'twinai-worker:latest', image_revision: '7d46dce' },
     worker: { deployed_sha: '7d46dce09bafedd566b7ed40d1082615a2cccd74', registry: 'build_voice,editor_v2,ingest,scrape_dna,validate_source', recent_claim_log_lines: 3 },
     media: { ffmpeg_version: 'ffmpeg version 6.1', ffprobe_ok: '1' },
-    host: { uptime_s: 987654, loadavg: '0.1|0.2|0.3', other_container_restarts: 'stylique-os:0 ' },
+    host: { uptime_s: 987654, loadavg: '0.1|0.2|0.3', other_container_restarts: [{ name: 'stylique-os', restarts: 0 }] },
     ssh: { strict_host_key_verified: true, known_hosts_sha256: 'a'.repeat(64) },
   })
 }
@@ -165,7 +179,31 @@ function selftest() {
   }, /report_sha256 mismatch/)
   add('hash stripped', (o) => { delete o.report_sha256; return o }, /report_sha256 missing/)
 
+  add('root_used_pct above 100', (o) => { o.disk.root_used_pct = 137; return o }, /root_used_pct: 137 outside/)
+  add('root_used_pct negative', (o) => { o.disk.root_used_pct = -1; return o }, /root_used_pct: -1 outside/)
+  add('missing swap.free_kb', (o) => { delete o.swap.free_kb; return o }, /swap\.free_kb: missing/)
+  add('restarts not an array', (o) => { o.host.other_container_restarts = 'stylique-os:0 '; return o }, /not an array/)
+  add('restart count non-numeric', (o) => { o.host.other_container_restarts = [{ name: 'x', restarts: null }]; return o }, /restarts: not an integer/)
+  add('restart entry unnamed', (o) => { o.host.other_container_restarts = [{ name: '', restarts: 0 }]; return o }, /name: missing\/empty/)
+
   let fails = 0
+  // CROSS-RUNTIME CANONICAL PARITY, non-ASCII. The reporter hashes in Python; this
+  // validator recomputes in JS. Python escapes non-ASCII by default (\u00ae) while JS
+  // emits the raw character — so a CPU model containing a real (R) glyph hashed
+  // differently and a perfectly good report was rejected as 'substituted'. Fixed by
+  // ensure_ascii=False in the reporter; asserted here so it cannot regress.
+  {
+    const obj = { cpu: { model: 'Intel\u00ae Xeon\u2122 \u00e9 \u65e5\u672c\u8a9e' }, n: 1 }
+    const js = canonical(obj)
+    let py = ''
+    try {
+      py = execFileSync('python3', ['-c',
+        'import json,sys; print(json.dumps(json.loads(sys.stdin.read()), sort_keys=True, separators=(",",":"), ensure_ascii=False), end="")'],
+        { input: JSON.stringify(obj) }).toString()
+    } catch { py = '<python3 unavailable>' }
+    if (js === py) console.log('  PASS  cross-runtime canonical parity on non-ASCII')
+    else { console.log(`  FAIL  cross-runtime parity — js=${js} py=${py}`); fails++ }
+  }
   for (const { name, mutate, mustMatch } of cases) {
     const errs = validateInventory(mutate(JSON.parse(JSON.stringify(good()))))
     if (mustMatch === null) {
@@ -180,10 +218,16 @@ function selftest() {
   process.exit(fails ? 1 : 0)
 }
 
-const arg = process.argv[2]
-if (arg === '--selftest') selftest()
-else if (!arg) { console.error('usage: validate_vps_inventory.mjs <report.json> | --selftest'); process.exit(2) }
+// Only act as a CLI when executed directly — importing this module (for the parity
+// test, or from another checker) must not trigger argument handling.
+import { fileURLToPath } from 'node:url'
+const isDirect = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]
+const arg = isDirect ? process.argv[2] : undefined
+if (!isDirect) { /* imported: expose validateInventory/canonical only */ }
 else {
+  if (arg === '--selftest') selftest()
+  else if (!arg) { console.error('usage: validate_vps_inventory.mjs <report.json> | --selftest'); process.exit(2) }
+  else {
   let inv
   try { inv = JSON.parse(readFileSync(arg, 'utf8')) }
   catch (e) { console.error(`::error::cannot read/parse ${arg}: ${e.message}`); process.exit(1) }
@@ -194,4 +238,5 @@ else {
     process.exit(1)
   }
   console.log('vps-inventory: OK — all required facts present, in range, and hash-verified')
+}
 }

@@ -225,6 +225,16 @@ jobs:
           python3 - <<'PYEOF' > vps-inventory.json
           import json, os, hashlib
           def g(k, d=''): return os.environ.get(k, d)
+          def parse_restarts(raw):
+              # wire format is 'name:count name:count '. Emitted structured so every
+              # count can be validated instead of eyeballed in a blob of text.
+              out = []
+              for tok in (raw or '').split():
+                  if ':' not in tok: continue
+                  n, _, c = tok.rpartition(':')
+                  try: out.append({'name': n, 'restarts': int(c)})
+                  except ValueError: out.append({'name': n, 'restarts': None})
+              return sorted(out, key=lambda e: e['name'])
           def kb(k):
               v = g(k, '')
               try: return int(v)
@@ -251,11 +261,15 @@ jobs:
                        'recent_claim_log_lines': kb('OBS_RECENT_CLAIM_LOG_LINES')},
             'media':  {'ffmpeg_version': g('OBS_FFMPEG_VERSION'), 'ffprobe_ok': g('OBS_FFPROBE_OK')},
             'host':   {'uptime_s': kb('OBS_UPTIME_S'), 'loadavg': g('OBS_LOADAVG'),
-                       'other_container_restarts': g('OBS_OTHER_RESTARTS')},
+                       'other_container_restarts': parse_restarts(g('OBS_OTHER_RESTARTS'))},
           }
-          body = json.dumps(inv, sort_keys=True, separators=(',', ':'))
+          # ensure_ascii=False is REQUIRED for cross-runtime parity: Python escapes
+          # non-ASCII by default (\u00ae) while JS JSON.stringify emits the raw
+          # character, so a CPU model containing (R) would hash differently in the
+          # validator and be rejected as 'substituted'. Verified by a parity test.
+          body = json.dumps(inv, sort_keys=True, separators=(',', ':'), ensure_ascii=False)
           inv['report_sha256'] = hashlib.sha256(body.encode()).hexdigest()
-          print(json.dumps(inv, sort_keys=True, indent=2))
+          print(json.dumps(inv, sort_keys=True, indent=2, ensure_ascii=False))
           PYEOF
           echo "===== PHASE 8 CAPACITY INVENTORY ====="
           cat vps-inventory.json
