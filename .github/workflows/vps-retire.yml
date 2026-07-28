@@ -29,6 +29,7 @@ on:
           - pre-stop-audit    # A3.5 — prove reconstruction + routing. No host mutation.
           - route-impact      # A3.6 — WHICH route, and a candidate patch. No host mutation.
           - chrome-exposure   # C0 — is the Chrome edge reachable? No host mutation.
+          - stack-dependency  # R0 — who references whom, across the whole stack. No host mutation.
           - reclaim-build-cache  # B1 — build cache ONLY. Independent of stylique-os.
           - disable-restart   # A4.2 — stop the crash loop. Reversible.
           - stop              # A4.3 — stop the container. Reversible.
@@ -77,7 +78,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$STAGE" in
-            manifest|pre-stop-audit|route-impact|chrome-exposure|observe|accept)
+            manifest|pre-stop-audit|route-impact|chrome-exposure|stack-dependency|observe|accept)
               echo "read-only stage '$STAGE' — no confirmation required" ;;
             reclaim-build-cache|disable-restart|stop|remove-container|reclaim)
               if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then
@@ -232,6 +233,21 @@ jobs:
           sha256sum chrome-reachability.json | tee chrome-reachability.sha256
           node scripts/ci/assert_chrome_exposure.mjs chrome-exposure.json chrome-reachability.json \
             | tee chrome-exposure.txt
+
+      # R0 — FULL-STACK DEPENDENCY GRAPH. The inventory says what exists and
+      # classifies it by name; this says who references whom, so "nothing
+      # protected depends on this" becomes proven rather than inferred.
+      - name: Stack dependency graph (read-only; ownership and edges)
+        if: inputs.stage == 'stack-dependency'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/stack_dependency_audit.sh > stack-dependency.json
+          jq -e 'type == "object"' stack-dependency.json > /dev/null \
+            || { echo "::error::the stack dependency probe did not return a JSON object"; exit 1; }
+          sha256sum stack-dependency.json | tee stack-dependency.sha256
+          node scripts/ci/assert_stack_retirement.mjs stack-dependency.json | tee stack-retirement.txt
 
       - name: Record the acceptance baseline anchor
         if: inputs.stage == 'pre-stop-audit'
@@ -430,6 +446,9 @@ jobs:
             chrome-exposure.txt
             chrome-reachability.json
             chrome-reachability.sha256
+            stack-dependency.json
+            stack-dependency.sha256
+            stack-retirement.txt
             structural-delta.txt
             cache-reclaim.txt
             acceptance-baseline.txt

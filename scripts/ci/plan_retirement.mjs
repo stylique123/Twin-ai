@@ -51,9 +51,9 @@ import { pathToFileURL } from 'node:url'
 // workflow swallowed the non-zero exit so the step named "fail closed" reported
 // success. check_vps_retire_safety.mjs now proves this table and the workflow's
 // authorisation arms cannot drift apart again.
-export const STAGES = ['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim']
+export const STAGES = ['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'stack-dependency', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim']
 /** Stages that plan NO commands. They are here to be known, not to act. */
-export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure'])
+export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'stack-dependency'])
 const TARGET = 'stylique-os'
 const TWINAI = 'twinai-worker'
 const DELETABLE = new Set(['stylique-os', 'proven-orphaned'])

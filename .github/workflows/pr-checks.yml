@@ -167,6 +167,12 @@ jobs:
       # channel is "unknown", never "no dependency".
       - name: Chrome exposure classification (offline selftest)
         run: node scripts/ci/assert_chrome_exposure.mjs --selftest
+      # R0 — retirement classification. The safety lives in the HOLD set: an
+      # unread channel, an orphan of unproven ownership, a TwinAI-named image
+      # kept for rollback, and a volume holding a database must never be
+      # classified retire.
+      - name: Stack retirement classification (offline selftest)
+        run: node scripts/ci/assert_stack_retirement.mjs --selftest
       - name: VPS plan execution + structural delta (typed manifest, least privilege)
         run: |
           node scripts/ci/emit_plan_commands.mjs --selftest

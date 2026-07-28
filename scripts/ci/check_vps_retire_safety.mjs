@@ -51,7 +51,8 @@ const REMOTE_SCRIPTS = [COLLECTOR, 'scripts/vps/pre_stop_audit.sh', 'scripts/vps
   // not whether its author believes it is read-only. The Chrome exposure
   // audit reads container metadata, sockets and firewall SHAPE and writes
   // nothing, and it is checked here rather than trusted.
-  'scripts/vps/chrome_exposure_audit.sh']
+  'scripts/vps/chrome_exposure_audit.sh',
+  'scripts/vps/stack_dependency_audit.sh']
 const RETIRE_WF = '.github/workflows/vps-retire.yml'
 
 // Read-only docker invocations. Two-word forms are listed explicitly, because
