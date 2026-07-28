@@ -324,14 +324,22 @@ export async function updateGenerationChoice(
   id: string,
   patch: { selected_hook?: string },
 ): Promise<boolean> {
-  const { error } = await supabase.from('generations').update(patch).eq('id', id)
-  return !error
+  // `!error` IS NOT SUCCESS. A PostgREST UPDATE that matches no row — because
+  // RLS filtered it, or the id is not this user's — returns NO error, so a hook
+  // choice the user could not write reported as saved. Requiring the row back
+  // is the check. (A missing column GRANT is the other failure mode and DOES
+  // error; that one was always caught. This closes the silent one.)
+  const { data, error } = await supabase.from('generations').update(patch).eq('id', id).select('id')
+  return !error && Array.isArray(data) && data.length > 0
 }
 
 // Agency approval: mark a blueprint client-approved (or back to pending). Owner-only.
 export async function setGenerationApproved(id: string, approved: boolean): Promise<boolean> {
-  const { error } = await supabase.from('generations').update({ approved }).eq('id', id)
-  return !error
+  // Same shape, higher stakes: this is the agency approval flag. An approval
+  // that did not persist is indistinguishable, to every later reader, from one
+  // that did.
+  const { data, error } = await supabase.from('generations').update({ approved }).eq('id', id).select('id')
+  return !error && Array.isArray(data) && data.length > 0
 }
 
 // ---- Team seats / shared workspace -----------------------------------------
