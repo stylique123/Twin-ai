@@ -160,6 +160,13 @@ jobs:
       # synthetic configs on stdin. No host is contacted.
       - name: VPS route extractor (real program, synthetic configs)
         run: node scripts/ci/check_route_extractor.mjs
+      # C0 — the Chrome exposure classifier. Severity is only as good as its
+      # fail-closed cases, so those are what this exercises: a firewall with no
+      # matching rule is UNDETERMINED rather than blocked, absent external
+      # evidence is UNDETERMINED rather than safe, and an unread dependency
+      # channel is "unknown", never "no dependency".
+      - name: Chrome exposure classification (offline selftest)
+        run: node scripts/ci/assert_chrome_exposure.mjs --selftest
       - name: VPS plan execution + structural delta (typed manifest, least privilege)
         run: |
           node scripts/ci/emit_plan_commands.mjs --selftest

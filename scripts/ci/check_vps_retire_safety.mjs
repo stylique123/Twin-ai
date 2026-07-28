@@ -46,7 +46,12 @@ const COLLECTOR = 'scripts/vps/collect_resource_inventory.sh'
 // surface and each must be provably read-only, not just the first one anybody
 // thought to check. Adding a script here is how a new remote probe gets covered;
 // forgetting to is caught by the workflow scan below.
-const REMOTE_SCRIPTS = [COLLECTOR, 'scripts/vps/pre_stop_audit.sh', 'scripts/vps/route_impact_audit.sh']
+const REMOTE_SCRIPTS = [COLLECTOR, 'scripts/vps/pre_stop_audit.sh', 'scripts/vps/route_impact_audit.sh',
+  // Being a remote-execution surface is what puts a script on this list —
+  // not whether its author believes it is read-only. The Chrome exposure
+  // audit reads container metadata, sockets and firewall SHAPE and writes
+  // nothing, and it is checked here rather than trusted.
+  'scripts/vps/chrome_exposure_audit.sh']
 const RETIRE_WF = '.github/workflows/vps-retire.yml'
 
 // Read-only docker invocations. Two-word forms are listed explicitly, because
