@@ -235,6 +235,10 @@ authorised are the same string.
 Caddy goes first because it is the edge: `stop` refuses while a live route
 still reaches `stylique-os`.
 
+Each mutating stage requires the phrase **`RETIRE-STYLIQUE-STACK`**. It used to
+be `RETIRE-STYLIQUE-OS`, which named one container out of five — whoever typed
+it was attesting to something narrower than what would happen.
+
 ### What this sweep does NOT reach
 
 Four images on the approved list stay behind, and it is worth being exact about

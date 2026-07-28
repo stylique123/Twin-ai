@@ -1,5 +1,8 @@
-# Staged, gated retirement of the stylique-os container and its host-local
-# resources. Separate from vps-diag.yml on purpose: that workflow is the
+# Staged, gated retirement of the approved Stylique stack and its host-local
+# resources. The scope is scripts/ci/build_resource_inventory.mjs RETIRE_CTRS —
+# stylique-caddy, stylique-dashboard, stylique-chrome, stylique-os and the
+# OpenOutreach container — plus every volume, network and image reachable only
+# from them. Separate from vps-diag.yml on purpose: that workflow is the
 # fail-closed SIGN-OFF authority and must keep taking no caller inputs
 # (scripts/ci/check_vps_diag_authority.mjs enforces that). This one is the
 # opposite kind of thing — it takes inputs, and its mutating stages are gated
@@ -15,7 +18,7 @@
 # REPORT-ONLY BY DEFAULT: `stage: manifest` reads and records, and writes
 # nothing to the host. Mutating stages additionally require `confirm` to equal
 # the exact phrase below. Both conditions, not either.
-name: VPS retire stylique-os (staged, gated)
+name: VPS retire the Stylique stack (staged, gated)
 
 on:
   workflow_dispatch:
@@ -38,7 +41,7 @@ on:
           - reclaim           # A4.6/8/10 — images, networks, volumes, build cache, logs.
           - accept            # A5 — re-inventory and assert the acceptance gate.
       confirm:
-        description: 'Type RETIRE-STYLIQUE-OS to authorise a mutating stage. Read-only stages ignore it.'
+        description: 'Type RETIRE-STYLIQUE-STACK to authorise a mutating stage. Read-only stages ignore it.'
         default: ''
       baseline_run_id:
         description: 'accept stage only: the run id whose vps-retire-evidence artifact holds the BEFORE inventory. Anchor this to the CURRENT inventory, not an older run — the host has changed since the 174-record collection and an obsolete baseline would make the acceptance delta meaningless.'
@@ -54,7 +57,11 @@ concurrency:
 
 env:
   VPS_HOST: 138.201.119.239
-  CONFIRM_PHRASE: RETIRE-STYLIQUE-OS
+  # The phrase names the SCOPE, not one member of it. It used to read
+  # RETIRE-STYLIQUE-OS while the stages acted on five containers: whoever typed
+  # it was attesting to something narrower than what would happen, which is the
+  # opposite of what a confirmation is for.
+  CONFIRM_PHRASE: RETIRE-STYLIQUE-STACK
 
 jobs:
   retire:
