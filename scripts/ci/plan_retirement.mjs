@@ -60,9 +60,9 @@ import { RETIRE_CTRS } from './build_resource_inventory.mjs'
 // workflow swallowed the non-zero exit so the step named "fail closed" reported
 // success. check_vps_retire_safety.mjs now proves this table and the workflow's
 // authorisation arms cannot drift apart again.
-export const STAGES = ['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'stack-dependency', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim']
+export const STAGES = ['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'stack-dependency', 'leftover-secrets', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim']
 /** Stages that plan NO commands. They are here to be known, not to act. */
-export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'stack-dependency'])
+export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'stack-dependency', 'leftover-secrets'])
 /**
  * The containers this plan retires, IN REMOVAL ORDER, imported from the one
  * place that decides it. Caddy first: it is the edge that still routes to
@@ -391,7 +391,7 @@ export function plan(inv, stage) {
   // command list, so the honest plan is an empty one. It still runs the
   // preconditions above on purpose: a host whose twinai-worker is missing or
   // misclassified is not a host to be auditing a retirement on.
-  if (stage === 'pre-stop-audit' || stage === 'route-impact') {
+  if (stage === 'pre-stop-audit' || stage === 'route-impact' || stage === 'leftover-secrets') {
     notes.push('read-only stage: no command is planned; the evidence is the probe verdict')
     for (const n of absent) notes.push(`${n} is not present on this host`)
     return done()

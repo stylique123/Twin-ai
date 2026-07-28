@@ -33,6 +33,7 @@ on:
           - route-impact      # A3.6 — WHICH route, and a candidate patch. No host mutation.
           - chrome-exposure   # C0 — is the Chrome edge reachable? No host mutation.
           - stack-dependency  # R0 — who references whom, across the whole stack. No host mutation.
+          - leftover-secrets  # R1 — do the undeleted host paths hold credentials? No host mutation.
           - reclaim-build-cache  # B1 — build cache ONLY. Independent of stylique-os.
           - disable-restart   # A4.2 — stop the crash loop. Reversible.
           - stop              # A4.3 — stop the container. Reversible.
@@ -85,7 +86,7 @@ jobs:
         run: |
           set -euo pipefail
           case "$STAGE" in
-            manifest|pre-stop-audit|route-impact|chrome-exposure|stack-dependency|observe|accept)
+            manifest|pre-stop-audit|route-impact|chrome-exposure|stack-dependency|leftover-secrets|observe|accept)
               echo "read-only stage '$STAGE' — no confirmation required" ;;
             reclaim-build-cache|disable-restart|stop|remove-container|reclaim)
               if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then
@@ -272,6 +273,32 @@ jobs:
           echo "VERDICT $(grep -E '^  retire [0-9]' stack-retirement.txt | tr -s ' ' || echo '(unavailable)')"
           echo "VERDICT blockers: $(grep -c '^  blocker:' stack-retirement.txt || echo '?')"
           exit $rc
+
+      # R1 — LEFTOVER HOST PATHS. The retirement has no command family for
+      # deleting host paths, so /srv/caddy, /srv/dashboard and
+      # /opt/scrapling-test survive it. They are inert — nothing runs that reads
+      # them — but inert and harmless are different claims, and a Caddyfile is
+      # exactly the kind of file that carries basicauth hashes and upstream
+      # tokens. This reports SHAPES AND COUNTS: (file, pattern name, count).
+      # The matched text is never substituted anywhere, because printing what it
+      # found would copy those credentials into a CI log that is far more widely
+      # readable than the file was.
+      - name: Leftover host-path secret sweep (read-only; shapes and counts only)
+        if: inputs.stage == 'leftover-secrets'
+        run: |
+          set -euo pipefail
+          ssh -n -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/leftover_secret_sweep.sh > leftover-secrets.json
+          jq -e 'type == "object"' leftover-secrets.json > /dev/null \
+            || { echo "::error::the leftover-secret sweep did not return a JSON object"; exit 1; }
+          sha256sum leftover-secrets.json | tee leftover-secrets.sha256
+          # The verdict is echoed as counts. A path that could not be read is
+          # NOT a path with no secrets, so the status is printed first.
+          echo "SWEEP status: $(jq -r '.status' leftover-secrets.json)"
+          jq -r '.paths[]' leftover-secrets.json | awk -F'|' '{printf "SWEEP path %s: %s (%s KiB, %s files)\n",$1,$2,$3,$4}'
+          echo "SWEEP findings: $(jq -r '.findings | length' leftover-secrets.json)"
+          jq -r '.findings[]' leftover-secrets.json | awk -F'|' '{printf "SWEEP   %s : %s x%s\n",$1,$2,$3}'
 
       - name: Record the acceptance baseline anchor
         if: inputs.stage == 'pre-stop-audit'
@@ -498,6 +525,8 @@ jobs:
             chrome-reachability.sha256
             stack-dependency.json
             stack-dependency.sha256
+          leftover-secrets.json
+          leftover-secrets.sha256
             stack-retirement.txt
             structural-delta.txt
             cache-reclaim.txt
