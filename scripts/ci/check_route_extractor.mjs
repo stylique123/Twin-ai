@@ -156,9 +156,46 @@ async function main() {
     const o3 = runProgram(PROG, cfg)
     const chain = o3.routes[0].handlers.find((h) => h.upstreamDials.includes('stylique-os:4100')).matcherChain
     t('a route group is reported as PRESENT when the config sets one', chain[1].hasGroup, true)
-    // A group NAME is author-chosen text and is not on the emitted-value
-    // allowlist. The caller needs only its existence in order to refuse.
-    t('…and its NAME never leaves the host', JSON.stringify(o3).includes('g1'), false)
+    // IDENTITY, NOT MERE PRESENCE. Two routes in the SAME group are mutually
+    // exclusive; two in different groups are not. The analyser cannot decide a
+    // removal without knowing which is which.
+    t('…with a stable identifier', /^[0-9a-f]{16}$/.test(chain[1].groupId), true)
+    t('…and the machine-shaped name, which is what the Caddyfile adapter emits',
+      chain[1].groupName, 'g1')
+    // EQUAL NAMES GIVE EQUAL IDS, DIFFERENT NAMES GIVE DIFFERENT IDS — the only
+    // two properties the mutual-exclusion algebra actually needs.
+    const idOf = (name) => {
+      const c = liveShapedConfig()
+      c.apps.http.servers.srv0.routes[0].handle[0].routes[1].group = name
+      const o = runProgram(PROG, c)
+      return o.routes[0].handlers.find((h) => h.upstreamDials.includes('stylique-os:4100')).matcherChain[1].groupId
+    }
+    t('…equal group names give equal ids', idOf('same') === idOf('same'), true)
+    t('…and different group names give different ids', idOf('a') === idOf('b'), false)
+    // AN ARBITRARY NAME IS AUTHOR-CHOSEN TEXT and is not on the emitted-value
+    // allowlist. The id still carries identity; the text does not travel.
+    {
+      const c = liveShapedConfig()
+      c.apps.http.servers.srv0.routes[0].handle[0].routes[1].group = 'tenant acme prod token=s3cr3t'
+      const o = runProgram(PROG, c)
+      const ch = o.routes[0].handlers.find((h) => h.upstreamDials.includes('stylique-os:4100')).matcherChain
+      t('an UNSAFE group name never leaves the host', JSON.stringify(o).includes('s3cr3t'), false)
+      t('…and groupName is withheld rather than truncated', ch[1].groupName, null)
+      t('…while the id is still emitted, so identity survives',
+        /^[0-9a-f]{16}$/.test(ch[1].groupId), true)
+    }
+  }
+
+  // The probe must also identify WHICH Caddy produced this JSON; the shell
+  // captures that outside PROG_ROUTES, so its presence is asserted against the
+  // script source rather than the program output.
+  {
+    const src2 = readFileSync(SCRIPT, 'utf8')
+    t('the probe reads the running Caddy version', /caddy_version="\$\(docker exec .* caddy version/.test(src2), true)
+    t('…and the image DIGEST, not just the tag', /caddy_image_digest="\$\(docker inspect/.test(src2), true)
+    t('…and emits both', /"caddyVersion":%s/.test(src2) && /"caddyImageDigest":%s/.test(src2), true)
+    t('…using only read-only docker verbs', (src2.match(/docker [a-z]+/g) || [])
+      .filter((v, i, arr) => arr.indexOf(v) === i).sort().join(','), 'docker exec,docker inspect,docker ps')
   }
 
   // ------------------------------------------- matcher SET structure (OR/AND)

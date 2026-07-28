@@ -564,6 +564,8 @@ export function siblingModel(handlers, parentRoutesArrayPath) {
       matchSets: Array.isArray(c.matchSets) ? c.matchSets : null,
       pathMatchers: c.path ?? [], hostMatchers: c.host ?? [],
       terminal: c.terminal === true, hasGroup: c.hasGroup === true,
+      groupId: typeof c.groupId === 'string' ? c.groupId : null,
+      groupName: typeof c.groupName === 'string' ? c.groupName : null,
       ancestorKey,
       handlerTypes: new Set(c.handlerTypes ?? []),
       reachesTarget: false, reachesOther: false, otherDials: [],
@@ -605,6 +607,7 @@ export function siblingFingerprint(s) {
     })),
     terminal: s.terminal === true,
     hasGroup: s.hasGroup === true,
+    groupId: s.groupId ?? null,
     handlerTypes: [...(s.handlerTypes ?? [])].sort(),
     dials: [...new Set(s.otherDials ?? [])].sort(),
     reachesTarget: s.reachesTarget === true,
@@ -636,20 +639,15 @@ export function fallThroughAfterRemoval(siblings, removedIndex) {
   const removed = siblings.find((sN) => sN.index === removedIndex)
   if (!removed) return { supported: false, reason: 'the removed route is not among its siblings' }
 
-  // GROUPS ARE NOT MODELLED — DELIBERATELY. A route `group` changes which
-  // siblings Caddy even considers once a member has matched. The exact rule is a
-  // property of Caddy's route compiler, and the previous revision asserted from
-  // reasoning alone that a group "never widens what a later route can serve".
-  // That may well be true; it was not demonstrated, and an unproven premise
-  // underneath a deletion is what this whole gate exists to prevent.
-  const grouped = siblings.filter((s) => s.hasGroup === true)
-  if (grouped.length > 0) {
+  // GROUP IDENTITY IS REQUIRED WHEREVER A GROUP EXISTS. Two routes in the SAME
+  // group interact; two in different groups do not. A route that reports it is
+  // grouped but carries no id cannot be placed on either side of that line.
+  const idless = siblings.filter((s) => s.hasGroup === true && !s.groupId)
+  if (idless.length > 0) {
     return {
       supported: false,
-      // The group NAME is deliberately not reported: the caller needs only its
-      // existence to refuse, so the name never leaves the host.
-      reason: `sibling route(s) ${grouped.map((s) => s.routePath).join(', ')} belong to a route group; `
-        + 'group evaluation order is not modelled here and is not assumed',
+      reason: `sibling route(s) ${idless.map((s) => s.routePath).join(', ')} report a route group `
+        + 'without an identifier; group membership cannot be established and mutual exclusion is not assumed',
     }
   }
 
@@ -698,50 +696,115 @@ export function fallThroughAfterRemoval(siblings, removedIndex) {
     later.push({ sib: s, sets: parsed.ok })
   }
 
-  const results = []
-  for (const rm of removedSets.ok) {
-    let verdict = null
-    // ONLY LATER SIBLINGS. Routes are evaluated in array order, so every route
-    // BEFORE the removed one behaves exactly as it did — deleting something
-    // after it cannot change whether it matches or terminates.
-    for (const { sib, sets } of later) {
+  // EVERY sibling is in scope, not only the later ones. An earlier route that
+  // MATCHES and belongs to a group SATISFIES that group for the request, which
+  // changes whether a later member of the same group runs at all. Restricting
+  // the walk to later siblings modelled the ordering but not the exclusion.
+  const all = []
+  for (const s2 of siblings) {
+    const parsed = parseAll(s2)
+    if (parsed.bad) return { supported: false, reason: parsed.bad }
+    all.push({ sib: s2, sets: parsed.ok })
+  }
+
+  /**
+   * ONE PASS OF CADDY'S ROUTE LIST, for one matcher set.
+   *
+   * Transcribed from caddyhttp's wrapRoute, in this order and no other:
+   *
+   *   1. evaluate the matcher sets; no match -> call next, this route does
+   *      nothing at all (and in particular does NOT satisfy its group);
+   *   2. if the route has a group and that group is already satisfied for this
+   *      request -> call next, skipping this route's handlers;
+   *   3. otherwise mark the group satisfied;
+   *   4. if Terminal, replace `next` with the empty handler, so nothing after
+   *      this route can run;
+   *   5. run this route's handlers.
+   *
+   * A handler that writes a response ends the request; pure middleware calls
+   * next and evaluation continues.
+   *
+   * `skip` removes one route from the list, which is exactly what a deletion
+   * does — and note it also removes that route's ability to satisfy its group.
+   */
+  const walkOnce = (rm, skipIndex) => {
+    const satisfied = new Set()
+    for (const { sib, sets } of all) {
+      if (sib.index === skipIndex) continue
+
       const decisions = sets.map((x) => ({ x, r: matchSetsIntersect(rm, x) }))
       if (decisions.some((d) => d.r === null)) {
-        verdict = {
-          outcome: 'overlap-undecidable', sib, overlap: [],
-          detail: `overlap with ${sib.routePath} could not be decided`,
-        }
-        break
+        return { outcome: 'overlap-undecidable', sib, overlap: [], detail: `overlap with ${sib.routePath} could not be decided` }
       }
       const overlap = decisions.filter((d) => d.r === true).map((d) => d.x)
-      if (overlap.length === 0) continue
+      if (overlap.length === 0) continue // step 1: no match, no effect, not even on its group
 
-      // SOME REQUEST in the removed set reaches this sibling. What it reaches
-      // decides the outcome — and reaching a backend decides it immediately,
-      // whether the overlap is the whole set or one URL inside it.
-      if (sib.reachesTarget) { verdict = { outcome: 'still-reaches-target', sib, overlap }; break }
-      if (sib.reachesOther) { verdict = { outcome: 'exposes-backend', sib, overlap }; break }
-
-      // No backend here. Does evaluation STOP, or is this middleware that calls
-      // the next handler? Middleware is not absorption.
-      if (!stopsEvaluation(sib)) continue
-
-      // It stops — but only for the requests it actually matches. Covering the
-      // whole removed set accounts for it; covering part leaves a remainder this
-      // matcher language cannot express as one set, which is refused rather than
-      // approximated.
       const covers = sets.map((x) => matchSetCovers(x, rm))
-      if (covers.some((r) => r === true)) { verdict = { outcome: 'absorbed-terminating', sib, overlap }; break }
       if (covers.some((r) => r === null)) {
-        verdict = {
-          outcome: 'overlap-undecidable', sib, overlap,
-          detail: `coverage by ${sib.routePath} could not be decided`,
-        }
-        break
+        return { outcome: 'overlap-undecidable', sib, overlap, detail: `coverage by ${sib.routePath} could not be decided` }
       }
-      verdict = { outcome: 'partial-absorption-unmodelled', sib, overlap }; break
+      const wholly = covers.some((r) => r === true)
+
+      // step 2/3: GROUP MUTUAL EXCLUSION. Satisfaction is per REQUEST, so a
+      // grouped route that matches only PART of the set leaves the rest of the
+      // set in a different group state from here on. That split is not
+      // expressible as one matcher set, so it is refused rather than resolved
+      // by picking a side.
+      if (sib.groupId) {
+        if (!wholly) return { outcome: 'partial-absorption-unmodelled', sib, overlap }
+        if (satisfied.has(sib.groupId)) continue
+        satisfied.add(sib.groupId)
+      }
+
+      // step 5: the handlers run. REACHING A BACKEND IS DECIDED ON OVERLAP, NOT
+      // COVERAGE — if any request in the set reaches this route's backend, the
+      // backend is reached, whether that is the whole set or one URL inside it.
+      // That is precisely the subset case a sampled probe used to miss.
+      if (sib.reachesTarget) return { outcome: 'reaches-target', sib, overlap, whollyCovered: wholly }
+      if (sib.reachesOther) return { outcome: 'reaches-other', sib, overlap, whollyCovered: wholly }
+
+      // No backend here. Whether the request continues depends on the whole set
+      // behaving alike, so coverage matters from this point.
+      if (!wholly) return { outcome: 'partial-absorption-unmodelled', sib, overlap }
+      // step 4: Terminal stops everything after this route, whatever its
+      // handlers do. Otherwise a route with no upstream is middleware and
+      // evaluation continues.
+      if (stopsEvaluation(sib)) return { outcome: 'absorbed-terminating', sib, overlap }
     }
-    results.push({ pattern: rm.text, ...(verdict ?? { outcome: 'unserved', sib: null, overlap: [] }) })
+    return { outcome: 'unserved', sib: null, overlap: [] }
+  }
+
+  const results = []
+  for (const rm of removedSets.ok) {
+    // DELETION IS MODELLED AS A BEFORE/AFTER PAIR, not as a guess about what
+    // takes over. The question "is this a detach" is exactly "does the same
+    // request set reach a different backend once this route is gone".
+    const before = walkOnce(rm, null)
+    const after = walkOnce(rm, removedIndex)
+
+    let outcome
+    if (after.outcome === 'overlap-undecidable' || after.outcome === 'partial-absorption-unmodelled') {
+      outcome = after.outcome
+    } else if (after.outcome === 'reaches-target') {
+      outcome = 'still-reaches-target'
+    } else if (after.outcome === 'reaches-other') {
+      outcome = 'exposes-backend'
+    } else {
+      outcome = after.outcome // unserved | absorbed-terminating
+    }
+    results.push({
+      pattern: rm.text,
+      outcome,
+      sib: after.sib,
+      overlap: after.overlap,
+      detail: after.detail,
+      // What served it BEFORE, so the report can state the change rather than
+      // only the end state.
+      servedBefore: before.sib
+        ? { routePath: before.sib.routePath, index: before.sib.index, outcome: before.outcome,
+            dials: before.outcome === 'reaches-other' ? [...new Set(before.sib.otherDials)].sort() : [] }
+        : { routePath: null, index: null, outcome: before.outcome, dials: [] },
+    })
   }
   return { supported: true, results }
 }
@@ -785,6 +848,7 @@ export function postRemovalRouting(handlers, excl) {
     matchSetText: (s.matchSets ?? []).map(matchSetText).join(' OR ') || '(no match — every request)',
     hostMatchers: s.hostMatchers, pathMatchers: s.pathMatchers,
     terminal: s.terminal, hasGroup: s.hasGroup === true,
+    groupId: s.groupId ?? null, groupName: s.groupName ?? null,
     handlerTypes: [...s.handlerTypes].sort(),
     sha256: siblingFingerprint(s),
   }))
@@ -1100,6 +1164,97 @@ export function divergenceCause(a) {
 export const PARSER_STATUSES = ['ok', 'data_invalid', 'program_failed', 'unavailable']
 
 /**
+ * THE BUILD THIS MODEL WAS PROVEN AGAINST.
+ *
+ * The route-group semantics below are a transcription of caddyhttp's wrapRoute
+ * at ONE revision. The same JSON routes differently under a compiler that
+ * changed, so the evidence must name the binary and this tool must refuse when
+ * the binary is not the one the transcription came from.
+ *
+ * The digest — not the tag — is the identity. A tag is a mutable pointer.
+ */
+export const PROVEN_CADDY_VERSION = 'v2.11.4'
+export const PROVEN_CADDY_IMAGE_DIGEST =
+  'sha256:77c07d5ebfa5be9fd6c820d2094ae662c9e7eeb9bf98346b7f639900263ee2a2'
+
+/** Version string as reported by `caddy version`, e.g. "v2.11.4 h1:...". */
+export function caddyBuildBlockers(a) {
+  const out = []
+  const v = a.caddyVersion
+  if (typeof v !== 'string' || v.length === 0) {
+    out.push('the probe did not report the running Caddy version; route-group semantics are version-specific '
+      + `and this model was transcribed from ${PROVEN_CADDY_VERSION}`)
+  } else if (!v.split(/\s+/)[0].startsWith(PROVEN_CADDY_VERSION)) {
+    out.push(`the running Caddy reports ${JSON.stringify(v.split(/\s+/)[0])}, but the route-group semantics `
+      + `modelled here were read from ${PROVEN_CADDY_VERSION}; the routing consequences of a removal are not `
+      + 'established for this build')
+  }
+  const d = a.caddyImageDigest
+  if (typeof d !== 'string' || d.length === 0) {
+    out.push('the probe did not report the Caddy image digest; a tag is a mutable pointer and does not '
+      + 'identify the binary whose behaviour was modelled')
+  } else if (!d.includes(PROVEN_CADDY_IMAGE_DIGEST)) {
+    out.push(`the Caddy image digest is ${JSON.stringify(d)}, not the ${PROVEN_CADDY_IMAGE_DIGEST} this model `
+      + 'was proven against')
+  }
+  return out
+}
+
+/**
+ * WHAT ELSE COULD BE DONE — named, never chosen.
+ *
+ * When deletion is unsafe there is more than one shape of remedy, and they are
+ * NOT interchangeable. The evidence has to distinguish them, because "remove
+ * the upstream" and "remove the matcher" fail in opposite ways:
+ *
+ *   remove the UPSTREAM   the route still matches, and now has nothing behind
+ *                         it. What Caddy serves from an emptied handler is not
+ *                         modelled here, so this is reported, not recommended.
+ *   remove the MATCHER    the route stops matching, which for a grouped route
+ *                         also stops it satisfying its group — which is exactly
+ *                         how the next member takes the traffic.
+ *   retain the matcher    the route keeps matching and keeps satisfying its
+ *   with a static sink    group, so no later member can take over. The status
+ *                         and body are a product decision and are NOT chosen.
+ *
+ * This function states the trade-offs. It selects nothing.
+ */
+export function nonForwardingAlternatives(c, sim) {
+  const excl = c.exclusiveRoute
+  const exposed = [...new Set((sim.patternsNewlyReachingOtherBackends ?? []).flatMap((x) => x.backend))]
+  return [
+    {
+      id: 'remove-upstream-only',
+      what: `delete the target upstream entry, leaving route ${excl.routePath} matching with an emptied handler`,
+      keepsMatching: true,
+      keepsGroupSatisfied: true,
+      preventsFallThrough: 'yes — the route still matches and still satisfies its group, so no later member runs',
+      unmodelled: 'what an emptied reverse_proxy serves is NOT modelled here; it is not established that this '
+        + 'returns an error rather than something else, and no status is claimed',
+    },
+    {
+      id: 'remove-matcher-or-route',
+      what: `delete route ${excl.routePath} outright`,
+      keepsMatching: false,
+      keepsGroupSatisfied: false,
+      preventsFallThrough: exposed.length
+        ? `NO — proven to expose ${exposed.join(', ')}`
+        : 'not proven for this configuration',
+      unmodelled: null,
+    },
+    {
+      id: 'retain-matcher-static-sink',
+      what: `keep route ${excl.routePath}'s matcher and replace what is behind it with a non-forwarding handler`,
+      keepsMatching: true,
+      keepsGroupSatisfied: true,
+      preventsFallThrough: 'yes — the route keeps matching and keeps satisfying its group',
+      unmodelled: 'the response semantics (which status, which body) are a product decision about a public URL '
+        + 'and are deliberately not chosen here',
+    },
+  ]
+}
+
+/**
  * The post-edit routing verdict, as refusals.
  *
  * Separate from the "no patch builder for this shape yet" blocker on purpose:
@@ -1165,6 +1320,9 @@ export function decide(a) {
   if (a === null || typeof a !== 'object') throw new RouteImpactError('probe output is not a JSON object')
 
   if (a.caddyRuntimeReadable !== true) blockers.push('the runtime Caddy configuration could not be read')
+  // WHICH BINARY. Route-group semantics are version-specific, so an unknown or
+  // unexpected build makes every routing conclusion below unproven.
+  blockers.push(...caddyBuildBlockers(a))
   if (a.parserAvailable !== true) blockers.push('no JSON parser on the host — the route structure is unavailable')
   // The category is validated before it is trusted: an unknown value is itself a
   // refusal, so a probe that grows a fifth outcome cannot be read as a pass.
@@ -1232,6 +1390,29 @@ export function decide(a) {
       blockers.push(...postRemovalBlockers(c))
       const sim = simulateNestedRemoval(c, classified.filter(Boolean))
       c.simulation = sim
+      // DELETION-ONLY, STATED AS ITS OWN VERDICT. "Not patchable" is a
+      // conclusion about this tool; "deleting this route is unsafe" is a
+      // conclusion about the host, and the founder asked for the second one.
+      const exposedBy = sim.patternsNewlyReachingOtherBackends ?? []
+      c.deletionOnly = {
+        safe: sim.isLosslessDetach,
+        routePath: c.exclusiveRoute.routePath,
+        exposes: exposedBy,
+        verdict: sim.isLosslessDetach
+          ? 'deletion of this route is not proven unsafe by the routing analysis'
+          : 'DELETION UNSAFE — removing this route changes where its requests go',
+      }
+      c.alternatives = nonForwardingAlternatives(c, sim)
+      if (!sim.isLosslessDetach) {
+        for (const x of exposedBy) {
+          blockers.push(
+            `route ${c.server}#${c.routeIndex}: DELETION-ONLY IS UNSAFE. Removing ${c.exclusiveRoute.routePath} `
+            + `sends requests matching ${x.pattern} to ${x.backend.join(', ')} via ${x.via}. No patch is prepared. `
+            + 'Alternatives are reported (remove-upstream / remove-matcher / retain-matcher-with-sink) with their '
+            + 'trade-offs; none is chosen here.',
+          )
+        }
+      }
       // THE ROUTING BEING RIGHT IS NOT THE EDIT BEING PROVEN. The simulation
       // reasons about the adapted JSON; the thing that gets edited is the
       // Caddyfile, and nothing here maps a JSON pointer back to a source
@@ -2083,6 +2264,12 @@ function probe(over = {}) {
     caddyComposeDir: '/root/24_Backend/deploy',
     caddyComposeFileResolved: '/root/24_Backend/deploy/docker-compose.yml',
     parserAvailable: true, parsed: true,
+    // THE PROVEN BUILD. Route-group semantics are version-specific, so the
+    // fixture states the binary the model was transcribed from — and a probe
+    // that omits either field is a refusal, which is asserted separately.
+    caddyVersion: 'v2.11.4 h1:0000000000000000000000000000000000000000000=',
+    caddyImageRef: 'caddy:2-alpine',
+    caddyImageDigest: 'caddy@sha256:77c07d5ebfa5be9fd6c820d2094ae662c9e7eeb9bf98346b7f639900263ee2a2',
     routes: [route()],
     ...over,
   }
@@ -2538,7 +2725,7 @@ async function selftest() {
     // model refuses when it cannot account for every entry, so fixtures must
     // declare it rather than let it be inferred from what happened to be seen.
     const nested = (i, pathMatch, dial, over = {}) => {
-      const { siblingCount = 3, terminal = false, handler = 'reverse_proxy' } = over
+      const { siblingCount = 3, terminal = false, handler = 'reverse_proxy', group = null } = over
       const rp = `${SUBR}/${i}`
       const inner = `${rp}/handle/0/routes/0`
       return {
@@ -2547,7 +2734,10 @@ async function selftest() {
         ownerRoutePath: inner, nestingDepth: 2,
         matcherChain: [
           outerCtx,
-          ctx(rp, [], [pathMatch], i, SUBR, { terminal, handlerTypes: ['subroute'], parentRoutesCount: siblingCount }),
+          ctx(rp, [], [pathMatch], i, SUBR, {
+            terminal, handlerTypes: ['subroute'], parentRoutesCount: siblingCount,
+            hasGroup: group !== null, groupId: group, groupName: group,
+          }),
           ctx(inner, [], [], 0, `${rp}/handle/0/routes`, { handlerTypes: [handler], parentRoutesCount: 1 }),
         ],
         unsupportedMatcherKeys: [],
@@ -3486,6 +3676,198 @@ async function selftest() {
         const d = decide(probe({ routes: [cfg] }))
         return d.patchable === false && d.blockers.some((b) => /placeholder brace/.test(b))
       })(), true)
+
+      // ==================================================================
+      // ROUTE GROUPS — transcribed from caddyhttp/routes.go at v2.11.4:
+      //
+      //   matches, err := route.MatcherSets.AnyMatchWithError(req)
+      //   if !matches { return nextCopy.ServeHTTP(rw, req) }
+      //   if route.Group != "" {
+      //       groups := req.Context().Value(routeGroupCtxKey).(map[string]struct{})
+      //       if _, ok := groups[route.Group]; ok { return nextCopy.ServeHTTP(rw, req) }
+      //       groups[route.Group] = struct{}{}
+      //   }
+      //
+      // Two consequences the previous heads got wrong in opposite directions:
+      //   * a group is checked AFTER the matcher, so a non-matching route does
+      //     NOT satisfy its group;
+      //   * only the FIRST MATCHING member runs, so DELETING a member frees the
+      //     group for the next one. A group therefore does not protect a path
+      //     from a removal — it is precisely what lets a later member take over.
+      // ==================================================================
+      const G = (id) => ({ groupId: id, hasGroup: true })
+      {
+        // The live topology, in miniature: an ungrouped catch-all middleware
+        // route, then a grouped target route, then a grouped catch-all backend.
+        const mw = SIB({ index: 0, routePath: 'R0', matchSets: [], handlerTypes: new Set(['headers', 'encode']) })
+        const tgt = SIB({ index: 1, routePath: 'R1', matchSets: P('/api/*'), reachesTarget: true, ...G('g1') })
+        const dash = SIB({
+          index: 2, routePath: 'R2', matchSets: [], reachesOther: true,
+          otherDials: ['stylique-dashboard:80'], ...G('g1'),
+        })
+        const live = mk([mw, tgt, dash])
+
+        const r = fallThroughAfterRemoval(live, 1)
+        t('GROUPS ARE NOW MODELLED, not refused', r.supported, true)
+        t('BEFORE the removal the target serves the set', r.results[0].servedBefore.routePath, 'R1')
+        t('…and the grouped catch-all is excluded by mutual exclusion',
+          r.results[0].servedBefore.outcome, 'reaches-target')
+        // THE FINDING. Deleting the grouped member frees the group.
+        t('AFTER the removal the SAME set reaches the dashboard', r.results[0].outcome, 'exposes-backend')
+        t('…via the later member of the same group', r.results[0].sib.routePath, 'R2')
+        t('…and the ungrouped middleware did not stop it',
+          r.results[0].sib.routePath === 'R0', false)
+
+        // NEGATIVE CONTROL: put the catch-all in a DIFFERENT group and nothing
+        // about this changes — mutual exclusion was never what protected it.
+        const diff = mk([mw, tgt, SIB({ index: 2, routePath: 'R2', matchSets: [], reachesOther: true, otherDials: ['x:1'], ...G('g2') })])
+        t('NEGATIVE: a different group gives the same exposure',
+          fallThroughAfterRemoval(diff, 1).results[0].outcome, 'exposes-backend')
+
+        // MUTATION CONTROL: if the catch-all were UNGROUPED, the answer is the
+        // same. Proving that stops "it is grouped" from being read as a cause.
+        const nogroup = mk([mw, tgt, SIB({ index: 2, routePath: 'R2', matchSets: [], reachesOther: true, otherDials: ['x:1'] })])
+        t('MUTATION: ungrouping the catch-all changes nothing',
+          fallThroughAfterRemoval(nogroup, 1).results[0].outcome, 'exposes-backend')
+
+        // POSITIVE CONTROL: mutual exclusion DOES matter when the surviving
+        // member is EARLIER. An earlier grouped route that matches satisfies
+        // the group, so a later member never runs — before or after.
+        const early = SIB({ index: 0, routePath: 'R0', matchSets: [], reachesOther: true, otherDials: ['d:1'], ...G('g1') })
+        const late = SIB({ index: 2, routePath: 'R2', matchSets: [], reachesOther: true, otherDials: ['x:1'], ...G('g1') })
+        const pre = fallThroughAfterRemoval(mk([early, tgt, late]), 1)
+        t('POSITIVE: an EARLIER grouped match satisfies the group', pre.results[0].servedBefore.routePath, 'R0')
+        t('…so the target never served the set to begin with', pre.results[0].servedBefore.outcome, 'reaches-other')
+        t('…and after the removal the same earlier route still serves it', pre.results[0].sib.routePath, 'R0')
+
+        // A NON-MATCHING grouped route must NOT satisfy the group — the group
+        // check sits after the matcher check, and swapping them would silently
+        // protect a path that is not protected.
+        const nonMatching = SIB({ index: 0, routePath: 'R0', matchSets: P('/other/*'), reachesOther: true, otherDials: ['d:1'], ...G('g1') })
+        const nm = fallThroughAfterRemoval(mk([nonMatching, tgt, late]), 1)
+        t('a NON-MATCHING grouped route does not satisfy its group',
+          nm.results[0].outcome, 'exposes-backend')
+        t('…and the exposure is the later member, not the non-matching one',
+          nm.results[0].sib.routePath, 'R2')
+
+        // A grouped route that covers only PART of the set splits the group
+        // state across the set, which this language cannot express.
+        const partialGrouped = SIB({ index: 2, routePath: 'R2', matchSets: P('/api/admin/*'), reachesOther: true, otherDials: ['x:1'], ...G('g1') })
+        t('a PARTIALLY matching grouped route is refused, not resolved',
+          fallThroughAfterRemoval(mk([mw, tgt, partialGrouped]), 1).results[0].outcome,
+          'partial-absorption-unmodelled')
+
+        // OLD-HEAD COUNTEREXAMPLE. The head before this one refused outright on
+        // any group. That was safe but blind: it could not tell this exposure
+        // from a genuinely isolated removal, and both came back "not modelled".
+        t('OLD HEAD: any group at all produced a blanket refusal', (() => {
+          const grouped = live.filter((x) => x.hasGroup === true)
+          return grouped.length > 0
+        })(), true)
+        t('CORRECTED: the same shape now yields a specific, actionable finding',
+          `${r.results[0].outcome}:${r.results[0].sib.routePath}`, 'exposes-backend:R2')
+
+        // MUTUAL EXCLUSION ITSELF, isolated. The earlier member must be pure
+        // MIDDLEWARE — if it reached a backend the walk would stop there and
+        // the skip would never be exercised. This is the only case that proves
+        // `groups[route.Group]` actually suppresses the later member.
+        {
+          const mwGrouped = SIB({ index: 0, routePath: 'R0', matchSets: [], handlerTypes: new Set(['headers']), ...G('g1') })
+          const laterSame = SIB({ index: 2, routePath: 'R2', matchSets: [], reachesOther: true, otherDials: ['dash:80'], ...G('g1') })
+          const suppressed = fallThroughAfterRemoval(mk([mwGrouped, tgt, laterSame]), 1)
+          t('an earlier grouped MIDDLEWARE route satisfies the group',
+            suppressed.results[0].outcome, 'unserved')
+          t('…so the later member of that group never runs', suppressed.results[0].sib, null)
+          // Same shape, different group: nothing is suppressed and the backend
+          // is reached. That is what makes the suppression above load-bearing.
+          const laterOther = SIB({ index: 2, routePath: 'R2', matchSets: [], reachesOther: true, otherDials: ['dash:80'], ...G('g2') })
+          const notSuppressed = fallThroughAfterRemoval(mk([mwGrouped, tgt, laterOther]), 1)
+          t('CONTROL: a DIFFERENT group is not suppressed', notSuppressed.results[0].outcome, 'exposes-backend')
+          t('…and reaches the backend', notSuppressed.results[0].sib.routePath, 'R2')
+        }
+
+        // A group WITHOUT an identity cannot be placed on either side of the
+        // mutual-exclusion line.
+        const idless = mk([mw, tgt, SIB({ index: 2, routePath: 'R2', matchSets: [], reachesOther: true, otherDials: ['x:1'], hasGroup: true, groupId: null })])
+        const ri = fallThroughAfterRemoval(idless, 1)
+        t('a group with no identifier fails CLOSED', ri.supported, false)
+        t('…naming membership as the thing that cannot be established',
+          /group membership cannot be established/.test(ri.reason), true)
+      }
+
+      // ==================================================================
+      // THE BUILD THE SEMANTICS WERE READ FROM. Route-group behaviour is a
+      // property of a specific caddyhttp revision, so an unknown or different
+      // binary makes every routing conclusion here unproven.
+      // ==================================================================
+      {
+        const bad = (over) => decide(probe({ routes: [live()], ...over })).blockers
+        t('a MISSING Caddy version is a refusal',
+          bad({ caddyVersion: undefined }).some((b) => /did not report the running Caddy version/.test(b)), true)
+        t('a DIFFERENT Caddy version is a refusal',
+          bad({ caddyVersion: 'v2.10.0 h1:x' }).some((b) => /not established for this build/.test(b)), true)
+        t('a MISSING image digest is a refusal',
+          bad({ caddyImageDigest: undefined }).some((b) => /did not report the Caddy image digest/.test(b)), true)
+        t('a DIFFERENT image digest is a refusal',
+          bad({ caddyImageDigest: 'caddy@sha256:' + '0'.repeat(64) })
+            .some((b) => /not the sha256:77c07d5e/.test(b)), true)
+        t('…and a tag alone does not satisfy the digest requirement',
+          bad({ caddyImageDigest: 'caddy:2-alpine' }).some((b) => /mutable pointer|not the sha256:77c07d5e/.test(b)), true)
+        t('CONTROL: the proven build raises no build blocker',
+          caddyBuildBlockers(probe()).length, 0)
+        t('…and the proven values are the ones the audit named',
+          `${PROVEN_CADDY_VERSION} ${PROVEN_CADDY_IMAGE_DIGEST}`,
+          'v2.11.4 sha256:77c07d5ebfa5be9fd6c820d2094ae662c9e7eeb9bf98346b7f639900263ee2a2')
+      }
+
+      // ==================================================================
+      // DELETION-ONLY, AND THE ALTERNATIVES — named, never chosen.
+      // ==================================================================
+      {
+        // The live topology with a grouped catch-all behind the target, which
+        // is what the host actually reports.
+        const gLive = () => route({
+          routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+          handlers: [
+            inert(3),
+            nested(1, '/api/*', 'stylique-os:4100', { group: 'g1' }),
+            nested(2, '/*', 'stylique-dashboard:80', { group: 'g1' }),
+          ],
+        })
+        const d = decide(probe({ routes: [gLive()] }))
+        const c2 = d.impacted.find((x) => x.verdict === 'nested-route-exclusive')
+        t('DELETION-ONLY is stated as its own verdict', c2.deletionOnly.safe, false)
+        t('…in words about the host, not about the tool',
+          /DELETION UNSAFE/.test(c2.deletionOnly.verdict), true)
+        t('…naming the backend the requests would reach',
+          c2.deletionOnly.exposes[0].backend.join(','), 'stylique-dashboard:80')
+        t('…and it blocks', d.patchable, false)
+        t('…with no patch prepared', d.patch, null)
+        t('…and the refusal is stated as a DELETION-ONLY blocker of its own',
+          d.blockers.some((b) => /DELETION-ONLY IS UNSAFE/.test(b)), true)
+        t('…naming the pattern, the backend and the route that takes over',
+          d.blockers.some((b) => /\/api\/\*/.test(b) && /stylique-dashboard:80/.test(b) && /routes\/2/.test(b)), true)
+        t('…and saying no alternative is chosen',
+          d.blockers.some((b) => /none is chosen here/.test(b)), true)
+
+        // The three alternatives, with the distinction the audit asked for.
+        const alt = Object.fromEntries(c2.alternatives.map((x) => [x.id, x]))
+        t('REMOVE UPSTREAM keeps the route matching', alt['remove-upstream-only'].keepsMatching, true)
+        t('…and therefore keeps its group satisfied', alt['remove-upstream-only'].keepsGroupSatisfied, true)
+        t('…but what an emptied handler serves is explicitly NOT modelled',
+          /NOT modelled/.test(alt['remove-upstream-only'].unmodelled), true)
+        t('REMOVE MATCHER stops the route matching', alt['remove-matcher-or-route'].keepsMatching, false)
+        t('…and stops it satisfying its group', alt['remove-matcher-or-route'].keepsGroupSatisfied, false)
+        t('…which is proven to expose the dashboard',
+          /NO — proven to expose stylique-dashboard:80/.test(alt['remove-matcher-or-route'].preventsFallThrough), true)
+        t('STATIC SINK keeps matching and keeps the group satisfied',
+          [alt['retain-matcher-static-sink'].keepsMatching, alt['retain-matcher-static-sink'].keepsGroupSatisfied].join(','),
+          'true,true')
+        t('…and refuses to choose the response semantics',
+          /deliberately not chosen/.test(alt['retain-matcher-static-sink'].unmodelled), true)
+        t('NO alternative is marked as selected',
+          c2.alternatives.some((x) => 'chosen' in x || 'recommended' in x), false)
+      }
 
       // THE LIVE SHAPE MUST STILL BE MODELLED. A fail-closed rule that also
       // refuses /os/* and /* would be safe and useless.

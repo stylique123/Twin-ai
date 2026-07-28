@@ -74,7 +74,7 @@ parser_status=unavailable
 # written. Runtime JSON still arrives on stdin.
 
 PROG_ROUTES=$(cat <<'PY_EOF'
-import json, sys
+import hashlib, json, re, sys
 
 try:
     cfg = json.load(sys.stdin)
@@ -112,6 +112,22 @@ def looks_like_handler_list(v):
         isinstance(x, dict) and ("handler" in x or "handle" in x) for x in v)
 
 MATCHER_KEYS_SUPPORTED = ("host", "path")
+
+SAFE_GROUP_NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+
+
+def group_id(g):
+    """Stable identity for a route group, carrying no configuration text."""
+    if not isinstance(g, str) or g == "":
+        return None
+    return hashlib.sha256(g.encode("utf-8")).hexdigest()[:16]
+
+
+def safe_group_name(g):
+    """The name, ONLY when it is machine-shaped. Otherwise the id stands alone."""
+    if not isinstance(g, str) or g == "":
+        return None
+    return g if SAFE_GROUP_NAME.match(g) else None
 
 
 def matchers_of(route):
@@ -171,17 +187,23 @@ def matchers_of(route):
         # deleting a route lets its paths fall through to whatever matches
         # after it. That is a routing change, not a detach.
         "terminal": bool(route.get("terminal")),
-        # A route GROUP changes which siblings are even considered. The exact
-        # rule is a property of Caddy's route compiler, not something to infer
-        # from the config, so its PRESENCE is reported and the caller fails
-        # closed rather than assuming what it does.
+        # A route GROUP makes its members MUTUALLY EXCLUSIVE: only the first
+        # MATCHING member runs. Deciding what a removal does therefore needs
+        # group IDENTITY, not merely presence — two routes in the same group
+        # interact, two routes in different groups do not.
         #
-        # A BOOLEAN, NOT THE NAME. A group name is author-chosen text, and the
-        # emitted-value allowlist is route indices, host matchers, path
-        # matchers, handler type names and upstream dials — nothing else. The
-        # caller only needs to know a group EXISTS in order to refuse, so the
-        # name never has to leave the host and therefore does not.
+        # IDENTITY WITHOUT UNBOUNDED TEXT. A group name is author-chosen, and
+        # the emitted-value allowlist is route indices, host matchers, path
+        # matchers, handler type names and upstream dials. So the identifier
+        # that travels is a DIGEST of the name: equal names give equal ids and
+        # different names give different ids, which is everything the algebra
+        # needs, and no configuration text leaves the host. The name itself is
+        # emitted only when it matches a conservative machine-generated shape
+        # (the Caddyfile adapter emits `group0`, `group1`, …), so a reviewer can
+        # read it in the ordinary case without that being a channel for text.
         "hasGroup": isinstance(route.get("group"), str) and len(route.get("group")) > 0,
+        "groupId": group_id(route.get("group")),
+        "groupName": safe_group_name(route.get("group")),
         "handlerTypes": [h.get("handler") for h in (route.get("handle") or [])
                          if isinstance(h, dict) and isinstance(h.get("handler"), str)],
     }
@@ -623,6 +645,25 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CTR"; then
   # `--config` and `--adapter` decide WHICH file is authoritative. Argv is
   # emitted; environment is emitted as KEY NAMES ONLY, never values.
   caddy_argv="$(docker inspect "$CADDY_CTR" --format '{{.Path}} {{range .Args}}{{.}} {{end}}' 2>/dev/null)"
+
+  # WHICH CADDY. The route-group semantics this tool models were read from a
+  # specific Caddy source revision, and the same JSON means different routing in
+  # a build whose compiler differs. So the binary is identified two ways and the
+  # caller refuses when either is missing or unexpected:
+  #
+  #   version       what the running binary says about itself
+  #   image digest  the immutable content address of the image it came from
+  #
+  # `caddy version` is a read of the binary; it starts no server and touches no
+  # configuration. The digest comes from `docker inspect`, not from a tag —
+  # a tag is a mutable pointer and proves nothing about content.
+  caddy_version="$(docker exec "$CADDY_CTR" caddy version 2>/dev/null | head -1)"
+  caddy_image_ref="$(docker inspect "$CADDY_CTR" --format '{{.Config.Image}}' 2>/dev/null)"
+  caddy_image_id="$(docker inspect "$CADDY_CTR" --format '{{.Image}}' 2>/dev/null)"
+  # RepoDigests is the pull-by-digest identity. Emitted as the digest only.
+  caddy_image_digest="$(docker inspect "$caddy_image_id" \
+    --format '{{range .RepoDigests}}{{.}}
+{{end}}' 2>/dev/null | head -1)"
   caddy_env_keys="$(docker inspect "$CADDY_CTR" --format '{{range .Config.Env}}{{.}}
 {{end}}' 2>/dev/null | cut -d= -f1 | sort -u | tr '\n' ' ')"
 
@@ -685,6 +726,10 @@ printf '"fileIdProcRoot":%s,' "$(j_str "$id_proc_root")"
 printf '"fileIdContainer":%s,' "$(j_str "$id_container")"
 printf '"findmntHostSource":%s,' "$(j_str "$findmnt_host")"
 printf '"mountinfoRelevant":%s,' "$(j_str "$mountinfo_rel")"
+printf '"caddyVersion":%s,' "$(j_str "$caddy_version")"
+printf '"caddyImageRef":%s,' "$(j_str "$caddy_image_ref")"
+printf '"caddyImageId":%s,' "$(j_str "$caddy_image_id")"
+printf '"caddyImageDigest":%s,' "$(j_str "$caddy_image_digest")"
 printf '"caddyArgv":%s,' "$(j_str "$caddy_argv")"
 printf '"caddyEnvKeys":%s,' "$(j_str "$caddy_env_keys")"
 printf '"configKeyPaths":%s,' "$keypaths_json"
