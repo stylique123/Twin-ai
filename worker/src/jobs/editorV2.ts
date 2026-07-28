@@ -33,6 +33,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { db, renewJobLease, type Job } from '../db.js'
 import { env } from '../env.js'
+import { runCompilingStage, compileFailureCode, isCompileCancelled, type CompileOutcome } from './editorCompileStage.js'
 import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost } from '../errors.js'
 import { queueSafeError, sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
@@ -58,15 +59,51 @@ interface EditProjectRow {
 // Every call carries (job id, worker id, attempt) — the attempt observed at
 // claim time is the immutable fencing token; the database rejects any write
 // from a run whose claim has been superseded, even by the same worker id.
-// Stages whose work is REAL (not simulated). Everything after `analyzing`
-// stays simulated until its phase lands.
-const REAL_STAGES: ReadonlySet<EditorStage> = new Set(['inspecting', 'transcribing', 'analyzing'])
+// Which stages actually do REAL work, as opposed to running the scaffold.
+//
+// THIS USED TO BE A STATIC SET OF THREE, and it quietly said something false.
+// `directing` is real whenever EDITOR_DIRECTOR_ENABLED is set, but it was not
+// in the set, so every `stage_started` event for a REAL director call recorded
+// `simulated: true`. Nothing asserted on it, so nothing complained — the
+// operational record was simply wrong about what the worker had just done.
+//
+// Phase 8 adds three more conditionally-real stages. Replicating the same
+// inaccuracy four times over is worse than fixing it once, so the marker now
+// consults the flags that actually decide.
+const ALWAYS_REAL: ReadonlySet<EditorStage> = new Set(['inspecting', 'transcribing', 'analyzing'])
+/**
+ * WHERE THE REAL WORK STOPS AND THE SCAFFOLD BEGINS.
+ *
+ * This marker is what tells a reader of a finished project whether it is a
+ * product success or a pipeline exercise, and `output_asset_id` stays NULL for
+ * every value it can currently take. It must move as each stage becomes real,
+ * because a project whose plan was genuinely compiled but whose marker still
+ * says `simulated_after_analysis` is understating what ran — and the next
+ * person to read it would look for a compile that the record denies happened.
+ *
+ * Exactly one key is emitted, so a consumer branching on presence cannot see
+ * two boundaries at once.
+ */
+function scaffoldBoundary(
+  compiled: CompileOutcome | null, director: DirectorOutcome | null,
+): Record<string, true> {
+  if (compiled) return { simulated_after_compiling: true }
+  if (director) return { simulated_after_directing: true }
+  return { simulated_after_analysis: true }
+}
+
+export function isRealStage(stage: EditorStage): boolean {
+  if (ALWAYS_REAL.has(stage)) return true
+  if (stage === 'directing') return env.editorDirectorEnabled
+  if (stage === 'compiling' || stage === 'rendering' || stage === 'validating') return env.editorRenderEnabled
+  return false
+}
 
 async function advanceStage(job: Job, projectId: string, to: EditorStage): Promise<EditProjectRow> {
   const { data, error } = await db.rpc('editor_advance_stage', {
     p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
     p_to: to, p_pct: stagePct(to), p_message_code: 'stage_started',
-    p_details: { attempt: job.attempts, simulated: !REAL_STAGES.has(to) },
+    p_details: { attempt: job.attempts, simulated: !isRealStage(to) },
   })
   if (error) throw classifyDbError(error.message)
   // PostgREST returns a composite either bare or single-element depending on
@@ -488,6 +525,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     let speech: Record<string, unknown> | null = null
     let analysis: AnalyzeOutcome | null = null
     let director: DirectorOutcome | null = null
+    let compiled: CompileOutcome | null = null
     for (const stage of stagesFrom(proj.status)) {
       if (lease.lost()) throw new LeaseLostError(`lease lost before stage ${stage}`)
       maybeCrash(`before_stage:${stage}`, job)
@@ -504,8 +542,13 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       // A cooperative mid-stage cancellation (watcher-tripped abort) settles
       // the project as cancelled — shared by every real stage.
       const cancelledMidStage = async (err: unknown): Promise<boolean> => {
+        // CANCELLATION IS NOT FAILURE (Gate-0 §5). Every stage's own cancel
+        // type must be listed here: one that is missing does not degrade
+        // gracefully, it turns a user's cancel into a failed project with a
+        // misleading code. Adding a stage means adding its type.
         if (err instanceof InspectionCancelledError || err instanceof SpeechCancelledError
-            || err instanceof AnalyzeCancelledError || err instanceof DirectorCancelledError) {
+            || err instanceof AnalyzeCancelledError || err instanceof DirectorCancelledError
+            || isCompileCancelled(err)) {
           await finishProject(job, projectId, 'cancelled', undefined, { at_stage: stage })
           return true
         }
@@ -580,6 +623,25 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           }
           throw err
         }
+      } else if (stage === 'compiling' && env.editorRenderEnabled) {
+        // Phase 8 Batch 8.5: the REAL compiling stage — pinned evidence plus the
+        // persisted decision, compiled deterministically and recorded through
+        // the fenced RPC. Gated by env so production (flag unset) keeps
+        // compiling SIMULATED below, exactly as directing was before Phase 7.
+        try {
+          compiled = await runCompilingStage(job, projectId, pinned)
+        } catch (err) {
+          if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          if (!isLeaseLost(err)) {
+            // The stable code travels in details; the event code stays coarse so
+            // consumers branch on one name. `edit_plan_divergent` means the
+            // compiler did not reproduce itself on a resume, which is worth
+            // distinguishing from every other compile failure.
+            const code = compileFailureCode(err)
+            await appendEvent(job, projectId, 'compile_failed', { code })
+          }
+          throw err
+        }
       } else {
         await runStageWithTimeout(stage, job, dir)
       }
@@ -591,7 +653,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       // output_asset_id stays NULL — never a product success. When directing
       // ran for real, the boundary moves to after-directing; otherwise it is
       // the unchanged after-analysis boundary (production).
-      ...(director ? { simulated_after_directing: true } : { simulated_after_analysis: true }),
+      ...scaffoldBoundary(compiled, director),
       director_ran: !!director,
       manifest_sha: pinned.manifest.manifestSha,
       source_downloads: session.downloadsPerformed,
@@ -604,7 +666,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     return {
       // compiling/rendering/validating are still simulated; directing is real
       // only when the flag is enabled (else after-analysis, as in production).
-      ...(director ? { simulated_after_directing: true } : { simulated_after_analysis: true }),
+      ...scaffoldBoundary(compiled, director),
       stages_ran: ranStages,
       inspection: inspect,
       speech,
