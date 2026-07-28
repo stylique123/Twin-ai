@@ -134,11 +134,50 @@ jobs:
         run: |
           node scripts/ci/check_vps_retire_safety.mjs --selftest
           node scripts/ci/check_vps_retire_safety.mjs
+      - name: Pre-stop audit verdict (fail-closed; undetermined must block like routed)
+        run: node scripts/ci/assert_pre_stop_audit.mjs --selftest
+      - name: Acceptance baseline anchor (real field name; an unknown digest must fail)
+        run: node scripts/ci/anchor_acceptance_baseline.mjs --selftest
       - name: VPS resource classifier + retirement plan + acceptance gate (offline selftests)
         run: |
           node scripts/ci/build_resource_inventory.mjs --selftest
           node scripts/ci/plan_retirement.mjs --selftest
           node scripts/ci/assert_vps_acceptance.mjs --selftest
+      # These two carry the live-host safety argument and were running only on a
+      # developer's machine: an unwired selftest is a selftest that has already
+      # stopped protecting anything.
+      #   route impact  — which Caddy route serves the target, and what patch is
+      #                   safe; upstream deletions must be exact and descending.
+      #   plan commands — the executor derives its shell from the same typed
+      #                   objects the comparator authorises.
+      #   structural    — a stage changed only what its bound plan permitted.
+      - name: VPS route-impact classification + patch generation (offline selftest)
+        run: node scripts/ci/assert_route_impact.mjs --selftest
+      # The classifier's tests use FIXTURES, which pass whether or not the
+      # extractor actually emits that shape. Both prior rejections of this work
+      # were extractor defects a fixture cannot catch, so the extractor is run
+      # for real here — its python is pulled out of the shell script and fed
+      # synthetic configs on stdin. No host is contacted.
+      - name: VPS route extractor (real program, synthetic configs)
+        run: node scripts/ci/check_route_extractor.mjs
+      # C0 — the Chrome exposure classifier. Severity is only as good as its
+      # fail-closed cases, so those are what this exercises: a firewall with no
+      # matching rule is UNDETERMINED rather than blocked, absent external
+      # evidence is UNDETERMINED rather than safe, and an unread dependency
+      # channel is "unknown", never "no dependency".
+      - name: Chrome exposure classification (offline selftest)
+        run: node scripts/ci/assert_chrome_exposure.mjs --selftest
+      # R0 — retirement classification. The safety lives in the HOLD set: an
+      # unread channel, an orphan of unproven ownership, a TwinAI-named image
+      # kept for rollback, and a volume holding a database must never be
+      # classified retire.
+      - name: Stack retirement classification (offline selftest)
+        run: node scripts/ci/assert_stack_retirement.mjs --selftest
+      - name: VPS plan execution + structural delta (typed manifest, least privilege)
+        run: |
+          node scripts/ci/emit_plan_commands.mjs --selftest
+          node scripts/ci/assert_structural_delta.mjs --selftest
+          node scripts/ci/assert_cache_reclaim.mjs --selftest
       - name: Canonical docs free of stale legacy claims (Fly/Revideo/autoedit/3-type registry)
         run: |
           node scripts/ci/check_docs_no_stale_claims.mjs --selftest

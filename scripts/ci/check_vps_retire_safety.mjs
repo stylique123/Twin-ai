@@ -24,11 +24,36 @@
 //      fine — those are never parsed by a shell — so this check is deliberately
 //      scoped to run blocks and does not broaden to them.
 //
+//   6. NO `run:` BLOCK MAY PIPE WITHOUT `pipefail`. A pipeline's exit status is
+//      its LAST command's, so `node guard.mjs | tee out.txt` reports tee's zero
+//      however loudly the guard refused. This is not hypothetical: run
+//      30290680691 dispatched `pre-stop-audit`, the planner refused with
+//      `unknown stage`, and the step named "fail closed" reported success.
+//      A guard whose failure cannot be observed is not a guard.
+//   7. THE PLANNER'S STAGE TABLE AND THE WORKFLOW'S AUTHORISATION ARMS MAY NOT
+//      DRIFT. Every stage the gate accepts and the plan step does not skip must
+//      be a stage plan_retirement.mjs knows. That drift is what produced the
+//      refusal above: `pre-stop-audit` was added to the workflow's read-only arm
+//      and never to STAGES.
+//
 //   node scripts/ci/check_vps_retire_safety.mjs
 //   node scripts/ci/check_vps_retire_safety.mjs --selftest
 import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { STAGES } from './plan_retirement.mjs'
 
 const COLLECTOR = 'scripts/vps/collect_resource_inventory.sh'
+// Every script that is PIPED TO THE HOST over ssh. Each one is a remote-execution
+// surface and each must be provably read-only, not just the first one anybody
+// thought to check. Adding a script here is how a new remote probe gets covered;
+// forgetting to is caught by the workflow scan below.
+const REMOTE_SCRIPTS = [COLLECTOR, 'scripts/vps/pre_stop_audit.sh', 'scripts/vps/route_impact_audit.sh',
+  // Being a remote-execution surface is what puts a script on this list —
+  // not whether its author believes it is read-only. The Chrome exposure
+  // audit reads container metadata, sockets and firewall SHAPE and writes
+  // nothing, and it is checked here rather than trusted.
+  'scripts/vps/chrome_exposure_audit.sh',
+  'scripts/vps/stack_dependency_audit.sh']
 const RETIRE_WF = '.github/workflows/vps-retire.yml'
 
 // Read-only docker invocations. Two-word forms are listed explicitly, because
@@ -36,8 +61,15 @@ const RETIRE_WF = '.github/workflows/vps-retire.yml'
 const READ_ONLY_DOCKER = new Set([
   'ps', 'images', 'inspect', 'logs', 'info', 'exec', 'network ls', 'network inspect',
   'volume ls', 'volume inspect', 'system df', 'container ls', 'image ls', 'image inspect',
+  // `docker compose` renders and validates without starting anything. The verb
+  // alone is allowed because `-f <file>` sits between it and its subcommand, so
+  // the parser cannot see the subcommand; the MUTATING subcommands are refused
+  // by name just below, which is the check that actually carries the weight.
+  'compose',
 ])
-const MUTATING_STAGES = ['disable-restart', 'stop', 'remove-container', 'reclaim']
+// `docker compose` subcommands that change state. Refused wherever they appear.
+const MUTATING_COMPOSE = ['up', 'down', 'start', 'stop', 'restart', 'rm', 'kill', 'create', 'run', 'exec', 'pull', 'build']
+const MUTATING_STAGES = ['reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim']
 
 const strip = (s) => s.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
 
@@ -80,13 +112,36 @@ export function dockerInvocations(text) {
   return out
 }
 
-export function evaluate({ collector, retireWf }) {
+/**
+ * Stages named in the plan step's `if:`, which is written as a chain of
+ * `inputs.stage != 'x'` — the stages that never reach the planner at all.
+ */
+export function plannerSkippedStages(text) {
+  const step = /name: Build the retirement plan[^\n]*\n((?:[ \t]+[^\n]*\n)*?)[ \t]+run:/.exec(text)
+  if (!step) return null
+  return new Set([...step[1].matchAll(/inputs\.stage\s*!=\s*'([a-z][a-z-]*)'/g)].map((m) => m[1]))
+}
+
+export function evaluate({ collector, retireWf, remoteScripts, planStages = STAGES }) {
   const reasons = []
 
-  // 1. Collector stays read-only.
-  for (const inv of new Set(dockerInvocations(collector))) {
-    if (!READ_ONLY_DOCKER.has(inv)) {
-      reasons.push(`collector uses a non-read-only docker invocation: "docker ${inv}"`)
+  // 1. EVERY remote script stays read-only, not just the collector.
+  //
+  // The audit that added the pre-stop probe added a SECOND script piped to the
+  // host. Checking only the collector would have left it unexamined — the same
+  // shape as the original defect, where the shared type described the data
+  // without constraining it.
+  const scripts = remoteScripts ?? { [COLLECTOR]: collector }
+  for (const [name, body] of Object.entries(scripts)) {
+    for (const inv of new Set(dockerInvocations(body))) {
+      if (!READ_ONLY_DOCKER.has(inv)) {
+        reasons.push(`${name} uses a non-read-only docker invocation: "docker ${inv}"`)
+      }
+    }
+    for (const sub of MUTATING_COMPOSE) {
+      if (new RegExp(`docker\\s+compose\\b[^\\n]*\\b${sub}\\b`).test(strip(body))) {
+        reasons.push(`${name} uses \`docker compose ... ${sub}\`, which changes state`)
+      }
     }
   }
 
@@ -123,6 +178,12 @@ export function evaluate({ collector, retireWf }) {
   for (const bad of ['system prune', 'volume prune', 'image prune', 'container prune', 'network prune']) {
     if (wf.includes(`docker ${bad}`)) reasons.push(`retirement workflow uses \`docker ${bad}\` — a broad sweep ignores the classification`)
   }
+  // …and no state-changing compose subcommand anywhere in the workflow either.
+  for (const sub of MUTATING_COMPOSE) {
+    if (new RegExp(`docker\\s+compose\\b[^\\n]*\\b${sub}\\b`).test(wf)) {
+      reasons.push(`retirement workflow uses \`docker compose ... ${sub}\` — that starts or stops services`)
+    }
+  }
 
   // 5. No dispatch input may be substituted into script text.
   //    Scoped to `run:` blocks: an `if:` condition or an action `with:` parameter
@@ -134,14 +195,82 @@ export function evaluate({ collector, retireWf }) {
     }
   }
 
-  // 4. Commands are read from the plan, not written in the workflow.
-  if (!/jq -r '\.cmds\[\]' plan\.json/.test(wf)) {
-    reasons.push('the execute step does not read its commands from plan.json — the generator and the executed list could drift apart')
+  // 4. Commands are derived from the plan's TYPED manifest, not written in the
+  //    workflow and not re-parsed out of command strings. `jq -r '.cmds[]'` was
+  //    the previous shape: it ran strings that a separate regex in the
+  //    comparator then tried to turn back into authorisations, so a command
+  //    shape the regex did not anticipate executed with nothing authorising it.
+  if (!/node scripts\/ci\/emit_plan_commands\.mjs plan\.json/.test(wf)) {
+    reasons.push(
+      'the execute step does not derive its commands from the typed plan manifest via '
+      + 'emit_plan_commands.mjs — the executed list and the authorised operations could drift apart',
+    )
+  }
+  if (/jq -r '\.cmds\[\]' plan\.json/.test(wf)) {
+    reasons.push('the execute step reads plan command STRINGS — run the typed manifest instead, so what runs and what is authorised are one object')
   }
   // The execute step must not contain literal destructive docker calls.
   const execStep = wf.match(/name: Execute the plan on the host[\s\S]*?(?=\n      - name:)/)
   if (execStep && /docker\s+(rm|rmi|stop|kill|update|prune)/.test(execStep[0])) {
     reasons.push('the execute step contains a literal destructive docker command instead of only the generated plan')
+  }
+
+  // 6. A pipeline in a `run:` block must not be able to hide a non-zero exit.
+  //
+  //    `||` is excluded (that is an or-list, not a pipe). A `|` inside a jq
+  //    filter would be flagged too — that is deliberate rather than tolerated:
+  //    the fix is one line, it is correct in every case, and a checker that
+  //    tries to parse quoting to spare a true statement is a checker that can
+  //    be fooled by quoting.
+  for (const block of runBlocks(retireWf)) {
+    const piped = block
+      // A `case` arm header alternates with `|` and is not a pipeline:
+      // `manifest|pre-stop-audit|observe|accept)` is one pattern list, and the
+      // authorisation gate is written entirely out of them.
+      .replace(/^[ \t]*[a-z*][a-z0-9|*_-]*\)/gm, '')
+      .split('\n').some((l) => /[^|\s]\s*\|(?!\|)\s*[^|\s]/.test(l))
+    if (piped && !/set\s+-[a-z]*o?\s*[a-z]*\bpipefail\b|set\s+-o\s+pipefail/.test(block)) {
+      reasons.push(
+        'a run block pipes without `set -o pipefail`, so the exit status is the LAST command\'s '
+        + `and a refusal upstream would report success: ${JSON.stringify(block.trim().slice(0, 90))}`,
+      )
+    }
+  }
+
+  // 7. The gate's stages and the planner's stage table may not drift apart.
+  //    Only checked where the plan step actually exists, so the selftest's
+  //    minimal fixtures are not required to carry one.
+  const skipped = plannerSkippedStages(retireWf)
+  if (skipped) {
+    for (const stage of new Set(arms.flatMap((a) => a.stages))) {
+      if (stage === '*' || skipped.has(stage)) continue
+      if (!planStages.includes(stage)) {
+        reasons.push(
+          `stage "${stage}" is accepted by the authorisation gate and reaches the plan step, `
+          + 'but plan_retirement.mjs does not list it in STAGES — the planner will refuse at run time',
+        )
+      }
+    }
+  }
+
+  // 8. THE STRUCTURAL-DELTA STEP MAY NOT EXEMPT A STAGE.
+  //
+  //    It shipped as `if: always() && inputs.stage != 'accept'`, which excused
+  //    the one stage whose entire purpose is to declare the retirement complete
+  //    and correct. An exemption in a proof step is not a smaller proof; it is
+  //    the absence of one exactly where the claim is loudest. The same shape had
+  //    already been removed once from this step as a `hashFiles()` skip, which
+  //    disabled it precisely when a mutation ran and the after-collection failed.
+  const deltaStep = /name: Structural delta[^\n]*\n((?:[ \t]+[^\n]*\n)*?)[ \t]+run:/.exec(retireWf)
+  if (deltaStep === null) {
+    reasons.push('the workflow has no structural-delta step — nothing proves a stage changed only what it was authorised to')
+  } else {
+    for (const m of deltaStep[1].matchAll(/inputs\.stage\s*!=\s*'([a-z][a-z-]*)'/g)) {
+      reasons.push(`the structural-delta step exempts stage "${m[1]}" — a stage that proves nothing is a stage nobody is checking`)
+    }
+    if (/hashFiles\(/.test(deltaStep[1])) {
+      reasons.push('the structural-delta step is conditional on evidence existing — missing evidence must FAIL, not skip')
+    }
   }
 
   return { ok: reasons.length === 0, reasons }
@@ -166,13 +295,19 @@ docker network inspect "$nid"`
           case "$STAGE" in
             manifest|observe|accept)
               echo "read-only stage" ;;
-            disable-restart|stop|remove-container|reclaim)
+            reclaim-build-cache|disable-restart|stop|remove-container|reclaim)
               if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then exit 1; fi ;;
           esac
       - name: Execute the plan on the host
         run: |
-          jq -r '.cmds[]' plan.json > exec.sh
+          set -euo pipefail
+          node scripts/ci/emit_plan_commands.mjs plan.json --stage "$STAGE" --before inventory-before.json > exec.sh
           cat exec.sh | ssh root@host bash -s
+      - name: Structural delta (least privilege; missing evidence fails)
+        if: always()
+        run: |
+          set -euo pipefail
+          node scripts/ci/assert_structural_delta.mjs a.json b.json --stage "$STAGE" | tee d.txt
       - name: Upload evidence
         run: true`
   const good = { collector, retireWf }
@@ -186,18 +321,88 @@ docker network inspect "$nid"`
     evaluate({ ...good, collector: collector + '\ndocker system prune -a' }).ok, false)
   t('docker system df in the collector is FINE (read)',
     evaluate({ ...good, collector: 'docker system df' }).ok, true)
+
+  // ---- the SECOND remote surface -------------------------------------------
+  t('a mutating verb in ANY remote script is rejected, not just the collector',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker rm stylique-os' } }).ok, false)
+  t('a read-only second remote script passes',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker inspect x\ndocker compose -f f config -q' } }).ok, true)
+  t('`docker compose ... up` in a remote script is rejected',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker compose -f f up -d' } }).ok, false)
+  t('`docker compose ... down` in a remote script is rejected',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker compose -f f down' } }).ok, false)
+  t('`docker compose ... config` in a remote script is FINE (renders, starts nothing)',
+    evaluate({ ...good, remoteScripts: { collector, probe: 'docker compose -f f config --services' } }).ok, true)
+  t('`docker compose ... up` in the WORKFLOW is rejected',
+    evaluate({ ...good, retireWf: retireWf + '\n        run: docker compose -f x up -d' }).ok, false)
   t('moving a mutating stage into the read-only arm is rejected',
     evaluate({ ...good, retireWf: retireWf.replace('manifest|observe|accept)', 'manifest|observe|accept|reclaim)') }).ok, false)
   t('dropping a mutating stage from the gated arm is rejected',
-    evaluate({ ...good, retireWf: retireWf.replace('disable-restart|stop|remove-container|reclaim)', 'disable-restart|stop)') }).ok, false)
+    evaluate({ ...good, retireWf: retireWf.replace('reclaim-build-cache|disable-restart|stop|remove-container|reclaim)', 'disable-restart|stop)') }).ok, false)
   t('docker system prune in the workflow is rejected',
     evaluate({ ...good, retireWf: retireWf + '\n        run: docker system prune -af' }).ok, false)
   t('docker volume prune in the workflow is rejected',
     evaluate({ ...good, retireWf: retireWf + '\n        run: docker volume prune -f' }).ok, false)
   t('an execute step not reading plan.json is rejected',
-    evaluate({ ...good, retireWf: retireWf.replace("jq -r '.cmds[]' plan.json", 'echo docker rm x') }).ok, false)
+    evaluate({ ...good, retireWf: retireWf.replace(/node scripts\/ci\/emit_plan_commands\.mjs plan\.json[^\n]*/, 'echo docker rm x > exec.sh') }).ok, false)
+  t('an execute step that runs plan command STRINGS is rejected',
+    evaluate({ ...good, retireWf: retireWf.replace(/node scripts\/ci\/emit_plan_commands\.mjs plan\.json[^\n]*/, "jq -r '.cmds[]' plan.json > exec.sh") }).ok, false)
   t('a literal destructive command in the execute step is rejected',
     evaluate({ ...good, retireWf: retireWf.replace('cat exec.sh | ssh root@host bash -s', 'ssh root@host docker rmi everything') }).ok, false)
+
+  // ---- the EXEMPTED-PROOF class (rule 8) -----------------------------------
+  // Byte-for-byte the shape the audit rejected: the proof step excused the one
+  // stage that claims the retirement is finished.
+  t('a structural-delta step that exempts a stage is REJECTED',
+    evaluate({ ...good, retireWf: retireWf.replace('if: always()\n        run: |\n          set -euo pipefail\n          node scripts/ci/assert_structural_delta.mjs', "if: always() && inputs.stage != 'accept'\n        run: |\n          set -euo pipefail\n          node scripts/ci/assert_structural_delta.mjs") }).ok, false)
+  t('a structural-delta step gated on evidence EXISTING is REJECTED',
+    evaluate({ ...good, retireWf: retireWf.replace('if: always()\n        run: |\n          set -euo pipefail\n          node scripts/ci/assert_structural_delta.mjs', "if: always() && hashFiles('inventory-after.json') != ''\n        run: |\n          set -euo pipefail\n          node scripts/ci/assert_structural_delta.mjs") }).ok, false)
+  t('a workflow with NO structural-delta step at all is REJECTED',
+    evaluate({ ...good, retireWf: retireWf.replace(/      - name: Structural delta[\s\S]*?(?=      - name: Upload evidence)/, '') }).ok, false)
+
+  // ---- the SWALLOWED-REFUSAL class (rule 6) --------------------------------
+  // Byte-for-byte the shape that shipped and reported success on a refusal.
+  const swallowed = "\n      - name: z\n        run: node scripts/ci/plan_retirement.mjs inv.json \"$STAGE\" | tee plan.txt"
+  t('a single-line `run:` that pipes without pipefail is REJECTED',
+    evaluate({ ...good, retireWf: retireWf + swallowed }).ok, false)
+  t('the same pipeline WITH pipefail passes',
+    evaluate({ ...good, retireWf: retireWf + "\n      - name: z\n        run: |\n          set -euo pipefail\n          node x.mjs | tee plan.txt" }).ok, true)
+  t('`||` is an or-list, not a pipe, and is not flagged',
+    evaluate({ ...good, retireWf: retireWf + "\n      - name: z\n        run: test -f x || exit 1" }).ok, true)
+
+  // ---- the STAGE-TABLE DRIFT class (rule 7) --------------------------------
+  // A fixture that HAS a plan step, so rule 7 is live for these cases.
+  const wfWithPlan = retireWf.replace(
+    '      - name: Execute the plan on the host',
+    [
+      '      - name: Build the retirement plan for this stage (fail closed)',
+      "        if: inputs.stage != 'observe' && inputs.stage != 'accept'",
+      '        run: |',
+      '          set -euo pipefail',
+      '          node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt',
+      '      - name: Execute the plan on the host',
+    ].join('\n'),
+  )
+  const planned = { ...good, retireWf: wfWithPlan }
+  t('CONTROL: rule 7 is live on a workflow that has a plan step',
+    evaluate({ ...planned, planStages: ['manifest', 'observe-only-not-a-stage', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim'] }).ok, true)
+  // The EXACT drift that produced run 30290680691's swallowed refusal.
+  t('a gate stage missing from the planner STAGES is REJECTED',
+    evaluate({
+      ...planned,
+      retireWf: wfWithPlan.replace('manifest|observe|accept)', 'manifest|pre-stop-audit|observe|accept)'),
+      planStages: ['manifest', 'disable-restart', 'stop', 'remove-container', 'reclaim'],
+    }).ok, false)
+  t('…and it passes once STAGES lists it',
+    evaluate({
+      ...planned,
+      retireWf: wfWithPlan.replace('manifest|observe|accept)', 'manifest|pre-stop-audit|observe|accept)'),
+      planStages: ['manifest', 'pre-stop-audit', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim'],
+    }).ok, true)
+  t('a stage the plan step SKIPS need not be in STAGES (observe/accept)',
+    evaluate({ ...planned, planStages: ['manifest', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim'] }).ok, true)
+  t('the REAL workflow and the REAL STAGES agree',
+    evaluate({ collector, remoteScripts: Object.fromEntries(REMOTE_SCRIPTS.map((f) => [f, readFileSync(f, 'utf8')])), retireWf: readFileSync(RETIRE_WF, 'utf8') }).ok, true)
 
   // ---- HOSTILE CONTROLS for the shell-injection class -----------------------
   // The exact pattern that shipped, and had to be rejected.
@@ -229,7 +434,7 @@ docker network inspect "$nid"`
       'CONFIRM_PHRASE=RETIRE-STYLIQUE-OS',
       'case "$STAGE" in',
       '  manifest|observe|accept) echo READONLY ;;',
-      '  disable-restart|stop|remove-container|reclaim)',
+      '  reclaim-build-cache|disable-restart|stop|remove-container|reclaim)',
       '    if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then echo REFUSED; exit 1; fi',
       '    echo AUTHORISED ;;',
       '  *) echo UNKNOWN; exit 1 ;;',
@@ -275,12 +480,44 @@ docker network inspect "$nid"`
   console.log('vps-retire-safety selftest: all cases passed'); process.exit(0)
 }
 
+/**
+ * THE FILE MUST PARSE AS YAML BEFORE ANY OTHER CLAIM ABOUT IT MEANS ANYTHING.
+ *
+ * Every other check in this file reads the workflow with regexes, which match
+ * happily inside a file GitHub cannot load at all. A one-space indentation slip
+ * in the artifact list made vps-retire.yml unparseable — every stage
+ * undispatchable, including the fail-closed ones — and this checker still said
+ * OK, because the authorisation arms it greps for were all still there in the
+ * text.
+ *
+ * "The confirm phrase gates every mutating stage" is a claim about a workflow
+ * that RUNS. It says nothing whatever about a file that does not load.
+ */
+export function checkYamlParses(path) {
+  const r = spawnSync('python3', ['-c', 'import sys,yaml;yaml.safe_load(open(sys.argv[1]))', path],
+    { encoding: 'utf8' })
+  // A missing interpreter is NOT a pass. It is an UNRUN check, and reporting an
+  // unrun check as success is the exact failure this file exists to prevent.
+  if (r.error || r.status === null) {
+    return [`could not run the YAML parse check on ${path} (${r.error?.message ?? 'no exit status'}) — unproven, not clean`]
+  }
+  if (r.status !== 0) {
+    return [`${path} is not valid YAML: ${String(r.stderr).trim().split('\n').slice(-2).join(' ')}`]
+  }
+  return []
+}
+
 if (process.argv.includes('--selftest')) await selftest()
 else {
+  const remoteScripts = Object.fromEntries(REMOTE_SCRIPTS.map((f) => [f, readFileSync(f, 'utf8')]))
   const { ok, reasons } = evaluate({
     collector: readFileSync(COLLECTOR, 'utf8'),
+    remoteScripts,
     retireWf: readFileSync(RETIRE_WF, 'utf8'),
   })
-  console.log(`vps-retire-safety: ${ok ? 'OK' : 'FAIL'}`)
-  if (!ok) { for (const r of reasons) console.error(`::error::${r}`); process.exit(1) }
+  const yamlProblems = checkYamlParses(RETIRE_WF)
+  const allReasons = [...yamlProblems, ...reasons]
+  const pass = ok && yamlProblems.length === 0
+  console.log(`vps-retire-safety: ${pass ? 'OK' : 'FAIL'}`)
+  if (!pass) { for (const r of allReasons) console.error(`::error::${r}`); process.exit(1) }
 }

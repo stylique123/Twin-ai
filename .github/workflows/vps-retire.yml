@@ -1,5 +1,8 @@
-# Staged, gated retirement of the stylique-os container and its host-local
-# resources. Separate from vps-diag.yml on purpose: that workflow is the
+# Staged, gated retirement of the approved Stylique stack and its host-local
+# resources. The scope is scripts/ci/build_resource_inventory.mjs RETIRE_CTRS —
+# stylique-caddy, stylique-dashboard, stylique-chrome, stylique-os and the
+# OpenOutreach container — plus every volume, network and image reachable only
+# from them. Separate from vps-diag.yml on purpose: that workflow is the
 # fail-closed SIGN-OFF authority and must keep taking no caller inputs
 # (scripts/ci/check_vps_diag_authority.mjs enforces that). This one is the
 # opposite kind of thing — it takes inputs, and its mutating stages are gated
@@ -15,7 +18,7 @@
 # REPORT-ONLY BY DEFAULT: `stage: manifest` reads and records, and writes
 # nothing to the host. Mutating stages additionally require `confirm` to equal
 # the exact phrase below. Both conditions, not either.
-name: VPS retire stylique-os (staged, gated)
+name: VPS retire the Stylique stack (staged, gated)
 
 on:
   workflow_dispatch:
@@ -26,6 +29,12 @@ on:
         default: manifest
         options:
           - manifest          # A3 — record + back up. No host mutation.
+          - pre-stop-audit    # A3.5 — prove reconstruction + routing. No host mutation.
+          - route-impact      # A3.6 — WHICH route, and a candidate patch. No host mutation.
+          - chrome-exposure   # C0 — is the Chrome edge reachable? No host mutation.
+          - stack-dependency  # R0 — who references whom, across the whole stack. No host mutation.
+          - leftover-secrets  # R1 — do the undeleted host paths hold credentials? No host mutation.
+          - reclaim-build-cache  # B1 — build cache ONLY. Independent of stylique-os.
           - disable-restart   # A4.2 — stop the crash loop. Reversible.
           - stop              # A4.3 — stop the container. Reversible.
           - observe           # A4.4 — TwinAI health after the stop. Read-only.
@@ -33,10 +42,10 @@ on:
           - reclaim           # A4.6/8/10 — images, networks, volumes, build cache, logs.
           - accept            # A5 — re-inventory and assert the acceptance gate.
       confirm:
-        description: 'Type RETIRE-STYLIQUE-OS to authorise a mutating stage. Read-only stages ignore it.'
+        description: 'Type RETIRE-STYLIQUE-STACK to authorise a mutating stage. Read-only stages ignore it.'
         default: ''
       baseline_run_id:
-        description: 'accept stage only: the run id whose vps-retire-evidence artifact holds the BEFORE inventory.'
+        description: 'accept stage only: the run id whose vps-retire-evidence artifact holds the BEFORE inventory. Anchor this to the CURRENT inventory, not an older run — the host has changed since the 174-record collection and an obsolete baseline would make the acceptance delta meaningless.'
         default: ''
 
 permissions:
@@ -49,7 +58,11 @@ concurrency:
 
 env:
   VPS_HOST: 138.201.119.239
-  CONFIRM_PHRASE: RETIRE-STYLIQUE-OS
+  # The phrase names the SCOPE, not one member of it. It used to read
+  # RETIRE-STYLIQUE-OS while the stages acted on five containers: whoever typed
+  # it was attesting to something narrower than what would happen, which is the
+  # opposite of what a confirmation is for.
+  CONFIRM_PHRASE: RETIRE-STYLIQUE-STACK
 
 jobs:
   retire:
@@ -73,9 +86,9 @@ jobs:
         run: |
           set -euo pipefail
           case "$STAGE" in
-            manifest|observe|accept)
+            manifest|pre-stop-audit|route-impact|chrome-exposure|stack-dependency|leftover-secrets|observe|accept)
               echo "read-only stage '$STAGE' — no confirmation required" ;;
-            disable-restart|stop|remove-container|reclaim)
+            reclaim-build-cache|disable-restart|stop|remove-container|reclaim)
               if [ "$CONFIRM_INPUT" != "$CONFIRM_PHRASE" ]; then
                 echo "::error::stage '$STAGE' mutates the host and requires confirm=$CONFIRM_PHRASE"
                 exit 1
@@ -109,13 +122,231 @@ jobs:
             root@"$VPS_HOST" bash -s < scripts/vps/collect_resource_inventory.sh > raw-before.tsv
           node scripts/ci/build_resource_inventory.mjs raw-before.tsv inventory-before.json | tee report-before.txt
 
+      # `| tee` without `pipefail` reports the exit status of TEE, not of the
+      # command that produced the output. This step was a single-line `run:` —
+      # so it ran under the default `bash -e` with no `set -o pipefail` — and on
+      # run 30290680691 the planner refused (`unknown stage: pre-stop-audit`),
+      # printed `::error::`, exited 1, and the step still reported SUCCESS. A
+      # step named "fail closed" that cannot fail is the same defect class as a
+      # guard that describes a rule without enforcing it.
+      #
+      # The plan is SEALED here: its typed resource manifest is hashed and bound
+      # to this stage, this commit (GITHUB_SHA) and the digest of the exact
+      # inventory it was derived from. Every later consumer re-verifies that
+      # binding, so a plan edited between steps, replayed against a host that has
+      # since changed, or reused for another stage, is refused rather than run.
       - name: Build the retirement plan for this stage (fail closed)
         if: inputs.stage != 'observe' && inputs.stage != 'accept'
         env:
           STAGE: ${{ inputs.stage }}
-        run: node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt
+        run: |
+          set -euo pipefail
+          node scripts/ci/plan_retirement.mjs inventory-before.json "$STAGE" --json plan.json | tee plan.txt
+          sha256sum plan.json | tee plan.sha256
 
       # ---- A3: rollback record + host-local persistent-data backup -----------
+      # A3.5 — READ-ONLY PRE-STOP AUDIT.
+      #
+      # `stop` must not be dispatched on the strength of a manifest that records
+      # image/mounts/networks/ports/labels but NOT command or env, and that merely
+      # NAMES a compose file without proving anything about it. A name is not a
+      # reconstruction path.
+      #
+      # This stage settles two questions with evidence, and mutates nothing:
+      #   * can the container be rebuilt — file exists, hashes, `docker compose
+      #     config` validates it, and the service is really in it;
+      #   * is anything still routed to it — the ACTIVE proxy configuration is
+      #     matched against the container's name, its port, its IPs and its
+      #     networks.
+      #
+      # SECRET SAFETY IS STRUCTURAL, NOT EDITORIAL. `docker compose config`
+      # interpolates .env into its output, so the full render is never produced:
+      # only `-q` (validate, no output) and `--services` (names only). The proxy
+      # configuration is matched ON THE HOST and only booleans plus a sha256 come
+      # back, so hostnames and credentials never reach this log.
+      - name: Pre-stop audit (read-only; proves reconstruction and routing)
+        if: inputs.stage == 'pre-stop-audit'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/pre_stop_audit.sh > pre-stop-audit.json
+          # The probe returns ONE json object. Anything else means it failed in a
+          # way it could not report, which is the ambiguous case and must not pass.
+          jq -e 'type == "object"' pre-stop-audit.json > /dev/null \
+            || { echo "::error::the pre-stop probe did not return a JSON object"; exit 1; }
+          sha256sum pre-stop-audit.json | tee pre-stop-audit.sha256
+          # Fail-closed: undetermined blocks exactly as `routed` does.
+          node scripts/ci/assert_pre_stop_audit.mjs pre-stop-audit.json | tee pre-stop-audit.txt
+
+      # ---- A3.6: WHICH ROUTE, AND WHAT WOULD REMOVE IT ----------------------
+      #
+      # pre-stop-audit answered "is anything routed here?" with `true`. That is
+      # the right shape for a gate and the wrong shape for a remedy: it cannot
+      # say whether the route serves ONLY stylique-os or also fronts a protected
+      # container, and those need opposite patches.
+      #
+      # This stage returns the structure — host and path matchers, handler order,
+      # per-handler upstream dials — classifies each impacted route, and emits a
+      # candidate patch, its rollback and its validation plan.
+      #
+      # IT RELOADS NOTHING AND CHANGES NOTHING. The patch is text to be reviewed.
+      # Secret safety is an allowlist in the probe: only route indices, host and
+      # path matchers, handler TYPE names and dials are ever emitted, so no
+      # future config shape can leak a credential through it.
+      - name: Route impact (read-only; classifies the route and drafts the patch)
+        if: inputs.stage == 'route-impact'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/route_impact_audit.sh > route-impact.json
+          jq -e 'type == "object"' route-impact.json > /dev/null \
+            || { echo "::error::the route-impact probe did not return a JSON object"; exit 1; }
+          sha256sum route-impact.json | tee route-impact.sha256
+          node scripts/ci/assert_route_impact.mjs route-impact.json | tee route-impact.txt
+
+      # The acceptance delta is only meaningful against a baseline collected from
+      # the host AS IT IS NOW. An older artifact (the 174-record collection
+      # predates a large build-cache change) would compare against a host that no
+      # longer exists.
+      #
+      # This was one jq expression — `jq -r '.sha256 // "unknown"'` — against a
+      # field that is actually called `report_sha256`. It printed "unknown" and
+      # exited zero, so the anchor recorded nothing and could not fail. Inline jq
+      # had nowhere to put a test; the script does, and it exits non-zero unless
+      # the digest is really there.
+      # C0 — CHROME EXPOSURE. Two vantage points, because neither answers the
+      # other's question: the host says what Docker publishes, and the RUNNER —
+      # which is outside the VPS — says what the internet can actually reach.
+      #
+      # The reachability probe performs ONE unauthenticated GET. It opens no
+      # DevTools session, attaches to no target, enumerates no tab, navigates
+      # nothing, executes nothing and guesses no credential. Bodies are hashed,
+      # never printed, because an open DevTools endpoint hands out a live
+      # control handle and publishing it into an artifact would publish the key.
+      - name: Chrome exposure (read-only; host evidence + external reachability)
+        if: inputs.stage == 'chrome-exposure'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/chrome_exposure_audit.sh > chrome-exposure.json
+          jq -e 'type == "object"' chrome-exposure.json > /dev/null \
+            || { echo "::error::the chrome exposure probe did not return a JSON object"; exit 1; }
+          sha256sum chrome-exposure.json | tee chrome-exposure.sha256
+          VPS_HOST="$VPS_HOST" bash scripts/ci/probe_chrome_reachability.sh > chrome-reachability.json
+          jq -e 'type == "object"' chrome-reachability.json > /dev/null \
+            || { echo "::error::the reachability probe did not return a JSON object"; exit 1; }
+          sha256sum chrome-reachability.json | tee chrome-reachability.sha256
+          # The verdict is echoed LAST, as one line, so it is readable from the
+          # tail of the log without downloading the artifact. The classifier
+          # exits non-zero on a blocker or on CRITICAL, and that exit code is
+          # preserved — the summary is for humans, not a way around the gate.
+          set +e
+          node scripts/ci/assert_chrome_exposure.mjs chrome-exposure.json chrome-reachability.json \
+            | tee chrome-exposure.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "VERDICT $(grep -E '^  SEVERITY' chrome-exposure.txt | tr -s ' ' || echo 'SEVERITY : (unavailable)')"
+          echo "VERDICT $(grep -E '^  CONTAINMENT ELIGIBLE' chrome-exposure.txt | tr -s ' ' || echo '(unavailable)')"
+          echo "VERDICT blockers: $(grep -c '^  blocker:' chrome-exposure.txt || echo '?')"
+          exit $rc
+
+      # R0 — FULL-STACK DEPENDENCY GRAPH. The inventory says what exists and
+      # classifies it by name; this says who references whom, so "nothing
+      # protected depends on this" becomes proven rather than inferred.
+      - name: Stack dependency graph (read-only; ownership and edges)
+        if: inputs.stage == 'stack-dependency'
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/stack_dependency_audit.sh > stack-dependency.json
+          jq -e 'type == "object"' stack-dependency.json > /dev/null \
+            || { echo "::error::the stack dependency probe did not return a JSON object"; exit 1; }
+          sha256sum stack-dependency.json | tee stack-dependency.sha256
+          set +e
+          node scripts/ci/assert_stack_retirement.mjs stack-dependency.json | tee stack-retirement.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "VERDICT $(grep -E '^  retire [0-9]' stack-retirement.txt | tr -s ' ' || echo '(unavailable)')"
+          echo "VERDICT blockers: $(grep -c '^  blocker:' stack-retirement.txt || echo '?')"
+          exit $rc
+
+      # R1 — LEFTOVER HOST PATHS. The retirement has no command family for
+      # deleting host paths, so /srv/caddy, /srv/dashboard and
+      # /opt/scrapling-test survive it. They are inert — nothing runs that reads
+      # them — but inert and harmless are different claims, and a Caddyfile is
+      # exactly the kind of file that carries basicauth hashes and upstream
+      # tokens. This reports SHAPES AND COUNTS: (file, pattern name, count).
+      # The matched text is never substituted anywhere, because printing what it
+      # found would copy those credentials into a CI log that is far more widely
+      # readable than the file was.
+      - name: Leftover host-path secret sweep (read-only; shapes and counts only)
+        if: inputs.stage == 'leftover-secrets'
+        run: |
+          set -euo pipefail
+          # NO `-n` HERE. `-n` points ssh's stdin at /dev/null, and stdin is how
+          # `bash -s` RECEIVES THE SCRIPT. With it, bash read nothing, ran
+          # nothing, and emitted nothing — a 2-second failure. `-n` belongs in
+          # the backup loop, where ssh would otherwise eat the loop's own input;
+          # here it starves the very thing being run.
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
+            root@"$VPS_HOST" bash -s < scripts/vps/leftover_secret_sweep.sh > leftover-secrets.json
+          jq -e 'type == "object"' leftover-secrets.json > /dev/null \
+            || { echo "::error::the leftover-secret sweep did not return a JSON object"; exit 1; }
+          sha256sum leftover-secrets.json | tee leftover-secrets.sha256
+          # The verdict is echoed as counts. A path that could not be read is
+          # NOT a path with no secrets, so the status is printed first.
+          ST=$(jq -r '.status' leftover-secrets.json)
+          N=$(jq -r '.findings | length' leftover-secrets.json)
+          echo "SWEEP status: $ST"
+          jq -r '.paths[]' leftover-secrets.json | awk -F'|' '{printf "SWEEP path %s: %s (%s KiB, %s files)\n",$1,$2,$3,$4}'
+          echo "SWEEP findings: $N"
+          jq -r '.findings[]' leftover-secrets.json | awk -F'|' '{printf "SWEEP   %s : %s x%s\n",$1,$2,$3}'
+          # THE VERDICT MUST SURVIVE THE LOG.
+          #
+          # A read-only probe that exits 0 either way says nothing by its
+          # conclusion, and later steps push its output out of the readable tail
+          # — which is exactly what happened on run 30359324111: the sweep ran,
+          # produced valid JSON, and its answer was unreadable without opening
+          # the artifact. Annotations and the step summary both survive that.
+          {
+            echo "### Leftover host-path secret sweep"
+            echo ""
+            echo "- status: \`$ST\`"
+            echo "- findings: **$N**"
+            echo ""
+            echo '| path | status | KiB | files |'
+            echo '|---|---|---|---|'
+            jq -r '.paths[]' leftover-secrets.json | awk -F'|' '{printf "| %s | %s | %s | %s |\n",$1,$2,$3,$4}'
+            if [ "$N" -gt 0 ]; then
+              echo ""
+              echo '| file | pattern | count |'
+              echo '|---|---|---|'
+              jq -r '.findings[]' leftover-secrets.json | awk -F'|' '{printf "| %s | %s | %s |\n",$1,$2,$3}'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          # An unreadable or truncated channel is NOT a clean one, and says so
+          # at the same volume as a finding would.
+          if [ "$ST" != "read-complete" ]; then
+            echo "::warning::leftover-secret sweep channel status is '$ST' — this is UNPROVEN, not clean"
+          fi
+          if [ "$N" -gt 0 ]; then
+            jq -r '.findings[]' leftover-secrets.json | awk -F'|' '{printf "::warning::credential-shaped content: %s matches %s (x%s)\n",$1,$2,$3}'
+            echo "::warning::$N credential-shaped finding(s) in host paths the retirement could not delete. Values were never read into this log."
+          else
+            echo "::notice::leftover host paths hold no credential-shaped content ($ST)"
+          fi
+
+      - name: Record the acceptance baseline anchor
+        if: inputs.stage == 'pre-stop-audit'
+        run: |
+          set -euo pipefail
+          node scripts/ci/anchor_acceptance_baseline.mjs inventory-before.json | tee acceptance-baseline.txt
+
       - name: Record the rollback manifest and back up host-local data
         if: inputs.stage == 'manifest'
         run: |
@@ -127,28 +358,63 @@ jobs:
           # nothing is created on the host.
           jq -r '.backups[]? | "\(.volume)\t\(.mountpoint)"' plan.json > backups.tsv
           : > backup-hashes.txt
+          # `ssh -n`. WITHOUT IT THIS LOOP BACKS UP EXACTLY ONE VOLUME AND
+          # REPORTS SUCCESS. ssh reads its own stdin, which here IS the loop's
+          # stdin — backups.tsv — so the first iteration swallows every
+          # remaining line and `read` sees EOF. Run 30355502323 planned four
+          # backups and produced one tarball, exit 0. The three unbacked
+          # volumes were then due for irreversible deletion in `reclaim` while
+          # the evidence said they had been saved. -n gives ssh /dev/null.
           while IFS=$'\t' read -r vol mp; do
             [ -n "${vol:-}" ] || continue
             echo "backing up volume $vol from $mp"
-            ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            ssh -n -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
               root@"$VPS_HOST" "tar czf - -C '$mp' ." > "backup-$vol.tar.gz"
             sha256sum "backup-$vol.tar.gz" >> backup-hashes.txt
           done < backups.tsv
           if [ ! -s backups.tsv ]; then
-            echo "no stylique-os-exclusive volumes exist — nothing to back up (shared volumes are listed in the plan notes and are NOT deleted)"
+            echo "no retiring-stack-exclusive volumes exist — nothing to back up (shared volumes are listed in the plan notes and are NOT deleted)"
           fi
+          # COUNT WHAT WAS PLANNED AGAINST WHAT EXISTS. The bug above was
+          # invisible precisely because nothing ever compared the two; a
+          # partially-completed backup is indistinguishable from a complete one
+          # unless something counts. Every planned volume must have a non-empty
+          # tarball, or the stage fails before any later stage can delete them.
+          WANT=$(grep -c . backups.tsv || echo 0)
+          GOT=$(grep -c . backup-hashes.txt || echo 0)
+          echo "backups: planned $WANT, produced $GOT"
+          if [ "$WANT" -ne "$GOT" ]; then
+            echo "::error::backup incomplete: planned $WANT volume backups but produced $GOT. Refusing to record this run as a valid rollback point."
+            exit 1
+          fi
+          while IFS=$'\t' read -r vol mp; do
+            [ -n "${vol:-}" ] || continue
+            if [ ! -s "backup-$vol.tar.gz" ]; then
+              echo "::error::backup-$vol.tar.gz is missing or empty"
+              exit 1
+            fi
+          done < backups.tsv
           cat backup-hashes.txt || true
 
       # ---- A4: execute the derived plan --------------------------------------
-      # The commands come from plan.json, generated above. They are not written
-      # in this file, so a reviewer checks the generator's rules once rather than
-      # re-reading a command list that could drift from them.
+      # The commands come from plan.json's TYPED RESOURCE MANIFEST, generated
+      # above. Each line is built from the same object that authorises it, so a
+      # reviewer checks the generator's rules once rather than re-reading a
+      # command list that could drift from them — and the executor and the
+      # structural comparator cannot disagree about what was permitted.
+      #
+      # emit_plan_commands.mjs re-verifies the plan's binding first and prints
+      # nothing at all if it does not belong to this stage, this commit and this
+      # before-inventory.
       - name: Execute the plan on the host
-        if: inputs.stage == 'disable-restart' || inputs.stage == 'stop' || inputs.stage == 'remove-container' || inputs.stage == 'reclaim'
+        if: inputs.stage == 'reclaim-build-cache' || inputs.stage == 'disable-restart' || inputs.stage == 'stop' || inputs.stage == 'remove-container' || inputs.stage == 'reclaim'
+        env:
+          STAGE: ${{ inputs.stage }}
         run: |
           set -euo pipefail
-          jq -r '.cmds[]' plan.json > exec.sh
+          node scripts/ci/emit_plan_commands.mjs plan.json \
+            --stage "$STAGE" --before inventory-before.json > exec.sh
           echo "---- commands to be executed ----"; cat exec.sh; echo "---------------------------------"
           if [ ! -s exec.sh ]; then echo "plan is empty — nothing to do"; exit 0; fi
           # `set -e` on the remote: the first failure stops the rest, so a partial
@@ -181,8 +447,11 @@ jobs:
           grep -q 'ffprobe       : ok' health.txt || { echo "::error::ffprobe is no longer usable inside twinai-worker"; exit 1; }
           grep -q 'model present : yes' health.txt || { echo "::error::the pinned ASR model directory is gone"; exit 1; }
 
+      # EVERY stage, including the read-only ones. A read-only stage that cannot
+      # produce an after-inventory cannot prove it was read-only, and the
+      # structural delta below now runs for every stage without exception.
       - name: Re-collect the host state AFTER this stage
-        if: always() && inputs.stage != 'manifest'
+        if: always()
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
@@ -204,6 +473,68 @@ jobs:
         if: inputs.stage == 'accept'
         run: node scripts/ci/assert_vps_acceptance.mjs baseline/inventory-before.json inventory-after.json
 
+      # PROVE nothing changed that this stage was not authorised to change.
+      #
+      # NO hashFiles() CONDITION. The previous version skipped itself when an
+      # inventory was absent — which is most dangerous in exactly the case that
+      # matters: a mutation ran and the after-collection failed. Missing
+      # evidence must FAIL, not silently pass. The script requires both files
+      # and exits non-zero if either is missing or unparseable.
+      #
+      # NO STAGE EXEMPTION EITHER. `accept` used to be excluded, which made the
+      # one stage that reports "the retirement is complete and correct" the one
+      # stage that never proved it. It now compares the PRE-RETIREMENT baseline
+      # against the host as it is now, under a CUMULATIVE authorisation
+      # re-derived from that baseline by the same planner that drove the work.
+      #
+      # Authorisation is least-privilege and comes from the stage's own typed,
+      # bound plan: disable-restart only the policy field; stop only the
+      # lifecycle fields; remove-container the container plus the exact endpoint
+      # departures it causes; reclaim ONLY the typed resources the approved plan
+      # names. An authorisation that is never exercised is itself a failure.
+      - name: Structural delta (least privilege; missing evidence fails)
+        if: always()
+        env:
+          STAGE: ${{ inputs.stage }}
+        run: |
+          set -euo pipefail
+          # Written as `if`, not `case`: check_vps_retire_safety.mjs parses case
+          # arms to prove every mutating stage sits behind the confirm phrase,
+          # and a second, unrelated `case` in this file would put arms in front
+          # of that parser that are not authorisation arms at all.
+          BEFORE=inventory-before.json
+          PLAN_ARG="--plan plan.json"
+          if [ "$STAGE" = "accept" ]; then
+            # The acceptance baseline is the pre-retirement host, downloaded
+            # above. No single stage's plan describes the whole retirement, so
+            # the authorisation is re-derived from that baseline rather than read.
+            BEFORE=baseline/inventory-before.json
+            PLAN_ARG=""
+          elif [ "$STAGE" = "observe" ]; then
+            # The plan step is skipped for observe; it authorises nothing.
+            PLAN_ARG=""
+          fi
+          node scripts/ci/assert_structural_delta.mjs \
+            "$BEFORE" inventory-after.json \
+            --stage "$STAGE" $PLAN_ARG | tee structural-delta.txt
+
+      # ---- B1: the cache reclaim must have DONE something ---------------------
+      #
+      # The structural delta above proves the negative — no container, image,
+      # volume or network record moved — and a prune that silently did nothing
+      # satisfies that perfectly. So the positive claim is asserted separately:
+      # the cache actually shrank, free space actually grew, and the worker, its
+      # image, a rollback image and the pinned model are all still there.
+      #
+      # Two halves, neither a substitute for the other. A stage that reported
+      # only "nothing was harmed" would be claiming success for an absence.
+      - name: Build cache actually reclaimed (a no-op must not pass)
+        if: always() && inputs.stage == 'reclaim-build-cache'
+        run: |
+          set -euo pipefail
+          node scripts/ci/assert_cache_reclaim.mjs \
+            inventory-before.json inventory-after.json | tee cache-reclaim.txt
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -216,9 +547,30 @@ jobs:
             report-after.txt
             plan.json
             plan.txt
+            plan.sha256
+            exec.sh
             health.txt
             rollback-manifest.json
             rollback-manifest.sha256
             backup-hashes.txt
+            pre-stop-audit.json
+            pre-stop-audit.sha256
+            pre-stop-audit.txt
+            route-impact.json
+            route-impact.sha256
+            route-impact.txt
+            chrome-exposure.json
+            chrome-exposure.sha256
+            chrome-exposure.txt
+            chrome-reachability.json
+            chrome-reachability.sha256
+            stack-dependency.json
+            stack-dependency.sha256
+            leftover-secrets.json
+            leftover-secrets.sha256
+            stack-retirement.txt
+            structural-delta.txt
+            cache-reclaim.txt
+            acceptance-baseline.txt
             backup-*.tar.gz
           if-no-files-found: warn

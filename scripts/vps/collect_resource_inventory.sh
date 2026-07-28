@@ -131,14 +131,23 @@ docker images --format '{{.Repository}}:{{.Tag}}#{{.ID}}#{{.CreatedAt}}#{{.Size}
 for c in $(docker ps --format '{{.Names}}' 2>/dev/null); do
   case "$c" in
     *caddy*|*nginx*|*traefik*|*proxy*)
-      hits=$(docker exec "$c" sh -c 'grep -rl "stylique-os" /etc/caddy /etc/nginx /etc/traefik 2>/dev/null | head -5' 2>/dev/null || true)
+      # ONE LINE PER ROW. `grep -rl` returns one path per line, and a newline
+      # inside a value splits the TSV record: the second path is then read as a
+      # section name and the reference is silently truncated. The inventory
+      # comparator treats proxy references as structural topology, so a mangled
+      # record here is bad evidence downstream, not just untidy output.
+      hits=$(docker exec "$c" sh -c 'grep -rl "stylique-os" /etc/caddy /etc/nginx /etc/traefik 2>/dev/null | sort | head -5' 2>/dev/null \
+        | tr '\n' ',' | sed 's/,$//' || true)
       row PROXYREF "$c" "${hits:-none}"
       ;;
   esac
 done
 # Listening sockets: which ports are actually bound, and by what.
+# SORTED BEFORE THE CAP. The kernel does not promise an order, so an unsorted
+# `head -40` samples a different 40 rows run to run and the inventory comparator
+# would report listeners appearing and vanishing on a host where nothing moved.
 { ss -ltnpH 2>/dev/null || netstat -ltnp 2>/dev/null; } \
-  | sed -E 's/pid=[0-9]+/pid=?/g' | head -40 \
+  | sed -E 's/pid=[0-9]+/pid=?/g' | LC_ALL=C sort | head -40 \
   | while IFS= read -r l; do row LISTEN "$l"; done
 
 row META collected_by vps-diag
