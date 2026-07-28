@@ -137,7 +137,18 @@ export function classify(stack) {
   }
 
   const verdicts = []
-  const add = (kind, name, verdict, reason, extra = {}) => verdicts.push({ kind, name, verdict, reason, ...extra })
+  // AN INCOMPLETE CHANNEL HOLDS EVERY KIND, not just containers. The live run
+  // classified 41 volumes/networks/images as retire while the host-file channel
+  // was truncated; only the whole-report blocker caught it. A safety property
+  // that holds solely at the summary level is one refactor away from being
+  // lost, so the downgrade is applied where each verdict is recorded.
+  const add = (kind, name, verdict, reason, extra = {}) => {
+    if (verdict === 'retire' && chan.length > 0) {
+      verdicts.push({ kind, name, verdict: 'hold', reason: `${reason} — HELD: ${chan.join('; ')}`, ...extra })
+      return
+    }
+    verdicts.push({ kind, name, verdict, reason, ...extra })
+  }
 
   // ---- containers ----------------------------------------------------------
   for (const c of containers) {
@@ -398,6 +409,11 @@ async function selftest() {
       t(`${label} channel ${st}: no container is retireable`,
         bad.verdicts.filter((x) => x.kind === 'container' && x.verdict === 'retire').length, 0)
       t(`…and it blocks`, bad.blockers.some((b) => /unread channel/.test(b)), true)
+      // EVERY KIND, not just containers. The live run classified 41
+      // volumes/networks/images as retire while a channel was truncated.
+      t(`…and NOTHING of any kind is retireable`, bad.retireable.length, 0)
+      t(`…with the channel named on the downgraded verdict`,
+        bad.held.some((x) => /HELD:/.test(x.reason)), true)
     }
     t(`${label} channel with an unknown status blocks`,
       classify(stackFixture({ [f]: 'made-up' })).blockers.some((b) => /unread channel/.test(b)), true)

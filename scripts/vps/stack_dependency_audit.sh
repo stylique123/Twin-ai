@@ -27,8 +27,14 @@ set -uo pipefail
 
 # The only things that must survive. Everything else is CLASSIFIED, not assumed.
 PROTECTED_CTRS="twinai-worker postiz postiz-postgres postiz-redis"
+# ORCHESTRATION FILES ONLY. Grepping all of /root for a container name matches
+# every bundled asset that mentions it, blows the cap, and returns `truncated` —
+# a correct refusal on worthless input. A host-level CALLER is a reference in
+# something that starts or configures: compose, systemd, cron, a shell script.
 SCAN_DIRS="/root /etc/systemd/system /etc/cron.d /etc/crontab /opt/twinai-worker-src"
-SCAN_CAP=60
+SCAN_CAP=200
+SCAN_INCLUDE="--include=*.yml --include=*.yaml --include=*.sh --include=*.bash --include=*.service --include=*.timer --include=*.conf --include=*.env --include=crontab --include=*.cron"
+SCAN_EXCLUDE="--exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git --exclude-dir=build --exclude-dir=.next --exclude-dir=coverage" 
 
 j_str() { if [ -z "${1:-}" ]; then printf 'null'; else printf '"%s"' "$(printf '%s' "$1" | tr -d '"\\' | tr -d '\n')"; fi; }
 j_num() { case "${1:-}" in ''|*[!0-9]*) printf 'null' ;; *) printf '%s' "$1" ;; esac; }
@@ -112,7 +118,7 @@ EXIST=""
 for d in $SCAN_DIRS; do [ -e "$d" ] && EXIST="$EXIST $d"; done
 if [ -n "$EXIST" ]; then
   for c in $ALL_CTRS; do
-    if hits="$(grep -rl --binary-files=without-match -F "$c" $EXIST 2>/dev/null)"; then
+    if hits="$(grep -rl --binary-files=without-match $SCAN_INCLUDE $SCAN_EXCLUDE -F "$c" $EXIST 2>/dev/null)"; then
       n="$(printf '%s' "$hits" | grep -c . || echo 0)"
       capped="$(printf '%s' "$hits" | head -"$SCAN_CAP" | tr '\n' ',')"
       hostref_rows="$hostref_rows$c|$n|$capped
