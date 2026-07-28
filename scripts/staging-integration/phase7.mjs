@@ -121,7 +121,23 @@ const getProject = async (id) => (await admin.from('edit_projects').select('*').
 const getEvents = async (pid) => (await admin.from('edit_events').select('*').eq('project_id', pid).order('seq')).data ?? []
 const directorCalls = async (pid) => (await admin.from('edit_director_calls').select('*').eq('edit_project_id', pid)).data ?? []
 const directorDecisions = async (pid) => (await admin.from('edit_director_decisions').select('*').eq('edit_project_id', pid)).data ?? []
-const editPlanCount = async (pid) => (await admin.from('edit_plans').select('id', { count: 'exact', head: true }).eq('edit_project_id', pid)).count ?? 0
+// ABSENT IS NOT ZERO. `?? 0` used to swallow every way this can fail to be an
+// answer: before 0094 the table did not exist, so the query ERRORED and the
+// coalesce turned that into "0 rows" — the A9/F4 assertions below passed
+// without ever looking at anything.
+//
+// 0094 creates `edit_plans`, which is what makes those assertions meaningful
+// for the first time. Reporting the error explicitly is what keeps them that
+// way: if the table is ever dropped, renamed, or made unreadable to the
+// service role, these must go RED rather than quietly returning to proving
+// nothing.
+const editPlanCount = async (pid) => {
+  const { count, error } = await admin.from('edit_plans')
+    .select('id', { count: 'exact', head: true }).eq('edit_project_id', pid)
+  if (error) return `unreadable: ${error.message}`
+  if (typeof count !== 'number') return 'unreadable: no count returned'
+  return count
+}
 async function waitSettled(id, timeoutMs = 240_000, label = '') {
   const start = Date.now()
   for (;;) {
@@ -269,7 +285,8 @@ async function main() {
       && Array.isArray(decs[0].decision?.zoomRequests), JSON.stringify(decs[0]?.decision))
     const codes = (await getEvents(pid)).map((e) => e.message_code)
     check('A8 director_started + director_succeeded events', codes.includes('director_started') && codes.includes('director_succeeded'))
-    check('A9 edit_plans still 0 (compilation is Phase 8)', (await editPlanCount(pid)) === 0)
+    const a9 = await editPlanCount(pid)
+    check('A9 edit_plans still 0 (compilation is Phase 8)', a9 === 0, `got ${a9}`)
   }
 
   // ---- C. crash-before-directing resume ----------------------------------
@@ -391,7 +408,8 @@ async function main() {
     check('F1 project completed via the simulated path', proj.status === 'completed', proj.status)
     check('F2 NO director call row (directing simulated)', (await directorCalls(pid)).length === 0)
     check('F3 NO decision row', (await directorDecisions(pid)).length === 0)
-    check('F4 edit_plans still 0', (await editPlanCount(pid)) === 0)
+    const f4 = await editPlanCount(pid)
+    check('F4 edit_plans still 0', f4 === 0, `got ${f4}`)
   }
 
   stopAll()
