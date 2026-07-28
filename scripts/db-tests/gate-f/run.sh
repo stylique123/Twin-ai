@@ -25,7 +25,10 @@ export LC_ALL=C LANG=C PGCLIENTENCODING=UTF8
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 MIG="$REPO/supabase/migrations/0094_editor_editplan_render_completion.sql"
-[ -f "$MIG" ] || { echo "FATAL: $MIG not found"; exit 1; }
+MIG2="$REPO/supabase/migrations/0096_editor_output_asset_and_completion.sql"
+for m in "$MIG" "$MIG2"; do
+  [ -f "$m" ] || { echo "FATAL: $m not found"; exit 1; }
+done
 
 if [ -z "${PGBIN:-}" ]; then
   for d in /usr/lib/postgresql/*/bin /opt/homebrew/opt/postgresql@16/bin /usr/local/opt/postgresql@16/bin; do
@@ -82,8 +85,30 @@ create function auth.uid() returns uuid language sql stable as \$\$ select null:
 insert into auth.users values ('$O_ID');
 create table public.generations (id uuid primary key);
 insert into public.generations values ('$G_ID');
-create table public.media_assets (id uuid primary key);
-insert into public.media_assets values ('$S_ID'), ('$A_ID');
+-- media_assets, with the columns 0096's RPC actually writes. A stand-in of
+-- `(id uuid primary key)` was enough while nothing inserted into it, and became
+-- wrong the moment something did — the third time in this branch that a
+-- convenient stand-in hid what production has. The unique index on
+-- storage_path is what makes the RPC's crash-resume idempotency real rather
+-- than assumed.
+create table public.media_assets (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id) on delete cascade,
+  workspace_id uuid,
+  generation_id uuid references public.generations(id) on delete set null,
+  kind text check (kind in ('source','music','output','thumbnail')),
+  bucket text,
+  storage_path text unique,
+  content_sha256 text,
+  mime_type text,
+  size_bytes bigint,
+  duration_ms bigint,
+  width integer,
+  height integer,
+  frame_rate_num integer,
+  frame_rate_den integer,
+  status text);
+insert into public.media_assets (id) values ('$S_ID'), ('$A_ID');
 create table public.jobs (
   id uuid primary key, status text not null, locked_by text, attempt integer not null default 1,
   payload jsonb not null default '{}'::jsonb);
@@ -94,6 +119,7 @@ create table public.edit_projects (
   owner_id uuid not null references auth.users(id) on delete cascade,
   generation_id uuid not null references public.generations(id) on delete cascade,
   source_asset_id uuid not null references public.media_assets(id),
+  workspace_id uuid,
   status text not null default 'queued',
   output_asset_id uuid references public.media_assets(id),
   completed_at timestamptz);
@@ -145,7 +171,8 @@ SQL
 
 bootstrap
 psql -q -v ON_ERROR_STOP=1 -f "$MIG"
-echo "0094 applied"
+psql -q -v ON_ERROR_STOP=1 -f "$MIG2"
+echo "0094 + 0096 applied"
 
 run(){ psql -q -v ON_ERROR_STOP=1 -c "$1" >/dev/null 2>&1; }
 ok(){ if run "$1"; then echo "  ok: $2"; else echo "GATE-F FAIL: legitimate statement REJECTED ($2)"; psql -c "$1" 2>&1 | tail -3; exit 1; fi; }
@@ -264,9 +291,12 @@ echo "== COMPLETION: what 0094 closes, and what it deliberately does not =="
 #
 # When 8.5 lands the trigger, these two `ok`s become `no`s and the gap closes.
 run "update public.edit_projects set status='validating' where id='$P_ID'"
-ok "update public.edit_projects set status='completed', output_asset_id=null where id='$P_ID'" \
-   "KNOWN GAP until 8.5: a bare UPDATE to completed with a null output is not yet refused"
-run "update public.edit_projects set status='validating', output_asset_id=null, completed_at=null where id='$P_ID'"
+# THE GAP 8.4 LEFT OPEN, NOW CLOSED. This assertion was an `ok` labelled
+# "KNOWN GAP until 8.5" for exactly as long as the trigger was deferred. 0096
+# installs it, so it is a refusal now — and the flip is the evidence that the
+# deferral was tracked rather than forgotten.
+no "update public.edit_projects set status='completed', output_asset_id=null where id='$P_ID'" \
+   "a bare UPDATE to completed with reserved outputs and a null asset"
 no "select public.editor_complete_output('$P_ID','$J_ID','not-this-worker',1,'$A_ID')" \
    "completing without the lease"
 ok "select public.editor_complete_output('$P_ID','$J_ID','$WORKER',1,'$A_ID')" \
@@ -329,6 +359,53 @@ run "update public.edit_projects set status='validating' where id='$P3'"
 no "select public.editor_complete_output('$P3','$J3','$WORKER',1,'$A_ID')" \
    "the RPC refuses the made-it-then-lost-it case: an output was reserved and never became ready"
 
+echo "== the OUTPUT ASSET: 0094 could complete onto one but never made one =="
+# 0094 shipped `editor_complete_output(..., p_output_asset)` with nothing in the
+# schema able to CREATE that asset, and no media_assets insert anywhere in the
+# worker. The completion path was unreachable as merged. 0096 adds the fenced
+# RPC; these assertions are what stop it regressing to an unfenced insert.
+P4='dddddddd-0000-0000-0000-000000000004'
+J4='eeeeeeee-0000-0000-0000-000000000004'
+S4='ffffffff-0000-0000-0000-000000000004'
+psql -q -v ON_ERROR_STOP=1 <<SQL >/dev/null
+insert into public.media_assets values ('$S4');
+insert into public.jobs values ('$J4','running','$WORKER',1, jsonb_build_object('project_id','$P4'));
+insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, status)
+  values ('$P4','$O_ID','$G_ID','$S4','compiling');
+SQL
+no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+   "minting an output asset for a project with NO reserved output"
+ok "select public.editor_record_edit_plan('$P4','$J4','$WORKER',1,'$SHA_O','$SHA_P','boot','snap','srcsum','edit-plan-v1','edit-policy-v1','edit-compiler-1','$PLAN_JSON'::jsonb,60000)" \
+   "the fourth project records its plan"
+run "update public.edit_projects set status='rendering' where id='$P4'"
+ok "select public.editor_reserve_output('$P4','$J4','$WORKER',1,'video','media')" \
+   "and reserves its video output"
+no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+   "minting an asset while the output is RESERVED but not ready"
+ok "select public.editor_mark_output_ready('$P4','$J4','$WORKER',1,'video',4096,'$SHA_X',60000)" \
+   "the output becomes ready with its measurements"
+no "select public.editor_create_output_asset('$P4','$J4','not-this-worker',1,60000,1080,1920,30,1,'video/mp4')" \
+   "minting without the lease"
+ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+   "the lease-holder mints the output asset once the video is ready"
+ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+   "minting twice returns the same asset (crash-resume)"
+n=$(psql -tAc "select count(*) from public.media_assets where kind='output'")
+[ "$n" = "1" ] || { echo "GATE-F FAIL: expected exactly one output asset, found $n"; exit 1; }
+echo "  ok: exactly one output asset exists"
+# The asset is DERIVED: path, bucket, owner and digest all come from the
+# reserved row, not from arguments the caller could disagree with.
+got=$(psql -tAc "select storage_path||'|'||coalesce(content_sha256,'')||'|'||coalesce(size_bytes::text,'') from public.media_assets where kind='output'")
+want="edit-outputs/$O_ID/$P4/1/output.mp4|$SHA_X|4096"
+[ "$got" = "$want" ] || { echo "GATE-F FAIL: derived asset is '$got', expected '$want'"; exit 1; }
+echo "  ok: path, digest and size were DERIVED from the reserved output"
+
+echo "== and the completed project must point at it =="
+run "update public.edit_projects set status='validating' where id='$P4'"
+a4=$(psql -tAc "select id from public.media_assets where kind='output'")
+ok "select public.editor_complete_output('$P4','$J4','$WORKER',1,'$a4')" \
+   "completion onto the minted asset"
+
 echo "== client roles: read yes, write no; anon nothing =="
 ok "set role authenticated; select 1 from public.edit_plans limit 1; reset role" \
    "authenticated may SELECT plans"
@@ -364,5 +441,23 @@ fi
 #
 # It moves to 8.5 with the trigger it tests. The remaining control above still
 # proves the plan-immutability refusals are attributable to their trigger.
+
+echo "== MUTATION CONTROL: without the completion guard, an UNREADY output completes =="
+# Restored with the trigger. 8.4 removed this control when it deferred the
+# trigger, because a control that drops something never created would either
+# error or "pass" by dropping nothing. The subject is P3: it reserved a video
+# output that never became ready, so the guard refuses it (asserted above) and
+# only removing the guard can let it through.
+psql -q -v ON_ERROR_STOP=1 <<SQL >/dev/null
+drop trigger trg_edit_projects_completion on public.edit_projects;
+update public.edit_projects set status='validating', output_asset_id=null, completed_at=null where id='$P3';
+SQL
+if run "update public.edit_projects set status='completed' where id='$P3'"; then
+  echo "  ok: with the completion guard removed the unready-output completion goes through"
+else
+  echo "GATE-F FAIL: completing with an unready output still failed after dropping the guard."
+  echo "             The completion refusals are therefore not attributable to it."
+  exit 1
+fi
 
 echo "GATE-F PASS"

@@ -66,12 +66,27 @@ export function evaluate({ files, webSources, migrations }) {
     reasons.push(`${WORKER_FILE}: the completion scaffold marker (simulated_after_analysis) is gone — completed would read as a product success`)
   }
 
+  // THE MIGRATION THAT IS ALLOWED TO TIE completed TO AN OUTPUT.
+  //
+  // This rule existed to stop the constraint landing before a renderer could
+  // satisfy it: while every completion is a scaffold completion with a null
+  // output, such a constraint reddens the whole pipeline and protects nothing.
+  // It fired on 0094 and it was right — 8.4 deferred the trigger rather than
+  // silencing it, and Gate-F carried the consequence as an explicit KNOWN GAP.
+  //
+  // 0096 is the migration the message meant by "lands WITH the real renderer".
+  // It is allowed BY NAME, not by loosening the pattern: any OTHER migration
+  // adding the same constraint is still premature, and a second renderer batch
+  // would have to make the same deliberate edit here rather than inheriting an
+  // exemption. The allowance is a fact about one file, not a weakened rule.
+  const COMPLETION_CONSTRAINT_OWNER = '0096_editor_output_asset_and_completion.sql'
   for (const [p, sql] of Object.entries(migrations)) {
     if (sql == null) continue
+    if (p.endsWith(COMPLETION_CONSTRAINT_OWNER)) continue
     // Any check tying completed-status to a non-null output is premature until
     // rendering is real (every scaffold completion violates it).
     if (/output_asset_id\s+is\s+not\s+null/i.test(sql) && /completed/i.test(sql)) {
-      reasons.push(`${p}: premature completed=>output_asset_id constraint (lands WITH the real renderer, updating this guard deliberately)`)
+      reasons.push(`${p}: premature completed=>output_asset_id constraint (belongs in ${COMPLETION_CONSTRAINT_OWNER}, which lands WITH the real renderer)`)
     }
   }
 
@@ -131,6 +146,22 @@ function selftest() {
       const f = good()
       f.migrations['supabase/migrations/0099_x.sql'] =
         "alter table edit_projects add constraint completed_output check (status <> 'completed' or output_asset_id is not null);"
+      return f
+    })(), false],
+    // HOSTILE 5b: the 0096 allowance must be NAME-SCOPED, not a loosened rule.
+    // The same constraint in the owning migration passes; in any other file it
+    // still fails. Without this pair, "allowed by name" and "allowed anywhere"
+    // look identical from the outside.
+    ['the completion-constraint owner is allowed', (() => {
+      const f = good()
+      f.migrations['supabase/migrations/0096_editor_output_asset_and_completion.sql'] =
+        "if new.output_asset_id is not null then raise exception 'completed'; end if;"
+      return f
+    })(), true],
+    ['CONTROL: the identical constraint in ANOTHER migration still fails', (() => {
+      const f = good()
+      f.migrations['supabase/migrations/0097_someone_elses.sql'] =
+        "if new.output_asset_id is not null then raise exception 'completed'; end if;"
       return f
     })(), false],
     ['!== false softening fails', (() => {
