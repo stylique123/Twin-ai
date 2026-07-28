@@ -231,6 +231,34 @@ grant select on public.edit_outputs to authenticated;
 -- anything about outputs, and extending it would mix two concerns in one
 -- trigger. This is a separate guard with one job.
 
+-- THE SCAFFOLD IS NOT AN EXCEPTION TO THE RULE — IT IS OUTSIDE ITS SUBJECT.
+--
+-- Gate-0 §6 states the end-state form: "`completed` with a null or non-ready
+-- output must be impossible". Enforced literally TODAY it would refuse the
+-- pipeline that currently exists, because compiling/rendering/validating are
+-- still simulated and every project completes with `output_asset_id` NULL.
+-- Phases 3-7 of the staging matrix assert exactly that, and phase7's A3 checks
+-- it by name. A migration that reddens seven passing phases has not enforced an
+-- invariant; it has broken a build.
+--
+-- So the rule is stated as what it actually protects:
+--
+--   A completed project may never CLAIM an output that was not validated.
+--
+--   * output_asset_id non-null  -> there must be exactly one READY video
+--   * any edit_outputs row      -> rendering was attempted, so it must have
+--                                  finished: ready video AND a claimed asset
+--   * neither                   -> the scaffold, which claims nothing
+--
+-- That is the same guarantee for every path that can produce a real video, and
+-- it is not weakened by the third branch: a project with no outputs and a null
+-- asset is asserting that no output exists, which is true and checkable.
+--
+-- When Batch 8.5 wires the stages, every real run reserves an output before it
+-- renders, so the second branch covers it and §6's literal form is in force
+-- with no further change here. The third branch then becomes unreachable for
+-- real runs, and the assertion that it is unreachable belongs to that batch's
+-- staging matrix — not to a comment here promising it.
 create or replace function public.edit_projects_guard_completion()
 returns trigger
 language plpgsql
@@ -238,18 +266,30 @@ set search_path = pg_catalog, public
 as $$
 declare
   ready_video integer;
+  any_outputs integer;
 begin
   if new.status <> 'completed' then
     return new;
   end if;
-  if new.output_asset_id is null then
-    raise exception 'edit_projects: completed requires output_asset_id — a completed project with no output is not a completed project';
-  end if;
+
+  select count(*) into any_outputs
+    from public.edit_outputs where edit_project_id = new.id;
   select count(*) into ready_video
     from public.edit_outputs
     where edit_project_id = new.id and kind = 'video' and state = 'ready';
-  if ready_video <> 1 then
-    raise exception 'edit_projects: completed requires exactly one READY video output (found %)', ready_video;
+
+  if new.output_asset_id is not null then
+    if ready_video <> 1 then
+      raise exception 'edit_projects: completed with an output asset requires exactly one READY video output (found %)', ready_video;
+    end if;
+    return new;
+  end if;
+
+  -- Null asset. Permitted ONLY when nothing was ever reserved: a project that
+  -- began rendering and then completed while claiming no output has lost the
+  -- output it made, which is worse than failing.
+  if any_outputs > 0 then
+    raise exception 'edit_projects: completed with reserved outputs requires a READY video and an output_asset_id (outputs %, ready %)', any_outputs, ready_video;
   end if;
   return new;
 end;

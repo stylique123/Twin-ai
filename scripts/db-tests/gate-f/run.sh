@@ -244,9 +244,51 @@ insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, 
   values ('$P2','$O_ID','$G_ID','$S2','validating');
 SQL
 no "update public.edit_projects set status='completed', output_asset_id='$A_ID' where id='$P2'" \
-   "completing a project with NO output row at all"
+   "CLAIMING an output asset with no ready video behind it"
 no "select public.editor_complete_output('$P2','$J2','$WORKER',1,'$A_ID')" \
    "the RPC refuses it too — both doors, not just one"
+
+# THE BRANCH GATE-F COULD NOT SEE.
+#
+# Gate-F builds its own edit_projects stand-in, so it never exercises the
+# SIMULATED pipeline that exists today — the one where compiling/rendering/
+# validating are scaffolds and every project completes with output_asset_id
+# NULL. The first version of this migration refused exactly that, which would
+# have reddened Phases 3-7 of the staging matrix (phase7's A3 asserts the null
+# by name) while every assertion in this file stayed green.
+#
+# A hostile SQL gate that cannot see the shape the production pipeline actually
+# produces is testing a database nobody runs. Both paths are asserted now.
+echo "== the SCAFFOLD path: completing while CLAIMING NOTHING is allowed =="
+ok "update public.edit_projects set status='completed' where id='$P2'" \
+   "a project with no outputs and a null asset completes (today's simulated pipeline)"
+got=$(psql -tAc "select coalesce(output_asset_id::text,'NULL') from public.edit_projects where id='$P2'")
+[ "$got" = "NULL" ] || { echo "GATE-F FAIL: scaffold completion left output_asset_id='$got'"; exit 1; }
+echo "  ok: and it still claims no output"
+
+echo "== but a project that RESERVED an output cannot complete claiming nothing =="
+P3='aaaaaaaa-0000-0000-0000-000000000003'
+J3='bbbbbbbb-0000-0000-0000-000000000003'
+S3='cccccccc-0000-0000-0000-000000000003'
+psql -q -v ON_ERROR_STOP=1 <<SQL >/dev/null
+insert into public.media_assets values ('$S3');
+insert into public.jobs values ('$J3','running','$WORKER',1, jsonb_build_object('project_id','$P3'));
+insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, status)
+  values ('$P3','$O_ID','$G_ID','$S3','compiling');
+SQL
+# Walk it through the real stage order — the RPCs are stage-fenced, so a fixture
+# that jumps straight to `rendering` cannot record a plan at all.
+ok "select public.editor_record_edit_plan('$P3','$J3','$WORKER',1,'$SHA_D','$SHA_P','boot','snap','srcsum','edit-plan-v1','edit-policy-v1','edit-compiler-1','$PLAN_JSON'::jsonb,60000)" \
+   "the second project records its own plan while compiling"
+run "update public.edit_projects set status='rendering' where id='$P3'"
+# A RESERVED but never-ready output: the crash-mid-render shape.
+ok "select public.editor_reserve_output('$P3','$J3','$WORKER',1,'video','media')" \
+   "and reserves a video output"
+run "update public.edit_projects set status='validating' where id='$P3'"
+no "update public.edit_projects set status='completed' where id='$P3'" \
+   "completing with a RESERVED-but-not-ready output and a null asset — the made-it-then-lost-it case"
+no "update public.edit_projects set status='completed', output_asset_id='$A_ID' where id='$P3'" \
+   "and claiming an asset for that same unready output"
 
 echo "== client roles: read yes, write no; anon nothing =="
 ok "set role authenticated; select 1 from public.edit_plans limit 1; reset role" \
@@ -274,15 +316,26 @@ else
   exit 1
 fi
 
-echo "== MUTATION CONTROL: without the completion guard, a null output completes =="
+echo "== MUTATION CONTROL: without the completion guard, an UNREADY output completes =="
+# THE SUBJECT HAS TO BE A ROW THE GUARD ACTUALLY REFUSES.
+#
+# This control used to target P2 — no outputs, null asset. That was fine while
+# the guard refused every null-asset completion, but adding the scaffold branch
+# made P2 legitimately completable, so the UPDATE would have succeeded with the
+# guard in place AND without it. The control would have gone on printing "ok"
+# while proving nothing, which is the precise failure it exists to detect.
+#
+# P3 is the right subject: it reserved a video output that never became ready,
+# so the guard refuses it (asserted above) and only its removal can let it
+# through.
 psql -q -v ON_ERROR_STOP=1 <<SQL >/dev/null
 drop trigger trg_edit_projects_completion on public.edit_projects;
-update public.edit_projects set status='validating', output_asset_id=null, completed_at=null where id='$P2';
+update public.edit_projects set status='validating', output_asset_id=null, completed_at=null where id='$P3';
 SQL
-if run "update public.edit_projects set status='completed' where id='$P2'"; then
-  echo "  ok: with the completion guard removed a NULL-output completion goes through"
+if run "update public.edit_projects set status='completed' where id='$P3'"; then
+  echo "  ok: with the completion guard removed the unready-output completion goes through"
 else
-  echo "GATE-F FAIL: completion with a null output still failed after dropping the guard."
+  echo "GATE-F FAIL: completing with an unready output still failed after dropping the guard."
   echo "             The completion refusals are therefore not attributable to it."
   exit 1
 fi
