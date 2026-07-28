@@ -300,10 +300,46 @@ jobs:
           sha256sum leftover-secrets.json | tee leftover-secrets.sha256
           # The verdict is echoed as counts. A path that could not be read is
           # NOT a path with no secrets, so the status is printed first.
-          echo "SWEEP status: $(jq -r '.status' leftover-secrets.json)"
+          ST=$(jq -r '.status' leftover-secrets.json)
+          N=$(jq -r '.findings | length' leftover-secrets.json)
+          echo "SWEEP status: $ST"
           jq -r '.paths[]' leftover-secrets.json | awk -F'|' '{printf "SWEEP path %s: %s (%s KiB, %s files)\n",$1,$2,$3,$4}'
-          echo "SWEEP findings: $(jq -r '.findings | length' leftover-secrets.json)"
+          echo "SWEEP findings: $N"
           jq -r '.findings[]' leftover-secrets.json | awk -F'|' '{printf "SWEEP   %s : %s x%s\n",$1,$2,$3}'
+          # THE VERDICT MUST SURVIVE THE LOG.
+          #
+          # A read-only probe that exits 0 either way says nothing by its
+          # conclusion, and later steps push its output out of the readable tail
+          # — which is exactly what happened on run 30359324111: the sweep ran,
+          # produced valid JSON, and its answer was unreadable without opening
+          # the artifact. Annotations and the step summary both survive that.
+          {
+            echo "### Leftover host-path secret sweep"
+            echo ""
+            echo "- status: \`$ST\`"
+            echo "- findings: **$N**"
+            echo ""
+            echo '| path | status | KiB | files |'
+            echo '|---|---|---|---|'
+            jq -r '.paths[]' leftover-secrets.json | awk -F'|' '{printf "| %s | %s | %s | %s |\n",$1,$2,$3,$4}'
+            if [ "$N" -gt 0 ]; then
+              echo ""
+              echo '| file | pattern | count |'
+              echo '|---|---|---|'
+              jq -r '.findings[]' leftover-secrets.json | awk -F'|' '{printf "| %s | %s | %s |\n",$1,$2,$3}'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+          # An unreadable or truncated channel is NOT a clean one, and says so
+          # at the same volume as a finding would.
+          if [ "$ST" != "read-complete" ]; then
+            echo "::warning::leftover-secret sweep channel status is '$ST' — this is UNPROVEN, not clean"
+          fi
+          if [ "$N" -gt 0 ]; then
+            jq -r '.findings[]' leftover-secrets.json | awk -F'|' '{printf "::warning::credential-shaped content: %s matches %s (x%s)\n",$1,$2,$3}'
+            echo "::warning::$N credential-shaped finding(s) in host paths the retirement could not delete. Values were never read into this log."
+          else
+            echo "::notice::leftover host paths hold no credential-shaped content ($ST)"
+          fi
 
       - name: Record the acceptance baseline anchor
         if: inputs.stage == 'pre-stop-audit'
