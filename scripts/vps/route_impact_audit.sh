@@ -111,32 +111,63 @@ def looks_like_handler_list(v):
     return isinstance(v, list) and any(
         isinstance(x, dict) and ("handler" in x or "handle" in x) for x in v)
 
-def walk(handlers, base, acc):
+MATCHER_KEYS_SUPPORTED = ("host", "path")
+
+
+def matchers_of(route):
     """
-    Descend the handler chain, recording each handler's OWN upstream list AND its
-    EXACT address in the loaded configuration.
+    A route's OWN matchers, and any matcher shape this model cannot represent.
 
-    Two reasons the address matters, both learned the hard way:
+    Only `host` and `path` are emitted. Anything else — header, method,
+    expression, client_ip, protocol — changes WHICH REQUESTS a route serves in a
+    way this tool does not model, so it is reported as an unsupported key NAME
+    (never its value) and the caller refuses rather than describing a route it
+    does not actually understand.
+    """
+    hosts, paths, unsupported = [], [], []
+    for m in route.get("match", []) or []:
+        if not isinstance(m, dict):
+            unsupported.append("<non-object-matcher>")
+            continue
+        for k in m.keys():
+            if k not in MATCHER_KEYS_SUPPORTED and k not in unsupported:
+                unsupported.append(k)
+        for hh in m.get("host", []) or []:
+            if isinstance(hh, str):
+                hosts.append(hh)
+        for pp in m.get("path", []) or []:
+            if isinstance(pp, str):
+                paths.append(pp)
+    return {"host": hosts, "path": paths, "unsupportedMatcherKeys": unsupported}
 
-    * Grouping per handler is what makes the remedy decidable. If the target and
-      a protected backend share ONE reverse_proxy's upstream list, dropping the
-      target entry leaves the protected one serving. If they sit in DIFFERENT
-      handlers, dropping the target's handler leaves that path with no upstream
-      at all.
-    * A patch that says "the handler" is not a patch. With two reverse_proxy
-      handlers each pairing the target with a DIFFERENT protected backend, a
-      route-level view produces one instruction and one fused keep-list, which
-      would cross-wire both handlers. Each handler needs its own address and its
-      own keep-list.
 
-    `base` is the admin-API path of the containing `handle` array, so a handler's
-    address is exactly what `PATCH /config/<path>` would take.
+def walk(handlers, base, acc, route_path, chain):
+    """
+    Descend the handler chain, recording each handler's OWN upstream list, its
+    EXACT address, AND the nested route that owns it.
+
+    WHY THE NESTED ROUTE IS THE UNIT. An earlier version recursed into
+    `subroute.routes` but carried neither the nested route's own `match` nor its
+    address. Every handler therefore inherited the OUTER route's matchers, and
+    the live config is exactly the shape that breaks: one outer host route whose
+    subroute holds three nested routes, with stylique-os and stylique-dashboard
+    in DIFFERENT nested branches. The report then said "path matchers: none —
+    all paths" for a handler that in fact serves one nested path, and offered no
+    way to name the thing that would actually be removed.
+
+    `routePath` is the admin-API path of the route object that directly owns this
+    handle array. That object — not the handler, and not the outer host route —
+    is the deletable unit when a nested route reaches only the target: removing
+    it leaves its siblings untouched, where emptying a handler's upstream list
+    would leave a route matching requests it can no longer serve.
+
+    `chain` is the ancestor matcher context, outermost first, so a reviewer can
+    see the full set of conditions under which a handler is reached.
 
     NESTING IS ONLY FOLLOWED WHERE IT IS CANONICALLY ADDRESSABLE. `subroute`
     exposes `routes[k].handle[m]` and that path is exact. Any OTHER key holding
     what looks like a handler list is a shape this script cannot address without
-    guessing, so the handler is marked unaddressable and the caller refuses
-    rather than emitting a patch aimed at a path that may not exist.
+    guessing, so the handler is marked unaddressable and the caller refuses.
     """
     for j, h in enumerate(handlers or []):
         if not isinstance(h, dict):
@@ -156,10 +187,25 @@ def walk(handlers, base, acc):
             "upstreamDials": [u["dial"] for u in ups if u["dial"] is not None],
             "upstreamCount": len(ups),
             "addressable": len(unknown_nesting) == 0,
+            # The route object that owns this handler's handle array.
+            "ownerRoutePath": route_path,
+            "nestingDepth": len(chain) - 1,
+            # Outermost-first matcher context, each entry naming its own route.
+            "matcherChain": chain,
+            "unsupportedMatcherKeys": sorted({
+                k for c in chain for k in c.get("unsupportedMatcherKeys", [])
+            }),
         })
         for k, sub in enumerate(h.get("routes", []) or []):
             if isinstance(sub, dict):
-                walk(sub.get("handle", []), "%s/routes/%d/handle" % (path, k), acc)
+                sub_route_path = "%s/routes/%d" % (path, k)
+                sub_ctx = matchers_of(sub)
+                sub_ctx["routePath"] = sub_route_path
+                sub_ctx["routeIndexInParent"] = k
+                sub_ctx["parentRoutesArrayPath"] = "%s/routes" % path
+                walk(sub.get("handle", []), sub_route_path + "/handle", acc,
+                     sub_route_path, chain + [sub_ctx])
+
 
 # ---- SHAPE EVIDENCE ------------------------------------------------------
 # Run 30302057188 parsed ZERO routes from a readable config. "Zero routes" and
@@ -220,19 +266,14 @@ for srv_name, srv in servers.items():
     for idx, route in enumerate(srv.get("routes", []) or []):
         if not isinstance(route, dict):
             continue
-        hosts, paths = [], []
-        for m in route.get("match", []) or []:
-            if not isinstance(m, dict):
-                continue
-            for hh in m.get("host", []) or []:
-                if isinstance(hh, str):
-                    hosts.append(hh)
-            for pp in m.get("path", []) or []:
-                if isinstance(pp, str):
-                    paths.append(pp)
         route_path = "apps/http/servers/%s/routes/%d" % (srv_name, idx)
+        outer = matchers_of(route)
+        outer["routePath"] = route_path
+        outer["routeIndexInParent"] = idx
+        outer["parentRoutesArrayPath"] = "apps/http/servers/%s/routes" % srv_name
+        hosts, paths = outer["host"], outer["path"]
         acc = []
-        walk(route.get("handle", []), route_path + "/handle", acc)
+        walk(route.get("handle", []), route_path + "/handle", acc, route_path, [outer])
         # ALLOWLIST: nothing but these keys is ever emitted, and every value in
         # them is a config path, a route index, a domain, a path, a handler TYPE
         # or a dial.
@@ -242,6 +283,7 @@ for srv_name, srv in servers.items():
             "routePath": route_path,
             "hostMatchers": hosts,
             "pathMatchers": paths,
+            "unsupportedMatcherKeys": outer["unsupportedMatcherKeys"],
             "handlerOrder": [h["handler"] for h in acc],
             "handlers": acc,
             "upstreamDials": [d for h in acc for d in h["upstreamDials"]],

@@ -166,6 +166,67 @@ export function dialMatches(dial, ids, expectPort = null) {
  *
  * Returns null when it cannot be classified.
  */
+/**
+ * The NESTED ROUTE that may be removed, if one exists.
+ *
+ * WHY A ROUTE AND NOT A HANDLER. The live configuration is one outer host route
+ * whose subroute holds sibling nested routes — stylique-os under `/os/*`,
+ * stylique-dashboard under `/*`. Removing the target's UPSTREAM would leave a
+ * nested route that still matches `/os/*` and can no longer serve it; removing
+ * the outer route would take the dashboard down with it. The correct unit is the
+ * nested route object itself: delete it and its siblings are untouched.
+ *
+ * The unit chosen is the OUTERMOST ancestor whose entire subtree reaches only
+ * the target — outermost, because deleting a deeper node would leave an empty
+ * wrapper route still matching requests; only-the-target, because an ancestor
+ * that also contains a protected backend is not removable at all.
+ *
+ * Returns null when no such ancestor exists, which is the shared-route case and
+ * a refusal, not a smaller patch.
+ */
+export function targetExclusiveRoute(handlers) {
+  const targetHandlers = handlers.filter((h) => (h.targetUpstreams?.length ?? 0) > 0)
+  if (targetHandlers.length === 0) return null
+
+  // Every ancestor route path that appears anywhere, with its context.
+  const ctxByPath = new Map()
+  for (const h of handlers) {
+    for (const c of h.matcherChain ?? []) if (c?.routePath) ctxByPath.set(c.routePath, c)
+  }
+  const chainPaths = (h) => (h.matcherChain ?? []).map((c) => c?.routePath).filter(Boolean)
+
+  // A candidate must (a) be an ancestor of a target handler, (b) contain NO
+  // handler that serves anything other than the target.
+  const candidates = []
+  for (const path of ctxByPath.keys()) {
+    const under = handlers.filter((h) => chainPaths(h).includes(path))
+    if (under.length === 0) continue
+    if (!under.some((h) => (h.targetUpstreams?.length ?? 0) > 0)) continue
+    // Every handler beneath it must reach ONLY the target. A handler with no
+    // upstreams at all (headers, encode) is inert and does not disqualify.
+    const clean = under.every((h) => {
+      const ups = h.upstreams?.length ?? 0
+      if (ups === 0) return true
+      return (h.keepUpstreams?.length ?? 0) === 0
+    })
+    if (clean) candidates.push(path)
+  }
+  if (candidates.length === 0) return null
+
+  // Outermost = shortest admin path among the candidates that are ancestors of
+  // one another. Paths nest by prefix, so the shortest is the outermost.
+  candidates.sort((a, b) => a.length - b.length)
+  const chosen = candidates[0]
+  const ctx = ctxByPath.get(chosen)
+  return {
+    routePath: chosen,
+    parentRoutesArrayPath: ctx?.parentRoutesArrayPath ?? null,
+    routeIndexInParent: ctx?.routeIndexInParent ?? null,
+    hostMatchers: ctx?.host ?? [],
+    pathMatchers: ctx?.path ?? [],
+  }
+}
+
 export function classifyRoute(route, targetIds, protectedIds, opts = {}) {
   const { targetPort = null, targetHasIp = true } = opts
   if (route === null || typeof route !== 'object') return null
@@ -214,6 +275,13 @@ export function classifyRoute(route, targetIds, protectedIds, opts = {}) {
       targetUpstreams: targets,
       keepUpstreams: keep,
       role: targets.length > 0 ? (keep.length > 0 ? 'shared' : 'target-only') : (keep.length > 0 ? 'other-only' : 'no-upstreams'),
+      // Carried through, not dropped. The nested-route model is useless if the
+      // classifier rebuilds handlers without the ancestor context the extractor
+      // went to the trouble of producing.
+      ownerRoutePath: typeof h?.ownerRoutePath === 'string' ? h.ownerRoutePath : null,
+      nestingDepth: Number.isInteger(h?.nestingDepth) ? h.nestingDepth : null,
+      matcherChain: Array.isArray(h?.matcherChain) ? h.matcherChain : [],
+      unsupportedMatcherKeys: Array.isArray(h?.unsupportedMatcherKeys) ? h.unsupportedMatcherKeys : [],
     })
   }
 
@@ -224,6 +292,14 @@ export function classifyRoute(route, targetIds, protectedIds, opts = {}) {
     handlerOrder: route.handlerOrder ?? [],
     upstreamDials: route.upstreamDials ?? [],
     handlers,
+  }
+
+  // A matcher shape this model does not represent changes WHICH REQUESTS a
+  // route serves. Describing such a route would be a claim the evidence does
+  // not support, so it refuses before any patch is considered.
+  const unsupported = [...new Set(handlers.flatMap((h) => h.unsupportedMatcherKeys ?? []))]
+  if (unsupported.length > 0) {
+    return { ...base, verdict: 'undetermined', reason: `a route uses matcher shapes this model does not represent (${unsupported.join(', ')})` }
   }
 
   const impactedHandlers = handlers.filter((h) => h.role === 'shared' || h.role === 'target-only')
@@ -244,7 +320,20 @@ export function classifyRoute(route, targetIds, protectedIds, opts = {}) {
 
   const targetOnly = impactedHandlers.filter((h) => h.role === 'target-only')
   if (targetOnly.length > 0 && (otherHandlers.length > 0 || impactedHandlers.some((h) => h.role === 'shared'))) {
-    return { ...base, verdict: 'would-orphan', reason: 'the target is the sole upstream of a handler while the route also serves other backends' }
+    // BEFORE refusing: is there a NESTED ROUTE whose whole subtree is the
+    // target's? If so the remedy is to remove that route, and the route as a
+    // whole is not orphaned at all — its siblings keep serving.
+    const excl = targetExclusiveRoute(handlers)
+    if (excl !== null && excl.parentRoutesArrayPath !== null && Number.isInteger(excl.routeIndexInParent)
+        && excl.routePath !== base.routePath) {
+      return {
+        ...base, verdict: 'nested-route-exclusive', exclusiveRoute: excl,
+        reason: `the target is reached only through nested route ${excl.routePath}`
+          + `${excl.pathMatchers.length ? ` (path ${excl.pathMatchers.join(', ')})` : ''}`
+          + '; removing that route leaves its siblings serving',
+      }
+    }
+    return { ...base, verdict: 'would-orphan', reason: 'the target is the sole upstream of a handler while the route also serves other backends, and no nested route is exclusively the target\'s' }
   }
   if (impactedHandlers.every((h) => h.role === 'shared')) {
     return { ...base, verdict: 'upstream-shared', reason: 'the target shares every impacted handler with other backends; drop only its upstream entries' }
@@ -387,6 +476,22 @@ export function decide(a) {
   for (const c of impacted) {
     if (c.verdict === 'undetermined') blockers.push(`route ${c.server}#${c.routeIndex}: ${c.reason}`)
     if (c.verdict === 'would-orphan') blockers.push(`route ${c.server}#${c.routeIndex}: ${c.reason}`)
+    // IDENTIFIED, NOT YET PATCHABLE. The nested route that reaches only the
+    // target is now named exactly, but the patch builder below emits UPSTREAM
+    // deletions — which for this shape would empty a handler and leave a route
+    // matching requests it can no longer serve. Removing a nested route object
+    // from its parent's `routes` array is a different edit, with different
+    // preconditions (sibling route fingerprints, descending index deletion), and
+    // it is not built yet. Naming the unit is progress; pretending the existing
+    // patch fits it would not be.
+    if (c.verdict === 'nested-route-exclusive') {
+      blockers.push(
+        `route ${c.server}#${c.routeIndex}: ${c.reason}. The removable unit is the nested route `
+        + `${c.exclusiveRoute.routePath} (index ${c.exclusiveRoute.routeIndexInParent} of `
+        + `${c.exclusiveRoute.parentRoutesArrayPath}), NOT an upstream entry — no patch is drafted `
+        + 'because emptying a handler would leave that path unserved',
+      )
+    }
   }
   // An unproven durable location blocks the whole patch. A remedy that cannot
   // be made durable would be reverted by the next container restart, silently
@@ -1250,6 +1355,119 @@ async function selftest() {
     t('BOUNDARY: port 65536 is not', isPort(65536), false)
     // Protected matching stays host-wide by design.
     t('protected identities still match host-wide', dialMatches('stylique-dashboard:8443', PROT_IDS), true)
+  }
+
+  console.log('-- THE LIVE NESTED SHAPE (regression: run 30332344684)')
+  {
+    // Outer host route -> subroute -> sibling nested routes. stylique-os under
+    // /os/*, stylique-dashboard under /*. This is the shape on the box.
+    const ctx = (routePath, host, path, idx, parent) => ({
+      routePath, host, path, unsupportedMatcherKeys: [],
+      routeIndexInParent: idx, parentRoutesArrayPath: parent,
+    })
+    const OUTER = 'apps/http/servers/srv0/routes/0'
+    const SUBR = `${OUTER}/handle/0/routes`
+    const outerCtx = ctx(OUTER, ['138-201-119-239.sslip.io'], [], 0, 'apps/http/servers/srv0/routes')
+    const nested = (i, pathMatch, dial) => {
+      const rp = `${SUBR}/${i}`
+      const inner = `${rp}/handle/0/routes/0`
+      return {
+        handlerPath: `${inner}/handle/0`, position: 0, handler: 'reverse_proxy', addressable: true,
+        upstreams: [{ index: 0, dial, extraKeyCount: 0 }], upstreamDials: [dial], upstreamCount: 1,
+        ownerRoutePath: inner, nestingDepth: 2,
+        matcherChain: [outerCtx, ctx(rp, [], [pathMatch], i, SUBR), ctx(inner, [], [], 0, `${rp}/handle/0/routes`)],
+        unsupportedMatcherKeys: [],
+      }
+    }
+    // The live config also has an INERT nested route at index 0 — headers and
+    // encode, no upstreams at all. It belongs in the fixture: without it the
+    // "must contain a target handler" filter looks unnecessary, and with it,
+    // dropping that filter makes the inert route a candidate and proposes
+    // deleting the wrong sibling.
+    const inert = () => ({
+      handlerPath: `${SUBR}/0/handle/0`, position: 0, handler: 'headers', addressable: true,
+      upstreams: [], upstreamDials: [], upstreamCount: 0,
+      ownerRoutePath: `${SUBR}/0`, nestingDepth: 1,
+      matcherChain: [outerCtx, ctx(`${SUBR}/0`, [], [], 0, SUBR)],
+      unsupportedMatcherKeys: [],
+    })
+    const live = (over = {}) => route({
+      routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+      handlers: [inert(), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/*', 'stylique-dashboard:80')],
+      ...over,
+    })
+
+    const c = classifyRoute(live(), TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+    // OLD HEAD: with no ancestor context this was would-orphan and unpatchable —
+    // a correct refusal, but it could not name the thing to remove.
+    t('OLD-HEAD VERDICT would have been would-orphan (no nested unit known)',
+      targetExclusiveRoute(live().handlers.map((h) => ({ ...h, matcherChain: [] }))), null)
+    t('CORRECTED: the verdict is nested-route-exclusive', c.verdict, 'nested-route-exclusive')
+    t('…and it names the EXACT nested route to remove', c.exclusiveRoute.routePath, `${SUBR}/1`)
+    t('…with its parent routes array', c.exclusiveRoute.parentRoutesArrayPath, SUBR)
+    t('…and its index in that array', c.exclusiveRoute.routeIndexInParent, 1)
+    t('…and the path it serves', c.exclusiveRoute.pathMatchers.join(','), '/os/*')
+    t('…and it is NOT the outer host route', c.exclusiveRoute.routePath === OUTER, false)
+    // The inert sibling (headers/encode, no upstreams) must never be chosen:
+    // it contains no target handler, and deleting it would remove response
+    // handling from every path this route serves.
+    t('…and it is NOT the inert headers/encode sibling', c.exclusiveRoute.routePath === `${SUBR}/0`, false)
+
+    // NEGATIVE CONTROL: swap which sibling holds the target.
+    const swapped = route({
+      routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+      handlers: [nested(1, '/os/*', 'stylique-dashboard:80'), nested(2, '/*', 'stylique-os:4100')],
+    })
+    const c2 = classifyRoute(swapped, TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+    t('SWAPPED: the OTHER nested route is named', c2.exclusiveRoute.routePath, `${SUBR}/2`)
+    t('SWAPPED: index follows the target, not the fixture order', c2.exclusiveRoute.routeIndexInParent, 2)
+
+    // NEGATIVE CONTROL: target and protected in the SAME nested route -> no
+    // exclusive unit exists, and it must refuse rather than delete the route.
+    const shared = route({
+      routePath: OUTER, hostMatchers: ['h'], pathMatchers: [],
+      handlers: [(() => {
+        const h = nested(1, '/os/*', 'stylique-os:4100')
+        h.upstreams.push({ index: 1, dial: 'stylique-dashboard:80', extraKeyCount: 0 })
+        h.upstreamDials.push('stylique-dashboard:80'); h.upstreamCount = 2
+        return h
+      })()],
+    })
+    const c3 = classifyRoute(shared, TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+    t('SHARED nested route: not nested-route-exclusive', c3.verdict === 'nested-route-exclusive', false)
+    t('…it is upstream-shared, dropping only the target entry', c3.verdict, 'upstream-shared')
+
+    // NEGATIVE CONTROL: an unsupported matcher anywhere in the chain refuses.
+    const weird = live()
+    weird.handlers[0].unsupportedMatcherKeys = ['header']
+    const c4 = classifyRoute(weird, TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+    t('an UNSUPPORTED matcher shape refuses', c4.verdict, 'undetermined')
+    t('…and names the key, never its value', /header/.test(c4.reason) && !/=/.test(c4.reason), true)
+
+    // targetExclusiveRoute consumes CLASSIFIED handlers (it needs keepUpstreams),
+    // so it is fed the classifier's output, not the raw fixture.
+    t('the outer route is NOT the unit while a sibling serves the dashboard',
+      targetExclusiveRoute(c.handlers).routePath === OUTER, false)
+    t('…and raw, unclassified handlers yield no unit at all (fail closed)',
+      targetExclusiveRoute(live().handlers), null)
+    // The verdict is identified but deliberately NOT patchable yet: the patch
+    // builder emits upstream deletions, which for this shape would empty a
+    // handler. Proving that here stops a future edit from quietly wiring the
+    // wrong patch to the right verdict.
+    t('a nested-route-exclusive route BLOCKS rather than drafting an upstream patch', (() => {
+      const d = decide(probe({ routes: [live()] }))
+      return d.patchable === false && d.blockers.some((b) => /NOT an upstream entry/.test(b))
+    })(), true)
+    t('…and the blocker names the exact nested route and its index', (() => {
+      const d = decide(probe({ routes: [live()] }))
+      return d.blockers.some((b) => b.includes(`${SUBR}/1`) && /index 1 of/.test(b))
+    })(), true)
+
+    // HONEST SCOPE NOTE: the `excl.routePath !== base.routePath` guard in the
+    // would-orphan branch is defence in depth and is NOT provably load-bearing.
+    // Reaching that branch requires a non-target handler in the route, which
+    // already disqualifies the outer route as a candidate. Removing the guard
+    // breaks no test; that is recorded rather than covered with a contrived case.
   }
 
   console.log('-- durable edit location: DIRECTORY-MOUNT resolution')
