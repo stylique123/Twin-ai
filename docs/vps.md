@@ -35,6 +35,7 @@ Captured 2026-07-28 ~10:07 UTC.
 | | |
 |---|---|
 | Root filesystem | 149.89 GiB total · **61.00 GiB used (43%)** · 82.74 GiB free |
+| ⚠ at sweep time | The host moved between this capture and execution: by 11:37 UTC it read **64.00 GiB used (45%)**, 79.74 free, with the build cache grown 0 → 2.26 GB. The AFTER table below is anchored to that later figure, not this one. |
 | Inodes | 1,237,538 / 9,849,520 (13%) |
 | Images | 48 total, 9 active, 53.13 GB, **31.43 GB reclaimable (59%)** |
 | Containers | 9 total, 7 active, 377.9 MB |
@@ -161,28 +162,93 @@ never pushed to a registry there is no tag to pull back. Flagged and accepted.
 
 ---
 
-## 4. AFTER — to be filled by the post-retirement run
+## 4. AFTER — the retirement, as it actually ran
 
-_Not yet executed. This section stays empty until the sweep has run, and is
-filled from the after-inventory rather than from expectation._
+Executed 2026-07-28 11:37–12:04 UTC across five workflow runs. Every figure
+below is transcribed from the post-stage inventory, not from expectation.
+
+Final inventory sha256 `8570cd3eb67ef81773acc65e9fe278be0b652f3d77ed8eb8bb1752beb849e787`
+(run `30357291959`).
 
 | | Before | After | Δ |
 |---|---|---|---|
-| Disk used | 61.00 GiB (43%) | _pending_ | _pending_ |
-| Containers | 9 | _pending_ (expect 4) | _pending_ |
-| Images | 48 | _pending_ (expect ~8) | _pending_ |
-| Volumes | 11 | _pending_ (expect 4) | _pending_ |
-| Networks | 7 | _pending_ (expect 4) | _pending_ |
-| TwinAI health | running/healthy | _pending_ | must be unchanged |
-| Postiz | 3 running | _pending_ | must be unchanged |
+| Root disk used | 64.00 GiB (45%) | **≈33.9 GiB (≈23%)** | **≈30 GiB reclaimed** |
+| Root disk free | 79.74 GiB | **109.82 GiB** | +30.08 GiB |
+| Containers | 9 | **4** | −5 |
+| Images | 48 | **15** | −33 |
+| Volumes | 11 | **4** | −7 |
+| Networks | 7 | **4** | −3 |
+| TwinAI | running / healthy | running / healthy | unchanged |
+| Postiz | 3 running | 3 running | unchanged |
 
-Expected reclaim: **≈25–30 GiB**.
+Free space is the directly measured number (`ctr_tmp_avail_kb`, which tracks the
+root filesystem exactly — 79.74 GiB matched it before the sweep). The used
+figure is derived from it against the 143.73 GiB usable total, so it carries one
+step of arithmetic that the free-space figure does not.
 
-Acceptance requires: TwinAI running and healthy, its model present, ffprobe
-usable, zero structural change to any preserved resource, and the after
-inventory digest recorded here.
+### What survives
 
----
+**Containers (4):** `twinai-worker`, `postiz`, `postiz-postgres`, `postiz-redis`
+**Volumes (4):** the four `postiz_postiz-*`
+**Networks (4):** `bridge`, `host`, `none`, `postiz_default`
+**Images (15):** 4 TwinAI (1 active + 3 rollback), 3 Postiz bases, and 8 unused
+base images the derivation cannot reach — see below.
+
+Final classification: `active-twinai=2 · twinai-rollback=3 ·
+shared-do-not-touch=3 · unknown-do-not-touch=19 · retire-scope=0 ·
+proven-orphaned=0`.
+
+Nothing remains in scope. Every preserved resource is preserved because a rule
+declined to clear it, not because the sweep ran out of things to do.
+
+### Acceptance
+
+- TwinAI `running` / `healthy`, restarts 0, all five job types registered,
+  ffprobe ok, model present, storage reachable
+- Model `/opt/models/faster-whisper-small` — 474,892 KB, byte-identical before
+  and after
+- Worker source SHA `7559776802d42052951452b68f8a35c49eb235bb`, unchanged
+- Postiz untouched: 3 containers, 4 volumes, its network, its 3 images
+- Every mutating stage ended with **"no unauthorised structural change; every
+  authorisation was exercised"**
+
+### What it cost to get here
+
+Four defects surfaced during execution, each caught before it did damage:
+
+1. **The backup step saved one volume of four and exited 0.** `ssh` inside a
+   `while read` loop consumes the loop's own stdin. `reclaim` would have deleted
+   `oo-data`, `caddy_data` and `deploy_chrome-profile` while the evidence said
+   they were saved. Fixed with `ssh -n` plus a planned-vs-produced count.
+2. **`stop` was failed by its own verifier.** Stopping a container also unbinds
+   its ports, releases its endpoints, kills its listeners and hides it from the
+   proxy probe — seven consequences the stage modelled as zero.
+3. **`remove-container` would have thrown for all five.** Docker reports a
+   stopped container's networks differently in two places, and the comparator
+   read that as corruption.
+4. **`docker rmi <id>` cannot delete a multi-tagged image.** One image carried
+   both `stylique-os:20260612-124314` and `stylique-os:latest`; 25 single-tag
+   deletions succeeded, then the remote `set -e` halted the rest.
+
+None produced a wrong deletion. Each was a halt.
+
+### Still out of scope
+
+Eight images (~4.6 GB) no rule can reach: `caddy:2-alpine`, `nginx:alpine`,
+`ghcr.io/browserless/chromium`, `ghcr.io/eracle/openoutreach`,
+`scrapling-probe`, `python:3.12-bookworm`, `node:20-bookworm-slim`,
+`public.ecr.aws/supabase/edge-runtime`.
+
+The first four *were* in scope before the sweep — they were "in use only by
+retiring containers". Removing those containers destroyed the evidence that
+justified retiring their images, so they fell out of scope mid-sweep. That is
+the classifier being consistent rather than convenient, and it needs a separate
+explicit pass.
+
+Host paths `/srv/caddy`, `/srv/dashboard`, `/opt/scrapling-test` (0.35 GiB) also
+remain: there is no command family for deleting host paths.
+
+Build cache holds 2.257 GB with 36.86 kB reclaimable — not worth a stage.
 
 ## 5. The commands that will run
 
