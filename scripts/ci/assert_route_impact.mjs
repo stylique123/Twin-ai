@@ -201,8 +201,27 @@ export function pathPatternSupported(pat) {
  *   //      a repeated slash — `/foo` and `//foo` overlap without matching
  *   . / ..  a dot segment — resolves to a different path than it spells
  *
- * Multiple or interior wildcards are refused for the same reason they always
- * were: the set they denote is not one this model represents.
+ * THE SPELLING MUST BE THE SET. Everything above is one instance of that rule,
+ * and so is everything below. Caddy's path matcher performs placeholder
+ * replacement and ultimately reaches Go `path.Match` semantics, in which several
+ * ordinary-looking characters are not literals at all:
+ *
+ *   { }     a Caddy placeholder. `/{tenant}/*` is expanded before matching, so
+ *           the literal spelling is not the set it denotes — and it compares
+ *           disjoint against `/acme/x`, which it can in fact serve.
+ *   ? [ ]   Go glob metacharacters: one-character wildcard and character class.
+ *           `/file?.txt` reads here as an exact literal and compares disjoint
+ *           against `/fileA.txt`, which it matches.
+ *   \       the Go glob escape, not a path character.
+ *
+ * And case folding is only safe where this tool's fold is the server's. Outside
+ * printable ASCII it is not proven to be: `/Σ` against `/ς` compares disjoint
+ * under JavaScript's toLowerCase, and that is the direction that approves a
+ * deletion. So the subset is ASCII, and everything else refuses.
+ *
+ * This list only ever shrinks the modelled subset. Multiple or interior
+ * wildcards are refused for the same reason they always were: the set they
+ * denote is not one this model represents.
  */
 export function pathPatternRefusal(pat) {
   if (typeof pat !== 'string' || pat.length === 0) return 'it is not a non-empty string'
@@ -216,6 +235,21 @@ export function pathPatternRefusal(pat) {
   }
   if (pat.split('/').some((seg) => seg === '.' || seg === '..')) {
     return 'it contains a dot segment, which resolves to a different path than it spells'
+  }
+  if (/[{}]/.test(pat)) {
+    return 'it contains a placeholder brace; Caddy replaces placeholders before matching, so the '
+      + 'literal spelling is not the set of requests the pattern denotes'
+  }
+  if (/[?[\]]/.test(pat)) {
+    return 'it contains a glob metacharacter (? or a character class); Caddy path matching reaches '
+      + 'Go path.Match semantics, where these are not literal characters'
+  }
+  if (pat.includes('\\')) {
+    return 'it contains a backslash, which is an escape in Go path.Match rather than a path character'
+  }
+  if (/[^\x21-\x7e]/.test(pat)) {
+    return 'it contains a code point outside printable ASCII; case folding there is not proven '
+      + 'equivalent to the server\'s, and a mismatch compares disjoint while the two may in fact overlap'
   }
   const stars = (pat.match(/\*/g) || []).length
   if (stars === 0) return null
@@ -3375,6 +3409,82 @@ async function selftest() {
         const later = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['x:1'], matchSets: P('//foo') })
         const r = fallThroughAfterRemoval(mk([rm, later]), 1)
         return r.supported === false && /repeated slash/.test(r.reason)
+      })(), true)
+
+      // ------------------------------------------------------------------
+      // PLACEHOLDERS AND GLOB METACHARACTERS. Caddy's path matcher performs
+      // placeholder replacement and reaches Go path.Match semantics, so several
+      // ordinary-looking characters are not literals. Treating them as literals
+      // made overlapping routes compare DISJOINT — the unsafe direction.
+      // ------------------------------------------------------------------
+      // OLD-HEAD COUNTEREXAMPLES: each pair overlaps in the server and compared
+      // disjoint here, because the spelling was taken for the set.
+      t('OLD HEAD: /{tenant}/x and /acme/x compared DISJOINT by raw algebra',
+        rawIntersect('/{tenant}/x', '/acme/x'), false)
+      t('OLD HEAD: /file?.txt and /fileA.txt compared DISJOINT', rawIntersect('/file?.txt', '/fileA.txt'), false)
+      t('OLD HEAD: /[ab] and /a compared DISJOINT', rawIntersect('/[ab]', '/a'), false)
+      t('OLD HEAD: and a non-ASCII fold left /Σ and /ς DISJOINT',
+        '/Σ'.toLowerCase() === '/ς'.toLowerCase(), false)
+
+      t('CORRECTED: a placeholder brace is refused', pathPatternSupported('/{tenant}/*'), false)
+      t('…naming placeholder replacement as the reason',
+        /placeholder brace/.test(pathPatternRefusal('/{tenant}/*')), true)
+      t('…and a closing brace alone is refused too', pathPatternSupported('/a}b'), false)
+      t('CORRECTED: a ? metacharacter is refused', pathPatternSupported('/file?.txt'), false)
+      t('…naming Go path.Match as the reason',
+        /Go path\.Match/.test(pathPatternRefusal('/file?.txt')), true)
+      t('CORRECTED: a character class is refused', pathPatternSupported('/[ab]'), false)
+      t('…including an unbalanced bracket', pathPatternSupported('/a]b'), false)
+      t('CORRECTED: a backslash is refused', pathPatternSupported('/a\\b'), false)
+      t('…naming the glob escape as the reason',
+        /escape in Go path\.Match/.test(pathPatternRefusal('/a\\b')), true)
+      t('CORRECTED: a non-ASCII code point is refused', pathPatternSupported('/Σ'), false)
+      t('…and so is its lowercase counterpart', pathPatternSupported('/ς'), false)
+      t('…naming the fold as the reason',
+        /outside printable ASCII/.test(pathPatternRefusal('/Σ')), true)
+      t('…and a control character is refused', pathPatternSupported('/ab'), false)
+      t('…and a literal space, which a path must percent-encode anyway',
+        pathPatternSupported('/a b'), false)
+
+      // NEGATIVE CONTROLS: ordinary ASCII, brace-free paths must stay modelled.
+      // A rule that refuses everything is safe and useless.
+      t('NEGATIVE: an ordinary path is still supported', pathPatternSupported('/foo/bar'), true)
+      t('NEGATIVE: dots inside segments are still supported', pathPatternSupported('/foo.bar/baz'), true)
+      t('NEGATIVE: hyphens, underscores and digits are still supported',
+        pathPatternSupported('/api-v2_x9/*'), true)
+      t('NEGATIVE: other printable ASCII punctuation is still supported',
+        ['/a~b', '/a+b', '/a,b', '/a;b', '/a=b', '/a:b', '/a@b', '/a!b', "/a'b"]
+          .every(pathPatternSupported), true)
+      t('NEGATIVE: and they still compare normally',
+        patternsIntersect(parsePattern('/api-v2_x9/*'), parsePattern('/API-V2_X9/list')), true)
+
+      // REFUSAL MUST PROPAGATE FROM EITHER SIDE. A shape on the REMOVED route
+      // and a shape on a LATER SIBLING are different code paths, and the
+      // sibling one is where it would be missed.
+      const refusesWith = (removedPat, laterPat) => {
+        const rm = SIB({ index: 1, routePath: 'R1', reachesTarget: true, matchSets: P(removedPat) })
+        const later = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['x:1'], matchSets: P(laterPat) })
+        return fallThroughAfterRemoval(mk([rm, later]), 1)
+      }
+      for (const [name, shape] of [
+        ['a placeholder', '/{tenant}/*'],
+        ['a ? metacharacter', '/file?.txt'],
+        ['a character class', '/[ab]'],
+        ['a backslash', '/a\\b'],
+        ['a non-ASCII code point', '/Σ'],
+      ]) {
+        t(`REFUSAL PROPAGATES: ${name} on the REMOVED route`,
+          refusesWith(shape, '/*').supported, false)
+        t(`REFUSAL PROPAGATES: ${name} on a LATER SIBLING`,
+          refusesWith('/os/*', shape).supported, false)
+      }
+      t('…and the refusal reaches decide() as a blocker', (() => {
+        const cfg = route({
+          routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+          handlers: [inert(3), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/{tenant}/*', 'stylique-dashboard:80')],
+        })
+        const d = decide(probe({ routes: [cfg] }))
+        return d.patchable === false && d.blockers.some((b) => /placeholder brace/.test(b))
       })(), true)
 
       // THE LIVE SHAPE MUST STILL BE MODELLED. A fail-closed rule that also
