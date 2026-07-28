@@ -122,6 +122,14 @@ export const env = {
   // configured — it comes from `editor_reserve_output`, which derives it
   // server-side.
   editorOutputBucket: (process.env.EDITOR_OUTPUT_BUCKET ?? 'media').trim(),
+  // Where the catalog's caption fonts live in the image. Only read when a plan
+  // actually has cues.
+  editorFontsDir: (process.env.EDITOR_FONTS_DIR ?? '/usr/share/fonts/truetype/dejavu').trim(),
+  // Refuse a caption font with no pinned digest. Defaults ON: an absent digest
+  // silently satisfying an integrity check is how a font substitution reaches
+  // production wearing a green tick, so a deployment that has not pinned its
+  // fonts yet must say so explicitly rather than inherit a pass.
+  editorStrictFontIntegrity: (process.env.EDITOR_STRICT_FONT_INTEGRITY ?? 'true').trim() !== 'false',
 
   // ---- media inspection (Phase 4) ----
   // Cache identity: one immutable inspection component per

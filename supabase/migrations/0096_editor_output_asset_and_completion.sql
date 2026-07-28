@@ -17,9 +17,28 @@
 -- the rest of Phase 8 exists to prevent. This adds the missing fenced RPC.
 --
 -- The output asset is DERIVED, not described by the caller. It takes no path,
--- no bucket, no owner and no duration argument: every one of those is already
+-- no bucket, no owner, no digest and NO DURATION: every one of those is already
 -- known to the database from the reserved `edit_outputs` row and the project,
 -- and a parameter is a way for them to disagree.
+--
+-- THE DURATION PARAMETER WAS REMOVED AFTER IT WAS WRITTEN, and the reason is
+-- worth keeping. It was `coalesce(p_duration_ms, vid.measured_duration_ms)`,
+-- and the render stage was passing `plan.output.durationMs` — so the asset
+-- recorded what the plan PROMISED rather than what ffprobe MEASURED. Those are
+-- allowed to differ: Gate-0 §4 freezes a ±250 ms tolerance, which exists
+-- precisely because they do. Every consumer of the asset — player, scrubber,
+-- thumbnail picker — would then be working from a claim.
+--
+-- `vid.measured_duration_ms` is the number ffprobe read off the finished file,
+-- and `edit_outputs_video_ready_has_duration` already guarantees it is present
+-- before the row can be READY. Deleting the parameter is what makes the wrong
+-- value unpassable rather than merely discouraged.
+--
+-- Width, height and frame rate DO come from the plan, and that is safe for a
+-- different reason: `validateProbedOutput` refuses any output whose raster,
+-- pixel format or frame-rate ratio is not EXACTLY the profile's. Validation has
+-- already proven the measured values equal the planned ones, so there is no gap
+-- for them to disagree across. Duration is the one field the contract lets vary.
 --
 -- ---------------------------------------------------------------------------
 -- 2. THE COMPLETION TRIGGER, DEFERRED FROM 0094 AND NOW DUE
@@ -45,7 +64,7 @@
 
 create or replace function public.editor_create_output_asset(
   p_project uuid, p_job uuid, p_worker text, p_attempt integer,
-  p_duration_ms integer, p_width integer, p_height integer,
+  p_width integer, p_height integer,
   p_fps_num integer, p_fps_den integer, p_mime text
 ) returns uuid
 language plpgsql
@@ -92,7 +111,7 @@ begin
   ) values (
     proj.owner_id, proj.workspace_id, proj.generation_id, 'output',
     vid.storage_bucket, vid.storage_path,
-    vid.sha256, p_mime, vid.bytes, coalesce(p_duration_ms, vid.measured_duration_ms),
+    vid.sha256, p_mime, vid.bytes, vid.measured_duration_ms,
     p_width, p_height, p_fps_num, p_fps_den, 'ready'
   ) returning id into new_id;
   return new_id;
@@ -169,5 +188,5 @@ create trigger trg_edit_projects_completion
 -- ---------------------------------------------------------------------------
 
 revoke all on function public.edit_projects_guard_completion() from public, anon, authenticated;
-revoke all on function public.editor_create_output_asset(uuid, uuid, text, integer, integer, integer, integer, integer, integer, text) from public, anon, authenticated;
-grant execute on function public.editor_create_output_asset(uuid, uuid, text, integer, integer, integer, integer, integer, integer, text) to service_role;
+revoke all on function public.editor_create_output_asset(uuid, uuid, text, integer, integer, integer, integer, integer, text) from public, anon, authenticated;
+grant execute on function public.editor_create_output_asset(uuid, uuid, text, integer, integer, integer, integer, integer, text) to service_role;
