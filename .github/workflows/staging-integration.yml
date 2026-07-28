@@ -227,7 +227,25 @@ jobs:
             echo "::error::Could not connect to STAGING with STAGING_DB_URL (see the psql error above). Nothing was applied. Re-copy the Session pooler connection string and percent-encode the password."
             exit 1
           fi
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade; do
+          # THIS LIST IS EXPLICIT, AND THAT IS A TRAP WORTH NAMING. It is not
+          # "the committed migrations" — it is four of them, chosen by hand. A
+          # migration added to supabase/migrations/ does NOT reach staging by
+          # being committed; it reaches staging by being added HERE. Anything
+          # that assumes otherwise runs against a schema that does not contain
+          # it, and the symptom is a phase failing for a reason that looks
+          # nothing like a missing table.
+          #
+          # 0094 is added because phase7's edit_plans assertions now READ that
+          # table instead of coalescing the error to zero. Without it applied,
+          # A9/F4 fail — correctly, since they can no longer pretend an
+          # unreadable table means no rows.
+          #
+          # NOT ADDED: 0095 (Track C creative-transfer lineage). It is on main
+          # and has never been applied to staging. Nothing in Phases 1-7 reads
+          # those tables so nothing fails today, but that is a schema drift
+          # between main and staging, and it belongs to Track C's lane to close
+          # rather than being silently swept in here.
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
