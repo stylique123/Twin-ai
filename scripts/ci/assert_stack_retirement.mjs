@@ -451,6 +451,15 @@ if (isEntry) {
     if (!f) { console.error('usage: assert_stack_retirement.mjs <stack.json>'); process.exit(2) }
     const d = classify(JSON.parse(readFileSync(f, 'utf8')))
     console.log(render(d))
+    // The counts are announced unconditionally, for the same reason severity is
+    // in the exposure classifier: a blocker in one place must not hide the
+    // answer produced everywhere else. Reading a verdict should not require
+    // downloading an artifact.
+    console.error(`::notice::stack retirement — retire ${d.retireable.length}, hold ${d.held.length}, `
+      + `preserve ${d.preserved.length}, blockers ${d.blockers.length}`)
+    const names = (list) => list.map((x) => `${x.kind}:${x.name}`).join(' ')
+    if (d.retireable.length > 0) console.error(`::notice::RETIRE ${names(d.retireable)}`)
+    if (d.held.length > 0) console.error(`::notice::HOLD ${names(d.held)}`)
     if (d.blockers.length > 0) { for (const b of d.blockers) console.error(`::error::${b}`); process.exit(1) }
   }
 }
