@@ -48,7 +48,7 @@
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import {
-  PlanError, canonJson, plan as planFor, sha256hex, verifyPlanBinding,
+  PlanError, READ_ONLY_STAGES, canonJson, plan as planFor, sha256hex, verifyPlanBinding,
 } from './plan_retirement.mjs'
 
 const TARGET = 'stylique-os'
@@ -319,7 +319,14 @@ export function validateAuthorisations(auths) {
   return problems
 }
 
-const READ_ONLY = new Set(['manifest', 'pre-stop-audit', 'route-impact', 'observe'])
+// ONE SOURCE OF TRUTH, IMPORTED. This was a second, independent list, and the
+// two drifted the moment a stage was added: the planner accepted
+// `chrome-exposure` and this comparator threw `unknown stage`, which failed a
+// READ-ONLY run at the very step whose job is to prove nothing changed. Two
+// hand-maintained lists of the same set is a defect waiting for its trigger, so
+// the set is imported and `observe` — which the planner skips entirely — is the
+// only local addition.
+const READ_ONLY = new Set([...READ_ONLY_STAGES, 'observe'])
 
 /**
  * The endpoint departures a container's removal necessarily causes.
@@ -1045,6 +1052,23 @@ async function selftest() {
   t('another stage\'s plan is refused', bind({ stage: 'stop' }).length > 0, true)
   t('another commit\'s plan is refused', bind({ candidateSha: 'd'.repeat(40) }).length > 0, true)
   t('a stale before-inventory is refused', bind({ beforeInventorySha256: 'e'.repeat(64) }).length > 0, true)
+
+  // EVERY READ-ONLY STAGE THE PLANNER KNOWS MUST BE KNOWN HERE TOO. These were
+  // two hand-maintained lists and they drifted: the planner accepted
+  // `chrome-exposure`, this threw `unknown stage`, and a READ-ONLY run failed at
+  // the step whose entire job is proving nothing changed. The set is now
+  // imported, and this asserts the import actually covers it.
+  for (const st of READ_ONLY_STAGES) {
+    t(`read-only stage ${st} authorises nothing here`, authorisationsForStage(st, {}, { resources: [] }).length, 0)
+  }
+  t('observe is read-only here even though the planner skips it',
+    authorisationsForStage('observe', {}, { resources: [] }).length, 0)
+  t('an unknown stage still throws', (() => {
+    try { authorisationsForStage('made-up', {}, { resources: [] }); return false } catch { return true }
+  })(), true)
+  t('a read-only stage whose plan names an action is a contradiction', (() => {
+    try { authorisationsForStage('route-impact', {}, { resources: [{ op: 'remove' }] }); return false } catch { return true }
+  })(), true)
 
   if (failed) { console.error(`structural-delta selftest: ${failed} failed`); process.exit(1) }
   console.log('structural-delta selftest: all cases passed'); process.exit(0)

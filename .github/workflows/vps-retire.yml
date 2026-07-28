@@ -231,8 +231,19 @@ jobs:
           jq -e 'type == "object"' chrome-reachability.json > /dev/null \
             || { echo "::error::the reachability probe did not return a JSON object"; exit 1; }
           sha256sum chrome-reachability.json | tee chrome-reachability.sha256
+          # The verdict is echoed LAST, as one line, so it is readable from the
+          # tail of the log without downloading the artifact. The classifier
+          # exits non-zero on a blocker or on CRITICAL, and that exit code is
+          # preserved — the summary is for humans, not a way around the gate.
+          set +e
           node scripts/ci/assert_chrome_exposure.mjs chrome-exposure.json chrome-reachability.json \
             | tee chrome-exposure.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "VERDICT $(grep -E '^  SEVERITY' chrome-exposure.txt | tr -s ' ' || echo 'SEVERITY : (unavailable)')"
+          echo "VERDICT $(grep -E '^  CONTAINMENT ELIGIBLE' chrome-exposure.txt | tr -s ' ' || echo '(unavailable)')"
+          echo "VERDICT blockers: $(grep -c '^  blocker:' chrome-exposure.txt || echo '?')"
+          exit $rc
 
       # R0 — FULL-STACK DEPENDENCY GRAPH. The inventory says what exists and
       # classifies it by name; this says who references whom, so "nothing
@@ -247,7 +258,13 @@ jobs:
           jq -e 'type == "object"' stack-dependency.json > /dev/null \
             || { echo "::error::the stack dependency probe did not return a JSON object"; exit 1; }
           sha256sum stack-dependency.json | tee stack-dependency.sha256
+          set +e
           node scripts/ci/assert_stack_retirement.mjs stack-dependency.json | tee stack-retirement.txt
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "VERDICT $(grep -E '^  retire [0-9]' stack-retirement.txt | tr -s ' ' || echo '(unavailable)')"
+          echo "VERDICT blockers: $(grep -c '^  blocker:' stack-retirement.txt || echo '?')"
+          exit $rc
 
       - name: Record the acceptance baseline anchor
         if: inputs.stage == 'pre-stop-audit'
