@@ -287,7 +287,12 @@ jobs:
         if: inputs.stage == 'leftover-secrets'
         run: |
           set -euo pipefail
-          ssh -n -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+          # NO `-n` HERE. `-n` points ssh's stdin at /dev/null, and stdin is how
+          # `bash -s` RECEIVES THE SCRIPT. With it, bash read nothing, ran
+          # nothing, and emitted nothing — a 2-second failure. `-n` belongs in
+          # the backup loop, where ssh would otherwise eat the loop's own input;
+          # here it starves the very thing being run.
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
             -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
             root@"$VPS_HOST" bash -s < scripts/vps/leftover_secret_sweep.sh > leftover-secrets.json
           jq -e 'type == "object"' leftover-secrets.json > /dev/null \
