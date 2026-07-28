@@ -39,6 +39,7 @@
 //   node scripts/ci/check_vps_retire_safety.mjs
 //   node scripts/ci/check_vps_retire_safety.mjs --selftest
 import { readFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
 import { STAGES } from './plan_retirement.mjs'
 
 const COLLECTOR = 'scripts/vps/collect_resource_inventory.sh'
@@ -479,6 +480,33 @@ docker network inspect "$nid"`
   console.log('vps-retire-safety selftest: all cases passed'); process.exit(0)
 }
 
+/**
+ * THE FILE MUST PARSE AS YAML BEFORE ANY OTHER CLAIM ABOUT IT MEANS ANYTHING.
+ *
+ * Every other check in this file reads the workflow with regexes, which match
+ * happily inside a file GitHub cannot load at all. A one-space indentation slip
+ * in the artifact list made vps-retire.yml unparseable — every stage
+ * undispatchable, including the fail-closed ones — and this checker still said
+ * OK, because the authorisation arms it greps for were all still there in the
+ * text.
+ *
+ * "The confirm phrase gates every mutating stage" is a claim about a workflow
+ * that RUNS. It says nothing whatever about a file that does not load.
+ */
+export function checkYamlParses(path) {
+  const r = spawnSync('python3', ['-c', 'import sys,yaml;yaml.safe_load(open(sys.argv[1]))', path],
+    { encoding: 'utf8' })
+  // A missing interpreter is NOT a pass. It is an UNRUN check, and reporting an
+  // unrun check as success is the exact failure this file exists to prevent.
+  if (r.error || r.status === null) {
+    return [`could not run the YAML parse check on ${path} (${r.error?.message ?? 'no exit status'}) — unproven, not clean`]
+  }
+  if (r.status !== 0) {
+    return [`${path} is not valid YAML: ${String(r.stderr).trim().split('\n').slice(-2).join(' ')}`]
+  }
+  return []
+}
+
 if (process.argv.includes('--selftest')) await selftest()
 else {
   const remoteScripts = Object.fromEntries(REMOTE_SCRIPTS.map((f) => [f, readFileSync(f, 'utf8')]))
@@ -487,6 +515,9 @@ else {
     remoteScripts,
     retireWf: readFileSync(RETIRE_WF, 'utf8'),
   })
-  console.log(`vps-retire-safety: ${ok ? 'OK' : 'FAIL'}`)
-  if (!ok) { for (const r of reasons) console.error(`::error::${r}`); process.exit(1) }
+  const yamlProblems = checkYamlParses(RETIRE_WF)
+  const allReasons = [...yamlProblems, ...reasons]
+  const pass = ok && yamlProblems.length === 0
+  console.log(`vps-retire-safety: ${pass ? 'OK' : 'FAIL'}`)
+  if (!pass) { for (const r of allReasons) console.error(`::error::${r}`); process.exit(1) }
 }

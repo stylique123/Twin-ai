@@ -525,8 +525,8 @@ jobs:
             chrome-reachability.sha256
             stack-dependency.json
             stack-dependency.sha256
-          leftover-secrets.json
-          leftover-secrets.sha256
+            leftover-secrets.json
+            leftover-secrets.sha256
             stack-retirement.txt
             structural-delta.txt
             cache-reclaim.txt
