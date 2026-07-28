@@ -76,6 +76,120 @@ export function canonJson(v) {
 }
 export const sha256hex = (s) => createHash('sha256').update(s).digest('hex')
 
+
+/**
+ * THE CLOSED COMMAND CATALOG — the only shell this tooling can ever produce.
+ *
+ * THE DEFECT THIS CLOSES. A sealed plan used to carry `argv` as an INDEPENDENT
+ * field alongside the typed tuple, and verifyPlanBinding checked each separately:
+ * that op/type/key/fields were well-formed, and that argv was a non-empty array
+ * of strings. Nothing tied them together. A resource could claim
+ *
+ *     { op:'remove', type:'images', key:'sha256:A', argv:['docker','volume','rm','B'] }
+ *
+ * and pass every check. Both digests covered it, because digests only prove the
+ * bytes were not edited after sealing — never that the semantic tuple describes
+ * the command. The executor would then delete VOLUME B while the comparator
+ * authorised removing IMAGE A. The structural delta would go red afterwards, on
+ * the unauthorised removal and the unexercised authorisation — but the volume
+ * would already be gone. A guard that reports the deletion it failed to prevent
+ * is not the guard this was supposed to be.
+ *
+ * So argv is no longer an input. It is DERIVED from the tuple, at execution, by
+ * this table. There is nothing left for the two to disagree about, and a command
+ * family that is not in this table cannot be produced at all.
+ *
+ * The stage list on each entry is the second half: a command may be correct in
+ * form and still belong to another stage. `journalctl --vacuum-size` is a legal
+ * command that `reclaim-build-cache` has no business running.
+ */
+export const REMOVE_COMMANDS = {
+  containers: { argv: (k) => ['docker', 'rm', k], stages: ['remove-container'] },
+  images: { argv: (k) => ['docker', 'rmi', k], stages: ['reclaim'] },
+  volumes: { argv: (k) => ['docker', 'volume', 'rm', k], stages: ['reclaim'] },
+  networks: { argv: (k) => ['docker', 'network', 'rm', k], stages: ['reclaim'] },
+}
+
+/** Field-set -> command. The declared structural effect selects the verb. */
+export const CHANGE_COMMANDS = [
+  { fields: ['policy'], argv: (k) => ['docker', 'update', '--restart=no', k], stages: ['disable-restart'] },
+  { fields: ['status', 'exitCode', 'health'], argv: (k) => ['docker', 'stop', '--time', '30', k], stages: ['stop'] },
+]
+
+/** Commands that touch no inventory record. Named, so `none` is not a blank cheque. */
+export const BARE_COMMANDS = {
+  'builder-prune': { argv: ['docker', 'builder', 'prune', '--all', '--force'], stages: ['reclaim-build-cache', 'reclaim'] },
+  'journal-vacuum': { argv: ['journalctl', '--vacuum-size=200M'], stages: ['reclaim'] },
+}
+
+/** Exactly the fields a plan resource may carry. Anything else is a refusal. */
+const RESOURCE_FIELDS = ['op', 'type', 'key', 'fields', 'command', 'argv']
+/** Exactly the fields a sealed plan may carry. */
+const PLAN_FIELDS = ['stage', 'resources', 'cmds', 'notes', 'backups', 'record', 'binding', 'resourcesSha256', 'planSha256']
+
+/**
+ * The one derivation. Returns the argv this typed resource MEANS, for this
+ * stage, or throws with the exact reason it cannot mean anything.
+ */
+export function deriveArgv(stage, r) {
+  const bad = (m) => { throw new PlanError(m) }
+  if (r === null || typeof r !== 'object' || Array.isArray(r)) bad('a plan resource is not an object')
+  for (const k of Object.keys(r)) {
+    if (!RESOURCE_FIELDS.includes(k)) bad(`plan resource carries unexpected field ${JSON.stringify(k)}`)
+  }
+
+  if (r.op === 'none') {
+    if (r.type !== null || r.key !== null) bad(`a "none" resource names ${r.type}/${r.key}; it must name no record`)
+    if (r.fields !== null && r.fields !== undefined) bad('a "none" resource declares fields')
+    const entry = BARE_COMMANDS[r.command]
+    if (entry === undefined) bad(`unknown bare command ${JSON.stringify(r.command)}`)
+    if (!entry.stages.includes(stage)) {
+      bad(`command ${JSON.stringify(r.command)} is not permitted in stage ${JSON.stringify(stage)} (only ${entry.stages.join(', ')})`)
+    }
+    return [...entry.argv]
+  }
+
+  if (r.command !== undefined && r.command !== null) bad(`resource ${r.op}/${r.type}/${r.key} names a bare command as well as a record`)
+  if (typeof r.key !== 'string' || r.key.length === 0 || r.key === '*' || /\s/.test(r.key)) {
+    bad(`resource ${r.op}/${r.type} must name one exact resource (got ${JSON.stringify(r.key)})`)
+  }
+
+  if (r.op === 'remove') {
+    if (r.fields !== null && r.fields !== undefined) bad(`a removal of ${r.type}/${r.key} declares fields`)
+    const entry = REMOVE_COMMANDS[r.type]
+    if (entry === undefined) bad(`cannot remove unknown type ${JSON.stringify(r.type)}`)
+    if (!entry.stages.includes(stage)) {
+      bad(`stage ${JSON.stringify(stage)} may not remove a ${r.type} (only ${entry.stages.join(', ')} may)`)
+    }
+    return entry.argv(r.key)
+  }
+
+  if (r.op === 'change') {
+    if (r.type !== 'containers') bad(`only a container can be changed, not a ${r.type}`)
+    if (!Array.isArray(r.fields) || r.fields.length === 0) bad(`a change to ${r.key} names no fields`)
+    const want = canonJson([...r.fields].sort())
+    const entry = CHANGE_COMMANDS.find((cc) => canonJson([...cc.fields].sort()) === want)
+    if (entry === undefined) {
+      bad(`no command in the catalog produces exactly the field set [${r.fields.join(', ')}] — `
+        + 'a declared effect with no corresponding command cannot be executed or authorised')
+    }
+    if (!entry.stages.includes(stage)) {
+      bad(`stage ${JSON.stringify(stage)} may not change [${r.fields.join(', ')}] (only ${entry.stages.join(', ')} may)`)
+    }
+    return entry.argv(r.key)
+  }
+
+  bad(`unknown plan operation ${JSON.stringify(r.op)}`)
+  return []
+}
+
+/** Every argv a sealed plan implies, derived — never read from the plan. */
+export function derivePlanCommands(plan) {
+  if (plan === null || typeof plan !== 'object') throw new PlanError('the plan is not an object')
+  if (!Array.isArray(plan.resources)) throw new PlanError('the plan carries no typed resource manifest')
+  return plan.resources.map((r) => deriveArgv(plan.stage, r))
+}
+
 /** Operations a plan entry may declare. `none` touches no inventory record. */
 export const PLAN_OPS = ['change', 'remove', 'none']
 /** Record types a plan entry may name. Exactly the inventory's record roots. */
@@ -111,17 +225,34 @@ export function verifyPlanBinding(plan, { stage, candidateSha, beforeInventorySh
   if (plan === null || typeof plan !== 'object' || Array.isArray(plan)) return ['the plan is not a JSON object']
   const problems = []
 
+  for (const k of Object.keys(plan)) {
+    if (!PLAN_FIELDS.includes(k)) problems.push(`the plan carries unexpected top-level field ${JSON.stringify(k)}`)
+  }
   if (plan.stage !== stage) problems.push(`the plan was built for stage ${JSON.stringify(plan.stage)}, this run is ${JSON.stringify(stage)}`)
 
   const b = plan.binding
   if (b === null || typeof b !== 'object' || Array.isArray(b)) {
     problems.push('the plan carries no binding — it cannot be shown to belong to this run')
   } else {
+    for (const k of Object.keys(b)) {
+      if (!['stage', 'candidateSha', 'beforeInventorySha256'].includes(k)) {
+        problems.push(`the binding carries unexpected field ${JSON.stringify(k)}`)
+      }
+    }
     if (b.stage !== stage) problems.push(`the plan is bound to stage ${JSON.stringify(b.stage)}, this run is ${JSON.stringify(stage)}`)
-    if (b.candidateSha !== candidateSha) {
+    // A candidate commit is a 40-hex object name. Anything else is not a commit,
+    // and a binding to a non-commit binds to nothing.
+    if (typeof b.candidateSha !== 'string' || !/^[0-9a-f]{40}$/.test(b.candidateSha)) {
+      problems.push(`the plan's candidate commit ${JSON.stringify(b.candidateSha)} is not a 40-character hex object name`)
+    }
+    if (typeof candidateSha !== 'string' || !/^[0-9a-f]{40}$/.test(candidateSha)) {
+      problems.push(`this run's candidate commit ${JSON.stringify(candidateSha)} is not a 40-character hex object name`)
+    } else if (b.candidateSha !== candidateSha) {
       problems.push(`the plan was generated by commit ${JSON.stringify(b.candidateSha)}, this run is ${JSON.stringify(candidateSha)}`)
     }
-    if (b.beforeInventorySha256 !== beforeInventorySha256) {
+    if (typeof b.beforeInventorySha256 !== 'string' || !/^[0-9a-f]{64}$/.test(b.beforeInventorySha256)) {
+      problems.push(`the plan's before-inventory digest ${JSON.stringify(b.beforeInventorySha256)} is not a sha256`)
+    } else if (b.beforeInventorySha256 !== beforeInventorySha256) {
       problems.push(
         'the plan was generated against a DIFFERENT before-inventory '
         + `(plan ${JSON.stringify(b.beforeInventorySha256)}, this run ${JSON.stringify(beforeInventorySha256)}) — `
@@ -142,24 +273,27 @@ export function verifyPlanBinding(plan, { stage, candidateSha, beforeInventorySh
     problems.push('the plan digest does not match the plan — it was modified after it was sealed')
   }
 
+  // THE BIJECTION. Every resource's argv must be EXACTLY what the closed catalog
+  // derives from its typed tuple for this stage. This is the check whose absence
+  // let a tuple naming one resource carry a command deleting another.
+  const seen = new Set()
   for (const r of plan.resources) {
-    if (r === null || typeof r !== 'object' || Array.isArray(r)) { problems.push('a plan resource is not an object'); continue }
-    const at = `${r.op}/${r.type}/${r.key}`
-    if (!PLAN_OPS.includes(r.op)) { problems.push(`unknown plan operation ${JSON.stringify(r.op)}`); continue }
-    if (r.op === 'none') {
-      if (r.type !== null || r.key !== null) problems.push(`plan resource ${at} declares op "none" but names a resource`)
-    } else {
-      if (!PLAN_TYPES.includes(r.type)) problems.push(`plan resource ${at} names unknown type ${JSON.stringify(r.type)}`)
-      // An exact key, never a pattern. `*` would authorise the whole type.
-      if (typeof r.key !== 'string' || r.key.length === 0 || r.key === '*') {
-        problems.push(`plan resource ${at} must name one exact resource (got ${JSON.stringify(r.key)})`)
-      }
-    }
-    if (r.op === 'change' && (!Array.isArray(r.fields) || r.fields.length === 0)) {
-      problems.push(`plan resource ${at} declares a change but names no fields`)
-    }
-    if (!Array.isArray(r.argv) || r.argv.length === 0 || !r.argv.every((x) => typeof x === 'string' && x.length > 0)) {
-      problems.push(`plan resource ${at} carries no executable argv`)
+    let derived
+    try { derived = deriveArgv(stage, r) }
+    catch (e) { problems.push(`refusing this plan resource: ${e.message}`); continue }
+
+    // No target may appear twice: two removals of the same key, or the same bare
+    // command emitted twice, are a malformed plan, not a stronger one.
+    const target = r.op === 'none' ? `none:${r.command}` : `${r.op}:${r.type}:${r.key}`
+    if (seen.has(target)) problems.push(`the plan names ${target} more than once`)
+    seen.add(target)
+
+    if (!Array.isArray(r.argv)) { problems.push(`plan resource ${target} carries no argv to compare`); continue }
+    if (canonJson(r.argv) !== canonJson(derived)) {
+      problems.push(
+        `plan resource ${target} does not describe the command it carries: `
+        + `the typed operation means [${derived.join(' ')}] but the plan stores [${r.argv.join(' ')}]`,
+      )
     }
   }
   return problems
@@ -203,7 +337,10 @@ export function plan(inv, stage) {
     resources.push(r)
   }
   /** A command that touches NO inventory record, and so authorises nothing. */
-  const bare = (argv) => resources.push({ op: 'none', type: null, key: null, fields: null, argv })
+  const bare = (command) => resources.push({
+    op: 'none', type: null, key: null, fields: null, command,
+    argv: [...BARE_COMMANDS[command].argv],
+  })
 
   // `pre-stop-audit` plans nothing. Its evidence is the probe's verdict, not a
   // command list, so the honest plan is an empty one. It still runs the
@@ -267,7 +404,7 @@ export function plan(inv, stage) {
       throw new PlanError(`refusing: ${bc.active} build-cache entries are ACTIVE — a running build depends on them`)
     }
     if (bc.entries === 0) throw new PlanError('refusing: the build cache is already empty — nothing to reclaim')
-    bare(['docker', 'builder', 'prune', '--all', '--force'])
+    bare('builder-prune')
     notes.push(`build cache: ${bc.entries} entries, 0 active, ${bc.size} total, ${bc.reclaimable} reclaimable`)
     notes.push('touches the build cache ONLY: no container, image, volume or network record may change')
     notes.push(`${TARGET} is ${target ? `present (${target.status}) and is NOT acted on by this stage` : 'not present; irrelevant to this stage'}`)
@@ -349,14 +486,14 @@ export function plan(inv, stage) {
     // cache only, and only when Docker itself reports zero active entries.
     const bc = buildCacheReclaimable(inv)
     if (bc && bc.active === 0 && bc.entries > 0) {
-      bare(['docker', 'builder', 'prune', '--all', '--force'])
+      bare('builder-prune')
       notes.push(`build cache: ${bc.entries} entries, 0 active, ${bc.size} total, ${bc.reclaimable} reclaimable`)
     } else if (bc && bc.active > 0) {
       notes.push(`build cache NOT reclaimed: ${bc.active} entries are active`)
     }
     // Journal is host log data, not application data: bound it, never delete
     // application state.
-    bare(['journalctl', '--vacuum-size=200M'])
+    bare('journal-vacuum')
     notes.push('journal vacuumed to 200M (host logs only; no application data)')
   }
 
@@ -556,6 +693,103 @@ function selftest() {
   const noArgv = sealPlan({ ...rr, resources: [{ op: 'remove', type: 'images', key: 'x', fields: null, argv: [] }] }, BIND)
   check('a resource with no executable argv is refused', V(noArgv).length > 0)
   t('sealing without a candidate commit throws', () => sealPlan(rr, { candidateSha: '', beforeInventorySha256: 'b' }), true)
+
+  // ---- THE SEMANTIC BINDING: tuple <-> command ----------------------------
+  console.log('-- the typed tuple MUST describe the command; argv is derived, not trusted')
+  const R = (over) => sealPlan({ ...rr, stage: over.stage ?? 'reclaim', resources: [over.r] }, BIND)
+  const V2 = (p2, stage = 'reclaim') => verifyPlanBinding(p2, { stage, ...BIND })
+  const refuses = (name, r, stage = 'reclaim', match = null) => {
+    const p2 = R({ r, stage })
+    const probs = V2(p2, stage)
+    const ok = probs.length > 0 && (match === null || probs.some((x) => match.test(x)))
+    check(`${name} -> REFUSED`, ok)
+  }
+  const good = { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', 'sha256:s'] }
+  check('CONTROL: a truthful tuple verifies', V2(R({ r: good })).length === 0)
+
+  // THE EXACT DEFECT: tuple names an image, argv deletes a volume.
+  refuses('a tuple naming an image whose argv deletes a volume',
+    { op: 'remove', type: 'images', key: 'sha256:A', fields: null, argv: ['docker', 'volume', 'rm', 'B'] },
+    'reclaim', /does not describe the command it carries/)
+  refuses('the WRONG COMMAND FAMILY for the type',
+    { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'network', 'rm', 'sha256:s'] })
+  refuses('a MISMATCHED KEY between tuple and argv',
+    { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', 'sha256:OTHER'] })
+  refuses('an EXTRA FLAG the catalog never emits',
+    { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', '--force', 'sha256:s'] })
+  refuses('an EXTRA ARGUMENT (a second target smuggled in)',
+    { op: 'remove', type: 'volumes', key: 'dead', fields: null, argv: ['docker', 'volume', 'rm', 'dead', 'oo-data'] })
+  refuses('a container removal during RECLAIM (stage-incompatible op)',
+    { op: 'remove', type: 'containers', key: TARGET, fields: null, argv: ['docker', 'rm', TARGET] })
+  refuses('an image removal during REMOVE-CONTAINER (stage-incompatible op)',
+    { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', 'sha256:s'] },
+    'remove-container', /may not remove a images/)
+  refuses('a JOURNAL VACUUM during reclaim-build-cache (stage-incompatible bare command)',
+    { op: 'none', type: null, key: null, fields: null, command: 'journal-vacuum', argv: ['journalctl', '--vacuum-size=200M'] },
+    'reclaim-build-cache', /not permitted in stage/)
+  refuses('a STOP command during disable-restart (wrong field set for the stage)',
+    { op: 'change', type: 'containers', key: TARGET, fields: ['status', 'exitCode', 'health'], argv: ['docker', 'stop', '--time', '30', TARGET] },
+    'disable-restart', /may not change/)
+  refuses('a field set NO catalog command produces',
+    { op: 'change', type: 'containers', key: TARGET, fields: ['imageId'], argv: ['docker', 'update', '--restart=no', TARGET] },
+    'disable-restart', /no command in the catalog produces/)
+  refuses('an UNNAMED bare command',
+    { op: 'none', type: null, key: null, fields: null, argv: ['docker', 'builder', 'prune', '--all', '--force'] },
+    'reclaim', /unknown bare command/)
+  refuses('a bare command that also names a record',
+    { op: 'none', type: 'volumes', key: 'x', fields: null, command: 'builder-prune', argv: ['docker', 'builder', 'prune', '--all', '--force'] })
+  refuses('a resource carrying an UNEXPECTED FIELD',
+    { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', 'sha256:s'], sudo: true },
+    'reclaim', /unexpected field/)
+  refuses('a key containing whitespace (two targets in one string)',
+    { op: 'remove', type: 'volumes', key: 'dead oo-data', fields: null, argv: ['docker', 'volume', 'rm', 'dead oo-data'] })
+
+  console.log('-- duplicate targets, plan shape, and the candidate commit')
+  check('a DUPLICATE target is refused', V2(sealPlan({ ...rr, stage: 'reclaim', resources: [good, { ...good }] }, BIND))
+    .some((x) => /more than once/.test(x)))
+  check('a DUPLICATE bare command is refused', (() => {
+    const bp = { op: 'none', type: null, key: null, fields: null, command: 'builder-prune', argv: ['docker', 'builder', 'prune', '--all', '--force'] }
+    return V2(sealPlan({ ...rr, stage: 'reclaim', resources: [bp, { ...bp }] }, BIND)).some((x) => /more than once/.test(x))
+  })())
+  check('an UNEXPECTED TOP-LEVEL plan field is refused', (() => {
+    const p2 = { ...R({ r: good }), extra: 1 }
+    return V2(p2).some((x) => /unexpected top-level field/.test(x))
+  })())
+  check('a NON-40-HEX candidate commit is refused', verifyPlanBinding(
+    sealPlan({ ...rr, stage: 'reclaim', resources: [good] }, { candidateSha: 'HEAD', beforeInventorySha256: 'b'.repeat(64) }),
+    { stage: 'reclaim', candidateSha: 'HEAD', beforeInventorySha256: 'b'.repeat(64) },
+  ).some((x) => /not a 40-character hex/.test(x)))
+  check('a NON-SHA256 before-inventory digest is refused', verifyPlanBinding(
+    sealPlan({ ...rr, stage: 'reclaim', resources: [good] }, { candidateSha: 'c'.repeat(40), beforeInventorySha256: 'nope' }),
+    { stage: 'reclaim', candidateSha: 'c'.repeat(40), beforeInventorySha256: 'nope' },
+  ).some((x) => /is not a sha256/.test(x)))
+  check('an unexpected BINDING field is refused', (() => {
+    const p2 = R({ r: good }); p2.binding = { ...p2.binding, extra: 1 }
+    return V2(p2).some((x) => /binding carries unexpected field/.test(x))
+  })())
+
+  // OLD-HEAD COUNTEREXAMPLE. d651363 checked the tuple and the argv as two
+  // independent facts; this replicates that logic exactly and shows it passes
+  // the lying tuple the corrected head refuses.
+  console.log('-- OLD HEAD (d651363) accepted a tuple that did not describe its command')
+  const legacyVerify = (r) => {
+    const probs = []
+    if (!PLAN_OPS.includes(r.op)) probs.push('op')
+    if (r.op !== 'none') {
+      if (!PLAN_TYPES.includes(r.type)) probs.push('type')
+      if (typeof r.key !== 'string' || !r.key || r.key === '*') probs.push('key')
+    }
+    if (r.op === 'change' && (!Array.isArray(r.fields) || !r.fields.length)) probs.push('fields')
+    if (!Array.isArray(r.argv) || !r.argv.length || !r.argv.every((x) => typeof x === 'string' && x.length > 0)) probs.push('argv')
+    return probs
+  }
+  const lie = { op: 'remove', type: 'images', key: 'sha256:A', fields: null, argv: ['docker', 'volume', 'rm', 'oo-data'] }
+  check('OLD HEAD: the lying tuple passed every one of its checks', legacyVerify(lie).length === 0)
+  check('CORRECTED HEAD: the same tuple is refused', V2(R({ r: lie })).length > 0)
+  check('…and the executor would have deleted a VOLUME while authorising an IMAGE',
+    lie.argv.join(' ') === 'docker volume rm oo-data' && lie.type === 'images')
+  check('CORRECTED HEAD: what that tuple actually MEANS is an image removal',
+    deriveArgv('reclaim', { ...lie, argv: undefined }).join(' ') === 'docker rmi sha256:A')
 
   check('shQuote neutralises a quote', shQuote("a'b") === `'a'\\''b'`)
 

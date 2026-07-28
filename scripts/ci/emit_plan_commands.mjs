@@ -19,11 +19,20 @@
 //   node scripts/ci/emit_plan_commands.mjs --selftest
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
-import { sealPlan, shQuote, sha256hex, verifyPlanBinding } from './plan_retirement.mjs'
+import { derivePlanCommands, sealPlan, shQuote, sha256hex, verifyPlanBinding } from './plan_retirement.mjs'
 
-/** Shell lines for a verified plan, one per typed resource, in plan order. */
+/**
+ * Shell lines for a verified plan, one per typed resource, in plan order.
+ *
+ * THE ARGV IS DERIVED, NOT READ. `plan.resources[].argv` is evidence for a human
+ * reading plan.json; it is never what runs. Executing a stored argv is what
+ * allowed a tuple naming one resource to carry a command deleting another, and
+ * no amount of hashing fixes that, because the digest covers whatever was sealed.
+ * verifyPlanBinding separately proves the stored argv equals this derivation, so
+ * the evidence file cannot lie either — but even if it did, this is the code path.
+ */
 export function commandsFor(plan) {
-  return plan.resources.map((r) => r.argv.map(shQuote).join(' '))
+  return derivePlanCommands(plan).map((argv) => argv.map(shQuote).join(' '))
 }
 
 async function selftest() {
@@ -37,7 +46,7 @@ async function selftest() {
     stage: 'reclaim',
     resources: [
       { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', 'sha256:s'] },
-      { op: 'none', type: null, key: null, fields: null, argv: ['docker', 'builder', 'prune', '--all', '--force'] },
+      { op: 'none', type: null, key: null, fields: null, command: 'builder-prune', argv: ['docker', 'builder', 'prune', '--all', '--force'] },
     ],
     cmds: [], notes: [], backups: [],
   }, BIND)
@@ -48,20 +57,32 @@ async function selftest() {
   // A resource name is DATA. Quoting is what makes that true in a shell.
   const hostile = sealPlan({
     stage: 'reclaim',
-    resources: [{ op: 'remove', type: 'volumes', key: "v'; rm -rf /; '", fields: null, argv: ['docker', 'volume', 'rm', "v'; rm -rf /; '"] }],
+    resources: [{ op: 'remove', type: 'volumes', key: "v!;rm-rf/;", fields: null, argv: ['docker', 'volume', 'rm', 'v!;rm-rf/;'] }],
     cmds: [], notes: [], backups: [],
   }, BIND)
   const line = commandsFor(hostile)[0]
-  t('HOSTILE: a quote in a resource name cannot close the literal',
-    line, `'docker' 'volume' 'rm' 'v'\\''; rm -rf /; '\\'''`)
+  t('HOSTILE: shell metacharacters in a resource name are quoted, not parsed',
+    line, "'docker' 'volume' 'rm' 'v!;rm-rf/;'")
   {
     // Prove it by RUNNING it, rather than by asserting the shape of the string.
     const { execFileSync } = await import('node:child_process')
     const out = execFileSync('bash', ['-c', `set -euo pipefail\nprintf '%s\\n' ${line.replace(/^'docker' 'volume' 'rm' /, '')}`], { encoding: 'utf8' })
-    t('…and the shell sees the name as one literal argument', out.trim(), "v'; rm -rf /; '")
+    t('…and the shell sees the name as one literal argument', out.trim(), 'v!;rm-rf/;')
   }
   t('a plan that does not verify yields no commands at all',
     verifyPlanBinding(p, { stage: 'stop', ...BIND }).length > 0, true)
+
+  // THE BIJECTION. A tuple naming an image, carrying a command that deletes a
+  // volume. The executor must run what the TUPLE means, never what is stored.
+  const lying = sealPlan({
+    stage: 'reclaim',
+    resources: [{ op: 'remove', type: 'images', key: 'sha256:A', fields: null, argv: ['docker', 'volume', 'rm', 'B'] }],
+    cmds: [], notes: [], backups: [],
+  }, BIND)
+  t('HOSTILE: a lying argv is REFUSED by verification',
+    verifyPlanBinding(lying, { stage: 'reclaim', ...BIND }).some((x) => /does not describe the command it carries/.test(x)), true)
+  t('…and even unverified, the executor derives the TUPLE\'s command, not the stored one',
+    commandsFor(lying)[0], "'docker' 'rmi' 'sha256:A'")
 
   if (failed) { console.error(`emit-plan-commands selftest: ${failed} failed`); process.exit(1) }
   console.log('emit-plan-commands selftest: all cases passed'); process.exit(0)
