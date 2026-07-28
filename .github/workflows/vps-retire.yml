@@ -290,17 +290,43 @@ jobs:
           # nothing is created on the host.
           jq -r '.backups[]? | "\(.volume)\t\(.mountpoint)"' plan.json > backups.tsv
           : > backup-hashes.txt
+          # `ssh -n`. WITHOUT IT THIS LOOP BACKS UP EXACTLY ONE VOLUME AND
+          # REPORTS SUCCESS. ssh reads its own stdin, which here IS the loop's
+          # stdin — backups.tsv — so the first iteration swallows every
+          # remaining line and `read` sees EOF. Run 30355502323 planned four
+          # backups and produced one tarball, exit 0. The three unbacked
+          # volumes were then due for irreversible deletion in `reclaim` while
+          # the evidence said they had been saved. -n gives ssh /dev/null.
           while IFS=$'\t' read -r vol mp; do
             [ -n "${vol:-}" ] || continue
             echo "backing up volume $vol from $mp"
-            ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
+            ssh -n -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=yes \
               -o UserKnownHostsFile=~/.ssh/known_hosts_vps \
               root@"$VPS_HOST" "tar czf - -C '$mp' ." > "backup-$vol.tar.gz"
             sha256sum "backup-$vol.tar.gz" >> backup-hashes.txt
           done < backups.tsv
           if [ ! -s backups.tsv ]; then
-            echo "no stylique-os-exclusive volumes exist — nothing to back up (shared volumes are listed in the plan notes and are NOT deleted)"
+            echo "no retiring-stack-exclusive volumes exist — nothing to back up (shared volumes are listed in the plan notes and are NOT deleted)"
           fi
+          # COUNT WHAT WAS PLANNED AGAINST WHAT EXISTS. The bug above was
+          # invisible precisely because nothing ever compared the two; a
+          # partially-completed backup is indistinguishable from a complete one
+          # unless something counts. Every planned volume must have a non-empty
+          # tarball, or the stage fails before any later stage can delete them.
+          WANT=$(grep -c . backups.tsv || echo 0)
+          GOT=$(grep -c . backup-hashes.txt || echo 0)
+          echo "backups: planned $WANT, produced $GOT"
+          if [ "$WANT" -ne "$GOT" ]; then
+            echo "::error::backup incomplete: planned $WANT volume backups but produced $GOT. Refusing to record this run as a valid rollback point."
+            exit 1
+          fi
+          while IFS=$'\t' read -r vol mp; do
+            [ -n "${vol:-}" ] || continue
+            if [ ! -s "backup-$vol.tar.gz" ]; then
+              echo "::error::backup-$vol.tar.gz is missing or empty"
+              exit 1
+            fi
+          done < backups.tsv
           cat backup-hashes.txt || true
 
       # ---- A4: execute the derived plan --------------------------------------
