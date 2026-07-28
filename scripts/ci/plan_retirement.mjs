@@ -119,7 +119,20 @@ export const sha256hex = (s) => createHash('sha256').update(s).digest('hex')
  */
 export const REMOVE_COMMANDS = {
   containers: { argv: (k) => ['docker', 'rm', k], stages: ['remove-container'] },
-  images: { argv: (k) => ['docker', 'rmi', k], stages: ['reclaim'] },
+  // AN IMAGE IS NAMED BY ITS REFERENCES, WHICH IS NOT ALWAYS ITS ID.
+  //
+  // `docker rmi <id>` FAILS on an image carrying more than one tag: Docker
+  // cannot tell which name you meant to drop, and refuses rather than guess.
+  // Run 30356781208 hit exactly that on the image tagged both
+  // stylique-os:20260612-124314 and stylique-os:latest — 25 single-tag images
+  // deleted, then the remote `set -e` halted the rest of the plan.
+  //
+  // So the command names every tag the image has, taken from the BEFORE
+  // inventory the plan is bound to. Removing all of an image's tags removes the
+  // image, and since a tag resolves to exactly one image, the set of things
+  // this can destroy is still the single record it authorises. An untagged
+  // image has no tags and is named by its id, as before.
+  images: { argv: (k, refs) => ['docker', 'rmi', ...(refs?.length ? refs : [k])], stages: ['reclaim'] },
   volumes: { argv: (k) => ['docker', 'volume', 'rm', k], stages: ['reclaim'] },
   networks: { argv: (k) => ['docker', 'network', 'rm', k], stages: ['reclaim'] },
 }
@@ -137,7 +150,7 @@ export const BARE_COMMANDS = {
 }
 
 /** Exactly the fields a plan resource may carry. Anything else is a refusal. */
-const RESOURCE_FIELDS = ['op', 'type', 'key', 'fields', 'command', 'argv']
+const RESOURCE_FIELDS = ['op', 'type', 'key', 'fields', 'command', 'argv', 'refs']
 /** Exactly the fields a sealed plan may carry. */
 const PLAN_FIELDS = ['stage', 'resources', 'cmds', 'notes', 'backups', 'record', 'binding', 'resourcesSha256', 'planSha256']
 
@@ -175,7 +188,20 @@ export function deriveArgv(stage, r) {
     if (!entry.stages.includes(stage)) {
       bad(`stage ${JSON.stringify(stage)} may not remove a ${r.type} (only ${entry.stages.join(', ')} may)`)
     }
-    return entry.argv(r.key)
+    // `refs` is the ONLY place a removal may name more than its key, and only
+    // for images. Each entry must look like a reference to something — never a
+    // flag, never empty, never whitespace — so the widened argv still cannot
+    // smuggle in an option or a second, unrelated target.
+    if (r.refs !== undefined && r.refs !== null) {
+      if (r.type !== 'images') bad(`only an image removal may name refs, not a ${r.type}`)
+      if (!Array.isArray(r.refs) || r.refs.length === 0) bad(`refs for images/${r.key} is not a non-empty array`)
+      for (const x of r.refs) {
+        if (typeof x !== 'string' || x.length === 0 || /\s/.test(x) || x.startsWith('-')) {
+          bad(`refs for images/${r.key} contains ${JSON.stringify(x)}, which is not a bare reference`)
+        }
+      }
+    }
+    return entry.argv(r.key, r.refs)
   }
 
   if (r.op === 'change') {
@@ -515,8 +541,14 @@ export function plan(inv, stage) {
     // be neither: `images` records are keyed by id, so a tag-keyed authorisation
     // matches no record and the deletion reads as unauthorised.
     for (const i of inv.images.filter((x) => DELETABLE.has(x.class))) {
+      // A dangling image reports `<none>:<none>`, which is a display string and
+      // not a reference anything can be deleted by. Only real tags become refs;
+      // with none left, the id is the reference.
+      const refs = (i.tags ?? []).filter((t) => typeof t === 'string' && t.length > 0 && t !== '<none>:<none>')
+      const args = refs.length ? refs : [i.id]
       emit(i.class, i.tags.join(',') || i.id, {
-        op: 'remove', type: 'images', key: i.id, fields: null, argv: ['docker', 'rmi', i.id],
+        op: 'remove', type: 'images', key: i.id, fields: null,
+        refs: args, argv: ['docker', 'rmi', ...args],
       })
     }
     // Networks: only ones with nothing attached or only the retired container.
@@ -662,7 +694,12 @@ function selftest() {
   check('pre-stop-audit plans ZERO commands', plan(base(), 'pre-stop-audit').cmds.length === 0)
   check('route-impact plans ZERO commands', plan(base(), 'route-impact').cmds.length === 0)
   check('pre-stop-audit takes no backups', plan(base(), 'pre-stop-audit').backups.length === 0)
-  check('reclaim removes the stylique image by id', has('docker rmi sha256:s'))
+  // A single-tag image is now named by that tag, which is what `docker rmi`
+  // accepts unambiguously. The KEY stays the id — that is what the comparator
+  // authorises against, and images are keyed by id in the inventory.
+  check('reclaim removes the stylique image by its tag', has('docker rmi stylique-os:v1'))
+  check('…and still keys that removal by the image id',
+    r.resources.some((x) => x.type === 'images' && x.key === 'sha256:s'))
   check('reclaim NEVER removes the active twinai image', !has('sha256:a'))
   check('reclaim NEVER removes the rollback image', !has('sha256:p'))
   check('reclaim NEVER removes the shared oo-data volume', !has('oo-data'))
@@ -772,8 +809,44 @@ function selftest() {
   check('an image is keyed by its ID, not by a tag', find('remove', 'images', 'sha256:s') !== undefined)
   check('…and no image resource is keyed by a tag',
     !rr.resources.some((r) => r.type === 'images' && /:/.test(r.key) && !r.key.startsWith('sha256:')))
-  check('…and the argv argument IS the typed key',
-    find('remove', 'images', 'sha256:s').argv.at(-1) === 'sha256:s')
+  // EVERY ARGUMENT IS A REFERENCE TO THE RECORD THE KEY NAMES.
+  //
+  // This used to read "the argv argument IS the typed key", which stopped being
+  // true once a multi-tagged image had to be named by its tags — `docker rmi`
+  // refuses an id carrying two tags. The property that actually matters is not
+  // string identity but that nothing else can be reached: every argument after
+  // `rmi` is either the id itself or one of THAT image's tags, taken from the
+  // inventory the plan is bound to. A tag resolves to exactly one image, so the
+  // command still destroys exactly the one record it authorises.
+  check('…and every argv argument references that same image', (() => {
+    const rec = removed().images.find((x) => x.id === 'sha256:s')
+    const allowed = new Set([rec.id, ...rec.tags])
+    return find('remove', 'images', 'sha256:s').argv.slice(2).every((a) => allowed.has(a))
+  })())
+  check('…and never a flag', (() => {
+    const a = find('remove', 'images', 'sha256:s').argv.slice(2)
+    return a.length > 0 && a.every((x) => !x.startsWith('-'))
+  })())
+  // THE MULTI-TAG CASE, which run 30356781208 failed on.
+  check('a MULTI-TAGGED image names every one of its tags', (() => {
+    const i = removed()
+    i.images.find((x) => x.id === 'sha256:s').tags = ['stylique-os:v1', 'stylique-os:latest']
+    const p2 = plan(i, 'reclaim')
+    const res = p2.resources.find((x) => x.type === 'images' && x.key === 'sha256:s')
+    return canonJson(res.argv) === canonJson(['docker', 'rmi', 'stylique-os:v1', 'stylique-os:latest'])
+  })())
+  check('…and an UNTAGGED image is still named by its id', (() => {
+    const i = removed()
+    i.images.find((x) => x.id === 'sha256:s').tags = []
+    const res = plan(i, 'reclaim').resources.find((x) => x.type === 'images' && x.key === 'sha256:s')
+    return canonJson(res.argv) === canonJson(['docker', 'rmi', 'sha256:s'])
+  })())
+  check('…and a <none>:<none> placeholder is NOT used as a reference', (() => {
+    const i = removed()
+    i.images.find((x) => x.id === 'sha256:s').tags = ['<none>:<none>']
+    const res = plan(i, 'reclaim').resources.find((x) => x.type === 'images' && x.key === 'sha256:s')
+    return canonJson(res.argv) === canonJson(['docker', 'rmi', 'sha256:s'])
+  })())
   // FLAGS AND MULTI-ARGUMENT COMMANDS. `docker builder prune --all --force` and
   // `journalctl --vacuum-size=200M` authorise nothing; under the old regex they
   // simply failed to match, which looks identical to "no authorisation needed"
@@ -844,6 +917,20 @@ function selftest() {
     { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'network', 'rm', 'sha256:s'] })
   refuses('a MISMATCHED KEY between tuple and argv',
     { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', 'sha256:OTHER'] })
+  // `refs` widens an image removal from one argument to several. These prove it
+  // cannot be widened into anything OTHER than bare references.
+  refuses('an image ref that is a FLAG',
+    { op: 'remove', type: 'images', key: 'sha256:s', fields: null, refs: ['--force'], argv: ['docker', 'rmi', '--force'] },
+    'reclaim', /not a bare reference/)
+  refuses('an image ref carrying WHITESPACE (two targets in one string)',
+    { op: 'remove', type: 'images', key: 'sha256:s', fields: null, refs: ['a b'], argv: ['docker', 'rmi', 'a b'] },
+    'reclaim', /not a bare reference/)
+  refuses('an EMPTY refs list',
+    { op: 'remove', type: 'images', key: 'sha256:s', fields: null, refs: [], argv: ['docker', 'rmi'] },
+    'reclaim', /non-empty array/)
+  refuses('refs on a VOLUME removal',
+    { op: 'remove', type: 'volumes', key: 'dead', fields: null, refs: ['dead'], argv: ['docker', 'volume', 'rm', 'dead'] },
+    'reclaim', /only an image removal may name refs/)
   refuses('an EXTRA FLAG the catalog never emits',
     { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', '--force', 'sha256:s'] })
   refuses('an EXTRA ARGUMENT (a second target smuggled in)',
