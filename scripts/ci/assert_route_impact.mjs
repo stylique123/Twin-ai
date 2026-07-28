@@ -29,6 +29,7 @@
 //
 //   node scripts/ci/assert_route_impact.mjs route-impact.json
 //   node scripts/ci/assert_route_impact.mjs --selftest
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import net from 'node:net'
 import { pathToFileURL } from 'node:url'
@@ -166,6 +167,220 @@ export function dialMatches(dial, ids, expectPort = null) {
  *
  * Returns null when it cannot be classified.
  */
+/**
+ * Caddy path-matcher semantics, as much of them as this tool will claim.
+ *
+ * Only three shapes are modelled: an exact path, a `prefix*` and a `*suffix`.
+ * Anything else — internal wildcards, multiple wildcards, regex matchers — is
+ * NOT modelled, and callers must treat it as unsupported rather than guessing.
+ * Getting this wrong in the permissive direction would let a detach be declared
+ * lossless when it silently re-points a public path.
+ */
+export function pathPatternSupported(pat) {
+  if (typeof pat !== 'string' || pat.length === 0) return false
+  const stars = (pat.match(/\*/g) || []).length
+  if (stars === 0) return true
+  if (stars > 1) return false
+  return pat.startsWith('*') || pat.endsWith('*')
+}
+
+export function pathMatcherMatches(pat, path) {
+  if (!pathPatternSupported(pat)) return null
+  if (!pat.includes('*')) return path === pat
+  if (pat.endsWith('*')) return path.startsWith(pat.slice(0, -1))
+  return path.endsWith(pat.slice(1))
+}
+
+/**
+ * The ordered sibling routes sharing one parent `routes` array, with what each
+ * one reaches and whether it stops evaluation.
+ */
+export function siblingModel(handlers, parentRoutesArrayPath) {
+  const byIndex = new Map()
+  let declaredCount = null
+  for (const h of handlers) {
+    const c = (h.matcherChain ?? []).find((x) => x?.parentRoutesArrayPath === parentRoutesArrayPath)
+    if (!c || !Number.isInteger(c.routeIndexInParent)) continue
+    if (Number.isInteger(c.parentRoutesCount)) declaredCount = c.parentRoutesCount
+    const e = byIndex.get(c.routeIndexInParent) ?? {
+      index: c.routeIndexInParent, routePath: c.routePath,
+      pathMatchers: c.path ?? [], hostMatchers: c.host ?? [],
+      terminal: c.terminal === true, group: c.group ?? null,
+      handlerTypes: new Set(c.handlerTypes ?? []),
+      reachesTarget: false, reachesOther: false, otherDials: [],
+    }
+    if ((h.targetUpstreams?.length ?? 0) > 0) e.reachesTarget = true
+    for (const u of h.keepUpstreams ?? []) { e.reachesOther = true; e.otherDials.push(u.dial) }
+    for (const t of c.handlerTypes ?? []) e.handlerTypes.add(t)
+    byIndex.set(c.routeIndexInParent, e)
+  }
+  const siblings = [...byIndex.values()].sort((a, b) => a.index - b.index)
+  siblings.declaredCount = declaredCount
+  return siblings
+}
+
+/**
+ * A sibling's structural identity, so "the route at index 2" can be re-proved
+ * to be the SAME route at apply time.
+ *
+ * Indices are positional. Any concurrent edit to the parent array — a route
+ * added, a route removed, two reordered — re-points every index after it, and a
+ * deletion aimed at index 2 would then remove a route nobody audited. The
+ * fingerprint is what a later apply step compares against; without it the plan
+ * is only as good as the assumption that nothing moved between reading and
+ * writing.
+ */
+export function siblingFingerprint(s) {
+  const canon = JSON.stringify({
+    index: s.index,
+    routePath: s.routePath,
+    host: [...(s.hostMatchers ?? [])].sort(),
+    path: [...(s.pathMatchers ?? [])].sort(),
+    terminal: s.terminal === true,
+    group: s.group ?? null,
+    handlerTypes: [...(s.handlerTypes ?? [])].sort(),
+    dials: [...new Set(s.otherDials ?? [])].sort(),
+    reachesTarget: s.reachesTarget === true,
+  })
+  return createHash('sha256').update(canon).digest('hex')
+}
+
+/**
+ * WHAT SERVES THE REMOVED ROUTE'S PATHS AFTERWARDS.
+ *
+ * THE DEFECT THIS EXISTS FOR. The nested shape read from the host is `/os/*`
+ * (the target) followed by `/*` (the dashboard). Deleting the `/os/*` route does
+ * not make `/os/…` stop working — it makes it reach the DASHBOARD. That is not a
+ * detach; it silently converts a retired public path into a protected backend's
+ * path, and nothing in the previous model would have noticed.
+ *
+ * EVIDENCE STATUS. Artifact 8677841138 proved the nesting and the path matchers.
+ * It did NOT emit `terminal`, `group` or the parent array length — those fields
+ * did not exist in the extractor at that head — so no claim here about the live
+ * terminality of either route is artifact-backed yet. This code does not need
+ * one: absent evidence is refused, not defaulted. `parentRoutesCount` missing is
+ * a hard refusal, and terminality is used only in fingerprints and reporting.
+ * The values become evidence when a fresh probe at this head emits them.
+ *
+ * Returns, per probe path the removed route served, the first later sibling that
+ * would match it. `null` shows nothing matches, which is the only outcome that
+ * makes a removal a genuine detach.
+ */
+export function fallThroughAfterRemoval(siblings, removedIndex) {
+  const removed = siblings.find((sN) => sN.index === removedIndex)
+  if (!removed) return { supported: false, reason: 'the removed route is not among its siblings' }
+  const probes = []
+  for (const pat of removed.pathMatchers) {
+    if (!pathPatternSupported(pat)) {
+      return { supported: false, reason: `path matcher ${JSON.stringify(pat)} is a shape this model does not represent` }
+    }
+    // A representative request the removed route served.
+    probes.push(pat.endsWith('*') ? `${pat.slice(0, -1)}probe` : pat)
+  }
+  if (probes.length === 0) probes.push('/')
+
+  const results = []
+  for (const probe of probes) {
+    let landed = null
+    for (const sib of siblings) {
+      // ONLY LATER SIBLINGS. Routes are evaluated in array order, so every route
+      // BEFORE the removed one behaves exactly as it did — deleting something
+      // after it cannot change whether it matches or terminates. What changes is
+      // only that evaluation now continues past the removed index instead of
+      // stopping at it.
+      //
+      // This is deliberately conservative in one direction: if an earlier
+      // TERMINAL route already swallowed the probe path, the removed route never
+      // saw it and nothing is newly exposed, yet this still reports whatever
+      // matches later. That is a false refusal, never a false pass, and a false
+      // refusal is the side to be wrong on.
+      if (sib.index <= removedIndex) continue
+      const pats = sib.pathMatchers
+      const hit = pats.length === 0
+        ? true
+        : pats.some((pp) => pathMatcherMatches(pp, probe) === true)
+      if (hit) { landed = sib; break }
+    }
+    results.push({ probe, landed })
+  }
+  return { supported: true, results }
+}
+
+/**
+ * IS THE REMOVAL ACTUALLY A DETACH? — the mandatory post-edit gate.
+ *
+ * "The nested route reaches only the target" answers who is BEHIND the route. It
+ * says nothing about what happens to the route's PATHS once the route is gone,
+ * and on this host those are two different answers. `/os/*` (the target) is
+ * followed by `/*` (the dashboard) and neither is terminal, so deleting the
+ * first does not retire `/os/…` — it hands those requests to a protected
+ * backend. The public path survives, pointed somewhere new, and every check
+ * that only asks "does stylique-os still receive traffic?" reports success.
+ *
+ * Four outcomes per path the removed route served:
+ *
+ *   unserved                  nothing later matches. Caddy answers 404. This is
+ *                             the only shape that is a detach on its own.
+ *   absorbed-without-upstream a later sibling matches but proxies nowhere — an
+ *                             explicit static_response, a file_server. The path
+ *                             keeps answering, no backend is newly exposed.
+ *   exposes-backend           a later sibling proxies somewhere. REFUSAL: this
+ *                             is a routing change wearing a detach's clothes.
+ *   still-reaches-target      a later sibling reaches the target anyway, so the
+ *                             route was never exclusive. REFUSAL.
+ *
+ * This function decides NOTHING about what should happen instead. Choosing
+ * between an explicit 404/410 and an intentional fallback is a statement about
+ * what the product does at a public URL, and encoding either one here would ship
+ * a production behaviour nobody asked for.
+ */
+export function postRemovalRouting(handlers, excl) {
+  if (!excl || typeof excl.parentRoutesArrayPath !== 'string' || !Number.isInteger(excl.routeIndexInParent)) {
+    return { supported: false, reason: 'the removable route has no addressable parent array and index' }
+  }
+  const siblings = siblingModel(handlers, excl.parentRoutesArrayPath)
+  const fingerprints = siblings.map((s) => ({
+    index: s.index, routePath: s.routePath,
+    hostMatchers: s.hostMatchers, pathMatchers: s.pathMatchers,
+    terminal: s.terminal, group: s.group ?? null,
+    handlerTypes: [...s.handlerTypes].sort(),
+    sha256: siblingFingerprint(s),
+  }))
+  const base = { siblingFingerprints: fingerprints, parentRoutesArrayPath: excl.parentRoutesArrayPath, removedIndex: excl.routeIndexInParent }
+
+  // A sibling route with no handlers leaves no trace in a model built from
+  // handlers. Reasoning about "what matches next" over an incomplete list can
+  // only ever be optimistic, so an incomplete list is a refusal.
+  const declared = siblings.declaredCount
+  if (!Number.isInteger(declared)) {
+    return { ...base, supported: false, reason: 'the probe did not report how many routes the parent array holds, so the sibling list cannot be proven complete' }
+  }
+  if (siblings.length !== declared) {
+    return {
+      ...base,
+      supported: false,
+      reason: `the parent array holds ${declared} routes but only ${siblings.length} could be modelled `
+        + '(a sibling with no handlers leaves no trace); what serves the removed paths cannot be established',
+    }
+  }
+
+  const ft = fallThroughAfterRemoval(siblings, excl.routeIndexInParent)
+  if (!ft.supported) return { ...base, supported: false, reason: ft.reason }
+
+  const outcomes = ft.results.map(({ probe, landed }) => {
+    if (landed === null) return { probe, outcome: 'unserved', landedRoutePath: null, landedIndex: null, exposedDials: [], landedHandlerTypes: [] }
+    const common = {
+      probe, landedRoutePath: landed.routePath, landedIndex: landed.index,
+      landedHandlerTypes: [...landed.handlerTypes].sort(),
+    }
+    if (landed.reachesTarget) return { ...common, outcome: 'still-reaches-target', exposedDials: [] }
+    if (landed.reachesOther) return { ...common, outcome: 'exposes-backend', exposedDials: [...new Set(landed.otherDials)].sort() }
+    return { ...common, outcome: 'absorbed-without-upstream', exposedDials: [] }
+  })
+  const isolated = outcomes.every((o) => o.outcome === 'unserved' || o.outcome === 'absorbed-without-upstream')
+  return { ...base, supported: true, isolated, outcomes }
+}
+
 /**
  * The NESTED ROUTE that may be removed, if one exists.
  *
@@ -328,9 +543,17 @@ export function classifyRoute(route, targetIds, protectedIds, opts = {}) {
         && excl.routePath !== base.routePath) {
       return {
         ...base, verdict: 'nested-route-exclusive', exclusiveRoute: excl,
+        // WHO IS BEHIND THE ROUTE and WHAT SERVES ITS PATHS AFTERWARDS are
+        // separate questions. Answering only the first is how a fall-through
+        // gets shipped as a detach.
+        postRemoval: postRemovalRouting(handlers, excl),
         reason: `the target is reached only through nested route ${excl.routePath}`
           + `${excl.pathMatchers.length ? ` (path ${excl.pathMatchers.join(', ')})` : ''}`
-          + '; removing that route leaves its siblings serving',
+          // NOT "so it is safe to remove". This verdict answers who is BEHIND
+          // the route; whether removing it detaches anything is decided by the
+          // post-removal analysis, which on this host says the opposite.
+          + '. That identifies the removable unit — it does NOT establish that removing it is a detach; '
+          + 'see the post-removal routing analysis',
       }
     }
     return { ...base, verdict: 'would-orphan', reason: 'the target is the sole upstream of a handler while the route also serves other backends, and no nested route is exclusively the target\'s' }
@@ -421,6 +644,51 @@ export function divergenceCause(a) {
  */
 export const PARSER_STATUSES = ['ok', 'data_invalid', 'program_failed', 'unavailable']
 
+/**
+ * The post-edit routing verdict, as refusals.
+ *
+ * Separate from the "no patch builder for this shape yet" blocker on purpose:
+ * that one goes away the day the nested-route deletion patch exists, and this
+ * one must not go with it. A lossless detach has to be proven every time, not
+ * once while the remedy happened to be unimplemented.
+ *
+ * The owner-visible choice is NAMED and left open. There are exactly two
+ * coherent answers and they are product decisions, not derivations:
+ *   (a) the path is retired — replace the route with an explicit terminal
+ *       static_response (404 or 410), which makes the detach real and visible;
+ *   (b) the fallback is wanted — say so, and the route is removed knowing that
+ *       the named backend now serves that path.
+ */
+export function postRemovalBlockers(c) {
+  const at = `route ${c.server}#${c.routeIndex}`
+  const pr = c.postRemoval
+  if (!pr || typeof pr !== 'object') {
+    return [`${at}: post-removal routing was never analysed — a removal cannot be called a detach without it`]
+  }
+  if (pr.supported !== true) {
+    return [`${at}: post-removal routing could not be modelled (${pr.reason ?? 'no reason reported'}) — `
+      + 'without it there is no evidence the removed paths stop reaching a backend']
+  }
+  const bad = pr.outcomes.filter((o) => o.outcome === 'exposes-backend' || o.outcome === 'still-reaches-target')
+  return bad.map((o) => {
+    if (o.outcome === 'still-reaches-target') {
+      return `${at}: removing ${c.exclusiveRoute.routePath} does NOT stop ${o.probe} reaching the target — `
+        + `it would fall through to sibling route ${o.landedRoutePath} (index ${o.landedIndex}), which reaches the target too; `
+        + 'the route was therefore never exclusively the target\'s and this analysis contradicts the verdict'
+    }
+    return `${at}: removing nested route ${c.exclusiveRoute.routePath} (index ${c.exclusiveRoute.routeIndexInParent} `
+      + `of ${c.exclusiveRoute.parentRoutesArrayPath}) is NOT a lossless detach for ${o.probe}. `
+      + `That request would FALL THROUGH to sibling route ${o.landedRoutePath} (index ${o.landedIndex}, `
+      + `handlers ${o.landedHandlerTypes.join('+') || 'none'}) and newly reach ${o.exposedDials.join(', ')}. `
+      + 'The retired public path would keep answering, served by a protected backend. '
+      + 'OWNER DECISION REQUIRED, and this tool will not make it: '
+      + `(a) RETIRE the path — replace route ${c.exclusiveRoute.routePath} with an explicit terminal `
+      + 'static_response (404 or 410) instead of deleting it, so the path stops resolving to anything; or '
+      + `(b) DECLARE the fallback intentional — accept that ${o.exposedDials.join(', ')} serves ${o.probe} from now on. `
+      + 'Neither is encoded here.'
+  })
+}
+
 export function decide(a) {
   const blockers = []
   if (a === null || typeof a !== 'object') throw new RouteImpactError('probe output is not a JSON object')
@@ -484,13 +752,21 @@ export function decide(a) {
     // preconditions (sibling route fingerprints, descending index deletion), and
     // it is not built yet. Naming the unit is progress; pretending the existing
     // patch fits it would not be.
+    // THE UNIT IS THE ROUTE OBJECT. Deleting the target's upstream entry would
+    // leave a route still matching its path with nothing behind it; deleting the
+    // outer route would take its siblings down. A candidate is drafted only when
+    // the post-edit simulation proves BOTH that the target becomes unreachable
+    // and that no path it served starts reaching something else.
     if (c.verdict === 'nested-route-exclusive') {
-      blockers.push(
-        `route ${c.server}#${c.routeIndex}: ${c.reason}. The removable unit is the nested route `
-        + `${c.exclusiveRoute.routePath} (index ${c.exclusiveRoute.routeIndexInParent} of `
-        + `${c.exclusiveRoute.parentRoutesArrayPath}), NOT an upstream entry — no patch is drafted `
-        + 'because emptying a handler would leave that path unserved',
-      )
+      blockers.push(...postRemovalBlockers(c))
+      const sim = simulateNestedRemoval(c, classified.filter(Boolean))
+      c.simulation = sim
+      for (const r of sim.reasons) {
+        // The fall-through reasons are already reported, in more detail, by
+        // postRemovalBlockers. Do not say the same thing twice.
+        if (/post-removal routing|newly reach another backend/.test(r)) continue
+        blockers.push(`route ${c.server}#${c.routeIndex}: ${r}`)
+      }
     }
   }
   // An unproven durable location blocks the whole patch. A remedy that cannot
@@ -543,6 +819,131 @@ export function decide(a) {
 }
 
 /**
+ * SIMULATE THE EDIT, THEN ASK THE ORIGINAL QUESTION AGAIN.
+ *
+ * A patch is not proven by the reasoning that produced it. This re-derives the
+ * two facts that actually matter FROM THE POST-EDIT WORLD:
+ *
+ *   1. is the target still reachable?  Removing one route detaches nothing if
+ *      another route, or a handler elsewhere in the same route, still dials it.
+ *   2. does any path the removed route served now reach something else?  That
+ *      is `postRemoval`, above.
+ *
+ * Both must hold. Either one alone has a failure mode that looks like success:
+ * (1) alone passes a config where `/os/*` now serves the dashboard, and (2)
+ * alone passes a config where a second route still proxies to stylique-os.
+ */
+export function simulateNestedRemoval(c, allClassified) {
+  const pr = c.postRemoval
+  const removedPath = c.exclusiveRoute?.routePath ?? null
+  const reasons = []
+
+  // Another ROUTE still dialling the target.
+  const stillReaching = (allClassified ?? [])
+    .filter((x) => x && x !== c && (x.handlers ?? []).some((h) => (h.targetUpstreams?.length ?? 0) > 0))
+    .map((x) => `${x.server}#${x.routeIndex}`)
+  // A handler in THIS route that dials the target from outside the removed
+  // subtree. The exclusivity test proved the subtree reaches only the target; it
+  // never proved the target is reached only from that subtree.
+  const outside = (c.handlers ?? [])
+    .filter((h) => (h.targetUpstreams?.length ?? 0) > 0
+      && !(h.matcherChain ?? []).some((x) => x?.routePath === removedPath))
+    .map((h) => h.handlerPath)
+
+  if (stillReaching.length > 0) {
+    reasons.push(`the target is still reached by route${stillReaching.length > 1 ? 's' : ''} `
+      + `${stillReaching.join(', ')} after this removal — removing this one route does not detach it`)
+  }
+  if (outside.length > 0) {
+    reasons.push(`handler${outside.length > 1 ? 's' : ''} ${outside.join(', ')} dial the target from OUTSIDE `
+      + `${removedPath}, so deleting that route leaves the target reachable`)
+  }
+  if (!pr || pr.supported !== true) reasons.push('post-removal routing was not modelled')
+  else if (pr.isolated !== true) reasons.push('at least one removed path would newly reach another backend')
+
+  return {
+    removedRoutePath: removedPath,
+    routesStillReachingTarget: stillReaching,
+    handlersOutsideRemovedSubtree: outside,
+    pathsNewlyReachingOtherBackends: (pr?.outcomes ?? [])
+      .filter((o) => o.outcome === 'exposes-backend')
+      .map((o) => ({ path: o.probe, backend: o.exposedDials, via: o.landedRoutePath })),
+    pathsLeftUnserved: (pr?.outcomes ?? []).filter((o) => o.outcome === 'unserved').map((o) => o.probe),
+    targetUnreachableAfter: stillReaching.length === 0 && outside.length === 0,
+    isLosslessDetach: reasons.length === 0,
+    reasons,
+  }
+}
+
+/**
+ * The exact nested-route deletion, with the exact rollback.
+ *
+ * Emitted ONLY when the simulation above proves losslessness. The unit is the
+ * route object, not an upstream entry: emptying the handler's upstream list
+ * would leave a route still matching `/os/*` with nothing behind it.
+ *
+ * THE PRECONDITIONS ARE THE POINT. An index is a position, and positions move.
+ * Every sibling is pinned by structural fingerprint and the array length is
+ * pinned too, so a config edited between this read and the apply fails the
+ * check instead of deleting a route nobody audited.
+ */
+export function nestedRouteRemovalStep(a, c, sim) {
+  const excl = c.exclusiveRoute
+  const pr = c.postRemoval
+  const fps = pr?.siblingFingerprints ?? []
+  return {
+    where: `${c.server} route ${c.routeIndex}`
+      + (c.hostMatchers.length ? ` (host ${c.hostMatchers.join(', ')})` : ' (no host matcher — catch-all)'),
+    configPath: excl.routePath,
+    action: 'remove the NESTED ROUTE OBJECT from its parent routes array',
+    parentRoutesArrayPath: excl.parentRoutesArrayPath,
+    routeIndexInParent: excl.routeIndexInParent,
+    pathMatchers: excl.pathMatchers,
+    siblingFingerprints: fps,
+    simulation: sim,
+    ordering: 'if more than one nested route is removed from the SAME array, apply in DESCENDING index order — '
+      + 'deleting a lower index shifts every higher one down',
+    preconditions: [
+      `runtime config sha256 == ${a.caddyRuntimeConfigSha256}`,
+      `disk config ${a.caddyDiskConfigPath ?? '<unknown>'} sha256 == ${a.caddyDiskConfigSha256 ?? '<unknown>'}`,
+      `${excl.parentRoutesArrayPath} holds exactly ${fps.length} route${fps.length === 1 ? '' : 's'}`,
+      ...fps.map((f) => `${excl.parentRoutesArrayPath}/${f.index} fingerprint sha256 == ${f.sha256}`
+        + ` (path ${f.pathMatchers.join(', ') || '(none — matches all)'}, terminal ${f.terminal},`
+        + ` handlers ${f.handlerTypes.join('+') || 'none'})`),
+      `${excl.routePath} matches exactly [${excl.pathMatchers.join(', ') || '(none)'}]`,
+      'after the edit, no route in the configuration dials the target',
+      ...sim.pathsLeftUnserved.map((p) => `after the edit, ${p} matches no route and Caddy answers 404`),
+    ],
+    // A candidate config must be proven loadable before it is loaded. The
+    // simulation above proves the ROUTING is what we think; this proves Caddy
+    // agrees the file is a config at all. Both, or neither.
+    validate: [
+      `caddy validate --config <candidate> --adapter ${a.caddyDiskConfigPath?.endsWith('.json') ? 'none (already JSON)' : 'caddyfile'}`,
+      'the candidate must validate BEFORE any reload; a reload of an invalid config takes the whole proxy down, '
+      + 'not just the route being removed',
+    ],
+    rehearsal: `curl -s -X DELETE "${adminBase(a)}${excl.routePath}"`,
+    // ROLLBACK IS A FILE, NOT A RECONSTRUCTION. The probe deliberately never
+    // emits the route object's contents — it emits matchers, handler types and
+    // dials under an allowlist, because a config may hold secrets. That is the
+    // right trade, and it means the removed route cannot be rebuilt from this
+    // report. The only honest rollback is the byte-for-byte config that was
+    // there before, restored from a backup taken at apply time and verified by
+    // digest.
+    rollback: [
+      `BEFORE the edit, copy ${a.caddyDiskConfigPath ?? '<disk config>'} to a backup and record its sha256 `
+      + `(expected ${a.caddyDiskConfigSha256 ?? '<unknown>'})`,
+      'to roll back: restore that backup, confirm the restored file\'s sha256 equals the recorded one, '
+      + 'then reload',
+      'this report CANNOT reconstruct the deleted route — it records matchers, handler types and dials only, '
+      + 'never the route object — so the backup is the rollback, and an edit made without one is irreversible',
+    ],
+    durableEdit: durableEditFor(a, `delete the nested route serving ${excl.pathMatchers.join(', ') || '(all paths)'} `
+      + `at index ${excl.routeIndexInParent} of ${excl.parentRoutesArrayPath}`),
+  }
+}
+
+/**
  * The candidate patch. NOT APPLIED — this run reloads nothing and changes
  * nothing on the host. It is emitted so the change can be reviewed before it is
  * ever authorised.
@@ -587,6 +988,15 @@ export function candidatePatch(a, impacted, allClassified) {
         rehearsal: `curl -s -X DELETE "${adminBase(a)}${c.routePath}"`,
         durableEdit: durableEditFor(a, `delete the site block for ${c.hostMatchers.join(', ') || '(catch-all)'}`),
       })
+      continue
+    }
+
+    if (c.verdict === 'nested-route-exclusive') {
+      // Only ever reached with a lossless simulation: decide() blocks otherwise,
+      // and a blocked run never calls this function at all. The guard is here
+      // anyway, because "the caller checks" is how an unproven deletion ships.
+      const sim = simulateNestedRemoval(c, allClassified)
+      if (sim.isLosslessDetach) steps.push(nestedRouteRemovalStep(a, c, sim))
       continue
     }
 
@@ -833,6 +1243,52 @@ export function render(d) {
     L.push(`       handler order   : ${c.handlerOrder.join(' -> ') || '(none)'}`)
     L.push(`       upstream dials  : ${c.upstreamDials.join(', ') || '(none)'}`)
     L.push(`       why             : ${c.reason}`)
+    // THE EXACT MATCHER STACK. A handler is reached only under the conjunction
+    // of every ancestor route's matchers. Printing the outer route's matchers
+    // alone is what produced "path matchers: none — all paths" for a handler
+    // that in fact serves exactly one nested path.
+    for (const h of c.handlers) {
+      if (h.role === 'no-upstreams') continue
+      L.push(`       handler ${h.handlerPath} [${h.role}] -> ${h.upstreamDials.join(', ') || '(none)'}`)
+      for (const [i, m] of (h.matcherChain ?? []).entries()) {
+        L.push(`           ${'  '.repeat(i)}${m.routePath ?? '(unknown)'}`
+          + `  host=${(m.host ?? []).join(',') || '*'}`
+          + `  path=${(m.path ?? []).join(',') || '*'}`
+          + `  terminal=${String(m.terminal ?? '(not reported)')}`
+          + `${m.group ? `  group=${m.group}` : ''}`)
+      }
+    }
+    // THE FALL-THROUGH TABLE. A reviewer must be able to see, per path, what
+    // serves it after the edit — not infer it from a verdict word.
+    if (c.postRemoval) {
+      const pr = c.postRemoval
+      L.push(`       removable unit  : ${c.exclusiveRoute.routePath} `
+        + `(index ${c.exclusiveRoute.routeIndexInParent} of ${c.exclusiveRoute.parentRoutesArrayPath})`)
+      if (pr.supported !== true) {
+        L.push(`       POST-REMOVAL    : NOT MODELLED — ${pr.reason}`)
+      } else {
+        L.push(`       POST-REMOVAL    : ${pr.isolated ? 'isolated (a real detach)' : 'NOT ISOLATED — falls through'}`)
+        for (const o of pr.outcomes) {
+          const to = o.outcome === 'unserved'
+            ? 'nothing matches -> Caddy 404'
+            : o.outcome === 'absorbed-without-upstream'
+              ? `${o.landedRoutePath} (${o.landedHandlerTypes.join('+') || 'no handlers'}) — no backend`
+              : `${o.landedRoutePath} -> ${o.exposedDials.join(', ') || 'the target'}`
+          L.push(`           ${o.probe}  =>  [${o.outcome}] ${to}`)
+        }
+      }
+      L.push('       sibling routes in that array (fingerprint pins the position):')
+      for (const f of pr.siblingFingerprints ?? []) {
+        L.push(`           [${f.index}] ${f.pathMatchers.join(', ') || '(no path matcher — all paths)'}`
+          + `  terminal=${f.terminal}  handlers=${f.handlerTypes.join('+') || 'none'}`
+          + `${f.group ? `  group=${f.group}` : ''}`)
+        L.push(`               sha256 ${f.sha256}`)
+      }
+    }
+    if (c.simulation && !c.simulation.isLosslessDetach) {
+      L.push('       SIMULATION REFUSES:')
+      for (const r of c.simulation.reasons) L.push(`           - ${r}`)
+    }
   }
   if (d.patch) {
     L.push('  CANDIDATE PATCH (not applied; nothing was reloaded):')
@@ -846,6 +1302,16 @@ export function render(d) {
         for (const dp of s.deletePaths) L.push(`          ${dp}`)
       }
       if (s.losslessness) L.push(`        lossless    : ${s.losslessness}`)
+      if (s.simulation) {
+        L.push(`        SIMULATED   : target unreachable after = ${s.simulation.targetUnreachableAfter}; `
+          + `paths left unserved = ${s.simulation.pathsLeftUnserved.join(', ') || '(none)'}; `
+          + `paths newly reaching another backend = ${s.simulation.pathsNewlyReachingOtherBackends.length}`)
+      }
+      if (s.validate) for (const v of s.validate) L.push(`        validate    : ${v}`)
+      if (s.rollback) {
+        L.push('        rollback:')
+        for (const r of s.rollback) L.push(`          - ${r}`)
+      }
       if (s.ordering) L.push(`        ordering    : ${s.ordering}`)
       L.push('        preconditions (all must hold immediately before applying):')
       for (const p of s.preconditions) L.push(`          - ${p}`)
@@ -1361,21 +1827,44 @@ async function selftest() {
   {
     // Outer host route -> subroute -> sibling nested routes. stylique-os under
     // /os/*, stylique-dashboard under /*. This is the shape on the box.
-    const ctx = (routePath, host, path, idx, parent) => ({
+    // NOT ALL OF THIS IS ARTIFACT-BACKED, AND THE FIXTURE SAYS WHICH.
+    //   proven by artifact 8677841138 : the nesting, the route paths, the `/os/*`
+    //                                   and `/*` matchers, the inert index-0
+    //                                   route, the dials.
+    //   NOT proven by that artifact    : `terminal`, `group`, `parentRoutesCount`
+    //                                   — the extractor did not emit them at that
+    //                                   head, so they are ASSUMPTIONS here.
+    // `terminal: false` below is therefore a modelling assumption, not a live
+    // reading. It is the conservative one: false means "evaluation continues",
+    // which is the case that can expose a backend. A fresh probe at this head is
+    // what turns it into evidence, and until then the tool refuses anyway —
+    // `parentRoutesCount: null` in a real probe is a hard refusal.
+    const ctx = (routePath, host, path, idx, parent, over = {}) => ({
       routePath, host, path, unsupportedMatcherKeys: [],
       routeIndexInParent: idx, parentRoutesArrayPath: parent,
+      terminal: false, group: null, handlerTypes: [], parentRoutesCount: null,
+      ...over,
     })
     const OUTER = 'apps/http/servers/srv0/routes/0'
     const SUBR = `${OUTER}/handle/0/routes`
-    const outerCtx = ctx(OUTER, ['138-201-119-239.sslip.io'], [], 0, 'apps/http/servers/srv0/routes')
-    const nested = (i, pathMatch, dial) => {
+    const outerCtx = ctx(OUTER, ['138-201-119-239.sslip.io'], [], 0, 'apps/http/servers/srv0/routes',
+      { handlerTypes: ['subroute'], parentRoutesCount: 1 })
+    // SIBS is the true length of the nested `routes` array in each fixture. The
+    // model refuses when it cannot account for every entry, so fixtures must
+    // declare it rather than let it be inferred from what happened to be seen.
+    const nested = (i, pathMatch, dial, over = {}) => {
+      const { siblingCount = 3, terminal = false, handler = 'reverse_proxy' } = over
       const rp = `${SUBR}/${i}`
       const inner = `${rp}/handle/0/routes/0`
       return {
-        handlerPath: `${inner}/handle/0`, position: 0, handler: 'reverse_proxy', addressable: true,
+        handlerPath: `${inner}/handle/0`, position: 0, handler, addressable: true,
         upstreams: [{ index: 0, dial, extraKeyCount: 0 }], upstreamDials: [dial], upstreamCount: 1,
         ownerRoutePath: inner, nestingDepth: 2,
-        matcherChain: [outerCtx, ctx(rp, [], [pathMatch], i, SUBR), ctx(inner, [], [], 0, `${rp}/handle/0/routes`)],
+        matcherChain: [
+          outerCtx,
+          ctx(rp, [], [pathMatch], i, SUBR, { terminal, handlerTypes: ['subroute'], parentRoutesCount: siblingCount }),
+          ctx(inner, [], [], 0, `${rp}/handle/0/routes`, { handlerTypes: [handler], parentRoutesCount: 1 }),
+        ],
         unsupportedMatcherKeys: [],
       }
     }
@@ -1384,11 +1873,12 @@ async function selftest() {
     // "must contain a target handler" filter looks unnecessary, and with it,
     // dropping that filter makes the inert route a candidate and proposes
     // deleting the wrong sibling.
-    const inert = () => ({
+    const inert = (siblingCount = 3) => ({
       handlerPath: `${SUBR}/0/handle/0`, position: 0, handler: 'headers', addressable: true,
       upstreams: [], upstreamDials: [], upstreamCount: 0,
       ownerRoutePath: `${SUBR}/0`, nestingDepth: 1,
-      matcherChain: [outerCtx, ctx(`${SUBR}/0`, [], [], 0, SUBR)],
+      matcherChain: [outerCtx, ctx(`${SUBR}/0`, [], [], 0, SUBR,
+        { handlerTypes: ['headers', 'encode'], parentRoutesCount: siblingCount })],
       unsupportedMatcherKeys: [],
     })
     const live = (over = {}) => route({
@@ -1450,18 +1940,318 @@ async function selftest() {
       targetExclusiveRoute(c.handlers).routePath === OUTER, false)
     t('…and raw, unclassified handlers yield no unit at all (fail closed)',
       targetExclusiveRoute(live().handlers), null)
-    // The verdict is identified but deliberately NOT patchable yet: the patch
-    // builder emits upstream deletions, which for this shape would empty a
-    // handler. Proving that here stops a future edit from quietly wiring the
-    // wrong patch to the right verdict.
-    t('a nested-route-exclusive route BLOCKS rather than drafting an upstream patch', (() => {
-      const d = decide(probe({ routes: [live()] }))
-      return d.patchable === false && d.blockers.some((b) => /NOT an upstream entry/.test(b))
-    })(), true)
+    // On the LIVE shape the verdict is identified and still not patchable —
+    // because the removal is not a detach, not because the remedy is missing.
+    t('the live nested shape is NOT patchable', decide(probe({ routes: [live()] })).patchable, false)
     t('…and the blocker names the exact nested route and its index', (() => {
       const d = decide(probe({ routes: [live()] }))
       return d.blockers.some((b) => b.includes(`${SUBR}/1`) && /index 1 of/.test(b))
     })(), true)
+    t('…and no upstream-deletion step is drafted for it', (() => {
+      const d = decide(probe({ routes: [live()] }))
+      return d.patch === null
+    })(), true)
+
+    // ---------------------------------------------------------------------
+    // POST-EDIT ROUTING SEMANTICS. "The route reaches only the target" is not
+    // "removing it detaches the target". On this host it is the opposite.
+    // ---------------------------------------------------------------------
+    console.log('-- POST-REMOVAL ROUTING (fall-through gate)')
+    {
+      const pr = c.postRemoval
+      t('the live shape is modellable', pr.supported, true)
+      t('MUTATION CONTROL: removing /os/* is NOT isolated on the live shape', pr.isolated, false)
+      t('…one probe path is analysed, derived from the removed route\'s matcher',
+        pr.outcomes.map((o) => o.probe).join(','), '/os/probe')
+      t('…and it FALLS THROUGH rather than 404ing', pr.outcomes[0].outcome, 'exposes-backend')
+      t('…onto the exact sibling route that takes over', pr.outcomes[0].landedRoutePath, `${SUBR}/2`)
+      t('…naming the backend that would newly serve the retired public path',
+        pr.outcomes[0].exposedDials.join(','), 'stylique-dashboard:80')
+
+      // Sibling fingerprints: an index is only meaningful if the route at that
+      // index is provably the same route at apply time.
+      t('every sibling in the parent array is fingerprinted', pr.siblingFingerprints.length, 3)
+      t('…the fingerprint is a sha256', /^[0-9a-f]{64}$/.test(pr.siblingFingerprints[1].sha256), true)
+      t('…and it changes when the route\'s matchers change', (() => {
+        const a = siblingFingerprint({ index: 1, routePath: 'r', hostMatchers: [], pathMatchers: ['/os/*'], terminal: false, handlerTypes: [], otherDials: [] })
+        const b = siblingFingerprint({ index: 1, routePath: 'r', hostMatchers: [], pathMatchers: ['/os2/*'], terminal: false, handlerTypes: [], otherDials: [] })
+        return a !== b
+      })(), true)
+      t('…and when terminality changes, because that changes what runs next', (() => {
+        const a = siblingFingerprint({ index: 2, routePath: 'r', hostMatchers: [], pathMatchers: ['/*'], terminal: false, handlerTypes: [], otherDials: [] })
+        const b = siblingFingerprint({ index: 2, routePath: 'r', hostMatchers: [], pathMatchers: ['/*'], terminal: true, handlerTypes: [], otherDials: [] })
+        return a !== b
+      })(), true)
+
+      const d = decide(probe({ routes: [live()] }))
+      const ft = d.blockers.filter((b) => /NOT a lossless detach/.test(b))
+      t('decide() REFUSES on the fall-through, as a blocker of its own', ft.length, 1)
+      t('…it names the exposed backend', /stylique-dashboard:80/.test(ft[0]), true)
+      t('…it states the decision is the owner\'s', /OWNER DECISION REQUIRED/.test(ft[0]), true)
+      t('…it offers the explicit-404/410 option', /static_response \(404 or 410\)/.test(ft[0]), true)
+      t('…it offers the intentional-fallback option', /DECLARE the fallback intentional/.test(ft[0]), true)
+      t('…and encodes NEITHER as a patch', d.patch, null)
+
+      // OLD-HEAD COUNTEREXAMPLE. Before this gate the classification carried no
+      // post-removal analysis at all, and the only thing standing between that
+      // verdict and a fall-through was the patch builder not being written yet.
+      // A missing analysis must refuse on its own terms.
+      t('OLD HEAD: a classification with no post-removal analysis is REFUSED',
+        postRemovalBlockers({ ...c, postRemoval: undefined })
+          .some((b) => /never analysed/.test(b)), true)
+      // The old extractor emitted neither `terminal` nor `parentRoutesCount`.
+      // Fed that, the gate must fail closed, not read absence as "nothing else
+      // matches".
+      t('OLD HEAD: a chain with no parent route count fails CLOSED', (() => {
+        const stripped = c.handlers.map((h) => ({
+          ...h,
+          matcherChain: h.matcherChain.map(({ parentRoutesCount, ...rest }) => rest),
+        }))
+        const r = postRemovalRouting(stripped, c.exclusiveRoute)
+        return r.supported === false && /how many routes the parent array holds/.test(r.reason)
+      })(), true)
+      t('…and an incomplete sibling list fails CLOSED', (() => {
+        const short = c.handlers.map((h) => ({
+          ...h,
+          matcherChain: h.matcherChain.map((x) => (x.parentRoutesArrayPath === SUBR ? { ...x, parentRoutesCount: 4 } : x)),
+        }))
+        const r = postRemovalRouting(short, c.exclusiveRoute)
+        return r.supported === false && /only 3 could be modelled/.test(r.reason)
+      })(), true)
+      t('…and a path matcher shape the model does not represent fails CLOSED', (() => {
+        const weirdPath = c.handlers.map((h) => ({
+          ...h,
+          matcherChain: h.matcherChain.map((x) => (x.routeIndexInParent === 1 && x.parentRoutesArrayPath === SUBR
+            ? { ...x, path: ['/os/*/edit'] } : x)),
+        }))
+        const r = postRemovalRouting(weirdPath, c.exclusiveRoute)
+        return r.supported === false && /this model does not represent/.test(r.reason)
+      })(), true)
+    }
+
+    // ORDER PROOF. The analysis must read the parent array as an ORDERED list,
+    // not a set: only siblings AFTER the removed index can take over, and the
+    // FIRST of those that matches is the one that does.
+    {
+      const ordered = route({
+        routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+        handlers: [
+          inert(4),
+          nested(1, '/os/*', 'stylique-os:4100', { siblingCount: 4 }),
+          nested(2, '/os/legacy', 'postiz:5000', { siblingCount: 4 }),
+          nested(3, '/*', 'stylique-dashboard:80', { siblingCount: 4 }),
+        ],
+      })
+      const co = classifyRoute(ordered, TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+      const o = co.postRemoval.outcomes[0]
+      t('ORDER: an exact-path sibling that does not match is skipped', o.landedRoutePath, `${SUBR}/3`)
+      t('…and the backend named is the one that actually takes over', o.exposedDials.join(','), 'stylique-dashboard:80')
+      // ORDER, THE OTHER DIRECTION. Index 0 in the live shape is the inert
+      // headers/encode route with NO path matchers, so it matches every request.
+      // Reading the parent array as a SET rather than an ordered list would land
+      // the probe there, report "no backend reached", and call a fall-through a
+      // clean detach. Earlier siblings must never be candidates.
+      t('ORDER: an EARLIER catch-all sibling is never what takes over',
+        c.postRemoval.outcomes[0].landedRoutePath === `${SUBR}/0`, false)
+      t('…and a set-shaped reading would have said the opposite', (() => {
+        // Same siblings, same probe, ordering constraint removed by hand.
+        const sibs = siblingModel(c.handlers, SUBR)
+        const asSet = sibs.filter((s) => s.index !== 1)
+        const first = asSet.find((s) => s.pathMatchers.length === 0
+          || s.pathMatchers.some((p) => pathMatcherMatches(p, '/os/probe') === true))
+        return first.index === 0 && first.reachesOther === false
+      })(), true)
+    }
+
+    // POSITIVE CONTROL 1: the sibling after the target serves a DIFFERENT path.
+    // Nothing matches the removed paths, Caddy answers 404, and the removal is
+    // a genuine detach. Same code, same shape, opposite verdict — which is what
+    // makes the refusal above a finding rather than a blanket "no".
+    {
+      const isolatedCfg = route({
+        routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+        handlers: [
+          inert(3),
+          nested(1, '/os/*', 'stylique-os:4100'),
+          nested(2, '/app/*', 'stylique-dashboard:80'),
+        ],
+      })
+      const ci = classifyRoute(isolatedCfg, TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+      t('POSITIVE: with no later sibling matching /os/*, the removal IS isolated',
+        ci.postRemoval.isolated, true)
+      t('…the path is left unserved, which is what a detach means', ci.postRemoval.outcomes[0].outcome, 'unserved')
+      t('…and NO fall-through blocker is raised', postRemovalBlockers(ci).length, 0)
+
+      const d = decide(probe({ routes: [isolatedCfg] }))
+      t('…no blocker mentions a fall-through', d.blockers.some((b) => /lossless detach/.test(b)), false)
+      t('…the run is patchable', d.patchable, true)
+
+      // THE EXACT CANDIDATE. One step, and it removes the ROUTE OBJECT — never
+      // an upstream entry, which would leave /os/* matching with nothing behind
+      // it.
+      const step = d.patch.steps[0]
+      t('…and the candidate removes the nested route object', step.action,
+        'remove the NESTED ROUTE OBJECT from its parent routes array')
+      t('…naming the exact route', step.configPath, `${SUBR}/1`)
+      t('…its parent array', step.parentRoutesArrayPath, SUBR)
+      t('…and its index', step.routeIndexInParent, 1)
+
+      // The simulation is carried WITH the patch, not left in the reasoning.
+      t('…the simulation proves the target unreachable afterwards', step.simulation.targetUnreachableAfter, true)
+      t('…and that the removed path is left unserved', step.simulation.pathsLeftUnserved.join(','), '/os/probe')
+      t('…and that nothing newly reaches another backend', step.simulation.pathsNewlyReachingOtherBackends.length, 0)
+
+      // PRECONDITIONS PIN THE POSITION. An index is meaningless without proof
+      // that the array is the one that was audited.
+      t('…every sibling is pinned by fingerprint in the preconditions',
+        step.preconditions.filter((p) => /fingerprint sha256 == [0-9a-f]{64}/.test(p)).length, 3)
+      t('…and the array length is pinned too',
+        step.preconditions.some((p) => /holds exactly 3 routes/.test(p)), true)
+      t('…and the 404 outcome is stated as a precondition to verify',
+        step.preconditions.some((p) => /\/os\/probe matches no route and Caddy answers 404/.test(p)), true)
+
+      // VALIDATE BEFORE RELOAD. A bad config does not break one route, it drops
+      // the proxy.
+      t('…the candidate must be caddy-validated before any reload',
+        step.validate.some((v) => /^caddy validate --config/.test(v)), true)
+
+      // ROLLBACK IS A BACKUP FILE. The report cannot rebuild the route it
+      // deleted, and it says so instead of implying otherwise.
+      t('…rollback is a byte-for-byte restore, not a reconstruction',
+        step.rollback.some((r) => /CANNOT reconstruct the deleted route/.test(r)), true)
+      t('…and it names the digest the backup must match',
+        step.rollback.some((r) => r.includes('b'.repeat(64))), true)
+
+      // MUTATION CONTROL: put the dashboard back on /*, and the same code
+      // refuses and drafts nothing.
+      const exposedCfg = route({
+        routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+        handlers: [inert(3), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/*', 'stylique-dashboard:80')],
+      })
+      const d2 = decide(probe({ routes: [exposedCfg] }))
+      t('MUTATION CONTROL: widen the sibling to /* and the candidate disappears', d2.patch, null)
+    }
+
+    // A SECOND ROUTE STILL DIALLING THE TARGET. The subtree reaching only the
+    // target never proved the target is reached only from that subtree.
+    {
+      const isolatedCfg = route({
+        routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+        handlers: [inert(3), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/app/*', 'stylique-dashboard:80')],
+      })
+      const elsewhere = route({
+        server: 'srv0', routeIndex: 1, routePath: 'apps/http/servers/srv0/routes/1',
+        hostMatchers: ['admin.example'], pathMatchers: [],
+        handlers: [{
+          handlerPath: 'apps/http/servers/srv0/routes/1/handle/0', position: 0, handler: 'reverse_proxy',
+          addressable: true, upstreams: [{ index: 0, dial: 'stylique-os:4100', extraKeyCount: 0 }],
+          upstreamDials: ['stylique-os:4100'], upstreamCount: 1,
+          ownerRoutePath: 'apps/http/servers/srv0/routes/1', nestingDepth: 0,
+          matcherChain: [ctx('apps/http/servers/srv0/routes/1', ['admin.example'], [], 1,
+            'apps/http/servers/srv0/routes', { parentRoutesCount: 2 })],
+          unsupportedMatcherKeys: [],
+        }],
+      })
+      const d = decide(probe({ routes: [isolatedCfg, elsewhere] }))
+      t('a second route still dialling the target REFUSES the removal',
+        d.blockers.some((b) => /still reached by route/.test(b)), true)
+      t('…and no candidate is drafted', d.patch, null)
+      const sim = d.impacted.find((x) => x.verdict === 'nested-route-exclusive').simulation
+      t('…the simulation records the removal as NOT lossless', sim.isLosslessDetach, false)
+      t('…and that the target stays reachable', sim.targetUnreachableAfter, false)
+      t('…naming the route that keeps it reachable', sim.routesStillReachingTarget.join(','), 'srv0#1')
+    }
+
+    // THE PATCH BUILDER'S OWN GUARD. decide() refuses before candidatePatch is
+    // ever called, so that guard is unreachable through the normal path — which
+    // is exactly why it is tested directly. "The caller checks" is how an
+    // unproven deletion ships the day someone adds a second caller.
+    {
+      const p = probe({ routes: [live()] })
+      const cl = classifyRoute(live(), TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+      t('candidatePatch drafts NOTHING for a non-lossless nested removal, called directly',
+        candidatePatch(p, [cl], [cl]).steps.length, 0)
+      const clean = classifyRoute(route({
+        routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+        handlers: [inert(3), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/app/*', 'stylique-dashboard:80')],
+      }), TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+      t('…and DOES draft one when the simulation is lossless',
+        candidatePatch(p, [clean], [clean]).steps.length, 1)
+    }
+
+    // THE REPORT A HUMAN READS. A refusal buried in a blockers array and absent
+    // from the rendered page is a refusal nobody sees.
+    {
+      const txt = render(decide(probe({ routes: [live()] })))
+      t('the report shows the fall-through verdict', /POST-REMOVAL    : NOT ISOLATED/.test(txt), true)
+      t('…the per-path outcome table', /\/os\/probe  =>  \[exposes-backend\]/.test(txt), true)
+      t('…where the request would land', new RegExp(`${SUBR}/2 -> stylique-dashboard:80`).test(txt), true)
+      t('…and every sibling with its terminality and fingerprint',
+        (txt.match(/terminal=false  handlers=/g) ?? []).length, 3)
+      // The exact matcher stack, outermost first, per impacted handler.
+      t('…the report shows the full ancestor matcher stack',
+        new RegExp(`${OUTER}  host=138-201-119-239\\.sslip\\.io  path=\\*`).test(txt), true)
+      t('…including the nested route\'s own path matcher',
+        new RegExp(`${SUBR}/1  host=\\*  path=/os/\\*`).test(txt), true)
+      // ABSENT EVIDENCE READS AS ABSENT. A probe that never emitted `terminal`
+      // must render "(not reported)", not a confident "false".
+      t('…and a chain with no terminal field says so rather than assuming false', (() => {
+        const stripped = live()
+        stripped.handlers = stripped.handlers.map((h) => ({
+          ...h, matcherChain: h.matcherChain.map(({ terminal, ...rest }) => rest),
+        }))
+        return /terminal=\(not reported\)/.test(render(decide(probe({ routes: [stripped] }))))
+      })(), true)
+      const ok = render(decide(probe({
+        routes: [route({
+          routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+          handlers: [inert(3), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/app/*', 'stylique-dashboard:80')],
+        })],
+      })))
+      t('the isolated case renders as a real detach', /POST-REMOVAL    : isolated \(a real detach\)/.test(ok), true)
+      t('…and its candidate carries the simulation and the rollback',
+        /SIMULATED   : target unreachable after = true/.test(ok) && /CANNOT reconstruct the deleted route/.test(ok), true)
+    }
+
+    // POSITIVE CONTROL 2: an explicit terminal static_response absorbs the path.
+    // The route keeps answering — deliberately, with a 410 — and no backend is
+    // newly exposed. This is option (a) from the refusal above, proved to pass.
+    {
+      const sibs = [
+        { index: 1, routePath: `${SUBR}/1`, pathMatchers: ['/os/*'], hostMatchers: [], terminal: false, group: null, handlerTypes: new Set(['reverse_proxy']), reachesTarget: true, reachesOther: false, otherDials: [] },
+        { index: 2, routePath: `${SUBR}/2`, pathMatchers: ['/os/*'], hostMatchers: [], terminal: true, group: null, handlerTypes: new Set(['static_response']), reachesTarget: false, reachesOther: false, otherDials: [] },
+        { index: 3, routePath: `${SUBR}/3`, pathMatchers: ['/*'], hostMatchers: [], terminal: false, group: null, handlerTypes: new Set(['reverse_proxy']), reachesTarget: false, reachesOther: true, otherDials: ['stylique-dashboard:80'] },
+      ]
+      const ft = fallThroughAfterRemoval(sibs, 1)
+      t('POSITIVE: a static_response sibling matches before the dashboard does',
+        ft.results[0].landed.routePath, `${SUBR}/2`)
+      t('…and it reaches no backend at all', ft.results[0].landed.reachesOther, false)
+      // Same list without the static_response: the dashboard is exposed. The
+      // static route is therefore load-bearing, not decoration.
+      const without = fallThroughAfterRemoval(sibs.filter((s) => s.index !== 2), 1)
+      t('MUTATION CONTROL: drop the static_response and the dashboard IS exposed',
+        without.results[0].landed.routePath, `${SUBR}/3`)
+    }
+
+    // A later sibling that reaches the target too means the route was never
+    // exclusively the target's, and the removal detaches nothing.
+    {
+      const sibs = [
+        { index: 0, routePath: `${SUBR}/0`, pathMatchers: ['/os/*'], hostMatchers: [], terminal: false, group: null, handlerTypes: new Set(['reverse_proxy']), reachesTarget: true, reachesOther: false, otherDials: [] },
+        { index: 1, routePath: `${SUBR}/1`, pathMatchers: ['/os/*'], hostMatchers: [], terminal: false, group: null, handlerTypes: new Set(['reverse_proxy']), reachesTarget: true, reachesOther: false, otherDials: [] },
+      ]
+      sibs.declaredCount = 2
+      const r = postRemovalRouting(
+        [{ matcherChain: [{ ...sibs[0], parentRoutesArrayPath: SUBR, routeIndexInParent: 0, path: ['/os/*'], host: [], parentRoutesCount: 2, handlerTypes: ['reverse_proxy'] }], targetUpstreams: [{ index: 0, dial: 'stylique-os:4100' }], keepUpstreams: [] },
+          { matcherChain: [{ ...sibs[1], parentRoutesArrayPath: SUBR, routeIndexInParent: 1, path: ['/os/*'], host: [], parentRoutesCount: 2, handlerTypes: ['reverse_proxy'] }], targetUpstreams: [{ index: 0, dial: 'stylique-os:4100' }], keepUpstreams: [] }],
+        { parentRoutesArrayPath: SUBR, routeIndexInParent: 0 },
+      )
+      t('a later sibling reaching the target is reported, not ignored', r.outcomes[0].outcome, 'still-reaches-target')
+      t('…and it is not isolated', r.isolated, false)
+      t('…and it blocks with the contradiction named', postRemovalBlockers({
+        server: 'srv0', routeIndex: 0, exclusiveRoute: { routePath: `${SUBR}/0` }, postRemoval: r,
+      }).some((b) => /never exclusively the target/.test(b)), true)
+    }
 
     // HONEST SCOPE NOTE: the `excl.routePath !== base.routePath` guard in the
     // would-orphan branch is defence in depth and is NOT provably load-bearing.

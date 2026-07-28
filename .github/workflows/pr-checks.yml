@@ -153,6 +153,13 @@ jobs:
       #   structural    — a stage changed only what its bound plan permitted.
       - name: VPS route-impact classification + patch generation (offline selftest)
         run: node scripts/ci/assert_route_impact.mjs --selftest
+      # The classifier's tests use FIXTURES, which pass whether or not the
+      # extractor actually emits that shape. Both prior rejections of this work
+      # were extractor defects a fixture cannot catch, so the extractor is run
+      # for real here — its python is pulled out of the shell script and fed
+      # synthetic configs on stdin. No host is contacted.
+      - name: VPS route extractor (real program, synthetic configs)
+        run: node scripts/ci/check_route_extractor.mjs
       - name: VPS plan execution + structural delta (typed manifest, least privilege)
         run: |
           node scripts/ci/emit_plan_commands.mjs --selftest

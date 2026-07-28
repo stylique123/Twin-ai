@@ -138,7 +138,20 @@ def matchers_of(route):
         for pp in m.get("path", []) or []:
             if isinstance(pp, str):
                 paths.append(pp)
-    return {"host": hosts, "path": paths, "unsupportedMatcherKeys": unsupported}
+    return {"host": hosts, "path": paths, "unsupportedMatcherKeys": unsupported,
+            # ORDER AND TERMINALITY DECIDE WHERE A REQUEST GOES NEXT. A route
+            # marked terminal stops evaluation of its siblings; without it,
+            # deleting a route lets its paths fall through to whatever matches
+            # after it. That is a routing change, not a detach.
+            "terminal": bool(route.get("terminal")),
+            # A route GROUP is mutual exclusion among siblings: once one member
+            # matches, the rest of that group is skipped. It never widens what a
+            # later route can serve, so the "first later sibling that matches"
+            # model stays correct with or without it — but it is reported so a
+            # reviewer sees the ordering rules the route was written under.
+            "group": route.get("group") if isinstance(route.get("group"), str) else None,
+            "handlerTypes": [h.get("handler") for h in (route.get("handle") or [])
+                             if isinstance(h, dict) and isinstance(h.get("handler"), str)]}
 
 
 def walk(handlers, base, acc, route_path, chain):
@@ -203,6 +216,7 @@ def walk(handlers, base, acc, route_path, chain):
                 sub_ctx["routePath"] = sub_route_path
                 sub_ctx["routeIndexInParent"] = k
                 sub_ctx["parentRoutesArrayPath"] = "%s/routes" % path
+                sub_ctx["parentRoutesCount"] = len(h.get("routes", []) or [])
                 walk(sub.get("handle", []), sub_route_path + "/handle", acc,
                      sub_route_path, chain + [sub_ctx])
 
@@ -271,6 +285,12 @@ for srv_name, srv in servers.items():
         outer["routePath"] = route_path
         outer["routeIndexInParent"] = idx
         outer["parentRoutesArrayPath"] = "apps/http/servers/%s/routes" % srv_name
+        # THE DENOMINATOR. The sibling model downstream is reconstructed from
+        # handlers, so a sibling route carrying no handlers at all leaves no
+        # trace in it. Without the true array length, a fall-through analysis
+        # would silently reason over a SUBSET of the siblings and could declare
+        # a path unserved because the route that serves it was never modelled.
+        outer["parentRoutesCount"] = len(srv.get("routes", []) or [])
         hosts, paths = outer["host"], outer["path"]
         acc = []
         walk(route.get("handle", []), route_path + "/handle", acc, route_path, [outer])
