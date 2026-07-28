@@ -42,6 +42,46 @@ export function identities(s) {
   return s.split(/\s+/).filter((x) => x.length > 0)
 }
 
+/** A real IPv4/IPv6 literal, octets validated. */
+export function isIp(s) {
+  if (typeof s !== 'string') return false
+  if (/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(s)) {
+    return s.split('.').every((o) => String(Number(o)) === o && Number(o) <= 255)
+  }
+  return /^[0-9a-fA-F]*:[0-9a-fA-F:]+$/.test(s) && !/:::/.test(s)
+}
+
+/** A plausible container name / network alias. */
+export function isName(s) {
+  return typeof s === 'string' && /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(s)
+}
+
+/**
+ * Identities that are actually addresses.
+ *
+ * THE DEFECT THIS CLOSES. `docker inspect` prints the literal "invalid IP" when a
+ * container has no current address, and an EXITED container has none. Split on
+ * whitespace that became the identities "invalid" and "IP" — so a dial of
+ * "IP:4100" would have MATCHED the target by name, and the report stated an
+ * address the host does not have. An absent address is absent.
+ */
+export const ipIdentities = (s) => identities(s).filter(isIp)
+export const nameIdentities = (s) => identities(s).filter(isName)
+
+/** The port half of a `host:port` dial, or null. */
+export function dialPort(dial) {
+  if (typeof dial !== 'string' || !dial.includes(':')) return null
+  const p = dial.slice(dial.lastIndexOf(':') + 1)
+  return /^\d+$/.test(p) ? Number(p) : null
+}
+
+/** The host half of a `host:port` dial, brackets stripped. */
+export function dialHost(dial) {
+  if (typeof dial !== 'string' || dial.length === 0) return null
+  const h = dial.includes(':') ? dial.slice(0, dial.lastIndexOf(':')) : dial
+  return h.replace(/^\[|\]$/g, '')
+}
+
 /**
  * Does this dial reach the target?
  *
@@ -71,7 +111,8 @@ export function dialMatches(dial, ids) {
  *
  * Returns null when it cannot be classified.
  */
-export function classifyRoute(route, targetIds, protectedIds) {
+export function classifyRoute(route, targetIds, protectedIds, opts = {}) {
+  const { targetPort = null, targetHasIp = true } = opts
   if (route === null || typeof route !== 'object') return null
   if (!Array.isArray(route.handlers)) return null
 
@@ -93,6 +134,15 @@ export function classifyRoute(route, targetIds, protectedIds) {
       const p = dialMatches(d, protectedIds)
       if (t === null || p === null || typeof u?.index !== 'number') { unknownDial = true; continue }
       if (t) { targets.push({ index: u.index, dial: d }); continue }
+      // UNATTRIBUTABLE, NOT UNAFFECTED. If the target currently has no address —
+      // it is exited — then a dial that is a LITERAL IP on the target's port
+      // could be its stale address, and nothing here can prove otherwise. Name
+      // matching cannot settle it, so the route is undetermined. Calling it
+      // unaffected would be a claim the evidence does not support.
+      if (!p && !targetHasIp && targetPort !== null
+          && isIp(dialHost(d)) && dialPort(d) === targetPort) {
+        unknownDial = true
+      }
       // Protected OR unrecognised. An unrecognised backend is not the target, so
       // it must survive: stranding something we failed to identify is the same
       // mistake as stranding something we did.
@@ -227,11 +277,15 @@ export function decide(a) {
     blockers.push('the runtime configuration hash is missing or malformed')
   }
 
-  const targetIds = [a.target, ...identities(a.targetAliases), ...identities(a.targetIps)].filter(Boolean)
-  const protectedIds = identities(a.protectedIdentities)
+  const targetIds = [a.target, ...nameIdentities(a.targetAliases), ...ipIdentities(a.targetIps)].filter(Boolean)
+  const protectedIds = nameIdentities(a.protectedIdentities)
+  // targetPort is USED, not merely reported: it is what makes an unrecognised
+  // literal-IP dial undetermined when the target has no address of its own.
+  const targetHasIp = ipIdentities(a.targetIps).length > 0
+  const targetPort = Number.isInteger(a.targetPort) ? a.targetPort : null
 
   const routes = Array.isArray(a.routes) ? a.routes : []
-  const classified = routes.map((r) => classifyRoute(r, targetIds, protectedIds))
+  const classified = routes.map((r) => classifyRoute(r, targetIds, protectedIds, { targetPort, targetHasIp }))
   if (classified.some((c) => c === null)) blockers.push('a route could not be classified')
 
   const impacted = classified.filter((c) => c && c.verdict !== 'unaffected')
@@ -691,6 +745,104 @@ async function selftest() {
   const v = (p) => classifyRoute(p, TARGET_IDS, PROT_IDS).verdict
 
   console.log('-- dial matching')
+  console.log('-- IDENTITY VALIDATION (regression: run 30328203719)')
+  // OLD HEAD: docker's "invalid IP" placeholder split into two identities, and
+  // "IP" is a name a dial can match. This is the counterexample.
+  const OLD_IDS = ['stylique-os', ...identities('invalid IP')]
+  t('OLD HEAD: "invalid IP" produced the identities invalid,IP',
+    identities('invalid IP').join(','), 'invalid,IP')
+  t('OLD HEAD: a dial of IP:4100 FALSE-MATCHED the target', dialMatches('IP:4100', OLD_IDS), true)
+  t('CORRECTED: "invalid IP" yields NO address identities', ipIdentities('invalid IP').length, 0)
+  t('CORRECTED: "<no value>" yields none either', ipIdentities('<no value>').length, 0)
+  t('CORRECTED: a real address survives', ipIdentities('172.18.0.5').join(','), '172.18.0.5')
+  t('CONTROL: the corrected identity set no longer false-matches IP:4100',
+    dialMatches('IP:4100', ['stylique-os', ...ipIdentities('invalid IP')]), false)
+  t('an octet above 255 is not an address', isIp('999.1.1.1'), false)
+  t('a bare word is not an address', isIp('IP'), false)
+  t('an ipv6 literal is an address', isIp('fd00::5'), true)
+  t('nameIdentities rejects docker\'s placeholder but keeps names',
+    nameIdentities('stylique-os <no value>').join(','), 'stylique-os')
+  t('dialPort reads the port', dialPort('172.18.0.5:4100'), 4100)
+  t('dialPort on a bracketed ipv6 dial', dialPort('[fd00::5]:4100'), 4100)
+  t('dialHost strips brackets', dialHost('[fd00::5]:4100'), 'fd00::5')
+
+  console.log('-- …AND THROUGH decide(), NOT ONLY THE HELPERS')
+  // The helper tests above passed while decide() still used the UNFILTERED
+  // identities: reverting the filter broke nothing, which means those tests
+  // measured the helper and not the thing that uses it. These go through decide().
+  t('OLD-HEAD PATH: an "invalid IP" placeholder + a dial of IP:4100 was attributed to the target', (() => {
+    const bad = probe({ targetIps: 'invalid IP',
+      routes: [route({ handlers: [hdl(0, ['IP:4100', 'stylique-dashboard:80'])] })] })
+    const ids = [bad.target, ...identities(bad.targetAliases), ...identities(bad.targetIps)].filter(Boolean)
+    return classifyRoute(bad.routes[0], ids, PROT_IDS, { targetPort: 4100, targetHasIp: true })
+      .handlers[0].targetUpstreams.length
+  })(), 1)
+  t('CORRECTED PATH: decide() no longer attributes it', (() => {
+    const good = probe({ targetIps: 'invalid IP',
+      routes: [route({ handlers: [hdl(0, ['IP:4100', 'stylique-dashboard:80'])] })] })
+    const d = decide(good)
+    return d.classified[0].handlers[0].targetUpstreams.length
+  })(), 0)
+  t('CONTROL: a REAL address is still attributed through decide()', (() => {
+    const good = probe({ targetIps: '172.18.0.5',
+      routes: [route({ handlers: [hdl(0, ['172.18.0.5:4100', 'stylique-dashboard:80'])] })] })
+    return decide(good).classified[0].handlers[0].targetUpstreams.length
+  })(), 1)
+  t('decide(): an EXITED target + unrecognised literal-IP dial on the target port BLOCKS', (() => {
+    const exited = probe({ targetIps: '', targetPresent: true,
+      routes: [route({ handlers: [hdl(0, ['172.18.0.77:4100'])] })] })
+    const d = decide(exited)
+    return d.classified[0].verdict === 'undetermined' && d.patchable === false
+  })(), true)
+  t('CONTROL: the same host with a REAL target address does not block', (() => {
+    const live = probe({ targetIps: '172.18.0.5',
+      routes: [route({ handlers: [hdl(0, ['172.18.0.77:4100'])] })] })
+    return decide(live).classified[0].verdict
+  })(), 'unaffected')
+
+  // HONEST SCOPE NOTE. Filtering targetIps is load-bearing and proved above.
+  // Filtering protectedIdentities is DEFENCE IN DEPTH with no demonstrated
+  // exploit path: dialMatches already skips empty ids, and a token like "IP" is
+  // a structurally valid name, so the filter only removes bracketed junk such as
+  // "<no" / "value>". Reverting it breaks no test, and that is recorded here
+  // rather than papered over with a contrived case.
+  t('a bracketed placeholder cannot become a protected identity',
+    nameIdentities('stylique-dashboard <no value>').join(','), 'stylique-dashboard')
+  t('…though a bare word like "IP" IS a structurally valid name, and is kept',
+    nameIdentities('IP').join(','), 'IP')
+
+  console.log('-- AN EXITED TARGET MAKES A LITERAL-IP DIAL UNDETERMINED')
+  const litRoute = {
+    server: 'srv0', routeIndex: 0, hostMatchers: ['x'], pathMatchers: [],
+    handlers: [{
+      handlerPath: 'apps/http/servers/srv0/routes/0/handle/0', position: 0,
+      handler: 'reverse_proxy', addressable: true,
+      upstreams: [{ index: 0, dial: '172.18.0.77:4100', extraKeyCount: 0 }],
+    }],
+  }
+  const NO_IP_IDS = ['stylique-os']
+  t('target EXITED (no address) + literal-IP dial on the target port -> undetermined',
+    classifyRoute(litRoute, NO_IP_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: false }).verdict, 'undetermined')
+  // NEGATIVE CONTROLS: the rule must not fire when it should not.
+  t('CONTROL: a DIFFERENT port is not undetermined',
+    classifyRoute(litRoute, NO_IP_IDS, PROT_IDS, { targetPort: 9999, targetHasIp: false }).verdict, 'unaffected')
+  t('CONTROL: when the target HAS an address, name matching settles it',
+    classifyRoute(litRoute, NO_IP_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true }).verdict, 'unaffected')
+  t('CONTROL: a NAMED protected upstream on the target port is not undetermined', (() => {
+    const r = JSON.parse(JSON.stringify(litRoute))
+    r.handlers[0].upstreams = [{ index: 0, dial: 'stylique-dashboard:4100', extraKeyCount: 0 }]
+    return classifyRoute(r, NO_IP_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: false }).verdict
+  })(), 'unaffected')
+  t('CONTROL: targetPort is genuinely consulted — null port cannot trigger it',
+    classifyRoute(litRoute, NO_IP_IDS, PROT_IDS, { targetPort: null, targetHasIp: false }).verdict, 'unaffected')
+  // A literal IP that IS a known protected backend is attributable, so the rule
+  // must stay quiet. Found by a fixture collision: 172.18.0.9 is in PROT_IDS.
+  t('CONTROL: a literal IP that is a KNOWN protected backend is not undetermined', (() => {
+    const r = JSON.parse(JSON.stringify(litRoute))
+    r.handlers[0].upstreams = [{ index: 0, dial: '172.18.0.9:4100', extraKeyCount: 0 }]
+    return classifyRoute(r, NO_IP_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: false }).verdict
+  })(), 'unaffected')
+
   t('a dial by container name matches', dialMatches('stylique-os:4100', TARGET_IDS), true)
   t('a dial by ip matches', dialMatches('172.18.0.5:4100', TARGET_IDS), true)
   t('an unrelated dial does not match', dialMatches('postiz:5000', TARGET_IDS), false)

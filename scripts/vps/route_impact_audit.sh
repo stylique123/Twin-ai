@@ -51,66 +51,24 @@ j_bool() { case "${1:-}" in true) printf 'true' ;; false) printf 'false' ;; *) p
 PARSER=""
 if command -v python3 >/dev/null 2>&1; then PARSER=python3; fi
 
-# ---- identify the target: its names, ips and networks -----------------------
-target_ips="$(docker inspect "$TARGET" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | tr -s ' ')"
-target_aliases="$(docker inspect "$TARGET" --format '{{range $k, $v := .NetworkSettings.Networks}}{{range $v.Aliases}}{{.}} {{end}}{{end}}' 2>/dev/null | tr -s ' ')"
+# ---- PYTHON PROGRAMS, PASSED QUOTE-SAFELY ---------------------------------
+#
+# THE DEFECT THIS CLOSES. These programs were embedded as
+# `python3 -c '...multi-line program...'`. A bash single-quoted string ENDS at
+# the next apostrophe, and the route extractor's own prose contained several —
+# "each handler's OWN upstream list", "the target's handler". Bash terminated
+# the argument mid-docstring and handed python a mutilated program; python died
+# with `unterminated triple-quoted string`, `2>/dev/null` swallowed the message,
+# and the caller recorded an unexplained `null`. Every route fact this probe
+# exists to produce was silently absent, and nothing said why.
+#
+# A quoted heredoc (<<'PY_EOF') performs NO expansion and NO quote processing,
+# so apostrophes, $, backticks and backslashes are ordinary characters. The
+# program is passed as one argument via "$VAR"; expanding a variable does not
+# re-scan its value for quotes, so the text cannot be re-split however it is
+# written. Runtime JSON still arrives on stdin.
 
-# Each protected container's dial identities, so a shared route is detected by
-# UPSTREAM rather than by guessing from the host matcher.
-protected_ids=""
-for c in $PROTECTED; do
-  ips="$(docker inspect "$c" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | tr -s ' ')"
-  protected_ids="$protected_ids $c $ips"
-done
-
-# ---- the LOADED configuration ----------------------------------------------
-caddy_present=false
-runtime_readable=""
-runtime_sha=""
-admin=""
-disk_path=""
-disk_sha=""
-disk_is_source=""
-routes_json="null"
-parse_ok=""
-boot_mount_root=""
-boot_mount_dest=""
-boot_mount_rw=""
-boot_mount_type=""
-boot_file_host=""
-boot_file_regular=""
-boot_file_readable=""
-boot_file_writable=""
-boot_file_sha=""
-boot_compose_file=""
-boot_compose_dir=""
-boot_compose_resolved=""
-caddy_pid=""
-id_host_source=""
-id_proc_root=""
-id_container=""
-findmnt_host=""
-mountinfo_rel=""
-caddy_argv=""
-caddy_env_keys=""
-keypaths_json="null"
-
-if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CTR"; then
-  caddy_present=true
-  for ep in http://localhost:2019/config/ http://127.0.0.1:2019/config/; do
-    rt="$(docker exec "$CADDY_CTR" sh -c "wget -qO- '$ep' 2>/dev/null || curl -sS '$ep' 2>/dev/null" 2>/dev/null)"
-    if [ -n "$rt" ] && printf '%s' "$rt" | head -c 1 | grep -q '[{[]'; then admin="$ep"; break; fi
-    rt=""
-  done
-
-  if [ -n "$rt" ]; then
-    runtime_readable=true
-    runtime_sha="$(printf '%s' "$rt" | sha256sum | cut -d' ' -f1)"
-
-    if [ -n "$PARSER" ]; then
-      # The extraction runs HERE, on the host, and prints only allowlisted
-      # fields. The full configuration never crosses the wire.
-      routes_json="$(printf '%s' "$rt" | python3 -c '
+PROG_ROUTES=$(cat <<'PY_EOF'
 import json, sys
 
 try:
@@ -288,15 +246,136 @@ print(json.dumps({"routes": rows, "keyPaths": key_paths(cfg),
                   "serverNames": sorted(servers.keys()),
                   "serverCount": len(servers),
                   "routeCountByServer": {k: len((v or {}).get("routes") or []) for k, v in servers.items() if isinstance(v, dict)}}))
-' 2>/dev/null)"
-      if [ -n "$routes_json" ] && [ "$routes_json" != "null" ]; then
-        combined="$routes_json"
-        routes_json="$(printf '%s' "$combined" | python3 -c 'import json,sys;print(json.dumps(json.load(sys.stdin)["routes"]))' 2>/dev/null)"
-        keypaths_json="$(printf '%s' "$combined" | python3 -c '
+PY_EOF
+)
+
+PROG_KEYPATHS=$(cat <<'PY_EOF'
 import json,sys
 d=json.load(sys.stdin)
 print(json.dumps({"keyPaths":d["keyPaths"],"serverNames":d["serverNames"],
-                  "serverCount":d["serverCount"],"routeCountByServer":d["routeCountByServer"]}))' 2>/dev/null)"
+                  "serverCount":d["serverCount"],"routeCountByServer":d["routeCountByServer"]}))
+PY_EOF
+)
+
+PROG_RESOLVE=$(cat <<'PY_EOF'
+import os, sys, json
+
+disk = os.environ["DISK_PATH"]
+best = None
+for line in sys.stdin:
+    parts = line.rstrip("\n").split("\t")
+    if len(parts) < 4:
+        continue
+    dest, src, rw, typ = parts[0], parts[1], parts[2], parts[3]
+    if not dest or not src:
+        continue
+    d = dest.rstrip("/") or "/"
+    # BOUNDARY-SAFE. "startswith(d)" alone would match /etc/caddy2 against a
+    # /etc/caddy mount and resolve to a file that does not exist.
+    if disk == d:
+        rel = ""
+    elif disk.startswith(d + "/"):
+        rel = disk[len(d) + 1:]
+    else:
+        continue
+    # Most specific mount wins: a /etc/caddy mount beats a / mount.
+    if best is None or len(d) > len(best[0]):
+        best = (d, src, rw, typ, rel)
+
+if best is None:
+    print(json.dumps({"mapped": False}))
+else:
+    d, src, rw, typ, rel = best
+    host = src if rel == "" else os.path.join(src, rel)
+    print(json.dumps({
+        "mapped": True, "dest": d, "root": src, "rw": rw, "type": typ,
+        "rel": rel, "host": host,
+    }))
+PY_EOF
+)
+
+
+# ---- identify the target: its names, ips and networks -----------------------
+# STRICT: docker's template prints "invalid IP" (and older versions "<no value>")
+# when a container has no current address — an EXITED container has none. Split on
+# whitespace those become the identities "invalid" and "IP", and a dial of the
+# form "IP:4100" would then MATCH the target by name. An absent address must be
+# represented as absent, never as a literal that can be matched.
+target_ips_raw="$(docker inspect "$TARGET" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | tr -s ' ')"
+target_ips="$(printf '%s' "$target_ips_raw" | tr ' ' '\n' \
+  | grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$|^[0-9a-fA-F]*:[0-9a-fA-F:]+$' \
+  | tr '\n' ' ' | sed 's/ *$//')"
+target_aliases="$(docker inspect "$TARGET" --format '{{range $k, $v := .NetworkSettings.Networks}}{{range $v.Aliases}}{{.}} {{end}}{{end}}' 2>/dev/null | tr -s ' ')"
+
+# Each protected container's dial identities, so a shared route is detected by
+# UPSTREAM rather than by guessing from the host matcher.
+protected_ids=""
+for c in $PROTECTED; do
+  ips="$(docker inspect "$c" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' 2>/dev/null | tr -s ' ')"
+  protected_ids="$protected_ids $c $ips"
+done
+
+# ---- the LOADED configuration ----------------------------------------------
+caddy_present=false
+runtime_readable=""
+runtime_sha=""
+admin=""
+disk_path=""
+disk_sha=""
+disk_is_source=""
+routes_json="null"
+parse_ok=""
+boot_mount_root=""
+boot_mount_dest=""
+boot_mount_rw=""
+boot_mount_type=""
+boot_file_host=""
+boot_file_regular=""
+boot_file_readable=""
+boot_file_writable=""
+boot_file_sha=""
+boot_compose_file=""
+boot_compose_dir=""
+boot_compose_resolved=""
+caddy_pid=""
+id_host_source=""
+id_proc_root=""
+id_container=""
+findmnt_host=""
+mountinfo_rel=""
+caddy_argv=""
+caddy_env_keys=""
+keypaths_json="null"
+
+if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CTR"; then
+  caddy_present=true
+  for ep in http://localhost:2019/config/ http://127.0.0.1:2019/config/; do
+    rt="$(docker exec "$CADDY_CTR" sh -c "wget -qO- '$ep' 2>/dev/null || curl -sS '$ep' 2>/dev/null" 2>/dev/null)"
+    if [ -n "$rt" ] && printf '%s' "$rt" | head -c 1 | grep -q '[{[]'; then admin="$ep"; break; fi
+    rt=""
+  done
+
+  if [ -n "$rt" ]; then
+    runtime_readable=true
+    runtime_sha="$(printf '%s' "$rt" | sha256sum | cut -d' ' -f1)"
+
+    if [ -n "$PARSER" ]; then
+      # The extraction runs HERE, on the host, and prints only allowlisted
+      # fields. The full configuration never crosses the wire.
+      # Exit status separates a PROGRAM failure (syntax error, crash) from a DATA
+      # failure (unparseable config, which the program reports as `null`, exit 0).
+      # The old code could not tell them apart: a broken parser and an unreadable
+      # config produced the same silent `null`.
+      if routes_json="$(printf '%s' "$rt" | python3 -c "$PROG_ROUTES" 2>/dev/null)"; then
+        parser_status=ok
+      else
+        parser_status=program_failed
+        routes_json=null
+      fi
+      if [ -n "$routes_json" ] && [ "$routes_json" != "null" ]; then
+        combined="$routes_json"
+        routes_json="$(printf '%s' "$combined" | python3 -c 'import json,sys;print(json.dumps(json.load(sys.stdin)["routes"]))' 2>/dev/null)"
+        keypaths_json="$(printf '%s' "$combined" | python3 -c "$PROG_KEYPATHS" 2>/dev/null)"
         [ -z "$keypaths_json" ] && keypaths_json="null"
         if [ -n "$routes_json" ] && [ "$routes_json" != "null" ]; then parse_ok=true; else parse_ok=false; routes_json="null"; fi
       else parse_ok=false; routes_json="null"; fi
@@ -314,10 +393,17 @@ print(json.dumps({"keyPaths":d["keyPaths"],"serverNames":d["serverNames"],
   # edit or an API call, so it is recorded as a fact rather than assumed.
   for p in /etc/caddy/Caddyfile /etc/caddy/Caddyfile.json /config/caddy/autosave.json; do
     if docker exec "$CADDY_CTR" test -f "$p" 2>/dev/null; then
-      c="$(docker exec "$CADDY_CTR" cat "$p" 2>/dev/null)"
-      if [ -n "$c" ]; then
+      # HASH THE FILE, NOT A COPY OF IT. This read the file with
+      # `c="$(docker exec ... cat)"` and hashed `$c`. Command substitution STRIPS
+      # TRAILING NEWLINES, so the digest described a byte string the file does not
+      # contain: a newline-terminated Caddyfile hashing 9c234e40… on disk came back
+      # as ec9b840b… here, and the probe reported a host/container DIVERGENCE that
+      # does not exist. Two runs were spent treating a shell artifact as a live
+      # configuration split. sha256sum runs INSIDE the container, on the path.
+      s_in="$(docker exec "$CADDY_CTR" sh -c "sha256sum '$p' 2>/dev/null | cut -d' ' -f1" 2>/dev/null)"
+      if [ -n "$s_in" ]; then
         disk_path="$p"
-        disk_sha="$(printf '%s' "$c" | sha256sum | cut -d' ' -f1)"
+        disk_sha="$s_in"
         break
       fi
     fi
@@ -353,41 +439,7 @@ print(json.dumps({"keyPaths":d["keyPaths"],"serverNames":d["serverNames"],
     mounts_raw="$(docker inspect "$CADDY_CTR" \
       --format '{{range .Mounts}}{{.Destination}}	{{.Source}}	{{.RW}}	{{.Type}}
 {{end}}' 2>/dev/null)"
-    resolved="$(printf '%s' "$mounts_raw" | DISK_PATH="$disk_path" python3 -c '
-import os, sys, json
-
-disk = os.environ["DISK_PATH"]
-best = None
-for line in sys.stdin:
-    parts = line.rstrip("\n").split("\t")
-    if len(parts) < 4:
-        continue
-    dest, src, rw, typ = parts[0], parts[1], parts[2], parts[3]
-    if not dest or not src:
-        continue
-    d = dest.rstrip("/") or "/"
-    # BOUNDARY-SAFE. "startswith(d)" alone would match /etc/caddy2 against a
-    # /etc/caddy mount and resolve to a file that does not exist.
-    if disk == d:
-        rel = ""
-    elif disk.startswith(d + "/"):
-        rel = disk[len(d) + 1:]
-    else:
-        continue
-    # Most specific mount wins: a /etc/caddy mount beats a / mount.
-    if best is None or len(d) > len(best[0]):
-        best = (d, src, rw, typ, rel)
-
-if best is None:
-    print(json.dumps({"mapped": False}))
-else:
-    d, src, rw, typ, rel = best
-    host = src if rel == "" else os.path.join(src, rel)
-    print(json.dumps({
-        "mapped": True, "dest": d, "root": src, "rw": rw, "type": typ,
-        "rel": rel, "host": host,
-    }))
-' 2>/dev/null)"
+    resolved="$(printf '%s' "$mounts_raw" | DISK_PATH="$disk_path" python3 -c "$PROG_RESOLVE" 2>/dev/null)"
 
     if [ -n "$resolved" ]; then
       boot_mount_root="$(printf '%s' "$resolved" | python3 -c 'import json,sys;d=json.load(sys.stdin);print(d.get("root") or "")' 2>/dev/null)"
