@@ -75,6 +75,9 @@ export function isName(s) {
 export const ipIdentities = (s) => identities(s).filter(isIp)
 export const nameIdentities = (s) => identities(s).filter(isName)
 
+/** A usable TCP port. */
+export const isPort = (p) => Number.isInteger(p) && p >= 1 && p <= 65535
+
 /** The port half of a `host:port` dial, or null. */
 export function dialPort(dial) {
   if (typeof dial !== 'string' || dial.length === 0) return null
@@ -115,6 +118,22 @@ export function dialHost(dial) {
  * misattribute another service's upstream to stylique-os. The port is used only
  * to strengthen a host match that already holds.
  */
+/**
+ * Does this dial reach the TARGET?
+ *
+ * SEPARATE FROM dialMatches ON PURPOSE. Target attribution REQUIRES a port, and
+ * an absent or malformed one must not silently degrade to host-wide matching —
+ * which is what happened when `targetPort` was missing: it became null,
+ * dialMatches read null as "no port restriction", and `stylique-os:9999` was
+ * classified as the 4100 target again. An unusable port makes the dial
+ * UNATTRIBUTABLE (null), which the classifier turns into `undetermined`, not
+ * into a patch.
+ */
+export function dialMatchesTarget(dial, ids, port) {
+  if (!isPort(port)) return null
+  return dialMatches(dial, ids, port)
+}
+
 export function dialMatches(dial, ids, expectPort = null) {
   if (typeof dial !== 'string' || dial.length === 0) return null
   const bare = dialHost(dial)
@@ -166,7 +185,7 @@ export function classifyRoute(route, targetIds, protectedIds, opts = {}) {
     const targets = []
     for (const u of ups) {
       const d = u?.dial
-      const t = dialMatches(d, targetIds, targetPort)
+      const t = dialMatchesTarget(d, targetIds, targetPort)
       const p = dialMatches(d, protectedIds)
       if (t === null || p === null || typeof u?.index !== 'number') { unknownDial = true; continue }
       if (t) { targets.push({ index: u.index, dial: d }); continue }
@@ -322,8 +341,17 @@ export function decide(a) {
   // The category is validated before it is trusted: an unknown value is itself a
   // refusal, so a probe that grows a fifth outcome cannot be read as a pass.
   const ps = a.parserStatus
-  if (ps !== undefined && !PARSER_STATUSES.includes(ps)) {
-    blockers.push(`the probe reported an unknown parser status ${JSON.stringify(ps)}`)
+  // MANDATORY EVIDENCE, NOT OPTIONAL METADATA. This read
+  // `ps !== undefined && !PARSER_STATUSES.includes(ps)`, so a probe that omitted
+  // the field entirely skipped the closed enum and was treated as fine. A status
+  // that is absent is not a status: an older probe, a truncated artifact and a
+  // crashed extractor all present as "no field", and none of them is evidence
+  // that the parser ran.
+  if (!PARSER_STATUSES.includes(ps)) {
+    blockers.push(
+      `the probe did not report a valid parser status (got ${JSON.stringify(ps)}); `
+      + `it must be one of ${PARSER_STATUSES.join(', ')}`,
+    )
   } else if (ps === 'program_failed') {
     blockers.push('the route extractor FAILED TO RUN (parser_status=program_failed) — this is a probe defect, not a host finding; no conclusion about routing may be drawn from this run')
   } else if (ps === 'unavailable') {
@@ -341,7 +369,15 @@ export function decide(a) {
   // targetPort is USED, not merely reported: it is what makes an unrecognised
   // literal-IP dial undetermined when the target has no address of its own.
   const targetHasIp = ipIdentities(a.targetIps).length > 0
-  const targetPort = Number.isInteger(a.targetPort) ? a.targetPort : null
+  // A malformed port is a refusal, never a licence to match host-wide.
+  const targetPort = a.targetPort
+  if (!isPort(targetPort)) {
+    blockers.push(
+      `the probe did not report a usable target port (got ${JSON.stringify(targetPort)}); `
+      + 'without it no upstream can be attributed to the target, and matching by host alone '
+      + 'would propose deleting every port the container serves',
+    )
+  }
 
   const routes = Array.isArray(a.routes) ? a.routes : []
   const classified = routes.map((r) => classifyRoute(r, targetIds, protectedIds, { targetPort, targetHasIp }))
@@ -768,6 +804,8 @@ function route(over = {}) {
 function probe(over = {}) {
   return {
     target: 'stylique-os', targetPort: 4100, targetPresent: true, restartPolicy: 'no',
+    // Mandatory evidence: a probe without a valid parser status is refused.
+    parserStatus: 'ok',
     targetIps: '172.18.0.5', targetAliases: '', protectedIdentities: PROT_IDS.join(' '),
     caddyPresent: true, caddyAdminEndpoint: 'http://localhost:2019/config/',
     caddyRuntimeReadable: true, caddyRuntimeConfigSha256: 'a'.repeat(64),
@@ -805,7 +843,9 @@ async function selftest() {
     if (got === exp) console.log(`  ok: ${name}`)
     else { console.error(`SELFTEST FAIL: ${name} => ${JSON.stringify(got)}, expected ${JSON.stringify(exp)}`); failed++ }
   }
-  const v = (p) => classifyRoute(p, TARGET_IDS, PROT_IDS).verdict
+  // targetPort is mandatory for target attribution, so every classification
+  // test must supply it — a test that omits it is now testing the refusal.
+  const v = (p) => classifyRoute(p, TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true }).verdict
 
   console.log('-- dial matching')
   console.log('-- IDENTITY VALIDATION (regression: run 30328203719)')
@@ -907,8 +947,11 @@ async function selftest() {
     r.handlers[0].upstreams = [{ index: 0, dial: 'stylique-dashboard:4100', extraKeyCount: 0 }]
     return classifyRoute(r, NO_IP_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: false }).verdict
   })(), 'unaffected')
-  t('CONTROL: targetPort is genuinely consulted — null port cannot trigger it',
-    classifyRoute(litRoute, NO_IP_IDS, PROT_IDS, { targetPort: null, targetHasIp: false }).verdict, 'unaffected')
+  // PREMISE INVERTED BY THE FAIL-CLOSED FIX. A null port used to mean "no port
+  // restriction", so this asserted 'unaffected'. It now means the dial cannot be
+  // attributed at all, which is the correct refusal.
+  t('a null targetPort makes attribution IMPOSSIBLE, not permissive',
+    classifyRoute(litRoute, NO_IP_IDS, PROT_IDS, { targetPort: null, targetHasIp: false }).verdict, 'undetermined')
   // A literal IP that IS a known protected backend is attributable, so the rule
   // must stay quiet. Found by a fixture collision: 172.18.0.9 is in PROT_IDS.
   t('CONTROL: a literal IP that is a KNOWN protected backend is not undetermined', (() => {
@@ -1137,16 +1180,76 @@ async function selftest() {
       const d = decide(probe({ parserStatus: 'unavailable', parsed: false, routes: [] }))
       return d.blockers.some((b) => /unavailable/.test(b))
     })(), true)
-    t('an UNKNOWN status is itself a refusal', (() => {
-      const d = decide(probe({ parserStatus: 'fine', routes: [] }))
-      return d.blockers.some((b) => /unknown parser status/.test(b))
+    // MANDATORY, NOT OPTIONAL. The check was `ps !== undefined && !includes(ps)`,
+    // so a probe that omitted the field entirely skipped the enum. An absent
+    // status is not a status: an older probe, a truncated artifact and a crashed
+    // extractor all present as "no field".
+    const noStatus = () => { const o = probe({ routes: [] }); delete o.parserStatus; return o }
+    t('OLD HEAD: a MISSING status raised no enum blocker', (() => {
+      const ps = noStatus().parserStatus
+      return ps !== undefined && !PARSER_STATUSES.includes(ps)   // the old condition
+    })(), false)
+    t('CORRECTED: a MISSING status BLOCKS', (() => {
+      const d = decide(noStatus())
+      return d.blockers.some((b) => /did not report a valid parser status/.test(b)) && d.patchable === false
     })(), true)
+    t('a NULL status blocks', (() => {
+      const d = decide(probe({ parserStatus: null, routes: [] }))
+      return d.blockers.some((b) => /did not report a valid parser status/.test(b)) && d.patchable === false
+    })(), true)
+    t('an UNKNOWN status blocks', (() => {
+      const d = decide(probe({ parserStatus: 'fine', routes: [] }))
+      return d.blockers.some((b) => /did not report a valid parser status/.test(b)) && d.patchable === false
+    })(), true)
+    t('a numeric status blocks', (() => {
+      const d = decide(probe({ parserStatus: 0, routes: [] }))
+      return d.blockers.some((b) => /did not report a valid parser status/.test(b))
+    })(), true)
+    t('POSITIVE: ok adds no status blocker', (() => {
+      const d = decide(probe({ parserStatus: 'ok' }))
+      return d.blockers.some((b) => /valid parser status/.test(b))
+    })(), false)
     t('CONTROL: ok adds no parser blocker', (() => {
       const d = decide(probe({ parserStatus: 'ok' }))
       return d.blockers.some((b) => /parser/.test(b))
     })(), false)
     t('the status is carried onto the decision', decide(probe({ parserStatus: 'ok' })).parserStatus, 'ok')
     t('…and rendered in the report', /parser status/.test(render(decide(probe({ parserStatus: 'ok' })))), true)
+  }
+
+  console.log('-- THE TARGET PORT IS MANDATORY (a missing one is a refusal, not host-wide)')
+  {
+    // OLD HEAD: `Number.isInteger(a.targetPort) ? a.targetPort : null` meant a
+    // missing port became null, dialMatches read null as "no port restriction",
+    // and stylique-os:9999 was attributed to the 4100 target and made patchable.
+    const nine = () => route({ handlers: [hdl(0, ['stylique-os:9999'])] })
+    t('OLD-HEAD BEHAVIOUR: host-wide matching attributed :9999 with no port',
+      dialMatches('stylique-os:9999', ['stylique-os'], null), true)
+    t('CORRECTED: target attribution with no usable port is UNATTRIBUTABLE',
+      dialMatchesTarget('stylique-os:9999', ['stylique-os'], null), null)
+
+    const bad = (tp) => {
+      const o = probe({ routes: [nine()] })
+      if (tp === '__delete__') delete o.targetPort; else o.targetPort = tp
+      return decide(o)
+    }
+    for (const [label, tp] of [
+      ['missing', '__delete__'], ['null', null], ['a string', '4100'],
+      ['zero', 0], ['negative', -1], ['above 65535', 70000], ['fractional', 41.5],
+    ]) {
+      const d = bad(tp)
+      t(`targetPort ${label} -> blocks`, d.blockers.some((b) => /usable target port/.test(b)), true)
+      t(`targetPort ${label} -> NO patch is produced`, d.patchable, false)
+      t(`targetPort ${label} -> the route is undetermined, not classified`,
+        d.classified[0].verdict, 'undetermined')
+    }
+    // POSITIVE + BOUNDARIES.
+    t('CONTROL: a valid port classifies normally', decide(probe({ routes: [nine()] })).classified[0].verdict, 'unaffected')
+    t('BOUNDARY: port 1 is usable', isPort(1), true)
+    t('BOUNDARY: port 65535 is usable', isPort(65535), true)
+    t('BOUNDARY: port 65536 is not', isPort(65536), false)
+    // Protected matching stays host-wide by design.
+    t('protected identities still match host-wide', dialMatches('stylique-dashboard:8443', PROT_IDS), true)
   }
 
   console.log('-- durable edit location: DIRECTORY-MOUNT resolution')
