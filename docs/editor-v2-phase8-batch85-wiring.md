@@ -80,6 +80,51 @@ component — resolving by `c{i}` identity, not by trusting array position — s
 that it fails the same way for the same reason. Anything looser would be a second
 convention for one fact.
 
+## 2b. The two places the centisecond trap is actually reachable
+
+Section 1 is abstract. These are the concrete field-level ways to fall into it,
+both found by reading the types rather than by running anything.
+
+**(a) The persisted decision carries centiseconds.**
+
+```ts
+export interface DirectorSelection {
+  candidateIndex: number; kind: SpeechCandidateKindName
+  selectionEnabled: 0 | 1; startCs: number; endCs: number   // <- CENTISECONDS
+}
+```
+
+An adapter that reached for the span sitting right there on the selection —
+`s.startCs * 10` — would compile a plan whose cuts are quantised to 10 ms while
+the captions use full-resolution word timings. It reads naturally and it is
+wrong.
+
+`startCs`/`endCs` on a selection are a **re-resolution record**: what the server
+resolved the model's index to, in the units the model was shown. They are not the
+authority on where the cut goes. The adapter must use `candidateIndex` to index
+the **pinned component's** candidate array and take `startMs`/`endMs` from there.
+
+**(b) `SpeechWordLike` has no end time — but the component does.**
+
+```ts
+export interface SpeechWordLike { id: string; text: string; startMs: number; confidence: number }
+```
+
+`CompileWord` requires `endMs`. Typing the adapter against `SpeechWordLike`
+because it is the convenient exported interface would make word ends unavailable
+and invite reconstructing them from the next word's start — which is wrong across
+every pause in the recording.
+
+The **persisted** component is `BuiltWord`, which has `endMs`, and keeps it
+unconditionally. Compaction under the 1 MiB payload budget drops only the three
+DERIVABLE fields (`normalizedText`, `unitId`, `endsUnit`) and the code says so in
+terms worth trusting — *"every word, candidate and timing stays"* — failing LOUD
+rather than dropping real evidence if the budget is still exceeded
+(`editorSpeech.ts:525-548`).
+
+So the end times are always there. The adapter must type against the component,
+not against the envelope's input interface.
+
 ## 3. Where the evidence actually comes from
 
 The analyze stage returns **digests only** — not payloads:
