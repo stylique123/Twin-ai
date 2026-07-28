@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate-F — ephemeral-Postgres verification of the creative-transfer lineage (0095).
+# Gate-TC-Lineage — ephemeral-Postgres verification of the creative-transfer lineage (0095).
 #
 # Track C · Batch A.7, the half migration 0095 alone does not prove. It applies the
 # REAL migration text — not a paraphrase — to a throwaway database and checks the
@@ -112,15 +112,15 @@ require_rows(){
   local t="$1" n
   n="$(psql -tAc "select count(*) from public.$t")"
   if [ "${n:-0}" -lt 1 ]; then
-    echo "GATE-F FAIL: public.$t is empty, so an UPDATE/DELETE against it fires no row trigger."
+    echo "GATE-TC-LINEAGE FAIL: public.$t is empty, so an UPDATE/DELETE against it fires no row trigger."
     echo "             Any 'rejected' result for it would be meaningless."
     exit 1
   fi
 }
 
 run(){ psql -q -v ON_ERROR_STOP=1 -c "$1" >/dev/null 2>&1; }
-ok(){ if run "$1"; then echo "  ok: $2"; else echo "GATE-F FAIL: legitimate statement REJECTED ($2)"; psql -c "$1" 2>&1 | tail -3; exit 1; fi; }
-no(){ if run "$1"; then echo "GATE-F FAIL: forbidden statement ACCEPTED ($2)"; exit 1; else echo "  rejected: $2"; fi; }
+ok(){ if run "$1"; then echo "  ok: $2"; else echo "GATE-TC-LINEAGE FAIL: legitimate statement REJECTED ($2)"; psql -c "$1" 2>&1 | tail -3; exit 1; fi; }
+no(){ if run "$1"; then echo "GATE-TC-LINEAGE FAIL: forbidden statement ACCEPTED ($2)"; exit 1; else echo "  rejected: $2"; fi; }
 
 bootstrap
 psql -q -v ON_ERROR_STOP=1 -f "$MIG" >/dev/null
@@ -241,9 +241,9 @@ psql -q -c "drop trigger creative_transfer_plans_append_only on public.creative_
 if run "update public.creative_transfer_plans set model_identity = 'mutated'"; then
   echo "  ok: with the guard removed the UPDATE goes through — the trigger is what refuses it"
 else
-  echo "GATE-F FAIL: the UPDATE still failed with the append-only trigger dropped."
+  echo "GATE-TC-LINEAGE FAIL: the UPDATE still failed with the append-only trigger dropped."
   echo "             The append-only cases above are therefore NOT testing that trigger."
   exit 1
 fi
 
-echo "GATE-F PASS"
+echo "GATE-TC-LINEAGE PASS"

@@ -206,7 +206,7 @@ coincidence in the fixture, not a property of the lineage.
 - `reference_evidence_sets` gains a distinct `analysis_sha256`, NOT NULL and
   hex-constrained. `evidence_sha256` keeps its meaning unchanged.
 - The trigger compares `plan.analysisSha256` to `analysis_sha256`.
-- The Gate-F fixture now seeds two **deliberately different** digests, and a new
+- The Gate-TC-Lineage fixture now seeds two **deliberately different** digests, and a new
   case pins the normalized-evidence digest where the analysis digest belongs — a
   real digest, right row, right owner, right analysis, wrong artifact. It can
   only fail if the trigger reads the correct column.
@@ -241,7 +241,7 @@ happened.
 ## Controls
 
 Shared suite: **356 passing** (was 354; 58 in `creativeTransferPlan.test.ts`).
-Gate-F: **30 assertions** (was 26), including wrong-analysis, wrong-reference,
+Gate-TC-Lineage: **30 assertions** (was 26), including wrong-analysis, wrong-reference,
 wrong-digest, cross-owner, absent-referenceSet, the digest-conflation case and
 the NOT NULL / hex constraints on `analysis_sha256`, all against the real
 migration. Every negative is paired with the positive that proves it is not
@@ -252,4 +252,4 @@ Both new invariants were verified by mutation, not by inspection:
 | mutation | expected | observed |
 |---|---|---|
 | delete the `ev.referenceId` comparison | hostile test fails | 1 failed / 57 passed; control still passes |
-| revert the trigger to `evidence_sha256` | Gate-F fails | `GATE-F FAIL: legitimate statement REJECTED` on the positive plan |
+| revert the trigger to `evidence_sha256` | Gate-TC-Lineage fails | `GATE-TC-LINEAGE FAIL: legitimate statement REJECTED` on the positive plan |
