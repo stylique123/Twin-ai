@@ -250,6 +250,30 @@ remain: there is no command family for deleting host paths.
 
 Build cache holds 2.257 GB with 36.86 kB reclaimable — not worth a stage.
 
+### Are the leftover paths carrying secrets? — answered
+
+Run `30359814967`, stage `leftover-secrets`, channel status **read-complete**
+(the stage warns loudly on any other status, and did not).
+
+- **`/srv/caddy` — no credential-shaped content.** This was the one that
+  mattered: a Caddyfile is where basicauth hashes and upstream tokens live. It
+  is clean, and the channel proves it was actually read rather than skipped.
+- **`/srv/dashboard` — no findings.** Static files.
+- **`/opt/scrapling-test/run.py` — 1 match, `env_secret_key`.** One line whose
+  left-hand side is a SECRET/TOKEN/PASSWORD-shaped name. That is a shape, not a
+  verdict: it may be a real key or an `os.environ` read. Worth thirty seconds of
+  a human's eyes, which is exactly what a shape-based sweep is for.
+
+Findings are (file, pattern name, count). No matched text ever entered the log.
+
+The TLS material is separately accounted for: it lived in the `caddy_data`
+volume, which was backed up and then deleted.
+
+An earlier run reported 7 findings and status `truncated` — all seven inside a
+Python venv, and the venv's file count blew the scan cap, which made the
+`/srv/caddy` answer meaningless in both directions. Vendored trees are now
+excluded.
+
 ## 5. The commands that will run
 
 The tooling used to act on one hardcoded container (`TARGET = 'stylique-os'`).
