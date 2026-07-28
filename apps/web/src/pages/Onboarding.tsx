@@ -1,13 +1,20 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { markOnboarded, pollDna, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
-import type { Platform, VoiceProfile } from '../lib/types'
+import { pollDna, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
+import type { Platform, Profile, VoiceProfile } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
+import {
+  ONBOARDING_DRAFT_VERSION,
+  clearOnboardingDraft,
+  readOnboardingDraft,
+  writeOnboardingDraft,
+  type OnboardingDraft,
+} from '../lib/onboardingDraft'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']
 
@@ -38,7 +45,59 @@ function emptyVoiceProfile(): VoiceProfile {
 export default function Onboarding() {
   const { session, refreshProfile } = useAuth()
   const navigate = useNavigate()
-  const [mode, setMode] = useState<Mode>('handle')
+  const userId = session?.user.id ?? ''
+  const [draft, setDraft] = useState<OnboardingDraft | null>(() => safeReadDraft(userId))
+  // Resume the exact durable onboarding step after a refresh. Previously only
+  // the voice id survived, while the screen always restarted at Handle and the
+  // creator had to re-enter Brand DNA.
+  const [mode, setMode] = useState<Mode>(() => draft?.profile ? 'confirm' : draft?.voiceId ? 'building' : 'handle')
+
+  const persistDraft = useCallback((next: OnboardingDraft) => {
+    setDraft(next)
+    safeWriteDraft(next)
+  }, [])
+
+  const startDraft = useCallback((voiceId: string, platform: Platform, profile: VoiceProfile | null) => {
+    const next: OnboardingDraft = {
+      version: ONBOARDING_DRAFT_VERSION,
+      userId,
+      voiceId,
+      platform,
+      profile,
+      audience: profile?.audience ?? '',
+      product: profile?.offer ?? '',
+      goal: '',
+    }
+    persistDraft(next)
+  }, [persistDraft, userId])
+
+  const updateAnswers = useCallback((
+    profile: VoiceProfile,
+    audience: string,
+    product: string,
+    goal: string,
+  ) => {
+    setDraft((current) => {
+      if (!current || current.userId !== userId) return current
+      const next = { ...current, profile, audience, product, goal }
+      safeWriteDraft(next)
+      return next
+    })
+  }, [userId])
+
+  const complete = useCallback(async () => {
+    await finish(refreshProfile, navigate)
+    safeClearDraft(userId)
+    setDraft(null)
+  }, [navigate, refreshProfile, userId])
+  const handleStarted = useCallback((voiceId: string, platform: Platform, profile: VoiceProfile | null) => {
+    startDraft(voiceId, platform, profile)
+    setMode(profile ? 'confirm' : 'building')
+  }, [startDraft])
+  const handleReady = useCallback((profile: VoiceProfile) => {
+    updateAnswers(profile, profile.audience ?? '', profile.offer ?? '', '')
+    setMode('confirm')
+  }, [updateAnswers])
 
   if (!session) return <Navigate to="/auth" replace />
 
@@ -61,12 +120,18 @@ export default function Onboarding() {
               transition={{ duration: 0.35, ease: EASE }}
             >
               {mode === 'handle' && (
-                <HandleStep onBuilding={() => setMode('building')} onManual={() => setMode('confirm')} />
+                <HandleStep onStarted={handleStarted} />
               )}
-              {mode === 'building' && (
-                <BuildingStep onReady={() => setMode('confirm')} onBack={() => setMode('handle')} />
+              {mode === 'building' && draft && (
+                <BuildingStep
+                  draft={draft}
+                  onReady={handleReady}
+                  onBack={() => setMode('handle')}
+                />
               )}
-              {mode === 'confirm' && <ConfirmStep onDone={() => finish(refreshProfile, navigate)} />}
+              {mode === 'confirm' && draft && (
+                <ConfirmStep draft={draft} onDraftChange={updateAnswers} onDone={complete} />
+              )}
             </motion.div>
           </AnimatePresence>
         </div>
@@ -75,34 +140,36 @@ export default function Onboarding() {
   )
 }
 
-async function finish(refreshProfile: () => Promise<void>, navigate: (to: string) => void) {
-  await markOnboarded()
-  setActiveVoiceId(null) // onboarding done — clear the resume key
-  await refreshProfile()
+async function finish(
+  refreshProfile: () => Promise<Profile | null>,
+  navigate: (to: string) => void,
+) {
+  const saved = await refreshProfile()
+  if (!saved?.onboarded) {
+    throw new Error("Your Brand DNA was saved, but Twin couldn't verify account setup. Please retry.")
+  }
   navigate('/app')
 }
 
-// We stash the in-flight voice id between steps. Persist it in sessionStorage too
-// so a refresh mid-scan RESUMES the same brand-voice poll instead of losing it and
-// forcing the user to start over (the scan keeps running server-side regardless).
-const VOICE_KEY = 'twinai_onboarding_voice_id'
-let activeVoiceId: string | null =
-  typeof sessionStorage !== 'undefined' ? sessionStorage.getItem(VOICE_KEY) : null
-let activeProfile: VoiceProfile | null = null
-// Default to Instagram: IG/YT build the voice server-side (Apify + dna-poll synth)
-// with no dependency on the VPS worker, so the scan completes reliably. TikTok is
-// still selectable but is worker-dependent, so it's no longer the default.
-let activePlatform: Platform = 'instagram'
-function setActiveVoiceId(id: string | null) {
-  activeVoiceId = id
-  try {
-    if (id) sessionStorage.setItem(VOICE_KEY, id)
-    else sessionStorage.removeItem(VOICE_KEY)
-  } catch { /* sessionStorage unavailable — module var still holds it */ }
+function safeReadDraft(userId: string): OnboardingDraft | null {
+  if (!userId || typeof sessionStorage === 'undefined') return null
+  try { return readOnboardingDraft(sessionStorage, userId) } catch { return null }
+}
+function safeWriteDraft(draft: OnboardingDraft): void {
+  if (typeof sessionStorage === 'undefined') return
+  try { writeOnboardingDraft(sessionStorage, draft) } catch { /* storage unavailable */ }
+}
+function safeClearDraft(userId: string): void {
+  if (!userId || typeof sessionStorage === 'undefined') return
+  try { clearOnboardingDraft(sessionStorage, userId) } catch { /* storage unavailable */ }
 }
 
 // --- Step 1: paste a handle ------------------------------------------------
-function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual: () => void }) {
+function HandleStep({
+  onStarted,
+}: {
+  onStarted: (voiceId: string, platform: Platform, profile: VoiceProfile | null) => void
+}) {
   const [handle, setHandle] = useState('')
   const [platform, setPlatform] = useState<Platform>('instagram')
   const [busy, setBusy] = useState(false)
@@ -120,9 +187,7 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
       // second voice or hitting the "you already have a voice" / brand-limit wall. So
       // Back → choose again → Build always works, and no orphan voices pile up.
       const res = await startDna(handle.trim(), platform, false, true)
-      setActiveVoiceId(res.brand_voice_id)
-      activePlatform = platform
-      onBuilding()
+      onStarted(res.brand_voice_id, platform, null)
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not start the scan.')
     } finally {
@@ -138,10 +203,7 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
     setManualBusy(true)
     try {
       const res = await startManualVoice(platform, handle.trim())
-      setActiveVoiceId(res.brand_voice_id)
-      activePlatform = platform
-      activeProfile = emptyVoiceProfile()
-      onManual()
+      onStarted(res.brand_voice_id, platform, emptyVoiceProfile())
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not set up a manual voice.')
     } finally {
@@ -232,7 +294,15 @@ function HandleStep({ onBuilding, onManual }: { onBuilding: () => void; onManual
 // --- Step 2: live progress while the scan runs -----------------------------
 const SCAN_STAGES = ['Fetching your posts', 'Reading captions & hooks', 'Synthesizing your voice']
 
-function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => void }) {
+function BuildingStep({
+  draft,
+  onReady,
+  onBack,
+}: {
+  draft: OnboardingDraft
+  onReady: (profile: VoiceProfile) => void
+  onBack: () => void
+}) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -245,10 +315,6 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
   }, [])
 
   useEffect(() => {
-    if (!activeVoiceId) {
-      setErr('We lost track of that scan. Head back and try your handle again.')
-      return
-    }
     let stopped = false
     // Hard cap: if the scan never resolves (stuck worker, dropped job), don't
     // trap the user on an infinite spinner, surface the manual fallback.
@@ -256,12 +322,12 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
     const MAX_WAIT_MS = 220_000
     const tick = async () => {
       try {
-        const res = await pollDna(activeVoiceId!)
+        const res = await pollDna(draft.voiceId)
         if (stopped) return
         if (res.status === 'ready') {
-          activeProfile = res.profile ?? null
           if (timer.current) clearInterval(timer.current)
-          onReady()
+          if (res.profile) onReady(res.profile)
+          else setErr('The scan finished without a voice profile. Try a different handle or describe it yourself.')
         } else if (res.status === 'failed') {
           if (timer.current) clearInterval(timer.current)
           setErr(res.error ?? 'The scan could not finish.')
@@ -284,8 +350,7 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
       stopped = true
       if (timer.current) clearInterval(timer.current)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [draft.voiceId, onReady])
 
   return (
     <>
@@ -361,10 +426,7 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
                 scraper outage) must never wall a signup out of the product. */}
             <button
               className="btn-gradient"
-              onClick={() => {
-                activeProfile = emptyVoiceProfile()
-                onReady()
-              }}
+              onClick={() => onReady(emptyVoiceProfile())}
             >
               Describe your voice myself <ArrowRight className="h-4 w-4" />
             </button>
@@ -376,18 +438,32 @@ function BuildingStep({ onReady, onBack }: { onReady: () => void; onBack: () => 
 }
 
 // --- Step 3: confirm / edit the voice in one tap ---------------------------
-function ConfirmStep({ onDone }: { onDone: () => void }) {
-  const [vp, setVp] = useState<VoiceProfile | null>(activeProfile)
+function ConfirmStep({
+  draft,
+  onDraftChange,
+  onDone,
+}: {
+  draft: OnboardingDraft
+  onDraftChange: (profile: VoiceProfile, audience: string, product: string, goal: string) => void
+  onDone: () => Promise<void>
+}) {
+  const [vp, setVp] = useState<VoiceProfile | null>(draft.profile)
   // Prefill "who you're talking to" and "what you sell" from what the scan ACTUALLY
   // inferred (audience / offer) — the DNA extracts these, so they shouldn't show
   // empty. "Your goal" is deliberately NOT prefilled: a creator's business goal
   // isn't something we can read from their posts, so we leave it blank and let them
   // state it rather than fill it with a guess. All stay editable.
-  const [audience, setAudience] = useState(activeProfile?.audience ?? '')
-  const [product, setProduct] = useState(activeProfile?.offer ?? '')
-  const [goal, setGoal] = useState('')
+  const [audience, setAudience] = useState(draft.audience)
+  const [product, setProduct] = useState(draft.product)
+  const [goal, setGoal] = useState(draft.goal)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  // Preserve every edit within this browser tab until the server has verified
+  // onboarding completion. A refresh or retry must never erase Brand DNA.
+  useEffect(() => {
+    if (vp) onDraftChange(vp, audience, product, goal)
+  }, [vp, audience, product, goal, onDraftChange])
 
   if (!vp) {
     return (
@@ -405,10 +481,11 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
     setErr(null)
     setBusy(true)
     try {
-      if (activeVoiceId) await saveVoiceProfile(activeVoiceId, vp)
+      await saveVoiceProfile(draft.voiceId, vp)
       // ALSO seed the Creator DNA (profile.dna) from the scan + these answers, so
       // the scanned signup isn't left with a half-empty DNA (the "audience/product/
-      // goal Not set" bug). Best-effort — never blocks entering the studio.
+      // goal Not set" bug). This is the durable onboarding boundary: do not enter
+      // the studio until the profile row confirms the Brand DNA and onboarded flag.
       await saveDNA({
         niche: vp.niche,
         audience,
@@ -418,9 +495,9 @@ function ConfirmStep({ onDone }: { onDone: () => void }) {
         // fallback at write time. Storing a canned goal here made it read as theirs.
         goal,
         voice: [vp.tone, vp.pacing].filter(Boolean).join(', '),
-        platforms: [activePlatform],
+        platforms: [draft.platform],
         editing_style: vp.hook_style || '',
-      }).catch(() => {})
+      })
       await onDone()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Could not save your voice.')

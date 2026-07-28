@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
 import { REFERRAL_CODE_KEY } from '../lib/api'
 import { motion } from 'framer-motion'
-import { Check, ArrowRight, ArrowLeft } from 'lucide-react'
+import { Check, ArrowRight, ArrowLeft, Loader2 } from 'lucide-react'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { planFor, PLANS } from '../lib/brand'
 import { Aurora } from '../components/Aurora'
 import { Logo } from '../components/Logo'
 import { EASE } from '../components/motion'
+import { useAuth } from '../context/AuthContext'
+import { authenticatedDestination } from '../lib/authRouting'
 
 const FREE_PERKS = ['3 free remixes', 'Script in your voice, record in one place', 'No card required']
 const PAID_PERKS = ['Script in your voice, record in one place', 'No watermark once AI editing ships (coming soon)', 'Cancel any time']
@@ -34,6 +36,14 @@ export default function Auth() {
   const [msgType, setMsgType] = useState<'error' | 'success'>('error')
   const [busy, setBusy] = useState(false)
   const navigate = useNavigate()
+  const {
+    session,
+    profile,
+    profileLoading,
+    profileError,
+    refreshSession,
+    refreshProfile,
+  } = useAuth()
 
   // Remember a referral code from the invite link so it survives signup + email
   // confirmation; AuthContext redeems it once the user has a session.
@@ -53,6 +63,18 @@ export default function Auth() {
     window.addEventListener('pageshow', unstick)
     return () => window.removeEventListener('pageshow', unstick)
   }, [])
+
+  // Email confirmation returns here. If the provider did not establish a
+  // browser session, show SIGN IN — never the signup form the creator just
+  // completed. If it did establish one, the authenticated redirect below sends
+  // them to their saved onboarding/app state.
+  useEffect(() => {
+    if (params.get('confirmed') === '1' && !session) {
+      setMode('signin')
+      setMsg('Email confirmed — sign in to continue.')
+      setMsgType('success')
+    }
+  }, [params, session])
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -90,12 +112,16 @@ export default function Auth() {
           // their allowance by paying). This is the authoritative signal — it
           // can't be spoofed by the client the way localStorage can.
           options: {
-            emailRedirectTo: `${window.location.origin}/auth`,
+            emailRedirectTo: `${window.location.origin}/auth?mode=signin&confirmed=1`,
             data: { intended_plan: intendedPlan?.id ?? 'free' },
           },
         })
         if (error) throw error
         if (data.session) {
+          // Make the context session authoritative before navigation. Relying
+          // only on the async auth listener let the protected route briefly see
+          // "no session" and bounce a successful signup back to /auth.
+          if (!await refreshSession()) throw new Error("We couldn't verify your new session. Please sign in.")
           // A teammate who clicked an invite link goes straight to accept it
           // (they use the owner's workspace and skip their own onboarding).
           const pendingJoin = (() => { try { return localStorage.getItem('twinai_pending_join') } catch { return null } })()
@@ -108,6 +134,7 @@ export default function Auth() {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
+        if (!await refreshSession()) throw new Error("We couldn't verify your sign-in. Please retry.")
         const pendingJoin = (() => { try { return localStorage.getItem('twinai_pending_join') } catch { return null } })()
         navigate(pendingJoin ? `/join/${pendingJoin}` : '/app')
       }
@@ -141,6 +168,38 @@ export default function Auth() {
       setMsgType('error')
       setBusy(false)
     }
+  }
+
+  // /auth used to ignore an existing session. Email confirmation therefore
+  // landed a successfully authenticated creator on the signup form again. Wait
+  // for the profile state machine, then continue exactly where the account is.
+  if (mode !== 'reset' && session) {
+    if (profileLoading) {
+      return (
+        <main className="grid min-h-screen place-items-center text-sand">
+          <span className="inline-flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" /> Finishing your sign-in…
+          </span>
+        </main>
+      )
+    }
+    if (profileError && !profile) {
+      return (
+        <main className="grid min-h-screen place-items-center px-5 text-center text-cream">
+          <div className="max-w-sm">
+            <p className="font-semibold">We couldn't finish loading your account.</p>
+            <p className="mt-1 text-sm text-sand">{profileError}</p>
+            <button className="btn-gradient mt-5" onClick={() => void refreshProfile()}>
+              Retry account setup
+            </button>
+          </div>
+        </main>
+      )
+    }
+    const pendingJoin = (() => {
+      try { return localStorage.getItem('twinai_pending_join') } catch { return null }
+    })()
+    return <Navigate to={authenticatedDestination({ pendingJoin, onboarded: profile?.onboarded === true })} replace />
   }
 
   return (

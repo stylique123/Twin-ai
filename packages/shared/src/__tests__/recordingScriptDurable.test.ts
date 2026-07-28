@@ -49,7 +49,7 @@ describe('establishDurableRecordingScript: durable authority before recording', 
       reload,
     }
     const r = await establishDurableRecordingScript(script(), deps)
-    expect(r).toEqual({ ok: false, reason: 'persist_failed' })
+    expect(r).toEqual({ ok: false, reason: 'persist_failed', error: 'permission denied' })
     expect(reload).not.toHaveBeenCalled() // never proceeds toward recording/create
   })
 
@@ -101,8 +101,15 @@ describe('prepareCaptureMode: the ONE mode seam (item 9)', () => {
     const d = modeDeps({ synthScript: vi.fn(async () => null) })
     expect(await prepareCaptureMode('record', d)).toEqual({ ready: false, mode: 'record', reason: 'load' })
   })
-  it('RECORD + persistence/drift failure → blocks recording (not ready)', async () => {
-    const d = modeDeps({ loadScript: vi.fn(async () => script()), establish: vi.fn(async () => ({ ok: false, reason: 'persist_failed' as const })) })
+  it('RECORD + already-persisted script: ready with ZERO rewrite', async () => {
+    const persisted = script()
+    const d = modeDeps({ loadScript: vi.fn(async () => persisted) })
+    expect(await prepareCaptureMode('record', d)).toEqual({ ready: true, mode: 'record', script: persisted })
+    expect(n(d.synthScript)).toBe(0)
+    expect(n(d.establish)).toBe(0)
+  })
+  it('RECORD + synthesized script persistence/drift failure → blocks recording', async () => {
+    const d = modeDeps({ establish: vi.fn(async () => ({ ok: false, reason: 'persist_failed' as const })) })
     expect(await prepareCaptureMode('record', d)).toEqual({ ready: false, mode: 'record', reason: 'persist_failed' })
   })
 })

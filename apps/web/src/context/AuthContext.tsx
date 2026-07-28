@@ -1,14 +1,18 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
-import { getProfile, redeemReferral, REFERRAL_CODE_KEY } from '../lib/api'
+import { getProfileStrict, redeemReferral, REFERRAL_CODE_KEY } from '../lib/api'
 import type { Profile } from '../lib/types'
 
 interface AuthState {
   session: Session | null
   profile: Profile | null
   loading: boolean
-  refreshProfile: () => Promise<void>
+  authError: string | null
+  profileLoading: boolean
+  profileError: string | null
+  refreshSession: () => Promise<Session | null>
+  refreshProfile: () => Promise<Profile | null>
   signOut: () => Promise<void>
 }
 
@@ -16,7 +20,11 @@ const Ctx = createContext<AuthState>({
   session: null,
   profile: null,
   loading: true,
-  refreshProfile: async () => {},
+  authError: null,
+  profileLoading: false,
+  profileError: null,
+  refreshSession: async () => null,
+  refreshProfile: async () => null,
   signOut: async () => {},
 })
 
@@ -41,22 +49,80 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [profileLoading, setProfileLoading] = useState(false)
+  const [profileError, setProfileError] = useState<string | null>(null)
+  // Auth can emit INITIAL_SESSION and SIGNED_IN/TOKEN_REFRESHED close together.
+  // Only the newest profile read may commit, otherwise a slower stale
+  // onboarded=false response can overwrite the verified post-onboarding profile.
+  const profileRequest = useRef(0)
 
-  // Best-effort: never let a slow/stuck profile fetch block the whole app. The
-  // route guards only need `session`; the profile fills in when it arrives.
-  // Retry a couple of times with short backoff — on first load the access token
-  // may still be refreshing, and a single transient miss would otherwise leave
-  // the user staring at a profile with no credits/plan until they navigate.
+  // Retry the trigger-created profile briefly, but report a real result to
+  // callers. Critical flows (auth routing and onboarding completion) must never
+  // treat a failed profile read as success.
   const refreshProfile = async () => {
+    const request = ++profileRequest.current
+    setProfileLoading(true)
+    setProfileError(null)
+    let lastFailure: unknown
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const p = await getProfile()
-        setProfile(p)
-        return
-      } catch {
+        const p = await getProfileStrict()
+        if (request === profileRequest.current) {
+          setProfile(p)
+          setProfileLoading(false)
+        }
+        return p
+      } catch (error) {
+        lastFailure = error
         if (attempt < 2) await new Promise((r) => setTimeout(r, 600 * (attempt + 1)))
-        /* else leave profile as-is — auth must never hang on the profile query */
       }
+    }
+    if (request === profileRequest.current) {
+      // Preserve a previously loaded profile during a transient refresh failure,
+      // but stop route guards from guessing when no profile was ever established.
+      setProfileError("We couldn't load your account. Check your connection and retry.")
+      setProfileLoading(false)
+      console.warn('profile_load_failed', {
+        failureType: lastFailure instanceof Error ? lastFailure.name : typeof lastFailure,
+      })
+    }
+    return null
+  }
+
+  const refreshSession = async (): Promise<Session | null> => {
+    setLoading(true)
+    setAuthError(null)
+    const safety = window.setTimeout(() => {
+      setAuthError("We couldn't verify your sign-in. Check your connection and retry.")
+      setLoading(false)
+    }, 8000)
+    try {
+      const { data, error } = await supabase.auth.getSession()
+      if (error) throw error
+      setSession(data.session)
+      setAuthError(null)
+      if (data.session) {
+        void refreshProfile()
+        void redeemStoredReferral()
+      } else {
+        profileRequest.current++
+        setProfile(null)
+        setProfileLoading(false)
+        setProfileError(null)
+      }
+      return data.session
+    } catch (error) {
+      console.warn('auth_session_refresh_failed', {
+        failureType: error instanceof Error ? error.name : typeof error,
+      })
+      setAuthError("We couldn't verify your sign-in. Check your connection and retry.")
+      return null
+    } finally {
+      window.clearTimeout(safety)
+      // A late successful response clears the timeout error above; a late failure
+      // keeps it. Either way the route never guesses that "unknown" means signed out.
+      setLoading(false)
     }
   }
 
@@ -78,44 +144,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // Guarantee the "Loading…" gate always clears. Previously `setLoading(false)`
-    // ran only AFTER `await refreshProfile()`, so a hung/failed profile query (e.g.
-    // the access token refreshing after an idle period) left the app stuck on the
-    // loading screen forever — the bug that forced a manual refresh. We now unblock
-    // the UI the moment the session is known and load the profile in the background,
-    // with a hard safety timeout as a final backstop.
-    let settled = false
-    const finishLoading = () => { if (!settled) { settled = true; setLoading(false) } }
-    const safety = window.setTimeout(finishLoading, 8000)
-
     // Sessions persist until the user signs out (or the refresh token is revoked
     // server-side) — no idle auto-logout. Supabase refreshes the token itself.
-    supabase.auth.getSession().then(async ({ data }) => {
-      setSession(data.session)
-      finishLoading() // unblock route guards immediately
-      if (data.session) { void refreshProfile(); void redeemStoredReferral() } // profile + referral in background
-    }).catch(finishLoading).finally(() => window.clearTimeout(safety))
+    void refreshSession()
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
-      finishLoading()
+      setAuthError(null)
+      setLoading(false)
       if (s) { void refreshProfile(); void redeemStoredReferral() }
-      else setProfile(null)
+      else {
+        profileRequest.current++
+        setProfile(null)
+        setProfileLoading(false)
+        setProfileError(null)
+      }
     })
-    return () => { window.clearTimeout(safety); sub.subscription.unsubscribe() }
+    return () => { sub.subscription.unsubscribe() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const signOut = async () => {
     // Clear local state FIRST so the UI (route guards, nav) flips to logged-out
     // instantly, never waiting on the network round-trip or the auth listener.
+    profileRequest.current++
     setSession(null)
     setProfile(null)
+    setAuthError(null)
+    setProfileLoading(false)
+    setProfileError(null)
     await doSignOut()
   }
 
   return (
-    <Ctx.Provider value={{ session, profile, loading, refreshProfile, signOut }}>
+    <Ctx.Provider value={{
+      session,
+      profile,
+      loading,
+      authError,
+      profileLoading,
+      profileError,
+      refreshSession,
+      refreshProfile,
+      signOut,
+    }}>
       {children}
     </Ctx.Provider>
   )

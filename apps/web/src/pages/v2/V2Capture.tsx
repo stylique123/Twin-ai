@@ -49,15 +49,17 @@ export default function V2Capture() {
 // The ONE capture-mode gate. Both modes route through the shared prepareCaptureMode
 // seam (recordingScriptApi): UPLOAD is usable immediately and does ZERO script work
 // (Constitution §5.1 — it is not recorded against a script, so a legacy null timeline
-// is fine); RECORD establishes ONE DURABLE authoritative Recording Script (load → else
-// synthesize from the blueprint → strict-persist → reload → prove canonical equality)
+// is fine); RECORD uses an already-persisted script directly, or for a legacy null
+// script synthesizes from the blueprint → strict-persists → reloads → proves equality
 // before the teleprompter is usable. Recording against an in-memory-only or drifted
 // script would deterministically fail the create RPC's capture_script_sha_mismatch, so
 // a prepare failure blocks recording visibly + retryably — never a lost take.
+type CaptureFailure = 'load' | 'persist_failed' | 'reload_failed' | 'mismatch' | 'unexpected'
+
 function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 'record'; onBack: () => void }) {
   const [timeline, setTimeline] = useState<RecordingScript | null>(null)
   const [uploadReady, setUploadReady] = useState(false)
-  const [failed, setFailed] = useState<null | 'load' | 'prepare'>(null)
+  const [failed, setFailed] = useState<CaptureFailure | null>(null)
   const [nonce, setNonce] = useState(0)
   useEffect(() => {
     let alive = true
@@ -75,9 +77,11 @@ function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 
         if (!alive) return
         if (r.ready && r.mode === 'upload') { setUploadReady(true); return }
         if (r.ready && r.mode === 'record') { setTimeline(r.script); return }
-        setFailed(r.reason === 'load' ? 'load' : 'prepare')
+        console.warn('capture_prepare_failed', { generationId: genId, reason: r.reason })
+        setFailed(r.reason)
       } catch {
-        if (alive) setFailed('prepare')
+        console.warn('capture_prepare_failed', { generationId: genId, reason: 'unexpected' })
+        if (alive) setFailed('unexpected')
       }
     })()
     return () => { alive = false }
@@ -89,16 +93,34 @@ function CaptureGate({ genId, mode, onBack }: { genId: string; mode: 'upload' | 
   }
   if (!timeline) {
     if (failed) {
-      const isPrepare = failed === 'prepare'
+      const copy: Record<CaptureFailure, { title: string; detail: string }> = {
+        load: {
+          title: "We couldn't load your video plan",
+          detail: 'Your script is safe in your Library. Check your connection, then retry.',
+        },
+        persist_failed: {
+          title: "We couldn't save your script for recording",
+          detail: 'Twin could not confirm that this script belongs to your signed-in session. Retry once; if it continues, sign in again.',
+        },
+        reload_failed: {
+          title: "We couldn't verify your saved script",
+          detail: 'The save could not be read back safely. Retry before recording.',
+        },
+        mismatch: {
+          title: 'Your script changed while opening',
+          detail: 'Go back to the plan, review the latest script, then open the teleprompter again.',
+        },
+        unexpected: {
+          title: "We couldn't prepare your script for recording",
+          detail: 'A temporary account or connection error interrupted preparation. Retry before recording.',
+        },
+      }
+      const message = copy[failed]
       return (
         <div className="min-h-[100dvh] grid place-items-center bg-ink text-cream px-6">
           <div className="max-w-sm text-center">
-            <p className="font-semibold">{isPrepare ? "We couldn't prepare your script for recording" : "We couldn't load your video plan"}</p>
-            <p className="mt-1 text-sm text-white/60">
-              {isPrepare
-                ? 'Your script must be saved before you record so your take is never lost. Check your connection and try again.'
-                : 'Check your connection and try again — your script is safe in your Library.'}
-            </p>
+            <p className="font-semibold">{message.title}</p>
+            <p className="mt-1 text-sm text-white/60">{message.detail}</p>
             <div className="mt-4 flex justify-center gap-2">
               <button onClick={() => setNonce((n) => n + 1)} className="rounded-xl bg-cream text-ink font-semibold px-5 py-2 text-sm">Retry</button>
               <button onClick={onBack} className="rounded-xl border border-white/20 px-5 py-2 text-sm text-cream">Back</button>
@@ -908,4 +930,3 @@ function sceneTypeLabel(t?: RecordingScene['scene_type']) {
     default: return 'Scene'
   }
 }
-

@@ -131,16 +131,30 @@ export async function getCaseStudy(email: string): Promise<CaseStudy | null> {
   return (data as { case_study?: CaseStudy }).case_study ?? null
 }
 
-export async function getProfile(): Promise<Profile | null> {
+// Strict profile load for auth/onboarding state machines. The old getProfile()
+// collapsed "no session", RLS denial, a missing trigger-created row, and a network
+// failure into the same null. That made route guards guess and was the source of
+// signup/onboarding loops. Keep the forgiving wrapper for non-critical callers,
+// but let critical callers distinguish a real profile from a failed read.
+export async function getProfileStrict(): Promise<Profile> {
   const { data: auth } = await supabase.auth.getUser()
-  if (!auth.user) return null
+  if (!auth.user) throw new Error('Not signed in')
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('id', auth.user.id)
     .single()
-  if (error) return null
+  if (error) throw error
+  if (!data) throw new Error('Your account profile is not ready yet')
   return data as Profile
+}
+
+export async function getProfile(): Promise<Profile | null> {
+  try {
+    return await getProfileStrict()
+  } catch {
+    return null
+  }
 }
 
 // Record that this account has seen the first-run product tour (column-granted
@@ -151,14 +165,20 @@ export async function markTourSeen(): Promise<void> {
   await supabase.from('profiles').update({ tour_seen_at: new Date().toISOString() }).eq('id', auth.user.id)
 }
 
-export async function saveDNA(dna: CreatorDNA): Promise<void> {
+export async function saveDNA(dna: CreatorDNA): Promise<Profile> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('profiles')
     .update({ dna, onboarded: true })
     .eq('id', auth.user.id)
+    .select('*')
+    .single()
   if (error) throw error
+  if (!data || data.onboarded !== true) {
+    throw new Error('Your Brand DNA was not saved. Please try again.')
+  }
+  return data as Profile
 }
 
 // ---- Platform admin (super-admin / support) -----------------------------
@@ -745,8 +765,14 @@ export async function listBrandVoices(): Promise<BrandVoice[]> {
 // is usable by definition, so it must never be left in a 'building'/'failed' scan
 // state that would later block remixing (the "import your brand DNA" snag).
 export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promise<void> {
-  const { error } = await supabase.from('brand_voices').update({ profile, status: 'ready', error: null }).eq('id', id)
+  const { data, error } = await supabase
+    .from('brand_voices')
+    .update({ profile, status: 'ready', error: null })
+    .eq('id', id)
+    .select('id')
+    .single()
   if (error) throw error
+  if (!data) throw new Error('Your brand voice was not saved. Please try again.')
 }
 
 // Upload a brand-kit logo (data URL) via the service-role edge fn; returns the
@@ -794,8 +820,16 @@ export async function renameBrandVoice(id: string, label: string): Promise<void>
 export async function markOnboarded(): Promise<void> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
-  const { error } = await supabase.from('profiles').update({ onboarded: true }).eq('id', auth.user.id)
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ onboarded: true })
+    .eq('id', auth.user.id)
+    .select('id, onboarded')
+    .single()
   if (error) throw error
+  if (!data || data.onboarded !== true) {
+    throw new Error('Your account setup was not completed. Please try again.')
+  }
 }
 
 // ---- Gallery v2 (contributed feed: public/private submissions) ----------

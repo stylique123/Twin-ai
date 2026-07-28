@@ -99,3 +99,57 @@ export function teleprompterScenes(t: RecordingScript): RecordingScene[] {
   return t.scenes.filter((s) => s.show_in_teleprompter)
 }
 
+// Runtime guard for jsonb written by older web builds. TypeScript cannot protect
+// persisted data, and the editor rebuild changed the authority around this
+// historical column. A malformed/foreign script must be repaired from the
+// generation blueprint before the teleprompter or capture SHA sees it.
+export function isRecordingScriptForGeneration(
+  value: unknown,
+  generationId: string,
+): value is RecordingScript {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const script = value as Record<string, unknown>
+  if (
+    script.version !== 1 ||
+    script.generation_id !== generationId ||
+    typeof script.platform !== 'string' ||
+    typeof script.hook !== 'string' ||
+    typeof script.wpm !== 'string' ||
+    !Object.prototype.hasOwnProperty.call(WPM_PRESETS, script.wpm) ||
+    !Array.isArray(script.scenes) ||
+    script.scenes.length === 0 ||
+    script.scenes.length > 500
+  ) return false
+
+  let hasSpokenScene = false
+  const seen = new Set<number>()
+  const sceneTypes = new Set<SceneType>(['talking_head', 'b_roll', 'screen_recording', 'product_demo', 'cta'])
+  for (let index = 0; index < script.scenes.length; index++) {
+    const raw = script.scenes[index]
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+    const scene = raw as Record<string, unknown>
+    if (
+      !Number.isInteger(scene.scene_number) ||
+      scene.scene_number !== index + 1 ||
+      seen.has(scene.scene_number as number) ||
+      typeof scene.scene_type !== 'string' ||
+      !sceneTypes.has(scene.scene_type as SceneType) ||
+      typeof scene.purpose !== 'string' ||
+      (scene.dialogue !== null && typeof scene.dialogue !== 'string') ||
+      typeof scene.duration_sec !== 'number' ||
+      !Number.isFinite(scene.duration_sec) ||
+      scene.duration_sec <= 0 ||
+      typeof scene.camera_framing !== 'string' ||
+      typeof scene.background !== 'string' ||
+      typeof scene.movement !== 'string' ||
+      typeof scene.caption_text !== 'string' ||
+      typeof scene.pause_after !== 'boolean' ||
+      typeof scene.show_in_teleprompter !== 'boolean'
+    ) return false
+    seen.add(scene.scene_number as number)
+    if (scene.show_in_teleprompter && typeof scene.dialogue === 'string' && scene.dialogue.trim()) {
+      hasSpokenScene = true
+    }
+  }
+  return hasSpokenScene
+}
