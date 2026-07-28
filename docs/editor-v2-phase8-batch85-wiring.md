@@ -40,32 +40,45 @@ looks nearly right, and is wrong. No error would be raised anywhere.
 > CUTS.** They are not interchangeable, and nothing in the type system stops you
 > confusing them, because both are numbers.
 
+It is worse than quantisation, too: `EnvWord = [text, startCs, confPct]` carries
+**no word END time at all**. The compiler's `CompileWord` requires `endMs`. The
+envelope simply does not contain the information needed to cut or caption
+accurately — it was never meant to.
+
 **Therefore:** `CompileInput.evidence` is built from the **pinned components**
 (full-fidelity ms), never from the envelope. The decision supplies *which* spans
 to act on; the components supply *where they are*.
 
-## 2. …which creates the second trap: index alignment
+## 2. Index alignment — ALREADY CLOSED, and I was wrong to call it a trap
 
-`decision.selections` is `number[]` — **indices into the envelope's candidate
-array**, not identifiers. From `editorDirector.ts:155` the envelope's candidates
-are:
+**Correction.** An earlier draft of this document claimed 8.5 must add an
+element-wise parity assertion because `decision.selections` are indices into the
+envelope's candidate array and could drift from the pinned component. Reading
+`projectSpeechToEnvelope` (`directorContract.ts:322`) shows that is already
+enforced, and more strongly than the check I was proposing:
 
 ```ts
-candidates: (speech.candidates as SpeechCandidateLike[]) ?? []
+const candidates: EnvCandidate[] = speech.candidates.map((c, i) => {
+  if (c.id !== `c${i}`) fail(`candidate ${i}: positional id mismatch (${c.id})`, 'director_projection_bad_ref')
+  ...
 ```
 
-taken from the pinned speech component **in order**. So indices align with the
-component array *only while that remains true*.
+- it is `.map()`, so the projection is **1:1** — no filtering, no truncation
+- over-length **fails closed** (`candidates.length > MAX_CANDIDATES` → raise), it
+  does not silently trim
+- and each candidate must **carry its own positional id** (`c{i}`, `w{i}`, `u{i}`),
+  so a reordering is caught by the data itself rather than by a test that
+  remembers to look
 
-If the envelope projection ever **filters** candidates (rather than truncating a
-prefix), index *n* in the decision stops meaning candidate *n* in the component,
-and the compiler removes the wrong spans — again silently.
+Writing a parity test for this would have been building a guard that already
+exists, which is worse than no test: it implies the property is fragile and it
+would pass for the wrong reason.
 
-**Required in 8.5, not optional:** a test that builds the envelope and the
-compile input from one pinned speech component and asserts the candidate
-sequences are **element-wise identical**, plus a mutation control that reorders
-or filters one and proves the test fails. Truncation-to-a-prefix is safe and
-should be asserted as safe; filtering is not and must fail closed.
+**What 8.5 actually owes here** is narrower: the compile adapter must honour the
+*same* positional-id convention when it reads candidates back from the pinned
+component — resolving by `c{i}` identity, not by trusting array position — so
+that it fails the same way for the same reason. Anything looser would be a second
+convention for one fact.
 
 ## 3. Where the evidence actually comes from
 
