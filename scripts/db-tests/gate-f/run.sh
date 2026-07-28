@@ -373,22 +373,22 @@ insert into public.jobs values ('$J4','running','$WORKER',1, jsonb_build_object(
 insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, status)
   values ('$P4','$O_ID','$G_ID','$S4','compiling');
 SQL
-no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,1080,1920,30,1,'video/mp4')" \
    "minting an output asset for a project with NO reserved output"
 ok "select public.editor_record_edit_plan('$P4','$J4','$WORKER',1,'$SHA_O','$SHA_P','boot','snap','srcsum','edit-plan-v1','edit-policy-v1','edit-compiler-1','$PLAN_JSON'::jsonb,60000)" \
    "the fourth project records its plan"
 run "update public.edit_projects set status='rendering' where id='$P4'"
 ok "select public.editor_reserve_output('$P4','$J4','$WORKER',1,'video','media')" \
    "and reserves its video output"
-no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,1080,1920,30,1,'video/mp4')" \
    "minting an asset while the output is RESERVED but not ready"
 ok "select public.editor_mark_output_ready('$P4','$J4','$WORKER',1,'video',4096,'$SHA_X',60000)" \
    "the output becomes ready with its measurements"
-no "select public.editor_create_output_asset('$P4','$J4','not-this-worker',1,60000,1080,1920,30,1,'video/mp4')" \
+no "select public.editor_create_output_asset('$P4','$J4','not-this-worker',1,1080,1920,30,1,'video/mp4')" \
    "minting without the lease"
-ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,1080,1920,30,1,'video/mp4')" \
    "the lease-holder mints the output asset once the video is ready"
-ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,1080,1920,30,1,'video/mp4')" \
    "minting twice returns the same asset (crash-resume)"
 n=$(psql -tAc "select count(*) from public.media_assets where kind='output'")
 [ "$n" = "1" ] || { echo "GATE-F FAIL: expected exactly one output asset, found $n"; exit 1; }
@@ -399,6 +399,18 @@ got=$(psql -tAc "select storage_path||'|'||coalesce(content_sha256,'')||'|'||coa
 want="edit-outputs/$O_ID/$P4/1/output.mp4|$SHA_X|4096"
 [ "$got" = "$want" ] || { echo "GATE-F FAIL: derived asset is '$got', expected '$want'"; exit 1; }
 echo "  ok: path, digest and size were DERIVED from the reserved output"
+# THE DURATION IS THE MEASURED ONE, AND THERE IS NO WAY TO PASS ANOTHER.
+# The output was marked ready with a measured 60000ms. The RPC has no duration
+# parameter at all — it was removed after the render stage was caught passing
+# the plan's PROMISED length, which the +/-250ms tolerance lets differ from what
+# ffprobe read. This asserts the value came from edit_outputs, and the arity
+# check below is what stops the parameter quietly returning.
+d=$(psql -tAc "select coalesce(duration_ms::text,'NULL') from public.media_assets where kind='output'")
+[ "$d" = "60000" ] || { echo "GATE-F FAIL: asset duration is '$d', expected the MEASURED 60000"; exit 1; }
+echo "  ok: duration came from edit_outputs.measured_duration_ms"
+nargs=$(psql -tAc "select pronargs from pg_proc where proname='editor_create_output_asset'")
+[ "$nargs" = "9" ] || { echo "GATE-F FAIL: editor_create_output_asset takes $nargs args, expected 9 — a duration parameter has returned"; exit 1; }
+echo "  ok: the RPC takes 9 arguments — no duration among them"
 
 echo "== and the completed project must point at it =="
 run "update public.edit_projects set status='validating' where id='$P4'"
