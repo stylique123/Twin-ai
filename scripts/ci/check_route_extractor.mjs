@@ -129,7 +129,7 @@ async function main() {
     osChain[1].routePath, 'apps/http/servers/srv0/routes/0/handle/0/routes/1')
   t('TERMINALITY is emitted for a route that does not set it', osChain[1].terminal, false)
   t('…and is TRUE where the config sets it', osChain[0].terminal, true)
-  t('GROUP is emitted as null when absent', osChain[1].group, null)
+  t('GROUP PRESENCE is emitted as false when absent', osChain[1].hasGroup, false)
   t('HANDLER TYPES are emitted for the route\'s own handle array', osChain[1].handlerTypes, ['subroute'])
 
   // THE DENOMINATOR. Without it a sibling route carrying no handlers leaves no
@@ -155,7 +155,70 @@ async function main() {
     cfg.apps.http.servers.srv0.routes[0].handle[0].routes[1].group = 'g1'
     const o3 = runProgram(PROG, cfg)
     const chain = o3.routes[0].handlers.find((h) => h.upstreamDials.includes('stylique-os:4100')).matcherChain
-    t('a route group is reported when the config sets one', chain[1].group, 'g1')
+    t('a route group is reported as PRESENT when the config sets one', chain[1].hasGroup, true)
+    // A group NAME is author-chosen text and is not on the emitted-value
+    // allowlist. The caller needs only its existence in order to refuse.
+    t('…and its NAME never leaves the host', JSON.stringify(o3).includes('g1'), false)
+  }
+
+  // ------------------------------------------- matcher SET structure (OR/AND)
+  // A `match` array is OR across objects and AND within one. Flattening it into
+  // independent host and path lists invents a cross-product the config never
+  // expressed, and any overlap test over that is unsound in both directions.
+  {
+    const cfg = liveShapedConfig()
+    cfg.apps.http.servers.srv0.routes[0].handle[0].routes[1].match = [
+      { host: ['a.example'], path: ['/x'] },
+      { host: ['b.example'], path: ['/y'] },
+    ]
+    const o = runProgram(PROG, cfg)
+    const chain = o.routes[0].handlers.find((h) => h.upstreamDials.includes('stylique-os:4100')).matcherChain
+    const sets = chain[1].matchSets
+    t('each matcher object is emitted as its own SET, in order', sets.length, 2)
+    t('…with its own host and path kept together',
+      sets.map((m) => `${m.host.join('|')}=>${m.path.join('|')}`), ['a.example=>/x', 'b.example=>/y'])
+    t('…and the count is reported', chain[1].matchSetCount, 2)
+    // The flattened view still exists for display, and is exactly the thing that
+    // must never be used for algebra — proved here by showing it is lossy.
+    t('the flattened view LOSES the pairing (which is why it is display-only)',
+      [chain[1].host.slice().sort().join(','), chain[1].path.slice().sort().join(',')],
+      ['a.example,b.example', '/x,/y'])
+    // SWAPPED SET MUTATION: a different route that flattens identically.
+    const cfg2 = liveShapedConfig()
+    cfg2.apps.http.servers.srv0.routes[0].handle[0].routes[1].match = [
+      { host: ['a.example'], path: ['/y'] },
+      { host: ['b.example'], path: ['/x'] },
+    ]
+    const o2 = runProgram(PROG, cfg2)
+    const chain2 = o2.routes[0].handlers.find((h) => h.upstreamDials.includes('stylique-os:4100')).matcherChain
+    t('SWAPPED SETS: the flattened views are IDENTICAL',
+      JSON.stringify([chain.host, chain.path]) === JSON.stringify([chain2.host, chain2.path]), true)
+    t('…while the structured sets differ, which is the whole point',
+      JSON.stringify(sets) === JSON.stringify(chain2[1].matchSets), false)
+  }
+  {
+    // An unsupported key is reported PER SET, so a route with one modelled set
+    // and one unmodelled set is not read as fully modelled.
+    const cfg = liveShapedConfig()
+    cfg.apps.http.servers.srv0.routes[0].handle[0].routes[1].match = [
+      { path: ['/os/*'] },
+      { method: ['POST'] },
+    ]
+    const o = runProgram(PROG, cfg)
+    const chain = o.routes[0].handlers.find((h) => h.upstreamDials.includes('stylique-os:4100')).matcherChain
+    t('an unsupported key is attributed to ITS set, not the whole route',
+      chain[1].matchSets.map((m) => m.unsupportedKeys.join(',')), ['', 'method'])
+    t('…and the route-level list still names it', chain[1].unsupportedMatcherKeys, ['method'])
+  }
+  {
+    // No `match` at all means "every request" — an empty set list, not a
+    // missing field.
+    const cfg = liveShapedConfig()
+    delete cfg.apps.http.servers.srv0.routes[0].handle[0].routes[1].match
+    const o = runProgram(PROG, cfg)
+    const chain = o.routes[0].handlers.find((h) => h.upstreamDials.includes('stylique-os:4100')).matcherChain
+    t('a route with no match emits an EMPTY set list, not a missing field',
+      Array.isArray(chain[1].matchSets) && chain[1].matchSets.length === 0, true)
   }
 
   // ------------------------------------------------------------ refusal shapes

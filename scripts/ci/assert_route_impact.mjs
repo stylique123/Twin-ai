@@ -192,6 +192,223 @@ export function pathMatcherMatches(pat, path) {
 }
 
 /**
+ * A pattern as a SET of request paths, which is the only form the questions
+ * below can be answered in.
+ */
+export function parsePattern(pat) {
+  if (!pathPatternSupported(pat)) return null
+  if (pat === '*') return { kind: 'all' }
+  if (!pat.includes('*')) return { kind: 'exact', v: pat }
+  if (pat.endsWith('*')) return { kind: 'prefix', v: pat.slice(0, -1) }
+  return { kind: 'suffix', v: pat.slice(1) }
+}
+
+/**
+ * DO THESE TWO PATTERNS SHARE ANY REQUEST AT ALL?
+ *
+ * THE DEFECT THIS REPLACES. The previous revision synthesised ONE representative
+ * path per removed matcher — `/os/*` became `/os/probe` — and asked which
+ * sibling served it. That is sampling, and a sample cannot establish a universal
+ * claim. With a later sibling matching `/os/admin/*`, the sample missed it
+ * entirely: `/os/probe` matched nothing, the removal was declared isolated, and
+ * every `/os/admin/…` URL in the retired set would have quietly reached that
+ * sibling's backend. One path cannot prove non-overlap of two sets.
+ *
+ * So overlap is decided in the matcher language instead. `prefix*` and `*suffix`
+ * always share a request — `prefix + suffix` is a witness — which is why this
+ * returns true there rather than guessing.
+ */
+export function patternsIntersect(a, b) {
+  if (!a || !b) return null
+  if (a.kind === 'all' || b.kind === 'all') return true
+  const pair = (x, y) => a.kind === x && b.kind === y
+  if (pair('exact', 'exact')) return a.v === b.v
+  if (pair('exact', 'prefix')) return a.v.startsWith(b.v)
+  if (pair('prefix', 'exact')) return b.v.startsWith(a.v)
+  if (pair('exact', 'suffix')) return a.v.endsWith(b.v)
+  if (pair('suffix', 'exact')) return b.v.endsWith(a.v)
+  if (pair('prefix', 'prefix')) return a.v.startsWith(b.v) || b.v.startsWith(a.v)
+  if (pair('suffix', 'suffix')) return a.v.endsWith(b.v) || b.v.endsWith(a.v)
+  // prefix vs suffix: `a.v + b.v` starts with one and ends with the other.
+  return true
+}
+
+/** Does EVERY request matching `b` also match `a`? */
+export function patternCovers(a, b) {
+  if (!a || !b) return null
+  if (a.kind === 'all') return true
+  if (b.kind === 'all') return false
+  if (a.kind === 'exact') return b.kind === 'exact' && a.v === b.v
+  if (a.kind === 'prefix') {
+    if (b.kind === 'exact') return b.v.startsWith(a.v)
+    if (b.kind === 'prefix') return b.v.startsWith(a.v)
+    return false // every string ending in s starts with p only when p is empty
+  }
+  if (b.kind === 'exact') return b.v.endsWith(a.v)
+  if (b.kind === 'suffix') return b.v.endsWith(a.v)
+  return false
+}
+
+/**
+ * HANDLERS THAT PROVABLY END THE REQUEST.
+ *
+ * THE SECOND DEFECT THIS REPLACES. A sibling with no upstreams was read as
+ * absorbing the request — "it matches, it proxies nowhere, nothing is exposed".
+ * That is false for MIDDLEWARE. `headers` and `encode` decorate the request and
+ * then CALL THE NEXT HANDLER, so a `/os/*` route holding only `headers` does not
+ * stop anything: evaluation continues to the next matching sibling, and the
+ * dashboard behind `/*` is reached exactly as if the middleware route were not
+ * there. The old model reported that config as isolated.
+ *
+ * Only `static_response` is provable from a handler TYPE alone. `file_server`
+ * calls the next handler when `pass_thru` is set, and the extractor emits types,
+ * not per-handler options — so it is not on this list. Anything else, including
+ * `subroute` and every third-party plugin, is unprovable and must fail closed.
+ */
+export const RESPONSE_ORIGINATING = ['static_response']
+
+/**
+ * Does evaluation of the sibling list STOP here?
+ *
+ * Two independent ways, and either is sufficient:
+ *   terminal: true          Caddy stops evaluating sibling routes after this one
+ *                           regardless of what its handlers do.
+ *   a response originator   the handler answers instead of calling next.
+ *
+ * A sibling that reaches a backend never gets here — that is an exposure, and it
+ * is decided before this is asked.
+ */
+export function stopsEvaluation(sib) {
+  if (sib.terminal === true) return true
+  const types = [...(sib.handlerTypes ?? [])]
+  return types.some((t) => RESPONSE_ORIGINATING.includes(t))
+}
+
+/**
+ * A host matcher as a set. Exact names, and `*.suffix` — where Caddy's `*`
+ * stands for exactly ONE label. Anything else is unrepresentable here.
+ */
+export function parseHostPattern(h) {
+  if (typeof h !== 'string' || h.length === 0) return null
+  const stars = (h.match(/\*/g) || []).length
+  if (stars === 0) return { kind: 'exact', v: h }
+  if (stars === 1 && h.startsWith('*.') && h.length > 2 && !h.slice(2).includes('*')) {
+    return { kind: 'label', v: h.slice(2) }
+  }
+  return null
+}
+
+const oneLabelUnder = (name, suffix) => {
+  if (!name.endsWith(`.${suffix}`)) return false
+  const label = name.slice(0, -(suffix.length + 1))
+  return label.length > 0 && !label.includes('.')
+}
+
+/** null means "cannot be decided", which callers must treat as a refusal. */
+export function hostPatternsIntersect(a, b) {
+  if (!a || !b) return null
+  if (a.kind === 'exact' && b.kind === 'exact') return a.v === b.v
+  if (a.kind === 'exact' && b.kind === 'label') return oneLabelUnder(a.v, b.v)
+  if (a.kind === 'label' && b.kind === 'exact') return oneLabelUnder(b.v, a.v)
+  // `*.a.com` against `*.b.com`: deciding this needs label arithmetic this model
+  // does not do, and guessing "disjoint" is the direction that false-passes.
+  return a.v === b.v ? true : null
+}
+
+export function hostPatternCovers(a, b) {
+  if (!a || !b) return null
+  if (a.kind === 'exact') return b.kind === 'exact' && a.v === b.v
+  if (b.kind === 'exact') return oneLabelUnder(b.v, a.v)
+  return a.v === b.v
+}
+
+/**
+ * ONE MATCHER OBJECT = A CONJUNCTION. A `match` ARRAY = A DISJUNCTION OF THEM.
+ *
+ * THE DEFECT THIS EXISTS FOR. The extractor used to flatten every host value and
+ * every path value of a route into two independent lists, and the algebra ran
+ * over those. For
+ *
+ *     match: [{host:[A], path:[/x]}, {host:[B], path:[/y]}]
+ *
+ * that produced hosts=[A,B] × paths=[/x,/y] — a four-way cross-product, half of
+ * which the config never expressed. An overlap test against it can report a
+ * collision on A + /y, which is not a request this route ever serves, and can
+ * equally miss the structure that matters. Sets are compared INTACT here.
+ *
+ * An absent key means "any": `{path:[/x]}` matches /x on every hostname.
+ * `null` is returned whenever a decision cannot be made, and every caller
+ * refuses on null.
+ */
+export function parseMatchSet(m) {
+  if (!m || typeof m !== 'object') return { bad: 'a matcher set is not an object' }
+  if ((m.unsupportedKeys ?? []).length > 0) {
+    return { bad: `matcher set uses ${[...m.unsupportedKeys].join(', ')}, which this model does not represent` }
+  }
+  const hosts = []
+  for (const h of m.host ?? []) {
+    const q = parseHostPattern(h)
+    if (!q) return { bad: `host matcher ${JSON.stringify(h)} is a shape this model does not represent` }
+    hosts.push(q)
+  }
+  const paths = []
+  for (const p of m.path ?? []) {
+    const q = parsePattern(p)
+    if (!q) return { bad: `path matcher ${JSON.stringify(p)} is a shape this model does not represent` }
+    paths.push(q)
+  }
+  return { ok: { hosts, paths, text: matchSetText(m) } }
+}
+
+export const matchSetText = (m) => {
+  const h = (m.host ?? []).length ? (m.host ?? []).join('|') : '*'
+  const p = (m.path ?? []).length ? (m.path ?? []).join('|') : '*'
+  return `{host ${h}, path ${p}}`
+}
+
+/** Any-vs-any dimension helper: an empty list means "every value". */
+function dimIntersect(as, bs, f) {
+  if (as.length === 0 || bs.length === 0) return true
+  let sawNull = false
+  for (const a of as) {
+    for (const b of bs) {
+      const r = f(a, b)
+      if (r === true) return true
+      if (r === null) sawNull = true
+    }
+  }
+  return sawNull ? null : false
+}
+
+function dimCovers(as, bs, f) {
+  if (as.length === 0) return true          // a matches every value
+  if (bs.length === 0) return false         // b matches every value, a does not
+  let sawNull = false
+  for (const b of bs) {
+    let covered = false
+    for (const a of as) {
+      const r = f(a, b)
+      if (r === true) { covered = true; break }
+      if (r === null) sawNull = true
+    }
+    if (!covered) return sawNull ? null : false
+  }
+  return true
+}
+
+export function matchSetsIntersect(a, b) {
+  const h = dimIntersect(a.hosts, b.hosts, hostPatternsIntersect)
+  if (h !== true) return h
+  return dimIntersect(a.paths, b.paths, patternsIntersect)
+}
+
+export function matchSetCovers(a, b) {
+  const h = dimCovers(a.hosts, b.hosts, hostPatternCovers)
+  if (h !== true) return h
+  return dimCovers(a.paths, b.paths, patternCovers)
+}
+
+/**
  * The ordered sibling routes sharing one parent `routes` array, with what each
  * one reaches and whether it stops evaluation.
  */
@@ -199,13 +416,28 @@ export function siblingModel(handlers, parentRoutesArrayPath) {
   const byIndex = new Map()
   let declaredCount = null
   for (const h of handlers) {
-    const c = (h.matcherChain ?? []).find((x) => x?.parentRoutesArrayPath === parentRoutesArrayPath)
-    if (!c || !Number.isInteger(c.routeIndexInParent)) continue
+    const chain = h.matcherChain ?? []
+    const at = chain.findIndex((x) => x?.parentRoutesArrayPath === parentRoutesArrayPath)
+    if (at < 0) continue
+    const c = chain[at]
+    if (!Number.isInteger(c.routeIndexInParent)) continue
     if (Number.isInteger(c.parentRoutesCount)) declaredCount = c.parentRoutesCount
+    // THE SHARED CONJUNCTION ABOVE THIS LEVEL. Two sibling routes are comparable
+    // only under identical ancestry; this is what proves that, and it is built
+    // from the ancestors' own structured matcher sets, never the flattened view.
+    const ancestorKey = JSON.stringify(chain.slice(0, at).map((x) => ({
+      routePath: x?.routePath ?? null, matchSets: x?.matchSets ?? null, terminal: x?.terminal ?? null,
+    })))
     const e = byIndex.get(c.routeIndexInParent) ?? {
       index: c.routeIndexInParent, routePath: c.routePath,
+      // STRUCTURED SETS ARE THE AUTHORITY. `pathMatchers`/`hostMatchers` are the
+      // flattened projection and exist for display and fingerprints only — the
+      // set algebra must never read them, because flattening invents matcher
+      // combinations the config never expressed.
+      matchSets: Array.isArray(c.matchSets) ? c.matchSets : null,
       pathMatchers: c.path ?? [], hostMatchers: c.host ?? [],
-      terminal: c.terminal === true, group: c.group ?? null,
+      terminal: c.terminal === true, hasGroup: c.hasGroup === true,
+      ancestorKey,
       handlerTypes: new Set(c.handlerTypes ?? []),
       reachesTarget: false, reachesOther: false, otherDials: [],
     }
@@ -234,10 +466,17 @@ export function siblingFingerprint(s) {
   const canon = JSON.stringify({
     index: s.index,
     routePath: s.routePath,
-    host: [...(s.hostMatchers ?? [])].sort(),
-    path: [...(s.pathMatchers ?? [])].sort(),
+    // STRUCTURED, NOT FLATTENED. A fingerprint over flattened lists cannot tell
+    // {host A, path /x} OR {host B, path /y} apart from the swapped pairing
+    // {host A, path /y} OR {host B, path /x} — they flatten identically, and
+    // that is a different route.
+    matchSets: (s.matchSets ?? null) === null ? null : s.matchSets.map((m) => ({
+      host: [...(m.host ?? [])].sort(),
+      path: [...(m.path ?? [])].sort(),
+      unsupportedKeys: [...(m.unsupportedKeys ?? [])].sort(),
+    })),
     terminal: s.terminal === true,
-    group: s.group ?? null,
+    hasGroup: s.hasGroup === true,
     handlerTypes: [...(s.handlerTypes ?? [])].sort(),
     dials: [...new Set(s.otherDials ?? [])].sort(),
     reachesTarget: s.reachesTarget === true,
@@ -262,46 +501,119 @@ export function siblingFingerprint(s) {
  * a hard refusal, and terminality is used only in fingerprints and reporting.
  * The values become evidence when a fresh probe at this head emits them.
  *
- * Returns, per probe path the removed route served, the first later sibling that
- * would match it. `null` shows nothing matches, which is the only outcome that
- * makes a removal a genuine detach.
+ * Returns, per MATCHER in the removed set, what happens to every request that
+ * matcher served. Not a sample of one — the whole set.
  */
 export function fallThroughAfterRemoval(siblings, removedIndex) {
   const removed = siblings.find((sN) => sN.index === removedIndex)
   if (!removed) return { supported: false, reason: 'the removed route is not among its siblings' }
-  const probes = []
-  for (const pat of removed.pathMatchers) {
-    if (!pathPatternSupported(pat)) {
-      return { supported: false, reason: `path matcher ${JSON.stringify(pat)} is a shape this model does not represent` }
+
+  // GROUPS ARE NOT MODELLED — DELIBERATELY. A route `group` changes which
+  // siblings Caddy even considers once a member has matched. The exact rule is a
+  // property of Caddy's route compiler, and the previous revision asserted from
+  // reasoning alone that a group "never widens what a later route can serve".
+  // That may well be true; it was not demonstrated, and an unproven premise
+  // underneath a deletion is what this whole gate exists to prevent.
+  const grouped = siblings.filter((s) => s.hasGroup === true)
+  if (grouped.length > 0) {
+    return {
+      supported: false,
+      // The group NAME is deliberately not reported: the caller needs only its
+      // existence to refuse, so the name never leaves the host.
+      reason: `sibling route(s) ${grouped.map((s) => s.routePath).join(', ')} belong to a route group; `
+        + 'group evaluation order is not modelled here and is not assumed',
     }
-    // A representative request the removed route served.
-    probes.push(pat.endsWith('*') ? `${pat.slice(0, -1)}probe` : pat)
   }
-  if (probes.length === 0) probes.push('/')
+
+  // SIBLINGS MUST SHARE AN ANCESTRY. A handler is reached under the conjunction
+  // of every ancestor route's matchers. Comparing two routes at one level is
+  // sound only when everything above them is identical — then the shared
+  // conjunction cancels on both sides. If the chains differ, the comparison is
+  // between conditions that are not comparable.
+  const anc = new Set(siblings.map((s) => s.ancestorKey ?? ' missing'))
+  if (anc.has(' missing')) {
+    return {
+      supported: false,
+      reason: 'a sibling carries no ancestor matcher context, so the shared conjunction above these routes cannot be established',
+    }
+  }
+  if (anc.size > 1) {
+    return {
+      supported: false,
+      reason: 'the siblings do not share an identical ancestor matcher chain, so their matchers are not directly comparable',
+    }
+  }
+
+  const parseAll = (s) => {
+    const raw = s.matchSets
+    // An absent match ARRAY is "every request". An absent FIELD is missing
+    // evidence. The two must not be confused.
+    if (!Array.isArray(raw)) return { bad: `route ${s.routePath} reports no structured matcher sets` }
+    if (raw.length === 0) return { ok: [{ hosts: [], paths: [], text: '{host *, path *}' }] }
+    const out = []
+    for (const m of raw) {
+      const r = parseMatchSet(m)
+      if (r.bad) return { bad: `route ${s.routePath}: ${r.bad}` }
+      out.push(r.ok)
+    }
+    return { ok: out }
+  }
+
+  const removedSets = parseAll(removed)
+  if (removedSets.bad) return { supported: false, reason: removedSets.bad }
+
+  const later = []
+  for (const s of siblings) {
+    if (s.index <= removedIndex) continue
+    const parsed = parseAll(s)
+    if (parsed.bad) return { supported: false, reason: parsed.bad }
+    later.push({ sib: s, sets: parsed.ok })
+  }
 
   const results = []
-  for (const probe of probes) {
-    let landed = null
-    for (const sib of siblings) {
-      // ONLY LATER SIBLINGS. Routes are evaluated in array order, so every route
-      // BEFORE the removed one behaves exactly as it did — deleting something
-      // after it cannot change whether it matches or terminates. What changes is
-      // only that evaluation now continues past the removed index instead of
-      // stopping at it.
-      //
-      // This is deliberately conservative in one direction: if an earlier
-      // TERMINAL route already swallowed the probe path, the removed route never
-      // saw it and nothing is newly exposed, yet this still reports whatever
-      // matches later. That is a false refusal, never a false pass, and a false
-      // refusal is the side to be wrong on.
-      if (sib.index <= removedIndex) continue
-      const pats = sib.pathMatchers
-      const hit = pats.length === 0
-        ? true
-        : pats.some((pp) => pathMatcherMatches(pp, probe) === true)
-      if (hit) { landed = sib; break }
+  for (const rm of removedSets.ok) {
+    let verdict = null
+    // ONLY LATER SIBLINGS. Routes are evaluated in array order, so every route
+    // BEFORE the removed one behaves exactly as it did — deleting something
+    // after it cannot change whether it matches or terminates.
+    for (const { sib, sets } of later) {
+      const decisions = sets.map((x) => ({ x, r: matchSetsIntersect(rm, x) }))
+      if (decisions.some((d) => d.r === null)) {
+        verdict = {
+          outcome: 'overlap-undecidable', sib, overlap: [],
+          detail: `overlap with ${sib.routePath} could not be decided`,
+        }
+        break
+      }
+      const overlap = decisions.filter((d) => d.r === true).map((d) => d.x)
+      if (overlap.length === 0) continue
+
+      // SOME REQUEST in the removed set reaches this sibling. What it reaches
+      // decides the outcome — and reaching a backend decides it immediately,
+      // whether the overlap is the whole set or one URL inside it.
+      if (sib.reachesTarget) { verdict = { outcome: 'still-reaches-target', sib, overlap }; break }
+      if (sib.reachesOther) { verdict = { outcome: 'exposes-backend', sib, overlap }; break }
+
+      // No backend here. Does evaluation STOP, or is this middleware that calls
+      // the next handler? Middleware is not absorption.
+      if (!stopsEvaluation(sib)) continue
+
+      // It stops — but only for the requests it actually matches. Covering the
+      // whole removed set accounts for it; covering part leaves a remainder this
+      // matcher language cannot express as one set, which is refused rather than
+      // approximated.
+      const covers = sets.map((x) => matchSetCovers(x, rm))
+      if (covers.some((r) => r === true)) { verdict = { outcome: 'absorbed-terminating', sib, overlap }; break }
+      if (covers.some((r) => r === null)) {
+        verdict = {
+          outcome: 'overlap-undecidable', sib, overlap,
+          detail: `coverage by ${sib.routePath} could not be decided`,
+        }
+        break
+      }
+      verdict = { outcome: 'partial-absorption-unmodelled', sib, overlap }; break
     }
-    results.push({ probe, landed })
+    results.push({ pattern: rm.text, ...(verdict ?? { outcome: 'unserved', sib: null, overlap: [] }) })
   }
   return { supported: true, results }
 }
@@ -341,8 +653,10 @@ export function postRemovalRouting(handlers, excl) {
   const siblings = siblingModel(handlers, excl.parentRoutesArrayPath)
   const fingerprints = siblings.map((s) => ({
     index: s.index, routePath: s.routePath,
+    matchSets: s.matchSets,
+    matchSetText: (s.matchSets ?? []).map(matchSetText).join(' OR ') || '(no match — every request)',
     hostMatchers: s.hostMatchers, pathMatchers: s.pathMatchers,
-    terminal: s.terminal, group: s.group ?? null,
+    terminal: s.terminal, hasGroup: s.hasGroup === true,
     handlerTypes: [...s.handlerTypes].sort(),
     sha256: siblingFingerprint(s),
   }))
@@ -367,17 +681,21 @@ export function postRemovalRouting(handlers, excl) {
   const ft = fallThroughAfterRemoval(siblings, excl.routeIndexInParent)
   if (!ft.supported) return { ...base, supported: false, reason: ft.reason }
 
-  const outcomes = ft.results.map(({ probe, landed }) => {
-    if (landed === null) return { probe, outcome: 'unserved', landedRoutePath: null, landedIndex: null, exposedDials: [], landedHandlerTypes: [] }
-    const common = {
-      probe, landedRoutePath: landed.routePath, landedIndex: landed.index,
-      landedHandlerTypes: [...landed.handlerTypes].sort(),
-    }
-    if (landed.reachesTarget) return { ...common, outcome: 'still-reaches-target', exposedDials: [] }
-    if (landed.reachesOther) return { ...common, outcome: 'exposes-backend', exposedDials: [...new Set(landed.otherDials)].sort() }
-    return { ...common, outcome: 'absorbed-without-upstream', exposedDials: [] }
-  })
-  const isolated = outcomes.every((o) => o.outcome === 'unserved' || o.outcome === 'absorbed-without-upstream')
+  const outcomes = ft.results.map(({ pattern, outcome, sib, overlap }) => ({
+    pattern,
+    outcome,
+    // WHICH REQUESTS. Naming the overlapping matchers is what makes a partial
+    // exposure legible: "/os/* falls through" and "/os/admin/* within /os/*
+    // falls through" are different findings and need different remedies.
+    overlappingMatchers: (overlap ?? []).map((x) => x.text),
+    landedRoutePath: sib?.routePath ?? null,
+    landedIndex: sib?.index ?? null,
+    landedHandlerTypes: sib ? [...sib.handlerTypes].sort() : [],
+    landedTerminal: sib ? sib.terminal === true : null,
+    exposedDials: sib && outcome === 'exposes-backend' ? [...new Set(sib.otherDials)].sort() : [],
+  }))
+  const ISOLATING = ['unserved', 'absorbed-terminating']
+  const isolated = outcomes.every((o) => ISOLATING.includes(o.outcome))
   return { ...base, supported: true, isolated, outcomes }
 }
 
@@ -669,22 +987,38 @@ export function postRemovalBlockers(c) {
     return [`${at}: post-removal routing could not be modelled (${pr.reason ?? 'no reason reported'}) — `
       + 'without it there is no evidence the removed paths stop reaching a backend']
   }
-  const bad = pr.outcomes.filter((o) => o.outcome === 'exposes-backend' || o.outcome === 'still-reaches-target')
+  const REFUSING = ['exposes-backend', 'still-reaches-target', 'partial-absorption-unmodelled']
+  const bad = pr.outcomes.filter((o) => REFUSING.includes(o.outcome))
+  const unit = `nested route ${c.exclusiveRoute.routePath} (index ${c.exclusiveRoute.routeIndexInParent} `
+    + `of ${c.exclusiveRoute.parentRoutesArrayPath})`
+  // Which requests, in matcher terms. A partial overlap is the case the previous
+  // sampling model missed entirely, so naming the overlapping matcher rather
+  // than "a path" is the whole point.
+  const which = (o) => (o.overlappingMatchers.length
+    ? `requests matching ${o.pattern} that also match ${o.overlappingMatchers.join(' or ')}`
+    : `requests matching ${o.pattern}`)
   return bad.map((o) => {
     if (o.outcome === 'still-reaches-target') {
-      return `${at}: removing ${c.exclusiveRoute.routePath} does NOT stop ${o.probe} reaching the target — `
-        + `it would fall through to sibling route ${o.landedRoutePath} (index ${o.landedIndex}), which reaches the target too; `
+      return `${at}: removing ${unit} does NOT stop ${which(o)} reaching the target — `
+        + `they would fall through to sibling route ${o.landedRoutePath} (index ${o.landedIndex}), which reaches the target too; `
         + 'the route was therefore never exclusively the target\'s and this analysis contradicts the verdict'
     }
-    return `${at}: removing nested route ${c.exclusiveRoute.routePath} (index ${c.exclusiveRoute.routeIndexInParent} `
-      + `of ${c.exclusiveRoute.parentRoutesArrayPath}) is NOT a lossless detach for ${o.probe}. `
-      + `That request would FALL THROUGH to sibling route ${o.landedRoutePath} (index ${o.landedIndex}, `
-      + `handlers ${o.landedHandlerTypes.join('+') || 'none'}) and newly reach ${o.exposedDials.join(', ')}. `
-      + 'The retired public path would keep answering, served by a protected backend. '
+    if (o.outcome === 'partial-absorption-unmodelled') {
+      return `${at}: removing ${unit} leaves ${o.pattern} only PARTLY accounted for. `
+        + `Sibling route ${o.landedRoutePath} (index ${o.landedIndex}) stops evaluation for `
+        + `${o.overlappingMatchers.join(' or ')}, which overlaps ${o.pattern} without covering it. `
+        + 'The remainder is a set this matcher language cannot express as one pattern, so what serves it '
+        + 'is not established. REFUSED rather than approximated.'
+    }
+    return `${at}: removing ${unit} is NOT a lossless detach. `
+      + `${which(o)} would FALL THROUGH to sibling route ${o.landedRoutePath} (index ${o.landedIndex}, `
+      + `handlers ${o.landedHandlerTypes.join('+') || 'none'}, terminal ${String(o.landedTerminal)}) `
+      + `and newly reach ${o.exposedDials.join(', ')}. `
+      + 'Those retired public URLs would keep answering, served by a protected backend. '
       + 'OWNER DECISION REQUIRED, and this tool will not make it: '
-      + `(a) RETIRE the path — replace route ${c.exclusiveRoute.routePath} with an explicit terminal `
-      + 'static_response (404 or 410) instead of deleting it, so the path stops resolving to anything; or '
-      + `(b) DECLARE the fallback intentional — accept that ${o.exposedDials.join(', ')} serves ${o.probe} from now on. `
+      + `(a) RETIRE them — replace route ${c.exclusiveRoute.routePath} with an explicit terminal `
+      + 'static_response (404 or 410) instead of deleting it, so those paths stop resolving to anything; or '
+      + `(b) DECLARE the fallback intentional — accept that ${o.exposedDials.join(', ')} serves them from now on. `
       + 'Neither is encoded here.'
   })
 }
@@ -761,6 +1095,22 @@ export function decide(a) {
       blockers.push(...postRemovalBlockers(c))
       const sim = simulateNestedRemoval(c, classified.filter(Boolean))
       c.simulation = sim
+      // THE ROUTING BEING RIGHT IS NOT THE EDIT BEING PROVEN. The simulation
+      // reasons about the adapted JSON; the thing that gets edited is the
+      // Caddyfile, and nothing here maps a JSON pointer back to a source
+      // directive. Without an adapt+validate equivalence proof the durable
+      // change is undemonstrated, however clean the routing analysis is.
+      const adapt = adaptEquivalence(a, [c.exclusiveRoute.routePath])
+      c.adaptEquivalence = adapt
+      if (!adapt.ok) {
+        blockers.push(
+          `route ${c.server}#${c.routeIndex}: the durable edit is UNPROVEN — ${adapt.reason}. `
+          + `The runtime path ${c.exclusiveRoute.routePath} is what the adapter PRODUCED from the Caddyfile; `
+          + 'it does not identify the source directive to change. Required: build the candidate from the real '
+          + 'boot file, caddy adapt both, caddy validate the candidate, and prove the adapted JSON diff is '
+          + `exactly [${c.exclusiveRoute.routePath}] — with a byte-exact backup of the pre-edit file.`,
+        )
+      }
       for (const r of sim.reasons) {
         // The fall-through reasons are already reported, in more detail, by
         // postRemovalBlockers. Do not say the same thing twice.
@@ -859,21 +1209,167 @@ export function simulateNestedRemoval(c, allClassified) {
       + `${removedPath}, so deleting that route leaves the target reachable`)
   }
   if (!pr || pr.supported !== true) reasons.push('post-removal routing was not modelled')
-  else if (pr.isolated !== true) reasons.push('at least one removed path would newly reach another backend')
+  else if (pr.isolated !== true) reasons.push('at least one removed matcher is not proven to stop reaching a backend')
 
   return {
     removedRoutePath: removedPath,
     routesStillReachingTarget: stillReaching,
     handlersOutsideRemovedSubtree: outside,
-    pathsNewlyReachingOtherBackends: (pr?.outcomes ?? [])
+    patternsNewlyReachingOtherBackends: (pr?.outcomes ?? [])
       .filter((o) => o.outcome === 'exposes-backend')
-      .map((o) => ({ path: o.probe, backend: o.exposedDials, via: o.landedRoutePath })),
-    pathsLeftUnserved: (pr?.outcomes ?? []).filter((o) => o.outcome === 'unserved').map((o) => o.probe),
+      .map((o) => ({ pattern: o.pattern, overlap: o.overlappingMatchers, backend: o.exposedDials, via: o.landedRoutePath })),
+    patternsLeftUnserved: (pr?.outcomes ?? []).filter((o) => o.outcome === 'unserved').map((o) => o.pattern),
+    patternsAbsorbed: (pr?.outcomes ?? []).filter((o) => o.outcome === 'absorbed-terminating')
+      .map((o) => ({ pattern: o.pattern, by: `${o.landedRoutePath} (${o.landedHandlerTypes.join('+') || 'no handlers'}, terminal ${String(o.landedTerminal)})` })),
     targetUnreachableAfter: stillReaching.length === 0 && outside.length === 0,
     isLosslessDetach: reasons.length === 0,
     reasons,
   }
 }
+
+/**
+ * IS THE DURABLE EDIT PROVEN? — and it is not, by default.
+ *
+ * WHAT WAS OVERCLAIMED. The previous revision emitted a `durableEdit` string —
+ * "edit the HOST FILE …: delete the nested route serving /os/* at index 1 of
+ * apps/http/servers/…" — and an admin-API `DELETE` against a RUNTIME JSON path.
+ * Neither is a proof about the Caddyfile. The runtime JSON is what the adapter
+ * PRODUCED; the durable source is a Caddyfile, and the mapping from a JSON
+ * pointer back to a source directive is not one this tool computes. Prose plus
+ * a runtime DELETE described an edit; it did not demonstrate one.
+ *
+ * What would demonstrate it, and what this function requires:
+ *   1. the candidate is built from the REAL boot file, whose digest matches the
+ *      one this run recorded;
+ *   2. `caddy adapt` is run on the untouched boot file AND on the candidate;
+ *   3. `caddy validate` accepts the candidate;
+ *   4. the DIFF between the two adapted JSON documents is EXACTLY the audited
+ *      change — the one nested route removed at the audited path, and nothing
+ *      else. Not "contains"; exactly.
+ *   5. the pre-edit bytes are backed up and the backup's digest recorded.
+ *
+ * Until a probe carries that evidence this returns not-ok, and a nested removal
+ * is never patchable. That is the honest state today: no probe emits it yet.
+ */
+export const ADAPT_PROOF_FIELDS = [
+  'runtimeConfigSha256', 'bootFileSha256', 'candidateFileSha256', 'adaptedBeforeJsonSha256',
+  'adaptedAfterJsonSha256', 'validateExitCode', 'jsonDiffPaths', 'backupSha256',
+]
+
+/**
+ * SECRET-SAFE BY CONSTRUCTION, NOT BY REDACTION.
+ *
+ * Every field above is a digest, an exit code, or a configuration PATH. None of
+ * them can carry configuration TEXT, which is the whole reason the proof is
+ * shaped this way: an equivalence argument naturally wants to attach the diff
+ * itself, and a Caddy diff can contain basicauth hashes, TLS material, header
+ * values and internal hostnames. So the field set is CLOSED — an unexpected key
+ * is a refusal, not an ignored extra — and diff entries must look like config
+ * pointers and nothing else.
+ *
+ * The closed set is what stops a future probe from growing a `diffText` field
+ * and quietly publishing config into an artifact.
+ */
+const CONFIG_PATH = /^apps\/http\/servers\/[A-Za-z0-9_.:@-]+(\/[A-Za-z0-9_.:@-]+)*$/
+
+export function adaptEquivalence(a, expectedRemovals) {
+  const proof = a?.adaptEquivalence ?? null
+  if (proof === null || typeof proof !== 'object') {
+    return {
+      ok: false,
+      reason: 'no caddy adapt/validate equivalence proof was supplied — the runtime JSON path does not '
+        + 'establish the corresponding Caddyfile edit, and prose plus an admin DELETE is not that proof',
+      required: ADAPT_PROOF_FIELDS,
+    }
+  }
+  const missing = ADAPT_PROOF_FIELDS.filter((f) => proof[f] === undefined || proof[f] === null)
+  if (missing.length > 0) return { ok: false, reason: `the equivalence proof is missing ${missing.join(', ')}`, required: ADAPT_PROOF_FIELDS }
+  const extra = Object.keys(proof).filter((k) => !ADAPT_PROOF_FIELDS.includes(k))
+  if (extra.length > 0) {
+    return {
+      ok: false,
+      reason: `the equivalence proof carries unexpected field(s) ${extra.join(', ')}; the field set is closed `
+        + 'because every permitted field is a digest, an exit code or a config path, and none of them can '
+        + 'carry configuration text',
+      required: ADAPT_PROOF_FIELDS,
+    }
+  }
+
+  const hex = (v) => typeof v === 'string' && HEX64.test(v)
+  // BOUND TO THIS RUN. A proof is about one configuration at one moment. Without
+  // this it could be produced against any config and presented alongside any
+  // probe — including a stale one taken before somebody reloaded Caddy.
+  if (!hex(proof.runtimeConfigSha256)) return { ok: false, reason: 'the proof\'s runtime config digest is malformed' }
+  if (typeof a.caddyRuntimeConfigSha256 === 'string' && proof.runtimeConfigSha256 !== a.caddyRuntimeConfigSha256) {
+    return {
+      ok: false,
+      reason: `the proof is bound to runtime config ${proof.runtimeConfigSha256}, but this probe read `
+        + `${a.caddyRuntimeConfigSha256} — the proof and the audit describe different configurations`,
+    }
+  }
+  if (!hex(proof.bootFileSha256)) return { ok: false, reason: 'the proof\'s boot file digest is malformed' }
+  // THE CANDIDATE MUST DESCEND FROM THE AUDITED BYTES. A proof built against a
+  // different boot file proves something about a config nobody audited.
+  if (typeof a.caddyBootFileSha256 === 'string' && proof.bootFileSha256 !== a.caddyBootFileSha256) {
+    return {
+      ok: false,
+      reason: `the proof was built from boot file ${proof.bootFileSha256}, but this run audited `
+        + `${a.caddyBootFileSha256} — the candidate does not descend from the bytes that were examined`,
+    }
+  }
+  if (!hex(proof.candidateFileSha256) || !hex(proof.adaptedBeforeJsonSha256) || !hex(proof.adaptedAfterJsonSha256)) {
+    return { ok: false, reason: 'a digest in the equivalence proof is malformed' }
+  }
+  if (!hex(proof.backupSha256)) return { ok: false, reason: 'the backup digest is missing or malformed' }
+  if (proof.backupSha256 !== proof.bootFileSha256) {
+    return { ok: false, reason: 'the backup does not hold the pre-edit bytes, so the rollback would not restore them' }
+  }
+  if (proof.candidateFileSha256 === proof.bootFileSha256) {
+    return { ok: false, reason: 'the candidate file is byte-identical to the boot file — nothing was changed' }
+  }
+  if (proof.validateExitCode !== 0) {
+    return { ok: false, reason: `caddy validate rejected the candidate (exit ${proof.validateExitCode})` }
+  }
+  if (proof.adaptedAfterJsonSha256 === proof.adaptedBeforeJsonSha256) {
+    return { ok: false, reason: 'the adapted JSON is unchanged — the source edit did not produce the route removal' }
+  }
+  // EXACTLY THE AUDITED CHANGE. "Contains the removal" is not enough: an edit
+  // that also reordered a sibling, dropped a header directive or re-indented a
+  // block would pass a containment check and change routing anyway.
+  const diff = Array.isArray(proof.jsonDiffPaths) ? [...proof.jsonDiffPaths].sort() : null
+  if (diff === null) return { ok: false, reason: 'jsonDiffPaths is not a list' }
+  const notPaths = diff.filter((d) => typeof d !== 'string' || !CONFIG_PATH.test(d))
+  if (notPaths.length > 0) {
+    return {
+      ok: false,
+      reason: `jsonDiffPaths contains ${notPaths.length} entr${notPaths.length === 1 ? 'y' : 'ies'} that `
+        + 'are not configuration pointers; the diff is reported as PATHS so that configuration text cannot '
+        + 'travel in it',
+    }
+  }
+  const want = [...expectedRemovals].sort()
+  if (canonList(diff) !== canonList(want)) {
+    return {
+      ok: false,
+      reason: `the adapted JSON diff is ${JSON.stringify(diff)}, not exactly the audited change `
+        + `${JSON.stringify(want)} — the source edit did more, or less, than the removal that was audited`,
+    }
+  }
+  return {
+    ok: true,
+    proof,
+    // NECESSARY, NOT SUFFICIENT. Everything above is arithmetic over values the
+    // probe hands us. It establishes that the numbers are consistent with the
+    // audited removal; it does not establish that they were produced on the
+    // host, from the real boot file, by a real `caddy adapt`. Only a live
+    // read-only probe emitting them does that, and until one has, a passing
+    // proof is a passing TEST.
+    evidenceNote: 'digest arithmetic only — this becomes evidence when a live read-only probe at the '
+      + 'audited head produces these values on the host; a synthetic proof proves the checker, not the edit',
+  }
+}
+
+const canonList = (xs) => JSON.stringify(xs)
 
 /**
  * The exact nested-route deletion, with the exact rollback.
@@ -891,6 +1387,9 @@ export function nestedRouteRemovalStep(a, c, sim) {
   const excl = c.exclusiveRoute
   const pr = c.postRemoval
   const fps = pr?.siblingFingerprints ?? []
+  // The one and only change the adapted JSON is permitted to show.
+  const expectedRemovals = [excl.routePath]
+  const adapt = adaptEquivalence(a, expectedRemovals)
   return {
     where: `${c.server} route ${c.routeIndex}`
       + (c.hostMatchers.length ? ` (host ${c.hostMatchers.join(', ')})` : ' (no host matcher — catch-all)'),
@@ -908,20 +1407,47 @@ export function nestedRouteRemovalStep(a, c, sim) {
       `disk config ${a.caddyDiskConfigPath ?? '<unknown>'} sha256 == ${a.caddyDiskConfigSha256 ?? '<unknown>'}`,
       `${excl.parentRoutesArrayPath} holds exactly ${fps.length} route${fps.length === 1 ? '' : 's'}`,
       ...fps.map((f) => `${excl.parentRoutesArrayPath}/${f.index} fingerprint sha256 == ${f.sha256}`
-        + ` (path ${f.pathMatchers.join(', ') || '(none — matches all)'}, terminal ${f.terminal},`
+        + ` (matcher sets ${f.matchSetText}, terminal ${f.terminal},`
         + ` handlers ${f.handlerTypes.join('+') || 'none'})`),
       `${excl.routePath} matches exactly [${excl.pathMatchers.join(', ') || '(none)'}]`,
       'after the edit, no route in the configuration dials the target',
-      ...sim.pathsLeftUnserved.map((p) => `after the edit, ${p} matches no route and Caddy answers 404`),
+      ...sim.patternsLeftUnserved.map((p) => `after the edit, requests matching ${p} match no route and Caddy answers 404`),
+      ...sim.patternsAbsorbed.map((x) => `after the edit, requests matching ${x.pattern} are answered by `
+        + `${x.by} without reaching any backend`),
     ],
+    // ADAPT-EQUIVALENCE IS THE DURABLE PROOF, AND IT IS SEPARATE FROM ROUTING.
+    // The simulation proves the routing consequence of removing a route from the
+    // adapted JSON. It says nothing about which Caddyfile bytes produce that
+    // JSON, and this tool does not compute that mapping. So the durable edit is
+    // reported as UNPROVEN with the procedure that would prove it, rather than
+    // as an instruction that sounds like one.
+    durableEditStatus: adapt.ok ? 'PROVEN by adapt-equivalence' : 'UNPROVEN',
+    durableEditUnprovenReason: adapt.ok ? null : adapt.reason,
+    durableEditProofProcedure: [
+      `1. copy the boot file ${a.caddyBootFileHostPath ?? '<resolved host file>'} to a backup; `
+      + `record its sha256 (this run read ${a.caddyBootFileSha256 ?? '<unknown>'})`,
+      '2. build the CANDIDATE by editing that backup copy, never the live file',
+      `3. caddy adapt the untouched boot file -> adaptedBefore.json`,
+      '4. caddy adapt the candidate -> adaptedAfter.json, and caddy validate the candidate',
+      `5. diff adaptedBefore.json against adaptedAfter.json and require the change to be EXACTLY `
+      + `[${expectedRemovals.join(', ')}] — not "contains", exactly; an edit that also reordered a sibling `
+      + 'or dropped a directive would pass a containment check and change routing anyway',
+      '6. only then is the source edit known to produce the audited removal',
+    ],
+    adaptEquivalence: adapt,
     // A candidate config must be proven loadable before it is loaded. The
-    // simulation above proves the ROUTING is what we think; this proves Caddy
-    // agrees the file is a config at all. Both, or neither.
+    // simulation proves the ROUTING is what we think; this proves Caddy agrees
+    // the file is a config at all. Both, or neither.
     validate: [
       `caddy validate --config <candidate> --adapter ${a.caddyDiskConfigPath?.endsWith('.json') ? 'none (already JSON)' : 'caddyfile'}`,
       'the candidate must validate BEFORE any reload; a reload of an invalid config takes the whole proxy down, '
       + 'not just the route being removed',
     ],
+    // A REHEARSAL, AND ONLY THAT. An admin-API DELETE edits the RUNTIME config.
+    // It is lost on the next container restart, and it is not evidence about the
+    // Caddyfile. It is listed so the routing consequence can be observed
+    // reversibly — never as the durable change.
+    rehearsalScope: 'RUNTIME ONLY — reverted by any restart, and no evidence about the durable source',
     rehearsal: `curl -s -X DELETE "${adminBase(a)}${excl.routePath}"`,
     // ROLLBACK IS A FILE, NOT A RECONSTRUCTION. The probe deliberately never
     // emits the route object's contents — it emits matchers, handler types and
@@ -931,15 +1457,13 @@ export function nestedRouteRemovalStep(a, c, sim) {
     // there before, restored from a backup taken at apply time and verified by
     // digest.
     rollback: [
-      `BEFORE the edit, copy ${a.caddyDiskConfigPath ?? '<disk config>'} to a backup and record its sha256 `
-      + `(expected ${a.caddyDiskConfigSha256 ?? '<unknown>'})`,
+      `BEFORE the edit, copy ${a.caddyBootFileHostPath ?? '<boot file>'} to a backup and record its sha256 `
+      + `(expected ${a.caddyBootFileSha256 ?? '<unknown>'})`,
       'to roll back: restore that backup, confirm the restored file\'s sha256 equals the recorded one, '
       + 'then reload',
       'this report CANNOT reconstruct the deleted route — it records matchers, handler types and dials only, '
       + 'never the route object — so the backup is the rollback, and an edit made without one is irreversible',
     ],
-    durableEdit: durableEditFor(a, `delete the nested route serving ${excl.pathMatchers.join(', ') || '(all paths)'} `
-      + `at index ${excl.routeIndexInParent} of ${excl.parentRoutesArrayPath}`),
   }
 }
 
@@ -996,7 +1520,11 @@ export function candidatePatch(a, impacted, allClassified) {
       // and a blocked run never calls this function at all. The guard is here
       // anyway, because "the caller checks" is how an unproven deletion ships.
       const sim = simulateNestedRemoval(c, allClassified)
-      if (sim.isLosslessDetach) steps.push(nestedRouteRemovalStep(a, c, sim))
+      // BOTH GATES. The routing must be proven lossless AND the source edit must
+      // be proven to be exactly that removal. Either alone drafts a change whose
+      // effect is unestablished.
+      const adapt = adaptEquivalence(a, [c.exclusiveRoute.routePath])
+      if (sim.isLosslessDetach && adapt.ok) steps.push(nestedRouteRemovalStep(a, c, sim))
       continue
     }
 
@@ -1255,7 +1783,7 @@ export function render(d) {
           + `  host=${(m.host ?? []).join(',') || '*'}`
           + `  path=${(m.path ?? []).join(',') || '*'}`
           + `  terminal=${String(m.terminal ?? '(not reported)')}`
-          + `${m.group ? `  group=${m.group}` : ''}`)
+          + `${m.hasGroup ? '  IN A ROUTE GROUP' : ''}`)
       }
     }
     // THE FALL-THROUGH TABLE. A reviewer must be able to see, per path, what
@@ -1269,19 +1797,27 @@ export function render(d) {
       } else {
         L.push(`       POST-REMOVAL    : ${pr.isolated ? 'isolated (a real detach)' : 'NOT ISOLATED — falls through'}`)
         for (const o of pr.outcomes) {
-          const to = o.outcome === 'unserved'
-            ? 'nothing matches -> Caddy 404'
-            : o.outcome === 'absorbed-without-upstream'
-              ? `${o.landedRoutePath} (${o.landedHandlerTypes.join('+') || 'no handlers'}) — no backend`
-              : `${o.landedRoutePath} -> ${o.exposedDials.join(', ') || 'the target'}`
-          L.push(`           ${o.probe}  =>  [${o.outcome}] ${to}`)
+          const to = {
+            unserved: () => 'nothing matches -> Caddy 404',
+            'absorbed-terminating': () => `${o.landedRoutePath} `
+              + `(${o.landedHandlerTypes.join('+') || 'no handlers'}, terminal ${String(o.landedTerminal)}) `
+              + '— ends the request, no backend',
+            'exposes-backend': () => `${o.landedRoutePath} -> ${o.exposedDials.join(', ')}`,
+            'still-reaches-target': () => `${o.landedRoutePath} -> the target`,
+            'partial-absorption-unmodelled': () => `${o.landedRoutePath} covers only PART of it — remainder unmodelled`,
+            'overlap-undecidable': () => `${o.landedRoutePath ?? '(a sibling)'} — overlap could not be decided`,
+          }[o.outcome]?.() ?? '(unclassified)'
+          L.push(`           ${o.pattern}  =>  [${o.outcome}] ${to}`)
+          if (o.overlappingMatchers.length) {
+            L.push(`               overlapping sets: ${o.overlappingMatchers.join(' , ')}`)
+          }
         }
       }
       L.push('       sibling routes in that array (fingerprint pins the position):')
       for (const f of pr.siblingFingerprints ?? []) {
-        L.push(`           [${f.index}] ${f.pathMatchers.join(', ') || '(no path matcher — all paths)'}`
+        L.push(`           [${f.index}] ${f.matchSetText}`
           + `  terminal=${f.terminal}  handlers=${f.handlerTypes.join('+') || 'none'}`
-          + `${f.group ? `  group=${f.group}` : ''}`)
+          + `${f.hasGroup ? '  IN A ROUTE GROUP' : ''}`)
         L.push(`               sha256 ${f.sha256}`)
       }
     }
@@ -1304,9 +1840,16 @@ export function render(d) {
       if (s.losslessness) L.push(`        lossless    : ${s.losslessness}`)
       if (s.simulation) {
         L.push(`        SIMULATED   : target unreachable after = ${s.simulation.targetUnreachableAfter}; `
-          + `paths left unserved = ${s.simulation.pathsLeftUnserved.join(', ') || '(none)'}; `
-          + `paths newly reaching another backend = ${s.simulation.pathsNewlyReachingOtherBackends.length}`)
+          + `matchers left unserved = ${s.simulation.patternsLeftUnserved.join(', ') || '(none)'}; `
+          + `matchers absorbed by a terminating route = ${s.simulation.patternsAbsorbed.map((x) => x.pattern).join(', ') || '(none)'}; `
+          + `matchers newly reaching another backend = ${s.simulation.patternsNewlyReachingOtherBackends.length}`)
       }
+      if (s.durableEditStatus) {
+        L.push(`        durable    : ${s.durableEditStatus}`)
+        if (s.durableEditUnprovenReason) L.push(`              why : ${s.durableEditUnprovenReason}`)
+        for (const q of s.durableEditProofProcedure ?? []) L.push(`              ${q}`)
+      }
+      if (s.rehearsalScope) L.push(`        rehearsal scope: ${s.rehearsalScope}`)
       if (s.validate) for (const v of s.validate) L.push(`        validate    : ${v}`)
       if (s.rollback) {
         L.push('        rollback:')
@@ -1315,7 +1858,7 @@ export function render(d) {
       if (s.ordering) L.push(`        ordering    : ${s.ordering}`)
       L.push('        preconditions (all must hold immediately before applying):')
       for (const p of s.preconditions) L.push(`          - ${p}`)
-      L.push(`        durable     : ${s.durableEdit}`)
+      if (s.durableEdit) L.push(`        durable     : ${s.durableEdit}`)
       L.push(`        rehearsal   : ${s.rehearsal}`)
     }
     L.push('  ROLLBACK:')
@@ -1839,10 +2382,15 @@ async function selftest() {
     // which is the case that can expose a backend. A fresh probe at this head is
     // what turns it into evidence, and until then the tool refuses anyway —
     // `parentRoutesCount: null` in a real probe is a hard refusal.
+    // matchSets mirrors what the extractor now emits: ONE entry per matcher
+    // object, structure intact. host/path stay as the flattened display view,
+    // exactly as on the host, so a test that accidentally reads them instead of
+    // the sets fails the same way production would.
     const ctx = (routePath, host, path, idx, parent, over = {}) => ({
       routePath, host, path, unsupportedMatcherKeys: [],
+      matchSets: (host.length || path.length) ? [{ host, path, unsupportedKeys: [] }] : [],
       routeIndexInParent: idx, parentRoutesArrayPath: parent,
-      terminal: false, group: null, handlerTypes: [], parentRoutesCount: null,
+      terminal: false, hasGroup: false, handlerTypes: [], parentRoutesCount: null,
       ...over,
     })
     const OUTER = 'apps/http/servers/srv0/routes/0'
@@ -1961,8 +2509,8 @@ async function selftest() {
       const pr = c.postRemoval
       t('the live shape is modellable', pr.supported, true)
       t('MUTATION CONTROL: removing /os/* is NOT isolated on the live shape', pr.isolated, false)
-      t('…one probe path is analysed, derived from the removed route\'s matcher',
-        pr.outcomes.map((o) => o.probe).join(','), '/os/probe')
+      t('the analysis is over the removed MATCHER SET, not a sampled path',
+        pr.outcomes.map((o) => o.pattern).join(','), '{host *, path /os/*}')
       t('…and it FALLS THROUGH rather than 404ing', pr.outcomes[0].outcome, 'exposes-backend')
       t('…onto the exact sibling route that takes over', pr.outcomes[0].landedRoutePath, `${SUBR}/2`)
       t('…naming the backend that would newly serve the retired public path',
@@ -1972,11 +2520,19 @@ async function selftest() {
       // index is provably the same route at apply time.
       t('every sibling in the parent array is fingerprinted', pr.siblingFingerprints.length, 3)
       t('…the fingerprint is a sha256', /^[0-9a-f]{64}$/.test(pr.siblingFingerprints[1].sha256), true)
-      t('…and it changes when the route\'s matchers change', (() => {
-        const a = siblingFingerprint({ index: 1, routePath: 'r', hostMatchers: [], pathMatchers: ['/os/*'], terminal: false, handlerTypes: [], otherDials: [] })
-        const b = siblingFingerprint({ index: 1, routePath: 'r', hostMatchers: [], pathMatchers: ['/os2/*'], terminal: false, handlerTypes: [], otherDials: [] })
-        return a !== b
-      })(), true)
+      const fpOf = (matchSets, over = {}) => siblingFingerprint({
+        index: 1, routePath: 'r', matchSets, hostMatchers: [], pathMatchers: [],
+        terminal: false, handlerTypes: [], otherDials: [], ...over,
+      })
+      t('…and it changes when the route\'s matchers change',
+        fpOf([{ host: [], path: ['/os/*'] }]) !== fpOf([{ host: [], path: ['/os2/*'] }]), true)
+      // THE CROSS-PRODUCT COUNTEREXAMPLE, as a fingerprint. These two routes
+      // flatten to the SAME host list and the SAME path list. A fingerprint over
+      // the flattened view cannot tell them apart, yet they serve different
+      // request sets — A//y and B//x are requests only the second one answers.
+      t('…and SWAPPED matcher pairings fingerprint differently',
+        fpOf([{ host: ['a.example'], path: ['/x'] }, { host: ['b.example'], path: ['/y'] }])
+        !== fpOf([{ host: ['a.example'], path: ['/y'] }, { host: ['b.example'], path: ['/x'] }]), true)
       t('…and when terminality changes, because that changes what runs next', (() => {
         const a = siblingFingerprint({ index: 2, routePath: 'r', hostMatchers: [], pathMatchers: ['/*'], terminal: false, handlerTypes: [], otherDials: [] })
         const b = siblingFingerprint({ index: 2, routePath: 'r', hostMatchers: [], pathMatchers: ['/*'], terminal: true, handlerTypes: [], otherDials: [] })
@@ -2022,10 +2578,39 @@ async function selftest() {
         const weirdPath = c.handlers.map((h) => ({
           ...h,
           matcherChain: h.matcherChain.map((x) => (x.routeIndexInParent === 1 && x.parentRoutesArrayPath === SUBR
-            ? { ...x, path: ['/os/*/edit'] } : x)),
+            ? { ...x, matchSets: [{ host: [], path: ['/os/*/edit'], unsupportedKeys: [] }] } : x)),
         }))
         const r = postRemovalRouting(weirdPath, c.exclusiveRoute)
         return r.supported === false && /this model does not represent/.test(r.reason)
+      })(), true)
+      t('…as does an unmodelled matcher KEY inside a set', (() => {
+        const hdr = c.handlers.map((h) => ({
+          ...h,
+          matcherChain: h.matcherChain.map((x) => (x.routeIndexInParent === 2 && x.parentRoutesArrayPath === SUBR
+            ? { ...x, matchSets: [{ host: [], path: ['/*'], unsupportedKeys: ['header'] }] } : x)),
+        }))
+        const r = postRemovalRouting(hdr, c.exclusiveRoute)
+        return r.supported === false && /header/.test(r.reason)
+      })(), true)
+      // GROUPS ARE NOT ASSUMED. Their evaluation rule is Caddy's, not ours.
+      t('…and a route GROUP on any sibling fails CLOSED rather than being assumed', (() => {
+        const g = c.handlers.map((h) => ({
+          ...h,
+          matcherChain: h.matcherChain.map((x) => (x.routeIndexInParent === 2 && x.parentRoutesArrayPath === SUBR
+            ? { ...x, hasGroup: true } : x)),
+        }))
+        const r = postRemovalRouting(g, c.exclusiveRoute)
+        return r.supported === false && /route group/.test(r.reason)
+      })(), true)
+      // Siblings must share an ancestry for their matchers to be comparable.
+      t('…and siblings with different ancestor conjunctions fail CLOSED', (() => {
+        const d = c.handlers.map((h) => ({
+          ...h,
+          matcherChain: h.matcherChain.map((x, i) => (i === 0 && h.matcherChain[1]?.routeIndexInParent === 2
+            ? { ...x, matchSets: [{ host: ['other.example'], path: [], unsupportedKeys: [] }] } : x)),
+        }))
+        const r = postRemovalRouting(d, c.exclusiveRoute)
+        return r.supported === false && /identical ancestor matcher chain/.test(r.reason)
       })(), true)
     }
 
@@ -2044,8 +2629,13 @@ async function selftest() {
       })
       const co = classifyRoute(ordered, TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
       const o = co.postRemoval.outcomes[0]
-      t('ORDER: an exact-path sibling that does not match is skipped', o.landedRoutePath, `${SUBR}/3`)
-      t('…and the backend named is the one that actually takes over', o.exposedDials.join(','), 'stylique-dashboard:80')
+      // /os/legacy is INSIDE the removed /os/* set, so the first sibling that
+      // shares a request with it is index 2 — not index 3. A sampled path
+      // (`/os/probe`) misses it and names the dashboard instead, which is the
+      // unsound answer this model replaced.
+      t('ORDER: the first sibling sharing ANY request with the removed set is named', o.landedRoutePath, `${SUBR}/2`)
+      t('…and the backend named is the one those requests reach', o.exposedDials.join(','), 'postiz:5000')
+      t('…with the overlapping matcher set spelled out', o.overlappingMatchers.join(','), '{host *, path /os/legacy}')
       // ORDER, THE OTHER DIRECTION. Index 0 in the live shape is the inert
       // headers/encode route with NO path matchers, so it matches every request.
       // Reading the parent array as a SET rather than an ordered list would land
@@ -2082,9 +2672,32 @@ async function selftest() {
       t('…the path is left unserved, which is what a detach means', ci.postRemoval.outcomes[0].outcome, 'unserved')
       t('…and NO fall-through blocker is raised', postRemovalBlockers(ci).length, 0)
 
-      const d = decide(probe({ routes: [isolatedCfg] }))
-      t('…no blocker mentions a fall-through', d.blockers.some((b) => /lossless detach/.test(b)), false)
-      t('…the run is patchable', d.patchable, true)
+      // WITHOUT AN ADAPT PROOF, CLEAN ROUTING IS STILL NOT A PROVEN EDIT.
+      const bare = decide(probe({ routes: [isolatedCfg] }))
+      t('…no blocker mentions a fall-through', bare.blockers.some((b) => /lossless detach/.test(b)), false)
+      t('…but the run is NOT patchable, because the durable edit is unproven', bare.patchable, false)
+      t('…and the blocker says exactly that',
+        bare.blockers.some((b) => /the durable edit is UNPROVEN/.test(b)), true)
+      t('…naming what the runtime path does and does not establish',
+        bare.blockers.some((b) => /does not identify the source directive/.test(b)), true)
+      t('…and no candidate is drafted on routing alone', bare.patch, null)
+
+      // WITH the proof: built from the audited boot bytes, validated, and with
+      // an adapted-JSON diff that is EXACTLY the audited removal.
+      const PROOF = {
+        // Bound to THIS probe's runtime config, not merely well-formed.
+        runtimeConfigSha256: 'a'.repeat(64),
+        bootFileSha256: 'b'.repeat(64),
+        candidateFileSha256: 'c'.repeat(64),
+        adaptedBeforeJsonSha256: 'd'.repeat(64),
+        adaptedAfterJsonSha256: 'e'.repeat(64),
+        validateExitCode: 0,
+        jsonDiffPaths: [`${SUBR}/1`],
+        backupSha256: 'b'.repeat(64),
+      }
+      const withProof = (over = {}) => probe({ routes: [isolatedCfg], adaptEquivalence: { ...PROOF, ...over } })
+      const d = decide(withProof())
+      t('…with a complete adapt-equivalence proof the run IS patchable', d.patchable, true)
 
       // THE EXACT CANDIDATE. One step, and it removes the ROUTE OBJECT — never
       // an upstream entry, which would leave /os/* matching with nothing behind
@@ -2098,8 +2711,10 @@ async function selftest() {
 
       // The simulation is carried WITH the patch, not left in the reasoning.
       t('…the simulation proves the target unreachable afterwards', step.simulation.targetUnreachableAfter, true)
-      t('…and that the removed path is left unserved', step.simulation.pathsLeftUnserved.join(','), '/os/probe')
-      t('…and that nothing newly reaches another backend', step.simulation.pathsNewlyReachingOtherBackends.length, 0)
+      t('…and that the removed matcher set is left unserved',
+        step.simulation.patternsLeftUnserved.join(','), '{host *, path /os/*}')
+      t('…and that nothing newly reaches another backend',
+        step.simulation.patternsNewlyReachingOtherBackends.length, 0)
 
       // PRECONDITIONS PIN THE POSITION. An index is meaningless without proof
       // that the array is the one that was audited.
@@ -2108,7 +2723,7 @@ async function selftest() {
       t('…and the array length is pinned too',
         step.preconditions.some((p) => /holds exactly 3 routes/.test(p)), true)
       t('…and the 404 outcome is stated as a precondition to verify',
-        step.preconditions.some((p) => /\/os\/probe matches no route and Caddy answers 404/.test(p)), true)
+        step.preconditions.some((p) => /matching \{host \*, path \/os\/\*\} match no route and Caddy answers 404/.test(p)), true)
 
       // VALIDATE BEFORE RELOAD. A bad config does not break one route, it drops
       // the proxy.
@@ -2122,14 +2737,89 @@ async function selftest() {
       t('…and it names the digest the backup must match',
         step.rollback.some((r) => r.includes('b'.repeat(64))), true)
 
+      // MUTATION CONTROLS ON THE PROOF ITSELF. Each one is a way the edit
+      // could be real, plausible and still not the audited change.
+      const gone = (over) => decide(withProof(over)).patch === null
+      t('PROOF: a diff that changes MORE than the audited route is refused',
+        gone({ jsonDiffPaths: [`${SUBR}/1`, `${SUBR}/2`] }), true)
+      t('PROOF: a diff at a DIFFERENT route is refused', gone({ jsonDiffPaths: [`${SUBR}/2`] }), true)
+      t('PROOF: an empty diff is refused', gone({ jsonDiffPaths: [] }), true)
+      t('PROOF: caddy validate rejecting the candidate is refused', gone({ validateExitCode: 1 }), true)
+      t('PROOF: a candidate byte-identical to the boot file is refused',
+        gone({ candidateFileSha256: 'b'.repeat(64) }), true)
+      t('PROOF: adapted JSON that did not change is refused',
+        gone({ adaptedAfterJsonSha256: 'd'.repeat(64) }), true)
+      t('PROOF: a backup that is not the pre-edit bytes is refused',
+        gone({ backupSha256: 'f'.repeat(64) }), true)
+      // THE PROVENANCE CHECK. A proof built from a different boot file proves
+      // something about a config nobody looked at.
+      t('PROOF: a proof built from a DIFFERENT boot file is refused',
+        gone({ bootFileSha256: '9'.repeat(64), backupSha256: '9'.repeat(64) }), true)
+      t('…and it says why', decide(withProof({ bootFileSha256: '9'.repeat(64), backupSha256: '9'.repeat(64) }))
+        .blockers.some((b) => /does not descend from the bytes that were examined/.test(b)), true)
+      for (const f of ADAPT_PROOF_FIELDS) {
+        t(`PROOF: omitting ${f} is refused`, gone({ [f]: null }), true)
+      }
+      // BOUND TO THIS RUN. A proof about some other configuration, presented
+      // alongside this probe, is not a proof about this configuration.
+      t('PROOF: a proof bound to a DIFFERENT runtime config is refused',
+        gone({ runtimeConfigSha256: '7'.repeat(64) }), true)
+      t('…and it says the two describe different configurations',
+        decide(withProof({ runtimeConfigSha256: '7'.repeat(64) }))
+          .blockers.some((b) => /describe different configurations/.test(b)), true)
+      // SECRET SAFETY IS THE FIELD SET, NOT A REDACTOR. Every permitted field is
+      // a digest, an exit code or a config path; an extra field is the way
+      // configuration text would travel, so the set is closed.
+      t('PROOF: an unexpected field is REFUSED, not ignored',
+        decide(probe({
+          routes: [isolatedCfg],
+          adaptEquivalence: { ...PROOF, diffText: 'basicauth admin JDJhJDE0JHc=' },
+        })).patch, null)
+      t('…and the refusal names the field without echoing its value', (() => {
+        const b = decide(probe({
+          routes: [isolatedCfg],
+          adaptEquivalence: { ...PROOF, diffText: 'basicauth admin JDJhJDE0JHc=' },
+        })).blockers.join('\n')
+        return /unexpected field\(s\) diffText/.test(b) && !/JDJhJDE0JHc/.test(b)
+      })(), true)
+      // THE DIFF MUST BE POINTERS. A free-text entry is how a config line would
+      // reach the artifact under the guise of a path.
+      //
+      // Tested by calling adaptEquivalence DIRECTLY with expectedRemovals equal
+      // to the entry. Through decide() these cases are already caught by the
+      // exact-equality check, so a `gone()` assertion would pass without the
+      // shape check existing at all — a test that proves the wrong thing. Here
+      // equality holds by construction and only the shape check can refuse.
+      const shapeOnly = (entries) => adaptEquivalence(
+        { adaptEquivalence: { ...PROOF, jsonDiffPaths: entries }, caddyRuntimeConfigSha256: 'a'.repeat(64), caddyBootFileSha256: 'b'.repeat(64) },
+        entries,
+      )
+      t('PROOF: a diff entry that is not a config pointer is refused even when it is what was expected',
+        shapeOnly(['reverse_proxy stylique-os:4100 # in /etc/caddy/Caddyfile']).ok, false)
+      t('…with a reason naming the shape rule, not the content',
+        /are not configuration pointers/.test(shapeOnly(['reverse_proxy stylique-os:4100']).reason), true)
+      t('…including an entry that merely looks close',
+        shapeOnly(['apps/http/servers/srv0/routes/0 and also the tls block']).ok, false)
+      t('…and a non-string entry', shapeOnly([{ path: `${SUBR}/1` }]).ok, false)
+      t('…while a real config pointer passes the shape rule',
+        shapeOnly([`${SUBR}/1`]).ok, true)
+      // NECESSARY, NOT SUFFICIENT — stated on the result itself so a passing
+      // synthetic proof cannot be read as live evidence.
+      t('a passing proof carries its own evidence caveat',
+        /proves the checker, not the edit/.test(
+          decide(withProof()).impacted[0].adaptEquivalence.evidenceNote), true)
+
       // MUTATION CONTROL: put the dashboard back on /*, and the same code
-      // refuses and drafts nothing.
+      // refuses and drafts nothing even WITH a valid proof.
       const exposedCfg = route({
         routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
         handlers: [inert(3), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/*', 'stylique-dashboard:80')],
       })
-      const d2 = decide(probe({ routes: [exposedCfg] }))
+      const d2 = decide(probe({ routes: [exposedCfg], adaptEquivalence: PROOF }))
       t('MUTATION CONTROL: widen the sibling to /* and the candidate disappears', d2.patch, null)
+      t('…even though the adapt proof is valid',
+        d2.blockers.some((b) => /NOT a lossless detach/.test(b))
+        && !d2.blockers.some((b) => /durable edit is UNPROVEN/.test(b)), true)
     }
 
     // A SECOND ROUTE STILL DIALLING THE TARGET. The subtree reaching only the
@@ -2167,7 +2857,13 @@ async function selftest() {
     // is exactly why it is tested directly. "The caller checks" is how an
     // unproven deletion ships the day someone adds a second caller.
     {
-      const p = probe({ routes: [live()] })
+      const PROOF = {
+        runtimeConfigSha256: 'a'.repeat(64),
+        bootFileSha256: 'b'.repeat(64), candidateFileSha256: 'c'.repeat(64),
+        adaptedBeforeJsonSha256: 'd'.repeat(64), adaptedAfterJsonSha256: 'e'.repeat(64),
+        validateExitCode: 0, jsonDiffPaths: [`${SUBR}/1`], backupSha256: 'b'.repeat(64),
+      }
+      const p = probe({ routes: [live()], adaptEquivalence: PROOF })
       const cl = classifyRoute(live(), TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
       t('candidatePatch drafts NOTHING for a non-lossless nested removal, called directly',
         candidatePatch(p, [cl], [cl]).steps.length, 0)
@@ -2175,8 +2871,10 @@ async function selftest() {
         routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
         handlers: [inert(3), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/app/*', 'stylique-dashboard:80')],
       }), TARGET_IDS, PROT_IDS, { targetPort: 4100, targetHasIp: true })
-      t('…and DOES draft one when the simulation is lossless',
+      t('…and DOES draft one when the simulation is lossless AND the edit is proven',
         candidatePatch(p, [clean], [clean]).steps.length, 1)
+      t('…but NOT when the routing is clean and the edit is unproven',
+        candidatePatch(probe({ routes: [live()] }), [clean], [clean]).steps.length, 0)
     }
 
     // THE REPORT A HUMAN READS. A refusal buried in a blockers array and absent
@@ -2184,7 +2882,8 @@ async function selftest() {
     {
       const txt = render(decide(probe({ routes: [live()] })))
       t('the report shows the fall-through verdict', /POST-REMOVAL    : NOT ISOLATED/.test(txt), true)
-      t('…the per-path outcome table', /\/os\/probe  =>  \[exposes-backend\]/.test(txt), true)
+      t('…the per-matcher-set outcome table',
+        /\{host \*, path \/os\/\*\}  =>  \[exposes-backend\]/.test(txt), true)
       t('…where the request would land', new RegExp(`${SUBR}/2 -> stylique-dashboard:80`).test(txt), true)
       t('…and every sibling with its terminality and fingerprint',
         (txt.match(/terminal=false  handlers=/g) ?? []).length, 3)
@@ -2209,47 +2908,190 @@ async function selftest() {
         })],
       })))
       t('the isolated case renders as a real detach', /POST-REMOVAL    : isolated \(a real detach\)/.test(ok), true)
-      t('…and its candidate carries the simulation and the rollback',
-        /SIMULATED   : target unreachable after = true/.test(ok) && /CANNOT reconstruct the deleted route/.test(ok), true)
+      // Without an adapt proof there is no candidate at all — the rendered
+      // page must show the refusal, not a step.
+      t('…and, unproven, shows no candidate patch', /CANDIDATE PATCH/.test(ok), false)
+      const okProven = render(decide(probe({
+        routes: [route({
+          routePath: OUTER, hostMatchers: ['138-201-119-239.sslip.io'], pathMatchers: [],
+          handlers: [inert(3), nested(1, '/os/*', 'stylique-os:4100'), nested(2, '/app/*', 'stylique-dashboard:80')],
+        })],
+        adaptEquivalence: {
+          runtimeConfigSha256: 'a'.repeat(64),
+          bootFileSha256: 'b'.repeat(64), candidateFileSha256: 'c'.repeat(64),
+          adaptedBeforeJsonSha256: 'd'.repeat(64), adaptedAfterJsonSha256: 'e'.repeat(64),
+          validateExitCode: 0, jsonDiffPaths: [`${SUBR}/1`], backupSha256: 'b'.repeat(64),
+        },
+      })))
+      t('…and with the proof, carries the simulation and the rollback',
+        /SIMULATED   : target unreachable after = true/.test(okProven)
+        && /CANNOT reconstruct the deleted route/.test(okProven), true)
+      t('…and marks the durable edit PROVEN only then',
+        /durable    : PROVEN by adapt-equivalence/.test(okProven), true)
     }
 
-    // POSITIVE CONTROL 2: an explicit terminal static_response absorbs the path.
-    // The route keeps answering — deliberately, with a 410 — and no backend is
-    // newly exposed. This is option (a) from the refusal above, proved to pass.
+    // POSITIVE CONTROL 2, AND THE MIDDLEWARE COUNTEREXAMPLE.
+    //
+    // A sibling with no upstreams was previously read as absorbing the request.
+    // That is only true if it ENDS the request. `headers` and `encode` are
+    // middleware: they decorate and then call the next handler, so a /os/*
+    // route holding only `headers` stops nothing and the dashboard behind /*
+    // is reached exactly as if it were not there.
     {
-      const sibs = [
-        { index: 1, routePath: `${SUBR}/1`, pathMatchers: ['/os/*'], hostMatchers: [], terminal: false, group: null, handlerTypes: new Set(['reverse_proxy']), reachesTarget: true, reachesOther: false, otherDials: [] },
-        { index: 2, routePath: `${SUBR}/2`, pathMatchers: ['/os/*'], hostMatchers: [], terminal: true, group: null, handlerTypes: new Set(['static_response']), reachesTarget: false, reachesOther: false, otherDials: [] },
-        { index: 3, routePath: `${SUBR}/3`, pathMatchers: ['/*'], hostMatchers: [], terminal: false, group: null, handlerTypes: new Set(['reverse_proxy']), reachesTarget: false, reachesOther: true, otherDials: ['stylique-dashboard:80'] },
-      ]
-      const ft = fallThroughAfterRemoval(sibs, 1)
-      t('POSITIVE: a static_response sibling matches before the dashboard does',
-        ft.results[0].landed.routePath, `${SUBR}/2`)
-      t('…and it reaches no backend at all', ft.results[0].landed.reachesOther, false)
-      // Same list without the static_response: the dashboard is exposed. The
-      // static route is therefore load-bearing, not decoration.
-      const without = fallThroughAfterRemoval(sibs.filter((s) => s.index !== 2), 1)
-      t('MUTATION CONTROL: drop the static_response and the dashboard IS exposed',
-        without.results[0].landed.routePath, `${SUBR}/3`)
+      const SIB = (over) => ({
+        index: 0, routePath: 'r', matchSets: [{ host: [], path: ['/*'], unsupportedKeys: [] }],
+        pathMatchers: ['/*'], hostMatchers: [], terminal: false, hasGroup: false,
+        ancestorKey: 'SAME', handlerTypes: new Set(['reverse_proxy']),
+        reachesTarget: false, reachesOther: false, otherDials: [], ...over,
+      })
+      const P = (path) => [{ host: [], path: [path], unsupportedKeys: [] }]
+      const mk = (list) => { const a = list.slice(); a.declaredCount = list.length; return a }
+
+      const target = SIB({ index: 1, routePath: 'R1', matchSets: P('/os/*'), reachesTarget: true })
+      const dash = SIB({ index: 3, routePath: 'R3', matchSets: P('/*'), reachesOther: true, otherDials: ['stylique-dashboard:80'] })
+
+      // (a) middleware in between: NOT absorption.
+      const mw = SIB({ index: 2, routePath: 'R2', matchSets: P('/os/*'), handlerTypes: new Set(['headers']) })
+      const viaMw = fallThroughAfterRemoval(mk([target, mw, dash]), 1)
+      t('COUNTEREXAMPLE: a headers-only sibling does NOT absorb the request',
+        viaMw.results[0].outcome, 'exposes-backend')
+      t('…evaluation continues past it to the backend behind /*',
+        viaMw.results[0].sib.routePath, 'R3')
+
+      // (b) the same shape with an explicit terminal static_response: absorbed.
+      const stat = SIB({
+        index: 2, routePath: 'R2', matchSets: P('/os/*'), terminal: true,
+        handlerTypes: new Set(['static_response']),
+      })
+      const viaStat = fallThroughAfterRemoval(mk([target, stat, dash]), 1)
+      t('POSITIVE: an explicit terminal static_response DOES absorb it',
+        viaStat.results[0].outcome, 'absorbed-terminating')
+      t('…and the dashboard is never reached', viaStat.results[0].sib.routePath, 'R2')
+
+      // (c) terminal alone stops sibling evaluation even with middleware only.
+      const termMw = SIB({ index: 2, routePath: 'R2', matchSets: P('/os/*'), terminal: true, handlerTypes: new Set(['headers']) })
+      t('a terminal route stops evaluation regardless of its handler types',
+        fallThroughAfterRemoval(mk([target, termMw, dash]), 1).results[0].outcome, 'absorbed-terminating')
+
+      // (d) file_server is NOT on the provable list: `pass_thru` makes it call
+      // the next handler and the extractor emits types, not per-handler options.
+      const fs = SIB({ index: 2, routePath: 'R2', matchSets: P('/os/*'), handlerTypes: new Set(['file_server']) })
+      t('file_server is NOT treated as provably response-originating',
+        fallThroughAfterRemoval(mk([target, fs, dash]), 1).results[0].outcome, 'exposes-backend')
+      // …nor is a subroute, whose contents this level cannot see.
+      const sub = SIB({ index: 2, routePath: 'R2', matchSets: P('/os/*'), handlerTypes: new Set(['subroute']) })
+      t('…and neither is a subroute', stopsEvaluation(sub), false)
+
+      // THE FOUNDER'S FIRST COUNTEREXAMPLE: a later sibling matching a SUBSET.
+      // A representative path (/os/probe) misses /os/admin/* entirely and the
+      // old model declared the removal isolated while /os/admin/… reached a
+      // backend.
+      const subset = SIB({
+        index: 2, routePath: 'R2', matchSets: P('/os/admin/*'),
+        reachesOther: true, otherDials: ['stylique-dashboard:80'],
+      })
+      const sampled = pathMatcherMatches('/os/admin/*', '/os/probe')
+      t('OLD HEAD: the sampled path did not match the subset matcher', sampled, false)
+      const viaSubset = fallThroughAfterRemoval(mk([target, subset]), 1)
+      t('CORRECTED: a subset matcher IS an exposure, found by set intersection',
+        viaSubset.results[0].outcome, 'exposes-backend')
+      t('…and the overlapping set is named so the affected URLs are legible',
+        viaSubset.results[0].overlap.map((x) => x.text).join(','), '{host *, path /os/admin/*}')
+      t('…while a genuinely disjoint sibling is still not an exposure',
+        fallThroughAfterRemoval(mk([target, SIB({ index: 2, routePath: 'R2', matchSets: P('/app/*'), reachesOther: true, otherDials: ['x:1'] })]), 1)
+          .results[0].outcome, 'unserved')
+
+      // THE CROSS-PRODUCT COUNTEREXAMPLE. Two matcher SETS, each a conjunction.
+      // Flattened they read host=[a,b] path=[/x,/y]; intact they serve only
+      // a+/x and b+/y. A removed route on a+/y must NOT be reported as
+      // overlapping them.
+      const crossed = SIB({
+        index: 2, routePath: 'R2', reachesOther: true, otherDials: ['stylique-dashboard:80'],
+        matchSets: [
+          { host: ['a.example'], path: ['/x'], unsupportedKeys: [] },
+          { host: ['b.example'], path: ['/y'], unsupportedKeys: [] },
+        ],
+      })
+      const removedAY = SIB({
+        index: 1, routePath: 'R1', reachesTarget: true,
+        matchSets: [{ host: ['a.example'], path: ['/y'], unsupportedKeys: [] }],
+      })
+      t('CROSS-PRODUCT: a pairing the config never expressed is NOT an overlap',
+        fallThroughAfterRemoval(mk([removedAY, crossed]), 1).results[0].outcome, 'unserved')
+      // …and a pairing it DID express is.
+      const removedAX = SIB({
+        index: 1, routePath: 'R1', reachesTarget: true,
+        matchSets: [{ host: ['a.example'], path: ['/x'], unsupportedKeys: [] }],
+      })
+      t('…while a pairing it DID express is an exposure',
+        fallThroughAfterRemoval(mk([removedAX, crossed]), 1).results[0].outcome, 'exposes-backend')
+      // SWAPPED SET MUTATION: swap the pairings and the answers swap with them.
+      const swappedSets = SIB({
+        index: 2, routePath: 'R2', reachesOther: true, otherDials: ['stylique-dashboard:80'],
+        matchSets: [
+          { host: ['a.example'], path: ['/y'], unsupportedKeys: [] },
+          { host: ['b.example'], path: ['/x'], unsupportedKeys: [] },
+        ],
+      })
+      t('SWAPPED SETS: the same flattened lists give the OPPOSITE answers',
+        [fallThroughAfterRemoval(mk([removedAY, swappedSets]), 1).results[0].outcome,
+          fallThroughAfterRemoval(mk([removedAX, swappedSets]), 1).results[0].outcome].join(','),
+        'exposes-backend,unserved')
+
+      // PARTIAL ABSORPTION: a terminating sibling that covers only part of the
+      // removed set leaves a remainder this language cannot express.
+      const partial = SIB({
+        index: 2, routePath: 'R2', matchSets: P('/os/admin/*'), terminal: true,
+        handlerTypes: new Set(['static_response']),
+      })
+      // The scan stops at the partial coverer and refuses there. The remainder
+      // would go on to reach the dashboard, but naming a remainder this matcher
+      // language cannot express would be inventing a set, so the refusal is the
+      // finding — with or without a backend behind it.
+      t('a terminating sibling covering only PART of the removed set is refused',
+        fallThroughAfterRemoval(mk([target, partial, dash]), 1).results[0].outcome, 'partial-absorption-unmodelled')
+      t('…and identically when nothing follows it',
+        fallThroughAfterRemoval(mk([target, partial]), 1).results[0].outcome, 'partial-absorption-unmodelled')
+      t('…and it is a REFUSING outcome, never an isolated one',
+        postRemovalBlockers({
+          server: 'srv0', routeIndex: 0, exclusiveRoute: { routePath: 'R1', routeIndexInParent: 1, parentRoutesArrayPath: 'P' },
+          postRemoval: { supported: true, isolated: false, outcomes: fallThroughAfterRemoval(mk([target, partial]), 1).results.map((r) => ({ ...r, overlappingMatchers: r.overlap.map((x) => x.text), landedRoutePath: r.sib?.routePath ?? null, landedIndex: r.sib?.index ?? null, landedHandlerTypes: [], landedTerminal: null, exposedDials: [] })) },
+        }).some((b) => /only PARTLY accounted for/.test(b)), true)
+
+      // HOST ALGEBRA. `*.example.com` is one label in Caddy.
+      t('a wildcard host covers a single label beneath it',
+        hostPatternCovers(parseHostPattern('*.example.com'), parseHostPattern('a.example.com')), true)
+      t('…but not two labels', hostPatternCovers(parseHostPattern('*.example.com'), parseHostPattern('a.b.example.com')), false)
+      t('…nor the bare domain', hostPatternCovers(parseHostPattern('*.example.com'), parseHostPattern('example.com')), false)
+      t('two different wildcard hosts are UNDECIDABLE, not disjoint',
+        hostPatternsIntersect(parseHostPattern('*.a.com'), parseHostPattern('*.b.com')), null)
+      t('…and an undecidable overlap refuses rather than passing', (() => {
+        const a = SIB({ index: 1, routePath: 'R1', reachesTarget: true, matchSets: [{ host: ['*.a.com'], path: ['/os/*'], unsupportedKeys: [] }] })
+        const b = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['x:1'], matchSets: [{ host: ['*.b.com'], path: ['/os/*'], unsupportedKeys: [] }] })
+        return fallThroughAfterRemoval(mk([a, b]), 1).results[0].outcome
+      })(), 'overlap-undecidable')
+      t('an unparseable host matcher is refused', parseHostPattern('a.*.com'), null)
     }
 
     // A later sibling that reaches the target too means the route was never
     // exclusively the target's, and the removal detaches nothing.
     {
-      const sibs = [
-        { index: 0, routePath: `${SUBR}/0`, pathMatchers: ['/os/*'], hostMatchers: [], terminal: false, group: null, handlerTypes: new Set(['reverse_proxy']), reachesTarget: true, reachesOther: false, otherDials: [] },
-        { index: 1, routePath: `${SUBR}/1`, pathMatchers: ['/os/*'], hostMatchers: [], terminal: false, group: null, handlerTypes: new Set(['reverse_proxy']), reachesTarget: true, reachesOther: false, otherDials: [] },
-      ]
-      sibs.declaredCount = 2
-      const r = postRemovalRouting(
-        [{ matcherChain: [{ ...sibs[0], parentRoutesArrayPath: SUBR, routeIndexInParent: 0, path: ['/os/*'], host: [], parentRoutesCount: 2, handlerTypes: ['reverse_proxy'] }], targetUpstreams: [{ index: 0, dial: 'stylique-os:4100' }], keepUpstreams: [] },
-          { matcherChain: [{ ...sibs[1], parentRoutesArrayPath: SUBR, routeIndexInParent: 1, path: ['/os/*'], host: [], parentRoutesCount: 2, handlerTypes: ['reverse_proxy'] }], targetUpstreams: [{ index: 0, dial: 'stylique-os:4100' }], keepUpstreams: [] }],
-        { parentRoutesArrayPath: SUBR, routeIndexInParent: 0 },
-      )
+      const chainFor = (idx) => [{
+        routePath: `${SUBR}/${idx}`, parentRoutesArrayPath: SUBR, routeIndexInParent: idx,
+        parentRoutesCount: 2, matchSets: [{ host: [], path: ['/os/*'], unsupportedKeys: [] }],
+        path: ['/os/*'], host: [], terminal: false, hasGroup: false, handlerTypes: ['reverse_proxy'],
+      }]
+      const h = (idx) => ({
+        handlerPath: `${SUBR}/${idx}/handle/0`, matcherChain: chainFor(idx),
+        targetUpstreams: [{ index: 0, dial: 'stylique-os:4100' }], keepUpstreams: [], upstreams: [],
+      })
+      const r = postRemovalRouting([h(0), h(1)], { parentRoutesArrayPath: SUBR, routeIndexInParent: 0 })
       t('a later sibling reaching the target is reported, not ignored', r.outcomes[0].outcome, 'still-reaches-target')
       t('…and it is not isolated', r.isolated, false)
       t('…and it blocks with the contradiction named', postRemovalBlockers({
-        server: 'srv0', routeIndex: 0, exclusiveRoute: { routePath: `${SUBR}/0` }, postRemoval: r,
+        server: 'srv0', routeIndex: 0,
+        exclusiveRoute: { routePath: `${SUBR}/0`, routeIndexInParent: 0, parentRoutesArrayPath: SUBR },
+        postRemoval: r,
       }).some((b) => /never exclusively the target/.test(b)), true)
     }
 

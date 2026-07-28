@@ -116,42 +116,75 @@ MATCHER_KEYS_SUPPORTED = ("host", "path")
 
 def matchers_of(route):
     """
-    A route's OWN matchers, and any matcher shape this model cannot represent.
+    A route's OWN matchers, WITH THEIR STRUCTURE INTACT.
+
+    A Caddy `match` array is OR ACROSS matcher objects and AND WITHIN one. The
+    previous version flattened every host value and every path value into two
+    independent lists, which invents a cross-product that was never configured:
+
+        match: [{host: [A], path: [/x]},
+                {host: [B], path: [/y]}]
+
+    became hosts=[A,B], paths=[/x,/y] — four combinations, of which A//y and
+    B//x are not routes at all. Any set algebra over that either false-passes
+    (an overlap that does not exist) or names the wrong URL in a refusal. So the
+    sets are emitted ORDERED and INTACT as `matchSets`, one entry per matcher
+    object, and the caller does its algebra per set.
 
     Only `host` and `path` are emitted. Anything else — header, method,
     expression, client_ip, protocol — changes WHICH REQUESTS a route serves in a
     way this tool does not model, so it is reported as an unsupported key NAME
-    (never its value) and the caller refuses rather than describing a route it
-    does not actually understand.
+    (never its value), PER SET, and the caller refuses rather than describing a
+    route it does not actually understand.
     """
-    hosts, paths, unsupported = [], [], []
+    sets, hosts, paths, unsupported = [], [], [], []
     for m in route.get("match", []) or []:
         if not isinstance(m, dict):
-            unsupported.append("<non-object-matcher>")
+            # An unrepresentable set, kept in position so the caller sees that
+            # the route has a condition it was never shown.
+            sets.append({"host": [], "path": [], "unsupportedKeys": ["<non-object-matcher>"]})
+            if "<non-object-matcher>" not in unsupported:
+                unsupported.append("<non-object-matcher>")
             continue
-        for k in m.keys():
-            if k not in MATCHER_KEYS_SUPPORTED and k not in unsupported:
+        us = sorted({k for k in m.keys() if k not in MATCHER_KEYS_SUPPORTED})
+        hh = [h for h in (m.get("host") or []) if isinstance(h, str)]
+        pp = [p for p in (m.get("path") or []) if isinstance(p, str)]
+        sets.append({"host": hh, "path": pp, "unsupportedKeys": us})
+        hosts.extend(hh)
+        paths.extend(pp)
+        for k in us:
+            if k not in unsupported:
                 unsupported.append(k)
-        for hh in m.get("host", []) or []:
-            if isinstance(hh, str):
-                hosts.append(hh)
-        for pp in m.get("path", []) or []:
-            if isinstance(pp, str):
-                paths.append(pp)
-    return {"host": hosts, "path": paths, "unsupportedMatcherKeys": unsupported,
-            # ORDER AND TERMINALITY DECIDE WHERE A REQUEST GOES NEXT. A route
-            # marked terminal stops evaluation of its siblings; without it,
-            # deleting a route lets its paths fall through to whatever matches
-            # after it. That is a routing change, not a detach.
-            "terminal": bool(route.get("terminal")),
-            # A route GROUP is mutual exclusion among siblings: once one member
-            # matches, the rest of that group is skipped. It never widens what a
-            # later route can serve, so the "first later sibling that matches"
-            # model stays correct with or without it — but it is reported so a
-            # reviewer sees the ordering rules the route was written under.
-            "group": route.get("group") if isinstance(route.get("group"), str) else None,
-            "handlerTypes": [h.get("handler") for h in (route.get("handle") or [])
-                             if isinstance(h, dict) and isinstance(h.get("handler"), str)]}
+    return {
+        # THE AUTHORITY. Everything that decides which requests a route serves
+        # must read this, never the flattened views below.
+        "matchSets": sets,
+        "matchSetCount": len(sets),
+        # DISPLAY ONLY. Kept because a human reading the report wants "the hosts
+        # this route mentions" without reassembling sets, and because the outer
+        # route's summary line uses them. They are a lossy projection and must
+        # never be used for intersection, coverage or targeting.
+        "host": hosts, "path": paths,
+        "unsupportedMatcherKeys": unsupported,
+        # ORDER AND TERMINALITY DECIDE WHERE A REQUEST GOES NEXT. A route
+        # marked terminal stops evaluation of its siblings; without it,
+        # deleting a route lets its paths fall through to whatever matches
+        # after it. That is a routing change, not a detach.
+        "terminal": bool(route.get("terminal")),
+        # A route GROUP changes which siblings are even considered. The exact
+        # rule is a property of Caddy's route compiler, not something to infer
+        # from the config, so its PRESENCE is reported and the caller fails
+        # closed rather than assuming what it does.
+        #
+        # A BOOLEAN, NOT THE NAME. A group name is author-chosen text, and the
+        # emitted-value allowlist is route indices, host matchers, path
+        # matchers, handler type names and upstream dials — nothing else. The
+        # caller only needs to know a group EXISTS in order to refuse, so the
+        # name never has to leave the host and therefore does not.
+        "hasGroup": isinstance(route.get("group"), str) and len(route.get("group")) > 0,
+        "handlerTypes": [h.get("handler") for h in (route.get("handle") or [])
+                         if isinstance(h, dict) and isinstance(h.get("handler"), str)],
+    }
 
 
 def walk(handlers, base, acc, route_path, chain):
