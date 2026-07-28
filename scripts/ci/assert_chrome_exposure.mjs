@@ -703,13 +703,23 @@ if (isEntry) {
     if (reachF) { try { reach = JSON.parse(readFileSync(reachF, 'utf8')) } catch { reach = null } }
     const d = decide(host, reach)
     console.log(render(d))
+    // SEVERITY IS ANNOUNCED FIRST AND UNCONDITIONALLY.
+    //
+    // The first version emitted blockers and exited before ever mentioning
+    // severity, so a run that blocked on an unrelated channel — a truncated
+    // file scan — reported "dependency unproven" and said nothing about the
+    // exposure. That is the wrong way round: an open control port is a finding
+    // in its own right, and it must not be suppressed by an unrelated gap in
+    // some other evidence channel. The two are independent, so both are said.
+    if (d.severity === 'critical') {
+      console.error('::error::CRITICAL — unauthenticated DevTools control is reachable from outside the VPS')
+    } else {
+      console.error(`::notice::chrome exposure severity: ${d.severity}; containment eligible: ${d.containmentEligible}`)
+    }
     if (d.blockers.length > 0) {
       for (const b of d.blockers) console.error(`::error::${b}`)
       process.exit(1)
     }
-    if (d.severity === 'critical') {
-      console.error('::error::CRITICAL — unauthenticated DevTools control is reachable from outside the VPS')
-      process.exit(1)
-    }
+    if (d.severity === 'critical') process.exit(1)
   }
 }

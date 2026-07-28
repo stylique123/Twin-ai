@@ -220,7 +220,8 @@ done
 src_refs=""; src_status="absent"
 if [ -d /opt/twinai-worker-src ]; then
   if src_hits="$(grep -rilE "$CHROME_PAT" /opt/twinai-worker-src \
-      --include='*.ts' --include='*.js' --include='*.json' --include='*.yml' 2>/dev/null)"; then
+      --include='*.ts' --include='*.js' --include='*.json' --include='*.yml' \
+      --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git 2>/dev/null)"; then
     n="$(printf '%s' "$src_hits" | grep -c . || echo 0)"
     src_refs="$(printf '%s' "$src_hits" | head -"$GREP_CAP" | tr '\n' ',')"
     if [ "$n" -gt "$GREP_CAP" ]; then src_status=truncated; else src_status=read-complete; fi
@@ -230,16 +231,34 @@ if [ -d /opt/twinai-worker-src ]; then
   fi
 fi
 
+# ORCHESTRATION FILES ONLY, AND A TIGHTER PATTERN. The first version grepped
+# /root/24_Backend for the full Chrome pattern and capped at 25 — which a real
+# host blew through instantly, because any bundled JavaScript that mentions
+# "chrome" matches. The result was `truncated`, which correctly refused, but
+# refused on noise rather than on evidence.
+#
+# What actually constitutes a host-level caller is a reference in something that
+# STARTS or CONFIGURES things: a compose file, a systemd unit, a timer, a cron
+# entry, a shell script. A minified bundle containing the word "chrome" is not a
+# caller. So the scan is restricted by file type and the pattern is narrowed to
+# the container name and its published ports.
 host_refs=""; host_status="absent"
+HOST_PAT='stylique-chrome|browserless|:9222|:6080'
+HOST_CAP=100
 HOST_SCAN=""
 for d in /root/24_Backend /etc/systemd/system /etc/cron.d /etc/crontab; do
   [ -e "$d" ] && HOST_SCAN="$HOST_SCAN $d"
 done
 if [ -n "$HOST_SCAN" ]; then
-  if host_hits="$(grep -rilE "$CHROME_PAT" $HOST_SCAN 2>/dev/null)"; then
+  if host_hits="$(grep -rilE "$HOST_PAT" $HOST_SCAN \
+      --include='*.yml' --include='*.yaml' --include='*.sh' --include='*.bash' \
+      --include='*.service' --include='*.timer' --include='*.conf' --include='*.env' \
+      --include='crontab' --include='*.cron' \
+      --exclude-dir=node_modules --exclude-dir=dist --exclude-dir=.git --exclude-dir=build \
+      2>/dev/null)"; then
     n="$(printf '%s' "$host_hits" | grep -c . || echo 0)"
-    host_refs="$(printf '%s' "$host_hits" | head -"$GREP_CAP" | tr '\n' ',')"
-    if [ "$n" -gt "$GREP_CAP" ]; then host_status=truncated; else host_status=read-complete; fi
+    host_refs="$(printf '%s' "$host_hits" | head -"$HOST_CAP" | tr '\n' ',')"
+    if [ "$n" -gt "$HOST_CAP" ]; then host_status=truncated; else host_status=read-complete; fi
   else
     if [ $? -gt 1 ]; then host_status=unreadable; else host_status=read-complete; fi
   fi
