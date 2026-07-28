@@ -30,6 +30,7 @@
 //   node scripts/ci/assert_route_impact.mjs route-impact.json
 //   node scripts/ci/assert_route_impact.mjs --selftest
 import { readFileSync } from 'node:fs'
+import net from 'node:net'
 import { pathToFileURL } from 'node:url'
 
 export class RouteImpactError extends Error {}
@@ -42,13 +43,19 @@ export function identities(s) {
   return s.split(/\s+/).filter((x) => x.length > 0)
 }
 
-/** A real IPv4/IPv6 literal, octets validated. */
+/**
+ * A real IPv4/IPv6 literal.
+ *
+ * DELEGATED, NOT HAND-ROLLED. The first version called itself strict and
+ * accepted `1:2`, `1:2:3:4:5:6:7:8:9`, `12345::` and `1::2::3` — none of which
+ * are addresses. IPv6 has too many rules (group count, exactly one compression,
+ * hex width, embedded IPv4) for a regex written in passing to get right, and a
+ * validator wrong in the PERMISSIVE direction is worse than none: it launders
+ * junk into a matchable identity while reading as a safeguard. node:net's isIP
+ * is the platform's own parser.
+ */
 export function isIp(s) {
-  if (typeof s !== 'string') return false
-  if (/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(s)) {
-    return s.split('.').every((o) => String(Number(o)) === o && Number(o) <= 255)
-  }
-  return /^[0-9a-fA-F]*:[0-9a-fA-F:]+$/.test(s) && !/:::/.test(s)
+  return typeof s === 'string' && net.isIP(s) !== 0
 }
 
 /** A plausible container name / network alias. */
@@ -70,16 +77,33 @@ export const nameIdentities = (s) => identities(s).filter(isName)
 
 /** The port half of a `host:port` dial, or null. */
 export function dialPort(dial) {
-  if (typeof dial !== 'string' || !dial.includes(':')) return null
-  const p = dial.slice(dial.lastIndexOf(':') + 1)
+  if (typeof dial !== 'string' || dial.length === 0) return null
+  // A BARE IPv6 literal is all colons and no port: `fd00::5` must not be read as
+  // host `fd00:` on port 5. Only a bracketed form carries a port for IPv6.
+  if (dial.startsWith('[')) {
+    const close = dial.indexOf(']')
+    if (close < 0) return null
+    const rest = dial.slice(close + 1)
+    return /^:\d+$/.test(rest) ? Number(rest.slice(1)) : null
+  }
+  const i = dial.lastIndexOf(':')
+  if (i < 0) return null
+  if (dial.indexOf(':') !== i) return null          // more than one colon -> bare IPv6
+  const p = dial.slice(i + 1)
   return /^\d+$/.test(p) ? Number(p) : null
 }
 
 /** The host half of a `host:port` dial, brackets stripped. */
 export function dialHost(dial) {
   if (typeof dial !== 'string' || dial.length === 0) return null
-  const h = dial.includes(':') ? dial.slice(0, dial.lastIndexOf(':')) : dial
-  return h.replace(/^\[|\]$/g, '')
+  if (dial.startsWith('[')) {
+    const close = dial.indexOf(']')
+    return close < 0 ? null : dial.slice(1, close)
+  }
+  const i = dial.lastIndexOf(':')
+  if (i < 0) return dial
+  if (dial.indexOf(':') !== i) return dial          // bare IPv6, no port
+  return dial.slice(0, i)
 }
 
 /**
@@ -91,11 +115,23 @@ export function dialHost(dial) {
  * misattribute another service's upstream to stylique-os. The port is used only
  * to strengthen a host match that already holds.
  */
-export function dialMatches(dial, ids) {
+export function dialMatches(dial, ids, expectPort = null) {
   if (typeof dial !== 'string' || dial.length === 0) return null
-  const host = dial.includes(':') ? dial.slice(0, dial.lastIndexOf(':')) : dial
-  const bare = host.replace(/^\[|\]$/g, '')
-  return ids.some((id) => id.length > 0 && (bare === id || bare.startsWith(`${id}.`)))
+  const bare = dialHost(dial)
+  if (bare === null) return null
+  const hostHit = ids.some((id) => id.length > 0 && (bare === id || bare.startsWith(`${id}.`)))
+  if (!hostHit) return false
+  // THE PORT IS PART OF THE IDENTITY OF A TARGET UPSTREAM. The comment above
+  // claimed the port "strengthens a host match", and the code then ignored it —
+  // so `stylique-os:9999` was classified as the 4100 target and would have been
+  // proposed for removal. A container can serve several ports and only the one
+  // the target actually listens on is this retirement's business.
+  //
+  // PROTECTED identities stay host-wide (expectPort null) on purpose: any port
+  // of a protected backend must survive, so breadth is the safe direction there
+  // while it is the unsafe direction for the target.
+  if (expectPort === null) return true
+  return dialPort(dial) === expectPort
 }
 
 /**
@@ -130,7 +166,7 @@ export function classifyRoute(route, targetIds, protectedIds, opts = {}) {
     const targets = []
     for (const u of ups) {
       const d = u?.dial
-      const t = dialMatches(d, targetIds)
+      const t = dialMatches(d, targetIds, targetPort)
       const p = dialMatches(d, protectedIds)
       if (t === null || p === null || typeof u?.index !== 'number') { unknownDial = true; continue }
       if (t) { targets.push({ index: u.index, dial: d }); continue }
@@ -266,12 +302,35 @@ export function divergenceCause(a) {
   return { cause: 'undetermined', detail: 'contents differ but inode, layering and container-write are all ruled out' }
 }
 
+/**
+ * The closed set of parser outcomes the probe may report.
+ *
+ * A category, never parser output: stderr from a config parser can contain
+ * configuration text, so the probe emits one of these four words and nothing
+ * else. `program_failed` is the case that produced two wasted runs — the
+ * extractor never executed, and the only signal was a generic `parsed=false`
+ * indistinguishable from an unreadable config.
+ */
+export const PARSER_STATUSES = ['ok', 'data_invalid', 'program_failed', 'unavailable']
+
 export function decide(a) {
   const blockers = []
   if (a === null || typeof a !== 'object') throw new RouteImpactError('probe output is not a JSON object')
 
   if (a.caddyRuntimeReadable !== true) blockers.push('the runtime Caddy configuration could not be read')
   if (a.parserAvailable !== true) blockers.push('no JSON parser on the host — the route structure is unavailable')
+  // The category is validated before it is trusted: an unknown value is itself a
+  // refusal, so a probe that grows a fifth outcome cannot be read as a pass.
+  const ps = a.parserStatus
+  if (ps !== undefined && !PARSER_STATUSES.includes(ps)) {
+    blockers.push(`the probe reported an unknown parser status ${JSON.stringify(ps)}`)
+  } else if (ps === 'program_failed') {
+    blockers.push('the route extractor FAILED TO RUN (parser_status=program_failed) — this is a probe defect, not a host finding; no conclusion about routing may be drawn from this run')
+  } else if (ps === 'unavailable') {
+    blockers.push('no parser was available on the host (parser_status=unavailable) — route structure was never attempted')
+  } else if (ps === 'data_invalid') {
+    blockers.push('the runtime configuration could not be read as routes (parser_status=data_invalid)')
+  }
   if (a.parsed !== true) blockers.push('the runtime configuration could not be parsed into routes')
   if (typeof a.caddyRuntimeConfigSha256 !== 'string' || !HEX64.test(a.caddyRuntimeConfigSha256)) {
     blockers.push('the runtime configuration hash is missing or malformed')
@@ -319,6 +378,9 @@ export function decide(a) {
   }
 
   return {
+    // Reported so the run explains itself: a probe defect must never read as a
+    // host finding, and "(not reported)" is itself information about the probe.
+    parserStatus: a.parserStatus ?? null,
     runtimeSha256: a.caddyRuntimeConfigSha256 ?? null,
     diskConfigPath: a.caddyDiskConfigPath ?? null,
     diskConfigSha256: a.caddyDiskConfigSha256 ?? null,
@@ -663,6 +725,7 @@ export function render(d) {
     L.push('  VALIDATION PLAN:')
     for (const v of d.patch.validation) L.push(`    ${v}`)
   }
+  L.push(`  parser status         : ${d.parserStatus ?? '(not reported)'}`)
   L.push(`  PATCH MAY BE PREPARED : ${String(d.patchable)}`)
   for (const b of d.blockers) L.push(`    blocker: ${b}`)
   return L.join('\n')
@@ -757,6 +820,17 @@ async function selftest() {
   t('CORRECTED: a real address survives', ipIdentities('172.18.0.5').join(','), '172.18.0.5')
   t('CONTROL: the corrected identity set no longer false-matches IP:4100',
     dialMatches('IP:4100', ['stylique-os', ...ipIdentities('invalid IP')]), false)
+  // IPv6 STRICTNESS. The hand-rolled regex accepted every one of these. A
+  // validator wrong in the permissive direction launders junk into a matchable
+  // identity while reading as a safeguard, so node:net is the authority.
+  t('IPv6 too SHORT is not an address', isIp('1:2'), false)
+  t('IPv6 OVERLONG (9 groups) is not an address', isIp('1:2:3:4:5:6:7:8:9'), false)
+  t('IPv6 with MULTIPLE compressions is not an address', isIp('1::2::3'), false)
+  t('an overlong hex group is not an address', isIp('12345::'), false)
+  t('a trailing-colon fragment is not an address', isIp('fd00:'), false)
+  t('CONTROL: the unspecified address IS valid', isIp('::'), true)
+  t('CONTROL: a full 8-group address IS valid', isIp('1:2:3:4:5:6:7:8'), true)
+  t('CONTROL: an IPv4-mapped address IS valid', isIp('::ffff:10.0.0.1'), true)
   t('an octet above 255 is not an address', isIp('999.1.1.1'), false)
   t('a bare word is not an address', isIp('IP'), false)
   t('an ipv6 literal is an address', isIp('fd00::5'), true)
@@ -987,8 +1061,11 @@ async function selftest() {
 
   console.log('-- MULTIPLE target entries + index shift')
   {
+    // BOTH target entries are on the TARGET PORT. This fixture used
+    // `stylique-os:4101` as the second entry, which the port-blind matcher
+    // happily attributed to the 4100 target — see the negative control below.
     const multi = route({ handlers: [hdl(0, [
-      'stylique-os:4100', 'stylique-dashboard:80', 'stylique-os:4101', 'postiz:5000'])] })
+      'stylique-os:4100', 'stylique-dashboard:80', 'stylique-os.styliquenet:4100', 'postiz:5000'])] })
     const d = decide(probe({ routes: [multi], protectedIdentities: 'stylique-dashboard postiz twinai-worker' }))
     const st = d.patch.steps[0]
     t('both target entries are deleted', st.deletePaths.length, 2)
@@ -1002,6 +1079,74 @@ async function selftest() {
     const asc = [...st.deletePaths].sort()
     t('CONTROL: ascending order differs — it is not accidentally the same',
       JSON.stringify(asc) === JSON.stringify(st.deletePaths), false)
+  }
+
+  console.log('-- THE PORT IS PART OF TARGET IDENTITY (regression: head 9f8c7cf)')
+  {
+    // OLD HEAD: dialMatches ignored the port, so ANY port on the target host was
+    // attributed to the 4100 target and proposed for deletion. A container can
+    // serve several ports; only the one being retired is this stage's business.
+    t('OLD-HEAD BEHAVIOUR: port-blind matching attributed :9999 to the target',
+      dialMatches('stylique-os:9999', ['stylique-os']), true)
+    t('CORRECTED: :9999 is NOT the 4100 target',
+      dialMatches('stylique-os:9999', ['stylique-os'], 4100), false)
+    t('CORRECTED: :4100 still is', dialMatches('stylique-os:4100', ['stylique-os'], 4100), true)
+
+    // REAL PATH: a route serving only stylique-os:9999 must not be removable.
+    const other = route({ handlers: [hdl(0, ['stylique-os:9999'])] })
+    const d = decide(probe({ routes: [other] }))
+    t('real path: a :9999 upstream is not classified as the target',
+      d.classified[0].handlers[0].targetUpstreams.length, 0)
+    t('…so nothing is proposed for deletion', d.classified[0].verdict, 'unaffected')
+
+    // POSITIVE CONTROL: the same shape on 4100 IS removable.
+    const onPort = route({ handlers: [hdl(0, ['stylique-os:4100', 'stylique-dashboard:80'])] })
+    const d2 = decide(probe({ routes: [onPort] }))
+    t('CONTROL: the same host on 4100 IS the target', d2.classified[0].handlers[0].targetUpstreams.length, 1)
+
+    // MIXED: only the 4100 entry is deleted; the 9999 entry survives.
+    const mixed = route({ handlers: [hdl(0, ['stylique-os:4100', 'stylique-os:9999', 'stylique-dashboard:80'])] })
+    const d3 = decide(probe({ routes: [mixed] }))
+    t('MIXED: exactly one upstream is targeted', d3.classified[0].handlers[0].targetUpstreams.length, 1)
+    t('…and the :9999 entry is KEPT', d3.classified[0].handlers[0].keepUpstreams.some((u) => u.dial === 'stylique-os:9999'), true)
+
+    // PROTECTED identities stay host-wide: any port of a protected backend survives.
+    t('a protected backend matches host-wide, whatever its port',
+      dialMatches('stylique-dashboard:8443', PROT_IDS), true)
+
+    // Bracketed IPv6 carries a port; a bare IPv6 literal does not.
+    t('bracketed IPv6 on the target port matches',
+      dialMatches('[fd00::5]:4100', ['fd00::5'], 4100), true)
+    t('bracketed IPv6 on another port does not',
+      dialMatches('[fd00::5]:9999', ['fd00::5'], 4100), false)
+    t('a BARE IPv6 literal is not read as host:port',
+      dialPort('fd00::5'), null)
+  }
+
+  console.log('-- PARSER STATUS is a category, reported and consumed')
+  {
+    t('a program failure BLOCKS and names itself', (() => {
+      const d = decide(probe({ parserStatus: 'program_failed', parsed: false, routes: [] }))
+      return d.blockers.some((b) => /FAILED TO RUN/.test(b)) && d.patchable === false
+    })(), true)
+    t('…and is distinguishable from unparseable DATA', (() => {
+      const d = decide(probe({ parserStatus: 'data_invalid', parsed: false, routes: [] }))
+      return d.blockers.some((b) => /data_invalid/.test(b))
+    })(), true)
+    t('…and from no parser at all', (() => {
+      const d = decide(probe({ parserStatus: 'unavailable', parsed: false, routes: [] }))
+      return d.blockers.some((b) => /unavailable/.test(b))
+    })(), true)
+    t('an UNKNOWN status is itself a refusal', (() => {
+      const d = decide(probe({ parserStatus: 'fine', routes: [] }))
+      return d.blockers.some((b) => /unknown parser status/.test(b))
+    })(), true)
+    t('CONTROL: ok adds no parser blocker', (() => {
+      const d = decide(probe({ parserStatus: 'ok' }))
+      return d.blockers.some((b) => /parser/.test(b))
+    })(), false)
+    t('the status is carried onto the decision', decide(probe({ parserStatus: 'ok' })).parserStatus, 'ok')
+    t('…and rendered in the report', /parser status/.test(render(decide(probe({ parserStatus: 'ok' })))), true)
   }
 
   console.log('-- durable edit location: DIRECTORY-MOUNT resolution')

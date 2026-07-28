@@ -50,6 +50,11 @@ j_bool() { case "${1:-}" in true) printf 'true' ;; false) printf 'false' ;; *) p
 # ---- a JSON parser is required; without one the answer is UNDETERMINED -------
 PARSER=""
 if command -v python3 >/dev/null 2>&1; then PARSER=python3; fi
+# CLOSED ENUM, initialised on every path: ok | data_invalid |
+# program_failed | unavailable. The category is secret-safe by construction —
+# it is one of four fixed words and never carries parser output, which could
+# contain configuration text.
+parser_status=unavailable
 
 # ---- PYTHON PROGRAMS, PASSED QUOTE-SAFELY ---------------------------------
 #
@@ -377,7 +382,13 @@ if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "$CADDY_CTR"; then
         routes_json="$(printf '%s' "$combined" | python3 -c 'import json,sys;print(json.dumps(json.load(sys.stdin)["routes"]))' 2>/dev/null)"
         keypaths_json="$(printf '%s' "$combined" | python3 -c "$PROG_KEYPATHS" 2>/dev/null)"
         [ -z "$keypaths_json" ] && keypaths_json="null"
-        if [ -n "$routes_json" ] && [ "$routes_json" != "null" ]; then parse_ok=true; else parse_ok=false; routes_json="null"; fi
+        if [ -n "$routes_json" ] && [ "$routes_json" != "null" ]; then
+          parse_ok=true
+        else
+          # The program ran and reported it could not read the config as routes.
+          parse_ok=false; routes_json="null"
+          [ "$parser_status" = ok ] && parser_status=data_invalid
+        fi
       else parse_ok=false; routes_json="null"; fi
     else
       # No parser: structure is unavailable. NOT "no routes".
@@ -558,6 +569,7 @@ printf '"caddyAdminEndpoint":%s,' "$(j_str "$admin")"
 printf '"caddyRuntimeReadable":%s,' "$(j_bool "$runtime_readable")"
 printf '"caddyRuntimeConfigSha256":%s,' "$(j_str "$runtime_sha")"
 printf '"caddyDiskConfigPath":%s,' "$(j_str "$disk_path")"
+printf '"parserStatus":%s,' "$(j_str "$parser_status")"
 printf '"caddyDiskConfigSha256":%s,' "$(j_str "$disk_sha")"
 printf '"caddyDiskConfigIsBootSource":%s,' "$(j_bool "$disk_is_source")"
 printf '"caddyBootMountRoot":%s,' "$(j_str "$boot_mount_root")"
