@@ -88,7 +88,21 @@ for p in $PATHS; do
   kb="$(du -sk "$p" 2>/dev/null | awk '{print $1}')"
   # Regular files only, and only ones small enough to be configuration. A
   # 2 GB blob is not a Caddyfile and reading it proves nothing.
-  files="$(find "$p" -type f -size -"${SIZE_CAP_KB}"k 2>/dev/null | LC_ALL=C sort)"
+  # VENDORED DEPENDENCY TREES ARE NOT THIS HOST'S SECRETS.
+  #
+  # The first run returned 7 findings, every one inside
+  # /opt/scrapling-test/venv/.../site-packages — variable names in anyio and
+  # curl_cffi source, not credentials — and blew the file cap doing it, so the
+  # whole sweep came back `truncated`. That made the answer for /srv/caddy
+  # worthless: no findings there could equally have meant "clean" or "the cap
+  # cut it off before we looked", and those are different statements.
+  #
+  # A vendored library's source is upstream's code, identical on every machine
+  # that installed it. Excluding it removes noise, not evidence.
+  files="$(find "$p" -type f -size -"${SIZE_CAP_KB}"k \
+      -not -path '*/venv/*' -not -path '*/.venv/*' -not -path '*/site-packages/*' \
+      -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/__pycache__/*' \
+      -not -path '*/dist-packages/*' 2>/dev/null | LC_ALL=C sort)"
   n="$(printf '%s' "$files" | grep -c . || echo 0)"
   st=read-complete
   if [ "$n" -gt "$FILE_CAP" ]; then
