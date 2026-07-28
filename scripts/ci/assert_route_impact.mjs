@@ -218,7 +218,37 @@ export function parsePattern(pat) {
  * always share a request — `prefix + suffix` is a witness — which is why this
  * returns true there rather than guessing.
  */
+/**
+ * PATH CASE IS NOT ASSUMED EITHER WAY.
+ *
+ * Caddy's host matcher is case-insensitive and that is settled — hostnames are.
+ * Its PATH matcher is a separate question, and this tool has not established the
+ * answer. Rather than pick one, any pair whose verdict would DIFFER between the
+ * two readings is reported as undecidable and refused. `/os/*` against
+ * `/OS/admin` is disjoint if paths are case-sensitive and overlapping if they
+ * are not; approving a deletion on the strength of a coin-flip is exactly the
+ * failure this gate exists to prevent.
+ */
+const caseFolds = (f, a, b) => {
+  const lower = (x) => (x.kind === 'all' ? x : { ...x, v: x.v.toLowerCase() })
+  return f(lower(a), lower(b))
+}
+
 export function patternsIntersect(a, b) {
+  const r = patternsIntersectExact(a, b)
+  if (r !== false) return r
+  // Case-sensitively disjoint. If folding case would make them overlap, the
+  // answer depends on a semantic this tool has not proven.
+  return caseFolds(patternsIntersectExact, a, b) === true ? null : false
+}
+
+export function patternCovers(a, b) {
+  const r = patternCoversExact(a, b)
+  if (r !== false) return r
+  return caseFolds(patternCoversExact, a, b) === true ? null : false
+}
+
+export function patternsIntersectExact(a, b) {
   if (!a || !b) return null
   if (a.kind === 'all' || b.kind === 'all') return true
   const pair = (x, y) => a.kind === x && b.kind === y
@@ -234,7 +264,7 @@ export function patternsIntersect(a, b) {
 }
 
 /** Does EVERY request matching `b` also match `a`? */
-export function patternCovers(a, b) {
+export function patternCoversExact(a, b) {
   if (!a || !b) return null
   if (a.kind === 'all') return true
   if (b.kind === 'all') return false
@@ -291,14 +321,37 @@ export function stopsEvaluation(sib) {
 export function parseHostPattern(h) {
   if (typeof h !== 'string' || h.length === 0) return null
   const stars = (h.match(/\*/g) || []).length
-  if (stars === 0) return { kind: 'exact', v: h }
-  if (stars === 1 && h.startsWith('*.') && h.length > 2 && !h.slice(2).includes('*')) {
-    return { kind: 'label', v: h.slice(2) }
+  // LOWERCASED, BECAUSE HOSTNAMES ARE. Caddy's host matcher is case-insensitive,
+  // as DNS is. Comparing the raw strings made `EXAMPLE.com` and `example.com`
+  // look DISJOINT, and a false-disjoint is the direction that approves a
+  // fall-through: two routes that both serve the same site read as unrelated,
+  // so deleting one is reported as touching nothing the other serves.
+  //
+  // The RAW value is still what sibling fingerprints cover. Normalising is about
+  // what a request matches; a fingerprint answers "is this the same route object
+  // I audited", and re-casing a hostname IS an edit to the config even though it
+  // is not a change in routing.
+  const lower = h.toLowerCase()
+  if (stars === 0) return { kind: 'exact', v: lower, raw: h }
+  if (stars === 1 && lower.startsWith('*.') && lower.length > 2 && !lower.slice(2).includes('*')) {
+    return { kind: 'label', v: lower.slice(2), raw: h }
   }
   return null
 }
 
-const oneLabelUnder = (name, suffix) => {
+/**
+ * Is `name` exactly one label beneath `suffix`?
+ *
+ * EXPORTED so its case-insensitivity is provable on its own. parseHostPattern
+ * normalises before calling it, so through that path this lowercase is
+ * unreachable — a mutation of it fails nothing, and a guard no test can reach
+ * is a guard that silently rots. It is kept because this is a general host
+ * predicate that must not become case-sensitive if a future caller hands it a
+ * raw value, and it is tested directly rather than assumed.
+ */
+export const oneLabelUnder = (nameIn, suffixIn) => {
+  const name = String(nameIn).toLowerCase()
+  const suffix = String(suffixIn).toLowerCase()
   if (!name.endsWith(`.${suffix}`)) return false
   const label = name.slice(0, -(suffix.length + 1))
   return label.length > 0 && !label.includes('.')
@@ -414,14 +467,20 @@ export function matchSetCovers(a, b) {
  */
 export function siblingModel(handlers, parentRoutesArrayPath) {
   const byIndex = new Map()
-  let declaredCount = null
+  // EVERY REPORTED COUNT, NOT THE LAST ONE. This was `declaredCount = c.…`,
+  // so when two handlers under the same parent array reported different
+  // lengths, whichever happened to be visited last silently won. Disagreement
+  // means the evidence is internally inconsistent — a truncated artifact, a
+  // config read mid-reload, an extractor bug — and picking a winner turns that
+  // into a confident number the completeness check then validates against.
+  const declaredCounts = new Set()
   for (const h of handlers) {
     const chain = h.matcherChain ?? []
     const at = chain.findIndex((x) => x?.parentRoutesArrayPath === parentRoutesArrayPath)
     if (at < 0) continue
     const c = chain[at]
     if (!Number.isInteger(c.routeIndexInParent)) continue
-    if (Number.isInteger(c.parentRoutesCount)) declaredCount = c.parentRoutesCount
+    if (Number.isInteger(c.parentRoutesCount)) declaredCounts.add(c.parentRoutesCount)
     // THE SHARED CONJUNCTION ABOVE THIS LEVEL. Two sibling routes are comparable
     // only under identical ancestry; this is what proves that, and it is built
     // from the ancestors' own structured matcher sets, never the flattened view.
@@ -447,7 +506,8 @@ export function siblingModel(handlers, parentRoutesArrayPath) {
     byIndex.set(c.routeIndexInParent, e)
   }
   const siblings = [...byIndex.values()].sort((a, b) => a.index - b.index)
-  siblings.declaredCount = declaredCount
+  siblings.declaredCounts = [...declaredCounts].sort((a, b) => a - b)
+  siblings.declaredCount = declaredCounts.size === 1 ? [...declaredCounts][0] : null
   return siblings
 }
 
@@ -665,6 +725,15 @@ export function postRemovalRouting(handlers, excl) {
   // A sibling route with no handlers leaves no trace in a model built from
   // handlers. Reasoning about "what matches next" over an incomplete list can
   // only ever be optimistic, so an incomplete list is a refusal.
+  const counts = siblings.declaredCounts ?? []
+  if (counts.length > 1) {
+    return {
+      ...base,
+      supported: false,
+      reason: `handlers under ${excl.parentRoutesArrayPath} report DIFFERENT lengths for that array `
+        + `(${counts.join(', ')}); the evidence contradicts itself and no length may be chosen from it`,
+    }
+  }
   const declared = siblings.declaredCount
   if (!Number.isInteger(declared)) {
     return { ...base, supported: false, reason: 'the probe did not report how many routes the parent array holds, so the sibling list cannot be proven complete' }
@@ -2574,6 +2643,46 @@ async function selftest() {
         const r = postRemovalRouting(short, c.exclusiveRoute)
         return r.supported === false && /only 3 could be modelled/.test(r.reason)
       })(), true)
+      // CONTRADICTORY EVIDENCE IS NOT A NUMBER TO PICK FROM. Two handlers under
+      // the same parent array reporting different lengths means the artifact is
+      // internally inconsistent — truncated, read mid-reload, or produced by a
+      // buggy extractor. The old code took whichever was visited last, which
+      // turned that into a confident value the completeness check then happily
+      // validated against.
+      const disagreeing = () => {
+        let n = 0
+        return c.handlers.map((h) => ({
+          ...h,
+          matcherChain: h.matcherChain.map((x) => (x.parentRoutesArrayPath === SUBR
+            // eslint-disable-next-line no-plusplus
+            ? { ...x, parentRoutesCount: 3 + (n++ % 2) } : x)),
+        }))
+      }
+      t('DISAGREEING parent-array lengths fail CLOSED', (() => {
+        const r = postRemovalRouting(disagreeing(), c.exclusiveRoute)
+        return r.supported === false && /report DIFFERENT lengths/.test(r.reason)
+      })(), true)
+      t('…and both reported lengths are named', (() => {
+        const r = postRemovalRouting(disagreeing(), c.exclusiveRoute)
+        return /\(3, 4\)/.test(r.reason)
+      })(), true)
+      t('…the model reports every count it saw, not just one',
+        siblingModel(disagreeing(), SUBR).declaredCounts.join(','), '3,4')
+      t('…and refuses to name a single one', siblingModel(disagreeing(), SUBR).declaredCount, null)
+      t('CONTROL: consistent counts still yield the count',
+        siblingModel(c.handlers, SUBR).declaredCount, 3)
+      t('…and decide() surfaces the contradiction as a blocker', (() => {
+        const contradictory = live()
+        let n = 0
+        contradictory.handlers = contradictory.handlers.map((h) => ({
+          ...h,
+          matcherChain: h.matcherChain.map((x) => (x.parentRoutesArrayPath === SUBR
+            // eslint-disable-next-line no-plusplus
+            ? { ...x, parentRoutesCount: 3 + (n++ % 2) } : x)),
+        }))
+        const d = decide(probe({ routes: [contradictory] }))
+        return d.patchable === false && d.blockers.some((b) => /report DIFFERENT lengths/.test(b))
+      })(), true)
       t('…and a path matcher shape the model does not represent fails CLOSED', (() => {
         const weirdPath = c.handlers.map((h) => ({
           ...h,
@@ -3071,6 +3180,96 @@ async function selftest() {
         return fallThroughAfterRemoval(mk([a, b]), 1).results[0].outcome
       })(), 'overlap-undecidable')
       t('an unparseable host matcher is refused', parseHostPattern('a.*.com'), null)
+      // The label predicate, exercised DIRECTLY with raw mixed case. Through
+      // parseHostPattern it never sees unnormalised input, so this is the only
+      // place its own case-handling is actually proved.
+      t('oneLabelUnder is case-insensitive on raw values',
+        oneLabelUnder('A.EXAMPLE.com', 'example.COM'), true)
+      t('…and still rejects two labels', oneLabelUnder('a.B.example.com', 'EXAMPLE.com'), false)
+      t('…and still rejects the bare domain', oneLabelUnder('EXAMPLE.com', 'example.com'), false)
+      t('…and an empty label', oneLabelUnder('.example.com', 'EXAMPLE.com'), false)
+
+      // ------------------------------------------------------------------
+      // HOSTNAMES ARE CASE-INSENSITIVE. Comparing raw strings made EXAMPLE.com
+      // and example.com read as DISJOINT — and a false-disjoint approves a
+      // fall-through, because two routes serving the same site look unrelated
+      // and deleting one is reported as touching nothing the other serves.
+      // ------------------------------------------------------------------
+      const H = parseHostPattern
+      t('OLD HEAD: the raw strings differ, which is what produced the defect',
+        'EXAMPLE.com' === 'example.com', false)
+      t('CORRECTED: mixed-case exact hosts INTERSECT',
+        hostPatternsIntersect(H('EXAMPLE.com'), H('example.com')), true)
+      t('…and cover each other', hostPatternCovers(H('EXAMPLE.com'), H('example.com')), true)
+      t('…in both directions', hostPatternCovers(H('example.com'), H('EXAMPLE.com')), true)
+      t('MIXED-CASE WILDCARD: a wildcard covers a differently-cased label beneath it',
+        hostPatternCovers(H('*.EXAMPLE.com'), H('a.example.com')), true)
+      t('…and a lowercase wildcard covers an uppercase name',
+        hostPatternCovers(H('*.example.com'), H('A.EXAMPLE.COM')), true)
+      t('…and two wildcards differing only in case are the same set',
+        hostPatternsIntersect(H('*.Example.com'), H('*.eXaMpLe.CoM')), true)
+      // NEGATIVE CONTROLS: normalisation must not make everything overlap.
+      t('NEGATIVE: genuinely different hosts are still disjoint',
+        hostPatternsIntersect(H('a.example'), H('b.example')), false)
+      t('NEGATIVE: a wildcard still does not cover two labels',
+        hostPatternCovers(H('*.EXAMPLE.com'), H('a.b.example.com')), false)
+      t('NEGATIVE: a wildcard still does not cover the bare domain',
+        hostPatternCovers(H('*.EXAMPLE.com'), H('example.com')), false)
+      t('NEGATIVE: unrelated wildcards remain UNDECIDABLE, not overlapping',
+        hostPatternsIntersect(H('*.A.com'), H('*.b.com')), null)
+
+      // END TO END: the defect as a routing decision, not just a comparison.
+      t('END TO END: a mixed-case host sibling IS an exposure', (() => {
+        const rm = SIB({
+          index: 1, routePath: 'R1', reachesTarget: true,
+          matchSets: [{ host: ['EXAMPLE.com'], path: ['/os/*'], unsupportedKeys: [] }],
+        })
+        const later = SIB({
+          index: 2, routePath: 'R2', reachesOther: true, otherDials: ['stylique-dashboard:80'],
+          matchSets: [{ host: ['example.com'], path: ['/*'], unsupportedKeys: [] }],
+        })
+        return fallThroughAfterRemoval(mk([rm, later]), 1).results[0].outcome
+      })(), 'exposes-backend')
+      t('…while a genuinely different host is still not one', (() => {
+        const rm = SIB({
+          index: 1, routePath: 'R1', reachesTarget: true,
+          matchSets: [{ host: ['EXAMPLE.com'], path: ['/os/*'], unsupportedKeys: [] }],
+        })
+        const later = SIB({
+          index: 2, routePath: 'R2', reachesOther: true, otherDials: ['stylique-dashboard:80'],
+          matchSets: [{ host: ['other.example'], path: ['/*'], unsupportedKeys: [] }],
+        })
+        return fallThroughAfterRemoval(mk([rm, later]), 1).results[0].outcome
+      })(), 'unserved')
+
+      // NORMALISATION IS FOR THE ALGEBRA, NOT THE FINGERPRINT. Re-casing a
+      // hostname is an edit to the config even though it is not a change in
+      // routing, and the fingerprint's job is "is this the same route object I
+      // audited" — so it must still notice.
+      t('the fingerprint still distinguishes a re-cased hostname', (() => {
+        const f = (h) => siblingFingerprint({
+          index: 1, routePath: 'r', matchSets: [{ host: [h], path: ['/os/*'] }],
+          hostMatchers: [], pathMatchers: [], terminal: false, handlerTypes: [], otherDials: [],
+        })
+        return f('EXAMPLE.com') !== f('example.com')
+      })(), true)
+      t('…and the parsed pattern keeps the raw value for reporting',
+        H('EXAMPLE.com').raw, 'EXAMPLE.com')
+
+      // PATHS: the case semantics of Caddy's path matcher are NOT asserted here.
+      // Any pair whose verdict would differ between the two readings refuses.
+      t('PATHS: a case-only difference is UNDECIDABLE, not disjoint',
+        patternsIntersect(parsePattern('/os/*'), parsePattern('/OS/admin')), null)
+      t('…and undecidable coverage too',
+        patternCovers(parsePattern('/OS/*'), parsePattern('/os/admin')), null)
+      t('…while same-case answers are unaffected',
+        [patternsIntersect(parsePattern('/os/*'), parsePattern('/os/admin')),
+          patternsIntersect(parsePattern('/os/*'), parsePattern('/app/*'))].join(','), 'true,false')
+      t('…and a case-only path difference REFUSES the removal', (() => {
+        const rm = SIB({ index: 1, routePath: 'R1', reachesTarget: true, matchSets: P('/os/*') })
+        const later = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['x:1'], matchSets: P('/OS/admin') })
+        return fallThroughAfterRemoval(mk([rm, later]), 1).results[0].outcome
+      })(), 'overlap-undecidable')
     }
 
     // A later sibling that reaches the target too means the route was never
