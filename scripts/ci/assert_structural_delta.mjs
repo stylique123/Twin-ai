@@ -512,7 +512,27 @@ function rootDelta(before, after, add) {
 }
 
 /** Compare, enforcing each authorisation exactly and requiring each be used. */
-export function structuralDelta(before, after, auths = []) {
+/**
+ * Is the host ALREADY in the state this authorisation intended?
+ *
+ * Deliberately narrow: only the stages whose intended end state is expressible
+ * as a field value are answered, and everything else returns false so it keeps
+ * the old, refusing behaviour. Guessing an end state would turn this from a
+ * false-alarm fix into a way to wave through a command that silently failed.
+ */
+export function intendedStateReached(stage, auth, record) {
+  if (auth.type !== 'containers' || !record) return false
+  if (stage === 'disable-restart') {
+    // `docker update --restart=no` — the policy field carries "name:retries".
+    return typeof record.policy === 'string' && /^no(:|$)/.test(record.policy)
+  }
+  if (stage === 'stop') {
+    return record.status === 'exited' || record.status === 'created'
+  }
+  return false
+}
+
+export function structuralDelta(before, after, auths = [], stage = null) {
   const findings = []
   const add = (kind, type, key, field, detail) => findings.push({ kind, type, key, field, detail })
 
@@ -587,13 +607,49 @@ export function structuralDelta(before, after, auths = []) {
   // of them: none of them is something the retirement acts on.
   rootDelta(before, after, add)
 
-  // AN UNEXERCISED AUTHORISATION IS A FINDING. It means the stage did not do
-  // what its plan declared, and an over-declared plan is one nobody is reading.
+  // AN UNEXERCISED AUTHORISATION IS A FINDING ONLY IF THE END STATE IS WRONG.
+  //
+  // "The change did not happen" has two causes with opposite meanings:
+  //
+  //   the command FAILED     the host is not in the intended state. Real, and a
+  //                          refusal.
+  //   the stage was a NO-OP  the host was ALREADY in the intended state, because
+  //                          an earlier run applied it. Re-running an idempotent
+  //                          stage is normal and must not be reported as a
+  //                          violation.
+  //
+  // The previous revision could not tell them apart and reported both as
+  // "the host changed structurally in a way this stage did not authorise" — a
+  // message that is doubly wrong for the second case: nothing changed, and
+  // nothing was unauthorised. It sent a real investigation chasing a phantom
+  // concurrent deploy. So the END STATE decides, not the presence of a diff.
   for (const auth of auths) {
-    if (!used.has(canon(auth))) {
+    if (used.has(canon(auth))) continue
+    const rec = (after?.[auth.type] ?? []).find((r) => r?.[KEY_OF[auth.type]] === auth.key)
+    const gone = rec === undefined
+    if (auth.op === 'remove') {
+      // A removal that did not appear as a diff is fine precisely when the
+      // record is already absent.
+      if (gone) continue
       add('unused_authorisation', auth.type, auth.key, null,
-        `authorised ${auth.op} on ${auth.type}/${auth.key}${auth.fields ? ` (${auth.fields.join(',')})` : ''} never happened`)
+        `authorised remove of ${auth.type}/${auth.key} never happened and it is still present`)
+      continue
     }
+    if (auth.op === 'change') {
+      if (gone) {
+        add('unused_authorisation', auth.type, auth.key, null,
+          `authorised change on ${auth.type}/${auth.key} never happened and the record has vanished`)
+        continue
+      }
+      // Already in the intended state: a no-op re-run, not a violation.
+      if (intendedStateReached(stage, auth, rec)) continue
+      add('unused_authorisation', auth.type, auth.key, null,
+        `authorised ${auth.op} on ${auth.type}/${auth.key}${auth.fields ? ` (${auth.fields.join(',')})` : ''} `
+        + 'never happened and the host is NOT in the intended state — the command did not take effect')
+      continue
+    }
+    add('unused_authorisation', auth.type, auth.key, null,
+      `authorised ${auth.op} on ${auth.type}/${auth.key} never happened`)
   }
 
   return { ok: findings.length === 0, findings, exercised: [...used] }
@@ -679,7 +735,7 @@ async function selftest() {
   // A stage's plan, sealed exactly as the workflow seals it.
   const planned = (b, stage) => sealPlan(planFor(b, stage), BIND)
   const run = (b, a, stage, plan) => structuralDelta(b, a, authorisationsForStage(stage, b, plan ?? (
-    ['disable-restart', 'stop', 'remove-container', 'reclaim'].includes(stage) ? planned(b, stage) : null)))
+    ['disable-restart', 'stop', 'remove-container', 'reclaim'].includes(stage) ? planned(b, stage) : null)), stage)
 
   console.log('-- the fixture is the REAL shape, and this comparator understands all of it')
   // THE CASE THAT WOULD HAVE CAUGHT THE INVENTED ROOT KEY. A hand-written
@@ -951,7 +1007,7 @@ async function selftest() {
   t('an image authorisation keyed by a TAG does not authorise the id', (() => {
     const bad = clone(rPlan)
     bad.resources.find((r) => r.key === 'sha256:bbbb').key = 'stylique-os:latest'
-    const d = structuralDelta(gone(), reclaimed, authorisationsForStage('reclaim', gone(), bad))
+    const d = structuralDelta(gone(), reclaimed, authorisationsForStage('reclaim', gone(), bad), 'reclaim')
     return d.ok
   })(), false)
   const unplanned = clone(reclaimed)
@@ -1013,6 +1069,28 @@ async function selftest() {
   t('disable-restart that changed nothing fails', run(inv(), inv(), 'disable-restart').ok, false)
   t('…and says the authorisation was never used',
     run(inv(), inv(), 'disable-restart').findings.some((f) => f.kind === 'unused_authorisation'), true)
+  // …BUT ONLY WHEN THE END STATE IS WRONG. Re-running an idempotent stage on a
+  // host that is ALREADY in the intended state is a no-op, not a violation. The
+  // live run reported exactly this as "the host changed structurally in a way
+  // this stage did not authorise" — a message that was wrong twice over, since
+  // nothing had changed and nothing was unauthorised.
+  {
+    const already = inv()
+    const c = already.containers.find((x) => x.name === 'stylique-os')
+    c.policy = 'no:0'
+    t('a no-op re-run of disable-restart is NOT a finding',
+      run(already, already, 'disable-restart').findings.some((f) => f.kind === 'unused_authorisation'), false)
+    t('…and the run is ok', run(already, already, 'disable-restart').ok, true)
+    // The failure case must survive: policy still `always` means the command
+    // did not take effect, and that is still a refusal.
+    t('CONTROL: a policy that never moved IS still a finding',
+      run(inv(), inv(), 'disable-restart').findings.some((f) => /NOT in the intended state/.test(f.detail)), true)
+    t('the end-state predicate reads the policy field',
+      [intendedStateReached('disable-restart', { type: 'containers' }, { policy: 'no:0' }),
+        intendedStateReached('disable-restart', { type: 'containers' }, { policy: 'always:0' })].join(','), 'true,false')
+    t('…and is narrow: an unmodelled stage keeps the refusing behaviour',
+      intendedStateReached('reclaim', { type: 'containers' }, { policy: 'no:0' }), false)
+  }
 
   console.log('-- authorisation hygiene')
   const A = (o) => validateAuthorisations([o]).length > 0
@@ -1110,7 +1188,7 @@ else {
   let auths; let d
   try {
     auths = authorisationsForStage(stage, before, plan)
-    d = structuralDelta(before, after, auths)
+    d = structuralDelta(before, after, auths, stage)
   } catch (e) { console.error(`::error::structural delta could not be computed: ${e.message}`); process.exit(1) }
   console.log(render(d, {
     stage,
