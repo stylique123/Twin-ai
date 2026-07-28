@@ -15,7 +15,9 @@ amended 2026-07-27):
   implementation** to begin: pure deterministic code with no stateful dependency.
 - **Stateful prerequisites** — the VPS capacity inventory and the migration ledger
   reconciliation. These remain **absolute blockers** for any database/RPC work, any
-  staging run, candidate acceptance, merge, and deployment.
+  staging run, candidate acceptance, merge, and deployment. **Status 2026-07-28:** the
+  VPS row is closed; the ledger row closes when #212 merges. Neither is waived — each
+  moved because the work was done and measured, and §10 carries the evidence.
 
 Offline work proceeding under the contract prerequisites is **unmergeable** until both
 stateful gates pass, and must then be rebased and re-proven on the exact final head.
@@ -333,8 +335,8 @@ candidate stays unmergeable until both stateful gates pass.
 | Non-vacuous fixture matrix | ✅ frozen (§8) |
 | Capacity thresholds | ✅ frozen (§9) |
 | Migration audit (hashes, grants, RLS, triggers, staging parity) | ✅ closed (§1.1) |
-| **VPS capacity inventory, validated** (STATEFUL) | 🟡 PR #208 in flight |
-| **Migration ledger reconciliation** (STATEFUL) | 🔴 OPEN — previous algorithm DISABLED as unsafe; redesign required (lane 2) |
+| **VPS capacity inventory, validated** (STATEFUL) | 🟢 CLOSED — #208 merged; #220 then retired the whole Stylique stack and re-measured. Root disk 45% -> 23%, container /tmp 109.82 GiB free against a 3.32 GiB render requirement. Evidence per resource in `docs/vps.md`. |
+| **Migration ledger reconciliation** (STATEFUL) | 🟡 PR #212 in flight — the lane-2 redesign exists and its matrix has passed; the row closes on merge, not before. The previous algorithm remains DISABLED and is not reused. |
 
 ## 12. Explicitly out of scope for Phase 8
 
