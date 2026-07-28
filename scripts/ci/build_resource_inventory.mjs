@@ -7,13 +7,17 @@
 //
 //   active-twinai         running TwinAI, must survive
 //   twinai-rollback       kept so a bad deploy can be reverted
-//   stylique-os           the retired product's own host-local resources
-//   shared-do-not-touch   proven to be referenced by TwinAI as well
+//   retire-scope          in the founder-approved retirement set, or reachable
+//                         only from containers that are
+//   shared-do-not-touch   proven to be referenced by something outside that set
 //   proven-orphaned       provably referenced by nothing
 //   unknown-do-not-touch  DEFAULT. Anything not proven above.
 //
 // The default is deliberately the do-nothing class: a classifier that guesses
 // would be worse than no classifier, because its output authorises deletion.
+// Postiz is protected by that default and by nothing else, which is the
+// strongest available guarantee: no rule has to fire correctly for it to
+// survive, because no rule names it at all.
 //
 //   node scripts/ci/build_resource_inventory.mjs raw.txt out.json
 //   node scripts/ci/build_resource_inventory.mjs --selftest
@@ -22,12 +26,64 @@ import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
 
 export const CLASSES = [
-  'active-twinai', 'twinai-rollback', 'stylique-os',
+  'active-twinai', 'twinai-rollback', 'retire-scope',
   'shared-do-not-touch', 'proven-orphaned', 'unknown-do-not-touch',
 ]
 
 const TWINAI_CTR = 'twinai-worker'
-const STYLIQUE_CTR = 'stylique-os'
+
+/**
+ * The founder-approved retirement set, IN REMOVAL ORDER.
+ *
+ * This is a DECISION, transcribed. It is deliberately an explicit list and not
+ * a name pattern: `/^stylique-/` would silently adopt any container created
+ * later with that prefix, and a set that grows without a decision is exactly
+ * the failure this whole classifier exists to prevent.
+ *
+ * The ORDER is load-bearing. Caddy is the edge that still routes to
+ * stylique-os, so it goes first; every later member is unblocked by an earlier
+ * one having gone. Consumers iterate this array rather than sorting it.
+ */
+export const RETIRE_CTRS = Object.freeze([
+  'stylique-caddy',       // the edge — removing it is what frees everything behind
+  'stylique-dashboard',   // only served through that edge
+  'stylique-chrome',      // browserless; the 6080/9222 exposure
+  'stylique-os',          // the product itself
+  'infallible_hawking',   // OpenOutreach, founder-confirmed unused
+])
+const RETIRE = new Set(RETIRE_CTRS)
+
+/**
+ * Image tags belonging to the retiring stack that NO container references, so
+ * the derived "referenced only by retiring containers" rule cannot reach them.
+ * Prefixes, matched against the repository half of a `repo:tag` — never a
+ * substring test, which would let `notstylique-os:x` in.
+ */
+export const RETIRE_TAG_PREFIXES = Object.freeze(['stylique-os:', 'deploy-stylique-os:'])
+
+/**
+ * The retirement set and the thing being preserved must be disjoint BY
+ * CONSTRUCTION, not by review. If an edit ever put the worker in the retire
+ * list, every downstream "all users are retiring" proof would still be
+ * internally consistent and would authorise deleting TwinAI's own resources —
+ * a false safe that reads as correct at every step.
+ *
+ * Exported so the selftest can actually kill it. The module-level CALL below
+ * runs at import and so cannot itself be mutation-covered in-process; deleting
+ * the call is a gap this suite does not close, and saying so is better than a
+ * guard that looks tested and is not.
+ */
+export function assertRetireSetDisjoint(retire, preserved) {
+  for (const p of preserved) {
+    if (retire.has(p)) {
+      throw new Error(`${p} is in the retirement set — refusing to load a classifier that could authorise deleting it`)
+    }
+  }
+}
+assertRetireSetDisjoint(RETIRE, [TWINAI_CTR])
+
+/** True when every listed user is retiring, and there is at least one. */
+const allRetiring = (users) => users.length > 0 && users.every((u) => RETIRE.has(u))
 
 // "12.3GB" / "980.4MB" / "0B" -> bytes. Docker's own df formatting.
 export function humanToBytes(s) {
@@ -73,24 +129,32 @@ export function classify(kind, r, refs) {
 
   if (kind === 'container') {
     if (r.name === TWINAI_CTR) return { class: 'active-twinai', evidence: 'the TwinAI worker itself' }
-    if (r.name === STYLIQUE_CTR) return { class: 'stylique-os', evidence: 'the retired Stylique OS container (founder-confirmed unused)' }
     // A container that TwinAI's own config/proxy points at is shared, whatever
-    // its name suggests.
+    // its name suggests — AND WHATEVER THE RETIREMENT LIST SAYS. This test used
+    // to sit below the retire check, which meant a listed container that TwinAI
+    // actually depended on would still be classed deletable: the founder's
+    // decision was allowed to overrule live evidence of a dependency. The
+    // decision selects candidates; evidence still gets the veto.
     if (refs.twinaiReferenced.has(r.name)) return { class: 'shared-do-not-touch', evidence: 'referenced by a TwinAI-serving proxy config' }
-    return unk(`not TwinAI, not stylique-os, no proven TwinAI reference — name "${r.name}"`)
+    if (RETIRE.has(r.name)) return { class: 'retire-scope', evidence: 'in the founder-approved retirement set, and not referenced by TwinAI' }
+    return unk(`not TwinAI, not in the retirement set, no proven TwinAI reference — name "${r.name}"`)
   }
 
   if (kind === 'image') {
     if (refs.imagesInUse.has(r.id)) {
       const by = [...refs.imageUsers.get(r.id) ?? []]
       if (by.includes(TWINAI_CTR)) return { class: 'active-twinai', evidence: `in use by ${TWINAI_CTR}` }
-      if (by.length === 1 && by[0] === STYLIQUE_CTR) return { class: 'stylique-os', evidence: `in use only by ${STYLIQUE_CTR}` }
+      // Every container holding this image is retiring, so nothing that
+      // survives can want it. One user outside the set — even an unclassified
+      // one — and this falls through to `unk`.
+      if (allRetiring(by)) return { class: 'retire-scope', evidence: `in use only by retiring containers (${by.join(',')})` }
       return unk(`in use by ${by.join(',') || 'a container'} of unproven ownership`)
     }
     // Not running. A TwinAI-tagged image that is not the live one is exactly what
     // a rollback needs — keep it, and say so.
     if (r.tags.some((t) => /twinai/i.test(t))) return { class: 'twinai-rollback', evidence: 'untagged-in-use TwinAI image retained for rollback' }
-    if (r.tags.some((t) => t.startsWith('stylique-os:'))) return { class: 'stylique-os', evidence: 'Stylique OS image, not in use' }
+    const retiringTag = r.tags.find((t) => RETIRE_TAG_PREFIXES.some((p) => t.startsWith(p)))
+    if (retiringTag) return { class: 'retire-scope', evidence: `retiring-stack image tag ${retiringTag}, not in use` }
     if (r.tags.length === 0 || r.tags.every((t) => t === '<none>:<none>')) {
       return { class: 'proven-orphaned', evidence: 'dangling image: no repo tag and no container references it' }
     }
@@ -99,13 +163,21 @@ export function classify(kind, r, refs) {
 
   if (kind === 'volume') {
     const users = [...refs.volumeUsers.get(r.name) ?? []]
-    // SHARED IS CHECKED FIRST, DELIBERATELY. If TwinAI mounts it and so does
+    // ALL-RETIRING IS CHECKED FIRST, and it is strictly stronger than "shared":
+    // a volume every one of whose mounters is being removed has no surviving
+    // mounter by definition. TWINAI_CTR is provably not in that set (asserted at
+    // module load), so this can never swallow a TwinAI mount.
+    //
+    // `oo-data` is the case this exists for: mounted by stylique-os AND
+    // infallible_hawking, so the old rule called it shared-do-not-touch. It is
+    // shared between two containers that are both going.
+    if (allRetiring(users)) return { class: 'retire-scope', evidence: `mounted only by retiring containers (${users.join(',')})` }
+    // SHARED IS CHECKED NEXT, DELIBERATELY. If TwinAI mounts it and so does
     // something else, it is NOT "TwinAI's volume" — calling it active-twinai
     // would state single ownership that does not exist, and retirement of the
     // other user would then look safe when it is not.
     if (users.length > 1) return { class: 'shared-do-not-touch', evidence: `mounted by ${users.join(',')}` }
     if (users.length === 1 && users[0] === TWINAI_CTR) return { class: 'active-twinai', evidence: `mounted only by ${TWINAI_CTR}` }
-    if (users.length === 1 && users[0] === STYLIQUE_CTR) return { class: 'stylique-os', evidence: `mounted only by ${STYLIQUE_CTR}` }
     if (users.length === 0) {
       // "Unused" is NOT "safe to delete" when it holds a database.
       if (r.dbFiles) return unk(`unreferenced but holds persistent database files (${r.dbFiles}) — needs backup + owner decision`)
@@ -120,13 +192,15 @@ export function classify(kind, r, refs) {
     // TwinAI's network and must never be classed as a TwinAI-owned resource.
     if (['bridge', 'host', 'none'].includes(r.name)) return { class: 'shared-do-not-touch', evidence: 'Docker built-in network' }
     if (members.length === 0) return { class: 'proven-orphaned', evidence: 'no containers attached' }
+    // Same reasoning as volumes, and checked before the arity split for the same
+    // reason: `styliquenet` carries caddy AND dashboard, both retiring.
+    if (allRetiring(members)) return { class: 'retire-scope', evidence: `only retiring containers attached (${members.join(',')})` }
     if (members.length > 1) {
       return members.includes(TWINAI_CTR)
         ? { class: 'shared-do-not-touch', evidence: `attached: ${members.join(',')} (includes ${TWINAI_CTR})` }
         : unk(`attached containers: ${members.join(',')}`)
     }
     if (members[0] === TWINAI_CTR) return { class: 'active-twinai', evidence: `only ${TWINAI_CTR} is attached` }
-    if (members[0] === STYLIQUE_CTR) return { class: 'stylique-os', evidence: `only ${STYLIQUE_CTR} is attached` }
     return unk(`attached containers: ${members.join(',')}`)
   }
 
@@ -206,7 +280,14 @@ export function buildInventory(rec) {
   const listening = (rec.LISTEN ?? []).map(([l]) => l)
 
   return {
-    schema: 'vps-resource-inventory-1',
+    // BUMPED WITH THE CLASS VOCABULARY, ON PURPOSE. The acceptance gate asserts
+    // that everything classed do-not-touch BEFORE still exists AFTER. Under
+    // schema 1 the four newly-retiring containers were classed
+    // unknown-do-not-touch, so a schema-1 baseline would demand that the
+    // retirement did not happen — and would fail in a way that reads like a
+    // safety violation instead of a stale artifact. assert_vps_acceptance
+    // refuses a mismatched pair rather than comparing across vocabularies.
+    schema: 'vps-resource-inventory-2',
     containers, images, volumes, networks,
     dockerDf, fs, inodes, hostDirs, twinai, twinaiImages, proxyRefs, listening,
   }
@@ -288,18 +369,27 @@ function selftest() {
   const raw = [
     ['CONTAINER', 'twinai-worker', 'running#0#unless-stopped:0#twinai-worker#sha256:aaa#c#healthy#0#0', '', '', 'volume|twdata|/v/tw|/data|true;', '', 'bridge', '100'].join('\t'),
     ['CONTAINER', 'stylique-os', 'running#23060#unless-stopped:0#stylique-os:latest#sha256:bbb#c#unhealthy#0#0', '', '', 'volume|sodata|/v/so|/data|true;', '', 'sonet', '900000'].join('\t'),
-    ['CONTAINER', 'postiz', 'running#0#always:0#postiz#sha256:ccc#c#none#0#0', '', '', '', '', 'bridge', '5'].join('\t'),
+    ['CONTAINER', 'postiz', 'running#0#always:0#postiz#sha256:ccc#c#none#0#0', '', '', 'volume|pgdata|/v/pg|/data|true;', '', 'bridge', '5'].join('\t'),
+    // The multi-member retirement set, and the resources it shares internally.
+    ['CONTAINER', 'stylique-caddy', 'running#0#always:0#caddy:2-alpine#sha256:cad#c#none#0#0', '', '', '', '', 'sqnet', '20'].join('\t'),
+    ['CONTAINER', 'infallible_hawking', 'exited#0#no:0#oo:latest#sha256:ooo#c#none#1#0', '', '', 'volume|sodata|/v/so|/data|true;', '', 'sqnet', '3'].join('\t'),
     ['IMAGE', 'sha256:aaa', 'twinai-worker:latest,#repo@sha256:d1,#500#c'].join('\t'),
     ['IMAGE', 'sha256:bbb', 'stylique-os:latest,##300#c'].join('\t'),
     ['IMAGE', 'sha256:old', 'twinai-worker:prev,##480#c'].join('\t'),
     ['IMAGE', 'sha256:dang', '###120#c'].join('\t'),
+    ['IMAGE', 'sha256:cad', 'caddy:2-alpine,##40#c'].join('\t'),
+    ['IMAGE', 'sha256:ooo', 'oo:latest,##60#c'].join('\t'),
+    ['IMAGE', 'sha256:ccc', 'postiz,##70#c'].join('\t'),
+    ['IMAGE', 'sha256:dep', 'deploy-stylique-os:latest,##80#c'].join('\t'),
     ['VOLUME', 'twdata', 'local', '/v/tw', '10', '', ''].join('\t'),
     ['VOLUME', 'sodata', 'local', '/v/so', '20', '', ''].join('\t'),
+    ['VOLUME', 'pgdata', 'local', '/v/pg', '50', '', '/v/pg/PG_VERSION,'].join('\t'),
     ['VOLUME', 'orphan', 'local', '/v/or', '30', '', ''].join('\t'),
     ['VOLUME', 'orphandb', 'local', '/v/od', '40', '', '/v/od/PG_VERSION,'].join('\t'),
     ['NETWORK', 'n1', 'sonet#bridge#stylique-os,'].join('\t'),
     ['NETWORK', 'n2', 'bridge#bridge#twinai-worker,postiz,'].join('\t'),
     ['NETWORK', 'n3', 'deadnet#bridge#'].join('\t'),
+    ['NETWORK', 'n4', 'sqnet#bridge#stylique-caddy,infallible_hawking,'].join('\t'),
   ].join('\n')
   const inv = buildInventory(parseRecords(raw))
   // Networks carry BOTH id and name; look up by either so a test can address
@@ -307,19 +397,38 @@ function selftest() {
   const cls = (list, n) => list.find((x) => x.name === n || x.id === n)?.class
 
   t('twinai-worker is active', cls(inv.containers, 'twinai-worker') === 'active-twinai')
-  t('stylique-os is stylique-os', cls(inv.containers, 'stylique-os') === 'stylique-os')
+  t('stylique-os is retire-scope', cls(inv.containers, 'stylique-os') === 'retire-scope')
+  t('stylique-caddy is retire-scope', cls(inv.containers, 'stylique-caddy') === 'retire-scope')
+  t('infallible_hawking is retire-scope', cls(inv.containers, 'infallible_hawking') === 'retire-scope')
   t('postiz defaults to unknown (NOT deletable)', cls(inv.containers, 'postiz') === 'unknown-do-not-touch')
   t('live twinai image is active', cls(inv.images, 'sha256:aaa') === 'active-twinai')
-  t('stylique image is stylique-os', cls(inv.images, 'sha256:bbb') === 'stylique-os')
+  t('stylique image is retire-scope', cls(inv.images, 'sha256:bbb') === 'retire-scope')
+  t('an image used only by a retiring container is retire-scope',
+    cls(inv.images, 'sha256:cad') === 'retire-scope')
+  t('an unused deploy-stylique-os tag is retire-scope', cls(inv.images, 'sha256:dep') === 'retire-scope')
+  t("postiz's image is NOT deletable", cls(inv.images, 'sha256:ccc') === 'unknown-do-not-touch')
   t('older twinai image is rollback', cls(inv.images, 'sha256:old') === 'twinai-rollback')
   t('dangling image is proven-orphaned', cls(inv.images, 'sha256:dang') === 'proven-orphaned')
   t('twinai volume is active', cls(inv.volumes, 'twdata') === 'active-twinai')
-  t('stylique-only volume is stylique-os', cls(inv.volumes, 'sodata') === 'stylique-os')
+  t('a volume shared by TWO retiring containers is retire-scope (the oo-data case)',
+    cls(inv.volumes, 'sodata') === 'retire-scope')
+  t("postiz's database volume is NOT deletable", cls(inv.volumes, 'pgdata') === 'unknown-do-not-touch')
   t('unused empty volume is proven-orphaned', cls(inv.volumes, 'orphan') === 'proven-orphaned')
   t('unused volume WITH a database is NOT orphaned', cls(inv.volumes, 'orphandb') === 'unknown-do-not-touch')
-  t('stylique-only network is stylique-os', cls(inv.networks, 'n1') === 'stylique-os')
+  t('a network with one retiring member is retire-scope', cls(inv.networks, 'n1') === 'retire-scope')
+  t('a network with TWO retiring members is retire-scope', cls(inv.networks, 'n4') === 'retire-scope')
   t('shared bridge is not deletable', ['shared-do-not-touch', 'active-twinai'].includes(cls(inv.networks, 'n2')))
   t('empty network is proven-orphaned', cls(inv.networks, 'n3') === 'proven-orphaned')
+  t('the retirement set is disjoint from TwinAI', !RETIRE_CTRS.includes('twinai-worker'))
+  t('the removal order puts the edge first', RETIRE_CTRS[0] === 'stylique-caddy')
+  {
+    let threw = false
+    try { assertRetireSetDisjoint(new Set(['a', 'twinai-worker']), ['twinai-worker']) } catch { threw = true }
+    t('the disjointness guard THROWS on an overlapping set', threw)
+    let threwClean = false
+    try { assertRetireSetDisjoint(new Set(['a']), ['twinai-worker']) } catch { threwClean = true }
+    t('…and does not throw on a disjoint one', !threwClean)
+  }
 
   // MUTATION CONTROLS — each proves a specific guard is load-bearing.
   // 1. If stylique-os also mounted the TwinAI volume, that volume must stop
@@ -340,7 +449,33 @@ function selftest() {
   const invN = buildInventory(parseRecords(noRollback))
   t('MUTATION: with no spare image, zero are classed twinai-rollback',
     invN.images.filter((i) => i.class === 'twinai-rollback').length === 0)
-  // 4. Hash must actually depend on content.
+  // 4. ONE SURVIVOR IS ENOUGH. `allRetiring` is the rule that turned three
+  //    do-not-touch resources into deletable ones, so the thing that must be
+  //    proven is not that it fires — it is that it STOPS firing the moment a
+  //    single user outside the retirement set appears. Postiz is that user
+  //    here, and it is not TwinAI on purpose: the rule must protect resources
+  //    belonging to services it has never heard of.
+  const invPA = buildInventory(parseRecords(
+    raw.replace('volume|pgdata|/v/pg|/data|true;', 'volume|pgdata|/v/pg|/data|true;volume|sodata|/v/so|/x|true;')
+       .replace('sqnet#bridge#stylique-caddy,infallible_hawking,', 'sqnet#bridge#stylique-caddy,infallible_hawking,postiz,')))
+  t('MUTATION: one non-retiring mounter stops a volume being retire-scope',
+    invPA.volumes.find((v) => v.name === 'sodata').class !== 'retire-scope')
+  t('MUTATION: one non-retiring network member stops it being retire-scope',
+    invPA.networks.find((n) => n.id === 'n4').class !== 'retire-scope')
+  t('…and the same fixture still retires the untouched stylique-os network',
+    invPA.networks.find((n) => n.id === 'n1').class === 'retire-scope')
+  // 5. A container the founder listed, that TwinAI turns out to reference, must
+  //    NOT be deletable. The decision selects candidates; live evidence vetoes.
+  const styliqueProxied = raw + '\nPROXYREF\tstylique-caddy\t/etc/caddy/twinai.conf'
+  const invSP = buildInventory(parseRecords(styliqueProxied))
+  t('MUTATION: a listed container referenced by TwinAI becomes shared-do-not-touch',
+    invSP.containers.find((c) => c.name === 'stylique-caddy').class === 'shared-do-not-touch')
+  // 6. The tag rule must be a PREFIX on the repository, not a substring.
+  const lookalike = raw.replace('deploy-stylique-os:latest,', 'notdeploy-stylique-os:latest,')
+  const invLA = buildInventory(parseRecords(lookalike))
+  t('MUTATION: a lookalike tag is NOT retire-scope',
+    invLA.images.find((i) => i.id === 'sha256:dep').class === 'unknown-do-not-touch')
+  // 7. Hash must actually depend on content.
   t('MUTATION: hash changes when inventory changes', hashInventory(inv) !== hashInventory(invS))
   t('hash is stable across repeated builds',
     hashInventory(buildInventory(parseRecords(raw))) === hashInventory(inv))

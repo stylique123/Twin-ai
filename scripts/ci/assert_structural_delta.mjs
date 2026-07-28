@@ -48,10 +48,22 @@
 import { readFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import {
-  PlanError, READ_ONLY_STAGES, canonJson, plan as planFor, sha256hex, verifyPlanBinding,
+  PlanError, READ_ONLY_STAGES, TARGETS, canonJson, plan as planFor, sha256hex, verifyPlanBinding,
 } from './plan_retirement.mjs'
 
+/**
+ * The single container most of the per-field cases mutate. It stays one name on
+ * purpose: "a stop must not hide an image swap" is a statement about one record
+ * and reads worse spread across five.
+ */
 const TARGET = 'stylique-os'
+/**
+ * The members of the retirement set this fixture's host actually has. The
+ * whole-stage cases (stop, remove-container, reclaim) must act on ALL of them,
+ * because the planner does — an after-state that retired only TARGET leaves the
+ * other authorisations unexercised, and the comparator is right to say so.
+ */
+const RETIRED_HERE = TARGETS.filter((n) => n === 'stylique-os' || n === 'infallible_hawking')
 
 /**
  * EVERY root key build_resource_inventory.mjs actually emits, taken from the
@@ -374,7 +386,11 @@ export function endpointAuthorisations(before, name) {
 export function acceptAuthorisations(before) {
   let reclaim
   try {
-    reclaim = planFor({ ...before, containers: (before.containers ?? []).filter((c) => c.name !== TARGET) }, 'reclaim')
+    // Simulate the END of the retirement — EVERY target gone, not just one.
+    // With a single name filtered out the re-derivation hit the reclaim stage's
+    // own guard ("refusing to reclaim while X still exists") and `accept` could
+    // not derive anything at all.
+    reclaim = planFor({ ...before, containers: (before.containers ?? []).filter((c) => !TARGETS.includes(c.name)) }, 'reclaim')
   } catch (e) {
     throw new DeltaError(
       `accept cannot re-derive what the retirement was authorised to do from this baseline: ${e.message}`
@@ -388,9 +404,14 @@ export function acceptAuthorisations(before) {
     auths.push({ op: r.op, type: r.type, key: r.key })
     if (r.op === 'remove' && r.type === 'networks') removedNetworks.add(r.key)
   }
-  if ((before.containers ?? []).some((c) => c.name === TARGET)) {
-    auths.push({ op: 'remove', type: 'containers', key: TARGET })
-    for (const a of endpointAuthorisations(before, TARGET)) {
+  // EVERY retirement-set container present in the baseline, not one of them.
+  // `accept` re-derives the whole retirement's authorisation set from the
+  // BEFORE inventory; naming a single container here would leave the other four
+  // removals looking unauthorised and report a correct sweep as a violation.
+  for (const name of TARGETS) {
+    if (!(before.containers ?? []).some((c) => c.name === name)) continue
+    auths.push({ op: 'remove', type: 'containers', key: name })
+    for (const a of endpointAuthorisations(before, name)) {
       if (!removedNetworks.has(a.key)) auths.push(a)
     }
   }
@@ -433,7 +454,15 @@ export function authorisationsForStage(stage, before, plan = null) {
   }
   // Removing a container removes its endpoints from every network it was in.
   // That is a consequence, not a command, so no plan entry describes it.
-  if (stage === 'remove-container') auths.push(...endpointAuthorisations(before, TARGET))
+  // The endpoint departures belong to the containers THIS PLAN removes —
+  // derived from the plan, never from a constant. A hardcoded single name meant
+  // that removing five containers authorised the network departures of one, and
+  // the other four read as unauthorised structural change.
+  if (stage === 'remove-container') {
+    for (const r of plan.resources) {
+      if (r.op === 'remove' && r.type === 'containers') auths.push(...endpointAuthorisations(before, r.key))
+    }
+  }
   return auths
 }
 
@@ -543,6 +572,7 @@ export function structuralDelta(before, after, auths = [], stage = null) {
 
   const used = new Set()
   const find = (op, type, key) => auths.find((a) => a.op === op && a.type === type && a.key === key)
+  const findAll = (op, type, key) => auths.filter((a) => a.op === op && a.type === type && a.key === key)
 
   for (const t of RECORD_ROOTS) {
     const policy = FIELD_POLICY[t]
@@ -574,18 +604,36 @@ export function structuralDelta(before, after, auths = [], stage = null) {
       }
       const after2 = a.get(k)
       const changeAuth = find('change', t, k)
-      const epAuth = find('remove-endpoint', t, k)
+      // ALL of them. Two retiring containers can share a network, and each
+      // contributes its own endpoint authorisation for the same record. Taking
+      // only the first made the second departure read as an unauthorised
+      // rewrite AND left its authorisation unexercised — one correct removal
+      // reported as two violations.
+      const epAuths = findAll('remove-endpoint', t, k)
       for (const f of policy.structural) {
         const bv = compareField(policy, f, rec[f]); const av = compareField(policy, f, after2[f])
         if (bv === av) continue
 
         // A remove-endpoint authorisation permits EXACTLY one name leaving the
         // list — not an arbitrary rewrite of it.
-        if (epAuth !== undefined && f === 'containers' && Array.isArray(rec[f]) && Array.isArray(after2[f])) {
-          const expect = rec[f].filter((x) => x !== epAuth.endpoint)
-          if (compareField(policy, f, expect) === av) { used.add(canon(epAuth)); continue }
+        if (epAuths.length > 0 && f === 'containers' && Array.isArray(rec[f]) && Array.isArray(after2[f])) {
+          const eps = new Set(epAuths.map((x) => x.endpoint))
+          const expect = rec[f].filter((x) => !eps.has(x))
+          if (compareField(policy, f, expect) === av) {
+            // Exercised means the endpoint was really there and really left.
+            // DEFENSIVE ONLY, and stated as such: endpointAuthorisations is
+            // built from both the container's network list and the network's
+            // member list, and validateInventory refuses a baseline where those
+            // two disagree — so an authorisation for a name that was never in
+            // the list cannot reach here today. The suite therefore does NOT
+            // kill a mutant that drops this condition; it is kept because the
+            // cost is a membership test and the failure it would mask is a
+            // silently-satisfied authorisation.
+            for (const x of epAuths) if (rec[f].includes(x.endpoint)) used.add(canon(x))
+            continue
+          }
           add('changed', t, k, f,
-            `${t}/${k}.${f}: authorised only to drop ${epAuth.endpoint}, but changed ${bv} -> ${av}`)
+            `${t}/${k}.${f}: authorised only to drop ${[...eps].join(', ')}, but changed ${bv} -> ${av}`)
           continue
         }
         if (changeAuth !== undefined && changeAuth.fields.includes(f)) { used.add(canon(changeAuth)); continue }
@@ -676,7 +724,20 @@ const RAW = [
   // name, status#restarts#policy#imageRef#imageId#created#health#memLimit#exitCode, project, labels, mounts, ports, networks, logKb
   ['CONTAINER', 'twinai-worker', 'running#0#unless-stopped:0#twinai-worker:latest#sha256:0200#2025-01-02T03:04:05Z#healthy#0#0', '', '', 'volume|twdata|/var/lib/docker/volumes/twdata/_data|/data|true;', '', 'bridge', '1024'].join('\t'),
   ['CONTAINER', TARGET, 'restarting#23329#unless-stopped:0#stylique-os:latest#sha256:bbbb#2024-05-06T07:08:09Z#unhealthy#0#0', 'deploy', 'com.docker.compose.project=deploy', 'volume|oo-data|/var/lib/docker/volumes/oo-data/_data|/data|false;', '', 'styliquenet deploy_default', '133000'].join('\t'),
-  ['CONTAINER', 'infallible_hawking', 'running#1#always:0#oo/app:1#sha256:cccc#2024-01-01T00:00:00Z#none#0#0', '', '', 'volume|oo-data|/var/lib/docker/volumes/oo-data/_data|/data|true;', '', 'styliquenet', '12'].join('\t'),
+  // EXITED, matching the live host. It is a member of the retirement set now,
+  // so the `remove-container` stage this fixture exercises would — correctly —
+  // refuse to plan while it was still running. The fixture has to describe a
+  // host the stage can actually act on, or it tests the refusal instead.
+  ['CONTAINER', 'infallible_hawking', 'exited#1#always:0#oo/app:1#sha256:cccc#2024-01-01T00:00:00Z#none#1#0', '', '', 'volume|oo-data|/var/lib/docker/volumes/oo-data/_data|/data|true;', '', 'styliquenet', '12'].join('\t'),
+  // A SURVIVOR ON A SHARED NETWORK. Without it `styliquenet` holds only
+  // retiring containers, so emptying it entirely is exactly what the plan
+  // authorises — and the negative control "cannot hide ANOTHER endpoint leaving
+  // the same network" has nothing left to catch. The control needs a member
+  // whose departure was never authorised.
+  // It also mounts oo-data, which is what keeps that volume genuinely SHARED:
+  // a volume every one of whose mounters is retiring is deletable, and the
+  // cases below need one that is not.
+  ['CONTAINER', 'postiz', 'running#0#always:0#postiz:latest#sha256:dddd#2024-01-01T00:00:00Z#none#0#0', '', '', 'volume|oo-data|/var/lib/docker/volumes/oo-data/_data|/data|true;', '', 'styliquenet', '7'].join('\t'),
   ['IMAGE', 'sha256:0200', 'twinai-worker:latest#twinai-worker@sha256:d1#1200000000#2025-01-02'].join('\t'),
   ['IMAGE', 'sha256:prev', 'twinai-worker:prev##1190000000#2024-12-20'].join('\t'),
   ['IMAGE', 'sha256:bbbb', 'stylique-os:latest##980000000#2024-05-06'].join('\t'),
@@ -685,7 +746,7 @@ const RAW = [
   ['VOLUME', 'twdata', 'local', '/var/lib/docker/volumes/twdata/_data', '4096', '', ''].join('\t'),
   ['VOLUME', 'oo-data', 'local', '/var/lib/docker/volumes/oo-data/_data', '8192', '', ''].join('\t'),
   ['VOLUME', 'dead-vol', 'local', '/var/lib/docker/volumes/dead-vol/_data', '64', '', ''].join('\t'),
-  ['NETWORK', 'n1', 'styliquenet#bridge#stylique-os,infallible_hawking,'].join('\t'),
+  ['NETWORK', 'n1', 'styliquenet#bridge#stylique-os,infallible_hawking,postiz,'].join('\t'),
   ['NETWORK', 'n2', 'deploy_default#bridge#stylique-os,'].join('\t'),
   ['NETWORK', 'n3', 'bridge#bridge#twinai-worker,'].join('\t'),
   ['DOCKERDF', 'Build Cache#380#0#68.3GB#65.1GB'].join('\t'),
@@ -864,10 +925,11 @@ async function selftest() {
   })(), true)
   // An endpoint departure must still be recognised when the list also reorders.
   t('remove-container still works when the network list is REORDERED', (() => {
-    const b = clone(inv()); ctr(b, TARGET).status = 'exited'
+    const b = clone(inv())
+    for (const n of RETIRED_HERE) ctr(b, n).status = 'exited'
     const a = clone(b)
-    a.containers = a.containers.filter((c) => c.name !== TARGET)
-    for (const n of a.networks) n.containers = [...n.containers.filter((x) => x !== TARGET)].reverse()
+    a.containers = a.containers.filter((c) => !RETIRED_HERE.includes(c.name))
+    for (const n of a.networks) n.containers = [...n.containers.filter((x) => !RETIRED_HERE.includes(x))].reverse()
     return run(b, a, 'remove-container').ok
   })(), true)
   t('a field declared unordered but not structural is a hard error', (() => {
@@ -892,7 +954,7 @@ async function selftest() {
   rootCase('a proxy losing its reference is a finding', (a) => { a.proxyRefs[0].hits = 'none' }, false)
   rootCase('a NEWLY EXPOSED PORT is a finding', (a) => { a.listening.push('LISTEN 0 4096 0.0.0.0:9999 0.0.0.0:* users:(("x",pid=?,fd=3))') }, false)
   rootCase('a port no longer listening is a finding', (a) => { a.listening = a.listening.slice(0, 1) }, false)
-  rootCase('the schema version changing is a finding', (a) => { a.schema = 'vps-resource-inventory-2' }, false)
+  rootCase('the schema version changing is a finding', (a) => { a.schema = 'vps-resource-inventory-99' }, false)
   rootCase('an undeclared key inside twinai is a finding', (a) => { a.twinai.newFact = 'x' }, false)
   rootCase('an undeclared field on a twinaiImages record is a finding', (a) => { a.twinaiImages[0].digest = 'x' }, false)
   // POSITIVE VOLATILITY CONTROLS — the declared noise really is permitted, or
@@ -933,7 +995,7 @@ async function selftest() {
   }
 
   console.log('-- disable-restart: ONLY the policy field')
-  const dr = clone(inv()); ctr(dr, TARGET).policy = 'no'
+  const dr = clone(inv()); for (const n of RETIRED_HERE) ctr(dr, n).policy = 'no'
   t('POSITIVE: the exact allowed delta passes', run(inv(), dr, 'disable-restart').ok, true)
   for (const [label, f, v] of [
     ['image identity', 'imageId', 'sha256:DEAD'], ['mounts', 'mounts', []],
@@ -948,8 +1010,11 @@ async function selftest() {
     run(inv(), (() => { const a = clone(dr); a.twinai.src_sha = 'e'.repeat(40); return a })(), 'disable-restart').ok, false)
 
   console.log('-- stop: ONLY the lifecycle fields')
-  const st = clone(inv()); const s2 = ctr(st, TARGET)
-  s2.status = 'exited'; s2.exitCode = 137; s2.health = 'none'
+  const st = clone(inv())
+  for (const n of RETIRED_HERE) {
+    const s2 = ctr(st, n)
+    s2.status = 'exited'; s2.exitCode = 137; s2.health = 'none'
+  }
   t('POSITIVE: the exact allowed delta passes', run(inv(), st, 'stop').ok, true)
   for (const [label, f, v] of [['policy', 'policy', 'no'], ['image', 'imageId', 'sha256:DEAD'], ['mounts', 'mounts', []]]) {
     const bad = clone(st); ctr(bad, TARGET)[f] = v
@@ -957,10 +1022,14 @@ async function selftest() {
   }
 
   console.log('-- remove-container: the container plus ITS endpoints only')
-  const stopped = () => { const i = clone(inv()); ctr(i, TARGET).status = 'exited'; return i }
+  const stopped = () => {
+    const i = clone(inv())
+    for (const n of RETIRED_HERE) ctr(i, n).status = 'exited'
+    return i
+  }
   const rm = clone(stopped())
-  rm.containers = rm.containers.filter((c) => c.name !== TARGET)
-  for (const n of rm.networks) n.containers = n.containers.filter((x) => x !== TARGET)
+  rm.containers = rm.containers.filter((c) => !RETIRED_HERE.includes(c.name))
+  for (const n of rm.networks) n.containers = n.containers.filter((x) => !RETIRED_HERE.includes(x))
   t('POSITIVE: removal plus its own endpoint departures passes', run(stopped(), rm, 'remove-container').ok, true)
   const rmBad = clone(rm)
   net(rmBad, 'styliquenet').containers = []
@@ -987,16 +1056,22 @@ async function selftest() {
   console.log('-- reclaim: derived from the TYPED plan, not from parsing commands')
   const gone = () => {
     const i = clone(inv())
-    i.containers = i.containers.filter((c) => c.name !== TARGET)
-    for (const n of i.networks) n.containers = n.containers.filter((x) => x !== TARGET)
+    i.containers = i.containers.filter((c) => !RETIRED_HERE.includes(c.name))
+    for (const n of i.networks) n.containers = n.containers.filter((x) => !RETIRED_HERE.includes(x))
     return i
   }
   const rPlan = planned(gone(), 'reclaim')
+  // The host after EXACTLY the plan ran — derived from the plan rather than
+  // re-listed by hand. A hand-written after-state has to be edited every time
+  // the retirement scope changes, and the edit that gets forgotten produces a
+  // fixture that quietly stops testing the stage it is named after.
   const reclaimed = (() => {
     const a = gone()
-    a.images = a.images.filter((i) => !['sha256:bbbb', 'sha256:dang'].includes(i.id))
-    a.volumes = a.volumes.filter((v) => v.name !== 'dead-vol')
-    a.networks = a.networks.filter((n) => n.name !== 'deploy_default')
+    const removed = (type) => new Set(rPlan.resources
+      .filter((r) => r.op === 'remove' && r.type === type).map((r) => r.key))
+    a.images = a.images.filter((i) => !removed('images').has(i.id))
+    a.volumes = a.volumes.filter((v) => !removed('volumes').has(v.name))
+    a.networks = a.networks.filter((n) => !removed('networks').has(n.name))
     return a
   })()
   t('POSITIVE: exactly the planned resources pass', run(gone(), reclaimed, 'reclaim', rPlan).ok, true)
@@ -1010,8 +1085,10 @@ async function selftest() {
     const d = structuralDelta(gone(), reclaimed, authorisationsForStage('reclaim', gone(), bad), 'reclaim')
     return d.ok
   })(), false)
+  // twdata is TwinAI's own volume: never in any plan, so its disappearance can
+  // only ever be unauthorised.
   const unplanned = clone(reclaimed)
-  unplanned.volumes = unplanned.volumes.filter((v) => v.name !== 'oo-data')
+  unplanned.volumes = unplanned.volumes.filter((v) => v.name !== 'twdata')
   t('deleting an UNPLANNED resource fails', run(gone(), unplanned, 'reclaim', rPlan).ok, false)
   t('a plan-less mutating stage throws', (() => {
     try { authorisationsForStage('reclaim', gone(), null); return false } catch (e) { return e instanceof DeltaError }
@@ -1048,7 +1125,9 @@ async function selftest() {
 
   console.log('-- accept: cumulative, re-derived from the baseline')
   const acceptAuths = authorisationsForStage('accept', inv(), null)
-  t('accept authorises the container removal', acceptAuths.some((a) => a.op === 'remove' && a.type === 'containers' && a.key === TARGET), true)
+  for (const n of RETIRED_HERE) {
+    t(`accept authorises the ${n} removal`, acceptAuths.some((a) => a.op === 'remove' && a.type === 'containers' && a.key === n), true)
+  }
   t('accept authorises the planned image deletions', acceptAuths.some((a) => a.type === 'images' && a.key === 'sha256:bbbb'), true)
   t('accept NEVER authorises the active TwinAI image', acceptAuths.some((a) => a.key === 'sha256:0200'), false)
   t('accept NEVER authorises the rollback image', acceptAuths.some((a) => a.key === 'sha256:prev'), false)
@@ -1075,9 +1154,12 @@ async function selftest() {
   // this stage did not authorise" — a message that was wrong twice over, since
   // nothing had changed and nothing was unauthorised.
   {
+    // EVERY target already in the intended state, because the stage now
+    // authorises a policy change on every one of them. Putting only the first
+    // one there leaves four genuinely unexercised authorisations, and the case
+    // stops being about idempotence.
     const already = inv()
-    const c = already.containers.find((x) => x.name === 'stylique-os')
-    c.policy = 'no:0'
+    for (const n of RETIRED_HERE) already.containers.find((x) => x.name === n).policy = 'no:0'
     t('a no-op re-run of disable-restart is NOT a finding',
       run(already, already, 'disable-restart').findings.some((f) => f.kind === 'unused_authorisation'), false)
     t('…and the run is ok', run(already, already, 'disable-restart').ok, true)

@@ -5,16 +5,24 @@
 // from an earlier run, and never widened by a name pattern. If the host changed
 // since the last look, the plan changes with it — or refuses.
 //
-// The plan may only ever touch resources classed `stylique-os` or
+// The plan may only ever touch resources classed `retire-scope` or
 // `proven-orphaned`. Anything else — active-twinai, twinai-rollback,
 // shared-do-not-touch, unknown-do-not-touch — is unreachable by construction:
 // emit() throws rather than skipping, so a misclassification is a hard stop and
 // not a silently smaller plan.
 //
+// THE TARGET SET IS IMPORTED, NOT RESTATED. It used to be one hardcoded string
+// here and another in the classifier; two lists that must agree are a list that
+// will eventually disagree, and the failure would be silent in the worst
+// direction — the classifier marking something deletable that the planner never
+// plans, or the planner naming something the classifier never cleared.
+//
 // PRECONDITIONS, all fail-closed:
 //   * twinai-worker present and classed active-twinai
 //   * at least one twinai-rollback image retained
-//   * the container being retired is stylique-os and nothing else
+//   * every container acted on is in the imported retirement set and classed
+//     deletable — a listed container the classifier declined to clear stops the
+//     run rather than being acted on anyway
 //   * no volume marked for deletion is mounted by any surviving container
 //
 // THE PLAN IS TYPED, AND THE COMMAND IS DERIVED FROM THE TYPE — NOT THE OTHER
@@ -41,6 +49,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
 import { pathToFileURL } from 'node:url'
+import { RETIRE_CTRS } from './build_resource_inventory.mjs'
 
 // Every stage the plan step may be asked to plan for. `observe` and `accept`
 // never reach this script — the workflow skips the plan step for them — but
@@ -54,9 +63,14 @@ import { pathToFileURL } from 'node:url'
 export const STAGES = ['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'stack-dependency', 'reclaim-build-cache', 'disable-restart', 'stop', 'remove-container', 'reclaim']
 /** Stages that plan NO commands. They are here to be known, not to act. */
 export const READ_ONLY_STAGES = new Set(['manifest', 'pre-stop-audit', 'route-impact', 'chrome-exposure', 'stack-dependency'])
-const TARGET = 'stylique-os'
+/**
+ * The containers this plan retires, IN REMOVAL ORDER, imported from the one
+ * place that decides it. Caddy first: it is the edge that still routes to
+ * stylique-os, and every later member is unblocked by it having gone.
+ */
+export const TARGETS = RETIRE_CTRS
 const TWINAI = 'twinai-worker'
-const DELETABLE = new Set(['stylique-os', 'proven-orphaned'])
+const DELETABLE = new Set(['retire-scope', 'proven-orphaned'])
 
 export class PlanError extends Error {}
 
@@ -321,7 +335,12 @@ export function plan(inv, stage) {
   const rollback = inv.images.filter((i) => i.class === 'twinai-rollback')
   if (rollback.length === 0) throw new PlanError('precondition failed: no twinai-rollback image retained — a bad deploy would be unrecoverable')
 
-  const target = inv.containers.find((c) => c.name === TARGET)
+  // Present targets, IN REMOVAL ORDER — the order of TARGETS, never the order
+  // the inventory happened to list them in. A plan whose command order depends
+  // on how `docker ps` sorted its output is a plan whose safety depends on
+  // something nobody controls.
+  const targets = TARGETS.map((n) => inv.containers.find((c) => c.name === n)).filter(Boolean)
+  const absent = TARGETS.filter((n) => !inv.containers.some((c) => c.name === n))
   const resources = []
   const notes = []
   // `cmds` is DERIVED from the typed manifest at the end of this function, so a
@@ -348,15 +367,20 @@ export function plan(inv, stage) {
   // misclassified is not a host to be auditing a retirement on.
   if (stage === 'pre-stop-audit' || stage === 'route-impact') {
     notes.push('read-only stage: no command is planned; the evidence is the probe verdict')
-    if (!target) notes.push(`${TARGET} is not present on this host`)
+    for (const n of absent) notes.push(`${n} is not present on this host`)
     return done()
   }
 
   if (stage === 'manifest') {
     // Read + backup only. Nothing here mutates.
-    if (!target) { notes.push(`${TARGET} is not present — nothing to record`); return done() }
-    const exclusive = inv.volumes.filter((v) => v.class === 'stylique-os')
-    const shared = inv.volumes.filter((v) => v.class === 'shared-do-not-touch' && /stylique-os/.test(v.evidence))
+    if (targets.length === 0) { notes.push('no retirement-set container is present — nothing to record'); return done() }
+    for (const n of absent) notes.push(`already absent: ${n}`)
+    const exclusive = inv.volumes.filter((v) => v.class === 'retire-scope')
+    // A volume the classifier held back BECAUSE a retiring container mounts it
+    // alongside something that survives. Naming it is the point: this is the
+    // list a reader checks to see what the retirement deliberately left behind.
+    const shared = inv.volumes.filter((v) => v.class === 'shared-do-not-touch'
+      && TARGETS.some((n) => new RegExp(`(^|[ ,(])${n}([ ,)]|$)`).test(v.evidence)))
     for (const v of shared) notes.push(`SHARED VOLUME, will NOT be deleted: ${v.name} (${v.evidence})`)
     return {
       ...done(),
@@ -364,10 +388,16 @@ export function plan(inv, stage) {
       // volumes this run would later delete.
       backups: exclusive.map((v) => ({ volume: v.name, mountpoint: v.mountpoint, sizeKb: v.sizeKb })),
       record: {
-        container: { name: target.name, image: target.imageRef, imageId: target.imageId, status: target.status, restarts: target.restarts, policy: target.policy, created: target.created, exitCode: target.exitCode, health: target.health },
-        mounts: target.mounts, networks: target.networks, ports: target.ports, labels: target.labels, project: target.project,
-        images: inv.images.filter((i) => i.class === 'stylique-os').map((i) => ({ id: i.id, tags: i.tags, repoDigests: i.repoDigests, sizeBytes: i.sizeBytes })),
-        networksOwned: inv.networks.filter((n) => n.class === 'stylique-os').map((n) => n.name),
+        // ROLLBACK EVIDENCE, one entry per container, keyed by name. A single
+        // `container` object could only ever describe one of five, and the four
+        // it omitted would be unreconstructable.
+        containers: targets.map((t) => ({
+          container: { name: t.name, image: t.imageRef, imageId: t.imageId, status: t.status, restarts: t.restarts, policy: t.policy, created: t.created, exitCode: t.exitCode, health: t.health },
+          mounts: t.mounts, networks: t.networks, ports: t.ports, labels: t.labels, project: t.project,
+        })),
+        absent,
+        images: inv.images.filter((i) => i.class === 'retire-scope').map((i) => ({ id: i.id, tags: i.tags, repoDigests: i.repoDigests, sizeBytes: i.sizeBytes })),
+        networksOwned: inv.networks.filter((n) => n.class === 'retire-scope').map((n) => n.name),
         volumesOwned: exclusive.map((v) => v.name),
         volumesShared: shared.map((v) => ({ name: v.name, evidence: v.evidence })),
       },
@@ -407,7 +437,9 @@ export function plan(inv, stage) {
     bare('builder-prune')
     notes.push(`build cache: ${bc.entries} entries, 0 active, ${bc.size} total, ${bc.reclaimable} reclaimable`)
     notes.push('touches the build cache ONLY: no container, image, volume or network record may change')
-    notes.push(`${TARGET} is ${target ? `present (${target.status}) and is NOT acted on by this stage` : 'not present; irrelevant to this stage'}`)
+    notes.push(targets.length
+      ? `present and NOT acted on by this stage: ${targets.map((t) => `${t.name} (${t.status})`).join(', ')}`
+      : 'no retirement-set container is present; irrelevant to this stage')
     notes.push('NOT REVERSIBLE, and does not need to be: build cache is regenerable by rebuilding. No application data is touched.')
     return done()
   }
@@ -415,44 +447,66 @@ export function plan(inv, stage) {
   // The container must exist for the stages that ACT ON IT. `reclaim` is the
   // opposite case: it runs only once the container is already gone, and its own
   // guard below refuses if it is still there.
-  if (!target && stage !== 'reclaim') {
-    throw new PlanError(`${TARGET} is not present on this host — nothing to retire`)
+  if (targets.length === 0 && stage !== 'reclaim') {
+    throw new PlanError('no retirement-set container is present on this host — nothing to retire')
   }
+  for (const n of absent) notes.push(`already absent, not acted on: ${n}`)
 
   // The `fields` on a change are the structural effect the stage DECLARES. The
   // comparator permits those and nothing else on that record, so a stop that
   // also swapped the image is a failure rather than a footnote.
   if (stage === 'disable-restart') {
     // Reversible: `docker update --restart=unless-stopped` restores it.
-    emit(target.class, target.name, {
-      op: 'change', type: 'containers', key: TARGET, fields: ['policy'],
-      argv: ['docker', 'update', '--restart=no', TARGET],
-    })
-    notes.push(`reversible: docker update --restart=${target.policy.split(':')[0]} ${TARGET}`)
+    // A container already on `no` is planned anyway: the command is idempotent,
+    // and SKIPPING it would make the plan depend on the current policy, so a
+    // re-run after a partial failure would emit a different plan than the one
+    // that was reviewed.
+    for (const t of targets) {
+      emit(t.class, t.name, {
+        op: 'change', type: 'containers', key: t.name, fields: ['policy'],
+        argv: ['docker', 'update', '--restart=no', t.name],
+      })
+      notes.push(`reversible: docker update --restart=${t.policy.split(':')[0]} ${t.name}`)
+    }
   }
 
   if (stage === 'stop') {
-    emit(target.class, target.name, {
-      op: 'change', type: 'containers', key: TARGET, fields: ['status', 'exitCode', 'health'],
-      argv: ['docker', 'stop', '--time', '30', TARGET],
-    })
-    notes.push(`reversible: docker start ${TARGET}`)
+    for (const t of targets) {
+      emit(t.class, t.name, {
+        op: 'change', type: 'containers', key: t.name, fields: ['status', 'exitCode', 'health'],
+        argv: ['docker', 'stop', '--time', '30', t.name],
+      })
+      notes.push(`reversible: docker start ${t.name}`)
+    }
   }
 
   if (stage === 'remove-container') {
-    if (target.status === 'running' || target.status === 'restarting') {
-      throw new PlanError(`refusing to remove ${TARGET} while it is ${target.status} — run the stop stage first and observe TwinAI health`)
+    // EVERY target is checked before ANY is planned. Emitting as we go would
+    // build a partial plan and then throw, and the reviewer would be reading a
+    // command list that the run had already refused to be a complete version of.
+    const live = targets.filter((t) => t.status === 'running' || t.status === 'restarting')
+    if (live.length) {
+      throw new PlanError(`refusing to remove ${live.map((t) => `${t.name} (${t.status})`).join(', ')}`
+        + ' — run the stop stage first and observe TwinAI health')
     }
-    // NEVER `-v`: the volume it mounts is shared with another container.
-    emit(target.class, target.name, {
-      op: 'remove', type: 'containers', key: TARGET, fields: null, argv: ['docker', 'rm', TARGET],
-    })
+    for (const t of targets) {
+      // NEVER `-v`: volumes are deleted only by `reclaim`, and only after the
+      // independent surviving-mounter check there.
+      emit(t.class, t.name, {
+        op: 'remove', type: 'containers', key: t.name, fields: null, argv: ['docker', 'rm', t.name],
+      })
+    }
     notes.push('no -v flag: volumes are handled separately, and only after the shared-mount check')
   }
 
   if (stage === 'reclaim') {
-    if (inv.containers.some((c) => c.name === TARGET)) {
-      throw new PlanError(`refusing to reclaim while the ${TARGET} container still exists — remove it first`)
+    // ALL of them, not any of them. A surviving retirement-set container still
+    // holds images, mounts volumes and joins networks that this stage is about
+    // to delete, and the classification that cleared them was computed while it
+    // was still gone from nothing.
+    const remaining = TARGETS.filter((n) => inv.containers.some((c) => c.name === n))
+    if (remaining.length) {
+      throw new PlanError(`refusing to reclaim while ${remaining.join(', ')} still exist${remaining.length === 1 ? 's' : ''} — remove them first`)
     }
     // Images: stylique-os-classed, and dangling ones. Individually, BY ID.
     //
@@ -511,21 +565,40 @@ function selftest() {
     else { console.error(`SELFTEST FAIL: ${name} — ${threw ? threw.message : 'did not throw'}`); failed++ }
   }
 
+  // A container record for a member of the retirement set. Defaults are the
+  // stopped, already-audited state; individual tests override what they mean to
+  // exercise.
+  const ctr = (name, over = {}) => ({
+    name, class: 'retire-scope', mounts: [], status: 'exited', restarts: 0,
+    policy: 'unless-stopped:0', imageRef: `${name}:latest`, imageId: `sha256:${name}`,
+    created: 'c', exitCode: 0, health: 'none', networks: [], ports: '', labels: '',
+    project: null, ...over,
+  })
+
+  // The fixture carries EVERY member of the imported retirement set, built from
+  // TARGETS rather than listed by hand. A hand-written fixture would keep
+  // passing after the set changed, and would be testing a host that no longer
+  // matches the one the planner will act on.
   const base = () => ({
     containers: [
       { name: TWINAI, class: 'active-twinai', mounts: [], status: 'running', networks: [] },
-      { name: TARGET, class: 'stylique-os', mounts: [{ type: 'volume', name: 'oo-data' }], status: 'exited', restarts: 23082, policy: 'unless-stopped:0', imageRef: 'stylique-os:latest', imageId: 'sha256:b', created: 'c', exitCode: 1, health: 'unhealthy', networks: ['sonet'], ports: '', labels: '', project: null },
+      ...TARGETS.map((n) => ctr(n, n === 'stylique-os'
+        ? { mounts: [{ type: 'volume', name: 'oo-data' }], restarts: 23082, imageRef: 'stylique-os:latest', imageId: 'sha256:b', exitCode: 1, health: 'unhealthy', networks: ['sonet'] }
+        : {})),
     ],
     images: [
       { id: 'sha256:a', tags: ['twinai-worker:latest'], repoDigests: [], sizeBytes: 1, class: 'active-twinai' },
       { id: 'sha256:p', tags: ['twinai-worker:prev'], repoDigests: [], sizeBytes: 1, class: 'twinai-rollback' },
-      { id: 'sha256:s', tags: ['stylique-os:v1'], repoDigests: [], sizeBytes: 1, class: 'stylique-os' },
+      { id: 'sha256:s', tags: ['stylique-os:v1'], repoDigests: [], sizeBytes: 1, class: 'retire-scope' },
+      { id: 'sha256:z', tags: ['postgres:17-alpine'], repoDigests: [], sizeBytes: 1, class: 'unknown-do-not-touch' },
     ],
     volumes: [
-      { name: 'oo-data', class: 'shared-do-not-touch', evidence: 'mounted by stylique-os,infallible_hawking', dbFiles: '' },
+      // Shared with a container OUTSIDE the retirement set, so it stays.
+      { name: 'oo-data', class: 'shared-do-not-touch', evidence: 'mounted by stylique-os,postiz', dbFiles: '' },
       { name: 'dead', class: 'proven-orphaned', evidence: 'x', dbFiles: '' },
+      { name: 'pgdata', class: 'unknown-do-not-touch', evidence: 'mounted by postiz-postgres', dbFiles: '/v/pg/PG_VERSION' },
     ],
-    networks: [{ id: 'n1', name: 'sonet', class: 'stylique-os', containers: [TARGET] }],
+    networks: [{ id: 'n1', name: 'sonet', class: 'retire-scope', containers: ['stylique-os'] }],
     dockerDf: [{ type: 'Build Cache', total: 380, active: 0, size: '68.3GB', reclaimable: '65.1GB' }],
   })
 
@@ -554,10 +627,33 @@ function selftest() {
   t('removing a RUNNING container aborts', () => {
     const i = base(); i.containers[1].status = 'running'; return plan(i, 'remove-container')
   }, true)
+  t('…and so does the LAST target being running, not just the first', () => {
+    const i = base(); i.containers[i.containers.length - 1].status = 'running'
+    return plan(i, 'remove-container')
+  }, true)
+  // THE DECISION SELECTS CANDIDATES; THE CLASSIFICATION HAS THE VETO.
+  // Being on the founder's list is what makes a container a candidate. Being
+  // classed deletable is what makes acting on it permitted, and the classifier
+  // withholds that the moment it finds live evidence of a dependency — a
+  // TwinAI-serving proxy config naming it, say. Without this gate the list
+  // alone would authorise the deletion and the evidence would be decoration.
+  for (const cls of ['shared-do-not-touch', 'unknown-do-not-touch', 'active-twinai']) {
+    for (const stg of ['disable-restart', 'stop', 'remove-container']) {
+      t(`MUTATION: a listed container classed ${cls} aborts ${stg}`, () => {
+        const i = base(); i.containers.find((c) => c.name === TARGETS[2]).class = cls
+        return plan(i, stg)
+      }, true)
+    }
+  }
   t('reclaim while the container still exists aborts', () => plan(base(), 'reclaim'), true)
+  t('…and while only ONE of them is left', () => {
+    const i = base()
+    i.containers = i.containers.filter((c) => c.name === TWINAI || c.name === TARGETS[TARGETS.length - 1])
+    return plan(i, 'reclaim')
+  }, true)
 
-  // The reclaim happy path: container already removed.
-  const removed = () => { const i = base(); i.containers = i.containers.filter((c) => c.name !== TARGET); return i }
+  // The reclaim happy path: every retirement-set container already removed.
+  const removed = () => { const i = base(); i.containers = i.containers.filter((c) => !TARGETS.includes(c.name)); return i }
   t('reclaim after removal works', () => plan(removed(), 'reclaim'), false)
 
   const r = plan(removed(), 'reclaim')
@@ -572,7 +668,40 @@ function selftest() {
   check('reclaim NEVER removes the shared oo-data volume', !has('oo-data'))
   check('reclaim removes the orphaned volume', has('docker volume rm dead'))
   check('reclaim uses builder prune, never system prune', has('builder prune') && !has('system prune'))
+  check('reclaim NEVER removes a do-not-touch image', !has('sha256:z'))
+  check('reclaim NEVER removes the postiz database volume', !has('pgdata'))
   check('remove-container never passes -v', !plan((() => { const i = base(); return i })(), 'remove-container').cmds.some((c) => /docker rm .*-v|rm -v/.test(c)))
+
+  // THE MULTI-TARGET PROPERTIES. Each acting stage must reach EVERY member of
+  // the set, exactly once, in the imported order — a plan that quietly acted on
+  // one of five would look identical in shape to a correct one.
+  for (const [stg, verb] of [['disable-restart', 'docker update --restart=no'], ['stop', 'docker stop --time 30'], ['remove-container', 'docker rm']]) {
+    const p = plan(base(), stg)
+    const named = p.resources.filter((x) => x.type === 'containers').map((x) => x.key)
+    check(`${stg} acts on ALL ${TARGETS.length} targets`, named.length === TARGETS.length)
+    check(`${stg} acts on each target exactly once`, new Set(named).size === named.length)
+    check(`${stg} preserves the imported removal order`, canonJson(named) === canonJson([...TARGETS]))
+    check(`${stg} never names twinai-worker`, !named.includes(TWINAI))
+    check(`${stg} emits the ${verb.split(' ').slice(0, 2).join(' ')} command for each`,
+      p.cmds.filter((c) => c.startsWith(verb)).length === TARGETS.length)
+  }
+  check('the edge is removed before the container it routes to',
+    plan(base(), 'stop').resources.findIndex((x) => x.key === 'stylique-caddy')
+    < plan(base(), 'stop').resources.findIndex((x) => x.key === 'stylique-os'))
+  check('a target absent from the host is skipped, not invented', (() => {
+    const i = base(); i.containers = i.containers.filter((c) => c.name !== TARGETS[1])
+    const named = plan(i, 'stop').resources.map((x) => x.key)
+    return named.length === TARGETS.length - 1 && !named.includes(TARGETS[1])
+  })())
+  check('…and the plan says so rather than staying silent', (() => {
+    const i = base(); i.containers = i.containers.filter((c) => c.name !== TARGETS[1])
+    return plan(i, 'stop').notes.some((n) => n.includes(TARGETS[1]) && /absent/.test(n))
+  })())
+  check('the manifest records EVERY target, not just one', (() => {
+    const rec = plan(base(), 'manifest').record
+    return rec.containers.length === TARGETS.length
+      && canonJson(rec.containers.map((c) => c.container.name)) === canonJson([...TARGETS])
+  })())
 
   // MUTATION CONTROLS — each proves a specific guard is load-bearing.
   t('MUTATION: a shared volume misclassed as deletable is still refused (mount check)', () => {
@@ -720,7 +849,7 @@ function selftest() {
   refuses('an EXTRA ARGUMENT (a second target smuggled in)',
     { op: 'remove', type: 'volumes', key: 'dead', fields: null, argv: ['docker', 'volume', 'rm', 'dead', 'oo-data'] })
   refuses('a container removal during RECLAIM (stage-incompatible op)',
-    { op: 'remove', type: 'containers', key: TARGET, fields: null, argv: ['docker', 'rm', TARGET] })
+    { op: 'remove', type: 'containers', key: TARGETS[0], fields: null, argv: ['docker', 'rm', TARGETS[0]] })
   refuses('an image removal during REMOVE-CONTAINER (stage-incompatible op)',
     { op: 'remove', type: 'images', key: 'sha256:s', fields: null, argv: ['docker', 'rmi', 'sha256:s'] },
     'remove-container', /may not remove a images/)
@@ -728,10 +857,10 @@ function selftest() {
     { op: 'none', type: null, key: null, fields: null, command: 'journal-vacuum', argv: ['journalctl', '--vacuum-size=200M'] },
     'reclaim-build-cache', /not permitted in stage/)
   refuses('a STOP command during disable-restart (wrong field set for the stage)',
-    { op: 'change', type: 'containers', key: TARGET, fields: ['status', 'exitCode', 'health'], argv: ['docker', 'stop', '--time', '30', TARGET] },
+    { op: 'change', type: 'containers', key: TARGETS[0], fields: ['status', 'exitCode', 'health'], argv: ['docker', 'stop', '--time', '30', TARGETS[0]] },
     'disable-restart', /may not change/)
   refuses('a field set NO catalog command produces',
-    { op: 'change', type: 'containers', key: TARGET, fields: ['imageId'], argv: ['docker', 'update', '--restart=no', TARGET] },
+    { op: 'change', type: 'containers', key: TARGETS[0], fields: ['imageId'], argv: ['docker', 'update', '--restart=no', TARGETS[0]] },
     'disable-restart', /no command in the catalog produces/)
   refuses('an UNNAMED bare command',
     { op: 'none', type: null, key: null, fields: null, argv: ['docker', 'builder', 'prune', '--all', '--force'] },

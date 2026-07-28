@@ -184,16 +184,71 @@ inventory digest recorded here.
 
 ---
 
-## 5. What blocks execution
+## 5. The commands that will run
 
-Every mutating stage in `vps-retire.yml` derives its commands from
-`plan_retirement.mjs`, where the target is a single hardcoded constant
-(`TARGET = 'stylique-os'`). The tooling has no concept of caddy, chrome,
-dashboard or OpenOutreach, so it cannot act on them.
+The tooling used to act on one hardcoded container (`TARGET = 'stylique-os'`).
+It now derives the whole sweep from one imported, ordered list, so the
+classifier and the planner cannot disagree about what is in scope.
 
-Either that constant becomes the target set from section 2, or the removal is
-driven directly with a generated command list plus before/after inventory
-capture. The second is faster; the first keeps per-stage gating.
+Nothing below is typed by hand. Each line is generated from the live
+classification, and the workflow prints the list again before executing it.
+
+```
+disable-restart   docker update --restart=no stylique-caddy
+                  docker update --restart=no stylique-dashboard
+                  docker update --restart=no stylique-chrome
+                  docker update --restart=no stylique-os
+                  docker update --restart=no infallible_hawking
+
+stop              docker stop --time 30 stylique-caddy
+                  docker stop --time 30 stylique-dashboard
+                  docker stop --time 30 stylique-chrome
+                  docker stop --time 30 stylique-os
+                  docker stop --time 30 infallible_hawking
+
+remove-container  docker rm stylique-caddy
+                  docker rm stylique-dashboard
+                  docker rm stylique-chrome
+                  docker rm stylique-os
+                  docker rm infallible_hawking
+
+reclaim           docker rmi <each retiring image, BY ID — ~40 of them>
+                  docker network rm styliquenet
+                  docker network rm deploy_default
+                  docker network rm supabase_network_twinai
+                  docker volume rm caddy_config
+                  docker volume rm caddy_data
+                  docker volume rm deploy_chrome-profile
+                  docker volume rm oo-data
+                  docker volume rm deploy_oo-data
+                  docker volume rm stylique-crm-data
+                  docker volume rm supabase_edge_runtime_twinai
+                  journalctl --vacuum-size=200M
+```
+
+There is no `docker system prune` and no `docker image prune -a` anywhere in
+it. Those act on a CATEGORY — "everything unused" — and the category includes
+whatever nobody classified. Every line above names one exact resource, and
+images are named by ID rather than tag so the thing deleted and the thing
+authorised are the same string.
+
+Caddy goes first because it is the edge: `stop` refuses while a live route
+still reaches `stylique-os`.
+
+### What this sweep does NOT reach
+
+Four images on the approved list stay behind, and it is worth being exact about
+why. `scrapling-probe:latest`, `python:3.12-bookworm`, `node:20-bookworm-slim`
+and `public.ecr.aws/supabase/edge-runtime` are unused AND tagged, so no rule
+derives them: nothing references them, and their tags are not the retiring
+stack's. Sweeping "unused and tagged" as a category would reach anything, which
+is the one thing this tooling refuses to do. They need a second, explicit pass.
+
+The host paths `/srv/caddy`, `/srv/dashboard` and `/opt/scrapling-test` (0.35
+GiB) also stay: there is no command family for deleting host paths, and adding
+one is a larger decision than this cleanup.
+
+Neither gap is large. The bulk — the 33 `stylique-os` images — is in scope.
 
 ---
 

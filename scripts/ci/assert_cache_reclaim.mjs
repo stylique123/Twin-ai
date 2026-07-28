@@ -137,7 +137,7 @@ function selftest() {
   }
   const base = () => ({
     containers: [{ name: TWINAI, status: 'running', imageId: 'sha256:aaa' }, { name: 'stylique-os', status: 'restarting', imageId: 'sha256:bbb' }],
-    images: [{ id: 'sha256:aaa', class: 'active-twinai' }, { id: 'sha256:prev', class: 'twinai-rollback' }, { id: 'sha256:bbb', class: 'stylique-os' }],
+    images: [{ id: 'sha256:aaa', class: 'active-twinai' }, { id: 'sha256:prev', class: 'twinai-rollback' }, { id: 'sha256:bbb', class: 'retire-scope' }],
     volumes: [{ name: 'oo-data' }], networks: [{ name: 'styliquenet' }],
     dockerDf: [{ type: 'Build Cache', total: 380, active: 0, size: '68.3GB', sizeBytes: 68300000000, reclaimable: '65.1GB' }],
     fs: { root: { totalKb: 157155328, usedKb: 126152192, availKb: 24567296, usedPct: 84 } },
