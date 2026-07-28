@@ -111,6 +111,18 @@ export const env = {
   // Hard timeout for THE single director generateContent call (no retry).
   editorDirectorTimeoutMs: Number(process.env.EDITOR_DIRECTOR_TIMEOUT_MS ?? '60000'),
 
+  // ---- render (Phase 8) ----
+  // Gate for the REAL compiling/rendering/validating stages. Unset (or anything
+  // but exactly 'true') => all three stay SIMULATED and production behaviour is
+  // unchanged. Same shape as the director gate on purpose: `!== 'true'` rather
+  // than `=== 'false'`, so a typo, an empty string or an unset variable all
+  // fail CLOSED rather than enabling a renderer nobody asked for.
+  editorRenderEnabled: (process.env.EDITOR_RENDER_ENABLED ?? '').trim() === 'true',
+  // Bucket the rendered output and cover are uploaded to. The PATH is never
+  // configured — it comes from `editor_reserve_output`, which derives it
+  // server-side.
+  editorOutputBucket: (process.env.EDITOR_OUTPUT_BUCKET ?? 'media').trim(),
+
   // ---- media inspection (Phase 4) ----
   // Cache identity: one immutable inspection component per
   // (source_asset_id, component, inspector version). Bumping the version
