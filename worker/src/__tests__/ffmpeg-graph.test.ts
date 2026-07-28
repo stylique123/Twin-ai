@@ -132,7 +132,13 @@ describe('the argument array', () => {
 })
 
 describe('unsupported instructions FAIL rather than substituting', () => {
-  it('a restrained transition is refused, not quietly rendered as a hard cut', () => {
+  // BATCH 8.3 CHANGED WHAT THIS PROVES, so it is rewritten rather than left to
+  // pass for a new reason. In 8.1 a restrained transition was refused because
+  // crossfades were unimplemented. They are implemented now, and if this test
+  // had been left alone it would still be green — via the "no bounds supplied"
+  // refusal — while claiming to demonstrate something that is no longer true.
+  // A test whose name outlives its subject is worse than a deleted one.
+  it('a restrained transition with NO bounds supplied is refused, never assumed', () => {
     const plan = compileEditPlan({ ...baseInput(), policy: policy() }).plan
     expect(plan.video.transitions.length).toBeGreaterThan(0)
     expect(codeOf(() => buildFfmpegGraph(plan, ASSETS))).toBe('render_graph_invalid')

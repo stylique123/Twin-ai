@@ -1,0 +1,161 @@
+{
+  "_comment": [
+    "FROZEN render catalog (Gate-0 §7: 'profiles/presets/fonts — no secrets').",
+    "",
+    "This document is the sole authority for what a render is ALLOWED to produce.",
+    "editorRender consults it before spawning, and editorValidateOutput measures",
+    "the produced file against it afterwards. Those are two different questions —",
+    "'did we ask for the right thing' and 'did we get it' — and they must not be",
+    "answered from two different tables, or a drifting encoder can satisfy one",
+    "while violating the other.",
+    "",
+    "Every numeric here is an INTEGER (ms, Hz, px, milli-dB, milli-LU) for the",
+    "same reason edit_policy_v1.json is: a float that round-trips differently in",
+    "two processes turns a deterministic identity into a flaky one.",
+    "",
+    "NO SECRETS. This file is read by the worker, hashed into render evidence and",
+    "quoted in failure detail. A credential here would be persisted and logged."
+  ],
+  "schemaVersion": 1,
+  "catalogVersion": "render-catalog-v1",
+
+  "outputProfiles": {
+    "vertical-social-1080x1920-h264-aac-v1": {
+      "width": 1080,
+      "height": 1920,
+      "fpsNum": 30,
+      "fpsDen": 1,
+      "videoCodec": "libx264",
+      "audioCodec": "aac",
+      "pixelFormat": "yuv420p",
+      "audioSampleRateHz": 48000,
+      "audioChannels": 2,
+      "faststart": true,
+
+      "_encoderComment": [
+        "The encoder settings are part of the profile, not a render-time choice.",
+        "Two renders of one plan that differ only in CRF are not the same output,",
+        "and 'the operator picked a different preset that day' is not a thing the",
+        "audit trail should ever have to say."
+      ],
+      "x264Preset": "medium",
+      "x264Crf": 20,
+      "x264Profile": "high",
+      "x264Level": "4.0",
+      "gopSizeFrames": 60,
+      "audioBitrateKbps": 128,
+
+      "_validationComment": [
+        "What editorValidateOutput will accept from the produced file. The",
+        "duration tolerance is Gate-0 §4's ±250 ms and is NOT independently",
+        "chosen here — it is restated so the validator has one place to read it,",
+        "and renderCatalog.test.ts asserts it still equals the frozen value."
+      ],
+      "durationToleranceMs": 250,
+      "containerFormatNames": ["mov", "mp4", "m4a", "3gp", "3g2", "mj2"],
+      "probeVideoCodecNames": ["h264"],
+      "probeAudioCodecNames": ["aac"],
+      "minVideoBitrateBps": 200000,
+      "maxOutputBytesPerOutputMs": 3000
+    }
+  },
+
+  "captionPresets": {
+    "caption-clean-keyword-v1": {
+      "fontFamily": "DejaVu Sans",
+      "fontFileBasename": "DejaVuSans-Bold.ttf",
+      "bold": true,
+      "primaryColourAss": "&H00FFFFFF",
+      "outlineColourAss": "&H00000000",
+      "outlineWidthPx": 3,
+      "shadowDepthPx": 0,
+      "alignment": 2
+    },
+    "caption-punchy-word-v1": {
+      "fontFamily": "DejaVu Sans",
+      "fontFileBasename": "DejaVuSans-Bold.ttf",
+      "bold": true,
+      "primaryColourAss": "&H0000F0FF",
+      "outlineColourAss": "&H00000000",
+      "outlineWidthPx": 4,
+      "shadowDepthPx": 1,
+      "alignment": 2
+    },
+    "caption-minimal-subtitle-v1": {
+      "fontFamily": "DejaVu Sans",
+      "fontFileBasename": "DejaVuSans.ttf",
+      "bold": false,
+      "primaryColourAss": "&H00FFFFFF",
+      "outlineColourAss": "&H00000000",
+      "outlineWidthPx": 2,
+      "shadowDepthPx": 0,
+      "alignment": 2
+    }
+  },
+
+  "_fontComment": [
+    "Fonts are named by BASENAME, never by absolute path: the path differs",
+    "between the container, the VPS and a developer machine, and a path baked",
+    "into a frozen catalog is a catalog that is wrong on two of the three.",
+    "",
+    "The sha256 is what makes `render_font_integrity_failed` a real check rather",
+    "than a file-exists test. A substituted font renders captions that are",
+    "positioned differently from the ones the compiler measured — which is a",
+    "silent visual defect, exactly the class that survives a green test run.",
+    "",
+    "sha256 null means 'this deployment has not pinned this font yet'. That is",
+    "recorded as UNPINNED and refused under strict integrity, never treated as",
+    "matching. An absent digest is not a passing digest."
+  ],
+  "fonts": {
+    "DejaVuSans-Bold.ttf": { "sha256": null },
+    "DejaVuSans.ttf": { "sha256": null }
+  },
+
+  "_transitionComment": [
+    "Crossfade bounds. Gate-0 §4 permits `restrained` only at a verified scene",
+    "boundary with handles on both sides; these numbers bound the overlap once",
+    "that has already been established. A transition longer than the shorter of",
+    "the two segments it joins would consume a whole piece, so the renderer",
+    "refuses it rather than producing a video with a segment that never appears."
+  ],
+  "transitions": {
+    "crossfade": {
+      "minOverlapMs": 80,
+      "maxOverlapMs": 1000,
+      "maxOverlapFractionOfShorterSegmentMilli": 400
+    }
+  },
+
+  "_coverComment": [
+    "The cover frame is extracted from the RENDERED OUTPUT at the plan's",
+    "outputTimeMs — never from the source at sourceTimeMs. They are the same",
+    "picture only if the time map is correct, and using the source would make",
+    "the cover unable to disagree with a broken map. It is the one artifact",
+    "positioned to catch that, so it is taken where it can."
+  ],
+  "cover": {
+    "width": 1080,
+    "height": 1920,
+    "format": "jpeg",
+    "qualityQscale": 3,
+    "minBytes": 2048,
+    "maxBytes": 2097152
+  },
+
+  "limits": {
+    "_comment": [
+      "Gate-0 §9 capacity thresholds, restated as enforcement. The render",
+      "timeout is derived from the max realtime ratio and the plan's own output",
+      "duration, so a 15-minute plan gets 6x its length and a 15-second plan",
+      "does not inherit a 90-minute budget it could hang inside."
+    ],
+    "maxRealtimeRatio": 6,
+    "renderTimeoutFloorMs": 60000,
+    "renderTimeoutCeilingMs": 5400000,
+    "cancelGraceMs": 12000,
+    "probeTimeoutMs": 60000,
+    "coverExtractTimeoutMs": 60000,
+    "maxOutputDurationMs": 900000
+  }
+}
