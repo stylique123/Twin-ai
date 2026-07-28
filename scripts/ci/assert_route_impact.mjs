@@ -177,18 +177,61 @@ export function dialMatches(dial, ids, expectPort = null) {
  * lossless when it silently re-points a public path.
  */
 export function pathPatternSupported(pat) {
-  if (typeof pat !== 'string' || pat.length === 0) return false
+  return pathPatternRefusal(pat) === null
+}
+
+/**
+ * WHY A PATTERN IS REFUSED, or null when it is inside the proven subset.
+ *
+ * RAW STRING ALGEBRA IS UNSOUND ONCE ESCAPES OR EMPTY SEGMENTS ARE IN PLAY, and
+ * unsound in the direction that approves a deletion. Caddy matches a configured
+ * `/foo/bar` against a request for `/foo%2Fbar`, and a configured `/foo%2Fbar`
+ * against that same escaped request — so those two patterns SHARE requests while
+ * comparing as different strings. Likewise `/foo` matches `//foo`, but `//foo`
+ * matches only `//foo`: one contains the other, and string equality sees neither.
+ * A false-disjoint is what lets a fall-through be reported as a clean detach.
+ *
+ * This tool does not implement Caddy's normalisation. So instead of comparing
+ * shapes it cannot reason about, it REFUSES them, and the comparison below runs
+ * only on the subset where the unescaped, single-slash, dot-segment-free form is
+ * the pattern itself:
+ *
+ *   %       percent-encoding of any kind, `%*` included — the escaped and
+ *           unescaped spellings denote overlapping request sets
+ *   //      a repeated slash — `/foo` and `//foo` overlap without matching
+ *   . / ..  a dot segment — resolves to a different path than it spells
+ *
+ * Multiple or interior wildcards are refused for the same reason they always
+ * were: the set they denote is not one this model represents.
+ */
+export function pathPatternRefusal(pat) {
+  if (typeof pat !== 'string' || pat.length === 0) return 'it is not a non-empty string'
+  if (pat.includes('%')) {
+    return 'it contains a percent-escape; Caddy matches escaped and unescaped spellings against '
+      + 'overlapping request sets, and this model does not implement that normalisation'
+  }
+  if (pat.includes('//')) {
+    return 'it contains a repeated slash; `/foo` matches `//foo` while `//foo` matches only `//foo`, '
+      + 'so the two overlap without comparing equal'
+  }
+  if (pat.split('/').some((seg) => seg === '.' || seg === '..')) {
+    return 'it contains a dot segment, which resolves to a different path than it spells'
+  }
   const stars = (pat.match(/\*/g) || []).length
-  if (stars === 0) return true
-  if (stars > 1) return false
-  return pat.startsWith('*') || pat.endsWith('*')
+  if (stars === 0) return null
+  if (stars > 1) return 'it has more than one wildcard'
+  if (!pat.startsWith('*') && !pat.endsWith('*')) return 'its wildcard is interior'
+  return null
 }
 
 export function pathMatcherMatches(pat, path) {
   if (!pathPatternSupported(pat)) return null
-  if (!pat.includes('*')) return path === pat
-  if (pat.endsWith('*')) return path.startsWith(pat.slice(0, -1))
-  return path.endsWith(pat.slice(1))
+  // CASE-INSENSITIVE, per Caddy: path matches are exact but case-insensitive.
+  const p = pat.toLowerCase()
+  const q = String(path).toLowerCase()
+  if (!p.includes('*')) return q === p
+  if (p.endsWith('*')) return q.startsWith(p.slice(0, -1))
+  return q.endsWith(p.slice(1))
 }
 
 /**
@@ -197,10 +240,14 @@ export function pathMatcherMatches(pat, path) {
  */
 export function parsePattern(pat) {
   if (!pathPatternSupported(pat)) return null
-  if (pat === '*') return { kind: 'all' }
-  if (!pat.includes('*')) return { kind: 'exact', v: pat }
-  if (pat.endsWith('*')) return { kind: 'prefix', v: pat.slice(0, -1) }
-  return { kind: 'suffix', v: pat.slice(1) }
+  // LOWERCASED, because Caddy's path matcher is case-insensitive. The RAW value
+  // is carried for reporting and is what sibling fingerprints cover: re-casing a
+  // path is an edit to the config even though it is not a change in routing.
+  const lower = pat.toLowerCase()
+  if (lower === '*') return { kind: 'all', raw: pat }
+  if (!lower.includes('*')) return { kind: 'exact', v: lower, raw: pat }
+  if (lower.endsWith('*')) return { kind: 'prefix', v: lower.slice(0, -1), raw: pat }
+  return { kind: 'suffix', v: lower.slice(1), raw: pat }
 }
 
 /**
@@ -219,36 +266,21 @@ export function parsePattern(pat) {
  * returns true there rather than guessing.
  */
 /**
- * PATH CASE IS NOT ASSUMED EITHER WAY.
+ * PATH CASE IS SETTLED, AND FOLDED BEFORE COMPARISON.
  *
- * Caddy's host matcher is case-insensitive and that is settled — hostnames are.
- * Its PATH matcher is a separate question, and this tool has not established the
- * answer. Rather than pick one, any pair whose verdict would DIFFER between the
- * two readings is reported as undecidable and refused. `/os/*` against
- * `/OS/admin` is disjoint if paths are case-sensitive and overlapping if they
- * are not; approving a deletion on the strength of a coin-flip is exactly the
- * failure this gate exists to prevent.
+ * Caddy's path matcher is exact but CASE-INSENSITIVE. An earlier revision here
+ * reported a case-only difference as undecidable, on the grounds that the
+ * semantics had not been established. They have: `/os/*` and `/OS/admin`
+ * overlap, and the authoritative answer is true, not a refusal. parsePattern
+ * lowercases, so everything below compares folded values.
+ *
+ * Case is the only normalisation performed. Every other shape whose escaped or
+ * cleaned form differs from its spelling — percent-escapes, repeated slashes,
+ * dot segments — is refused by pathPatternRefusal before reaching here, because
+ * this model does not implement Caddy's normalisation and guessing at it is the
+ * unsafe direction.
  */
-const caseFolds = (f, a, b) => {
-  const lower = (x) => (x.kind === 'all' ? x : { ...x, v: x.v.toLowerCase() })
-  return f(lower(a), lower(b))
-}
-
 export function patternsIntersect(a, b) {
-  const r = patternsIntersectExact(a, b)
-  if (r !== false) return r
-  // Case-sensitively disjoint. If folding case would make them overlap, the
-  // answer depends on a semantic this tool has not proven.
-  return caseFolds(patternsIntersectExact, a, b) === true ? null : false
-}
-
-export function patternCovers(a, b) {
-  const r = patternCoversExact(a, b)
-  if (r !== false) return r
-  return caseFolds(patternCoversExact, a, b) === true ? null : false
-}
-
-export function patternsIntersectExact(a, b) {
   if (!a || !b) return null
   if (a.kind === 'all' || b.kind === 'all') return true
   const pair = (x, y) => a.kind === x && b.kind === y
@@ -264,7 +296,7 @@ export function patternsIntersectExact(a, b) {
 }
 
 /** Does EVERY request matching `b` also match `a`? */
-export function patternCoversExact(a, b) {
+export function patternCovers(a, b) {
   if (!a || !b) return null
   if (a.kind === 'all') return true
   if (b.kind === 'all') return false
@@ -407,7 +439,9 @@ export function parseMatchSet(m) {
   const paths = []
   for (const p of m.path ?? []) {
     const q = parsePattern(p)
-    if (!q) return { bad: `path matcher ${JSON.stringify(p)} is a shape this model does not represent` }
+    if (!q) {
+      return { bad: `path matcher ${JSON.stringify(p)} is a shape this model does not represent: ${pathPatternRefusal(p)}` }
+    }
     paths.push(q)
   }
   return { ok: { hosts, paths, text: matchSetText(m) } }
@@ -3256,20 +3290,102 @@ async function selftest() {
       t('…and the parsed pattern keeps the raw value for reporting',
         H('EXAMPLE.com').raw, 'EXAMPLE.com')
 
-      // PATHS: the case semantics of Caddy's path matcher are NOT asserted here.
-      // Any pair whose verdict would differ between the two readings refuses.
-      t('PATHS: a case-only difference is UNDECIDABLE, not disjoint',
-        patternsIntersect(parsePattern('/os/*'), parsePattern('/OS/admin')), null)
-      t('…and undecidable coverage too',
-        patternCovers(parsePattern('/OS/*'), parsePattern('/os/admin')), null)
+      // ------------------------------------------------------------------
+      // PATH SEMANTICS. Caddy path matches are exact but CASE-INSENSITIVE, so
+      // a case-only difference has an authoritative answer — true — and an
+      // earlier revision that called it undecidable was refusing a question it
+      // could answer.
+      // ------------------------------------------------------------------
+      t('PATHS: a case-only difference OVERLAPS, authoritatively',
+        patternsIntersect(parsePattern('/os/*'), parsePattern('/OS/admin')), true)
+      t('…and covers, authoritatively',
+        patternCovers(parsePattern('/OS/*'), parsePattern('/os/admin')), true)
+      t('…and an exact pair differing only in case is the same set',
+        patternsIntersect(parsePattern('/OS/Admin'), parsePattern('/os/admin')), true)
       t('…while same-case answers are unaffected',
         [patternsIntersect(parsePattern('/os/*'), parsePattern('/os/admin')),
           patternsIntersect(parsePattern('/os/*'), parsePattern('/app/*'))].join(','), 'true,false')
-      t('…and a case-only path difference REFUSES the removal', (() => {
+      t('…and matching folds case too', pathMatcherMatches('/OS/*', '/os/admin'), true)
+      t('END TO END: a case-only path difference is an EXPOSURE, not a refusal', (() => {
         const rm = SIB({ index: 1, routePath: 'R1', reachesTarget: true, matchSets: P('/os/*') })
         const later = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['x:1'], matchSets: P('/OS/admin') })
         return fallThroughAfterRemoval(mk([rm, later]), 1).results[0].outcome
-      })(), 'overlap-undecidable')
+      })(), 'exposes-backend')
+      // Normalisation is for the algebra; the fingerprint still sees the edit.
+      t('the fingerprint still distinguishes a re-cased path', (() => {
+        const f = (pp) => siblingFingerprint({
+          index: 1, routePath: 'r', matchSets: [{ host: [], path: [pp] }],
+          hostMatchers: [], pathMatchers: [], terminal: false, handlerTypes: [], otherDials: [],
+        })
+        return f('/OS/*') !== f('/os/*')
+      })(), true)
+      t('…and the parsed pattern keeps the raw spelling', parsePattern('/OS/*').raw, '/OS/*')
+
+      // ------------------------------------------------------------------
+      // ESCAPES AND EMPTY SEGMENTS. Raw string algebra false-disjoints these,
+      // which is the direction that approves a deletion.
+      // ------------------------------------------------------------------
+      // OLD-HEAD COUNTEREXAMPLE, stated as the comparison the old code made.
+      // Caddy matches a configured /foo/bar against a request for /foo%2Fbar,
+      // and a configured /foo%2Fbar against that same escaped request — so the
+      // two share requests while comparing as different strings.
+      const rawIntersect = (x, y) => {
+        // exactly the old algebra: compare spellings, no normalisation
+        const k = (v) => (v.endsWith('*') ? { p: v.slice(0, -1) } : { e: v })
+        const a = k(x); const b = k(y)
+        if (a.e !== undefined && b.e !== undefined) return a.e === b.e
+        if (a.p !== undefined && b.e !== undefined) return b.e.startsWith(a.p)
+        if (a.e !== undefined && b.p !== undefined) return a.e.startsWith(b.p)
+        return a.p.startsWith(b.p) || b.p.startsWith(a.p)
+      }
+      t('OLD HEAD: raw algebra called /foo/bar and /foo%2Fbar DISJOINT',
+        rawIntersect('/foo/bar', '/foo%2Fbar'), false)
+      t('OLD HEAD: and /foo and //foo DISJOINT', rawIntersect('/foo', '//foo'), false)
+      t('CORRECTED: /foo%2Fbar is refused rather than compared',
+        pathPatternSupported('/foo%2Fbar'), false)
+      t('…naming the escape as the reason',
+        /percent-escape/.test(pathPatternRefusal('/foo%2Fbar')), true)
+      t('CORRECTED: //foo is refused rather than compared', pathPatternSupported('//foo'), false)
+      t('…naming the repeated slash as the reason',
+        /repeated slash/.test(pathPatternRefusal('//foo')), true)
+      t('CORRECTED: %* is refused', pathPatternSupported('%*'), false)
+      t('CORRECTED: a dot segment is refused', pathPatternSupported('/foo/../bar'), false)
+      t('…including a single-dot segment', pathPatternSupported('/foo/./bar'), false)
+      t('…and a bare trailing dot segment', pathPatternSupported('/foo/..'), false)
+      t('CONTROL: a dot INSIDE a segment is not a dot segment',
+        pathPatternSupported('/foo.bar/baz'), true)
+      t('CONTROL: multiple wildcards are still refused', pathPatternSupported('/a*b*'), false)
+      t('CONTROL: an interior wildcard is still refused', pathPatternSupported('/a*b'), false)
+
+      // The refusal must reach the ROUTING decision, not stop at the predicate.
+      t('an escaped path matcher REFUSES the whole analysis', (() => {
+        const rm = SIB({ index: 1, routePath: 'R1', reachesTarget: true, matchSets: P('/foo%2Fbar') })
+        const later = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['x:1'], matchSets: P('/foo/bar') })
+        const r = fallThroughAfterRemoval(mk([rm, later]), 1)
+        return r.supported === false && /percent-escape/.test(r.reason)
+      })(), true)
+      t('…and so does one on a LATER sibling, which is where it would be missed', (() => {
+        const rm = SIB({ index: 1, routePath: 'R1', reachesTarget: true, matchSets: P('/foo/bar') })
+        const later = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['x:1'], matchSets: P('/foo%2Fbar') })
+        const r = fallThroughAfterRemoval(mk([rm, later]), 1)
+        return r.supported === false && /percent-escape/.test(r.reason)
+      })(), true)
+      t('…and a repeated slash on a later sibling refuses too', (() => {
+        const rm = SIB({ index: 1, routePath: 'R1', reachesTarget: true, matchSets: P('/foo') })
+        const later = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['x:1'], matchSets: P('//foo') })
+        const r = fallThroughAfterRemoval(mk([rm, later]), 1)
+        return r.supported === false && /repeated slash/.test(r.reason)
+      })(), true)
+
+      // THE LIVE SHAPE MUST STILL BE MODELLED. A fail-closed rule that also
+      // refuses /os/* and /* would be safe and useless.
+      t('LIVE BEHAVIOUR PRESERVED: /os/* and /* are both inside the subset',
+        [pathPatternSupported('/os/*'), pathPatternSupported('/*')].join(','), 'true,true')
+      t('…and still resolve to the same exposure', (() => {
+        const rm = SIB({ index: 1, routePath: 'R1', reachesTarget: true, matchSets: P('/os/*') })
+        const later = SIB({ index: 2, routePath: 'R2', reachesOther: true, otherDials: ['stylique-dashboard:80'], matchSets: P('/*') })
+        return fallThroughAfterRemoval(mk([rm, later]), 1).results[0].outcome
+      })(), 'exposes-backend')
     }
 
     // A later sibling that reaches the target too means the route was never
