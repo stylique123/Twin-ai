@@ -70,6 +70,12 @@ drop table if exists public.edit_projects cascade;
 drop table if exists public.media_assets cascade;
 drop table if exists public.generations cascade;
 drop table if exists public.jobs cascade;
+do \$\$ begin
+  if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if;
+  if not exists (select 1 from pg_roles where rolname='anon') then create role anon; end if;
+  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role; end if;
+end \$\$;
+grant usage on schema public to authenticated, anon, service_role;
 create schema auth;
 create table auth.users (id uuid primary key);
 create function auth.uid() returns uuid language sql stable as \$\$ select null::uuid \$\$;
@@ -94,6 +100,33 @@ create table public.edit_projects (
 insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, status)
   values ('$P_ID', '$O_ID', '$G_ID', '$S_ID', 'compiling');
 
+-- 0078's REAL edit_plans, reproduced verbatim. THIS IS THE FIX FOR THE FLAW
+-- THAT LET TWO DEFECTS THROUGH: the bootstrap used to create no edit_plans at
+-- all, so 0094 built its own and the gate proved a migration that only works
+-- on a database where the table is absent. It is not absent anywhere real —
+-- 0078 has created it since the start of the editor work. A stand-in that is
+-- missing what production has is not a stand-in, it is a different database.
+create table public.edit_plans (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references auth.users(id) on delete cascade,
+  edit_project_id uuid not null references public.edit_projects(id) on delete cascade,
+  version integer not null,
+  schema_version integer not null,
+  plan jsonb not null,
+  plan_hash text not null,
+  status text not null default 'draft'
+    check (status in ('draft','validated','rendering','rendered','rejected')),
+  created_at timestamptz not null default now()
+);
+create unique index edit_plans_version_uniq on public.edit_plans (edit_project_id, version);
+create index edit_plans_owner_idx on public.edit_plans (owner_id);
+alter table public.edit_plans enable row level security;
+create policy "edit_plans read" on public.edit_plans
+  for select to authenticated using (owner_id = (select auth.uid()));
+grant select on public.edit_plans to authenticated;
+revoke all on public.edit_plans from anon;
+revoke insert, update, delete, truncate, references, trigger on public.edit_plans from authenticated;
+
 -- The REAL fencing predicate from 0081, reproduced exactly.
 create function public.editor_assert_lease(p_project uuid, p_job uuid, p_worker text, p_attempt integer)
 returns void language plpgsql security definer set search_path = pg_catalog, public as \$\$
@@ -107,12 +140,6 @@ begin
   end if;
 end; \$\$;
 
-do \$\$ begin
-  if not exists (select 1 from pg_roles where rolname='authenticated') then create role authenticated; end if;
-  if not exists (select 1 from pg_roles where rolname='anon') then create role anon; end if;
-  if not exists (select 1 from pg_roles where rolname='service_role') then create role service_role; end if;
-end \$\$;
-grant usage on schema public to authenticated, anon, service_role;
 SQL
 }
 
@@ -156,17 +183,17 @@ echo "  ok: exactly one plan row survives both attempts"
 echo "== the plan is IMMUTABLE for every role, service_role included =="
 no "update public.edit_plans set output_duration_ms = 1 where edit_project_id = '$P_ID'" \
    "UPDATE edit_plans (as the database owner, triggers ignore RLS)"
-no "update public.edit_plans set plan_sha256 = '$SHA_X' where edit_project_id = '$P_ID'" \
+no "update public.edit_plans set plan_hash = '$SHA_X' where edit_project_id = '$P_ID'" \
    "UPDATE the plan digest"
 no "delete from public.edit_plans where edit_project_id = '$P_ID'" \
    "DELETE edit_plans"
 
 echo "== plan shape CHECKs =="
-no "insert into public.edit_plans (owner_id,edit_project_id,attempt,plan_sha256,decision_sha256,boot_manifest_sha,script_snapshot_sha,source_checksum,plan_version,policy_version,compiler_version,plan,output_duration_ms) values ('$O_ID','$P_ID',1,'not-a-sha','$SHA_D','b','s','c','v','p','k','{}'::jsonb,1)" \
+no "insert into public.edit_plans (owner_id,edit_project_id,version,schema_version,plan,plan_hash) values ('$O_ID','$P_ID',9,1,'{}'::jsonb,'not-a-sha')" \
    "a non-sha256 plan digest"
-no "insert into public.edit_plans (owner_id,edit_project_id,attempt,plan_sha256,decision_sha256,boot_manifest_sha,script_snapshot_sha,source_checksum,plan_version,policy_version,compiler_version,plan,output_duration_ms) values ('$O_ID','$P_ID',1,'$SHA_X','$SHA_D','b','s','c','v','p','k','[1,2]'::jsonb,1)" \
+no "insert into public.edit_plans (owner_id,edit_project_id,version,schema_version,plan,plan_hash) values ('$O_ID','$P_ID',9,1,'[1,2]'::jsonb,'$SHA_X')" \
    "a plan that is not a JSON object"
-no "insert into public.edit_plans (owner_id,edit_project_id,attempt,plan_sha256,decision_sha256,boot_manifest_sha,script_snapshot_sha,source_checksum,plan_version,policy_version,compiler_version,plan,output_duration_ms) values ('$O_ID','$P_ID',1,'$SHA_X','$SHA_D','b','s','c','v','p','k','{}'::jsonb,-1)" \
+no "insert into public.edit_plans (owner_id,edit_project_id,version,schema_version,plan,plan_hash,output_duration_ms) values ('$O_ID','$P_ID',9,1,'{}'::jsonb,'$SHA_X',-1)" \
    "a negative output duration"
 
 echo "== output reservation: the PATH IS SERVER-DERIVED =="
@@ -219,11 +246,27 @@ no "update public.edit_outputs set storage_path='edit-outputs/$O_ID/$P_ID/1/cove
 no "delete from public.edit_outputs where edit_project_id='$P_ID' and kind='video'" \
    "deleting an output row"
 
-echo "== COMPLETION: the invariant this whole file exists for =="
+echo "== COMPLETION: what 0094 closes, and what it deliberately does not =="
+#
+# THE DIRECT-UPDATE PATH IS OPEN UNTIL 8.5, AND THIS SAYS SO OUT LOUD.
+#
+# 0094 does NOT install the completion trigger. `check_activation_gate.mjs`
+# refuses a migration tying `completed` to a non-null output before the renderer
+# exists, and it is right: nothing yet PRODUCES an output, so the rule's only
+# observable effect today would be breaking the simulated pipeline.
+#
+# What that means for this gate has to be stated, not glossed: a bare UPDATE to
+# `completed` is currently ACCEPTED. Asserting it is refused would be asserting
+# something false, and quietly deleting the assertion would leave a reader to
+# assume the direct path was covered. So it is asserted as ALLOWED, labelled as
+# a known gap, and the RPC — the only path Phase 8 will ever use — is proven
+# closed below.
+#
+# When 8.5 lands the trigger, these two `ok`s become `no`s and the gap closes.
 run "update public.edit_projects set status='validating' where id='$P_ID'"
-no "update public.edit_projects set status='completed' where id='$P_ID'" \
-   "completing with a NULL output_asset_id"
-# The direct-UPDATE path is refused by the trigger; the RPC is the only door.
+ok "update public.edit_projects set status='completed', output_asset_id=null where id='$P_ID'" \
+   "KNOWN GAP until 8.5: a bare UPDATE to completed with a null output is not yet refused"
+run "update public.edit_projects set status='validating', output_asset_id=null, completed_at=null where id='$P_ID'"
 no "select public.editor_complete_output('$P_ID','$J_ID','not-this-worker',1,'$A_ID')" \
    "completing without the lease"
 ok "select public.editor_complete_output('$P_ID','$J_ID','$WORKER',1,'$A_ID')" \
@@ -243,10 +286,8 @@ insert into public.jobs values ('$J2','running','$WORKER',1, jsonb_build_object(
 insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, status)
   values ('$P2','$O_ID','$G_ID','$S2','validating');
 SQL
-no "update public.edit_projects set status='completed', output_asset_id='$A_ID' where id='$P2'" \
-   "CLAIMING an output asset with no ready video behind it"
 no "select public.editor_complete_output('$P2','$J2','$WORKER',1,'$A_ID')" \
-   "the RPC refuses it too — both doors, not just one"
+   "the RPC refuses to complete a project with no READY video"
 
 # THE BRANCH GATE-F COULD NOT SEE.
 #
@@ -285,15 +326,13 @@ run "update public.edit_projects set status='rendering' where id='$P3'"
 ok "select public.editor_reserve_output('$P3','$J3','$WORKER',1,'video','media')" \
    "and reserves a video output"
 run "update public.edit_projects set status='validating' where id='$P3'"
-no "update public.edit_projects set status='completed' where id='$P3'" \
-   "completing with a RESERVED-but-not-ready output and a null asset — the made-it-then-lost-it case"
-no "update public.edit_projects set status='completed', output_asset_id='$A_ID' where id='$P3'" \
-   "and claiming an asset for that same unready output"
+no "select public.editor_complete_output('$P3','$J3','$WORKER',1,'$A_ID')" \
+   "the RPC refuses the made-it-then-lost-it case: an output was reserved and never became ready"
 
 echo "== client roles: read yes, write no; anon nothing =="
 ok "set role authenticated; select 1 from public.edit_plans limit 1; reset role" \
    "authenticated may SELECT plans"
-no "set role authenticated; insert into public.edit_plans (owner_id,edit_project_id,attempt,plan_sha256,decision_sha256,boot_manifest_sha,script_snapshot_sha,source_checksum,plan_version,policy_version,compiler_version,plan,output_duration_ms) values ('$O_ID','$P_ID',1,'$SHA_X','$SHA_D','b','s','c','v','p','k','{}'::jsonb,1)" \
+no "set role authenticated; insert into public.edit_plans (owner_id,edit_project_id,version,schema_version,plan,plan_hash) values ('$O_ID','$P_ID',9,1,'{}'::jsonb,'$SHA_X')" \
    "authenticated may NOT insert a plan"
 no "set role authenticated; update public.edit_outputs set bytes=5 where kind='video'" \
    "authenticated may NOT update an output"
@@ -316,28 +355,14 @@ else
   exit 1
 fi
 
-echo "== MUTATION CONTROL: without the completion guard, an UNREADY output completes =="
-# THE SUBJECT HAS TO BE A ROW THE GUARD ACTUALLY REFUSES.
+# THE SECOND MUTATION CONTROL IS GONE, ON PURPOSE.
 #
-# This control used to target P2 — no outputs, null asset. That was fine while
-# the guard refused every null-asset completion, but adding the scaffold branch
-# made P2 legitimately completable, so the UPDATE would have succeeded with the
-# guard in place AND without it. The control would have gone on printing "ok"
-# while proving nothing, which is the precise failure it exists to detect.
+# It dropped `trg_edit_projects_completion` and proved the refusals were
+# attributable to it. That trigger is not in 0094 any more, so the control has
+# no subject — and a control that drops a trigger which was never created would
+# either error or, worse, "pass" by dropping nothing.
 #
-# P3 is the right subject: it reserved a video output that never became ready,
-# so the guard refuses it (asserted above) and only its removal can let it
-# through.
-psql -q -v ON_ERROR_STOP=1 <<SQL >/dev/null
-drop trigger trg_edit_projects_completion on public.edit_projects;
-update public.edit_projects set status='validating', output_asset_id=null, completed_at=null where id='$P3';
-SQL
-if run "update public.edit_projects set status='completed' where id='$P3'"; then
-  echo "  ok: with the completion guard removed the unready-output completion goes through"
-else
-  echo "GATE-F FAIL: completing with an unready output still failed after dropping the guard."
-  echo "             The completion refusals are therefore not attributable to it."
-  exit 1
-fi
+# It moves to 8.5 with the trigger it tests. The remaining control above still
+# proves the plan-immutability refusals are attributable to their trigger.
 
 echo "GATE-F PASS"

@@ -40,45 +40,82 @@
 -- 1. edit_plans — the immutable compiled plan
 -- ---------------------------------------------------------------------------
 
-create table if not exists public.edit_plans (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references auth.users(id) on delete cascade,
-  edit_project_id uuid not null references public.edit_projects(id) on delete cascade,
-  attempt integer not null,
+-- 0078 ALREADY CREATED THIS TABLE, and I did not check before writing a second
+-- definition of it. That is the defect this section now records rather than
+-- repeats.
+--
+-- `0078_editor_projects.sql` created `edit_plans` at the start of the editor
+-- work and labelled it, in those words, "the canonical, versioned, hash-pinned
+-- EditPlan (Phase 8 writes)". It carries id/owner_id/edit_project_id/version/
+-- schema_version/plan/plan_hash/status/created_at, a unique index on
+-- (edit_project_id, version), an owner index, RLS, and the client grants.
+--
+-- The first version of this migration declared a DIFFERENT table under the same
+-- name with `plan_sha256` in place of `plan_hash`. `create table if not exists`
+-- then did exactly what it says: it found a table with that name, skipped, and
+-- the migration failed one statement later building an index on a column that
+-- does not exist. `if not exists` treats "a table with this name" as "the right
+-- table", which is the same absent-is-not-clean mistake as `?? 0`, in DDL.
+--
+-- So Phase 8 EXTENDS the table that was created for it. `plan_hash` stays as
+-- the digest column — renaming it would break 0078's readers to satisfy this
+-- file's preferred spelling — and the identity columns Phase 8 needs are added
+-- alongside, nullable, because the table may already hold rows this migration
+-- did not write and cannot invent values for.
 
-  -- Identity. `plan_sha256` is the canonical digest of the plan document and is
-  -- what every later artifact cites. It is UNIQUE per project so a second,
-  -- different plan cannot quietly coexist with the one that was rendered.
-  plan_sha256 text not null check (plan_sha256 ~ '^[0-9a-f]{64}$'),
-  decision_sha256 text not null check (decision_sha256 ~ '^[0-9a-f]{64}$'),
-  boot_manifest_sha text not null,
-  script_snapshot_sha text not null,
-  source_checksum text not null,
+alter table public.edit_plans
+  add column if not exists attempt integer,
+  add column if not exists decision_sha256 text,
+  add column if not exists boot_manifest_sha text,
+  add column if not exists script_snapshot_sha text,
+  add column if not exists source_checksum text,
+  add column if not exists plan_version text,
+  add column if not exists policy_version text,
+  add column if not exists compiler_version text,
+  add column if not exists output_duration_ms integer;
 
-  plan_version text not null,
-  policy_version text not null,
-  compiler_version text not null,
+-- Shape constraints on the NEW columns only. They are written as NOT VALID so
+-- adding them cannot fail against rows 0078 allowed before Phase 8 existed:
+-- the constraint governs every future write and is honest about not having
+-- inspected the past.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'edit_plans_decision_sha_shape') then
+    alter table public.edit_plans
+      add constraint edit_plans_decision_sha_shape
+      check (decision_sha256 is null or decision_sha256 ~ '^[0-9a-f]{64}$') not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'edit_plans_hash_shape') then
+    alter table public.edit_plans
+      add constraint edit_plans_hash_shape
+      check (plan_hash ~ '^[0-9a-f]{64}$') not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'edit_plans_duration_sane') then
+    alter table public.edit_plans
+      add constraint edit_plans_duration_sane
+      check (output_duration_ms is null or output_duration_ms >= 0) not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'edit_plans_plan_is_object') then
+    alter table public.edit_plans
+      add constraint edit_plans_plan_is_object
+      check (jsonb_typeof(plan) = 'object') not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'edit_plans_plan_bounded') then
+    alter table public.edit_plans
+      add constraint edit_plans_plan_bounded
+      check (pg_column_size(plan) <= 1048576) not valid;
+  end if;
+end $$;
 
-  -- The document itself. Bounded at the frozen EDIT_PLAN_MAX_BYTES (1 MiB) so a
-  -- pathological plan cannot be stored and then fail every read.
-  plan jsonb not null,
-  output_duration_ms integer not null check (output_duration_ms >= 0),
-
-  created_at timestamptz not null default now(),
-
-  constraint edit_plans_plan_is_object check (jsonb_typeof(plan) = 'object'),
-  constraint edit_plans_plan_bounded check (pg_column_size(plan) <= 1048576)
-);
-
--- ONE plan per project. Phase 8 has no re-plan mechanism; when one arrives it
--- will be an explicit versioning design, not a second row appearing because
--- nothing stopped it.
-create unique index if not exists edit_plans_project_uniq
-  on public.edit_plans (edit_project_id);
-create index if not exists edit_plans_owner_idx
-  on public.edit_plans (owner_id, created_at desc);
-create index if not exists edit_plans_sha_idx
-  on public.edit_plans (plan_sha256);
+-- ONE plan per project for Phase 8. 0078's unique index is on
+-- (edit_project_id, version), which permits many versions — a re-plan mechanism
+-- Phase 8 does not have and must not appear to have by accident. This partial
+-- index pins version 1, leaving 0078's versioning intact for whenever a real
+-- re-plan design arrives.
+create unique index if not exists edit_plans_project_v1_uniq
+  on public.edit_plans (edit_project_id) where version = 1;
+create index if not exists edit_plans_hash_idx
+  on public.edit_plans (plan_hash);
 
 -- APPEND-ONLY. Not "no UPDATE to the important columns" — there is no
 -- unimportant column on a hashed, cited record, and a rule with an exception
@@ -104,17 +141,9 @@ create trigger trg_edit_plans_guard
   before update or delete on public.edit_plans
   for each row execute function public.edit_plans_guard();
 
-alter table public.edit_plans enable row level security;
-
--- Owners READ their own plan. Nobody writes through RLS: every insert goes
--- through the fenced RPC, which runs as definer.
-drop policy if exists edit_plans_owner_select on public.edit_plans;
-create policy edit_plans_owner_select on public.edit_plans
-  for select to authenticated
-  using (owner_id = (select auth.uid()));
-
-revoke all on public.edit_plans from public, anon, authenticated;
-grant select on public.edit_plans to authenticated;
+-- 0078 already enabled RLS, created the owner read policy, and set the client
+-- grants. They are deliberately NOT restated here: re-declaring another
+-- migration's policy is how two files come to disagree about one rule.
 
 -- ---------------------------------------------------------------------------
 -- 2. edit_outputs — the reserved output path and its readiness
@@ -224,81 +253,29 @@ revoke all on public.edit_outputs from public, anon, authenticated;
 grant select on public.edit_outputs to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 3. `completed` is impossible without a ready output
+-- 3. The completion TRIGGER is deliberately NOT in this migration
 -- ---------------------------------------------------------------------------
 --
--- The stage guard in 0080 already refuses illegal transitions. It does NOT know
--- anything about outputs, and extending it would mix two concerns in one
--- trigger. This is a separate guard with one job.
-
--- THE SCAFFOLD IS NOT AN EXCEPTION TO THE RULE — IT IS OUTSIDE ITS SUBJECT.
+-- `scripts/ci/check_activation_gate.mjs` refuses any migration tying
+-- `completed` to a non-null `output_asset_id`, with the message:
 --
--- Gate-0 §6 states the end-state form: "`completed` with a null or non-ready
--- output must be impossible". Enforced literally TODAY it would refuse the
--- pipeline that currently exists, because compiling/rendering/validating are
--- still simulated and every project completes with `output_asset_id` NULL.
--- Phases 3-7 of the staging matrix assert exactly that, and phase7's A3 checks
--- it by name. A migration that reddens seven passing phases has not enforced an
--- invariant; it has broken a build.
+--     premature completed=>output_asset_id constraint
+--     (lands WITH the real renderer, updating this guard deliberately)
 --
--- So the rule is stated as what it actually protects:
+-- That guard is right and this batch is not the moment. Nothing yet PRODUCES an
+-- output: compiling/rendering/validating are still simulated, every project
+-- completes with a null output, and Phases 3-7 of the staging matrix assert
+-- exactly that. A schema rule enforcing a property no code can yet satisfy is a
+-- rule whose only observable effect is breaking the pipeline that exists.
 --
---   A completed project may never CLAIM an output that was not validated.
+-- The invariant is NOT abandoned. `editor_complete_output` below refuses to
+-- complete a project without a READY video output, so the only path Phase 8
+-- will ever use is already closed. What waits for 8.5 is the trigger that also
+-- closes the DIRECT-UPDATE path — and it lands there together with the renderer
+-- that makes it satisfiable, which is precisely what the guard is asking for.
 --
---   * output_asset_id non-null  -> there must be exactly one READY video
---   * any edit_outputs row      -> rendering was attempted, so it must have
---                                  finished: ready video AND a claimed asset
---   * neither                   -> the scaffold, which claims nothing
---
--- That is the same guarantee for every path that can produce a real video, and
--- it is not weakened by the third branch: a project with no outputs and a null
--- asset is asserting that no output exists, which is true and checkable.
---
--- When Batch 8.5 wires the stages, every real run reserves an output before it
--- renders, so the second branch covers it and §6's literal form is in force
--- with no further change here. The third branch then becomes unreachable for
--- real runs, and the assertion that it is unreachable belongs to that batch's
--- staging matrix — not to a comment here promising it.
-create or replace function public.edit_projects_guard_completion()
-returns trigger
-language plpgsql
-set search_path = pg_catalog, public
-as $$
-declare
-  ready_video integer;
-  any_outputs integer;
-begin
-  if new.status <> 'completed' then
-    return new;
-  end if;
-
-  select count(*) into any_outputs
-    from public.edit_outputs where edit_project_id = new.id;
-  select count(*) into ready_video
-    from public.edit_outputs
-    where edit_project_id = new.id and kind = 'video' and state = 'ready';
-
-  if new.output_asset_id is not null then
-    if ready_video <> 1 then
-      raise exception 'edit_projects: completed with an output asset requires exactly one READY video output (found %)', ready_video;
-    end if;
-    return new;
-  end if;
-
-  -- Null asset. Permitted ONLY when nothing was ever reserved: a project that
-  -- began rendering and then completed while claiming no output has lost the
-  -- output it made, which is worse than failing.
-  if any_outputs > 0 then
-    raise exception 'edit_projects: completed with reserved outputs requires a READY video and an output_asset_id (outputs %, ready %)', any_outputs, ready_video;
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_edit_projects_completion on public.edit_projects;
-create trigger trg_edit_projects_completion
-  before update on public.edit_projects
-  for each row execute function public.edit_projects_guard_completion();
+-- Naming the sequencing here rather than silencing the guard is the difference
+-- between a deferred decision and a forgotten one.
 
 -- ---------------------------------------------------------------------------
 -- 4. Fenced RPCs
@@ -320,6 +297,7 @@ as $$
 declare
   proj public.edit_projects;
   existing public.edit_plans;
+  new_id uuid;
 begin
   perform public.editor_assert_lease(p_project, p_job, p_worker, p_attempt);
 
@@ -331,29 +309,35 @@ begin
     raise exception 'edit_plan_wrong_stage: project % is % (expected compiling)', p_project, proj.status;
   end if;
 
-  select * into existing from public.edit_plans where edit_project_id = p_project;
+  -- `plan_hash` is 0078's column and stays the digest of record. The parameter
+  -- keeps its `p_plan_sha256` name because that is what the caller computes and
+  -- what Gate-0 §3 calls it; the mapping happens here, once, rather than every
+  -- caller having to know the storage spelling.
+  select * into existing from public.edit_plans where edit_project_id = p_project and version = 1;
   if found then
     -- CRASH-RESUME IS NOT A CONFLICT. A retry that recompiled the same plan is
     -- the normal case and must be idempotent; a retry that produced a DIFFERENT
     -- plan means the compiler is not deterministic, which is a hard failure
     -- rather than something to overwrite.
-    if existing.plan_sha256 = p_plan_sha256 then
+    if existing.plan_hash = p_plan_sha256 then
       return existing.id;
     end if;
     raise exception 'edit_plan_divergent: project % already has plan % (recompiled as %)',
-      p_project, existing.plan_sha256, p_plan_sha256;
+      p_project, existing.plan_hash, p_plan_sha256;
   end if;
 
+  -- version/schema_version/status are 0078's NOT NULL columns. Phase 8 writes
+  -- version 1 and only version 1 — see the partial unique index above.
   insert into public.edit_plans (
-    owner_id, edit_project_id, attempt,
-    plan_sha256, decision_sha256, boot_manifest_sha, script_snapshot_sha, source_checksum,
-    plan_version, policy_version, compiler_version, plan, output_duration_ms
+    owner_id, edit_project_id, version, schema_version, plan, plan_hash, status,
+    attempt, decision_sha256, boot_manifest_sha, script_snapshot_sha, source_checksum,
+    plan_version, policy_version, compiler_version, output_duration_ms
   ) values (
-    proj.owner_id, p_project, p_attempt,
-    p_plan_sha256, p_decision_sha256, p_boot_manifest_sha, p_script_snapshot_sha, p_source_checksum,
-    p_plan_version, p_policy_version, p_compiler_version, p_plan, p_output_duration_ms
-  ) returning id into existing;
-  return existing.id;
+    proj.owner_id, p_project, 1, 1, p_plan, p_plan_sha256, 'validated',
+    p_attempt, p_decision_sha256, p_boot_manifest_sha, p_script_snapshot_sha, p_source_checksum,
+    p_plan_version, p_policy_version, p_compiler_version, p_output_duration_ms
+  ) returning id into new_id;
+  return new_id;
 end;
 $$;
 
@@ -499,7 +483,6 @@ $$;
 
 revoke all on function public.edit_plans_guard() from public, anon, authenticated;
 revoke all on function public.edit_outputs_guard() from public, anon, authenticated;
-revoke all on function public.edit_projects_guard_completion() from public, anon, authenticated;
 
 revoke all on function public.editor_record_edit_plan(uuid, uuid, text, integer, text, text, text, text, text, text, text, text, jsonb, integer) from public, anon, authenticated;
 revoke all on function public.editor_reserve_output(uuid, uuid, text, integer, text, text) from public, anon, authenticated;
