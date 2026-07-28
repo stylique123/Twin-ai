@@ -297,6 +297,26 @@ export function validateInventory(inv, label) {
   return problems
 }
 
+/**
+ * Authorisation ops this comparator understands.
+ *
+ * The last three model CONSEQUENCES — structural change a command necessarily
+ * causes but does not itself express. `docker stop` is declared as a change to
+ * status/exitCode/health, and that is what the operator asked for; but stopping
+ * a container also unbinds its published ports, releases its network endpoints,
+ * ends the docker-proxy listeners behind those ports, and makes it
+ * un-exec-able so the proxy-config probe can no longer see it. None of that is
+ * a second command and none of it is optional.
+ *
+ * Each consequence op is deliberately NARROWER than the `change` it replaces:
+ *   empty-field  a structural field may become EMPTY, not merely different.
+ *                A plain change on `ports` would also permit a port to appear.
+ *   shrink-only  an unkeyed root may LOSE rows. A new row is still a finding.
+ *   remove-row   one named row of a keyed root may vanish. Others may not.
+ */
+export const ROOT_AUTH_OPS = ['shrink-only', 'remove-row']
+export const AUTH_OPS = ['change', 'remove', 'add', 'remove-endpoint', 'empty-field', ...ROOT_AUTH_OPS]
+
 /** Reject malformed, duplicated, wildcard or unknown authorisations. */
 export function validateAuthorisations(auths) {
   const problems = []
@@ -305,12 +325,40 @@ export function validateAuthorisations(auths) {
     const sig = canon(a)
     if (seen.has(sig)) problems.push(`duplicate authorisation ${sig}`)
     seen.add(sig)
-    if (!['change', 'remove', 'add', 'remove-endpoint'].includes(a?.op)) {
+    if (!AUTH_OPS.includes(a?.op)) {
       problems.push(`unknown authorisation op ${JSON.stringify(a?.op)}`); continue
     }
-    if (!RECORD_ROOTS.includes(a?.type)) { problems.push(`unknown authorisation type ${JSON.stringify(a?.type)}`); continue }
-    if (typeof a.key !== 'string' || a.key.length === 0 || a.key === '*') {
+    // `shrink-only` and `remove-row` act on NON-record roots; everything else
+    // names one of the four record roots.
+    if (ROOT_AUTH_OPS.includes(a.op)) {
+      if (!NON_RECORD_ROOTS.includes(a?.type)) {
+        problems.push(`unknown root authorisation type ${JSON.stringify(a?.type)}`); continue
+      }
+    } else if (!RECORD_ROOTS.includes(a?.type)) {
+      problems.push(`unknown authorisation type ${JSON.stringify(a?.type)}`); continue
+    }
+    // `shrink-only` is the one authorisation that names no key: it is a
+    // statement about a whole unkeyed root, and inventing a key for it would
+    // make it look narrower than it is.
+    if (a.op === 'shrink-only') {
+      if (a.key !== null && a.key !== undefined) problems.push(`shrink-only for ${a.type} must name no key`)
+    } else if (typeof a.key !== 'string' || a.key.length === 0 || a.key === '*') {
       problems.push(`authorisation key must be an exact non-wildcard name (got ${JSON.stringify(a.key)})`)
+    }
+    // `empty-field` permits a structural field to become EMPTY and nothing
+    // else. It exists because a plain `change` on `ports` would also permit a
+    // port to APPEAR, and a newly published port is the single most
+    // security-relevant thing this comparator watches for.
+    if (a.op === 'empty-field') {
+      if (!Array.isArray(a.fields) || a.fields.length === 0) {
+        problems.push(`empty-field authorisation for ${a.type}/${a.key} names no fields`)
+      } else {
+        for (const f of a.fields) {
+          if (!FIELD_POLICY[a.type].structural.includes(f)) {
+            problems.push(`${a.type}/${a.key}: ${JSON.stringify(f)} is not a structural field`)
+          }
+        }
+      }
     }
     if (a.op === 'change') {
       if (!Array.isArray(a.fields) || a.fields.length === 0) {
@@ -356,14 +404,30 @@ export function endpointAuthorisations(before, name) {
   const fromNetworks = (before.networks ?? [])
     .filter((n) => Array.isArray(n.containers) && n.containers.includes(name))
     .map((n) => n.name)
-  if (target !== undefined) {
+  // THE TWO VIEWS ONLY HAVE TO AGREE WHILE THE CONTAINER IS RUNNING.
+  //
+  // Docker keeps a stopped container's networks in NetworkSettings.Networks —
+  // that is its configuration, and it is how it would reattach — but drops it
+  // from `docker network inspect`, because it no longer holds an endpoint. For
+  // a stopped container the two views SHOULD differ, and treating that as an
+  // inconsistency would have thrown here for every container by the time
+  // remove-container runs, since stopping them all is its precondition.
+  //
+  // The disagreement stays load-bearing for a RUNNING container: there one of
+  // the two views is genuinely wrong and there is no evidence which.
+  //
+  // Departures are authorised from `fromNetworks` either way — the networks
+  // that actually list it. A stopped container has already released its
+  // endpoints, so it has none left to leave and none are authorised.
+  const running = target !== undefined && (target.status === 'running' || target.status === 'restarting')
+  if (running) {
     const claimed = [...new Set(Array.isArray(target.networks) ? target.networks : [])].sort()
     const observed = [...new Set(fromNetworks)].sort()
     if (canon(claimed) !== canon(observed)) {
       throw new DeltaError(
-        `the BEFORE inventory disagrees with itself about ${name}'s networks: the container record says `
-        + `[${claimed.join(', ')}] and the network records say [${observed.join(', ')}]. One view is wrong and `
-        + 'there is no evidence which, so no endpoint departure can be authorised.',
+        `the BEFORE inventory disagrees with itself about running container ${name}'s networks: the container `
+        + `record says [${claimed.join(', ')}] and the network records say [${observed.join(', ')}]. One view is `
+        + 'wrong and there is no evidence which, so no endpoint departure can be authorised.',
       )
     }
   }
@@ -463,11 +527,47 @@ export function authorisationsForStage(stage, before, plan = null) {
       if (r.op === 'remove' && r.type === 'containers') auths.push(...endpointAuthorisations(before, r.key))
     }
   }
+
+  // STOPPING HAS CONSEQUENCES TOO, and this modelled none of them. The stage
+  // declares status/exitCode/health — what the operator asked for — but
+  // `docker stop` also unbinds the container's published ports, releases its
+  // network endpoints, ends the docker-proxy processes listening on those host
+  // ports, and makes the container un-exec-able so the proxy-config probe can
+  // no longer read it. Run 30356004272 stopped five containers exactly as
+  // instructed and reported seven unauthorised changes, every one a consequence
+  // of the stop it had just been told to perform.
+  //
+  // Each consequence is authorised only where it will ACTUALLY happen. An
+  // unexercised authorisation is itself a finding, so emitting these
+  // unconditionally would trade one false alarm for another.
+  if (stage === 'stop') {
+    const byName = new Map((before.containers ?? []).map((c) => [c.name, c]))
+    let anyPublished = false
+    for (const r of plan.resources) {
+      if (r.op !== 'change' || r.type !== 'containers') continue
+      const c = byName.get(r.key)
+      if (c === undefined) continue
+      if (typeof c.ports === 'string' && c.ports.length > 0) {
+        auths.push({ op: 'empty-field', type: 'containers', key: r.key, fields: ['ports'] })
+        // Only a PUBLISHED port owns a host listener. `3000/tcp->;` is reachable
+        // on the container network and binds nothing on the host.
+        if (/->\s*[0-9[]/.test(c.ports)) anyPublished = true
+      }
+      auths.push(...endpointAuthorisations(before, r.key))
+      if ((before.proxyRefs ?? []).some((x) => x.proxy === r.key)) {
+        auths.push({ op: 'remove-row', type: 'proxyRefs', key: r.key })
+      }
+    }
+    if (anyPublished) auths.push({ op: 'shrink-only', type: 'listening', key: null })
+  }
   return auths
 }
 
 /** Compare the non-record roots according to ROOT_POLICY. */
-function rootDelta(before, after, add) {
+function rootDelta(before, after, add, auths = [], used = null) {
+  const rootAuth = (op, root) => auths.find((a) => a.op === op && a.type === root)
+  const rowAuths = (root) => auths.filter((a) => a.op === 'remove-row' && a.type === root)
+  const mark = (a) => { if (used && a) used.add(canon(a)) }
   for (const root of NON_RECORD_ROOTS) {
     const pol = ROOT_POLICY[root]
     if (pol === undefined) {
@@ -486,7 +586,22 @@ function rootDelta(before, after, add) {
         return canon(pol.sorted ? [...list].sort() : list)
       }
       const bv = project(b); const av = project(a)
-      if (bv !== av) add('root_changed', root, null, null, `${root}: ${bv.slice(0, 160)} -> ${av.slice(0, 160)}`)
+      if (bv === av) continue
+      // SHRINK-ONLY: rows may leave, none may arrive. Stopping a container ends
+      // the docker-proxy processes behind its published ports, so those
+      // listener rows disappear. A listener APPEARING is never a consequence of
+      // stopping anything, and stays a finding.
+      const shrink = rootAuth('shrink-only', root)
+      if (shrink !== undefined && Array.isArray(b) && Array.isArray(a)) {
+        const norm = (v) => (pol.normalize ? v.map(pol.normalize) : v)
+        const bset = new Set(norm(b))
+        const arrived = norm(a).filter((x) => !bset.has(x))
+        if (arrived.length === 0) { mark(shrink); continue }
+        add('root_changed', root, null, null,
+          `${root}: authorised only to shrink, but ${arrived.length} row(s) APPEARED: ${canon(arrived).slice(0, 200)}`)
+        continue
+      }
+      add('root_changed', root, null, null, `${root}: ${bv.slice(0, 160)} -> ${av.slice(0, 160)}`)
       continue
     }
 
@@ -512,8 +627,16 @@ function rootDelta(before, after, add) {
         return m
       }
       const bm = index(b, 'before'); const am = index(a, 'after')
+      const permittedRows = rowAuths(root)
       for (const [k, rec] of bm) {
-        if (!am.has(k)) { add('root_removed', root, k, null, `${root}/${k} vanished`); continue }
+        if (!am.has(k)) {
+          // The proxy-reference probe reads a RUNNING proxy container. Stopping
+          // it does not delete its config; it makes the config unreadable, and
+          // the row goes with it. Only rows explicitly named may vanish.
+          const rowAuth = permittedRows.find((x) => x.key === k)
+          if (rowAuth !== undefined) { mark(rowAuth); continue }
+          add('root_removed', root, k, null, `${root}/${k} vanished`); continue
+        }
         for (const f of pol.structural) {
           const bv = canon(rec[f]); const av = canon(am.get(k)[f])
           if (bv !== av) add('root_changed', root, k, f, `${root}/${k}.${f}: ${bv.slice(0, 120)} -> ${av.slice(0, 120)}`)
@@ -637,6 +760,20 @@ export function structuralDelta(before, after, auths = [], stage = null) {
           continue
         }
         if (changeAuth !== undefined && changeAuth.fields.includes(f)) { used.add(canon(changeAuth)); continue }
+        // EMPTY, not merely different. `docker stop` unbinds published ports,
+        // so `ports` legitimately goes to "". It must never go to a NEW port
+        // under this authorisation — that would be a container publishing
+        // something it did not publish before, which is exactly the event the
+        // chrome-exposure lane exists to catch.
+        const emptyAuth = find('empty-field', t, k)
+        if (emptyAuth !== undefined && emptyAuth.fields.includes(f)) {
+          const isEmpty = after2[f] === '' || after2[f] === null || after2[f] === undefined
+            || (Array.isArray(after2[f]) && after2[f].length === 0)
+          if (isEmpty) { used.add(canon(emptyAuth)); continue }
+          add('changed', t, k, f,
+            `${t}/${k}.${f}: authorised only to become empty, but became ${av.slice(0, 160)}`)
+          continue
+        }
         const detail = elementDiff(rec[f], after2[f])
         add('changed', t, k, f, detail !== null
           ? `${t}/${k}.${f}: ${detail}`
@@ -653,7 +790,7 @@ export function structuralDelta(before, after, auths = [], stage = null) {
 
   // The roots outside the four record types. No stage authorises a change to any
   // of them: none of them is something the retirement acts on.
-  rootDelta(before, after, add)
+  rootDelta(before, after, add, auths, used)
 
   // AN UNEXERCISED AUTHORISATION IS A FINDING ONLY IF THE END STATE IS WRONG.
   //
@@ -723,7 +860,7 @@ export function render(d, ctx = {}) {
 const RAW = [
   // name, status#restarts#policy#imageRef#imageId#created#health#memLimit#exitCode, project, labels, mounts, ports, networks, logKb
   ['CONTAINER', 'twinai-worker', 'running#0#unless-stopped:0#twinai-worker:latest#sha256:0200#2025-01-02T03:04:05Z#healthy#0#0', '', '', 'volume|twdata|/var/lib/docker/volumes/twdata/_data|/data|true;', '', 'bridge', '1024'].join('\t'),
-  ['CONTAINER', TARGET, 'restarting#23329#unless-stopped:0#stylique-os:latest#sha256:bbbb#2024-05-06T07:08:09Z#unhealthy#0#0', 'deploy', 'com.docker.compose.project=deploy', 'volume|oo-data|/var/lib/docker/volumes/oo-data/_data|/data|false;', '', 'styliquenet deploy_default', '133000'].join('\t'),
+  ['CONTAINER', TARGET, 'restarting#23329#unless-stopped:0#stylique-os:latest#sha256:bbbb#2024-05-06T07:08:09Z#unhealthy#0#0', 'deploy', 'com.docker.compose.project=deploy', 'volume|oo-data|/var/lib/docker/volumes/oo-data/_data|/data|false;', '80/tcp->0.0.0.0:80 :::80 ;443/tcp->0.0.0.0:443 :::443 ;', 'styliquenet deploy_default', '133000'].join('\t'),
   // EXITED, matching the live host. It is a member of the retirement set now,
   // so the `remove-container` stage this fixture exercises would — correctly —
   // refuse to plan while it was still running. The fixture has to describe a
@@ -765,6 +902,11 @@ const RAW = [
   ['TWINAIIMAGE', 'twinai-worker:latest#sha256:0200#2025-01-02 03:04:05 +0000 UTC#1.2GB'].join('\t'),
   ['TWINAIIMAGE', 'twinai-worker:prev#sha256:prev#2024-12-20 00:00:00 +0000 UTC#1.19GB'].join('\t'),
   ['PROXYREF', 'stylique-caddy', '/etc/caddy/Caddyfile'].join('\t'),
+  // A proxy that IS one of the containers being stopped, so the `remove-row`
+  // consequence is actually exercised. Without it nothing emits that
+  // authorisation and the rule that it matches ONE NAMED ROW is untested — a
+  // mutant making it match any row survived until this line existed.
+  ['PROXYREF', TARGET, '/etc/stylique/routes.conf'].join('\t'),
   ['LISTEN', 'LISTEN 0 4096 0.0.0.0:80 0.0.0.0:* users:(("docker-proxy",pid=?,fd=4))'].join('\t'),
   ['LISTEN', 'LISTEN 0 4096 0.0.0.0:443 0.0.0.0:* users:(("docker-proxy",pid=?,fd=7))'].join('\t'),
   ['META', 'collected_by', 'vps-diag'].join('\t'),
@@ -1010,12 +1152,38 @@ async function selftest() {
     run(inv(), (() => { const a = clone(dr); a.twinai.src_sha = 'e'.repeat(40); return a })(), 'disable-restart').ok, false)
 
   console.log('-- stop: ONLY the lifecycle fields')
+  // The after-state of a REAL stop, not a state where only the status moved.
+  // Docker unbinds published ports, releases network endpoints, ends the
+  // docker-proxy listeners, and the proxy-config probe loses its subject.
   const st = clone(inv())
   for (const n of RETIRED_HERE) {
     const s2 = ctr(st, n)
     s2.status = 'exited'; s2.exitCode = 137; s2.health = 'none'
+    s2.ports = ''
+    for (const net of st.networks) net.containers = net.containers.filter((x) => x !== n)
   }
+  st.proxyRefs = st.proxyRefs.filter((x) => !RETIRED_HERE.includes(x.proxy))
+  st.listening = st.listening.slice(0, 1)
   t('POSITIVE: the exact allowed delta passes', run(inv(), st, 'stop').ok, true)
+  t('stop may NOT let a port appear instead of emptying', (() => {
+    const bad = clone(st); ctr(bad, TARGET).ports = '0.0.0.0:9999->9999/tcp'
+    return run(inv(), bad, 'stop').ok
+  })(), false)
+  t('stop may NOT let a NEW listener appear', (() => {
+    const bad = clone(st)
+    bad.listening = [...bad.listening, 'LISTEN 0 4096 0.0.0.0:9999 0.0.0.0:* users:(("x",pid=1,fd=3))']
+    return run(inv(), bad, 'stop').ok
+  })(), false)
+  t('stop may NOT drop a proxyRef for a container it is not stopping', (() => {
+    const b = clone(inv()); b.proxyRefs = [...b.proxyRefs, { proxy: 'postiz', hits: '/etc/x.conf' }]
+    const a = clone(st)
+    return run(b, a, 'stop').ok
+  })(), false)
+  t('stop may NOT remove a surviving endpoint from a network it touches', (() => {
+    const bad = clone(st)
+    net(bad, 'styliquenet').containers = []
+    return run(inv(), bad, 'stop').ok
+  })(), false)
   for (const [label, f, v] of [['policy', 'policy', 'no'], ['image', 'imageId', 'sha256:DEAD'], ['mounts', 'mounts', []]]) {
     const bad = clone(st); ctr(bad, TARGET)[f] = v
     t(`stop cannot hide a ${label} change`, run(inv(), bad, 'stop').ok, false)
@@ -1042,15 +1210,25 @@ async function selftest() {
   // BLOCKER: the container's own network list and the network records must agree.
   console.log('-- the two views of an attachment must agree before either authorises anything')
   t('CONTROL: the real inventory is self-consistent', endpointAuthorisations(inv(), TARGET).length, 2)
-  t('a network record that omits the target is refused', (() => {
-    const b = stopped(); net(b, 'deploy_default').containers = []
-    try { authorisationsForStage('remove-container', b, planned(b, 'remove-container')); return false }
-    catch (e) { return e instanceof DeltaError }
+  // THE DISAGREEMENT CHECK APPLIES TO A RUNNING CONTAINER. base() has TARGET
+  // `restarting`, which is the case where one of the two views really is wrong.
+  t('a network record that omits a RUNNING target is refused', (() => {
+    const b = clone(inv()); net(b, 'deploy_default').containers = []
+    try { endpointAuthorisations(b, TARGET); return false } catch (e) { return e instanceof DeltaError }
   })(), true)
   t('a container record that omits a network it is really in is refused', (() => {
-    const b = stopped(); ctr(b, TARGET).networks = ['styliquenet']
-    try { authorisationsForStage('remove-container', b, planned(b, 'remove-container')); return false }
-    catch (e) { return e instanceof DeltaError }
+    const b = clone(inv()); ctr(b, TARGET).networks = ['styliquenet']
+    try { endpointAuthorisations(b, TARGET); return false } catch (e) { return e instanceof DeltaError }
+  })(), true)
+  // …AND NOT TO A STOPPED ONE, where the two views differ by design: Docker
+  // keeps the config in NetworkSettings.Networks and drops the endpoint from
+  // `docker network inspect`. Throwing here would have blocked remove-container
+  // for every container, since stopping them all is its precondition.
+  t('a STOPPED container whose views differ does NOT throw', (() => {
+    const b = clone(inv()); const c = ctr(b, TARGET)
+    c.status = 'exited'
+    for (const n of b.networks) n.containers = n.containers.filter((x) => x !== TARGET)
+    try { return endpointAuthorisations(b, TARGET).length === 0 } catch { return false }
   })(), true)
 
   console.log('-- reclaim: derived from the TYPED plan, not from parsing commands')
