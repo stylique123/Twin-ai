@@ -7,6 +7,7 @@ import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ProductTour } from './components/ProductTour'
 import { EASE } from './components/motion'
+import { protectedRouteDecision } from './lib/authRouting'
 // Landing + Auth stay eager (the entry points — no chunk wait on first paint).
 import Landing from './pages/Landing'
 import Auth from './pages/Auth'
@@ -34,11 +35,45 @@ const V2Capture = lazy(() => import('./pages/v2/V2Capture'))
 
 function Protected({ children }: { children: JSX.Element }) {
   const { id } = useParams()
-  const { session, profile, loading } = useAuth()
+  const {
+    session,
+    profile,
+    loading,
+    authError,
+    profileLoading,
+    profileError,
+    refreshSession,
+    refreshProfile,
+  } = useAuth()
   if (import.meta.env.DEV && (id === 'demo' || id === 'mock-123' || (id && id.startsWith('mock-')))) return children
-  if (loading) return <FullScreen>Loading…</FullScreen>
-  if (!session) return <Navigate to="/auth" replace />
-  if (profile && !profile.onboarded) return <Navigate to="/onboarding" replace />
+  const decision = protectedRouteDecision({
+    authLoading: loading,
+    authError,
+    hasSession: !!session,
+    profileLoading,
+    hasProfile: !!profile,
+    onboarded: profile?.onboarded === true,
+  })
+  if (decision === 'auth-loading') return <FullScreen>Loading…</FullScreen>
+  if (decision === 'auth-error') {
+    return (
+      <AccountLoadError
+        message={authError ?? "We couldn't verify your sign-in."}
+        onRetry={() => void refreshSession()}
+      />
+    )
+  }
+  if (decision === 'sign-in') return <Navigate to="/auth" replace />
+  if (decision === 'profile-loading') return <FullScreen>Loading your account…</FullScreen>
+  if (decision === 'profile-error') {
+    return (
+      <AccountLoadError
+        message={profileError ?? "We couldn't verify your account yet."}
+        onRetry={() => void refreshProfile()}
+      />
+    )
+  }
+  if (decision === 'onboarding') return <Navigate to="/onboarding" replace />
   return children
 }
 
@@ -46,14 +81,29 @@ function Protected({ children }: { children: JSX.Element }) {
 // a signed-in-but-not-onboarded user must reach. A logged-out visitor is still
 // bounced to /auth, so the paste-a-handle screen is never reachable without an account.
 function AuthOnly({ children }: { children: JSX.Element }) {
-  const { session, loading } = useAuth()
+  const { session, loading, authError, refreshSession } = useAuth()
   if (loading) return <FullScreen>Loading…</FullScreen>
+  if (authError && !session) {
+    return <AccountLoadError message={authError} onRetry={() => void refreshSession()} />
+  }
   if (!session) return <Navigate to="/auth" replace />
   return children
 }
 
 function FullScreen({ children }: { children: React.ReactNode }) {
   return <div className="grid min-h-screen place-items-center text-sand">{children}</div>
+}
+
+function AccountLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="grid min-h-screen place-items-center px-5 text-center text-cream">
+      <div className="max-w-sm">
+        <p className="font-semibold">We couldn't load your account.</p>
+        <p className="mt-1 text-sm text-sand">{message}</p>
+        <button className="btn-gradient mt-5" onClick={onRetry}>Retry</button>
+      </div>
+    </div>
+  )
 }
 
 // Branded route-chunk fallback: a spinner + wordmark instead of faint text on a
