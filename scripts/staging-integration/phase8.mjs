@@ -21,6 +21,13 @@
 //   * a media_assets row -> that it has content   (assert size, digest, duration)
 //   * a duration -> that it matches the plan      (assert within the ±250 ms)
 //   * no error -> that nothing leaked             (assert no stale processes)
+//
+// SCENARIO D (8.6) asks the question the four above cannot: can the CREATOR get
+// the video? Everything in A-C reads storage with the service role, which proves
+// bytes exist and proves nothing about reachability. D downloads through the
+// signed URL with no service key at all, and checks the sha256 of what comes
+// back — a URL that 403s, or that serves a different file, is not a video the
+// user can watch.
 import { createClient } from '@supabase/supabase-js'
 import { execFile as _execFile, spawn, spawnSync } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -248,6 +255,12 @@ async function main() {
   const validator = startWorker('p8-validator', { WORKER_JOB_TYPES: 'validate_source' })
 
   // ---- A. the happy path: a real video comes out --------------------------
+  // Scenario D re-uses these: the endpoint under test is about a project that
+  // ALREADY rendered, and re-rendering one just to ask for its URL would test a
+  // second pipeline run rather than the endpoint.
+  let happyPid = null
+  let happyVideo = null
+  let scaffoldPid = null
   console.log('\n== A. full pipeline with rendering REAL ==')
   {
     const { gen, assetId } = await mintReady(client, user.id, buf)
@@ -267,6 +280,8 @@ async function main() {
 
     const outs = await editOutputs(pid)
     const vid = outs.find((o) => o.kind === 'video')
+    happyPid = pid
+    happyVideo = vid
     const cov = outs.find((o) => o.kind === 'cover')
     check('A5 a video output row exists and is READY', vid?.state === 'ready', vid?.state)
     check('A6 a cover output row exists and is READY', cov?.state === 'ready', cov?.state)
@@ -392,6 +407,89 @@ async function main() {
       proj.output_asset_id === null, String(proj.output_asset_id))
     const n = await countRows('edit_outputs', 'edit_project_id', pid)
     check('C3 and NO output was ever reserved', n === 0, `got ${n}`)
+    scaffoldPid = pid
+  }
+
+  // ---- D. the finished video is REACHABLE (8.6) ---------------------------
+  //
+  // Phase 8 proved a video exists in storage. It did not prove anyone can watch
+  // it, and until 8.6 nobody could: the `edits` object policies key on the owner
+  // id being the FIRST path segment and the server-derived path puts it second,
+  // so the client could read every row and download nothing.
+  //
+  // Every assertion below downloads through the SIGNED URL — never through the
+  // service-role client the rest of this file uses. A harness that fetches with
+  // admin credentials proves the bytes exist, which is what scenario A already
+  // proved; the question here is whether the CALLER can get them.
+  console.log('\n== D. the finished video is reachable ==')
+  if (!happyPid || !happyVideo || happyVideo.state !== 'ready') {
+    check('D SKIPPED: scenario A produced no ready video to fetch', false,
+      'the endpoint assertions could not run — see A above')
+  } else {
+    const r = await callEdge(client, 'editor-output', { project_id: happyPid })
+    check('D1 the owner gets 200 with a video URL',
+      r.status === 200 && typeof r.body.videoUrl === 'string' && r.body.videoUrl.length > 0,
+      `${r.status} ${JSON.stringify(r.body).slice(0, 160)}`)
+
+    if (r.status === 200 && r.body.videoUrl) {
+      // THE ACTUAL QUESTION. A URL that 403s is not a reachable video, and a
+      // 200 from the endpoint says nothing about whether the signature works.
+      const res = await fetch(r.body.videoUrl)
+      const got = res.ok ? Buffer.from(await res.arrayBuffer()) : Buffer.alloc(0)
+      check('D2 the signed URL DOWNLOADS — unauthenticated, no service key',
+        res.ok && got.byteLength > 0, `${res.status} ${got.byteLength}B`)
+      // Byte identity, not size. The same length proves nothing about which file
+      // came back, and the digest is already recorded by mark-output-ready.
+      const digest = createHash('sha256').update(got).digest('hex')
+      check('D3 the downloaded bytes ARE the validated output (sha256 match)',
+        digest === happyVideo.sha256, `got ${digest.slice(0, 12)} want ${String(happyVideo.sha256).slice(0, 12)}`)
+      check('D4 the reported duration is the MEASURED one, not the plan promise',
+        Number(r.body.durationMs) === Number(happyVideo.measured_duration_ms),
+        `endpoint=${r.body.durationMs} measured=${happyVideo.measured_duration_ms}`)
+      if (r.body.coverUrl) {
+        const cres = await fetch(r.body.coverUrl)
+        check('D5 the cover URL downloads too', cres.ok, String(cres.status))
+      } else {
+        check('D5 the cover URL downloads too', false, 'no coverUrl returned')
+      }
+    } else {
+      check('D2-D5 SKIPPED: no URL to download', false, 'see D1')
+    }
+
+    // ---- the refusals, which are the reason this endpoint exists at all ----
+    const outsider = await makeUser('p8-outsider')
+    const outsiderClient = await login(outsider.email)
+    const ro = await callEdge(outsiderClient, 'editor-output', { project_id: happyPid })
+    check('D6 A STRANGER IS REFUSED — and told nothing about whether it exists',
+      ro.status === 404 && ro.body.code === 'output_not_found',
+      `${ro.status} ${JSON.stringify(ro.body).slice(0, 120)}`)
+    // Same answer for a project id that does not exist at all. If these two
+    // differed, the endpoint would be an oracle for which ids are real.
+    const rmissing = await callEdge(outsiderClient, 'editor-output', { project_id: randomUUID() })
+    check('D7 a NON-EXISTENT project gets the IDENTICAL refusal (no existence oracle)',
+      rmissing.status === ro.status && rmissing.body.code === ro.body.code,
+      `missing=${rmissing.status}/${rmissing.body.code} foreign=${ro.status}/${ro.body.code}`)
+
+    const anon = await callEdge(null, 'editor-output', { project_id: happyPid })
+    check('D8 an unauthenticated caller is refused', anon.status === 401, String(anon.status))
+
+    // A path arriving in the body is a contract violation, not a field to
+    // ignore. The endpoint derives everything from the project id.
+    const extra = await callEdge(client, 'editor-output',
+      { project_id: happyPid, storage_path: 'edit-outputs/anything/at/all.mp4' })
+    check('D9 a body carrying a STORAGE PATH is refused outright', extra.status === 400, String(extra.status))
+
+    // THE CONTROL THAT MATTERS MOST. Scenario C is a project that completed with
+    // the render flag unset — exactly what production produces today. It must be
+    // reported as "no video", never as a URL and never as a broken edit.
+    if (scaffoldPid) {
+      const rs = await callEdge(client, 'editor-output', { project_id: scaffoldPid })
+      check('D10 CONTROL: the scaffold completion yields output_absent, not a URL',
+        rs.status === 409 && rs.body.code === 'output_absent' && !rs.body.videoUrl,
+        `${rs.status} ${JSON.stringify(rs.body).slice(0, 120)}`)
+    } else {
+      check('D10 CONTROL: the scaffold completion yields output_absent, not a URL', false, 'scenario C did not run')
+    }
   }
 
   stopWorker(validator)

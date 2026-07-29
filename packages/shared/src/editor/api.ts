@@ -15,7 +15,7 @@
 // and retries the SAME attempt (same asset, same path); it never silently
 // switches persistence systems.
 import { getClient, uploadToSignedTarget, type TakeFile } from '../api'
-import type { EditEvent, EditProject, EditProjectStatus, MediaAsset, SourceUploadIntent } from './contracts'
+import type { EditEvent, EditorOutput, EditProject, EditProjectStatus, MediaAsset, SourceUploadIntent } from './contracts'
 
 // ---- Upload-once coordinator -------------------------------------------------
 // Autosave, confirmation and navigation must share ONE upload. Concurrent (and
@@ -258,4 +258,35 @@ async function invokeError(error: unknown): Promise<string> {
     }
   }
   return (error as { message?: string }).message ?? 'Could not save your recording'
+}
+
+// ---- The finished edit (Phase 8 Batch 8.6) ----------------------------------
+//
+// Fetch playable URLs for a completed project's video and cover.
+//
+// The caller names a PROJECT and nothing else. It never sends — and the endpoint
+// never accepts — a path, a bucket or an asset id: a path that can be passed is
+// a path that can be wrong, the same rule that keeps `editor_reserve_output`
+// from taking one.
+//
+// Returns null for every refusal a caller can do nothing about (not found, not
+// yours, not finished, no video), because the UI's question is "can I play this
+// yet" and four ways of saying no are one answer. Callers needing the reason
+// have it on the project row they already read: `status` and `output_asset_id`
+// say which of those it is, without a second oracle.
+//
+// The URLs EXPIRE. Hold the result no longer than `expiresInSeconds` and call
+// again rather than caching it — a signed URL cannot be revoked, so its TTL is
+// the only revocation there is.
+export async function getEditorOutput(projectId: string): Promise<EditorOutput | null> {
+  const { data, error } = await getClient().functions.invoke('editor-output', {
+    body: { project_id: projectId },
+  })
+  if (error) return null
+  const out = data as Partial<EditorOutput> | null
+  // A response without a URL is not a playable output, whatever else it carries.
+  // Returning it would push the null check onto every call site, and the one
+  // that forgets renders a broken player instead of a pending state.
+  if (!out || typeof out.videoUrl !== 'string' || out.videoUrl === '') return null
+  return out as EditorOutput
 }

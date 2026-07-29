@@ -20,6 +20,13 @@ verify_jwt = true
 [functions.start-editor-v2]
 verify_jwt = true
 
+# Editor v2: the ONLY way a finished edit is fetched (owner-strict; Phase 8
+# Batch 8.6). Deliberately NOT gated by EDITOR_V2_START_ENABLED — that switch
+# governs whether new edits may BEGIN, and turning it off must never make an
+# already-finished video unplayable.
+[functions.editor-output]
+verify_jwt = true
+
 [functions.admin]
 verify_jwt = true
 

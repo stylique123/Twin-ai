@@ -609,3 +609,46 @@ export interface RecordingScriptSnapshot {
 //    If the project later settles (completed/failed/cancelled) and the same
 //    alternate key is sent again with valid inputs, it will CREATE a new
 //    project and only then become bound.
+
+// ---- The finished edit (Phase 8 Batch 8.6) ----------------------------------
+//
+// What `editor-output` returns for a project that COMPLETED with a real video.
+// The URLs are short-lived and service-role signed: the private `edits` bucket's
+// object policies key on the owner id being the FIRST path segment, and the
+// server-derived output path puts it second, so there is deliberately no direct
+// client read. Signing behind an authorizing endpoint is also where an
+// entitlement check belongs if one is ever added; a storage policy has nowhere
+// to put one.
+export interface EditorOutput {
+  projectId: string
+  outputAssetId: string
+  videoUrl: string
+  /** The poster frame, or null. Best-effort ON PURPOSE — a video that plays
+   *  without a poster beats refusing the video because its thumbnail could not
+   *  be signed. */
+  coverUrl: string | null
+  expiresInSeconds: number
+  /** The MEASURED duration, read off the probed file. Never the plan's promised
+   *  length — those legitimately differ by up to the frozen ±250 ms, and a
+   *  player that seeks against a promise seeks past the end. */
+  durationMs: number | null
+  width: number | null
+  height: number | null
+  mimeType: string | null
+  bytes: number | null
+  sha256: string | null
+}
+
+// Why `editor-output` refused. `output_not_found` deliberately covers BOTH "no
+// such project" and "not yours" — distinguishing them would make the endpoint an
+// oracle for which project ids exist.
+export type EditorOutputRejection =
+  | 'output_not_found'
+  /** The project has not reached `completed` yet. */
+  | 'output_not_ready'
+  /** Completed with no video — the scaffold state production still produces
+   *  with the render flag unset. Not an error, and not a broken edit. */
+  | 'output_absent'
+  /** The video exists but a playback URL could not be prepared. A SERVER fault,
+   *  never reported as a missing video. */
+  | 'sign_failed'
