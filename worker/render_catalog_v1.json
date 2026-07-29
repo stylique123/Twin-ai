@@ -119,15 +119,29 @@
     "shape as the pinned Whisper model. That is what turns the values below from",
     "a measurement taken on one machine into a property of the image.",
     "",
-    "Provenance, stated honestly: measured from fonts-dejavu-core 2.37-8 on",
-    "Ubuntu 24.04. The runtime image is Debian bookworm. The font files are",
-    "architecture-independent and the 2.37 series is stable, but that is an",
-    "expectation, not a proof — which is exactly why the build verifies rather",
-    "than trusts."
+    "PROVENANCE HISTORY: the first pin was measured from fonts-dejavu-core 2.37-8",
+    "on Ubuntu 24.04 while the runtime image is Debian bookworm — an expectation",
+    "that the font files were architecture/distro-independent, not a proof. It",
+    "was wrong: the VPS deploy build failed with a real digest mismatch on",
+    "DejaVuSans.ttf, catalog ae7b7855e1... vs image abdc775b21..., proving",
+    "Debian's build of the same nominal font differs from Ubuntu's byte for",
+    "byte. That is exactly the failure this build-time check exists to produce",
+    "instead of a silent visual defect in production.",
+    "",
+    "CURRENT VALUES: measured from fonts-dejavu-core 2.37-6 on Debian bookworm —",
+    "the actual runtime distro — via `docker run --rm node:22-bookworm-slim`.",
+    "DejaVuSans.ttf's digest was independently confirmed twice: once from the",
+    "VPS's own failed build log, once from a second machine (different host",
+    "architecture, arm64 vs the VPS's amd64) pulling the same bookworm package",
+    "fresh on a different day. Both agree exactly. fonts-dejavu-core is an",
+    "`Architecture: all` package — pure data, no compiled code — so identical",
+    "package versions are expected to produce identical bytes regardless of CPU",
+    "architecture; the repeated measurement is what turns that expectation into",
+    "a checked fact rather than a second assumption replacing the first."
   ],
   "fonts": {
-    "DejaVuSans-Bold.ttf": { "sha256": "5c1247acef7f2b8522a31742c76d6adcb5569bacc0be7ceaa4dc39dd252ce895" },
-    "DejaVuSans.ttf": { "sha256": "ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280" }
+    "DejaVuSans-Bold.ttf": { "sha256": "0d977336a6d5fba34eab8e3199eb218327161b5143749f802982c2bc34df0c96" },
+    "DejaVuSans.ttf": { "sha256": "abdc775b21b1bc470d50c97e790d276f2054b7504e56e5bd3e64f48d68582322" }
   },
 
   "_transitionComment": [

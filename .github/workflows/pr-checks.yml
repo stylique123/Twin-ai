@@ -53,11 +53,29 @@ jobs:
       # Phase 8 adds a second, heavier reason: render-end-to-end.test.ts BUILDS A
       # VIDEO — it is the only gate outside the staging matrix that runs the
       # renderer, and it is what caught the crossfade timebase mismatch that
-      # every graph-string test passed straight over. fonts-dejavu-core comes
-      # with it so the caption burn runs in the same font posture as production
-      # rather than falling back to whatever fontconfig finds.
-      - name: Install ffmpeg + pinned fonts (Phase-6 audio fixture, Phase-8 real render)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-dejavu-core
+      # every graph-string test passed straight over.
+      #
+      # THE CAPTION FONTS ARE NOT INSTALLED VIA apt ON THIS RUNNER. This runner is
+      # Ubuntu; the worker's Dockerfile is Debian bookworm
+      # (worker/Dockerfile: FROM node:22-bookworm-slim), and Ubuntu's own package
+      # repo ships DIFFERENT bytes for the nominally same font than Debian's does
+      # — proven directly: render_catalog_v1.json is pinned from a real bookworm
+      # build, and the VPS deploy failed with a digest mismatch the first time
+      # this was measured on Ubuntu instead. Installing via `apt-get` here would
+      # reproduce that exact bug in the other direction — CI green with fonts that
+      # do not match what actually ships.
+      #
+      # So this runs the SAME base image and SAME install command the Dockerfile
+      # uses, and copies the result onto the runner, rather than hardcoding a
+      # Debian package URL/version that could silently drift out of sync with the
+      # Dockerfile. Docker ships preinstalled on GitHub-hosted runners.
+      - name: Install ffmpeg; fetch the caption fonts from the ACTUAL deploy image
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+          D=/usr/share/fonts/truetype/dejavu
+          sudo mkdir -p "$D"
+          docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
+            "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"
       - name: Install + test @twinai/shared
         run: |
           npm ci
