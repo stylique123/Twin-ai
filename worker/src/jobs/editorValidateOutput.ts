@@ -16,6 +16,31 @@
 // So this module MEASURES. It reads the finished file with ffprobe and compares
 // what is actually there against the frozen profile and the plan's own numbers.
 //
+// WHAT IT DOES NOT MEASURE, STATED SO NOBODY INFERS OTHERWISE.
+//
+// The paragraph above lists "the audio landed on its loudness target" among the
+// things a zero exit status does not prove. That is true — and THIS MODULE DOES
+// NOT MEASURE LOUDNESS EITHER. It runs one ffprobe and reads metadata. An audit
+// caught the implication, and the correction matters more than the missing
+// feature: a reviewer trusting that sentence would believe the output is
+// audited far more deeply than it is, and would not think to add the checks
+// that are actually absent.
+//
+// Structural, today:
+//   container, stream count, codecs, raster, pixel format, frame rate,
+//   sample rate, channels, duration, byte ceiling, caption cue bounds,
+//   cover file size.
+//
+// NOT done — each a real gap, not a deliberate exclusion:
+//   full video/audio decode, integrated loudness and true-peak measurement,
+//   A/V drift, decoded frame count, whether captions actually RENDERED as
+//   pixels, caption safe-area, golden frames, and a real decode of the cover
+//   (its size is checked; its contents are not).
+//
+// Gate-0 §4 freezes -14 LUFS +/-1 and -1.0 dBTP, and the graph builder asks
+// loudnorm for exactly those — so the plan REQUESTS the right target and
+// nothing here confirms the encoder delivered it.
+//
 // THE MEASUREMENT/CLAIM DISTINCTION IS LOAD-BEARING. `format.duration` is what
 // the container header asserts; that header is written by the same encoder whose
 // work is under audit. Where it matters, the stream's own decoded extent is

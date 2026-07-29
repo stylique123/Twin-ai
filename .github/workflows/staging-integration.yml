@@ -64,8 +64,29 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install ffmpeg + espeak-ng (fixtures & audio extraction)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg espeak-ng
+      - name: Install ffmpeg + espeak-ng (fixtures & audio extraction) + caption fonts
+        # fonts-dejavu-core is REQUIRED by Phase 8: the worker refuses a caption
+        # font that is absent or does not match its pinned digest, so a runner
+        # without it fails every render carrying cues. The worker image installs
+        # and digest-verifies the same package.
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
+
+      - name: Assert the CI caption fonts match the pinned catalog digests
+        # If the runner's fonts differ from the catalog, Phase 8 would fail deep
+        # inside a render with render_font_integrity_failed. Checking here says
+        # so in one line, at the top of the run, instead.
+        run: |
+          set -eu
+          d=/usr/share/fonts/truetype/dejavu
+          for f in DejaVuSans.ttf DejaVuSans-Bold.ttf; do
+            want=$(python3 -c "import json,sys;print(json.load(open('worker/render_catalog_v1.json'))['fonts'][sys.argv[1]]['sha256'])" "$f")
+            got=$(sha256sum "$d/$f" | cut -d' ' -f1)
+            if [ "$want" != "$got" ]; then
+              echo "::error::CI caption font $f does not match the pinned catalog digest (catalog $want, runner $got). Phase 8 renders would fail on this."
+              exit 1
+            fi
+            echo "font pinned: $f $got"
+          done
 
       # The worker's Phase-5 speech stage shells out to python3 + faster-whisper
       # (phases 3-5 all drive it now that `transcribing` is real). Pinned — a

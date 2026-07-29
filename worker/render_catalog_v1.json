@@ -105,11 +105,29 @@
     "",
     "sha256 null means 'this deployment has not pinned this font yet'. That is",
     "recorded as UNPINNED and refused under strict integrity, never treated as",
-    "matching. An absent digest is not a passing digest."
+    "matching. An absent digest is not a passing digest.",
+    "",
+    "THESE TWO WERE null UNTIL AN AUDIT POINTED OUT WHAT THAT MEANT. Strict",
+    "integrity defaults ON, so a null digest did not mean 'unpinned, proceed with",
+    "a warning' — it meant every plan carrying caption cues failed with",
+    "render_font_integrity_failed. The catalog could not satisfy its own default.",
+    "",
+    "Worse, and found while fixing it: the worker image installed NO fonts at",
+    "all. The failure would not even have been the digest — the file was absent.",
+    "The Dockerfile now installs fonts-dejavu-core AND verifies these exact",
+    "digests at BUILD time, failing the build on any mismatch, which is the same",
+    "shape as the pinned Whisper model. That is what turns the values below from",
+    "a measurement taken on one machine into a property of the image.",
+    "",
+    "Provenance, stated honestly: measured from fonts-dejavu-core 2.37-8 on",
+    "Ubuntu 24.04. The runtime image is Debian bookworm. The font files are",
+    "architecture-independent and the 2.37 series is stable, but that is an",
+    "expectation, not a proof — which is exactly why the build verifies rather",
+    "than trusts."
   ],
   "fonts": {
-    "DejaVuSans-Bold.ttf": { "sha256": null },
-    "DejaVuSans.ttf": { "sha256": null }
+    "DejaVuSans-Bold.ttf": { "sha256": "5c1247acef7f2b8522a31742c76d6adcb5569bacc0be7ceaa4dc39dd252ce895" },
+    "DejaVuSans.ttf": { "sha256": "ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280" }
   },
 
   "_transitionComment": [

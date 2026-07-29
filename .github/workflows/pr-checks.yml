@@ -249,6 +249,12 @@ jobs:
         run: bash scripts/db-tests/gate-d/run.sh
       - name: Gate-E (Decision v2 DB guard + hostile matrix)
         run: bash scripts/db-tests/gate-e/run.sh
+      # Gate-F was NOT in required CI until an audit pointed it out. It has been
+      # green all along — because I ran it by hand on every Phase 8 head. That
+      # is not a control: a future change can break 0094/0096 while every
+      # required check stays green, and nobody would know until a render failed.
+      - name: Gate-F (Phase 8 plan/output SQL, hostile + mutation controls)
+        run: bash scripts/db-tests/gate-f/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no

@@ -183,8 +183,152 @@ create trigger trg_edit_projects_completion
   before update on public.edit_projects
   for each row execute function public.edit_projects_guard_completion();
 
+
 -- ---------------------------------------------------------------------------
--- 3. Grants — service_role only; anon gets nothing.
+-- 3. RECONCILE THE COMPLETION ASSET (audit finding, P0)
+-- ---------------------------------------------------------------------------
+--
+-- 0094's `editor_complete_output` proves a READY video output EXISTS, then
+-- writes whatever `p_output_asset` it was handed into
+-- `edit_projects.output_asset_id`. It never checks that the asset IS that
+-- output. A caller could complete a project onto an unrelated media_assets row
+-- — another user's, another generation's, a source asset — and every guard
+-- would pass.
+--
+-- Today's caller does the right thing: `editor_create_output_asset` derives the
+-- asset from the reserved row, and the worker passes that id back. But "the
+-- current caller is correct" is a property of one build of one worker, and it
+-- is exactly the standard the rest of this migration refuses. The whole reason
+-- `completed` is guarded in SQL is that the callers worth insuring against are
+-- the ones nobody reviewed.
+--
+-- Gate-F did not catch it. Its "different asset" case runs AFTER a successful
+-- completion, so the idempotency comparison rejects the second call — it tests
+-- the safe ordering. The dangerous case is the FIRST completion using the wrong
+-- asset, and that is now both fixed and asserted.
+--
+-- Reconciliation is on STORAGE PATH, not on id: the path is what the database
+-- itself derived in `editor_reserve_output`, so an asset matching it is the
+-- asset for this output by construction. Owner and digest are checked too,
+-- because an asset can be moved onto a path without being the same row.
+create or replace function public.editor_complete_output(
+  p_project uuid, p_job uuid, p_worker text, p_attempt integer,
+  p_output_asset uuid
+) returns public.edit_projects
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  proj public.edit_projects;
+  vid public.edit_outputs;
+  ass public.media_assets;
+begin
+  perform public.editor_assert_lease(p_project, p_job, p_worker, p_attempt);
+
+  select * into proj from public.edit_projects where id = p_project for update;
+  if not found then
+    raise exception 'output_completion_conflict: project % not found', p_project;
+  end if;
+  if proj.status = 'completed' then
+    if proj.output_asset_id = p_output_asset then
+      return proj;
+    end if;
+    raise exception 'output_completion_conflict: project % is already completed with a different output', p_project;
+  end if;
+  if proj.status <> 'validating' then
+    raise exception 'output_completion_conflict: project % is % (expected validating)', p_project, proj.status;
+  end if;
+
+  select * into vid from public.edit_outputs
+    where edit_project_id = p_project and kind = 'video' for update;
+  if not found or vid.state <> 'ready' then
+    raise exception 'output_completion_conflict: project % has no READY video output', p_project;
+  end if;
+
+  select * into ass from public.media_assets where id = p_output_asset;
+  if not found then
+    raise exception 'output_completion_conflict: output asset % does not exist', p_output_asset;
+  end if;
+  if ass.storage_path is distinct from vid.storage_path
+     or ass.bucket is distinct from vid.storage_bucket then
+    raise exception 'output_completion_conflict: asset % is not the rendered output for project % (path mismatch)', p_output_asset, p_project;
+  end if;
+  if ass.owner_id is distinct from proj.owner_id then
+    raise exception 'output_completion_conflict: asset % belongs to a different owner', p_output_asset;
+  end if;
+  if ass.content_sha256 is distinct from vid.sha256 then
+    raise exception 'output_completion_conflict: asset % does not carry the validated output digest', p_output_asset;
+  end if;
+  if ass.kind <> 'output' then
+    raise exception 'output_completion_conflict: asset % is kind %, not an output', p_output_asset, ass.kind;
+  end if;
+
+  update public.edit_projects
+     set status = 'completed', output_asset_id = p_output_asset, completed_at = now()
+   where id = p_project
+   returning * into proj;
+  return proj;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 4. STAGE-FENCE editor_mark_output_ready (audit finding)
+-- ---------------------------------------------------------------------------
+--
+-- 0094's version re-proves the lease and the attempt but never loads the
+-- project, so it does not re-prove the STAGE — despite that file's own contract
+-- saying every stateful operation re-proves all three. A worker whose project
+-- was cancelled or moved on could still mark an output READY while its lease
+-- remained briefly valid, publishing a measurement for a stage that is no
+-- longer permitted to produce one.
+create or replace function public.editor_mark_output_ready(
+  p_project uuid, p_job uuid, p_worker text, p_attempt integer,
+  p_kind text, p_bytes bigint, p_sha256 text, p_measured_duration_ms integer default null
+) returns public.edit_outputs
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  proj public.edit_projects;
+  row_out public.edit_outputs;
+begin
+  perform public.editor_assert_lease(p_project, p_job, p_worker, p_attempt);
+
+  select * into proj from public.edit_projects where id = p_project for update;
+  if not found then
+    raise exception 'output_completion_conflict: project % not found', p_project;
+  end if;
+  -- rendering produces the bytes; validating may still be finishing the cover.
+  if proj.status not in ('rendering', 'validating') then
+    raise exception 'render_wrong_stage: project % is % (expected rendering or validating)', p_project, proj.status;
+  end if;
+
+  select * into row_out from public.edit_outputs
+    where edit_project_id = p_project and kind = p_kind for update;
+  if not found then
+    raise exception 'output_completion_conflict: no reserved % output for project %', p_kind, p_project;
+  end if;
+  if row_out.state = 'ready' then
+    if row_out.sha256 = p_sha256 and row_out.bytes = p_bytes then
+      return row_out;
+    end if;
+    raise exception 'output_completion_conflict: % output for project % is already ready with a different file',
+      p_kind, p_project;
+  end if;
+
+  update public.edit_outputs
+     set state = 'ready', bytes = p_bytes, sha256 = p_sha256,
+         measured_duration_ms = p_measured_duration_ms, ready_at = now()
+   where id = row_out.id
+   returning * into row_out;
+  return row_out;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- 5. Grants — service_role only; anon gets nothing.
 -- ---------------------------------------------------------------------------
 
 revoke all on function public.edit_projects_guard_completion() from public, anon, authenticated;
