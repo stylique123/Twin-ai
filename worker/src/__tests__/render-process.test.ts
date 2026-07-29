@@ -127,7 +127,21 @@ describe('the frozen catalog governs, and a broken one fails closed', () => {
       }
       return v
     }
-    const raw = JSON.stringify(strip(loadRenderCatalog()))
+    const cat = strip(loadRenderCatalog()) as { fonts?: Record<string, { sha256: string | null }> }
+    // The FONT DIGESTS are removed by NAME before the entropy scan, not by
+    // loosening the pattern. A sha256 of a published Debian font file is a
+    // public fact about bytes anyone can download — it is the opposite of a
+    // credential, and it is the whole mechanism that makes font substitution
+    // detectable. Widening the regex to tolerate 64-hex would blind the scan to
+    // an actual key; removing one named field does not.
+    //
+    // This test failed the moment those digests were pinned, which is correct:
+    // it was coupled to the catalog's temporary null state, and it should have
+    // been reading the FIELDS it trusts rather than hoping none appeared.
+    const fontDigests = Object.values(cat.fonts ?? {}).map((f) => f.sha256).filter(Boolean) as string[]
+    for (const d of fontDigests) expect(d).toMatch(/^[0-9a-f]{64}$/)
+    delete cat.fonts
+    const raw = JSON.stringify(cat)
     // ASS colour literals (&H00FFFFFF) are the one hex-looking value that
     // legitimately belongs here, so they are removed before the entropy scan
     // rather than the scan being loosened to tolerate them.
@@ -198,17 +212,39 @@ describe('font integrity distinguishes UNPINNED from verified', () => {
   const preset = { fontFamily: 'DejaVu Sans', fontFileBasename: 'DejaVuSans-Bold.ttf', bold: true,
     primaryColourAss: '&H00FFFFFF', outlineColourAss: '&H00000000', outlineWidthPx: 3, shadowDepthPx: 0, alignment: 2 }
 
+  // THE UNPINNED STATE IS NOW CONSTRUCTED, NOT INHERITED.
+  //
+  // These two used to call loadRenderCatalog() and rely on the shipped catalog
+  // having `sha256: null`. That was true only because the fonts had not been
+  // pinned yet — an accident of an unfinished deployment, which the tests were
+  // silently depending on. Pinning them broke both, correctly.
+  //
+  // A test for "what happens when a digest is absent" has to MAKE one absent.
+  const unpinnedCatalog = () => {
+    const c = JSON.parse(JSON.stringify(loadRenderCatalog())) as ReturnType<typeof loadRenderCatalog>
+    c.fonts['DejaVuSans-Bold.ttf'] = { sha256: null }
+    return c
+  }
+
+  it('the shipped catalog PINS its fonts — the deployment this batch fixed', () => {
+    // The positive fact the two tests below can no longer assert, now asserted
+    // directly: a null here means captions cannot render under strict integrity.
+    const fonts = loadRenderCatalog().fonts
+    expect(fonts['DejaVuSans-Bold.ttf'].sha256).toMatch(/^[0-9a-f]{64}$/)
+    expect(fonts['DejaVuSans.ttf'].sha256).toMatch(/^[0-9a-f]{64}$/)
+  })
+
   it('an unpinned font reports UNPINNED — never "verified"', async () => {
     const d = tmp()
     writeFileSync(join(d, 'DejaVuSans-Bold.ttf'), 'font bytes')
-    const r = await verifyCaptionFont(d, preset, loadRenderCatalog(), { strict: false })
+    const r = await verifyCaptionFont(d, preset, unpinnedCatalog(), { strict: false })
     expect(r.status).toBe('unpinned')
   })
 
   it('MUTATION: under strict integrity an unpinned font is a FAILURE', async () => {
     const d = tmp()
     writeFileSync(join(d, 'DejaVuSans-Bold.ttf'), 'font bytes')
-    expect(await codeOf(() => verifyCaptionFont(d, preset, loadRenderCatalog(), { strict: true })))
+    expect(await codeOf(() => verifyCaptionFont(d, preset, unpinnedCatalog(), { strict: true })))
       .toBe('render_font_integrity_failed')
   })
 
