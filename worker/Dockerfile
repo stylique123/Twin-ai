@@ -26,10 +26,39 @@ FROM node:22-bookworm-slim
 COPY --from=denoland/deno:bin-2.1.4 /deno /usr/local/bin/deno
 
 # System deps: ffmpeg (audio extract/convert + PCM/ebur128), python3 + pip
-# (faster-whisper + OpenCV), ca-certs.
+# (faster-whisper + OpenCV), ca-certs, and the CAPTION FONTS.
+#
+# fonts-dejavu-core was missing entirely until an audit traced why captions
+# could not render. The failure was not a bad digest — the font FILE did not
+# exist in this image, so every plan carrying caption cues would have failed
+# with render_font_integrity_failed at the first integrity check.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ffmpeg python3 python3-pip ca-certificates \
+      ffmpeg python3 python3-pip ca-certificates fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
+
+# PIN THE CAPTION FONTS, the same way the ASR model is pinned: verify the exact
+# bytes at BUILD time and fail the build on any mismatch.
+#
+# A substituted font renders captions positioned differently from the ones the
+# compiler measured — a silent visual defect, the class that survives a green
+# test run. render_catalog_v1.json carries these digests and the worker refuses
+# a font that does not match; checking here means a drifting Debian package
+# breaks the BUILD rather than reaching production and failing every render.
+#
+# The digests were measured on fonts-dejavu-core 2.37-8 (Ubuntu 24.04) while
+# this image is Debian bookworm. The font files are architecture-independent
+# and the 2.37 series is stable, but that is an expectation — this check is
+# what converts it into a verified property, or a loud failure.
+COPY render_catalog_v1.json /tmp/render_catalog_v1.json
+RUN set -eu; \
+    d="/usr/share/fonts/truetype/dejavu"; \
+    for f in DejaVuSans.ttf DejaVuSans-Bold.ttf; do \
+      [ -f "$d/$f" ] || { echo "FATAL: caption font $f is missing from the image"; exit 1; }; \
+      want=$(python3 -c "import json,sys;print(json.load(open('/tmp/render_catalog_v1.json'))['fonts'][sys.argv[1]]['sha256'])" "$f"); \
+      got=$(sha256sum "$d/$f" | cut -d' ' -f1); \
+      [ "$want" = "$got" ] || { echo "FATAL: caption font $f digest mismatch"; echo "  catalog: $want"; echo "  image:   $got"; echo "  Update render_catalog_v1.json DELIBERATELY if the font was intentionally changed."; exit 1; }; \
+      echo "font pinned: $f $got"; \
+    done
 
 WORKDIR /app
 

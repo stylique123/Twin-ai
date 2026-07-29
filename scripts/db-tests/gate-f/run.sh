@@ -26,7 +26,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 MIG="$REPO/supabase/migrations/0094_editor_editplan_render_completion.sql"
 MIG2="$REPO/supabase/migrations/0096_editor_output_asset_and_completion.sql"
-for m in "$MIG" "$MIG2"; do
+MIG3="$REPO/supabase/migrations/0097_editor_output_bucket_fence.sql"
+for m in "$MIG" "$MIG2" "$MIG3"; do
   [ -f "$m" ] || { echo "FATAL: $m not found"; exit 1; }
 done
 
@@ -57,6 +58,8 @@ SHA_P="$(printf 'a%.0s' $(seq 1 64))"         # plan digest
 SHA_D="$(printf 'b%.0s' $(seq 1 64))"         # decision digest
 SHA_O="$(printf 'c%.0s' $(seq 1 64))"         # output file digest
 SHA_X="$(printf 'd%.0s' $(seq 1 64))"         # a DIFFERENT file digest
+SHA_EV="$(printf 'e%.0s' $(seq 1 64))"        # the fifth project's output digest
+SHA_AN="$(printf 'f%.0s' $(seq 1 64))"        # the sixth project's output digest
 WORKER='worker-1'
 
 # Stand-ins for the objects 0094 references but does not create. The migration is
@@ -172,7 +175,8 @@ SQL
 bootstrap
 psql -q -v ON_ERROR_STOP=1 -f "$MIG"
 psql -q -v ON_ERROR_STOP=1 -f "$MIG2"
-echo "0094 + 0096 applied"
+psql -q -v ON_ERROR_STOP=1 -f "$MIG3"
+echo "0094 + 0096 + 0097 applied"
 
 run(){ psql -q -v ON_ERROR_STOP=1 -c "$1" >/dev/null 2>&1; }
 ok(){ if run "$1"; then echo "  ok: $2"; else echo "GATE-F FAIL: legitimate statement REJECTED ($2)"; psql -c "$1" 2>&1 | tail -3; exit 1; fi; }
@@ -184,6 +188,16 @@ require_rows(){
   n=$(psql -tAc "select count(*) from $1")
   if [ "$n" -lt 1 ]; then
     echo "GATE-F FAIL: public.$1 is empty, so an UPDATE/DELETE against it fires no row trigger."
+    exit 1
+  fi
+}
+# Its counterpart: a REFUSAL must also leave the table as it found it. An RPC
+# that raises after inserting would be "rejected" by the `no` helper and still
+# have written the row — a refusal is about state, not about the return value.
+require_no_rows(){
+  n=$(psql -tAc "select count(*) from $1")
+  if [ "$n" -ne 0 ]; then
+    echo "GATE-F FAIL: public.$1 holds $n row(s) after a refusal — $2"
     exit 1
   fi
 }
@@ -224,27 +238,49 @@ no "insert into public.edit_plans (owner_id,edit_project_id,version,schema_versi
    "a negative output duration"
 
 echo "== output reservation: the PATH IS SERVER-DERIVED =="
-no "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','media')" \
+no "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','edits')" \
    "reserving while the project is still compiling (wrong stage)"
+
 run "update public.edit_projects set status = 'rendering' where id = '$P_ID'"
-ok "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','media')" \
+
+# THE BUCKET IS FENCED TOO (0097). This gate passed nine times reserving into
+# 'media' — a bucket 0065 never creates and nothing in the product references —
+# because a throwaway Postgres has no storage for a bucket name to be wrong
+# ABOUT. Every value passed, so the value proved nothing.
+#
+# THESE RUN AFTER THE STAGE IS ADVANCED, and that placement is the whole point.
+# Sitting above the advance they were unfalsifiable: the wrong-stage check would
+# have rejected them just as flatly with the fence deleted, so they would have
+# gone on passing while proving nothing — the same shape of hole they exist to
+# close. Here the stage is right, the lease is right, and the bucket is the only
+# thing left that can refuse.
+no "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','media')" \
+   "reserving into 'media' — the bucket that never existed"
+no "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','takes')" \
+   "reserving a finished render into the SOURCE bucket"
+no "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','')" \
+   "reserving into an empty bucket name"
+no "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video',null)" \
+   "reserving into a null bucket — 'is distinct from', not '<>', is what catches this"
+require_no_rows edit_outputs "a refused reservation must leave NO row behind"
+ok "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','edits')" \
    "the lease-holder reserves the video output while rendering"
 require_rows edit_outputs
 got=$(psql -tAc "select storage_path from public.edit_outputs where edit_project_id='$P_ID' and kind='video'")
 want="edit-outputs/$O_ID/$P_ID/1/output.mp4"
 [ "$got" = "$want" ] || { echo "GATE-F FAIL: derived path is '$got', expected '$want'"; exit 1; }
 echo "  ok: the path was derived from ids the database holds, not supplied"
-ok "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','media')" \
+ok "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'video','edits')" \
    "reserving twice returns the same reservation (crash-resume)"
-no "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'thumbnail','media')" \
+no "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'thumbnail','edits')" \
    "an unknown output kind"
-ok "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'cover','media')" \
+ok "select public.editor_reserve_output('$P_ID','$J_ID','$WORKER',1,'cover','edits')" \
    "the cover reserves alongside the video"
 
 echo "== a path outside the owner's prefix cannot be STORED, even directly =="
-no "insert into public.edit_outputs (owner_id,edit_project_id,edit_plan_id,attempt,storage_bucket,storage_path,kind) select '$O_ID','$P_ID',id,1,'media','edit-outputs/../../etc/passwd','video' from public.edit_plans limit 1" \
+no "insert into public.edit_outputs (owner_id,edit_project_id,edit_plan_id,attempt,storage_bucket,storage_path,kind) select '$O_ID','$P_ID',id,1,'edits','edit-outputs/../../etc/passwd','video' from public.edit_plans limit 1" \
    "a traversal in storage_path"
-no "insert into public.edit_outputs (owner_id,edit_project_id,edit_plan_id,attempt,storage_bucket,storage_path,kind) select '$O_ID','$P_ID',id,1,'media','anywhere/i/like.mp4','video' from public.edit_plans limit 1" \
+no "insert into public.edit_outputs (owner_id,edit_project_id,edit_plan_id,attempt,storage_bucket,storage_path,kind) select '$O_ID','$P_ID',id,1,'edits','anywhere/i/like.mp4','video' from public.edit_plans limit 1" \
    "an arbitrary storage_path"
 
 echo "== READY MEANS MEASURED =="
@@ -299,9 +335,17 @@ no "update public.edit_projects set status='completed', output_asset_id=null whe
    "a bare UPDATE to completed with reserved outputs and a null asset"
 no "select public.editor_complete_output('$P_ID','$J_ID','not-this-worker',1,'$A_ID')" \
    "completing without the lease"
-ok "select public.editor_complete_output('$P_ID','$J_ID','$WORKER',1,'$A_ID')" \
-   "the lease-holder completes with a ready video and an output asset"
-ok "select public.editor_complete_output('$P_ID','$J_ID','$WORKER',1,'$A_ID')" \
+# THIS BLOCK USED TO PASS A BARE $A_ID, an asset that was never the rendered
+# output. It only worked because `editor_complete_output` did not reconcile —
+# the exact hole the audit found. With reconciliation in place the fixture has
+# to do what the worker does: mint the asset FROM the reserved row, then
+# complete onto it.
+ok "select public.editor_create_output_asset('$P_ID','$J_ID','$WORKER',1,1080,1920,30,1,'video/mp4')" \
+   "the derived output asset is minted from the ready row"
+A_REAL=$(psql -tAc "select id from public.media_assets where storage_path='edit-outputs/$O_ID/$P_ID/1/output.mp4'")
+ok "select public.editor_complete_output('$P_ID','$J_ID','$WORKER',1,'$A_REAL')" \
+   "the lease-holder completes onto the DERIVED asset"
+ok "select public.editor_complete_output('$P_ID','$J_ID','$WORKER',1,'$A_REAL')" \
    "completing twice onto the SAME asset is idempotent"
 no "select public.editor_complete_output('$P_ID','$J_ID','$WORKER',1,'$S_ID')" \
    "completing onto a DIFFERENT asset (output_completion_conflict)"
@@ -353,7 +397,7 @@ ok "select public.editor_record_edit_plan('$P3','$J3','$WORKER',1,'$SHA_D','$SHA
    "the second project records its own plan while compiling"
 run "update public.edit_projects set status='rendering' where id='$P3'"
 # A RESERVED but never-ready output: the crash-mid-render shape.
-ok "select public.editor_reserve_output('$P3','$J3','$WORKER',1,'video','media')" \
+ok "select public.editor_reserve_output('$P3','$J3','$WORKER',1,'video','edits')" \
    "and reserves a video output"
 run "update public.edit_projects set status='validating' where id='$P3'"
 no "select public.editor_complete_output('$P3','$J3','$WORKER',1,'$A_ID')" \
@@ -373,38 +417,124 @@ insert into public.jobs values ('$J4','running','$WORKER',1, jsonb_build_object(
 insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, status)
   values ('$P4','$O_ID','$G_ID','$S4','compiling');
 SQL
-no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,1080,1920,30,1,'video/mp4')" \
    "minting an output asset for a project with NO reserved output"
 ok "select public.editor_record_edit_plan('$P4','$J4','$WORKER',1,'$SHA_O','$SHA_P','boot','snap','srcsum','edit-plan-v1','edit-policy-v1','edit-compiler-1','$PLAN_JSON'::jsonb,60000)" \
    "the fourth project records its plan"
 run "update public.edit_projects set status='rendering' where id='$P4'"
-ok "select public.editor_reserve_output('$P4','$J4','$WORKER',1,'video','media')" \
+ok "select public.editor_reserve_output('$P4','$J4','$WORKER',1,'video','edits')" \
    "and reserves its video output"
-no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+no "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,1080,1920,30,1,'video/mp4')" \
    "minting an asset while the output is RESERVED but not ready"
 ok "select public.editor_mark_output_ready('$P4','$J4','$WORKER',1,'video',4096,'$SHA_X',60000)" \
    "the output becomes ready with its measurements"
-no "select public.editor_create_output_asset('$P4','$J4','not-this-worker',1,60000,1080,1920,30,1,'video/mp4')" \
+no "select public.editor_create_output_asset('$P4','$J4','not-this-worker',1,1080,1920,30,1,'video/mp4')" \
    "minting without the lease"
-ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,1080,1920,30,1,'video/mp4')" \
    "the lease-holder mints the output asset once the video is ready"
-ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,60000,1080,1920,30,1,'video/mp4')" \
+ok "select public.editor_create_output_asset('$P4','$J4','$WORKER',1,1080,1920,30,1,'video/mp4')" \
    "minting twice returns the same asset (crash-resume)"
-n=$(psql -tAc "select count(*) from public.media_assets where kind='output'")
-[ "$n" = "1" ] || { echo "GATE-F FAIL: expected exactly one output asset, found $n"; exit 1; }
-echo "  ok: exactly one output asset exists"
+# Scoped to THIS project: P_ID now mints its own derived asset too, so a global
+# count is no longer the right question. "One per project" is the invariant the
+# partial unique index actually enforces.
+n=$(psql -tAc "select count(*) from public.media_assets where storage_path like 'edit-outputs/%/$P4/%'")
+[ "$n" = "1" ] || { echo "GATE-F FAIL: expected exactly one output asset for $P4, found $n"; exit 1; }
+echo "  ok: exactly one output asset exists for this project"
 # The asset is DERIVED: path, bucket, owner and digest all come from the
 # reserved row, not from arguments the caller could disagree with.
-got=$(psql -tAc "select storage_path||'|'||coalesce(content_sha256,'')||'|'||coalesce(size_bytes::text,'') from public.media_assets where kind='output'")
+got=$(psql -tAc "select storage_path||'|'||coalesce(content_sha256,'')||'|'||coalesce(size_bytes::text,'') from public.media_assets where storage_path like 'edit-outputs/%/$P4/%'")
 want="edit-outputs/$O_ID/$P4/1/output.mp4|$SHA_X|4096"
 [ "$got" = "$want" ] || { echo "GATE-F FAIL: derived asset is '$got', expected '$want'"; exit 1; }
 echo "  ok: path, digest and size were DERIVED from the reserved output"
+# THE DURATION IS THE MEASURED ONE, AND THERE IS NO WAY TO PASS ANOTHER.
+# The output was marked ready with a measured 60000ms. The RPC has no duration
+# parameter at all — it was removed after the render stage was caught passing
+# the plan's PROMISED length, which the +/-250ms tolerance lets differ from what
+# ffprobe read. This asserts the value came from edit_outputs, and the arity
+# check below is what stops the parameter quietly returning.
+d=$(psql -tAc "select coalesce(duration_ms::text,'NULL') from public.media_assets where storage_path like 'edit-outputs/%/$P4/%'")
+[ "$d" = "60000" ] || { echo "GATE-F FAIL: asset duration is '$d', expected the MEASURED 60000"; exit 1; }
+echo "  ok: duration came from edit_outputs.measured_duration_ms"
+nargs=$(psql -tAc "select pronargs from pg_proc where proname='editor_create_output_asset'")
+[ "$nargs" = "9" ] || { echo "GATE-F FAIL: editor_create_output_asset takes $nargs args, expected 9 — a duration parameter has returned"; exit 1; }
+echo "  ok: the RPC takes 9 arguments — no duration among them"
 
 echo "== and the completed project must point at it =="
 run "update public.edit_projects set status='validating' where id='$P4'"
-a4=$(psql -tAc "select id from public.media_assets where kind='output'")
+a4=$(psql -tAc "select id from public.media_assets where storage_path like 'edit-outputs/%/$P4/%'")
 ok "select public.editor_complete_output('$P4','$J4','$WORKER',1,'$a4')" \
    "completion onto the minted asset"
+
+echo "== THE FIRST completion must not bind an UNRELATED asset =="
+# THE CASE GATE-F PREVIOUSLY MISSED. Its "different asset" test ran AFTER a
+# successful completion, so the idempotency comparison rejected the second call
+# — it exercised the safe ordering. The dangerous case is the FIRST completion
+# using the wrong asset, and nothing tested it.
+P5='11111111-2222-3333-4444-000000000005'
+J5='22222222-3333-4444-5555-000000000005'
+S5='33333333-4444-5555-6666-000000000005'
+OTHER='44444444-5555-6666-7777-000000000005'
+O2='55555555-6666-7777-8888-000000000005'
+psql -q -v ON_ERROR_STOP=1 <<SQL >/dev/null
+insert into auth.users values ('$O2');
+insert into public.media_assets (id) values ('$S5');
+insert into public.jobs values ('$J5','running','$WORKER',1, jsonb_build_object('project_id','$P5'));
+insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, status)
+  values ('$P5','$O_ID','$G_ID','$S5','compiling');
+SQL
+ok "select public.editor_record_edit_plan('$P5','$J5','$WORKER',1,'$SHA_EV','$SHA_P','boot','snap','srcsum','edit-plan-v1','edit-policy-v1','edit-compiler-1','$PLAN_JSON'::jsonb,60000)" \
+   "the fifth project records its plan"
+run "update public.edit_projects set status='rendering' where id='$P5'"
+ok "select public.editor_reserve_output('$P5','$J5','$WORKER',1,'video','edits')" \
+   "and reserves its video output"
+ok "select public.editor_mark_output_ready('$P5','$J5','$WORKER',1,'video',2048,'$SHA_EV',60000)" \
+   "and marks it ready"
+run "update public.edit_projects set status='validating' where id='$P5'"
+
+# An unrelated asset: right owner, wrong everything else.
+psql -q -v ON_ERROR_STOP=1 -c "insert into public.media_assets (id, owner_id, kind, bucket, storage_path, content_sha256, status) values ('$OTHER','$O_ID','output','edits','edit-outputs/somewhere/else/output.mp4','$SHA_X','ready')" >/dev/null
+no "select public.editor_complete_output('$P5','$J5','$WORKER',1,'$OTHER')" \
+   "completing onto an asset whose STORAGE PATH is not the rendered output"
+no "select public.editor_complete_output('$P5','$J5','$WORKER',1,'$S5')" \
+   "completing onto the SOURCE asset"
+
+# Right path, wrong owner — an asset moved onto the path is still not the row.
+psql -q -v ON_ERROR_STOP=1 <<SQL >/dev/null
+update public.media_assets set storage_path='edit-outputs/$O_ID/$P5/1/output.mp4', owner_id='$O2' where id='$OTHER';
+SQL
+no "select public.editor_complete_output('$P5','$J5','$WORKER',1,'$OTHER')" \
+   "completing onto an asset at the right path but a DIFFERENT owner"
+psql -q -v ON_ERROR_STOP=1 -c "update public.media_assets set owner_id='$O_ID', content_sha256='$SHA_O' where id='$OTHER'" >/dev/null
+no "select public.editor_complete_output('$P5','$J5','$WORKER',1,'$OTHER')" \
+   "completing onto an asset carrying a DIFFERENT digest than the validated output"
+# CONTROL: the properly minted asset still completes, so the four refusals are
+# about reconciliation and not about the project being uncompletable.
+psql -q -v ON_ERROR_STOP=1 -c "update public.media_assets set storage_path='edit-outputs/other/discarded.mp4' where id='$OTHER'" >/dev/null
+ok "select public.editor_create_output_asset('$P5','$J5','$WORKER',1,1080,1920,30,1,'video/mp4')" \
+   "the derived asset is minted"
+a5=$(psql -tAc "select id from public.media_assets where storage_path='edit-outputs/$O_ID/$P5/1/output.mp4'")
+ok "select public.editor_complete_output('$P5','$J5','$WORKER',1,'$a5')" \
+   "CONTROL: completion onto the DERIVED asset succeeds"
+
+echo "== mark-ready is STAGE-FENCED =="
+P6='11111111-2222-3333-4444-000000000006'
+J6='22222222-3333-4444-5555-000000000006'
+S6='33333333-4444-5555-6666-000000000006'
+psql -q -v ON_ERROR_STOP=1 <<SQL >/dev/null
+insert into public.media_assets (id) values ('$S6');
+insert into public.jobs values ('$J6','running','$WORKER',1, jsonb_build_object('project_id','$P6'));
+insert into public.edit_projects (id, owner_id, generation_id, source_asset_id, status)
+  values ('$P6','$O_ID','$G_ID','$S6','compiling');
+SQL
+ok "select public.editor_record_edit_plan('$P6','$J6','$WORKER',1,'$SHA_AN','$SHA_P','boot','snap','srcsum','edit-plan-v1','edit-policy-v1','edit-compiler-1','$PLAN_JSON'::jsonb,60000)" \
+   "the sixth project records its plan"
+run "update public.edit_projects set status='rendering' where id='$P6'"
+ok "select public.editor_reserve_output('$P6','$J6','$WORKER',1,'video','edits')" \
+   "and reserves its output while rendering"
+# The project moves on (cancelled) while the lease is still briefly valid.
+run "update public.edit_projects set status='cancelled' where id='$P6'"
+no "select public.editor_mark_output_ready('$P6','$J6','$WORKER',1,'video',2048,'$SHA_AN',60000)" \
+   "marking an output READY after the project left the rendering stage"
 
 echo "== client roles: read yes, write no; anon nothing =="
 ok "set role authenticated; select 1 from public.edit_plans limit 1; reset role" \

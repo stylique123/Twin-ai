@@ -34,7 +34,11 @@ import { tmpdir } from 'node:os'
 import { db, renewJobLease, type Job } from '../db.js'
 import { env } from '../env.js'
 import { runCompilingStage, compileFailureCode, isCompileCancelled, type CompileOutcome } from './editorCompileStage.js'
-import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost } from '../errors.js'
+import {
+  runRenderingStage, runValidatingStage, renderFailureCode, isRenderCancelled,
+  type RenderStageOutcome, type ValidateStageOutcome,
+} from './editorRenderStage.js'
+import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost, declaresPermanent } from '../errors.js'
 import { queueSafeError, sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
 import { AnalyzeCancelledError, DirectorCancelledError } from './editorCancel.js'
@@ -85,8 +89,18 @@ const ALWAYS_REAL: ReadonlySet<EditorStage> = new Set(['inspecting', 'transcribi
  * two boundaries at once.
  */
 function scaffoldBoundary(
-  compiled: CompileOutcome | null, director: DirectorOutcome | null,
+  validated: ValidateStageOutcome | null,
+  rendered: RenderStageOutcome | null,
+  compiled: CompileOutcome | null,
+  director: DirectorOutcome | null,
 ): Record<string, true> {
+  // A completed project that actually rendered and validated is NOT a scaffold
+  // completion, and must not carry a `simulated_after_*` key at all — the whole
+  // point of those keys is that they mark a run which produced no video. It
+  // gets an affirmative marker instead, so "this one is real" is something a
+  // reader sees rather than infers from an absence.
+  if (validated) return { rendered_real_output: true }
+  if (rendered) return { simulated_after_rendering: true }
   if (compiled) return { simulated_after_compiling: true }
   if (director) return { simulated_after_directing: true }
   return { simulated_after_analysis: true }
@@ -526,6 +540,8 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     let analysis: AnalyzeOutcome | null = null
     let director: DirectorOutcome | null = null
     let compiled: CompileOutcome | null = null
+    let rendered: RenderStageOutcome | null = null
+    let validated: ValidateStageOutcome | null = null
     for (const stage of stagesFrom(proj.status)) {
       if (lease.lost()) throw new LeaseLostError(`lease lost before stage ${stage}`)
       maybeCrash(`before_stage:${stage}`, job)
@@ -548,7 +564,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // misleading code. Adding a stage means adding its type.
         if (err instanceof InspectionCancelledError || err instanceof SpeechCancelledError
             || err instanceof AnalyzeCancelledError || err instanceof DirectorCancelledError
-            || isCompileCancelled(err)) {
+            || isCompileCancelled(err) || isRenderCancelled(err)) {
           await finishProject(job, projectId, 'cancelled', undefined, { at_stage: stage })
           return true
         }
@@ -642,6 +658,30 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           }
           throw err
         }
+      } else if (stage === 'rendering' && env.editorRenderEnabled) {
+        // Phase 8 Batch 8.5: the REAL rendering stage. Reserve, render,
+        // validate, THEN publish — nothing unmeasured reaches a durable path.
+        try {
+          rendered = await runRenderingStage(job, projectId, dir)
+        } catch (err) {
+          if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          if (!isLeaseLost(err)) {
+            await appendEvent(job, projectId, 'render_failed', { code: renderFailureCode(err) })
+          }
+          throw err
+        }
+      } else if (stage === 'validating' && env.editorRenderEnabled) {
+        // Phase 8 Batch 8.5: mint the output asset and complete. Both fenced;
+        // both refuse unless the output row is genuinely READY.
+        try {
+          validated = await runValidatingStage(job, projectId)
+        } catch (err) {
+          if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
+          if (!isLeaseLost(err)) {
+            await appendEvent(job, projectId, 'validate_failed', { code: renderFailureCode(err) })
+          }
+          throw err
+        }
       } else {
         await runStageWithTimeout(stage, job, dir)
       }
@@ -653,7 +693,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       // output_asset_id stays NULL — never a product success. When directing
       // ran for real, the boundary moves to after-directing; otherwise it is
       // the unchanged after-analysis boundary (production).
-      ...scaffoldBoundary(compiled, director),
+      ...scaffoldBoundary(validated, rendered, compiled, director),
       director_ran: !!director,
       manifest_sha: pinned.manifest.manifestSha,
       source_downloads: session.downloadsPerformed,
@@ -666,7 +706,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     return {
       // compiling/rendering/validating are still simulated; directing is real
       // only when the flag is enabled (else after-analysis, as in production).
-      ...scaffoldBoundary(compiled, director),
+      ...scaffoldBoundary(validated, rendered, compiled, director),
       stages_ran: ranStages,
       inspection: inspect,
       speech,
@@ -681,7 +721,12 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // silently; every state write is fenced so nothing was corrupted.
     if (isLeaseLost(err)) throw err
 
-    const permanent = err instanceof PermanentJobError
+    // `declaresPermanent`, not `instanceof`: a compile failure is an
+    // `EditPlanError`, which is permanent by construction. Testing nominally
+    // meant the project stayed `processing` through five retries of a failure
+    // that could never clear, and only settled as `retries_exhausted` — losing
+    // the real code (`edit_plan_divergent`) at exactly the moment it mattered.
+    const permanent = declaresPermanent(err)
     const lastAttempt = job.attempts >= job.max_attempts
     // Everything persisted goes through the sanitizer: stable code, safe
     // stage, retry class, bounded REDACTED message. The raw error stays in
@@ -693,7 +738,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // so no project ever hangs on a dead-lettered job. (If we crash right
         // here instead, the reconciler sweep closes the same gap.)
         await finishProject(job, projectId, 'failed',
-          permanent ? (err as PermanentJobError).code : 'retries_exhausted',
+          permanent ? err.code : 'retries_exhausted',
           { error: safe.message, code: safe.code, retry: safe.retry, stage: safe.stage,
             attempt: job.attempts, stages_ran: ranStages })
       } else {

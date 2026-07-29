@@ -47,20 +47,45 @@ export class CompileCancelledError extends Error {
   }
 }
 
-/** The pinned manifest/snapshot pair the stage loop already holds. Typed
- *  structurally so this module does not import the director's private shape. */
+/** The pinned manifest/snapshot PAIR the stage loop already holds. Typed
+ *  structurally so this module does not import the director's private shape.
+ *
+ *  THE SNAPSHOT IS A SEPARATE OBJECT FROM THE MANIFEST, and the first version of
+ *  this interface did not say so — it declared an optional `scriptSnapshotSha`
+ *  on the manifest, where no such field exists. Optional plus `?? ''` meant the
+ *  absence read as an empty string, and staging refused it four stages later:
+ *
+ *    edit_plan_invalid: identity.scriptSnapshotSha: expected a sha256 hex digest
+ *
+ *  Declared REQUIRED here, so the next caller that has only a manifest fails to
+ *  compile instead of quietly compiling a plan whose identity cites nothing. */
 export interface PinnedLike {
   manifest: {
     manifest: unknown
     componentDigests: { visual: string; audio: string; hook: string }
     manifestSha: string
-    scriptSnapshotSha?: string
   }
+  snapshot: { snapshotSha: string }
 }
 
-async function loadDecision(projectId: string): Promise<DirectorDecision> {
+/**
+ * The decision document AND its digest.
+ *
+ * `decision_sha256` is a COLUMN on `edit_director_decisions`, not a field
+ * inside the `decision` JSON. The first version of this file selected only the
+ * document and then went looking for the digest inside it — and I had written a
+ * comment two lines below saying the row carries it alongside. Staging found it
+ * the first time compiling was ever reached:
+ *
+ *   edit_plan_identity_mismatch: the decision carries no sha256 to pin
+ *
+ * It failed CLOSED, which is the one good thing about it: the plan identity is
+ * what makes "this plan came from that decision" checkable, so refusing beat
+ * inventing a digest. But it refused every real run.
+ */
+async function loadDecision(projectId: string): Promise<{ decision: DirectorDecision; decisionSha256: string }> {
   const { data, error } = await db.from('edit_director_decisions')
-    .select('decision').eq('edit_project_id', projectId).maybeSingle()
+    .select('decision, decision_sha256').eq('edit_project_id', projectId).maybeSingle()
   if (error) throw new Error(`compiling: reading the decision failed: ${error.message}`)
   if (!data?.decision) {
     // Reaching `compiling` without a decision means directing did not really
@@ -72,7 +97,18 @@ async function loadDecision(projectId: string): Promise<DirectorDecision> {
       'edit_plan_invalid',
     )
   }
-  return data.decision as DirectorDecision
+  const sha = (data as { decision_sha256?: string }).decision_sha256
+  if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) {
+    // 0088 declares the column NOT NULL with a sha256 CHECK, so this is
+    // unreachable through the fenced RPC. It stays because "unreachable" is a
+    // claim about today's writers, and the plan identity is not worth taking on
+    // trust.
+    throw new PermanentJobError(
+      'compiling: the decision row carries no valid sha256 to pin into the plan identity',
+      'edit_plan_identity_mismatch',
+    )
+  }
+  return { decision: data.decision as DirectorDecision, decisionSha256: sha }
 }
 
 export async function runCompilingStage(
@@ -100,7 +136,7 @@ export async function runCompilingStage(
     }
     if (watch.cancelled()) throw new CompileCancelledError('after_evidence')
 
-    const decision = await loadDecision(projectId)
+    const { decision, decisionSha256 } = await loadDecision(projectId)
 
     // The generation is read from the PROJECT, not from the asset.
     // `media_assets.generation_id` is nullable and incidental; the authority is
@@ -122,9 +158,7 @@ export async function runCompilingStage(
     }
     const capture = await loadCaptureManifest(asset.id)
     const origin = capture?.origin ?? 'upload'
-    const acceptedWindows = origin === 'teleprompter'
-      ? readAcceptedWindows(capture)
-      : [{ startMs: 0, endMs: durationMs }]
+    const acceptedWindows = sourceAcceptedWindows(origin, capture)
 
     const input = buildCompileInput({
       identity: {
@@ -133,8 +167,8 @@ export async function runCompilingStage(
         sourceAssetId: asset.id,
         sourceChecksum: asset.content_sha256,
         bootManifestSha: pinned.manifest.manifestSha,
-        scriptSnapshotSha: pinned.manifest.scriptSnapshotSha ?? '',
-        decisionSha256: decisionDigest(decision),
+        scriptSnapshotSha: requireSha(pinned.snapshot.snapshotSha, 'the pinned script snapshot'),
+        decisionSha256,
       },
       source: { origin, durationMs, acceptedWindows },
       speech,
@@ -171,6 +205,31 @@ export async function runCompilingStage(
   }
 }
 
+/**
+ * A digest the plan identity is about to cite, or a refusal.
+ *
+ * `?? ''` is the same defect as `?? 0`: it turns "there is no value" into a
+ * value, and every check downstream then judges the substitute instead of the
+ * absence. Here it produced an empty `scriptSnapshotSha` that travelled through
+ * `buildCompileInput` and the whole compiler before the plan contract caught it,
+ * four stages from where it was introduced.
+ *
+ * A source with no teleprompter script is NOT the case this guards. Every
+ * project pins a script snapshot — a null `scene_timeline` yields the documented
+ * empty-scenes snapshot, and `reuseStoredPin` raises `manifest_corrupt` if the
+ * stored sha is missing — so an absent digest here means the pin is broken, not
+ * that the recording had no script.
+ */
+export function requireSha(value: unknown, what: string): string {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) {
+    throw new PermanentJobError(
+      `compiling: ${what} has no sha256 to pin into the plan identity`,
+      'edit_plan_identity_mismatch',
+    )
+  }
+  return value
+}
+
 async function loadProjectGeneration(projectId: string): Promise<string> {
   const { data, error } = await db.from('edit_projects')
     .select('generation_id').eq('id', projectId).maybeSingle()
@@ -182,7 +241,7 @@ async function loadProjectGeneration(projectId: string): Promise<string> {
   return g
 }
 
-interface CaptureManifestRow {
+export interface CaptureManifestRow {
   origin: 'teleprompter' | 'upload'
   manifest: Record<string, unknown>
   manifest_sha256: string
@@ -193,6 +252,30 @@ async function loadCaptureManifest(sourceAssetId: string): Promise<CaptureManife
     .select('origin, manifest, manifest_sha256').eq('source_asset_id', sourceAssetId).maybeSingle()
   if (error) throw new Error(`compiling: reading the capture manifest failed: ${error.message}`)
   return (data as CaptureManifestRow | null) ?? null
+}
+
+/**
+ * What the compiler is told about the source's accepted material.
+ *
+ * AN UPLOAD CARRIES NO WINDOWS AT ALL — not one window spanning the file.
+ * `resolveAllowedDomain` derives the full-source domain itself and treats a
+ * non-empty list on an upload as `edit_plan_divergent`, because a window list
+ * means a creator accepted takes and an upload has no takes to accept. A
+ * whole-file window supplied from here would be the STAGE asserting something
+ * the capture never recorded.
+ *
+ * The first version of this stage synthesised exactly that window, and staging
+ * found it the first time compiling got past the decision digest:
+ *
+ *   upload source carries accepted capture windows
+ *
+ * It is a separate function so the decision is testable without a database —
+ * the defect was in a one-line choice that no unit test could reach.
+ */
+export function sourceAcceptedWindows(
+  origin: 'teleprompter' | 'upload', capture: CaptureManifestRow | null,
+): Array<{ startMs: number; endMs: number }> {
+  return origin === 'teleprompter' ? readAcceptedWindows(capture) : []
 }
 
 /**
@@ -223,20 +306,6 @@ function readAcceptedWindows(capture: CaptureManifestRow | null): Array<{ startM
     }
     return { startMs, endMs }
   })
-}
-
-/** The decision's own digest, as the plan identity records it. */
-function decisionDigest(decision: DirectorDecision): string {
-  const d = (decision as unknown as { decisionSha256?: string }).decisionSha256
-  if (typeof d === 'string' && /^[0-9a-f]{64}$/.test(d)) return d
-  // The decision row carries the digest alongside the document in
-  // edit_director_decisions; when it is not embedded in the document itself the
-  // caller supplies it. Refusing beats inventing one, because the plan identity
-  // is what makes "this plan came from that decision" checkable.
-  throw new PermanentJobError(
-    'compiling: the decision carries no sha256 to pin into the plan identity',
-    'edit_plan_identity_mismatch',
-  )
 }
 
 export function isCompileCancelled(err: unknown): err is CompileCancelledError {

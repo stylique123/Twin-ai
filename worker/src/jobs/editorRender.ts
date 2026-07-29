@@ -459,9 +459,25 @@ export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realD
     deps,
   )
   if (run.code !== 0) {
-    // Deliberately NOT the stderr. Gate-0 §5 forbids persisting raw stderr, and
-    // the exit code plus the graph digest is what identifies the failure without
-    // carrying local paths or signed URLs into a durable row.
+    // THE TAIL GOES TO THE CONTAINER LOG, NOT INTO THE THROWN MESSAGE.
+    //
+    // Gate-0 §5 forbids persisting raw stderr, and the thrown message obeys
+    // that: exit code and graph digest, nothing that could carry a local path or
+    // a signed URL into a durable row. But the tail was being DISCARDED, not
+    // redirected — `ProcRunResult.stderrTail` says "for DIAGNOSIS ONLY" and no
+    // diagnosis existed. The first time this fired for real, all it said was
+    // "ffmpeg exited 234", and the actual cause (an xfade timebase mismatch)
+    // took a separate out-of-band reproduction to see.
+    //
+    // sanitizeError.ts already states the posture this restores: the raw error
+    // stays in the worker's stdout — access-controlled container logs, rotated
+    // by Docker — while durable state gets the sanitized form. Same rule, now
+    // applied to the encoder that produces the most opaque failures of any
+    // stage.
+    console.error(
+      `[render] ffmpeg exited ${String(run.code)} (signal ${String(run.signal)}) ` +
+      `graph=${ffmpegGraphSha256(graph)}\n${run.stderrTail}`,
+    )
     bad(`ffmpeg exited ${String(run.code)} (signal ${String(run.signal)})`, 'render_graph_invalid')
   }
 
@@ -521,7 +537,11 @@ export async function extractCover(
     { budgetMs: catalog.limits.coverExtractTimeoutMs, graceMs: catalog.limits.cancelGraceMs, watch: opts.watch, point: 'during_cover' },
     deps,
   )
-  if (run.code !== 0) bad(`cover extraction exited ${String(run.code)}`, 'output_cover_invalid')
+  if (run.code !== 0) {
+    // Same rule as the render above: tail to the container log, code to the row.
+    console.error(`[render] cover extraction exited ${String(run.code)}\n${run.stderrTail}`)
+    bad(`cover extraction exited ${String(run.code)}`, 'output_cover_invalid')
+  }
   if (!existsSync(coverPath)) bad('cover extraction produced no file', 'output_cover_invalid')
   const bytes = statSync(coverPath).size
   if (bytes < spec.minBytes) bad('the extracted cover is implausibly small', 'output_cover_invalid')

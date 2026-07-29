@@ -146,6 +146,46 @@ export async function markOutputReady(
   })
 }
 
+export interface OutputAssetFacts {
+  width: number
+  height: number
+  fpsNum: number
+  fpsDen: number
+  mime: string
+}
+
+/**
+ * Mint the `media_assets` row for a rendered output.
+ *
+ * 0094 shipped `editor_complete_output` taking an asset id with NOTHING able to
+ * create one — the completion path was unreachable, and the only way to reach
+ * it would have been an unfenced `media_assets` insert from the worker. 0096
+ * added this RPC; the wrapper exists so that remains the only route.
+ *
+ * The path, bucket, owner, digest AND DURATION are not sent. The database
+ * derives them from the reserved `edit_outputs` row, so there is no argument
+ * through which they could disagree with what was actually rendered.
+ *
+ * Duration in particular: it used to be a parameter, and the caller was passing
+ * the plan's PROMISED length rather than the MEASURED one. The ±250 ms
+ * tolerance exists because those differ, so the asset would have recorded a
+ * claim. Width/height/fps stay parameters only because the validator refuses
+ * any output whose raster or frame rate is not exactly the profile's — proven
+ * equal, so no gap to disagree across.
+ */
+export async function createOutputAsset(fence: Fence, facts: OutputAssetFacts): Promise<string> {
+  if (!Number.isInteger(facts.width) || !Number.isInteger(facts.height)
+    || facts.width <= 0 || facts.height <= 0) {
+    throw new PermanentJobError('the output asset needs a measured raster', 'output_stream_mismatch')
+  }
+  return callRpc<string>('editor_create_output_asset', {
+    ...baseArgs(fence),
+    p_width: facts.width, p_height: facts.height,
+    p_fps_num: facts.fpsNum, p_fps_den: facts.fpsDen,
+    p_mime: facts.mime,
+  })
+}
+
 /**
  * THE ONLY PATH TO `completed`.
  *
