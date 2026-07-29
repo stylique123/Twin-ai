@@ -67,9 +67,23 @@ jobs:
       - name: Install ffmpeg + espeak-ng (fixtures & audio extraction) + caption fonts
         # fonts-dejavu-core is REQUIRED by Phase 8: the worker refuses a caption
         # font that is absent or does not match its pinned digest, so a runner
-        # without it fails every render carrying cues. The worker image installs
-        # and digest-verifies the same package.
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core
+        # without it fails every render carrying cues.
+        #
+        # NOT installed via apt on this (Ubuntu) runner: Ubuntu's own package
+        # ships different bytes than Debian bookworm (worker/Dockerfile's base)
+        # for the nominally same font — proven directly, since render_catalog_v1.json
+        # is pinned from a real bookworm build and the VPS deploy failed the first
+        # time this was measured on Ubuntu instead. `apt-get install` here would
+        # reproduce that exact bug in the other direction. This runs the SAME base
+        # image and SAME install command the Dockerfile uses and copies the result
+        # onto the runner, rather than hardcoding a Debian package URL/version that
+        # could silently drift out of sync with the Dockerfile.
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg espeak-ng
+          D=/usr/share/fonts/truetype/dejavu
+          sudo mkdir -p "$D"
+          docker run --rm -v "$D:/out" node:22-bookworm-slim bash -c \
+            "apt-get update -qq && apt-get install -y -qq --no-install-recommends fonts-dejavu-core && cp /usr/share/fonts/truetype/dejavu/*.ttf /out/"
 
       - name: Assert the CI caption fonts match the pinned catalog digests
         # If the runner's fonts differ from the catalog, Phase 8 would fail deep

@@ -45,8 +45,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # a font that does not match; checking here means a drifting Debian package
 # breaks the BUILD rather than reaching production and failing every render.
 #
-# The digests were measured on fonts-dejavu-core 2.37-8 (Ubuntu 24.04) while
-# this image is Debian bookworm. THAT WAS THE WRONG ASSUMPTION, not a
+# The digests were first measured on fonts-dejavu-core 2.37-8 (Ubuntu 24.04)
+# while this image is Debian bookworm. THAT WAS THE WRONG ASSUMPTION, not a
 # hypothetical one: the deploy for the PR that landed this check failed on the
 # real VPS build —
 #
@@ -57,13 +57,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # — proving Debian's build of the SAME nominal font differs from Ubuntu's, byte
 # for byte. The check did exactly its job: it converted an unverified
 # expectation into a loud failure instead of a silent visual defect reaching
-# production. render_catalog_v1.json's two font digests remain UNCORRECTED
-# here on purpose — I have one verified bookworm value (above, from that real
-# build) and not the other (the loop below used to exit on the FIRST mismatch,
-# so DejaVuSans-Bold.ttf was never reached), and inventing the second rather
-# than measuring it would be exactly the defect this whole check exists to
-# prevent. Correcting the catalog is the very next step once both bookworm
-# digests are captured — from a build that reaches the end of the loop below.
+# production.
+#
+# CORRECTED. render_catalog_v1.json now carries digests measured from
+# fonts-dejavu-core 2.37-6 on Debian bookworm itself. DejaVuSans.ttf's value
+# was independently confirmed twice — once from the VPS's own failed build
+# above, once from a second, different-architecture machine (arm64) pulling
+# the same bookworm package fresh on a different day — and both agree exactly.
+# fonts-dejavu-core is `Architecture: all`: pure data, no compiled code, so
+# identical package versions are expected to produce identical bytes regardless
+# of host CPU. The repeated measurement is what turns that expectation into a
+# checked fact instead of a second assumption standing in for the first one.
 COPY render_catalog_v1.json /tmp/render_catalog_v1.json
 RUN set -eu; \
     d="/usr/share/fonts/truetype/dejavu"; \
