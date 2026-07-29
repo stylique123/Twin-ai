@@ -765,20 +765,68 @@ async function main() {
   // =================================================================
   console.log('\n== K. Phase-3 boundary: orchestration only, no downstream side effects ==')
   {
-    const count = async (t) => (await admin.from(t).select('id', { count: 'exact', head: true })).count ?? 0
+    // SCOPED TO THIS RUN'S PROJECTS, and that is the whole correction.
+    //
+    // K2/K3/K4 used to count edit_plans, kind='output' assets and non-null
+    // output pointers across the ENTIRE staging database. That was only ever a
+    // proxy for what they mean — "Phase 3 orchestration produces no downstream
+    // side effects" — and it held for exactly as long as nothing in the world
+    // had ever rendered. Phase 8's first green run left the first real plan and
+    // the first real output asset in staging, and all three assertions began
+    // failing on every branch including main, reporting a defect in Phase 3 that
+    // did not exist while missing nothing that did.
+    //
+    // A global count is not a stronger version of a scoped one. It asserts a
+    // property of the whole database, which no phase owns and every other phase
+    // can falsify.
+    //
+    // ABSENT IS NOT ZERO. `?? 0` here would turn an unreadable table into a
+    // passing boundary assertion — the same defect phase7's edit_plans count had
+    // to learn, and phase8's countRows already refuses.
+    const exact = async (q, what) => {
+      const { count, error } = await q
+      if (error) throw new Error(`K: ${what} is unreadable: ${error.message}`)
+      if (typeof count !== 'number') throw new Error(`K: ${what} returned no count`)
+      return count
+    }
     // Phase 4/5/6 made inspecting/transcribing/analyzing real: inspection,
     // speech, visual, audio and hook are ALL sanctioned analysis writes now.
     // Anything beyond those five (an unbounded namespace) would be a defect —
-    // the media_analyses component check constraint also enforces this.
-    const { count: beyondAnalysis } = await admin.from('media_analyses')
+    // the media_analyses component check constraint also enforces this. This one
+    // stays GLOBAL on purpose: it asserts that no unknown component kind exists
+    // anywhere, which is a claim about the namespace rather than about a run.
+    const beyondAnalysis = await exact(admin.from('media_analyses')
       .select('id', { count: 'exact', head: true })
-      .not('component', 'in', '("inspection","speech","visual","audio","hook")')
-    check('K1 zero analysis rows beyond the five sanctioned components', (beyondAnalysis ?? 0) === 0)
-    check('K2 zero edit_plans rows (planning is a later phase)', (await count('edit_plans')) === 0)
-    const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true }).eq('kind', 'output')
-    check('K3 zero output assets rendered', (outputs ?? 0) === 0)
-    const { data: charged } = await admin.from('edit_projects').select('id,output_asset_id').not('output_asset_id', 'is', null)
-    check('K4 no project acquired an output pointer', (charged ?? []).length === 0)
+      .not('component', 'in', '("inspection","speech","visual","audio","hook")'), 'non-sanctioned analysis rows')
+    check('K1 zero analysis rows beyond the five sanctioned components', beyondAnalysis === 0, `got ${beyondAnalysis}`)
+
+    const { data: mine, error: mineErr } = await admin
+      .from('edit_projects').select('id, generation_id, output_asset_id').in('id', allProjects)
+    if (mineErr) throw new Error(`K: this run's projects are unreadable: ${mineErr.message}`)
+    const rows = mine ?? []
+    // The seed check that stops everything below passing vacuously: if this run
+    // created no projects, "no project acquired an output pointer" is true and
+    // means nothing.
+    check('K0 this run created projects to assert about',
+      rows.length > 0 && rows.length === allProjects.length, `${rows.length}/${allProjects.length}`)
+
+    const plans = await exact(admin.from('edit_plans')
+      .select('id', { count: 'exact', head: true }).in('edit_project_id', allProjects),
+      "this run's edit_plans")
+    check('K2 zero edit_plans for THIS RUN\'s projects (planning is a later phase)', plans === 0, `got ${plans}`)
+
+    // Scoped by GENERATION, not by pointer — an output asset minted for one of
+    // this run's generations with no project pointing at it is a leak K4 cannot
+    // see, and that is exactly the shape a half-finished render would leave.
+    const gens = [...new Set(rows.map((r) => r.generation_id).filter(Boolean))]
+    const outputs = gens.length === 0 ? 0 : await exact(admin.from('media_assets')
+      .select('id', { count: 'exact', head: true }).eq('kind', 'output').in('generation_id', gens),
+      "this run's output assets")
+    check('K3 zero output assets for THIS RUN\'s generations', outputs === 0, `got ${outputs}`)
+
+    const charged = rows.filter((r) => r.output_asset_id !== null)
+    check('K4 no project of THIS RUN acquired an output pointer', charged.length === 0,
+      charged.map((r) => r.id).join(','))
 
     // Event hygiene: no temp paths or raw path-like strings in any event this
     // run produced (error messages are sliced, never raw stack/paths).

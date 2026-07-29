@@ -181,6 +181,10 @@ jobs:
           fi
           supabase functions deploy source-asset --project-ref otgzjsagybpgtwweuptj
           supabase functions deploy start-editor-v2 --project-ref otgzjsagybpgtwweuptj
+          # 8.6: the only way a finished edit is fetched. Deployed from THIS
+          # branch like the others, so the matrix exercises the bytes being
+          # merged rather than whatever staging happened to have.
+          supabase functions deploy editor-output --project-ref otgzjsagybpgtwweuptj
 
       - name: Apply the editor migrations to STAGING (byte-exact) and assert the schema
         # The matrix must run against the EXACT migration files in THIS checkout
