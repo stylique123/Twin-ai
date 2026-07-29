@@ -229,6 +229,24 @@ async function main() {
   console.log('== building the real fixture (espeak + ffmpeg) ==')
   const buf = await makeFixture(dir, 'happy')
 
+  // A DEDICATED validate_source WORKER, which this file omitted on its first
+  // run and which every other phase has.
+  //
+  // `mintReady` waits for the uploaded asset to reach `ready`, and that
+  // transition is done by a WORKER claiming a `validate_source` job — not by
+  // the edge function that finalizes the upload. Without one running, the job
+  // sits unclaimed and the asset stays at `validating` until waitAsset times
+  // out. That is exactly how this failed: 120 seconds at `validating`, and the
+  // renderer never ran at all.
+  //
+  // The editor worker is a SEPARATE process with WORKER_JOB_TYPES=editor_v2, so
+  // it will not pick these up. Both are needed, and this one has to be running
+  // before the first mint rather than alongside the render.
+  //
+  // ALL THREE SCENARIOS mint, including the control, so it stays up for the
+  // whole run and is stopped at the end rather than per-scenario.
+  const validator = startWorker('p8-validator', { WORKER_JOB_TYPES: 'validate_source' })
+
   // ---- A. the happy path: a real video comes out --------------------------
   console.log('\n== A. full pipeline with rendering REAL ==')
   {
@@ -348,6 +366,7 @@ async function main() {
     check('C3 and NO output was ever reserved', n === 0, `got ${n}`)
   }
 
+  stopWorker(validator)
   stopAll()
   console.log(`\n===== phase8: ${passed} passed, ${failures.length} failed =====`)
   if (failures.length) { for (const f of failures) console.log(`  FAILED: ${f}`); process.exit(1) }
