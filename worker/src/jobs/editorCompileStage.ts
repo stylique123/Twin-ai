@@ -47,15 +47,25 @@ export class CompileCancelledError extends Error {
   }
 }
 
-/** The pinned manifest/snapshot pair the stage loop already holds. Typed
- *  structurally so this module does not import the director's private shape. */
+/** The pinned manifest/snapshot PAIR the stage loop already holds. Typed
+ *  structurally so this module does not import the director's private shape.
+ *
+ *  THE SNAPSHOT IS A SEPARATE OBJECT FROM THE MANIFEST, and the first version of
+ *  this interface did not say so — it declared an optional `scriptSnapshotSha`
+ *  on the manifest, where no such field exists. Optional plus `?? ''` meant the
+ *  absence read as an empty string, and staging refused it four stages later:
+ *
+ *    edit_plan_invalid: identity.scriptSnapshotSha: expected a sha256 hex digest
+ *
+ *  Declared REQUIRED here, so the next caller that has only a manifest fails to
+ *  compile instead of quietly compiling a plan whose identity cites nothing. */
 export interface PinnedLike {
   manifest: {
     manifest: unknown
     componentDigests: { visual: string; audio: string; hook: string }
     manifestSha: string
-    scriptSnapshotSha?: string
   }
+  snapshot: { snapshotSha: string }
 }
 
 /**
@@ -157,7 +167,7 @@ export async function runCompilingStage(
         sourceAssetId: asset.id,
         sourceChecksum: asset.content_sha256,
         bootManifestSha: pinned.manifest.manifestSha,
-        scriptSnapshotSha: pinned.manifest.scriptSnapshotSha ?? '',
+        scriptSnapshotSha: requireSha(pinned.snapshot.snapshotSha, 'the pinned script snapshot'),
         decisionSha256,
       },
       source: { origin, durationMs, acceptedWindows },
@@ -193,6 +203,31 @@ export async function runCompilingStage(
   } finally {
     watch.stop()
   }
+}
+
+/**
+ * A digest the plan identity is about to cite, or a refusal.
+ *
+ * `?? ''` is the same defect as `?? 0`: it turns "there is no value" into a
+ * value, and every check downstream then judges the substitute instead of the
+ * absence. Here it produced an empty `scriptSnapshotSha` that travelled through
+ * `buildCompileInput` and the whole compiler before the plan contract caught it,
+ * four stages from where it was introduced.
+ *
+ * A source with no teleprompter script is NOT the case this guards. Every
+ * project pins a script snapshot — a null `scene_timeline` yields the documented
+ * empty-scenes snapshot, and `reuseStoredPin` raises `manifest_corrupt` if the
+ * stored sha is missing — so an absent digest here means the pin is broken, not
+ * that the recording had no script.
+ */
+export function requireSha(value: unknown, what: string): string {
+  if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) {
+    throw new PermanentJobError(
+      `compiling: ${what} has no sha256 to pin into the plan identity`,
+      'edit_plan_identity_mismatch',
+    )
+  }
+  return value
 }
 
 async function loadProjectGeneration(projectId: string): Promise<string> {

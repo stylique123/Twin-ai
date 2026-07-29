@@ -96,3 +96,38 @@ describe('a teleprompter source contributes exactly its pinned windows', () => {
       .toThrow(/not a valid ms span/)
   })
 })
+
+// ---------------------------------------------------------------------------
+// The other half of what this stage hands the compiler: the digests the plan
+// identity cites. Staging refused a plan four stages after this value was set,
+// because `?? ''` had turned an absence into an empty string.
+const { requireSha } = await import('../jobs/editorCompileStage.js')
+
+describe('a digest the plan identity cites is present or the stage refuses', () => {
+  const SHA = 'a'.repeat(64)
+
+  it('passes a real sha256 through unchanged', () => {
+    expect(requireSha(SHA, 'the pinned script snapshot')).toBe(SHA)
+  })
+
+  it('THE REGRESSION: the empty string `?? \'\'` used to produce is refused HERE', () => {
+    // Not four stages later in the plan contract, where the message named the
+    // contract field and said nothing about which stage invented the value.
+    expect(() => requireSha('', 'the pinned script snapshot')).toThrow(/no sha256 to pin/)
+  })
+
+  it('refuses undefined and null — the shapes an optional field actually yields', () => {
+    expect(() => requireSha(undefined, 'x')).toThrow(/no sha256 to pin/)
+    expect(() => requireSha(null, 'x')).toThrow(/no sha256 to pin/)
+  })
+
+  it('refuses near-misses rather than trusting a string that merely looks digest-ish', () => {
+    for (const v of ['a'.repeat(63), 'a'.repeat(65), 'A'.repeat(64), `${'a'.repeat(63)}g`, ` ${'a'.repeat(64)}`]) {
+      expect(() => requireSha(v, 'x')).toThrow(/no sha256 to pin/)
+    }
+  })
+
+  it('names WHAT is missing, so the refusal points at the pin rather than the contract', () => {
+    expect(() => requireSha('', 'the pinned script snapshot')).toThrow(/the pinned script snapshot/)
+  })
+})
