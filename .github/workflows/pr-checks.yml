@@ -49,8 +49,15 @@ jobs:
       # fixture (deterministic PCM decode + ebur128) that proves the frozen
       # loudness/clipping math against real bytes. Absent ffmpeg the fixture
       # self-skips (see audio.test.ts), but CI installs it so the gate runs.
-      - name: Install ffmpeg (Phase-6 audio fixture)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg
+      #
+      # Phase 8 adds a second, heavier reason: render-end-to-end.test.ts BUILDS A
+      # VIDEO — it is the only gate outside the staging matrix that runs the
+      # renderer, and it is what caught the crossfade timebase mismatch that
+      # every graph-string test passed straight over. fonts-dejavu-core comes
+      # with it so the caption burn runs in the same font posture as production
+      # rather than falling back to whatever fontconfig finds.
+      - name: Install ffmpeg + pinned fonts (Phase-6 audio fixture, Phase-8 real render)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-dejavu-core
       - name: Install + test @twinai/shared
         run: |
           npm ci

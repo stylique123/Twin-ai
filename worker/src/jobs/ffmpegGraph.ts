@@ -144,7 +144,30 @@ function segmentChain(seg: PlanSegment, plan: EditPlanV1, nodes: FilterNode[]): 
   nodes.push({
     id: `vfps${i}`, filter: 'fps',
     args: [{ key: 'fps', value: `${plan.output.fpsNum}/${plan.output.fpsDen}` }],
-    inputs: [`vc${i}`], outputs: [vIn],
+    inputs: [`vc${i}`], outputs: [`vf${i}`],
+  })
+  // TIMEBASE IS PART OF THE CONFORMANCE, and leaving it out is what stopped the
+  // renderer from running at all the first time it was ever executed:
+  //
+  //   [Parsed_xfade_42] First input link main timebase (1/1000000) do not match
+  //                     the corresponding second input link xfade timebase (1/30)
+  //   [Parsed_xfade_42] Failed to configure output pad
+  //
+  // `fps` leaves the link at 1/fps, while `concat` and `xfade` emit AV_TIME_BASE
+  // (1/1000000). In a left fold the accumulator is therefore 1/1000000 from the
+  // first join onward while every fresh segment is still 1/fps, and `xfade`
+  // requires its two inputs to agree. Hard cuts never noticed because `concat`
+  // conforms timebases itself.
+  //
+  // Conformed HERE rather than at the xfade, because this chain is where the
+  // stream is made uniform and its own comment says so — a filter-local patch
+  // would leave the identical trap for the next two-input filter added. The
+  // literal is `AVTB` and not `1/${fpsDen}/${fpsNum}` so that a fractional rate
+  // (30000/1001) cannot round into a timebase that disagrees with the frames.
+  nodes.push({
+    id: `vtb${i}`, filter: 'settb',
+    args: [{ key: 'expr', value: 'AVTB' }],
+    inputs: [`vf${i}`], outputs: [vIn],
   })
   // Audio: the same trim, then conform to the output sample format.
   nodes.push({
