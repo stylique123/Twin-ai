@@ -206,7 +206,14 @@ export interface EditPlanV1 {
 
 // ---- stable errors (Gate-0 §5) ----------------------------------------------
 export class EditPlanError extends Error {
-  code: string
+  // PERMANENT BY CONSTRUCTION. Compiling and validating are pure functions of
+  // immutable pinned evidence and an immutable decision — the second attempt
+  // has exactly the inputs the first one had, so it produces exactly the same
+  // failure. `errors.ts` reads this flag structurally (it cannot import this
+  // module without a cycle); dropping it silently restores a five-retry loop on
+  // an error that can never clear.
+  readonly permanent = true
+  readonly code: string
   constructor(message: string, code: string) {
     super(message)
     this.name = 'EditPlanError'

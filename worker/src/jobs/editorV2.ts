@@ -38,7 +38,7 @@ import {
   runRenderingStage, runValidatingStage, renderFailureCode, isRenderCancelled,
   type RenderStageOutcome, type ValidateStageOutcome,
 } from './editorRenderStage.js'
-import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost } from '../errors.js'
+import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost, declaresPermanent } from '../errors.js'
 import { queueSafeError, sanitizeError } from '../sanitizeError.js'
 import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
 import { AnalyzeCancelledError, DirectorCancelledError } from './editorCancel.js'
@@ -721,7 +721,12 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
     // silently; every state write is fenced so nothing was corrupted.
     if (isLeaseLost(err)) throw err
 
-    const permanent = err instanceof PermanentJobError
+    // `declaresPermanent`, not `instanceof`: a compile failure is an
+    // `EditPlanError`, which is permanent by construction. Testing nominally
+    // meant the project stayed `processing` through five retries of a failure
+    // that could never clear, and only settled as `retries_exhausted` — losing
+    // the real code (`edit_plan_divergent`) at exactly the moment it mattered.
+    const permanent = declaresPermanent(err)
     const lastAttempt = job.attempts >= job.max_attempts
     // Everything persisted goes through the sanitizer: stable code, safe
     // stage, retry class, bounded REDACTED message. The raw error stays in
@@ -733,7 +738,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // so no project ever hangs on a dead-lettered job. (If we crash right
         // here instead, the reconciler sweep closes the same gap.)
         await finishProject(job, projectId, 'failed',
-          permanent ? (err as PermanentJobError).code : 'retries_exhausted',
+          permanent ? err.code : 'retries_exhausted',
           { error: safe.message, code: safe.code, retry: safe.retry, stage: safe.stage,
             attempt: job.attempts, stages_ran: ranStages })
       } else {

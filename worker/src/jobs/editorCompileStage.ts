@@ -148,9 +148,7 @@ export async function runCompilingStage(
     }
     const capture = await loadCaptureManifest(asset.id)
     const origin = capture?.origin ?? 'upload'
-    const acceptedWindows = origin === 'teleprompter'
-      ? readAcceptedWindows(capture)
-      : [{ startMs: 0, endMs: durationMs }]
+    const acceptedWindows = sourceAcceptedWindows(origin, capture)
 
     const input = buildCompileInput({
       identity: {
@@ -208,7 +206,7 @@ async function loadProjectGeneration(projectId: string): Promise<string> {
   return g
 }
 
-interface CaptureManifestRow {
+export interface CaptureManifestRow {
   origin: 'teleprompter' | 'upload'
   manifest: Record<string, unknown>
   manifest_sha256: string
@@ -219,6 +217,30 @@ async function loadCaptureManifest(sourceAssetId: string): Promise<CaptureManife
     .select('origin, manifest, manifest_sha256').eq('source_asset_id', sourceAssetId).maybeSingle()
   if (error) throw new Error(`compiling: reading the capture manifest failed: ${error.message}`)
   return (data as CaptureManifestRow | null) ?? null
+}
+
+/**
+ * What the compiler is told about the source's accepted material.
+ *
+ * AN UPLOAD CARRIES NO WINDOWS AT ALL — not one window spanning the file.
+ * `resolveAllowedDomain` derives the full-source domain itself and treats a
+ * non-empty list on an upload as `edit_plan_divergent`, because a window list
+ * means a creator accepted takes and an upload has no takes to accept. A
+ * whole-file window supplied from here would be the STAGE asserting something
+ * the capture never recorded.
+ *
+ * The first version of this stage synthesised exactly that window, and staging
+ * found it the first time compiling got past the decision digest:
+ *
+ *   upload source carries accepted capture windows
+ *
+ * It is a separate function so the decision is testable without a database —
+ * the defect was in a one-line choice that no unit test could reach.
+ */
+export function sourceAcceptedWindows(
+  origin: 'teleprompter' | 'upload', capture: CaptureManifestRow | null,
+): Array<{ startMs: number; endMs: number }> {
+  return origin === 'teleprompter' ? readAcceptedWindows(capture) : []
 }
 
 /**

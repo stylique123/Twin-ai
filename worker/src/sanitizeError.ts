@@ -4,7 +4,7 @@
 // command lines. Everything persisted goes through here; the RAW error stays
 // only in the worker's stdout (container logs — access-controlled, rotated by
 // Docker's log retention).
-import { PermanentJobError } from './errors.js'
+import { PermanentJobError, declaresPermanent } from './errors.js'
 
 export interface SafeError {
   code: string
@@ -35,10 +35,14 @@ export function redact(text: string): string {
 
 export function sanitizeError(err: unknown, stage: string): SafeError {
   const raw = err instanceof Error ? err.message : String(err)
-  const cancelled = /cancel/i.test(raw) && !(err instanceof PermanentJobError)
-  const permanent = err instanceof PermanentJobError
+  // `declaresPermanent`, not `instanceof`: an EditPlanError is permanent too,
+  // and recording it as `retryable` told the operational record the opposite of
+  // what the queue does with it. Deliberately the NARROW predicate — the code
+  // written down is one the thrower chose, never one inferred from a message.
+  const cancelled = /cancel/i.test(raw) && !declaresPermanent(err)
+  const permanent = declaresPermanent(err)
   const code = permanent
-    ? (err as PermanentJobError).code
+    ? err.code
     : /stage_timeout/.test(raw) ? 'stage_timeout'
     : /download aborted|abort/i.test(raw) ? 'aborted'
     : /too large|exceeded cap/.test(raw) ? 'download_too_large'
@@ -65,8 +69,11 @@ export function sanitizeError(err: unknown, stage: string): SafeError {
 // while preserving permanent-vs-retryable classification; never rethrow raw
 // provider stderr across that boundary.
 export function queueSafeError(err: unknown, safe: SafeError): Error {
+  // THIS is the load-bearing one. index.ts classifies the error it CATCHES, not
+  // the error the stage threw, so an EditPlanError downgraded to a plain Error
+  // here is a dead-lettering job turned back into a retrying one.
   const message = `${safe.code}: ${safe.message}`
-  return err instanceof PermanentJobError
+  return declaresPermanent(err)
     ? new PermanentJobError(message, err.code)
     : new Error(message)
 }

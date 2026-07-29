@@ -22,11 +22,41 @@ export class LeaseLostError extends Error {
   }
 }
 
-export function isPermanent(err: unknown): err is PermanentJobError {
-  return err instanceof PermanentJobError
+/** What every classifier here actually needs: a stable code and a claim that
+ *  retrying cannot help. `PermanentJobError` is one implementation; the plan
+ *  contract's `EditPlanError` is another and must NOT import from a module that
+ *  imports it back, so the test below is STRUCTURAL rather than nominal. */
+export interface CodedPermanentError extends Error {
+  readonly permanent: true
+  readonly code: string
+}
+
+/** Does the error itself CLAIM to be permanent, carrying its own stable code?
+ *
+ *  Narrower than `isPermanent`, which also recognises fenced-RPC refusals by
+ *  their message. The durable record uses this one, so an error's recorded code
+ *  is always a code the thrower chose rather than one a regex inferred. */
+export function declaresPermanent(err: unknown): err is CodedPermanentError {
+  if (!(err instanceof Error)) return false
+  const e = err as { permanent?: unknown; code?: unknown }
+  return e.permanent === true && typeof e.code === 'string' && e.code !== ''
+}
+
+export function isPermanent(err: unknown): err is CodedPermanentError {
+  // `EditPlanError` reaches here: the compiler is a pure function of immutable
+  // pinned evidence and an immutable decision, so a plan that fails to compile
+  // fails identically on every attempt. Staging burned five retries on one
+  // before this test was structural — deterministic failure charged to the
+  // retry budget, and recorded as `retryable` when it never was.
+  return declaresPermanent(err)
     // The fenced editor RPCs raise these when state says "you are not the
     // driver anymore / the work is settled" — retrying cannot change that.
     || (err instanceof Error && /project_terminal|not a terminal status|missing project_id/.test(err.message))
+}
+
+/** The stable code of a permanent error, for the durable record. */
+export function permanentCode(err: unknown): string {
+  return declaresPermanent(err) ? err.code : 'permanent_failure'
 }
 
 export function isLeaseLost(err: unknown): err is LeaseLostError {
