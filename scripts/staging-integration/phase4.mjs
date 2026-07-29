@@ -537,10 +537,32 @@ async function main() {
     const { count: transcripts } = await admin.from('transcripts')
       .select('id', { count: 'exact', head: true }).in('owner_id', [uA.id, uB.id])
     check('K2 zero legacy transcript rows for this run (speech lives in media_analyses)', (transcripts ?? 0) === 0)
-    const count = async (t) => (await admin.from(t).select('id', { count: 'exact', head: true })).count ?? 0
-    check('K3 zero edit_plans', (await count('edit_plans')) === 0)
-    const { count: outputs } = await admin.from('media_assets').select('id', { count: 'exact', head: true }).eq('kind', 'output')
-    check('K4 zero output assets', (outputs ?? 0) === 0)
+    // SCOPED TO THIS RUN. These two counted edit_plans and kind='output' assets
+    // across the ENTIRE staging database, which was a proxy for "this phase
+    // produces no downstream side effects" and held only while nothing in the
+    // world had ever rendered. Phase 8's first green run left the first real
+    // plan and output asset in staging, and the global form began failing on
+    // every branch including main — reporting a defect in this phase that does
+    // not exist. A global count is not a stronger scoped count; it asserts a
+    // property of the whole database that no phase owns and any other phase can
+    // falsify. (K2/K5 below were already scoped by owner — the idiom was here
+    // all along; these two just looked too obviously zero to need it.)
+    //
+    // ABSENT IS NOT ZERO: an unreadable table must go RED, not return 0 and pass.
+    const scopedCount = async (q, what) => {
+      const { count, error } = await q
+      if (error) throw new Error(`${what} is unreadable: ${error.message}`)
+      if (typeof count !== 'number') throw new Error(`${what} returned no count`)
+      return count
+    }
+    check('K0 this run created projects to assert about', allProjects.length > 0, `${allProjects.length}`)
+    const plans = await scopedCount(admin.from('edit_plans')
+      .select('id', { count: 'exact', head: true }).in('edit_project_id', allProjects), "this run's edit_plans")
+    check('K3 zero edit_plans for THIS RUN\'s projects', plans === 0, `got ${plans}`)
+    const outputs = await scopedCount(admin.from('media_assets')
+      .select('id', { count: 'exact', head: true }).eq('kind', 'output').in('owner_id', [uA.id, uB.id]),
+      "this run's output assets")
+    check('K4 zero output assets for THIS RUN\'s users', outputs === 0, `got ${outputs}`)
     const { count: credits } = await admin.from('credit_events').select('id', { count: 'exact', head: true }).in('user_id', [uA.id, uB.id])
     check('K5 zero credit changes for this run', (credits ?? 0) === 0)
     // Fallback probes ran ONLY where the matrix forced the upgrade path.
