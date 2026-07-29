@@ -283,6 +283,18 @@ async function main() {
       Number(assetRow?.duration_ms) === Number(vid?.measured_duration_ms),
       `asset=${assetRow?.duration_ms} measured=${vid?.measured_duration_ms}`)
 
+    // ARTIFACT ASSERTIONS ONLY RUN IF THERE IS AN ARTIFACT.
+    //
+    // The first time A failed, `vid` was undefined and the next line threw
+    // `TypeError: Cannot read properties of undefined (reading 'storage_bucket')`
+    // — which killed the whole file and took scenarios B and C with it. A
+    // harness that crashes on the failure it is meant to REPORT hides every
+    // other result behind the first one, and B (cancellation) and C (the flag
+    // control) are independent questions that deserved to be asked anyway.
+    if (!vid || vid.state !== 'ready') {
+      check('A11-A18 SKIPPED: no ready video output to probe', false,
+        'the artifact assertions could not run — see the failures above for why')
+    } else {
     // THE ARTIFACT ITSELF. Everything above is rows describing a video; this is
     // the video.
     const local = join(dir, 'out.mp4')
@@ -309,6 +321,8 @@ async function main() {
     check('A18 the cover is a real image of the frozen size',
       coverBytes > 0 && (coverProbe.streams ?? [])[0]?.width === 1080 && (coverProbe.streams ?? [])[0]?.height === 1920,
       `${coverBytes}B ${(coverProbe.streams ?? [])[0]?.width}x${(coverProbe.streams ?? [])[0]?.height}`)
+
+    }
 
     const codes = (await getEvents(pid)).map((e) => e.message_code)
     check('A19 no render_failed / validate_failed event',

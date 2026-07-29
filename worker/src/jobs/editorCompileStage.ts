@@ -58,9 +58,24 @@ export interface PinnedLike {
   }
 }
 
-async function loadDecision(projectId: string): Promise<DirectorDecision> {
+/**
+ * The decision document AND its digest.
+ *
+ * `decision_sha256` is a COLUMN on `edit_director_decisions`, not a field
+ * inside the `decision` JSON. The first version of this file selected only the
+ * document and then went looking for the digest inside it — and I had written a
+ * comment two lines below saying the row carries it alongside. Staging found it
+ * the first time compiling was ever reached:
+ *
+ *   edit_plan_identity_mismatch: the decision carries no sha256 to pin
+ *
+ * It failed CLOSED, which is the one good thing about it: the plan identity is
+ * what makes "this plan came from that decision" checkable, so refusing beat
+ * inventing a digest. But it refused every real run.
+ */
+async function loadDecision(projectId: string): Promise<{ decision: DirectorDecision; decisionSha256: string }> {
   const { data, error } = await db.from('edit_director_decisions')
-    .select('decision').eq('edit_project_id', projectId).maybeSingle()
+    .select('decision, decision_sha256').eq('edit_project_id', projectId).maybeSingle()
   if (error) throw new Error(`compiling: reading the decision failed: ${error.message}`)
   if (!data?.decision) {
     // Reaching `compiling` without a decision means directing did not really
@@ -72,7 +87,18 @@ async function loadDecision(projectId: string): Promise<DirectorDecision> {
       'edit_plan_invalid',
     )
   }
-  return data.decision as DirectorDecision
+  const sha = (data as { decision_sha256?: string }).decision_sha256
+  if (typeof sha !== 'string' || !/^[0-9a-f]{64}$/.test(sha)) {
+    // 0088 declares the column NOT NULL with a sha256 CHECK, so this is
+    // unreachable through the fenced RPC. It stays because "unreachable" is a
+    // claim about today's writers, and the plan identity is not worth taking on
+    // trust.
+    throw new PermanentJobError(
+      'compiling: the decision row carries no valid sha256 to pin into the plan identity',
+      'edit_plan_identity_mismatch',
+    )
+  }
+  return { decision: data.decision as DirectorDecision, decisionSha256: sha }
 }
 
 export async function runCompilingStage(
@@ -100,7 +126,7 @@ export async function runCompilingStage(
     }
     if (watch.cancelled()) throw new CompileCancelledError('after_evidence')
 
-    const decision = await loadDecision(projectId)
+    const { decision, decisionSha256 } = await loadDecision(projectId)
 
     // The generation is read from the PROJECT, not from the asset.
     // `media_assets.generation_id` is nullable and incidental; the authority is
@@ -134,7 +160,7 @@ export async function runCompilingStage(
         sourceChecksum: asset.content_sha256,
         bootManifestSha: pinned.manifest.manifestSha,
         scriptSnapshotSha: pinned.manifest.scriptSnapshotSha ?? '',
-        decisionSha256: decisionDigest(decision),
+        decisionSha256,
       },
       source: { origin, durationMs, acceptedWindows },
       speech,
@@ -223,20 +249,6 @@ function readAcceptedWindows(capture: CaptureManifestRow | null): Array<{ startM
     }
     return { startMs, endMs }
   })
-}
-
-/** The decision's own digest, as the plan identity records it. */
-function decisionDigest(decision: DirectorDecision): string {
-  const d = (decision as unknown as { decisionSha256?: string }).decisionSha256
-  if (typeof d === 'string' && /^[0-9a-f]{64}$/.test(d)) return d
-  // The decision row carries the digest alongside the document in
-  // edit_director_decisions; when it is not embedded in the document itself the
-  // caller supplies it. Refusing beats inventing one, because the plan identity
-  // is what makes "this plan came from that decision" checkable.
-  throw new PermanentJobError(
-    'compiling: the decision carries no sha256 to pin into the plan identity',
-    'edit_plan_identity_mismatch',
-  )
 }
 
 export function isCompileCancelled(err: unknown): err is CompileCancelledError {
