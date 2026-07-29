@@ -46,19 +46,46 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # breaks the BUILD rather than reaching production and failing every render.
 #
 # The digests were measured on fonts-dejavu-core 2.37-8 (Ubuntu 24.04) while
-# this image is Debian bookworm. The font files are architecture-independent
-# and the 2.37 series is stable, but that is an expectation — this check is
-# what converts it into a verified property, or a loud failure.
+# this image is Debian bookworm. THAT WAS THE WRONG ASSUMPTION, not a
+# hypothetical one: the deploy for the PR that landed this check failed on the
+# real VPS build —
+#
+#   FATAL: caption font DejaVuSans.ttf digest mismatch
+#     catalog: ae7b7855e115a5966d8b1b3f80f254ccc117ec86f9965e202ee2940453837280
+#     image:   abdc775b21b1bc470d50c97e790d276f2054b7504e56e5bd3e64f48d68582322
+#
+# — proving Debian's build of the SAME nominal font differs from Ubuntu's, byte
+# for byte. The check did exactly its job: it converted an unverified
+# expectation into a loud failure instead of a silent visual defect reaching
+# production. render_catalog_v1.json's two font digests remain UNCORRECTED
+# here on purpose — I have one verified bookworm value (above, from that real
+# build) and not the other (the loop below used to exit on the FIRST mismatch,
+# so DejaVuSans-Bold.ttf was never reached), and inventing the second rather
+# than measuring it would be exactly the defect this whole check exists to
+# prevent. Correcting the catalog is the very next step once both bookworm
+# digests are captured — from a build that reaches the end of the loop below.
 COPY render_catalog_v1.json /tmp/render_catalog_v1.json
 RUN set -eu; \
     d="/usr/share/fonts/truetype/dejavu"; \
+    bad=0; \
     for f in DejaVuSans.ttf DejaVuSans-Bold.ttf; do \
-      [ -f "$d/$f" ] || { echo "FATAL: caption font $f is missing from the image"; exit 1; }; \
+      if [ ! -f "$d/$f" ]; then echo "FATAL: caption font $f is missing from the image"; bad=1; continue; fi; \
       want=$(python3 -c "import json,sys;print(json.load(open('/tmp/render_catalog_v1.json'))['fonts'][sys.argv[1]]['sha256'])" "$f"); \
       got=$(sha256sum "$d/$f" | cut -d' ' -f1); \
-      [ "$want" = "$got" ] || { echo "FATAL: caption font $f digest mismatch"; echo "  catalog: $want"; echo "  image:   $got"; echo "  Update render_catalog_v1.json DELIBERATELY if the font was intentionally changed."; exit 1; }; \
+      if [ "$want" != "$got" ]; then \
+        echo "FATAL: caption font $f digest mismatch"; echo "  catalog: $want"; echo "  image:   $got"; \
+        bad=1; continue; \
+      fi; \
       echo "font pinned: $f $got"; \
-    done
+    done; \
+    if [ "$bad" != 0 ]; then \
+      echo "One or more caption fonts do not match render_catalog_v1.json."; \
+      echo "This loop CHECKS EVERY FONT BEFORE FAILING (unlike the version that shipped"; \
+      echo "with this comment) specifically so a failed build reports every real digest"; \
+      echo "in one shot, rather than the ONE PER BUILD ATTEMPT the previous version gave."; \
+      echo "Update render_catalog_v1.json DELIBERATELY with the digests printed above."; \
+      exit 1; \
+    fi
 
 WORKDIR /app
 
