@@ -121,7 +121,12 @@ export const env = {
   // Bucket the rendered output and cover are uploaded to. The PATH is never
   // configured — it comes from `editor_reserve_output`, which derives it
   // server-side.
-  editorOutputBucket: (process.env.EDITOR_OUTPUT_BUCKET ?? 'media').trim(),
+  // 'edits' — the bucket 0065 creates for finished renders. The old default was
+  // 'media', which no migration creates, no policy references and no deployment
+  // sets: every render would have encoded, validated, and then 404'd on upload.
+  // 0097 fences the reservation RPC to the same value, so a wrong setting here
+  // is refused before an encode is spent rather than after one.
+  editorOutputBucket: (process.env.EDITOR_OUTPUT_BUCKET ?? 'edits').trim(),
   // Where the catalog's caption fonts live in the image. Only read when a plan
   // actually has cues.
   editorFontsDir: (process.env.EDITOR_FONTS_DIR ?? '/usr/share/fonts/truetype/dejavu').trim(),

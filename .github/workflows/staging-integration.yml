@@ -261,12 +261,16 @@ jobs:
           # A9/F4 fail — correctly, since they can no longer pretend an
           # unreadable table means no rows.
           #
+          # 0097 fences the output bucket. Without it the reservation accepts any
+          # bucket name, which is how 'media' — a bucket that does not exist —
+          # survived nine green Gate-F runs.
+          #
           # NOT ADDED: 0095 (Track C creative-transfer lineage). It is on main
           # and has never been applied to staging. Nothing in Phases 1-7 reads
           # those tables so nothing fails today, but that is a schema drift
           # between main and staging, and it belongs to Track C's lane to close
           # rather than being silently swept in here.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion; do
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
@@ -291,9 +295,16 @@ jobs:
               if to_regproc('public.editor_assert_director_decision_v2') is null then raise exception 'missing fn editor_assert_director_decision_v2 (0092)'; end if;
               if not exists (select 1 from pg_trigger where tgname='trg_editor_director_decision_guard')
                 then raise exception 'missing trigger trg_editor_director_decision_guard (0092)'; end if;
+              -- 0065 creates exactly two buckets. The renderer's output bucket
+              -- defaulted to 'media', which is neither of them, so every render
+              -- would have 404'd on upload. Assert the bucket EXISTS rather than
+              -- trusting the default — a name is not a bucket.
+              if not exists (select 1 from storage.buckets where id = 'edits')
+                then raise exception 'missing storage bucket edits (0065) — the renderer has nowhere to publish'; end if;
+              if to_regproc('public.editor_reserve_output') is null then raise exception 'missing fn editor_reserve_output (0094)'; end if;
             end
             \$\$;"
-          echo "staging schema matches this checkout (0090-0093 + brand fixture applied)"
+          echo "staging schema matches this checkout (0090-0094, 0096-0097 + brand fixture applied)"
 
       - name: Build worker (the real one that will run in production)
         run: cd worker && npm ci && npm run build

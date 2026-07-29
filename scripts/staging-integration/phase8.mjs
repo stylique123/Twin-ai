@@ -273,8 +273,22 @@ async function main() {
     check('A7 READY MEANS MEASURED: the video row carries bytes, digest and duration',
       Number(vid?.bytes) > 0 && /^[0-9a-f]{64}$/.test(vid?.sha256 ?? '') && Number(vid?.measured_duration_ms) > 0,
       JSON.stringify({ bytes: vid?.bytes, sha: vid?.sha256?.slice(0, 12), dur: vid?.measured_duration_ms }))
-    check('A8 the path is SERVER-DERIVED under the owner prefix',
+    // Named for what it CHECKS. The owner id is the second segment, not the
+    // first, so this is not "under the owner prefix" in the sense the `edits`
+    // RLS policies mean (they key on foldername[1]); finished edits are served
+    // by an edge function that authorizes and signs with the service role, the
+    // way review/social/generate-thumbnail already do. 0097 records that as a
+    // decision. The old name would have been quoted later as proof of a
+    // property the path does not have.
+    check('A8 the path is SERVER-DERIVED and contains the owner and project ids',
       vid?.storage_path === `edit-outputs/${user.id}/${pid}/1/output.mp4`, vid?.storage_path)
+    // THE BUCKET. It defaulted to 'media', which 0065 never creates — the render
+    // would have encoded, validated, and then 404'd on upload. Gate-F reserved
+    // into 'media' nine times and passed every time, because a throwaway
+    // Postgres has no storage for a bucket name to be wrong about.
+    check('A8b both outputs are in the edits bucket that actually exists',
+      vid?.storage_bucket === 'edits' && cov?.storage_bucket === 'edits',
+      `video=${vid?.storage_bucket} cover=${cov?.storage_bucket}`)
 
     const { data: assetRow } = await admin.from('media_assets').select('*').eq('id', proj.output_asset_id).maybeSingle()
     check('A9 the output media_asset is kind=output and ready',
