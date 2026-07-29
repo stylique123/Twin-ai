@@ -282,6 +282,15 @@ jobs:
           echo "== applying the staging-only brand fixture =="
           psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f scripts/staging-integration/staging-brand-schema.sql
 
+          # STAGING-ONLY fixture, never a migration: the same reason as the brand
+          # tables. The matrix applies only the EDITOR migrations, so staging
+          # never received 0065 and has no `edits` bucket — the one the renderer
+          # publishes into. Phases 1-7 never noticed because sources go to
+          # `takes` and nothing before Phase 8 ever wrote an output. Production
+          # has both buckets from 0065/0069 and gets nothing from here.
+          echo "== applying the staging-only storage fixture =="
+          psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f scripts/staging-integration/staging-storage-fixture.sql
+
           echo "== asserting the required schema objects exist =="
           psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -c "
             do \$\$
@@ -298,13 +307,17 @@ jobs:
               -- 0065 creates exactly two buckets. The renderer's output bucket
               -- defaulted to 'media', which is neither of them, so every render
               -- would have 404'd on upload. Assert the bucket EXISTS rather than
-              -- trusting the default — a name is not a bucket.
+              -- trusting the default — a name is not a bucket. This fired on its
+              -- first run: staging had never received 0065 either, so correcting
+              -- the name alone would have moved the 404, not removed it.
               if not exists (select 1 from storage.buckets where id = 'edits')
-                then raise exception 'missing storage bucket edits (0065) — the renderer has nowhere to publish'; end if;
+                then raise exception 'missing storage bucket edits (staging storage fixture) — the renderer has nowhere to publish'; end if;
+              if not exists (select 1 from storage.buckets where id = 'takes')
+                then raise exception 'missing storage bucket takes — sources cannot be uploaded'; end if;
               if to_regproc('public.editor_reserve_output') is null then raise exception 'missing fn editor_reserve_output (0094)'; end if;
             end
             \$\$;"
-          echo "staging schema matches this checkout (0090-0094, 0096-0097 + brand fixture applied)"
+          echo "staging schema matches this checkout (0090-0094, 0096-0097 + brand and storage fixtures applied)"
 
       - name: Build worker (the real one that will run in production)
         run: cd worker && npm ci && npm run build
