@@ -330,3 +330,12 @@ jobs:
         # (never a Supabase secret) so production stays simulated. GEMINI_API_KEY
         # is threaded via job env above.
         run: node scripts/staging-integration/phase7.mjs
+
+      - name: Run Phase 8 integration matrix (REAL render — the only thing that runs the renderer)
+        # Phases 1-7 leave EDITOR_RENDER_ENABLED unset, so compiling/rendering/
+        # validating are unreachable code in every one of them. This phase is
+        # the ONLY place the renderer executes, and it asserts on the ARTIFACT
+        # (bytes in storage, ffprobe streams, duration within the frozen
+        # tolerance) rather than on the project status, which a scaffold
+        # produces identically.
+        run: node scripts/staging-integration/phase8.mjs
