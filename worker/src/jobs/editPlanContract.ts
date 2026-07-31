@@ -23,10 +23,12 @@ import { canonicalJson, sha256Hex } from './editorManifest.js'
 
 // v2: cues gained `lineTokens` (the exact per-token texts behind each line)
 // and `lineEmphasis` (one highlight flag per token, aligned to `lineTokens`).
-// A plan pinned under v1 has neither field and is never reinterpreted as v2 —
-// a project's boot manifest is fixed at pin time, so this only affects NEW
-// plans compiled after this change.
-export const EDIT_PLAN_SCHEMA_VERSION = 2
+// v3: captions gained `brandPrimaryColourAss`/`brandHighlightColourAss` — the
+// owner's brand colors, already converted to ASS, or null when they have none
+// pinned. A plan pinned under an earlier version lacks these fields and is
+// never reinterpreted as v3 — a project's boot manifest is fixed at pin time,
+// so each bump only affects NEW plans compiled after it.
+export const EDIT_PLAN_SCHEMA_VERSION = 3
 export const EDIT_PLAN_VERSION = 'edit-plan-v1'
 export const EDIT_PLAN_MAX_BYTES = 1048576
 
@@ -153,6 +155,15 @@ export interface PlanCaptions {
   presetId: CaptionPresetId
   fontSizePx: number
   marginVerticalPx: number
+  // The brand's own colors, already converted to ASS &HAABBGGRR — null when the
+  // owner has none pinned (colorsSource: 'none' in the brand snapshot), which is
+  // the common case today. null is a real, valid state, never a placeholder for
+  // "not yet resolved": the RENDER stage is what turns null into the frozen
+  // catalog preset's own default, exactly once, so there is one place that
+  // answers "what color does this caption actually use" rather than a
+  // null-coalesce repeated at every reader.
+  brandPrimaryColourAss: string | null
+  brandHighlightColourAss: string | null
   cues: PlanCue[]
 }
 export interface PlanZoom {
@@ -284,6 +295,17 @@ function bool(v: unknown, where: string): boolean {
   if (typeof v !== 'boolean') fail(`${where}: expected boolean`)
   return v
 }
+// Same &HAABBGGRR shape assCaptions.ts checks before ever splicing a color into
+// an ASS document. null is a real, valid value here (see PlanCaptions) — not
+// "absent," which is why this takes null explicitly rather than being folded
+// into a generic optional-string helper that would treat every falsy input the
+// same way.
+export const ASS_COLOUR_RE = /^&H[0-9A-Fa-f]{8}$/
+function nullableAssColour(v: unknown, where: string): string | null {
+  if (v === null) return null
+  if (typeof v !== 'string' || !ASS_COLOUR_RE.test(v)) fail(`${where}: expected null or an &HAABBGGRR colour`)
+  return v
+}
 function token(v: unknown, where: string): string {
   if (typeof v !== 'string' || !TOKEN_RE.test(v)) fail(`${where}: expected an identifier token`)
   return v
@@ -320,7 +342,9 @@ const TIMELINE_KEYS = ['segments', 'removals', 'cutsPerMinuteMilli'] as const
 const CUE_KEYS = [
   'index', 'outputStartMs', 'outputEndMs', 'lines', 'emphasisWordIndices', 'lineTokens', 'lineEmphasis',
 ] as const
-const CAPTIONS_KEYS = ['presetId', 'fontSizePx', 'marginVerticalPx', 'cues'] as const
+const CAPTIONS_KEYS = [
+  'presetId', 'fontSizePx', 'marginVerticalPx', 'brandPrimaryColourAss', 'brandHighlightColourAss', 'cues',
+] as const
 const ZOOM_KEYS = ['index', 'outputStartMs', 'outputEndMs', 'scaleMilli', 'intensity', 'reasonCode',
   'anchorWordIndex', 'easeInMs', 'easeOutMs'] as const
 const TRANSITION_KEYS = ['index', 'atSegmentIndex', 'kind', 'overlapMs'] as const
@@ -591,6 +615,8 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     presetId: oneOf(cap.presetId, CAPTION_PRESET_IDS, 'captions.presetId'),
     fontSizePx: int(cap.fontSizePx, 8, 400, 'captions.fontSizePx'),
     marginVerticalPx: int(cap.marginVerticalPx, 0, 4000, 'captions.marginVerticalPx'),
+    brandPrimaryColourAss: nullableAssColour(cap.brandPrimaryColourAss, 'captions.brandPrimaryColourAss'),
+    brandHighlightColourAss: nullableAssColour(cap.brandHighlightColourAss, 'captions.brandHighlightColourAss'),
     cues,
   }
 

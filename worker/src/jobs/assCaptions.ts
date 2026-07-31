@@ -85,6 +85,10 @@ export interface AssStyleOptions {
   fontSizePx: number
   marginVerticalPx: number
   emphasisColourAss: string
+  // The caption's own text color — brand-resolved-or-catalog-default is decided
+  // by the caller (editorRenderStage.ts), never here; this file only ever
+  // splices whatever it's given.
+  primaryColourAss: string
 }
 
 // The ONLY live (unescaped) braces this file ever deliberately emits — the
@@ -135,6 +139,9 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
   if (!/^&H[0-9A-Fa-f]{8}$/.test(style.emphasisColourAss)) {
     throw new EditPlanError('ass: emphasis colour is not a plain &HAABBGGRR value', 'render_font_integrity_failed')
   }
+  if (!/^&H[0-9A-Fa-f]{8}$/.test(style.primaryColourAss)) {
+    throw new EditPlanError('ass: primary colour is not a plain &HAABBGGRR value', 'render_font_integrity_failed')
+  }
   const lines: string[] = [
     '[Script Info]',
     `ScriptType: ${ASS_SCRIPT_TYPE}`,
@@ -147,7 +154,7 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour,'
       + ' Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline,'
       + ' Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    `Style: ${ASS_STYLE_NAME},${style.fontName},${style.fontSizePx},&H00FFFFFF,&H00FFFFFF,&H00000000,`
+    `Style: ${ASS_STYLE_NAME},${style.fontName},${style.fontSizePx},${style.primaryColourAss},${style.primaryColourAss},&H00000000,`
       + `&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,${style.marginVerticalPx},1`,
     '',
     '[Events]',
@@ -204,8 +211,12 @@ export function assDocumentSha256(doc: string): string {
 // a real design choice, so a caller that doesn't care about emphasis colors
 // doesn't have to name one at every call site.
 export const PLACEHOLDER_EMPHASIS_COLOUR = '&H00A6B814'
+export const PLACEHOLDER_PRIMARY_COLOUR = '&H00FFFFFF'
 
-export function buildAssCaptions(plan: EditPlanV1, opts: { fontName: string; emphasisColourAss?: string }): {
+export function buildAssCaptions(
+  plan: EditPlanV1,
+  opts: { fontName: string; emphasisColourAss?: string; primaryColourAss?: string },
+): {
   document: string; sha256: string; eventCount: number
 } {
   const document = renderAssDocument(plan, {
@@ -215,6 +226,7 @@ export function buildAssCaptions(plan: EditPlanV1, opts: { fontName: string; emp
     fontSizePx: plan.captions.fontSizePx,
     marginVerticalPx: plan.captions.marginVerticalPx,
     emphasisColourAss: opts.emphasisColourAss ?? PLACEHOLDER_EMPHASIS_COLOUR,
+    primaryColourAss: opts.primaryColourAss ?? PLACEHOLDER_PRIMARY_COLOUR,
   })
   return { document, sha256: assDocumentSha256(document), eventCount: plan.captions.cues.length }
 }

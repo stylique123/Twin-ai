@@ -30,6 +30,7 @@ import { renderEditPlan, extractCover, fileSha256, cleanupRenderWorkDir } from '
 import { validateRenderedOutput } from '../jobs/editorValidateOutput.js'
 import { renderAssDocument, assertNoOverrideBlock } from '../jobs/assCaptions.js'
 import { loadRenderCatalog } from '../jobs/editorRender.js'
+import { resolveCaptionColours } from '../jobs/captionColours.js'
 import type { EditPlanV1 } from '../jobs/editPlanContract.js'
 
 const execFile = promisify(_execFile)
@@ -128,13 +129,14 @@ maybe('the graph ffmpeg is actually given', () => {
     if (assPath) {
       const catalog = loadRenderCatalog()
       const preset = catalog.captionPresets[renderPlan.captions.presetId]
+      const { primaryColourAss, emphasisColourAss } = resolveCaptionColours(renderPlan.captions, preset)
       const doc = renderAssDocument(renderPlan, {
         playResX: renderPlan.output.width, playResY: renderPlan.output.height,
         fontName: preset.fontFamily, fontSizePx: renderPlan.captions.fontSizePx,
         marginVerticalPx: renderPlan.captions.marginVerticalPx,
-        emphasisColourAss: preset.emphasisColourAss,
+        emphasisColourAss, primaryColourAss,
       })
-      assertNoOverrideBlock(doc, renderPlan.captions.cues.length, preset.emphasisColourAss)
+      assertNoOverrideBlock(doc, renderPlan.captions.cues.length, emphasisColourAss)
       require('node:fs').mkdirSync(workDir, { recursive: true })
       writeFileSync(assPath, doc, 'utf8')
     }

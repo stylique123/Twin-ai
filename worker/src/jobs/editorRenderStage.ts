@@ -40,6 +40,7 @@ import {
 } from './editorRender.js'
 import { validateRenderedOutput } from './editorValidateOutput.js'
 import { renderAssDocument, assertNoOverrideBlock, assDocumentSha256 } from './assCaptions.js'
+import { resolveCaptionColours } from './captionColours.js'
 import {
   reserveOutput, markOutputReady, createOutputAsset, completeOutput, type Fence,
 } from './editorComplete.js'
@@ -105,15 +106,17 @@ function writeAssDocument(plan: EditPlanV1, workDir: string): string | null {
       'render_output_profile_invalid',
     )
   }
+  const { primaryColourAss, emphasisColourAss } = resolveCaptionColours(plan.captions, preset)
   const doc = renderAssDocument(plan, {
     playResX: plan.output.width,
     playResY: plan.output.height,
     fontName: preset.fontFamily,
     fontSizePx: plan.captions.fontSizePx,
     marginVerticalPx: plan.captions.marginVerticalPx,
-    emphasisColourAss: preset.emphasisColourAss,
+    emphasisColourAss,
+    primaryColourAss,
   })
-  assertNoOverrideBlock(doc, plan.captions.cues.length, preset.emphasisColourAss)
+  assertNoOverrideBlock(doc, plan.captions.cues.length, emphasisColourAss)
   const path = join(workDir, 'captions.ass')
   writeFileSync(path, doc, 'utf8')
   return path

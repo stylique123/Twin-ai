@@ -320,12 +320,17 @@ export interface CompileSource {
   // outside them was rejected by the creator and is unavailable forever.
   acceptedWindows: Interval[]
 }
+export interface CompileBrandColors { primaryHex: string | null; highlightHex: string | null }
 export interface CompileInput {
   identity: CompileIdentity
   source: CompileSource
   evidence: CompileEvidence
   decision: CompileDecision
   policy?: EditPolicyV1
+  // Optional for callers (tests, mainly) that don't care about brand colors —
+  // absent is treated exactly like { primaryHex: null, highlightHex: null },
+  // never as "colors pending" or any other state.
+  brandColors?: CompileBrandColors
 }
 export interface CompileResult {
   plan: EditPlanV1
@@ -519,10 +524,20 @@ function resolveRemovals(
 }
 
 // ---- compile ----------------------------------------------------------------
+// #rrggbb (the brand snapshot's format) -> ASS &H00BBGGRR: opaque alpha, bytes
+// reversed. Pure and total for any string matching HEX_COLOUR_RE in
+// editorCompileInput.ts, which is the only caller this ever sees, so it never
+// needs to fail.
+function hexToAssColour(hex: string): string {
+  const r = hex.slice(1, 3).toUpperCase(), g = hex.slice(3, 5).toUpperCase(), b = hex.slice(5, 7).toUpperCase()
+  return `&H00${b}${g}${r}`
+}
+
 export function compileEditPlan(input: CompileInput): CompileResult {
   const policy = input.policy ?? loadEditPolicy()
   const warn = new WarningSink()
   const { evidence, decision, identity } = input
+  const brandColors = input.brandColors ?? { primaryHex: null, highlightHex: null }
 
   if (input.source.durationMs > policy.source.maxDurationMs) {
     bad(`source is ${input.source.durationMs} ms, over the editor maximum ${policy.source.maxDurationMs} ms`,
@@ -843,6 +858,8 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       presetId: decision.captionPresetId,
       fontSizePx: captionPreset.fontSizePx,
       marginVerticalPx: captionPreset.marginVerticalPx,
+      brandPrimaryColourAss: brandColors.primaryHex ? hexToAssColour(brandColors.primaryHex) : null,
+      brandHighlightColourAss: brandColors.highlightHex ? hexToAssColour(brandColors.highlightHex) : null,
       cues,
     },
     video: {
