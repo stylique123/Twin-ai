@@ -207,13 +207,16 @@ describe('time map — the seven frozen laws', () => {
       sourcePath: '/var/tmp/edit/source.mp4', assPath: '/var/tmp/edit/c.ass',
       fontsDir: null, outputPath: '/var/tmp/edit/out.mp4',
     })
-    const spans = (filter: string): string[] => graph.nodes
-      .filter((n) => n.filter === filter)
+    // Segment trims are id-prefixed `vtrim`; the zoom pass also emits `trim`
+    // filter nodes (id-prefixed `vzwtrim`) on the already-joined stream, so
+    // this reads by id rather than by filter name to stay about segments only.
+    const spans = (idPrefix: string): string[] => graph.nodes
+      .filter((n) => n.id.startsWith(idPrefix))
       .map((n) => n.args.map((a) => `${a.key}=${String(a.value)}`).join(','))
-    expect(spans('trim')).toEqual(spans('atrim'))
-    expect(spans('trim')).toHaveLength(hcPlan.timeline.segments.length)
+    expect(spans('vtrim')).toEqual(spans('atrim'))
+    expect(spans('vtrim')).toHaveLength(hcPlan.timeline.segments.length)
     // ...and those spans are the plan's segments, not some re-derivation.
-    expect(spans('trim')[0]).toBe('start=0.000,end=10.460')
+    expect(spans('vtrim')[0]).toBe('start=0.000,end=10.460')
 
     // The output duration handed to the encoder is the map's end.
     const t = graph.outputOptions.indexOf('-t')
