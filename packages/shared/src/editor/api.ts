@@ -253,6 +253,14 @@ async function invokeError(error: unknown): Promise<string> {
     try {
       const body = await ctx.json()
       if (body?.error) return String(body.error)
+      // start-editor-v2 reports its refusals as a top-level STABLE CODE
+      // (StartEditorRejection), not an `error` string — `editor_not_available`
+      // for the launch gate, `source_not_ready` for a take still uploading, and
+      // so on. Without this branch every one of them collapsed into the
+      // transport's generic "non-2xx status code", which cannot be told apart
+      // from a network fault and so cannot be explained to the user. Falling
+      // through to `error` first keeps every other function's behaviour intact.
+      if (body?.code) return String(body.code)
     } catch {
       /* fall through */
     }
