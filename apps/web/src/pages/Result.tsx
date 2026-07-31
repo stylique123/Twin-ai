@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import type { EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
 
@@ -33,6 +33,24 @@ const EDIT_STATUS_LABEL: Record<EditProjectStatus, string> = {
   completed: 'Done',
   failed: 'Failed',
   cancelled: 'Cancelled',
+}
+
+// What each StartEditorRejection means to the person who clicked. Keyed by the
+// server's stable code — NOT matched on message text, which is not a contract.
+// `editor_not_available` is the launch gate, not a fault: it is the expected
+// answer everywhere the feature has not been switched on yet, so it reads as a
+// status rather than an error.
+const START_ERROR_TEXT: Record<string, string> = {
+  editor_not_available: 'AI editing isn’t switched on for your account yet.',
+  source_not_found: 'We couldn’t find your recording.',
+  not_a_source: 'That file isn’t a recording we can edit.',
+  generation_mismatch: 'That recording belongs to a different script.',
+  source_rejected: 'That recording didn’t pass our checks, so it can’t be edited.',
+  source_deleted: 'That recording has been deleted.',
+  source_not_ready: 'Your recording is still uploading — try again in a moment.',
+  source_not_editor_eligible: 'That recording can’t be edited automatically.',
+  too_many_active_projects: 'You already have an edit running. Wait for it to finish first.',
+  idempotency_key_conflict: 'That edit was already started — refresh to see it.',
 }
 
 // Stale-while-revalidate cache so reopening a plan is INSTANT instead of showing a
@@ -315,6 +333,29 @@ export default function Result() {
       setEditCancelling(false)
     }
   }
+  // Starting an edit. The server refuses with a STABLE CODE rather than prose
+  // (StartEditorRejection), so each one gets a sentence a creator can act on —
+  // a raw code shown to a user is an error message that explains nothing.
+  const [editStarting, setEditStarting] = useState(false)
+  const [editStartErr, setEditStartErr] = useState<string | null>(null)
+  const startEdit = async () => {
+    if (!id || !serverSourceAssetId) return
+    setEditStartErr(null)
+    setEditStarting(true)
+    try {
+      // One key per click-intent: the database converges a retry of THIS click
+      // onto one project, while a later deliberate re-edit mints a new key.
+      await startEditorV2(id, serverSourceAssetId, newIdempotencyKey())
+      // Adopt the new project immediately so the card switches to progress
+      // without waiting for the next poll tick.
+      setEditProject(await getLatestEditProject(id))
+    } catch (e) {
+      const code = e instanceof Error ? e.message : ''
+      setEditStartErr(START_ERROR_TEXT[code] ?? 'Could not start the edit. Please try again.')
+    } finally {
+      setEditStarting(false)
+    }
+  }
   const genThumb = async () => {
     if (!gen) return
     setThumbErr(null); setThumbBusy(true)
@@ -402,11 +443,20 @@ export default function Result() {
   // projection (also covers historical rows); the local pointer is a same-tab
   // convenience only — never proof of a completed upload.
   const [serverSourcePath, setServerSourcePath] = useState<string | null>(null)
+  // The asset's ID, not just its path. Starting an edit names the source by ID —
+  // `startEditorV2` takes three IDs and never a path, deliberately (a path that
+  // can be passed is a path that can be wrong). Only a READY asset has one here,
+  // which is also exactly the precondition the server enforces.
+  const [serverSourceAssetId, setServerSourceAssetId] = useState<string | null>(null)
   useEffect(() => {
-    if (!id) { setServerSourcePath(null); return }
+    if (!id) { setServerSourcePath(null); setServerSourceAssetId(null); return }
     let live = true
     getReadySourceAsset(id)
-      .then((a) => { if (live) setServerSourcePath(a?.storage_path ?? null) })
+      .then((a) => {
+        if (!live) return
+        setServerSourcePath(a?.storage_path ?? null)
+        setServerSourceAssetId(a?.id ?? null)
+      })
       .catch(() => {})
     return () => { live = false }
   }, [id])
@@ -600,6 +650,26 @@ export default function Result() {
                       ? <video src={rawTakeUrl} controls playsInline className="h-full w-full object-contain" />
                       : <Loader2 className="h-6 w-6 animate-spin text-white/40" />}
                   </div>
+                  {/* THE IGNITION. Offered only when the server-side asset is
+                      READY — that ID is the one thing `startEditorV2` accepts, and
+                      its absence means the upload hasn't finished, so a button
+                      here would only ever produce `source_not_ready`. Hidden once
+                      an edit exists unless that edit ended without a video, which
+                      is the one case where trying again is the right move. */}
+                  {serverSourceAssetId && (!editProject || editProject.status === 'failed' || editProject.status === 'cancelled') && (
+                    <>
+                      <button
+                        onClick={startEdit}
+                        disabled={editStarting}
+                        className="btn-gradient mt-3 w-full justify-center py-2.5 text-xs font-semibold disabled:opacity-60"
+                      >
+                        {editStarting
+                          ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Starting…</>
+                          : <><Wand2 className="h-3.5 w-3.5" /> {editProject ? 'Try the AI edit again' : 'Make my AI edit'}</>}
+                      </button>
+                      {editStartErr && <p className="mt-2 text-center text-xs text-coral">{editStartErr}</p>}
+                    </>
+                  )}
                 </div>
               )}
               {/* The AI edit (Phase 8 editor v2) — independent of the legacy
