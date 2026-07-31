@@ -175,6 +175,11 @@ export async function runCompilingStage(
       visual,
       audio,
       decision,
+      // The SAME pinned brandSnapshot the Director's envelope was built from
+      // (editorDirector.ts) — read off the boot manifest here rather than
+      // re-resolved, so a caption color can never disagree with the brand the
+      // Director actually saw for this project.
+      brand: (pinned.manifest.manifest as { brandSnapshot?: Record<string, unknown> }).brandSnapshot ?? null,
     })
 
     // The units tripwire, run on the REAL assembled input rather than only in

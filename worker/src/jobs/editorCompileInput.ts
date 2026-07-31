@@ -251,6 +251,27 @@ export interface AssembleArgs {
   visual: Record<string, unknown> | null
   audio: Record<string, unknown> | null
   decision: DirectorDecision
+  // The pinned boot manifest's brandSnapshot, untyped — only its `visual` hex
+  // fields are ever read here (see readComponentBrandColors). Optional so
+  // existing callers that don't pass one keep compiling unchanged; absent is
+  // treated exactly like null, never like "some" brand.
+  brand?: Record<string, unknown> | null
+}
+
+const HEX_COLOUR_RE = /^#[0-9a-fA-F]{6}$/
+
+export interface CompileBrandColors { primaryHex: string | null; highlightHex: string | null }
+
+// Partial brand colors are not half-usable, same reasoning as audio facts:
+// a malformed or absent hex is not "use the default," it is "this field does
+// not exist," and the compiler must be able to tell those apart from a real
+// pinned color rather than defaulting silently.
+export function readComponentBrandColors(brand: Record<string, unknown> | null): CompileBrandColors {
+  const visual = brand && typeof brand === 'object' ? (brand as { visual?: unknown }).visual : null
+  const v = visual && typeof visual === 'object' ? (visual as { primaryHex?: unknown; highlightHex?: unknown }) : {}
+  const primaryHex = typeof v.primaryHex === 'string' && HEX_COLOUR_RE.test(v.primaryHex) ? v.primaryHex.toLowerCase() : null
+  const highlightHex = typeof v.highlightHex === 'string' && HEX_COLOUR_RE.test(v.highlightHex) ? v.highlightHex.toLowerCase() : null
+  return { primaryHex, highlightHex }
 }
 
 export function buildCompileInput(args: AssembleArgs): CompileInput {
@@ -262,7 +283,8 @@ export function buildCompileInput(args: AssembleArgs): CompileInput {
   const decision = readDecision(args.decision, {
     candidates: candidates.length, visualWaste: visualWaste.length, words: words.length,
   })
-  return { identity: args.identity, source: args.source, evidence, decision }
+  const brandColors = readComponentBrandColors(args.brand ?? null)
+  return { identity: args.identity, source: args.source, evidence, decision, brandColors }
 }
 
 /**

@@ -8,7 +8,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   escapeAssText, hasUnescapedBrace, formatAssTime, renderAssDocument, buildAssCaptions,
-  assertNoOverrideBlock, assDocumentSha256, stripTrustedEmphasisTags, PLACEHOLDER_EMPHASIS_COLOUR,
+  assertNoOverrideBlock, assDocumentSha256, stripTrustedEmphasisTags, ASS_STYLE_NAME,
+  PLACEHOLDER_EMPHASIS_COLOUR, PLACEHOLDER_PRIMARY_COLOUR,
 } from '../jobs/assCaptions.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
 import { EditPlanError, type EditPlanV1 } from '../jobs/editPlanContract.js'
@@ -25,7 +26,7 @@ function planWithCaption(text: string): EditPlanV1 {
 }
 const STYLE = {
   playResX: 1080, playResY: 1920, fontName: 'Inter', fontSizePx: 72, marginVerticalPx: 320,
-  emphasisColourAss: PLACEHOLDER_EMPHASIS_COLOUR,
+  emphasisColourAss: PLACEHOLDER_EMPHASIS_COLOUR, primaryColourAss: PLACEHOLDER_PRIMARY_COLOUR,
 }
 
 // The payloads a hostile transcript, a prompt-injected model, or a pasted
@@ -164,6 +165,12 @@ describe('end-to-end injection resistance', () => {
     // The escaped form is present, proving the word was captioned rather than
     // silently dropped somewhere upstream.
     expect(document).toContain('\\{\\\\an8\\}top')
+  })
+
+  it('a resolved brand primary color actually reaches the Style line, not just the resolver function', () => {
+    const plan = compileEditPlan({ ...baseInput(), policy: policy() }).plan
+    const { document } = buildAssCaptions(plan, { fontName: 'Inter', primaryColourAss: '&H00112233' })
+    expect(document).toContain(`Style: ${ASS_STYLE_NAME},Inter,${plan.captions.fontSizePx},&H00112233,&H00112233,`)
   })
 })
 

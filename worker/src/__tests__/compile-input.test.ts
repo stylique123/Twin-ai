@@ -14,7 +14,7 @@ import { describe, it, expect } from 'vitest'
 import {
   buildCompileInput, readComponentWords, readComponentCandidates,
   readComponentVisualWaste, readComponentAudioFacts, readDecision,
-  assertNoCentisecondLeak,
+  assertNoCentisecondLeak, readComponentBrandColors,
 } from '../jobs/editorCompileInput.js'
 import { EditPlanError } from '../jobs/editPlanContract.js'
 import type { DirectorDecision } from '../jobs/directorContract.js'
@@ -177,6 +177,31 @@ describe('audio facts are all-or-nothing', () => {
     // number is a decision nobody made.
     expect(readComponentAudioFacts({ snrDbMilli: 18400 })).toBeNull()
     expect(readComponentAudioFacts(null)).toBeNull()
+  })
+})
+
+describe('brand colors are read defensively, per field', () => {
+  it('reads both hex colors, lowercased, from a real brand snapshot shape', () => {
+    const brand = { visual: { primaryHex: '#ABCDEF', highlightHex: '#123456' } }
+    expect(readComponentBrandColors(brand)).toEqual({ primaryHex: '#abcdef', highlightHex: '#123456' })
+  })
+
+  it('a malformed hex on ONE field does not null out the other — they are independent, unlike audio facts', () => {
+    const brand = { visual: { primaryHex: '#abcdef', highlightHex: 'not-a-hex-color' } }
+    expect(readComponentBrandColors(brand)).toEqual({ primaryHex: '#abcdef', highlightHex: null })
+  })
+
+  it('null, missing visual, and a non-object brand all yield { null, null } — never a crash', () => {
+    expect(readComponentBrandColors(null)).toEqual({ primaryHex: null, highlightHex: null })
+    expect(readComponentBrandColors({})).toEqual({ primaryHex: null, highlightHex: null })
+    expect(readComponentBrandColors({ visual: null })).toEqual({ primaryHex: null, highlightHex: null })
+    expect(readComponentBrandColors({ visual: 'not-an-object' } as unknown as Record<string, unknown>))
+      .toEqual({ primaryHex: null, highlightHex: null })
+  })
+
+  it('MUTATION: a 3-digit shorthand or missing # is rejected, not silently expanded', () => {
+    expect(readComponentBrandColors({ visual: { primaryHex: '#abc' } })).toEqual({ primaryHex: null, highlightHex: null })
+    expect(readComponentBrandColors({ visual: { primaryHex: 'abcdef' } })).toEqual({ primaryHex: null, highlightHex: null })
   })
 })
 

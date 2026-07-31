@@ -643,6 +643,50 @@ describe('zooms', () => {
   })
 })
 
+describe('brand caption colors', () => {
+  it('with no brandColors passed at all, both plan fields are null', () => {
+    const { plan } = compileEditPlan({ ...baseInput(), policy: policy() })
+    expect(plan.captions.brandPrimaryColourAss).toBeNull()
+    expect(plan.captions.brandHighlightColourAss).toBeNull()
+  })
+
+  it('with brandColors present but both hexes null, both plan fields are null', () => {
+    const input = { ...baseInput(), policy: policy(), brandColors: { primaryHex: null, highlightHex: null } }
+    const { plan } = compileEditPlan(input)
+    expect(plan.captions.brandPrimaryColourAss).toBeNull()
+    expect(plan.captions.brandHighlightColourAss).toBeNull()
+  })
+
+  it('converts #rrggbb to ASS &H00BBGGRR — bytes reversed, alpha forced opaque', () => {
+    const input = {
+      ...baseInput(), policy: policy(),
+      brandColors: { primaryHex: '#123456', highlightHex: '#abcdef' },
+    }
+    const { plan } = compileEditPlan(input)
+    expect(plan.captions.brandPrimaryColourAss).toBe('&H00563412')
+    expect(plan.captions.brandHighlightColourAss).toBe('&H00EFCDAB')
+  })
+
+  it('the two colors are independent — one present, one absent', () => {
+    const input = {
+      ...baseInput(), policy: policy(),
+      brandColors: { primaryHex: '#123456', highlightHex: null },
+    }
+    const { plan } = compileEditPlan(input)
+    expect(plan.captions.brandPrimaryColourAss).toBe('&H00563412')
+    expect(plan.captions.brandHighlightColourAss).toBeNull()
+  })
+
+  it('a plan carrying brand colors still passes the strict validator it did not write', () => {
+    const input = {
+      ...baseInput(), policy: policy(),
+      brandColors: { primaryHex: '#123456', highlightHex: '#abcdef' },
+    }
+    const { plan } = compileEditPlan(input)
+    expect(() => validateEditPlan(JSON.parse(JSON.stringify(plan)))).not.toThrow()
+  })
+})
+
 describe('audio instructions', () => {
   it('chooses a frozen preset from bounded numeric evidence and emits no filter string', () => {
     const clean = compileEditPlan({ ...baseInput(), policy: policy() }).plan

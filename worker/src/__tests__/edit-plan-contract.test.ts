@@ -97,6 +97,36 @@ describe('all times are integer milliseconds', () => {
   })
 })
 
+describe('captions.brandPrimaryColourAss / brandHighlightColourAss', () => {
+  it('null is accepted for both — the common no-brand-color case', () => {
+    expect(() => validateEditPlan(mutate((p) => {
+      (p.captions as Record<string, unknown>).brandPrimaryColourAss = null
+      ;(p.captions as Record<string, unknown>).brandHighlightColourAss = null
+    }))).not.toThrow()
+  })
+
+  it('a well-formed &HAABBGGRR value is accepted', () => {
+    expect(() => validateEditPlan(mutate((p) => {
+      (p.captions as Record<string, unknown>).brandPrimaryColourAss = '&H00112233'
+    }))).not.toThrow()
+  })
+
+  it('rejects a malformed value rather than silently treating it as null', () => {
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      (p.captions as Record<string, unknown>).brandPrimaryColourAss = '#112233'
+    })))).toBe('edit_plan_invalid')
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      (p.captions as Record<string, unknown>).brandHighlightColourAss = '&H1122' // too short
+    })))).toBe('edit_plan_invalid')
+  })
+
+  it('rejects an injection payload disguised as a color string', () => {
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      (p.captions as Record<string, unknown>).brandPrimaryColourAss = '{\\an8}&H00112233'
+    })))).toBe('edit_plan_invalid')
+  })
+})
+
 describe('identities are IDs and hashes, never URLs or paths', () => {
   it('rejects a URL in an identity field', () => {
     expect(codeOf(() => validateEditPlan(mutate((p) => {
