@@ -67,6 +67,7 @@
       "bold": true,
       "primaryColourAss": "&H00FFFFFF",
       "outlineColourAss": "&H00000000",
+      "emphasisColourAss": "&H00A6B814",
       "outlineWidthPx": 3,
       "shadowDepthPx": 0,
       "alignment": 2
@@ -77,6 +78,7 @@
       "bold": true,
       "primaryColourAss": "&H0000F0FF",
       "outlineColourAss": "&H00000000",
+      "emphasisColourAss": "&H00616FFF",
       "outlineWidthPx": 4,
       "shadowDepthPx": 1,
       "alignment": 2
@@ -87,11 +89,21 @@
       "bold": false,
       "primaryColourAss": "&H00FFFFFF",
       "outlineColourAss": "&H00000000",
+      "emphasisColourAss": "&H000B9EF5",
       "outlineWidthPx": 2,
       "shadowDepthPx": 0,
       "alignment": 2
     }
   },
+  "_emphasisComment": [
+    "emphasisColourAss is the ONE new color per preset: the word-level highlight",
+    "for whichever words the Director actually decided matter (cue.lineEmphasis),",
+    "distinct from primaryColourAss/outlineColourAss so it reads as a deliberate",
+    "accent rather than the base caption color. Same &HAABBGGRR format as the",
+    "other two. Values here are a functional first pass (teal/coral/amber, the",
+    "app's existing accent palette) — a designer pass can retune the exact hex",
+    "later without touching any code, the same way the other two colors work."
+  ],
 
   "_fontComment": [
     "Fonts are named by BASENAME, never by absolute path: the path differs",

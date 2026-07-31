@@ -21,7 +21,12 @@
 //  * plan maximum serialized size: 1 MiB.
 import { canonicalJson, sha256Hex } from './editorManifest.js'
 
-export const EDIT_PLAN_SCHEMA_VERSION = 1
+// v2: cues gained `lineTokens` (the exact per-token texts behind each line)
+// and `lineEmphasis` (one highlight flag per token, aligned to `lineTokens`).
+// A plan pinned under v1 has neither field and is never reinterpreted as v2 —
+// a project's boot manifest is fixed at pin time, so this only affects NEW
+// plans compiled after this change.
+export const EDIT_PLAN_SCHEMA_VERSION = 2
 export const EDIT_PLAN_VERSION = 'edit-plan-v1'
 export const EDIT_PLAN_MAX_BYTES = 1048576
 
@@ -32,7 +37,14 @@ export const EDIT_PLAN_MAX_BYTES = 1048576
 export const MAX_ALLOWED_WINDOWS = 200
 export const MAX_SEGMENTS = 600
 export const MAX_REMOVALS = 1200
-export const MAX_CUES = 2000
+// Halved from the pre-v2 value of 2000: `lineTokens` duplicates each line's
+// text alongside `lines` itself, roughly doubling a cue's worst-case bytes (a
+// single-token line has no space savings from wrapping). This keeps the SAME
+// "under the 1 MiB cap by construction, without a comfortable margin" property
+// the schema has always guaranteed — checked directly, not assumed, by
+// edit-plan-contract.test.ts's maximal-cue tests. 1000 cues is still far more
+// than any real video's caption count.
+export const MAX_CUES = 1000
 export const MAX_CUE_LINES = 2
 export const MAX_CUE_EMPHASIS = 16
 export const MAX_ZOOMS = 20
@@ -121,6 +133,21 @@ export interface PlanCue {
   outputEndMs: number
   lines: string[]
   emphasisWordIndices: number[]
+  // The exact per-ORIGINAL-TRANSCRIPT-TOKEN texts composing each line, in
+  // order — NOT derived by splitting `lines[j]` on spaces. A transcript token
+  // is not guaranteed to be free of internal whitespace (this codebase's own
+  // injection tests deliberately feed tokens containing spaces to prove the
+  // escaper handles them), so re-splitting rendered text can misalign word
+  // boundaries. `lineTokens[j].join(' ')` always equals `lines[j]` — checked
+  // by the validator — but the renderer reads `lineTokens` directly and never
+  // re-derives token boundaries from display text.
+  lineTokens: string[][]
+  // One boolean per entry of the matching `lineTokens[j]` — this is what the
+  // renderer actually highlights. `emphasisWordIndices` names GLOBAL
+  // transcript positions, which `lineTokens` does not retain, so the renderer
+  // alone cannot recover which token an index refers to; both are computed
+  // once in the compiler, where the original per-token list is still in scope.
+  lineEmphasis: boolean[][]
 }
 export interface PlanCaptions {
   presetId: CaptionPresetId
@@ -290,7 +317,9 @@ const SEGMENT_KEYS = ['index', 'sourceStartMs', 'sourceEndMs', 'outputStartMs', 
   'transitionInOverlapMs'] as const
 const REMOVAL_KEYS = ['sourceStartMs', 'sourceEndMs', 'origin', 'ref', 'reasonCode'] as const
 const TIMELINE_KEYS = ['segments', 'removals', 'cutsPerMinuteMilli'] as const
-const CUE_KEYS = ['index', 'outputStartMs', 'outputEndMs', 'lines', 'emphasisWordIndices'] as const
+const CUE_KEYS = [
+  'index', 'outputStartMs', 'outputEndMs', 'lines', 'emphasisWordIndices', 'lineTokens', 'lineEmphasis',
+] as const
 const CAPTIONS_KEYS = ['presetId', 'fontSizePx', 'marginVerticalPx', 'cues'] as const
 const ZOOM_KEYS = ['index', 'outputStartMs', 'outputEndMs', 'scaleMilli', 'intensity', 'reasonCode',
   'anchorWordIndex', 'easeInMs', 'easeOutMs'] as const
@@ -518,7 +547,45 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
       prevE = val
       return val
     })
-    return { index, outputStartMs, outputEndMs, lines, emphasisWordIndices }
+    // The per-original-token texts behind each line, checked EXACTLY against
+    // `lines[j]` (join on a single space must reproduce it byte for byte) —
+    // never re-derived by splitting `lines[j]` apart, because a single token
+    // is not guaranteed free of internal whitespace (see the type comment).
+    // A drifted plan fails validation here rather than silently misaligning
+    // which substring the renderer highlights.
+    const rawLineTokens = arr(cc.lineTokens, MAX_CUE_LINES, `captions.cues[${i}].lineTokens`)
+    if (rawLineTokens.length !== lines.length) {
+      fail(`captions.cues[${i}].lineTokens: must have one entry per line`)
+    }
+    const lineTokens = rawLineTokens.map((toks, j) => {
+      const row = arr(toks, MAX_CUE_LINE_CHARS, `captions.cues[${i}].lineTokens[${j}]`)
+      if (row.length === 0) fail(`captions.cues[${i}].lineTokens[${j}]: no tokens`)
+      const tokens = row.map((t, k) => {
+        if (typeof t !== 'string' || t.length === 0) fail(`captions.cues[${i}].lineTokens[${j}][${k}]: empty or not a string`)
+        return t
+      })
+      if (tokens.join(' ') !== lines[j]) {
+        fail(`captions.cues[${i}].lineTokens[${j}]: joined tokens do not equal lines[${j}]`)
+      }
+      return tokens
+    })
+    // One boolean per TOKEN of the matching `lineTokens[j]` — exact by
+    // construction, since both arrays are indexed the same way.
+    const rawLineEmphasis = arr(cc.lineEmphasis, MAX_CUE_LINES, `captions.cues[${i}].lineEmphasis`)
+    if (rawLineEmphasis.length !== lines.length) {
+      fail(`captions.cues[${i}].lineEmphasis: must have one entry per line`)
+    }
+    const lineEmphasis = rawLineEmphasis.map((flags, j) => {
+      const row = arr(flags, MAX_CUE_LINE_CHARS, `captions.cues[${i}].lineEmphasis[${j}]`)
+      if (row.length !== lineTokens[j].length) {
+        fail(`captions.cues[${i}].lineEmphasis[${j}]: length ${row.length} does not match ${lineTokens[j].length} tokens`)
+      }
+      return row.map((b, k) => {
+        if (typeof b !== 'boolean') fail(`captions.cues[${i}].lineEmphasis[${j}][${k}]: not a boolean`)
+        return b
+      })
+    })
+    return { index, outputStartMs, outputEndMs, lines, emphasisWordIndices, lineTokens, lineEmphasis }
   })
   const captions: PlanCaptions = {
     presetId: oneOf(cap.presetId, CAPTION_PRESET_IDS, 'captions.presetId'),

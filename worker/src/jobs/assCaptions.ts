@@ -84,19 +84,56 @@ export interface AssStyleOptions {
   fontName: string
   fontSizePx: number
   marginVerticalPx: number
+  emphasisColourAss: string
 }
 
-function dialogueLine(cue: PlanCue): string {
+// The ONLY live (unescaped) braces this file ever deliberately emits — the
+// word-emphasis highlight. `emphasisColourAss` is validated below against a
+// tight format before it can ever reach here, and it comes from the frozen
+// render catalog, never from a transcript or any other free text. `{\c}` with
+// no argument resets to the style's own PrimaryColour, closing the run.
+const EMPHASIS_CLOSE = '{\\c}'
+function emphasisOpen(emphasisColourAss: string): string {
+  return `{\\c${emphasisColourAss}}`
+}
+
+// A code-authored literal string can only ever contain a BARE `{` or `}` if
+// this module put it there — `escapeAssText` guarantees every brace that
+// originates from text is escaped (preceded by a backslash) regardless of
+// content, so a transcript can never forge a match against these exact
+// strings. Removing every literal occurrence of the two trusted tags and then
+// checking what's left for a live brace is therefore exact, not a heuristic:
+// anything remaining live was not one of these two strings, and so was not
+// this module's own doing.
+export function stripTrustedEmphasisTags(text: string, emphasisColourAss: string): string {
+  return text.split(emphasisOpen(emphasisColourAss)).join('').split(EMPHASIS_CLOSE).join('')
+}
+
+function dialogueLine(cue: PlanCue, emphasisColourAss: string): string {
   // Lines are joined with the ASS hard line break `\N`, which is produced HERE
   // and can never come from the text, because every backslash in text has
-  // already been doubled.
-  const body = cue.lines.map(escapeAssText).join('\\N')
+  // already been doubled. Reads `lineTokens` — the compiler's own per-token
+  // breakdown — rather than splitting `cue.lines[j]` apart, because a single
+  // token is not guaranteed free of internal whitespace and re-splitting could
+  // misalign which run gets wrapped. Each token is escaped independently and
+  // the emphasis wrap, when present, goes around the already-escaped token —
+  // never inside unescaped text, and never sourced from it.
+  const body = cue.lineTokens.map((tokens, j) => {
+    const flags = cue.lineEmphasis[j] ?? []
+    return tokens.map((tok, k) => {
+      const escaped = escapeAssText(tok)
+      return flags[k] ? `${emphasisOpen(emphasisColourAss)}${escaped}${EMPHASIS_CLOSE}` : escaped
+    }).join(' ')
+  }).join('\\N')
   return `Dialogue: 0,${formatAssTime(cue.outputStartMs)},${formatAssTime(cue.outputEndMs)},${ASS_STYLE_NAME},,0,0,0,,${body}`
 }
 
 export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): string {
   if (!/^[A-Za-z0-9 ._-]{1,64}$/.test(style.fontName)) {
     throw new EditPlanError('ass: font name is not a plain catalog name', 'render_font_integrity_failed')
+  }
+  if (!/^&H[0-9A-Fa-f]{8}$/.test(style.emphasisColourAss)) {
+    throw new EditPlanError('ass: emphasis colour is not a plain &HAABBGGRR value', 'render_font_integrity_failed')
   }
   const lines: string[] = [
     '[Script Info]',
@@ -116,24 +153,30 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
   ]
-  for (const cue of plan.captions.cues) lines.push(dialogueLine(cue))
+  for (const cue of plan.captions.cues) lines.push(dialogueLine(cue, style.emphasisColourAss))
   const doc = `${lines.join('\n')}\n`
-  assertNoOverrideBlock(doc, plan.captions.cues.length)
+  assertNoOverrideBlock(doc, plan.captions.cues.length, style.emphasisColourAss)
   return doc
 }
 
 /**
- * Independent audit of a FINISHED document: no dialogue event may contain a live
- * brace, and no event may have been split across physical lines. This does not
- * trust `escapeAssText`; it is the guard the mutation control removes.
+ * Independent audit of a FINISHED document: no dialogue event may contain a
+ * live brace OUTSIDE the exact, code-authored emphasis-tag pair this module
+ * itself inserts, and no event may have been split across physical lines. This
+ * does not trust `escapeAssText` OR `dialogueLine`; it is the guard the
+ * mutation control removes. Stripping the trusted tags first (see
+ * `stripTrustedEmphasisTags`) rather than loosening `hasUnescapedBrace` itself
+ * keeps the escaper's own guarantee — no live brace from text, ever — completely
+ * unchanged; this only ever whitelists two fixed literal strings this file
+ * controls, never anything shaped by transcript content.
  */
-export function assertNoOverrideBlock(doc: string, expectedEvents?: number): void {
+export function assertNoOverrideBlock(doc: string, expectedEvents: number | undefined, emphasisColourAss: string): void {
   const physical = doc.split('\n')
   let events = 0
   for (const line of physical) {
     if (!line.startsWith('Dialogue:')) continue
     events++
-    if (hasUnescapedBrace(line)) {
+    if (hasUnescapedBrace(stripTrustedEmphasisTags(line, emphasisColourAss))) {
       throw new EditPlanError('ass: dialogue event contains a live override block', 'output_caption_invalid')
     }
     // An ASS event has nine comma-separated header fields before the text, and
@@ -155,7 +198,14 @@ export function assDocumentSha256(doc: string): string {
   return sha256Hex(Buffer.from(doc, 'utf8'))
 }
 
-export function buildAssCaptions(plan: EditPlanV1, opts: { fontName: string }): {
+// Test/convenience wrapper — production always goes through
+// `editorRenderStage.ts`, which passes the catalog's actual per-preset
+// `emphasisColourAss`. The default here is an arbitrary valid placeholder, not
+// a real design choice, so a caller that doesn't care about emphasis colors
+// doesn't have to name one at every call site.
+export const PLACEHOLDER_EMPHASIS_COLOUR = '&H00A6B814'
+
+export function buildAssCaptions(plan: EditPlanV1, opts: { fontName: string; emphasisColourAss?: string }): {
   document: string; sha256: string; eventCount: number
 } {
   const document = renderAssDocument(plan, {
@@ -164,6 +214,7 @@ export function buildAssCaptions(plan: EditPlanV1, opts: { fontName: string }): 
     fontName: opts.fontName,
     fontSizePx: plan.captions.fontSizePx,
     marginVerticalPx: plan.captions.marginVerticalPx,
+    emphasisColourAss: opts.emphasisColourAss ?? PLACEHOLDER_EMPHASIS_COLOUR,
   })
   return { document, sha256: assDocumentSha256(document), eventCount: plan.captions.cues.length }
 }
