@@ -111,8 +111,9 @@ function writeAssDocument(plan: EditPlanV1, workDir: string): string | null {
     fontName: preset.fontFamily,
     fontSizePx: plan.captions.fontSizePx,
     marginVerticalPx: plan.captions.marginVerticalPx,
+    emphasisColourAss: preset.emphasisColourAss,
   })
-  assertNoOverrideBlock(doc, plan.captions.cues.length)
+  assertNoOverrideBlock(doc, plan.captions.cues.length, preset.emphasisColourAss)
   const path = join(workDir, 'captions.ass')
   writeFileSync(path, doc, 'utf8')
   return path

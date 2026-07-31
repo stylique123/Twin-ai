@@ -132,8 +132,9 @@ maybe('the graph ffmpeg is actually given', () => {
         playResX: renderPlan.output.width, playResY: renderPlan.output.height,
         fontName: preset.fontFamily, fontSizePx: renderPlan.captions.fontSizePx,
         marginVerticalPx: renderPlan.captions.marginVerticalPx,
+        emphasisColourAss: preset.emphasisColourAss,
       })
-      assertNoOverrideBlock(doc, renderPlan.captions.cues.length)
+      assertNoOverrideBlock(doc, renderPlan.captions.cues.length, preset.emphasisColourAss)
       require('node:fs').mkdirSync(workDir, { recursive: true })
       writeFileSync(assPath, doc, 'utf8')
     }

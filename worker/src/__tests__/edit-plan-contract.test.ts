@@ -9,7 +9,7 @@ import { join } from 'node:path'
 import {
   validateEditPlan, canonicalEditPlan, editPlanSha256, editPlanByteLength,
   assertPlanIdentity, assertNoExpressionStrings, EditPlanError,
-  EDIT_PLAN_MAX_BYTES, MAX_ZOOMS,
+  EDIT_PLAN_MAX_BYTES, MAX_ZOOMS, MAX_CUES,
   type EditPlanV1,
 } from '../jobs/editPlanContract.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
@@ -353,11 +353,12 @@ describe('canonical serialization and hash', () => {
   // ordinary text, and that the cap still fires when text is multi-byte.
   const maximalCues = (fill: string): EditPlanV1 => {
     const plan = JSON.parse(JSON.stringify(goodPlan())) as EditPlanV1
-    plan.captions.cues = Array.from({ length: 2000 }, (_, i) => ({
+    plan.captions.cues = Array.from({ length: MAX_CUES }, (_, i) => ({
       index: i, outputStartMs: i * 20, outputEndMs: i * 20 + 19,
       lines: [fill, fill], emphasisWordIndices: [],
+      lineTokens: [[fill], [fill]], lineEmphasis: [[false], [false]],
     }))
-    plan.complexity.cueCount = 2000
+    plan.complexity.cueCount = MAX_CUES
     return plan
   }
 

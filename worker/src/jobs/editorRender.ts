@@ -60,7 +60,7 @@ export interface OutputProfile {
 }
 export interface CaptionPreset {
   fontFamily: string; fontFileBasename: string; bold: boolean
-  primaryColourAss: string; outlineColourAss: string
+  primaryColourAss: string; outlineColourAss: string; emphasisColourAss: string
   outlineWidthPx: number; shadowDepthPx: number; alignment: number
 }
 export interface RenderLimits {

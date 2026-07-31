@@ -26,14 +26,17 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  EDIT_PLAN_VERSION, EditPlanError, validateEditPlan, editPlanSha256, canonicalEditPlan,
+  EDIT_PLAN_SCHEMA_VERSION, EDIT_PLAN_VERSION, EditPlanError, validateEditPlan, editPlanSha256, canonicalEditPlan,
   MAX_WARNINGS, MAX_CUE_EMPHASIS,
   type EditPlanV1, type PlanSegment, type PlanRemoval, type PlanCue, type PlanWarning,
   type PlanZoom, type PlanTransition, type AudioPresetId, type CaptionPresetId,
   type TransitionPolicy, type ZoomIntensity, type ZoomReasonCode, type SourceOrigin,
 } from './editPlanContract.js'
 
-export const EDIT_COMPILER_VERSION = 'edit-compiler-1'
+// v2: cues now carry `lineEmphasis` alongside `emphasisWordIndices` (EDIT_PLAN
+// schema v2) — the compiler is the one place that still has the ordered,
+// per-word group data needed to compute it.
+export const EDIT_COMPILER_VERSION = 'edit-compiler-2'
 
 const WORKER_ROOT = join(import.meta.dirname, '..', '..')
 
@@ -808,7 +811,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const coverSourceTimeMs = first.sourceStartMs + (coverOutputTimeMs - first.outputStartMs)
 
   const draft: EditPlanV1 = {
-    schemaVersion: 1,
+    schemaVersion: EDIT_PLAN_SCHEMA_VERSION,
     identity: {
       planVersion: EDIT_PLAN_VERSION,
       policyVersion: policy.policyVersion,
@@ -903,22 +906,39 @@ interface StagedWord { index: number; text: string; outStartMs: number; outEndMs
 // Greedy line fill: words are never split, truncated or reordered. A word longer
 // than the line limit gets its own line rather than being cut, because caption
 // text is transcript text and the transcript is evidence.
-function layoutLines(texts: string[], maxCharsPerLine: number, maxLines: number): string[] | null {
+//
+// Returns each line's joined DISPLAY string alongside the ORIGINAL INDICES (into
+// `texts`) that composed it, using the exact same greedy decision (based on the
+// joined string's length) as before — so `lines` is byte-identical to what this
+// function has always produced. The indices exist so a caller needing per-word
+// boundaries (emphasis highlighting) never has to re-split the joined string —
+// a single entry of `texts` is not guaranteed free of internal whitespace (the
+// injection-resistance tests deliberately feed such tokens), so splitting on
+// space downstream would misalign word boundaries whenever one occurs.
+function layoutLines(
+  texts: string[], maxCharsPerLine: number, maxLines: number,
+): { lines: string[]; groups: number[][] } | null {
   const lines: string[] = []
+  const groups: number[][] = []
   let current = ''
-  for (const t of texts) {
+  let currentGroup: number[] = []
+  for (let i = 0; i < texts.length; i++) {
+    const t = texts[i]
     const candidate = current === '' ? t : `${current} ${t}`
     if (candidate.length <= maxCharsPerLine || current === '') {
       current = candidate
+      currentGroup.push(i)
     } else {
       lines.push(current)
+      groups.push(currentGroup)
       current = t
+      currentGroup = [i]
       if (lines.length > maxLines) return null
     }
   }
-  if (current !== '') lines.push(current)
+  if (current !== '') { lines.push(current); groups.push(currentGroup) }
   if (lines.length === 0 || lines.length > maxLines) return null
-  return lines
+  return { lines, groups }
 }
 
 function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
@@ -948,21 +968,39 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     if (group.length === 0) return
     if (cues.length >= maxCues) { group = []; return }
     const texts = group.map((g) => g.text)
-    let lines = layoutLines(texts, preset.maxCharsPerLine, maxLines)
-    while (lines === null && group.length > 1) {
+    let layout = layoutLines(texts, preset.maxCharsPerLine, maxLines)
+    while (layout === null && group.length > 1) {
       // Too much text to lay out: give the tail back to the next cue rather than
       // dropping any of it.
       const tail = group.pop()
       if (tail) pending.unshift(tail)
-      lines = layoutLines(group.map((g) => g.text), preset.maxCharsPerLine, maxLines)
+      layout = layoutLines(group.map((g) => g.text), preset.maxCharsPerLine, maxLines)
     }
-    if (lines === null) {
+    let lines: string[]
+    // The original-token indices (into `group`) behind each line — `[[0]]` in
+    // the single-overflow-word fallback below, `layout.groups` otherwise.
+    let lineGroups: number[][]
+    if (layout === null) {
       // A single word longer than two full lines. Keep it as one line — the
       // validator bounds the line length, and truncating transcript text is not
       // something this compiler does silently.
       lines = [group[0].text.slice(0, preset.maxCharsPerLine * maxLines)]
+      lineGroups = [[0]]
       warn.add('caption_line_overflow', `word_${group[0].index}`)
+    } else {
+      lines = layout.lines
+      lineGroups = layout.groups
     }
+    // The per-token texts behind each line. NOT `texts[idx]` in the truncated
+    // fallback — that word was cut short, so its one token is the truncated
+    // text actually being displayed, keeping `lineTokens[j].join(' ') ===
+    // lines[j]` true in every case, exactly as the validator requires.
+    const lineTokens: string[][] = layout === null
+      ? [[lines[0]]]
+      : lineGroups.map((idxs) => idxs.map((idx) => texts[idx]))
+    // One flag per token, straight from the SAME index groups — exact by
+    // construction, never by re-parsing rendered text apart.
+    const lineEmphasis: boolean[][] = lineGroups.map((idxs) => idxs.map((idx) => emphasisSet.has(group[idx].index)))
     const startMs = group[0].outStartMs
     let endMs = group[group.length - 1].outEndMs
     const chars = lines.join(' ').length
@@ -978,7 +1016,10 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     if (endMs > outputDurationMs) endMs = outputDurationMs
     if (endMs <= startMs) { group = []; return }
     const emphasisWordIndices = group.map((g) => g.index).filter((i) => emphasisSet.has(i)).slice(0, MAX_CUE_EMPHASIS)
-    cues.push({ index: cues.length, outputStartMs: startMs, outputEndMs: endMs, lines, emphasisWordIndices })
+    cues.push({
+      index: cues.length, outputStartMs: startMs, outputEndMs: endMs,
+      lines, emphasisWordIndices, lineTokens, lineEmphasis,
+    })
     group = []
   }
   // The next hard stop after a staged word: the start of the following staged
