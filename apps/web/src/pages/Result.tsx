@@ -15,8 +15,25 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
+import type { EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
+
+// Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
+// contract so a new EditProjectStatus is a compile error here, not a blank card.
+const EDIT_STATUS_LABEL: Record<EditProjectStatus, string> = {
+  queued: 'Queued…',
+  inspecting: 'Checking your recording…',
+  transcribing: 'Transcribing…',
+  analyzing: 'Analyzing the footage…',
+  directing: 'Directing the cut…',
+  compiling: 'Compiling the edit…',
+  rendering: 'Rendering your video…',
+  validating: 'Finishing up…',
+  completed: 'Done',
+  failed: 'Failed',
+  cancelled: 'Cancelled',
+}
 
 // Stale-while-revalidate cache so reopening a plan is INSTANT instead of showing a
 // full-screen "Loading your script…" every time (the plan page had no cache; the
@@ -227,6 +244,76 @@ export default function Result() {
     const href = videoUrl + (videoUrl.includes('?') ? '&' : '?') + 'download=twinai-video.mp4'
     const a = document.createElement('a'); a.href = href; a.rel = 'noopener'
     document.body.appendChild(a); a.click(); a.remove()
+  }
+
+  // The AI edit (Phase 8 editor v2) — a durable, cross-device pipeline that is
+  // separate from the legacy `gen.edit_path` above. Polled from `edit_projects`
+  // rather than pushed, so a refresh or another device resumes watching for
+  // free. Stops polling the instant the status leaves the active set.
+  const [editProject, setEditProject] = useState<EditProject | null>(null)
+  const [editCancelling, setEditCancelling] = useState(false)
+  useEffect(() => {
+    if (!id) return
+    let live = true
+    let timer: ReturnType<typeof setInterval> | null = null
+    const tick = () => {
+      getLatestEditProject(id).then((p) => {
+        if (!live) return
+        setEditProject(p)
+        if (!p || !EDIT_PROJECT_ACTIVE_STATUSES.includes(p.status)) {
+          if (timer) { clearInterval(timer); timer = null }
+        }
+      }).catch(() => {})
+    }
+    tick()
+    timer = setInterval(tick, 4000)
+    return () => { live = false; if (timer) clearInterval(timer) }
+  }, [id])
+
+  // The finished file — fetched ONLY once the project says `completed` with a
+  // real output asset. A completed project with no asset is the scaffold
+  // state (render flag off); there is deliberately nothing to fetch for it.
+  const [editOutput, setEditOutput] = useState<EditorOutput | null>(null)
+  const [editOutputAttempt, setEditOutputAttempt] = useState(0)
+  useEffect(() => {
+    if (editProject?.status !== 'completed' || !editProject.output_asset_id) { setEditOutput(null); return }
+    let live = true
+    getEditorOutput(editProject.id).then((o) => { if (live) setEditOutput(o) }).catch(() => {})
+    return () => { live = false }
+  }, [editProject?.status, editProject?.output_asset_id, editProject?.id, editOutputAttempt])
+  // getEditorOutput collapses every rejection (not-ready, no-video, sign-failed)
+  // into null — the UI's question is just "can I play this yet". Here the
+  // project is ALREADY `completed` with an asset, so a null that never
+  // resolves means the server-side signing failed, not that it's still
+  // pending. Surface a retry after a few seconds instead of spinning forever.
+  const [editOutputStalled, setEditOutputStalled] = useState(false)
+  useEffect(() => {
+    if (editProject?.status === 'completed' && editProject.output_asset_id && !editOutput) {
+      const t = setTimeout(() => setEditOutputStalled(true), 8000)
+      return () => clearTimeout(t)
+    }
+    setEditOutputStalled(false)
+    return undefined
+  }, [editProject?.status, editProject?.output_asset_id, editOutput])
+
+  const downloadEditVideo = () => {
+    if (!editOutput?.videoUrl) return
+    const href = editOutput.videoUrl + (editOutput.videoUrl.includes('?') ? '&' : '?') + 'download=twinai-video.mp4'
+    const a = document.createElement('a'); a.href = href; a.rel = 'noopener'
+    document.body.appendChild(a); a.click(); a.remove()
+  }
+  const cancelEdit = async () => {
+    if (!editProject) return
+    setEditCancelling(true)
+    try {
+      await cancelEditProject(editProject.id)
+      // Refresh immediately rather than waiting for the next 4s poll tick.
+      setEditProject(await getLatestEditProject(editProject.generation_id))
+    } catch {
+      // Best-effort — the next poll tick reconciles regardless.
+    } finally {
+      setEditCancelling(false)
+    }
   }
   const genThumb = async () => {
     if (!gen) return
@@ -498,7 +585,7 @@ export default function Result() {
           {/* MEDIA ROW — the finished video and its AI cover image, side by side, each
               hugging its own frame. The cover lives HERE (not inside the Title card) so
               generating one never balloons the concept/title cards. */}
-          {(gen.edit_path || rawTakePath || b.packaging?.thumbnail) && (
+          {(gen.edit_path || rawTakePath || b.packaging?.thumbnail || editProject) && (
             <div className="mt-8 flex flex-wrap items-start gap-4">
               {/* A recorded raw take — shown right here so the recording is never
                   invisible. AI editing is being rebuilt and will pick this up. */}
@@ -512,6 +599,57 @@ export default function Result() {
                     {rawTakeUrl
                       ? <video src={rawTakeUrl} controls playsInline className="h-full w-full object-contain" />
                       : <Loader2 className="h-6 w-6 animate-spin text-white/40" />}
+                  </div>
+                </div>
+              )}
+              {/* The AI edit (Phase 8 editor v2) — independent of the legacy
+                  gen.edit_path card below; a generation can have neither, either,
+                  or (mid-migration) both. */}
+              {editProject && (
+                <div className="w-full max-w-[280px] rounded-card border border-teal/25 bg-ink2/70 p-3 backdrop-blur-sm">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-cream">
+                      <span className={cn(
+                        'h-2 w-2 rounded-full',
+                        editProject.status === 'failed' ? 'bg-coral' : editProject.status === 'cancelled' ? 'bg-stone' : 'bg-teal',
+                      )} />
+                      Your AI edit
+                    </div>
+                    {editOutput?.videoUrl && (
+                      <button onClick={downloadEditVideo} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10">
+                        <Download className="h-3.5 w-3.5" /> Download
+                      </button>
+                    )}
+                    {EDIT_PROJECT_ACTIVE_STATUSES.includes(editProject.status) && (
+                      <button onClick={cancelEdit} disabled={editCancelling} className="text-xs text-stone hover:text-coral disabled:opacity-50">
+                        {editCancelling ? 'Cancelling…' : 'Cancel'}
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex aspect-[9/16] w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
+                    {editProject.status === 'completed' && editProject.output_asset_id ? (
+                      editOutput?.videoUrl ? (
+                        <video src={editOutput.videoUrl} controls playsInline className="h-full w-full object-contain" poster={editOutput.coverUrl ?? undefined} />
+                      ) : editOutputStalled ? (
+                        <div className="text-center">
+                          <p className="px-4 text-xs text-coral">Couldn’t load the video.</p>
+                          <button onClick={() => setEditOutputAttempt((n) => n + 1)} className="mt-2 text-xs text-stone underline hover:text-cream">Retry</button>
+                        </div>
+                      ) : (
+                        <Loader2 className="h-6 w-6 animate-spin text-white/40" />
+                      )
+                    ) : editProject.status === 'completed' ? (
+                      <p className="px-5 text-center text-xs text-stone">This run finished without producing a video.</p>
+                    ) : editProject.status === 'failed' ? (
+                      <p className="px-5 text-center text-xs text-coral">The edit failed{editProject.failure_code ? ` (${editProject.failure_code})` : ''}.</p>
+                    ) : editProject.status === 'cancelled' ? (
+                      <p className="px-5 text-center text-xs text-stone">Cancelled.</p>
+                    ) : (
+                      <div className="text-center">
+                        <Loader2 className="mx-auto h-6 w-6 animate-spin text-white/40" />
+                        <p className="mt-2 px-4 text-xs text-stone">{EDIT_STATUS_LABEL[editProject.status]}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
