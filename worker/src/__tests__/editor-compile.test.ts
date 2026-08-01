@@ -906,6 +906,85 @@ describe('the policy cannot ask for more than the contract will accept', () => {
   })
 })
 
+describe('a word too wide for a line is broken, not run off the frame', () => {
+  // THE DEFECT. layoutLines starts a line with a token however long it is
+  // (`|| current === ''`), because a token that fits nowhere still has to go
+  // somewhere. So a single long word became a LINE wider than the preset — a
+  // 30-char word under a 22-char preset renders ~36% past the intended width
+  // and off the side of a 1080-wide frame. Nothing caught it: the plan
+  // contract bounds a line at 200 chars, which is an anti-absurdity limit, not
+  // the typographic width the preset designs for. URLs, handles, hashtags and
+  // hyphenated compounds clear these limits routinely.
+  const LONG = 'Sonderzeichenverkettungswort' // 28 chars vs the preset's 22
+
+  function planWithLongWord(): ReturnType<typeof compileEditPlan> {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.evidence.words = input.evidence.words.map((w, i) => (i === 0 ? { ...w, text: LONG } : w))
+    return compileEditPlan({ ...input, policy: policy() })
+  }
+
+  it('no line exceeds the preset width', () => {
+    const { plan } = planWithLongWord()
+    const maxChars = policy().captions.presets['caption-clean-keyword-v1'].maxCharsPerLine
+    for (const cue of plan.captions.cues) {
+      for (const line of cue.lines) expect(line.length).toBeLessThanOrEqual(maxChars)
+    }
+  })
+
+  it('CONTROL: the long word really is present and really is over the limit', () => {
+    // Otherwise "no line is too long" could be true because the word never
+    // reached a cue at all.
+    const { plan } = planWithLongWord()
+    const maxChars = policy().captions.presets['caption-clean-keyword-v1'].maxCharsPerLine
+    expect(LONG.length).toBeGreaterThan(maxChars)
+    const all = plan.captions.cues.flatMap((c) => c.lines).join(' ')
+    // Present as fragments that reassemble, not dropped.
+    expect(all.replace(/ /g, '')).toContain(LONG)
+  })
+
+  it('keeps the validator invariant: joined tokens reproduce the line exactly', () => {
+    // The plan validator checks lineTokens[j].join(' ') === lines[j]. Splitting
+    // a token is exactly the operation that could break it.
+    const { plan } = planWithLongWord()
+    for (const cue of plan.captions.cues) {
+      cue.lines.forEach((line, j) => expect(cue.lineTokens[j].join(' ')).toBe(line))
+      expect(cue.lineEmphasis.length).toBe(cue.lines.length)
+      cue.lineTokens.forEach((toks, j) => expect(cue.lineEmphasis[j].length).toBe(toks.length))
+    }
+  })
+
+  it('the whole plan still validates', () => {
+    // The real proof that nothing downstream was broken by the split.
+    const { plan } = planWithLongWord()
+    expect(() => validateEditPlan(plan)).not.toThrow()
+  })
+
+  it('a word too long for EVERY line fills them at the allowed width, and says so', () => {
+    // The old fallback emitted one line of maxCharsPerLine * maxLines — the
+    // widest line in the system, produced by the branch whose job was handling
+    // "too wide to fit".
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.evidence.words = input.evidence.words.map((w, i) => (i === 0 ? { ...w, text: 'x'.repeat(300) } : w))
+    const { plan, warnings } = compileEditPlan({ ...input, policy: policy() })
+    const pol = policy()
+    const maxChars = pol.captions.presets['caption-clean-keyword-v1'].maxCharsPerLine
+    const first = plan.captions.cues[0]
+    expect(first.lines.length).toBeLessThanOrEqual(pol.captions.maxLinesPerCue)
+    for (const line of first.lines) expect(line.length).toBeLessThanOrEqual(maxChars)
+    expect(warnings.some((w) => w.code === 'caption_line_overflow')).toBe(true)
+    expect(() => validateEditPlan(plan)).not.toThrow()
+  })
+
+  it('an ordinary cue is untouched — fragmentation only fires on over-wide tokens', () => {
+    // CONTROL against the fix being a blunt instrument that reformats
+    // everything: normal words must still share a line.
+    const { plan } = compileEditPlan({ ...baseInput(), policy: policy() })
+    expect(plan.captions.cues.some((c) => c.lineTokens.some((t) => t.length > 1))).toBe(true)
+  })
+})
+
 describe('captions stay clear of the platform UI band', () => {
   // caption-minimal-subtitle-v1 placed its baseline 80px INSIDE the band that
   // TikTok and Reels cover with the caption stack and CTA — declared unsafe by

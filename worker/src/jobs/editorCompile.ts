@@ -1111,6 +1111,35 @@ interface StagedWord { index: number; text: string; outStartMs: number; outEndMs
 // a single entry of `texts` is not guaranteed free of internal whitespace (the
 // injection-resistance tests deliberately feed such tokens), so splitting on
 // space downstream would misalign word boundaries whenever one occurs.
+/**
+ * Break a token that cannot fit one line into pieces that can.
+ *
+ * WHY THIS EXISTS. `layoutLines` starts a line with a token no matter how long
+ * it is (`|| current === ''`), because a token that fits nowhere still has to
+ * go somewhere. That produced a LINE longer than the preset allows: a 30-char
+ * word under `caption-punchy-word-v1` (16) renders at nearly double the
+ * intended width and runs off the side of the frame. Nothing caught it — the
+ * plan contract bounds a line at 200 chars, which is a safety limit against
+ * absurd input, not the typographic width the preset actually designs for.
+ *
+ * Long tokens are not exotic in this product: URLs, hashtags, handles,
+ * hyphenated compounds and German/Nordic compounds all clear 16 characters
+ * routinely, and ASR emits them as single tokens.
+ *
+ * Splitting at a fixed character count rather than at a syllable or a hyphen
+ * because the renderer measures nothing here: `maxCharsPerLine` is itself a
+ * proxy for width, and a proxy that stays consistent is worth more than a
+ * cleverer break that can still overflow. Each piece is a real token in
+ * `lineTokens`, so `lineTokens[j].join(' ') === lines[j]` still holds — the
+ * invariant the plan validator checks.
+ */
+function fragmentToken(text: string, maxCharsPerLine: number): string[] {
+  if (text.length <= maxCharsPerLine || maxCharsPerLine < 1) return [text]
+  const out: string[] = []
+  for (let i = 0; i < text.length; i += maxCharsPerLine) out.push(text.slice(i, i + maxCharsPerLine))
+  return out
+}
+
 function layoutLines(
   texts: string[], maxCharsPerLine: number, maxLines: number,
 ): { lines: string[]; groups: number[][] } | null {
@@ -1194,25 +1223,34 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
       group = []
       return
     }
-    const texts = group.map((g) => g.text)
-    let layout = layoutLines(texts, preset.maxCharsPerLine, maxLines)
+    // Fragments, not raw words: a token too wide for a line is broken here so
+    // no LINE can exceed the preset width. `wordIdx` points back at the word
+    // in `group` that a fragment came from, so emphasis still lands on the
+    // right token after a split.
+    const fragmentsOf = (g: StagedWord[]): { text: string; wordIdx: number }[] =>
+      g.flatMap((w, i) => fragmentToken(w.text, preset.maxCharsPerLine).map((text) => ({ text, wordIdx: i })))
+    let frags = fragmentsOf(group)
+    let layout = layoutLines(frags.map((f) => f.text), preset.maxCharsPerLine, maxLines)
     while (layout === null && group.length > 1) {
       // Too much text to lay out: give the tail back to the next cue rather than
       // dropping any of it.
       const tail = group.pop()
       if (tail) pending.unshift(tail)
-      layout = layoutLines(group.map((g) => g.text), preset.maxCharsPerLine, maxLines)
+      frags = fragmentsOf(group)
+      layout = layoutLines(frags.map((f) => f.text), preset.maxCharsPerLine, maxLines)
     }
     let lines: string[]
     // The original-token indices (into `group`) behind each line — `[[0]]` in
     // the single-overflow-word fallback below, `layout.groups` otherwise.
     let lineGroups: number[][]
     if (layout === null) {
-      // A single word longer than two full lines. Keep it as one line — the
-      // validator bounds the line length, and truncating transcript text is not
-      // something this compiler does silently.
-      lines = [group[0].text.slice(0, preset.maxCharsPerLine * maxLines)]
-      lineGroups = [[0]]
+      // ONE word too long for every line this preset allows. It used to become
+      // a single line of maxCharsPerLine * maxLines characters — i.e. the
+      // fallback for "too wide to fit" emitted the widest line in the system,
+      // guaranteed off-frame. Now it fills the lines it is allowed, at the
+      // width it is allowed, and the truncation is announced as before.
+      lines = frags.slice(0, maxLines).map((f) => f.text)
+      lineGroups = lines.map((_, j) => [j])
       warn.add('caption_line_overflow', `word_${group[0].index}`)
     } else {
       lines = layout.lines
@@ -1223,11 +1261,13 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     // text actually being displayed, keeping `lineTokens[j].join(' ') ===
     // lines[j]` true in every case, exactly as the validator requires.
     const lineTokens: string[][] = layout === null
-      ? [[lines[0]]]
-      : lineGroups.map((idxs) => idxs.map((idx) => texts[idx]))
+      ? lines.map((ln) => [ln])
+      : lineGroups.map((idxs) => idxs.map((idx) => frags[idx].text))
     // One flag per token, straight from the SAME index groups — exact by
     // construction, never by re-parsing rendered text apart.
-    const lineEmphasis: boolean[][] = lineGroups.map((idxs) => idxs.map((idx) => emphasisSet.has(group[idx].index)))
+    const lineEmphasis: boolean[][] = layout === null
+      ? lines.map(() => [emphasisSet.has(group[0].index)])
+      : lineGroups.map((idxs) => idxs.map((idx) => emphasisSet.has(group[frags[idx].wordIdx].index)))
     const startMs = group[0].outStartMs
     let endMs = group[group.length - 1].outEndMs
     const chars = lines.join(' ').length
