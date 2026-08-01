@@ -670,6 +670,24 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           }
           throw err
         }
+        // WHAT THE ENCODER ACTUALLY DELIVERED, on the durable trail.
+        //
+        // The frozen -14 LUFS / -1.0 dBTP target is what the graph REQUESTS;
+        // single-pass loudnorm cannot be held to it (jobs/loudness.ts carries
+        // the measurements), so the validator enforces only the disaster band
+        // and records the rest. Recording it is the point: it turns "should we
+        // move to two-pass loudnorm" from an argument into a query.
+        //
+        // OUTSIDE THE try ON PURPOSE. Inside it, a failed bookkeeping write
+        // would be caught by the handler above, labelled `render_failed`, and
+        // would fail a render that had already produced and validated a video.
+        // An evidence write must never be able to destroy the thing it is
+        // evidence of.
+        await appendEvent(job, projectId, 'audio_measured', {
+          integrated_lufs_milli: rendered.integratedLufsMilli,
+          true_peak_dbtp_milli: rendered.truePeakDbtpMilli,
+          true_peak_overshoot_milli: rendered.truePeakOvershootMilli,
+        })
       } else if (stage === 'validating' && env.editorRenderEnabled) {
         // Phase 8 Batch 8.5: mint the output asset and complete. Both fenced;
         // both refuse unless the output row is genuinely READY.

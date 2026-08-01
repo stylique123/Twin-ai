@@ -54,6 +54,13 @@ export interface RenderStageOutcome {
   coverBytes: number
   storagePath: string
   graphSha256: string
+  /** What the encoder actually delivered, in milli-units. Recorded rather than
+   *  merely checked: the frozen ±1 LUFS / -1.0 dBTP target is NOT enforceable
+   *  against single-pass loudnorm (see jobs/loudness.ts), so whether to invest
+   *  in two-pass has to be decided from what real runs measure. */
+  integratedLufsMilli: number | null
+  truePeakDbtpMilli: number | null
+  truePeakOvershootMilli: number | null
 }
 export interface ValidateStageOutcome {
   outputAssetId: string
@@ -183,6 +190,9 @@ export async function runRenderingStage(
       coverBytes,
       storagePath: reserved.storage_path,
       graphSha256: evidence.graphSha256,
+      integratedLufsMilli: validation.loudness.measurement.integratedLufsMilli,
+      truePeakDbtpMilli: validation.loudness.measurement.truePeakDbtpMilli,
+      truePeakOvershootMilli: validation.loudness.truePeakOvershootMilli,
     }
   } finally {
     watch.stop()
