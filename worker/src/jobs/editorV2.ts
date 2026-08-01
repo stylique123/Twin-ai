@@ -662,7 +662,7 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // Phase 8 Batch 8.5: the REAL rendering stage. Reserve, render,
         // validate, THEN publish — nothing unmeasured reaches a durable path.
         try {
-          rendered = await runRenderingStage(job, projectId, dir)
+          rendered = await runRenderingStage(job, projectId, dir, session)
         } catch (err) {
           if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
           if (!isLeaseLost(err)) {

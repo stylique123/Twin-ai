@@ -152,12 +152,33 @@ function writeAssDocument(
   return { path, colourRejections: rejected }
 }
 
+/**
+ * @param session the ATTEMPT-SCOPED session the orchestrator already opened.
+ *
+ * REQUIRED, and taken rather than made. This function used to construct its
+ * own `new VerifiedSourceSession(...)` over the same asset, writing to the
+ * exact path the orchestrator's session had already downloaded to — so the
+ * source was fetched TWICE inside one attempt, and three times counting
+ * validate_source.
+ *
+ * That contradicted three module headers asserting the opposite (editorV2's
+ * "at most ONE verified download per attempt", sourceSession's "localPath()
+ * performs AT MOST ONE download per attempt", editorAnalyze's download truth
+ * table), and it made `source_downloads` on the durable record wrong by one
+ * forever, since that counter only ever saw the orchestrator's session.
+ *
+ * On a 200 MB take it is ~200 MB of egress and ~25 s per render, and storage
+ * egress is the single largest line in the unit cost.
+ *
+ * Passed in rather than defaulted so ownership is unambiguous: the caller
+ * opened it and the caller disposes it. This function must NOT — disposing a
+ * session it does not own would delete bytes the orchestrator still needs.
+ */
 export async function runRenderingStage(
-  job: Job, projectId: string, dir: string,
+  job: Job, projectId: string, dir: string, session: VerifiedSourceSession,
 ): Promise<RenderStageOutcome> {
-  const { proj, asset, meta } = await loadEligibleSource(projectId, 'render')
+  const { proj } = await loadEligibleSource(projectId, 'render')
   const watch: CancelWatch = watchCancellation(projectId)
-  const session = new VerifiedSourceSession(asset, meta, dir)
   const workDir = join(dir, 'render')
   try {
     if (proj.cancel_requested_at) throw new RenderStageCancelledError('before_rendering')
@@ -225,7 +246,10 @@ export async function runRenderingStage(
     }
   } finally {
     watch.stop()
-    session.dispose()
+    // The session is NOT disposed here — the orchestrator owns it and other
+    // stages may still need the bytes. Disposing a borrowed session would
+    // delete the source out from under them.
+    //
     // CANCELLATION IS NOT FAILURE, and its local half is this: the partial
     // files go, the immutable plan and the reservation stay, and no pointer was
     // ever published because nothing uploads before it validates.
