@@ -109,10 +109,78 @@ export interface GraphAssets {
   assPath: string | null
   fontsDir: string | null
   outputPath: string
+  /** The frozen encoder settings. Required — see EncoderSettings for why an
+   *  optional one would reintroduce the defect it exists to fix. */
+  encoder: EncoderSettings
   /** The free-tier mark, supplied ONLY when the plan asks for one. Like the
    *  crossfade bounds, the geometry is handed down by the caller rather than
    *  read here — this module resolves no paths and opens no catalogs. */
   watermark?: WatermarkPlacement
+}
+
+/**
+ * The frozen encoder settings, handed down like every other catalog value.
+ *
+ * THESE WERE DECLARED AND NEVER SENT. The catalog has carried `x264Preset`,
+ * `x264Crf`, `x264Profile`, `x264Level`, `gopSizeFrames` and
+ * `audioBitrateKbps` all along, under a comment insisting that "the operator
+ * picked a different preset that day" must never be something the audit trail
+ * has to say. The argv this file built contained none of them. Every render
+ * ever made used ffmpeg's compiled-in defaults.
+ *
+ * That made the determinism claim false in the one dimension nobody measured:
+ * the plan hash, the graph hash and the validator were all stable while the
+ * actual picture quality and bitrate were whatever the worker's ffmpeg build
+ * happened to default to. A version bump on the host silently changed every
+ * customer's video and nothing anywhere went red.
+ *
+ * REQUIRED, not optional. An optional encoder setting reintroduces exactly the
+ * failure being fixed — silence that looks like success — so the type system
+ * refuses to build a graph that has not declared one.
+ */
+export interface EncoderSettings {
+  x264Preset: string
+  x264Crf: number
+  x264Profile: string
+  x264Level: string
+  gopSizeFrames: number
+  audioBitrateKbps: number
+}
+
+// x264's own preset names. A closed set, because this reaches argv: an
+// unrecognised preset is a configuration error we want loudly, not a token
+// handed to a process to interpret.
+const X264_PRESETS = new Set([
+  'ultrafast', 'superfast', 'veryfast', 'faster', 'fast',
+  'medium', 'slow', 'slower', 'veryslow', 'placebo',
+])
+const X264_PROFILES = new Set(['baseline', 'main', 'high', 'high10', 'high422', 'high444'])
+// H.264 levels are `<digit>.<digit>` or a bare digit. Pinned as a shape rather
+// than a list so a future 6.2 does not need a code change, while `-anything`
+// still cannot be read as a flag.
+const X264_LEVEL_RE = /^[1-6](\.[0-9])?$/
+
+/** Every encoder value checked before it becomes argv. Same posture as the
+ *  rest of this file: the catalog is JSON on disk, so "it came from the
+ *  catalog" is not the same as "it is safe to hand to a process". */
+function checkEncoder(e: EncoderSettings, invalid: (m: string) => never): EncoderSettings {
+  if (!X264_PRESETS.has(e.x264Preset)) invalid(`encoder: ${JSON.stringify(e.x264Preset)} is not an x264 preset`)
+  if (!X264_PROFILES.has(e.x264Profile)) invalid(`encoder: ${JSON.stringify(e.x264Profile)} is not an x264 profile`)
+  if (!X264_LEVEL_RE.test(e.x264Level)) invalid(`encoder: ${JSON.stringify(e.x264Level)} is not an H.264 level`)
+  // CRF 0 is lossless and 51 is unwatchable; both are real x264 values and
+  // neither is a thing this product should ever ship, but the bound that
+  // matters here is that it is an integer in range and cannot carry a sign
+  // that argv would read as a flag.
+  if (!Number.isInteger(e.x264Crf) || e.x264Crf < 0 || e.x264Crf > 51) {
+    invalid(`encoder: CRF ${String(e.x264Crf)} is not an integer in 0..51`)
+  }
+  if (!Number.isInteger(e.gopSizeFrames) || e.gopSizeFrames < 1 || e.gopSizeFrames > 600) {
+    invalid(`encoder: GOP ${String(e.gopSizeFrames)} is not an integer in 1..600`)
+  }
+  if (!Number.isInteger(e.audioBitrateKbps) || e.audioBitrateKbps < 32 || e.audioBitrateKbps > 512) {
+    invalid(`encoder: audio bitrate ${String(e.audioBitrateKbps)} kbps is not an integer in 32..512`)
+  }
+  return e
 }
 
 /** Where the mark sits and how solid it is. Integers only; every literal the
@@ -700,13 +768,27 @@ export function buildFfmpegGraph(
 
   if (a.music !== null) invalid('music beds are not supported in this epoch')
 
+  const enc = checkEncoder(assets.encoder, invalid)
   const outputOptions = [
     '-map', `[${vCur}]`,
     '-map', `[${aCur}]`,
     '-c:v', plan.output.videoCodec,
     '-pix_fmt', plan.output.pixelFormat,
     '-r', `${plan.output.fpsNum}/${plan.output.fpsDen}`,
+    // THE FROZEN ENCODER PROFILE, which until now was declared in the catalog
+    // and never passed to ffmpeg. `-g` with `keyint_min` equal to it pins the
+    // GOP exactly, rather than letting x264 place keyframes on scene changes —
+    // which for a hard-cut edit would vary with the CONTENT and make two
+    // renders of one plan differ.
+    '-preset', enc.x264Preset,
+    '-crf', String(enc.x264Crf),
+    '-profile:v', enc.x264Profile,
+    '-level:v', enc.x264Level,
+    '-g', String(enc.gopSizeFrames),
+    '-keyint_min', String(enc.gopSizeFrames),
+    '-sc_threshold', '0',
     '-c:a', plan.output.audioCodec,
+    '-b:a', `${enc.audioBitrateKbps}k`,
     '-ar', String(plan.output.audioSampleRateHz),
     '-ac', String(plan.output.audioChannels),
     '-t', msToSecondsLiteral(plan.output.durationMs),

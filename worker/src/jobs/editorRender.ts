@@ -471,7 +471,11 @@ export function renderBudgetMs(plan: EditPlanV1, limits: RenderLimits): number {
 
 export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realDeps): Promise<RenderResult> {
   const catalog = loadRenderCatalog()
-  assertOutputProfile(req.plan, catalog)
+  // The return value was discarded here, which is part of why the encoder
+  // settings never reached ffmpeg: the profile was proven to match the plan
+  // and then thrown away, so the only fields anyone could reach were the ones
+  // the plan happened to duplicate.
+  const profile = assertOutputProfile(req.plan, catalog)
 
   if (req.plan.captions.cues.length > 0 && (!req.assPath || !req.fontsDir)) {
     bad('the plan carries caption cues but no ASS document or fonts directory was provided', 'render_graph_invalid')
@@ -533,6 +537,15 @@ export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realD
     req.plan,
     {
       sourcePath: req.sourcePath, assPath: req.assPath, fontsDir: req.fontsDir, outputPath,
+      // Straight from the profile the plan already had to match field for
+      // field (assertOutputProfile). The graph opens no catalogs, so the
+      // encoder settings are handed down here like the crossfade bounds and
+      // the watermark geometry.
+      encoder: {
+        x264Preset: profile.x264Preset, x264Crf: profile.x264Crf,
+        x264Profile: profile.x264Profile, x264Level: profile.x264Level,
+        gopSizeFrames: profile.gopSizeFrames, audioBitrateKbps: profile.audioBitrateKbps,
+      },
       watermark: watermarkPlacement,
     },
     catalog.transitions.crossfade,

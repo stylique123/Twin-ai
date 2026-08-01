@@ -13,18 +13,23 @@ import { compileEditPlan } from '../jobs/editorCompile.js'
 import { EditPlanError, type EditPlanV1 } from '../jobs/editPlanContract.js'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { baseInput, policy } from './fixtures/editPlanFixture.js'
+import { baseInput, policy, shippedEncoder } from './fixtures/editPlanFixture.js'
 
 function codeOf(fn: () => unknown): string {
   try { fn() } catch (e) { return (e as EditPlanError).code }
   throw new Error('expected a throw, got none')
 }
 
+// The SHIPPED encoder settings, READ from render_catalog_v1.json rather than
+// transcribed. See shippedEncoder()'s own comment for why that distinction is
+// load-bearing here specifically.
+const ENCODER = shippedEncoder()
 const ASSETS = {
   sourcePath: '/var/tmp/edit/source.mp4',
   assPath: '/var/tmp/edit/captions.ass',
   fontsDir: '/opt/fonts',
   outputPath: '/var/tmp/edit/out.mp4',
+  encoder: ENCODER,
 }
 // The fixture plan uses a `restrained` transition, which this batch's graph
 // builder does not implement — so the graph tests use the hard-cut plan and
@@ -533,5 +538,90 @@ describe('the zoom crop is displaced toward the subject', () => {
     // `+`/`-` and digits only — no comma, no conditional, nothing that could
     // terminate a filter. Proven by serializing rather than by inspection.
     expect(() => serializeFilterGraph(buildFfmpegGraph(hardCutPlan(), ASSETS))).not.toThrow()
+  })
+})
+
+describe('the frozen encoder profile actually reaches ffmpeg', () => {
+  // THE DEFECT THESE EXIST FOR. The catalog has always declared x264Preset,
+  // x264Crf, x264Profile, x264Level, gopSizeFrames and audioBitrateKbps, under
+  // a comment insisting that "the operator picked a different preset that day"
+  // must never be a thing the audit trail has to say. The argv contained none
+  // of them, so every render used ffmpeg's compiled-in defaults while the plan
+  // hash, the graph hash and the validator all stayed green. A test asserting
+  // "the catalog declares a CRF" would have passed the entire time — so these
+  // assert the ARGV, which is the only thing ffmpeg reads.
+  const argv = () => buildFfmpegArgs(buildFfmpegGraph(hardCutPlan(), ASSETS))
+  const valueOf = (args: string[], flag: string): string | undefined => {
+    const i = args.indexOf(flag)
+    return i === -1 ? undefined : args[i + 1]
+  }
+
+  it('emits every declared encoder setting, with the catalog\'s values', () => {
+    const args = argv()
+    expect(valueOf(args, '-preset')).toBe('medium')
+    expect(valueOf(args, '-crf')).toBe('20')
+    expect(valueOf(args, '-profile:v')).toBe('high')
+    expect(valueOf(args, '-level:v')).toBe('4.0')
+    expect(valueOf(args, '-g')).toBe('60')
+    expect(valueOf(args, '-b:a')).toBe('128k')
+  })
+
+  it('pins the GOP so keyframes cannot follow the CONTENT', () => {
+    // Without keyint_min and sc_threshold=0, x264 places extra keyframes on
+    // scene changes. For a hard-cut edit that means the keyframe layout — and
+    // therefore the bytes — vary with the footage, so two renders of one plan
+    // are not the same output. That is precisely what the profile exists to
+    // prevent, and -g alone does not achieve it.
+    const args = argv()
+    expect(valueOf(args, '-keyint_min')).toBe(valueOf(args, '-g'))
+    expect(valueOf(args, '-sc_threshold')).toBe('0')
+  })
+
+  it('CONTROL: the settings come from the caller, not from a constant in here', () => {
+    // If the builder hardcoded them, the assertions above would pass while the
+    // catalog was ignored — the same class of defect wearing a different hat.
+    const slower = { ...ASSETS, encoder: { ...ENCODER, x264Crf: 18, x264Preset: 'slow', audioBitrateKbps: 192 } }
+    const args = buildFfmpegArgs(buildFfmpegGraph(hardCutPlan(), slower))
+    expect(valueOf(args, '-crf')).toBe('18')
+    expect(valueOf(args, '-preset')).toBe('slow')
+    expect(valueOf(args, '-b:a')).toBe('192k')
+  })
+
+  it('the SHIPPED catalog still declares the values asserted above', () => {
+    // ENCODER is read from the catalog, so the assertions above track it
+    // automatically. This pins the actual numbers, so a silent change to the
+    // frozen profile — the thing the catalog's own comment says must never
+    // happen unnoticed — fails here rather than shipping.
+    expect(ENCODER).toEqual({
+      x264Preset: 'medium', x264Crf: 20, x264Profile: 'high',
+      x264Level: '4.0', gopSizeFrames: 60, audioBitrateKbps: 128,
+    })
+  })
+
+  it('refuses a preset, profile or level that is not real, rather than passing it to a process', () => {
+    const msg = (encoder: Record<string, unknown>): string => {
+      try { buildFfmpegGraph(hardCutPlan(), { ...ASSETS, encoder: encoder as never }) }
+      catch (e) { return (e as Error).message }
+      throw new Error('expected a throw, got none')
+    }
+    expect(msg({ ...ENCODER, x264Preset: 'blazing' })).toContain('x264 preset')
+    expect(msg({ ...ENCODER, x264Profile: 'ultra' })).toContain('x264 profile')
+    expect(msg({ ...ENCODER, x264Level: '9.9' })).toContain('H.264 level')
+    // The one that matters most: a value that could be read as a FLAG.
+    expect(msg({ ...ENCODER, x264Preset: '-y' })).toContain('x264 preset')
+    expect(msg({ ...ENCODER, x264Level: '-f' })).toContain('H.264 level')
+  })
+
+  it('refuses out-of-range or non-integer numerics', () => {
+    const msg = (encoder: Record<string, unknown>): string => {
+      try { buildFfmpegGraph(hardCutPlan(), { ...ASSETS, encoder: encoder as never }) }
+      catch (e) { return (e as Error).message }
+      throw new Error('expected a throw, got none')
+    }
+    expect(msg({ ...ENCODER, x264Crf: 52 })).toContain('CRF')
+    expect(msg({ ...ENCODER, x264Crf: -1 })).toContain('CRF')
+    expect(msg({ ...ENCODER, x264Crf: 20.5 })).toContain('CRF')
+    expect(msg({ ...ENCODER, gopSizeFrames: 0 })).toContain('GOP')
+    expect(msg({ ...ENCODER, audioBitrateKbps: 8 })).toContain('audio bitrate')
   })
 })

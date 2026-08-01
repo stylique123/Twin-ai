@@ -20,13 +20,14 @@ import { describe, it, expect } from 'vitest'
 import { buildFfmpegGraph, serializeFilterGraph, type CrossfadeBounds } from '../jobs/ffmpegGraph.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
 import { EditPlanError, type EditPlanV1 } from '../jobs/editPlanContract.js'
-import { baseInput, policy } from './fixtures/editPlanFixture.js'
+import { baseInput, policy, shippedEncoder } from './fixtures/editPlanFixture.js'
 
 const ASSETS = {
   sourcePath: '/var/tmp/edit/source.mp4',
   assPath: '/var/tmp/edit/captions.ass',
   fontsDir: '/opt/fonts',
   outputPath: '/var/tmp/edit/out.mp4',
+  encoder: shippedEncoder(),
 }
 const BOUNDS: CrossfadeBounds = {
   minOverlapMs: 80, maxOverlapMs: 1000, maxOverlapFractionOfShorterSegmentMilli: 400,

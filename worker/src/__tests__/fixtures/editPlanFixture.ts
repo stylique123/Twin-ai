@@ -8,6 +8,8 @@ import type {
   CompileInput, CompileWord, CompileCandidate, CompileVisualWaste, CompileFaceSample, EditPolicyV1,
 } from '../../jobs/editorCompile.js'
 import { loadEditPolicy } from '../../jobs/editorCompile.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export const PROJECT_ID = '11111111-1111-4111-8111-111111111111'
 export const GENERATION_ID = '22222222-2222-4222-8222-222222222222'
@@ -146,3 +148,31 @@ export const EXPECTED = {
   transitionOverlapMs: 120,
   transitionAtSegmentIndex: 3,
 } as const
+
+/**
+ * The SHIPPED encoder settings, read from render_catalog_v1.json rather than
+ * transcribed into a literal.
+ *
+ * Read, not copied, deliberately. These settings were declared in the catalog
+ * and never passed to ffmpeg for the whole life of the renderer, and a
+ * hand-typed fixture is exactly what let four other joints in this pipeline
+ * stay broken behind a green suite — in every case because the fixture was
+ * written from what the reader expected instead of what the producer emits.
+ * Reading the real file means a test can assert "the argv carries CRF 20" and
+ * have that remain true of PRODUCTION, not just of this file.
+ */
+export function shippedEncoder(): {
+  x264Preset: string; x264Crf: number; x264Profile: string; x264Level: string
+  gopSizeFrames: number; audioBitrateKbps: number
+} {
+  const catalog = JSON.parse(
+    readFileSync(join(import.meta.dirname, '..', '..', '..', 'render_catalog_v1.json'), 'utf8'),
+  ) as { outputProfiles: Record<string, Record<string, unknown>> }
+  const p = catalog.outputProfiles['vertical-social-1080x1920-h264-aac-v1']
+  if (!p) throw new Error('editPlanFixture: the frozen output profile is missing from the catalog')
+  return {
+    x264Preset: String(p.x264Preset), x264Crf: Number(p.x264Crf),
+    x264Profile: String(p.x264Profile), x264Level: String(p.x264Level),
+    gopSizeFrames: Number(p.gopSizeFrames), audioBitrateKbps: Number(p.audioBitrateKbps),
+  }
+}
