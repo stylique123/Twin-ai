@@ -510,6 +510,29 @@ time-gating (#235) · loudness measurement (#236)
 2. Onboarding questions during the scan + confirm screen
 3. **Script-anchored forced alignment** *(largest single accuracy win — fixes
    captions, cuts, emphasis, zooms, hooks, and every language at once)*
+   - [x] **The alignment engine** — `worker/src/jobs/scriptAlignment.ts`, pure
+         and dependency-free, 29 tests. Sequence-aligns the pinned script
+         against the ASR words and gives every SCRIPT word a REAL timestamp:
+         the script is ground truth for spelling, the recording for timing.
+         Reports matches, substitutions (with a similarity score), skipped
+         words and ad-libs. It never filters — `editorSpeech.ts` requires that
+         off-script words stay, so an ad-lib is reported and never removed, and
+         a skipped word gets a null time rather than an invented one.
+         Reads the snapshot correctly in two ways a caller would get wrong:
+         hidden b-roll scenes (`showInTeleprompter: false`) are excluded
+         because they were never on screen to read, and an UPLOAD (no captured
+         script) returns null as a normal state, so upload-a-take keeps working
+         on ASR alone exactly as it does today.
+   - [ ] **Wiring it into the analyze stage** — this is the next step and it is
+         not small: a new immutable component needs a schema version, digest,
+         and a row in the download truth table, and it touches the frozen
+         identity system (`componentVersions`, `componentDigests`,
+         `scriptSnapshotSha`). Landing it half-wired would be worse than not
+         landing it.
+   - [ ] **Consuming it** — captions take the script's spelling at the
+         recording's time; false starts become detectable as a script region
+         spoken twice; `hookStartWordIndex` becomes an exact boundary instead
+         of the current unordered token ratio.
 4. Transcript-as-editor review gate
 5. Failure path — explain, retain footage, retry without refilming
 
