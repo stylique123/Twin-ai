@@ -53,6 +53,28 @@
     "minRemovalMs": 120
   },
 
+  "_edgesComment": [
+    "THE EDGES OF A RECORDING ARE ALWAYS WASTE, and until now removing them was",
+    "left to the Director's discretion. It is not a judgement call. Nobody has",
+    "ever wanted their video to open on themselves settling into frame, and",
+    "nobody has ever wanted it to end on themselves reaching for the stop",
+    "button -- which the creator is ALWAYS doing, because they are the one",
+    "operating the camera.",
+    "",
+    "The hook mechanism already trims the head when the Director chooses to open",
+    "on a word. This is the floor beneath that: with or without a hook, whatever",
+    "sits outside the first and last spoken word is removed.",
+    "",
+    "keepMs leaves a small breath so the first word does not start on frame one",
+    "and the last does not end abruptly. minTrimMs stops a 40ms sliver being",
+    "recorded as an edit -- the same reasoning as cuts.minRemovalMs."
+  ],
+  "edges": {
+    "trimLeading": true,
+    "trimTrailing": true,
+    "keepMs": 120,
+    "minTrimMs": 200
+  },
   "captions": {
     "maxCues": 1000,
     "maxLinesPerCue": 2,

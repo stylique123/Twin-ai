@@ -70,6 +70,9 @@ export interface EditPolicyV1 {
     maxKeptSegments: number; maxRemovals: number; emphasisPauseGuardMs: number
     sceneBoundaryGuardMs: number; minRemovalMs: number
   }
+  edges: {
+    trimLeading: boolean; trimTrailing: boolean; keepMs: number; minTrimMs: number
+  }
   captions: {
     maxCues: number; maxLinesPerCue: number; presetIds: string[]
     presets: Record<string, CaptionPresetPolicy>
@@ -671,6 +674,47 @@ export function compileEditPlan(input: CompileInput): CompileResult {
     }
   }
 
+  // ---- the edges of the recording ------------------------------------------
+  //
+  // ALWAYS WASTE, AND NOT A JUDGEMENT CALL. Before this, whatever sat outside
+  // the first and last spoken word was removed only if the Director happened to
+  // select the silence candidate covering it. So a video could open on someone
+  // settling into frame and end on them reaching for the stop button — which
+  // the creator is ALWAYS doing, because they are the one operating the camera.
+  //
+  // The hook mechanism already trims the head when the Director chooses to open
+  // on a word. This is the floor beneath it: hook or no hook, the outside comes
+  // off. `keepMs` leaves a breath so the first word does not begin on frame one.
+  const edgeTrims: Interval[] = []
+  const effectiveDomainStartForLabel = effectiveDomain[0].startMs
+  if (evidence.words.length > 0) {
+    const first = evidence.words[0]
+    const last = evidence.words[evidence.words.length - 1]
+    const domStart = effectiveDomain[0].startMs
+    const domEnd = effectiveDomain[effectiveDomain.length - 1].endMs
+
+    if (policy.edges.trimLeading) {
+      const cutTo = Math.max(domStart, first.startMs - policy.edges.keepMs)
+      // A sliver is a glitch, not an edit — same reasoning as cuts.minRemovalMs.
+      if (cutTo - domStart >= policy.edges.minTrimMs) edgeTrims.push({ startMs: domStart, endMs: cutTo })
+    }
+    if (policy.edges.trimTrailing) {
+      const cutFrom = Math.min(domEnd, last.endMs + policy.edges.keepMs)
+      if (domEnd - cutFrom >= policy.edges.minTrimMs) edgeTrims.push({ startMs: cutFrom, endMs: domEnd })
+    }
+  }
+  if (edgeTrims.length > 0) {
+    const afterEdges = subtractIntervals(effectiveDomain, edgeTrims)
+    // Refused rather than applied if it would leave nothing. A recording whose
+    // edges are the whole recording is a recording with no speech in it, and
+    // that is a different failure with its own code.
+    if (afterEdges.length === 0) {
+      bad('edges: trimming the leading and trailing silence removes all media', 'edit_plan_no_kept_media')
+    }
+    effectiveDomain = afterEdges
+    for (const t of edgeTrims) warn.add('edge_trimmed', `${t.startMs}_${t.endMs}`)
+  }
+
   // ---- removals -------------------------------------------------------------
   const { requested, coveredWordIndices } = resolveRemovals(input, policy, effectiveDomain, warn)
   const protectedRegions = buildProtectedRegions({
@@ -817,6 +861,16 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const removalLabel = (iv: Interval): { origin: PlanRemoval['origin']; ref: number | null; reasonCode: string } => {
     if (hookStartWordIndex !== null && iv.startMs >= hookTrimStartMs && iv.endMs <= hookTrimEndMs) {
       return { origin: 'hook_trim', ref: hookStartWordIndex, reasonCode: hookReason }
+    }
+    // Checked BEFORE the candidate owners: an edge trim can overlap a silence
+    // candidate the Director also selected, and when it does the honest reason
+    // is that it is an edge — that removal was going to happen either way.
+    const edge = edgeTrims.find((t) => t.startMs <= iv.startMs && iv.endMs <= t.endMs)
+    if (edge) {
+      return {
+        origin: 'edge_trim', ref: null,
+        reasonCode: edge.startMs === effectiveDomainStartForLabel ? 'edge_leading' : 'edge_trailing',
+      }
     }
     const owner = appliedRemovals.find((r) => r.interval.startMs <= iv.startMs && iv.endMs <= r.interval.endMs)
     if (owner) return { origin: owner.origin, ref: owner.ref, reasonCode: owner.reasonCode }

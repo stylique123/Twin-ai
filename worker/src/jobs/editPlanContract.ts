@@ -62,7 +62,12 @@ export const TRANSITION_POLICIES = ['hard_cuts_only', 'restrained'] as const
 export const TRANSITION_KINDS = ['crossfade'] as const
 export const ZOOM_REASON_CODES = ['emphasis_word', 'scene_open', 'retention_beat'] as const
 export const ZOOM_INTENSITIES = ['subtle', 'medium'] as const
-export const REMOVAL_ORIGINS = ['speech_candidate', 'visual_waste', 'hook_trim'] as const
+// `edge_trim` is the deterministic head/tail removal: whatever sits outside the
+// first and last spoken word. It is its own origin rather than being folded
+// into speech_candidate because the RECORD has to say why a cut happened, and
+// "the Director selected a silence here" and "this is always waste" are
+// different facts about the same missing seconds.
+export const REMOVAL_ORIGINS = ['speech_candidate', 'visual_waste', 'hook_trim', 'edge_trim'] as const
 export const HOOK_TREATMENTS = ['keep', 'open_at_word'] as const
 export const SOURCE_ORIGINS = ['teleprompter', 'upload'] as const
 

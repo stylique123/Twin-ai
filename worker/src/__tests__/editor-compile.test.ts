@@ -13,7 +13,7 @@ import {
   MAX_CUES, MAX_ZOOMS, MAX_SEGMENTS, MAX_REMOVALS,
 } from '../jobs/editPlanContract.js'
 import {
-  baseInput, policy, EXPECTED, WINDOW_A, WINDOW_B, SOURCE_DURATION_MS,
+  baseInput, policy, shippedPolicy, EXPECTED, WINDOW_A, WINDOW_B, SOURCE_DURATION_MS,
 } from './fixtures/editPlanFixture.js'
 
 function codeOf(fn: () => unknown): string {
@@ -907,5 +907,84 @@ describe('a zoom punches at the subject, not at the geometry', () => {
     const plan = compileEditPlan({ ...input, policy: policy() }).plan
     expect(plan.video.zooms[0].offsetXPx).toBe(0)
     expect(plan.video.zooms[0].offsetYPx).toBe(0)
+  })
+})
+
+describe('the edges of a recording are always removed', () => {
+  // NOT A JUDGEMENT CALL. Before this, whatever sat outside the first and last
+  // spoken word came off only if the Director happened to select the silence
+  // candidate covering it. So a video could open on someone settling into
+  // frame and end on them reaching for the stop button — which the creator is
+  // ALWAYS doing, because they are the one operating the camera.
+  //
+  // These run against shippedPolicy(), NOT the Batch 8.1 baseline, because the
+  // rule being tested is the production default.
+
+  it('CONTROL: the SHIPPED policy has the rule on', () => {
+    // The baseline fixture disables edges so the hand-derived suites keep their
+    // meaning. This is what stops that convenience from hiding a production
+    // default that quietly drifted off.
+    const p = shippedPolicy()
+    expect(p.edges.trimLeading).toBe(true)
+    expect(p.edges.trimTrailing).toBe(true)
+    expect(p.edges.keepMs).toBeGreaterThan(0)
+    expect(p.edges.minTrimMs).toBeGreaterThan(0)
+  })
+
+  it('removes the lead-in before the first word and the tail after the last', () => {
+    const r = compileEditPlan({ ...baseInput(), policy: shippedPolicy() })
+    const edges = r.plan.timeline.removals.filter((x) => x.origin === 'edge_trim')
+    expect(edges).toHaveLength(2)
+    expect(edges.map((e) => e.reasonCode)).toEqual(['edge_leading', 'edge_trailing'])
+  })
+
+  it('leaves a breath, so the first word does not begin on frame one', () => {
+    const p = shippedPolicy()
+    const input = baseInput()
+    const first = input.evidence.words[0]
+    const r = compileEditPlan({ ...input, policy: p })
+    const lead = r.plan.timeline.removals.find((x) => x.reasonCode === 'edge_leading')!
+    expect(lead.sourceEndMs).toBe(first.startMs - p.edges.keepMs)
+  })
+
+  it('records the trim as edge_trim, never as a speech candidate', () => {
+    // The record has to say WHY. "The Director selected a silence here" and
+    // "this is always waste" are different facts about the same seconds, and a
+    // removal labelled with the wrong one is a lie in the audit trail.
+    const r = compileEditPlan({ ...baseInput(), policy: shippedPolicy() })
+    const lead = r.plan.timeline.removals.find((x) => x.sourceStartMs === 0)!
+    expect(lead.origin).toBe('edge_trim')
+    expect(lead.ref).toBeNull()
+  })
+
+  it('shortens the finished video by exactly what it removed', () => {
+    const withEdges = compileEditPlan({ ...baseInput(), policy: shippedPolicy() })
+    const without = compileEditPlan({ ...baseInput(), policy: policy() })
+    const trimmed = withEdges.plan.timeline.removals
+      .filter((x) => x.origin === 'edge_trim')
+      .reduce((n, x) => n + (x.sourceEndMs - x.sourceStartMs), 0)
+    expect(without.plan.output.durationMs - withEdges.plan.output.durationMs).toBe(trimmed)
+  })
+
+  it('ignores a sliver — a 40ms shave is a glitch, not an edit', () => {
+    const p = shippedPolicy()
+    p.edges.minTrimMs = 5000 // above the fixture's real lead-in, so it stops qualifying
+    const r = compileEditPlan({ ...baseInput(), policy: p })
+    expect(r.plan.timeline.removals.some((x) => x.origin === 'edge_trim')).toBe(false)
+  })
+
+  it('a recording with no speech at all is refused, not trimmed to nothing', () => {
+    // With zero words there is no first or last word to trim against, so the
+    // edge rule cannot fire — the refusal comes from having no speech, which is
+    // its own failure with its own code. Asserted so the two stay distinct.
+    const input = baseInput()
+    input.evidence.words = []
+    input.decision.emphasisWordIndices = []
+    input.decision.zoomRequests = []
+    input.decision.selections = []
+    input.decision.visualWasteSelections = []
+    input.decision.hookTreatment = 'keep'
+    const r = compileEditPlan({ ...input, policy: shippedPolicy() })
+    expect(r.plan.timeline.removals.some((x) => x.origin === 'edge_trim')).toBe(false)
   })
 })

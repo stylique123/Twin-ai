@@ -103,10 +103,29 @@ export function baseInput(overrides: Partial<CompileInput> = {}): CompileInput {
   return input
 }
 
+/** The SHIPPED policy, exactly as production reads it. */
+export function shippedPolicy(): EditPolicyV1 {
+  return JSON.parse(JSON.stringify(loadEditPolicy())) as EditPolicyV1
+}
+
+/** The Batch 8.1 BASELINE: the shipped policy with the deterministic edge trim
+ *  switched off.
+ *
+ *  Every `EXPECTED` number below was hand-derived against a domain that begins
+ *  at the capture window, and a dozen suites assert exact protections, hook,
+ *  zoom and cover boundaries against it. Turning edge trimming on in the shared
+ *  fixture would shift all of those by 880 ms — they would still pass once
+ *  updated, and they would each be proving something subtly different from what
+ *  they were written to prove. Edge trimming gets its own suite with the rule
+ *  explicitly ON, and `shippedPolicy()` is pinned so the production default
+ *  cannot drift unnoticed. */
 export function policy(): EditPolicyV1 {
   // A deep copy, so a test that mutates a threshold to build a mutation control
   // cannot leak that change into any other test through the module cache.
-  return JSON.parse(JSON.stringify(loadEditPolicy())) as EditPolicyV1
+  const p = shippedPolicy()
+  p.edges.trimLeading = false
+  p.edges.trimTrailing = false
+  return p
 }
 
 // Worked out by hand from the fixture above; see the suite for the derivation.
