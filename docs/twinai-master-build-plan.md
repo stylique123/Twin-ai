@@ -457,16 +457,53 @@ time-gating (#235) · loudness measurement (#236)
 
 **In CI:** free-tier mark, language pin, audit fixes, face-aware zoom (#237)
 
-**Remaining:**
-- [ ] Deterministic tail/head trim *(currently LLM discretion; should be a rule)*
-- [ ] Caption band out of the platform UI zone
-- [ ] Caption contrast guard *(dark brand colour = black-on-black today)*
-- [ ] Long-token wrapping *(a word longer than the line runs off-frame)*
-- [ ] Bound the hook trim *(nothing stops it deleting most of a video)*
-- [ ] Emit the frozen encoder settings *(CRF/preset/GOP declared, never applied)*
-- [ ] A/V drift check *(audio stream duration never compared to video)*
-- [ ] Wire `pacing` *(Director decides it; compiler discards it)*
-- [ ] Cut-density cap test *(implemented, untested)*
+**Done — each verified against the code, not from memory:**
+- [x] Deterministic tail/head trim — `policy.edges` (`trimLeading`/`trimTrailing`/
+      `keepMs`/`minTrimMs`), applied at `editorCompile.ts:730`. No longer LLM
+      discretion: with or without a hook, whatever sits outside the first and
+      last spoken word is removed.
+- [x] Caption contrast guard — `captionColours.ts`, `MIN_CONTRAST_RATIO_MILLI`.
+      A brand colour that cannot be read inside the preset's outline is
+      rejected and recorded rather than rendered black-on-black.
+- [x] Long-token wrapping — `fragmentToken()`, wired at `editorCompile.ts:1263`.
+      A word longer than the line is split instead of running off-frame.
+- [x] Bound the hook trim — `policy.hook.maxTrimMs` (15s) and
+      `maxTrimFractionMilli` (half the accepted material). Exceeding either
+      falls back to the real opening and says so.
+- [x] Emit the frozen encoder settings — `EncoderSettings` is now REQUIRED on
+      `GraphAssets`; outputOptions emit `-preset -crf -profile:v -level:v -g
+      -keyint_min -sc_threshold -b:a`. Declared and applied, not just declared.
+- [x] A/V drift check — `editorValidateOutput.ts`, `output_av_drift`. Bounds
+      set from measured renders (audio outlasts video by 93–120 ms because
+      video truncates to whole frames), not from a guess.
+- [x] Cut-density cap test — `editor-compile.test.ts:909`, both directions:
+      under the cap produces no `removal_dropped_cut_density`, over it does.
+
+**Remaining — and BOTH are decisions, not engineering:**
+- [ ] **Caption band out of the platform UI zone.** Today captions sit at ASS
+      alignment 2 (bottom-centre) with `marginVerticalPx` 320–360 on a 1920px
+      frame. Whether that clears TikTok's caption/username block and Reels'
+      bottom bar is the entire question, and I do not have a measurement — only
+      recollection of published safe-area figures. Picking a number from
+      recollection is precisely the mistake already made three times on this
+      project (the 50-minute CI cap against a real 77 minutes; the 25% hook-trim
+      threshold against a real legitimate 28.7% case; the 80 ms caption tail
+      guard against a real 93–120 ms shortfall). **Unblocks with:** a screenshot
+      of one real posted video per platform, which makes the safe zone
+      measurable in pixels instead of remembered.
+- [ ] **Wire `pacing`.** Confirmed dead: `directorContract.ts` defines,
+      validates and returns `pacing` (`calm`/`balanced`/`punchy`), and
+      `editorCompileInput.ts` maps `hookTreatment`, `captionPresetId`,
+      `transitionPolicy`, `zoomRequests`, `emphasis`, `selections` and
+      `visualWasteSelections` — but never `pacing`. The model is spending
+      tokens on a decision that is thrown away. Wiring it means deciding what
+      calm and punchy MEAN in numbers (how short a pause is worth removing,
+      how many cuts a minute may carry), which changes how every video looks
+      and belongs in `edit_policy_v1.json` as a new frozen block. **Unblocks
+      with:** a product call on that mapping. `music` (`none`/`subtle`/
+      `energetic`) is dead in the same way and is worse — there is no music
+      asset pipeline at all, so it should be removed from the contract rather
+      than wired.
 
 ### Phase 10 — stop guessing
 1. Provenance stamping on every DNA field
