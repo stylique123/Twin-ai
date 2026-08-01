@@ -625,6 +625,166 @@ clip system — demos, screen walkthroughs, charts, before/after, cooking.
 
 ---
 
+## 8a. ONBOARDING, PROVENANCE, AND WHERE A REFERENCE COMES FROM
+
+Supersedes the four-question sketch in §4.2. The founder's five-question design is
+adopted with five corrections; each correction is a defect the original would have
+produced, not a preference.
+
+### 8a.1 What is asked, and when
+
+The scan runs 45-60s. Five questions with a conditional and two multi-selects is
+realistically EIGHT interactions and ~90 seconds of reading — longer than the scan,
+so the "free" onboarding stops being free. Split by whether the scan can answer it:
+
+**During the scan** — things the scan CANNOT know, because they are about intent:
+
+| | Question | Decides |
+|---|---|---|
+| Q1 | Primary goal — followers / authority / educate / leads / sell / entertain / personal brand | Format choice, hook strategy, CTA strength |
+| Q2 | Intended audience + optional free text | Vocabulary level, examples, objections |
+| Q3 | What you do, with one conditional follow-up | Where subject matter and business truth come from |
+| Q3b | **The offer itself, free text: what is it called and what does it do** | The CTA on every video |
+
+Q3b is new and is the highest-value field on the form. `offer` is currently
+INFERRED and forced non-empty (voice.ts's prompt forbids blanks), and it decides
+the call to action. A guessed offer is a wrong CTA on every video shipped.
+
+**On the confirm screen, pre-filled from the scan** — things the scan CAN see:
+
+| | Question | Why it moved |
+|---|---|---|
+| Q4 | What your videos promote | Partly observable from captions and CTAs |
+| Q5 | What your videos look like | Fully observable. Asking someone to tick 14 boxes describing content we are actively reading is wasted effort AND less accurate — people mis-report their own format. Shown as "you mostly do X and Y — anything else you want to make?" One tap, and the "anything else" captures the intent the scan cannot see. |
+
+**Conditional, when Q3 is Professional / Ecommerce / Brand:** what may you NOT
+claim. Unguessable, and unforgivable to get wrong for a doctor, lawyer, financial
+adviser or supplement brand.
+
+Every "Other" carries free text or it trades a real answer for a null.
+
+### 8a.2 Provenance — three corrections that make the rule enforceable
+
+The hard rule is right: *inferred information may suggest, but may not decide
+products, prices, claims, audience truth, or offers.* It is only enforceable if
+the labelling is honest. Three fixes:
+
+**(a) No float confidence.** `confidence: 0.91` from a model reporting on itself is
+uncalibrated and will be read as meaning something. Discrete source + a real
+evidence count instead: `"evidence": "consistent across 9 of 12 posts"`. A count is
+a fact and can carry a threshold; 0.91 cannot.
+
+**(b) Never merge sources.** `"source": "user_answer_and_observed_posts"` destroys
+the mechanism — no code can then decide whether the rule applies. Keep both values
+side by side:
+
+```json
+"video_formats": {
+  "stated":   { "value": ["talking head", "software explanation"], "source": "user_answer" },
+  "observed": { "value": ["talking head", "lifestyle"], "source": "observed",
+                "evidence": "8 of 12 posts" }
+}
+```
+
+"Prioritise what they said, preserve what they do" becomes executable rather than
+aspirational.
+
+**(c) Observed audience is not observed.** The design's own example mislabels
+itself. We read CAPTIONS. We have no follower demographics. "Their audience appears
+to be students" is inference from subject matter, and calling it `observed` grants
+authority it has not earned — in the one field where being wrong matters. Label it
+`inferred`, and phrase the conflict as "your content READS as student-focused",
+never "your audience IS students".
+
+**(d) Each profile group records what it may decide.**
+
+| Group | May decide | May never decide |
+|---|---|---|
+| Identity | Subject matter, framing | — |
+| Audience | Vocabulary level, examples | Claims about them |
+| Business | The CTA, whether research runs | Prices, product facts, unless user-confirmed |
+| Creative | Voice, hooks, tone, pacing | Anything factual |
+| Production | Which references are recreatable | — |
+
+Without this the hard rule is a comment. With it, it is a check.
+
+### 8a.3 The gallery is not a second pipeline
+
+**There is no gallery today.** Pasting a reference is the only path
+(`generate-blueprint` takes `reference_url` or `reference_note`). So the question
+is not "why does a pasted reference follow the gallery" — it is what the gallery
+should be when it exists.
+
+**It is a way of CHOOSING a reference, nothing more.** Both routes converge one
+step later and every stage after that is identical:
+
+```
+pick from gallery  ─┐
+                    ├─→  reference read  →  brief card  →  script  →  record  →  edit
+paste a link       ─┘
+```
+
+A pasted link must get the same brief card, the same hooks-with-reasons, the same
+scene plan. Anything the gallery route gets and the paste route does not is a bug.
+
+**Why today's suggestions are wrong, mechanically:** ranking needs a PRODUCTION
+profile, and nothing produces one. A reference matching your niche is recommended
+even when it is a dance video and you make software walkthroughs. Q5 plus observed
+format is exactly the missing input — §7a's "production-mode match" has had no data
+behind it.
+
+**The container rule.** A reference shaped "three products I stopped using" is a
+CONTAINER, and Q3+Q4 decide what fills it:
+
+| Answers | Fills with |
+|---|---|
+| Affiliate creator | Three researched relevant products |
+| SaaS founder | Three tools, or three mistakes — the shape survives, the noun changes |
+| Product brand | Confirmed own products only, never inferred ones |
+| Non-commercial educator | Three ideas or three mistakes; a product is not forced in |
+
+That last row is the one that matters. Forcing a commercial container onto someone
+with nothing to sell is how a tool starts producing videos its user cannot post.
+
+### 8a.4 Extra clips — when the question appears
+
+Never as a general question. The SCRIPT declares the slots (`[SHOW: the settings
+page]`), and slots are only generated when the merged profile supports them:
+
+- `production.observed ∪ stated` contains a product-led or software format
+- and Q4 says a product or app may appear
+
+An educator whose formats are all talking-head sees no clip stage at all. For a lot
+of creators the correct amount of B-roll is none, and the profile is what makes
+that decision rather than a guess.
+
+### 8a.5 Cost, honestly
+
+Measured baseline today ~$0.09-0.10 per video, of which ~60% is storage egress —
+and most of THAT is a defect (the source is downloaded three times; §9a.3). Fixing
+it funds most of what follows.
+
+| Addition | Added cost | Why |
+|---|---|---|
+| Preflight | **~$0** | Runs in the browser on frames that never leave the device |
+| Onboarding questions | **~$0** | Form input during a wait that already happens |
+| Gallery ranking | **~$0.002** | References are shared across users, so the expensive read is amortised; only the per-user score is fresh |
+| Provenance merge | **~$0** | Deterministic code, not a model call |
+| Research (only when Q4 says products) | **+$0.02-0.08** | Fetches plus passes. Route-metered from day one or the pricing model is guessing |
+| Extra clips | **+$0.01-0.02 per clip** | Upload, validate, download, conform. 5-17 clips is the real risk; fix the graph fan-out first |
+
+**Re-cut with my edits is much cheaper than it looks.** It re-runs the compiler and
+the renderer only. Transcription (~35% of pipeline time), visual analysis (~15%),
+audio analysis (~6%) and the Director call are all content-addressed and reused —
+the footage did not change. A re-cut is **~25-30% of a full video**, not 100%.
+
+So: **first re-cut free, further re-cuts cost a credit.** It is the single strongest
+retention moment in the product — the user just found something they want changed —
+and charging for the first one to save two cents trades that for nothing. "Start
+again from the script" is a genuinely new video and is priced as one.
+
+---
+
 ## 9a. VERIFIED DEFECTS — these are not risks, they are live
 
 Everything in §§1–8 is a hypothesis about what to build. **This section is
@@ -772,4 +932,5 @@ cheapest thing left to check.
 | Date | Change |
 |---|---|
 | 2026-08-01 | Created. Consolidates 10-person panel (2 rounds), 3 codebase audits, Phase 8/9 rebuild, and the information-architecture critique. |
+| 2026-08-01 | Added §8a: five-question onboarding adopted with five corrections (offer as free text, Q4/Q5 moved to the confirm screen, no float confidence, never-merged sources, observed-vs-inferred audience). Gallery defined as a chooser, not a second pipeline. Cost per addition estimated, and re-cut priced at ~25-30% of a render. |
 | 2026-08-01 | Added §9a from a pre-mortem, a security/privacy audit and an efficiency/measurability audit run in parallel. Four silently-broken pipeline joints, one critical credential-vending defect (fixed), and the missing post→render join key. Reorders Phase 9: the inputs come before the polish. |
