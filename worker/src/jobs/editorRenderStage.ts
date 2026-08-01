@@ -66,6 +66,12 @@ export interface RenderStageOutcome {
    *  Carried on the outcome for the same reason the loudness numbers are: a
    *  quality decision the user did not make must be visible to someone. */
   captionColourRejections: CaptionColourRejection[]
+  /** How far the audio and video streams disagree, in ms. Positive means audio
+   *  outlasts video, which is normal. Recorded rather than merely checked, for
+   *  the same reason the loudness numbers are: the enforced band is much wider
+   *  than the expected one, so only real measurements can narrow it. */
+  audioMinusVideoDurationMs: number | null
+  audioMinusVideoStartMs: number | null
 }
 export interface ValidateStageOutcome {
   outputAssetId: string
@@ -206,6 +212,8 @@ export async function runRenderingStage(
       truePeakDbtpMilli: validation.loudness.measurement.truePeakDbtpMilli,
       truePeakOvershootMilli: validation.loudness.truePeakOvershootMilli,
       captionColourRejections: colourRejections,
+      audioMinusVideoDurationMs: validation.measurements.audioMinusVideoDurationMs,
+      audioMinusVideoStartMs: validation.measurements.audioMinusVideoStartMs,
     }
   } finally {
     watch.stop()

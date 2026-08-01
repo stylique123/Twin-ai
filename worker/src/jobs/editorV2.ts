@@ -687,6 +687,11 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           integrated_lufs_milli: rendered.integratedLufsMilli,
           true_peak_dbtp_milli: rendered.truePeakDbtpMilli,
           true_peak_overshoot_milli: rendered.truePeakOvershootMilli,
+          // A/V geometry on the same trail. Enforced only at the disaster
+          // band, so the distribution of what real renders actually do is the
+          // only thing that can ever justify tightening it.
+          av_duration_delta_ms: rendered.audioMinusVideoDurationMs,
+          av_start_delta_ms: rendered.audioMinusVideoStartMs,
         })
         // A BRAND COLOUR WE REFUSED TO USE, on the same durable trail and for
         // the same reason. The owner pinned a colour, the video shipped
