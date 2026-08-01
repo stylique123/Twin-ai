@@ -498,3 +498,40 @@ describe('the watermark cannot be placed where the platform will cover it', () =
     expect(catalog.watermark.marginRightPx).toBeGreaterThanOrEqual(p.video.framing.safeRightPx)
   })
 })
+
+describe('the zoom crop is displaced toward the subject', () => {
+  it('every zoom window crops off-centre, easing WITH the scale', () => {
+    const plan = hardCutPlan()
+    const z = plan.video.zooms[0]
+    expect(z.offsetXPx).not.toBe(0)
+    const graph = buildFfmpegGraph(plan, ASSETS)
+    const crops = graph.nodes.filter((n) => n.id.startsWith('vzwcrop'))
+    expect(crops.length).toBeGreaterThan(1)
+    const xs = crops.map((c) => String(c.args.find((a) => a.key === 'x')!.value))
+    // The hold window carries the full offset...
+    expect(xs).toContain(`(iw-ow)/2-${Math.abs(z.offsetXPx)}`)
+    // ...and the ease steps carry less, so the framing does not jerk sideways
+    // before the zoom has revealed any slack to move into.
+    const magnitudes = xs.map((x) => Math.abs(Number(x.replace('(iw-ow)/2', '')) || 0))
+    expect(Math.max(...magnitudes)).toBe(Math.abs(z.offsetXPx))
+    expect(Math.min(...magnitudes)).toBeLessThan(Math.abs(z.offsetXPx))
+  })
+
+  it('a zero offset emits the plain centre expression, byte-identical to before', () => {
+    // No face evidence must not start emitting `(iw-ow)/2+0` — a cosmetic
+    // change that would alter the graph digest of every centred render.
+    const plan = JSON.parse(JSON.stringify(hardCutPlan())) as EditPlanV1
+    plan.video.zooms[0].offsetXPx = 0
+    plan.video.zooms[0].offsetYPx = 0
+    const graph = buildFfmpegGraph(plan, ASSETS)
+    const crop = graph.nodes.find((n) => n.id.startsWith('vzwcrop'))!
+    expect(crop.args).toContainEqual({ key: 'x', value: '(iw-ow)/2' })
+    expect(crop.args).toContainEqual({ key: 'y', value: '(ih-oh)/2' })
+  })
+
+  it('the displaced crop expression stays inside the value alphabet', () => {
+    // `+`/`-` and digits only — no comma, no conditional, nothing that could
+    // terminate a filter. Proven by serializing rather than by inspection.
+    expect(() => serializeFilterGraph(buildFfmpegGraph(hardCutPlan(), ASSETS))).not.toThrow()
+  })
+})

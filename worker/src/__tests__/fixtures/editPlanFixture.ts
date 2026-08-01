@@ -5,7 +5,7 @@
 // expected output nobody can derive is a fixture that cannot detect a wrong
 // answer, only a crash.
 import type {
-  CompileInput, CompileWord, CompileCandidate, CompileVisualWaste, EditPolicyV1,
+  CompileInput, CompileWord, CompileCandidate, CompileVisualWaste, CompileFaceSample, EditPolicyV1,
 } from '../../jobs/editorCompile.js'
 import { loadEditPolicy } from '../../jobs/editorCompile.js'
 
@@ -63,6 +63,15 @@ export function buildVisualWaste(): CompileVisualWaste[] {
   ]
 }
 
+// The subject sits LOW AND LEFT — 380,1240 in a 1080x1920 display space, not
+// the 540,960 geometric centre. A fixture whose face is already centred cannot
+// tell a face-aware zoom from the blind centre crop it replaced.
+export function buildFaces(): CompileFaceSample[] {
+  const out: CompileFaceSample[] = []
+  for (let t = 0; t <= SOURCE_DURATION_MS; t += 5000) out.push({ timeMs: t, centreXPx: 380, centreYPx: 1240 })
+  return out
+}
+
 export function baseInput(overrides: Partial<CompileInput> = {}): CompileInput {
   const input: CompileInput = {
     identity: {
@@ -72,10 +81,12 @@ export function baseInput(overrides: Partial<CompileInput> = {}): CompileInput {
     source: {
       origin: 'teleprompter', durationMs: SOURCE_DURATION_MS,
       acceptedWindows: [{ ...WINDOW_A }, { ...WINDOW_B }],
+      displayWidthPx: 1080, displayHeightPx: 1920,
     },
     evidence: {
       words: buildWords(), candidates: buildCandidates(), visualWaste: buildVisualWaste(),
       audio: { snrDbMilli: 26000, earlyEnergyRatioMilli: 120 },
+      faces: buildFaces(),
     },
     decision: {
       selections: [0, 2, 3, 4],

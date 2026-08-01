@@ -175,6 +175,17 @@ export interface PlanCaptions {
   cues: PlanCue[]
 }
 export interface PlanZoom {
+  /** How far the zoom's crop is displaced from the frame centre, in OUTPUT
+   *  pixels, so the punch lands on the subject rather than on the geometry.
+   *
+   *  Zero is the old behaviour and remains correct when there is no face
+   *  evidence — it means "centre", chosen, rather than "centre" by default.
+   *  The magnitude is bounded by how much the scale actually reveals: a 1.12x
+   *  zoom on a 1080-wide frame can only pan +/-64px before the crop leaves the
+   *  scaled image, and the validator re-derives that bound rather than trusting
+   *  the compiler to have respected it. */
+  offsetXPx: number
+  offsetYPx: number
   index: number
   outputStartMs: number
   outputEndMs: number
@@ -354,7 +365,7 @@ const CAPTIONS_KEYS = [
   'presetId', 'fontSizePx', 'marginVerticalPx', 'brandPrimaryColourAss', 'brandHighlightColourAss', 'cues',
 ] as const
 const ZOOM_KEYS = ['index', 'outputStartMs', 'outputEndMs', 'scaleMilli', 'intensity', 'reasonCode',
-  'anchorWordIndex', 'easeInMs', 'easeOutMs'] as const
+  'anchorWordIndex', 'easeInMs', 'easeOutMs', 'offsetXPx', 'offsetYPx'] as const
 const TRANSITION_KEYS = ['index', 'atSegmentIndex', 'kind', 'overlapMs'] as const
 const FRAMING_KEYS = ['modeId', 'safeTopPx', 'safeBottomPx', 'safeLeftPx', 'safeRightPx'] as const
 const VIDEO_KEYS = ['framing', 'transitionPolicy', 'transitions', 'zooms'] as const
@@ -686,6 +697,8 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
       anchorWordIndex: int(zz.anchorWordIndex, 0, 1_000_000, `video.zooms[${i}].anchorWordIndex`),
       easeInMs: int(zz.easeInMs, 0, 2000, `video.zooms[${i}].easeInMs`),
       easeOutMs: int(zz.easeOutMs, 0, 2000, `video.zooms[${i}].easeOutMs`),
+      offsetXPx: int(zz.offsetXPx, -4096, 4096, `video.zooms[${i}].offsetXPx`),
+      offsetYPx: int(zz.offsetYPx, -4096, 4096, `video.zooms[${i}].offsetYPx`),
     }
     if (zoom.index !== i) fail(`video.zooms[${i}]: index must equal position`)
     if (zoom.outputEndMs <= zoom.outputStartMs) fail(`video.zooms[${i}]: non-positive duration`)
@@ -693,6 +706,13 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     if (zoom.easeInMs + zoom.easeOutMs > zoom.outputEndMs - zoom.outputStartMs) {
       fail(`video.zooms[${i}]: eases exceed the zoom duration`)
     }
+    // RE-DERIVED, not trusted. A crop displaced further than the scale reveals
+    // reads past the edge of the scaled image; ffmpeg would clamp it silently
+    // and the punch would land somewhere nobody chose.
+    const maxOffX = Math.floor((output.width * (zoom.scaleMilli - 1000)) / 2000)
+    const maxOffY = Math.floor((output.height * (zoom.scaleMilli - 1000)) / 2000)
+    if (Math.abs(zoom.offsetXPx) > maxOffX) fail(`video.zooms[${i}]: offsetXPx exceeds what the scale reveals`)
+    if (Math.abs(zoom.offsetYPx) > maxOffY) fail(`video.zooms[${i}]: offsetYPx exceeds what the scale reveals`)
     if (zoom.outputStartMs < prevZoomEnd) fail(`video.zooms[${i}]: overlaps or unsorted`)
     prevZoomEnd = zoom.outputEndMs
     return zoom

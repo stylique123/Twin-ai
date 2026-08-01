@@ -288,11 +288,74 @@ export interface CompileAudioFacts {
   snrDbMilli: number
   earlyEnergyRatioMilli: number
 }
+/**
+ * Turn "where the face was" into "how far to displace the zoom crop", bounded.
+ *
+ * PURE AND SEPARATELY TESTABLE, because the arithmetic is the whole risk: an
+ * offset larger than the scale reveals reads past the edge of the scaled image,
+ * ffmpeg clamps it silently, and the punch lands somewhere nobody chose. The
+ * contract re-derives the same bound independently.
+ *
+ * Source pixels are mapped to output pixels first. The renderer conforms every
+ * frame to the output raster with `force_original_aspect_ratio=increase` then a
+ * centre crop, so a source point maps by the SAME cover-scale-then-centre
+ * transform — reproducing it here is what keeps the offset meaningful for a
+ * source whose shape is not already 9:16.
+ */
+export function zoomOffset(
+  faces: CompileFaceSample[], anchorSourceMs: number, scaleMilli: number,
+  outWidth: number, outHeight: number, srcWidth: number, srcHeight: number,
+): { offsetXPx: number; offsetYPx: number } {
+  if (faces.length === 0 || srcWidth <= 0 || srcHeight <= 0) return { offsetXPx: 0, offsetYPx: 0 }
+
+  let best = faces[0]
+  for (const f of faces) {
+    if (Math.abs(f.timeMs - anchorSourceMs) < Math.abs(best.timeMs - anchorSourceMs)) best = f
+  }
+
+  // The renderer's own conformance, reproduced: cover-scale, then centre-crop.
+  const cover = Math.max(outWidth / srcWidth, outHeight / srcHeight)
+  const scaledW = srcWidth * cover
+  const scaledH = srcHeight * cover
+  const faceOutX = best.centreXPx * cover - (scaledW - outWidth) / 2
+  const faceOutY = best.centreYPx * cover - (scaledH - outHeight) / 2
+
+  // How far the subject sits from the middle of the finished frame...
+  const wantX = faceOutX - outWidth / 2
+  const wantY = faceOutY - outHeight / 2
+  // ...and how far the zoom is actually able to travel. A 1.12x zoom on a
+  // 1080-wide frame reveals 64px of slack each way; asking for more than that
+  // is asking to see outside the image.
+  const maxX = Math.floor((outWidth * (scaleMilli - 1000)) / 2000)
+  const maxY = Math.floor((outHeight * (scaleMilli - 1000)) / 2000)
+  const clamp = (v: number, m: number): number => Math.max(-m, Math.min(m, Math.round(v)))
+  return { offsetXPx: clamp(wantX, maxX), offsetYPx: clamp(wantY, maxY) }
+}
+
 export interface CompileEvidence {
   words: CompileWord[]
   candidates: CompileCandidate[]
   visualWaste: CompileVisualWaste[]
   audio: CompileAudioFacts | null
+  /** Where the subject actually is, sampled through the take.
+   *
+   *  The detector has produced these all along and only a COUNT of them ever
+   *  reached a decision-maker, so every zoom punched into the geometric centre
+   *  of the frame regardless of where the person sat. Empty is honest and means
+   *  "no face evidence" — never "the face is centred". */
+  faces?: CompileFaceSample[]
+}
+
+/** One sampled instant, in SOURCE time, with the largest face found in it.
+ *
+ *  Only the largest is carried: a zoom is a punch at ONE subject, and a frame
+ *  with a bystander in the background must not pull the crop toward the average
+ *  of two people, which is a point on neither of them. */
+export interface CompileFaceSample {
+  timeMs: number
+  /** Centre of the face box, in SOURCE display pixels. */
+  centreXPx: number
+  centreYPx: number
 }
 export interface CompileDecision {
   selections: number[]
@@ -316,6 +379,11 @@ export interface CompileIdentity {
 export interface CompileSource {
   origin: SourceOrigin
   durationMs: number
+  /** The raster the face boxes are expressed in — the visual analyzer's own
+   *  display space. Optional: absent means face evidence cannot be mapped into
+   *  output pixels, and a zoom falls back to centre rather than guessing. */
+  displayWidthPx?: number
+  displayHeightPx?: number
   // Teleprompter ONLY: the pinned capture manifest's accepted windows. Anything
   // outside them was rejected by the creator and is unavailable forever.
   acceptedWindows: Interval[]
@@ -805,10 +873,30 @@ export function compileEditPlan(input: CompileInput): CompileResult {
     }
     const scaleMilli = policy.zooms.scaleMilli[req.intensity]
     if (typeof scaleMilli !== 'number') bad(`zoom: unknown intensity ${req.intensity}`)
+    // WHERE THE PUNCH LANDS.
+    //
+    // The crop was always the geometric centre of the frame, so a creator
+    // sitting low or off to one side — the normal case in a hand-held vertical
+    // selfie — had a zoom crop their chin or forehead, or punch into the wall
+    // beside them. The detector has been producing face boxes the whole time
+    // and only a COUNT of them reached any decision-maker.
+    //
+    // The face nearest the anchor word IN SOURCE TIME is used, not an average
+    // over the take: the zoom is a moment, and where the subject was thirty
+    // seconds earlier is not evidence about this one.
+    const { offsetXPx, offsetYPx } = zoomOffset(
+      evidence.faces ?? [], word.startMs, scaleMilli, policy.output.width, policy.output.height,
+      input.source.displayWidthPx ?? policy.output.width,
+      input.source.displayHeightPx ?? policy.output.height,
+    )
+    if (offsetXPx === 0 && offsetYPx === 0 && (evidence.faces ?? []).length === 0) {
+      warn.add('zoom_centred_no_face_evidence', `word_${req.anchorWordIndex}`)
+    }
     zooms.push({
       index: zooms.length, outputStartMs: start, outputEndMs: end, scaleMilli,
       intensity: req.intensity, reasonCode: req.reasonCode, anchorWordIndex: req.anchorWordIndex,
       easeInMs: policy.zooms.easeInMs, easeOutMs: policy.zooms.easeOutMs,
+      offsetXPx, offsetYPx,
     })
   }
 

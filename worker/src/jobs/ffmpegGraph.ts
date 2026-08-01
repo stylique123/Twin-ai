@@ -238,9 +238,16 @@ interface ZoomWindow {
   endMs: number
   // null = outside every zoom: pass the frame through with no scale/crop.
   scaleMilli: number | null
+  // Displacement of the crop from the frame centre, so the punch lands on the
+  // subject. Zero for pass-through windows and for zooms with no face evidence.
+  offsetXPx: number
+  offsetYPx: number
 }
 
-function rampWindows(fromMs: number, toMs: number, fromScale: number, toScale: number): ZoomWindow[] {
+function rampWindows(
+  fromMs: number, toMs: number, fromScale: number, toScale: number,
+  offsetXPx: number, offsetYPx: number,
+): ZoomWindow[] {
   const span = toMs - fromMs
   if (span <= 0) return []
   const out: ZoomWindow[] = []
@@ -250,7 +257,14 @@ function rampWindows(fromMs: number, toMs: number, fromScale: number, toScale: n
     if (endMs <= startMs) continue
     const fraction = (k + 0.5) / EASE_STEPS
     const scaleMilli = Math.round(fromScale + fraction * (toScale - fromScale))
-    out.push({ startMs, endMs, scaleMilli })
+    // The displacement eases WITH the scale. Snapping to the full offset on the
+    // first step would jerk the framing sideways before the zoom has revealed
+    // the slack to move into — and at the ease's first step there is barely any.
+    const t = (scaleMilli - 1000) / Math.max(1, toScale === 1000 ? fromScale - 1000 : toScale - 1000)
+    out.push({
+      startMs, endMs, scaleMilli,
+      offsetXPx: Math.round(offsetXPx * t), offsetYPx: Math.round(offsetYPx * t),
+    })
   }
   return out
 }
@@ -259,10 +273,15 @@ function zoomWindows(zoom: PlanZoom): ZoomWindow[] {
   const holdStart = zoom.outputStartMs + zoom.easeInMs
   const holdEnd = zoom.outputEndMs - zoom.easeOutMs
   const windows: ZoomWindow[] = [
-    ...rampWindows(zoom.outputStartMs, holdStart, 1000, zoom.scaleMilli),
+    ...rampWindows(zoom.outputStartMs, holdStart, 1000, zoom.scaleMilli, zoom.offsetXPx, zoom.offsetYPx),
   ]
-  if (holdEnd > holdStart) windows.push({ startMs: holdStart, endMs: holdEnd, scaleMilli: zoom.scaleMilli })
-  windows.push(...rampWindows(holdEnd, zoom.outputEndMs, zoom.scaleMilli, 1000))
+  if (holdEnd > holdStart) {
+    windows.push({
+      startMs: holdStart, endMs: holdEnd, scaleMilli: zoom.scaleMilli,
+      offsetXPx: zoom.offsetXPx, offsetYPx: zoom.offsetYPx,
+    })
+  }
+  windows.push(...rampWindows(holdEnd, zoom.outputEndMs, zoom.scaleMilli, 1000, zoom.offsetXPx, zoom.offsetYPx))
   return windows
 }
 
@@ -274,11 +293,15 @@ function allWindows(plan: EditPlanV1): ZoomWindow[] {
   const windows: ZoomWindow[] = []
   let cursor = 0
   for (const zoom of plan.video.zooms) {
-    if (zoom.outputStartMs > cursor) windows.push({ startMs: cursor, endMs: zoom.outputStartMs, scaleMilli: null })
+    if (zoom.outputStartMs > cursor) {
+      windows.push({ startMs: cursor, endMs: zoom.outputStartMs, scaleMilli: null, offsetXPx: 0, offsetYPx: 0 })
+    }
     windows.push(...zoomWindows(zoom))
     cursor = zoom.outputEndMs
   }
-  if (cursor < plan.output.durationMs) windows.push({ startMs: cursor, endMs: plan.output.durationMs, scaleMilli: null })
+  if (cursor < plan.output.durationMs) {
+    windows.push({ startMs: cursor, endMs: plan.output.durationMs, scaleMilli: null, offsetXPx: 0, offsetYPx: 0 })
+  }
   const coveredMs = windows.reduce((n, w) => n + (w.endMs - w.startMs), 0)
   // Recomputed independently of `plan.output.durationMs`, exactly the way
   // `joinSegments` re-derives its own total and requires it to agree with the
@@ -315,11 +338,16 @@ function windowChain(plan: EditPlanV1, win: ZoomWindow, vJoined: string, nodes: 
     inputs: [vPts], outputs: [vScaled],
   })
   const vCropped = `vzwc${idx}`
+  // The crop is displaced from centre by the plan's own offset, so the punch
+  // lands on the subject. `signedTerm` keeps the expression inside the value
+  // alphabet — `+`/`-` and digits only, no comma, no conditional.
+  const signedTerm = (n: number): string => (n === 0 ? '' : n > 0 ? `+${n}` : `-${Math.abs(n)}`)
   nodes.push({
     id: `vzwcrop${idx}`, filter: 'crop',
     args: [
       { key: 'w', value: plan.output.width }, { key: 'h', value: plan.output.height },
-      { key: 'x', value: `(iw-ow)/2` }, { key: 'y', value: `(ih-oh)/2` },
+      { key: 'x', value: `(iw-ow)/2${signedTerm(win.offsetXPx)}` },
+      { key: 'y', value: `(ih-oh)/2${signedTerm(win.offsetYPx)}` },
     ],
     inputs: [vScaled], outputs: [vCropped],
   })

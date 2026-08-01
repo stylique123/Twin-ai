@@ -836,3 +836,76 @@ describe('captions stay clear of the platform UI band', () => {
     }
   })
 })
+
+describe('a zoom punches at the subject, not at the geometry', () => {
+  // THE DETECTOR HAS ALWAYS RUN AND NOTHING EVER READ IT. Face boxes were
+  // produced per sample and reduced to a COUNT before any decision-maker saw
+  // them, so every zoom cropped the geometric centre of the frame. A creator
+  // sitting low or off to one side — the normal case for a hand-held vertical
+  // selfie — got their chin or forehead cropped, or a punch into the wall.
+
+  it('displaces the crop toward an off-centre face', () => {
+    // The fixture's subject sits at 380,1240 in 1080x1920 — left of and below
+    // the 540,960 centre. So the crop moves left (negative X) and down.
+    const plan = compileEditPlan({ ...baseInput(), policy: policy() }).plan
+    const z = plan.video.zooms[0]
+    expect(z.offsetXPx).toBeLessThan(0)
+    expect(z.offsetYPx).toBeGreaterThan(0)
+  })
+
+  it('never displaces further than the scale actually reveals', () => {
+    // A crop displaced past the edge of the scaled image is one ffmpeg clamps
+    // silently, landing the punch somewhere nobody chose. The subject here is
+    // 160px left of centre but a 1.12x zoom only reveals 64px of slack.
+    const plan = compileEditPlan({ ...baseInput(), policy: policy() }).plan
+    const z = plan.video.zooms[0]
+    const maxX = Math.floor((plan.output.width * (z.scaleMilli - 1000)) / 2000)
+    const maxY = Math.floor((plan.output.height * (z.scaleMilli - 1000)) / 2000)
+    expect(Math.abs(z.offsetXPx)).toBeLessThanOrEqual(maxX)
+    expect(Math.abs(z.offsetYPx)).toBeLessThanOrEqual(maxY)
+    expect(z.offsetXPx).toBe(-maxX) // clamped, because the face is further out
+  })
+
+  it('CONTROL: with NO face evidence it centres — chosen, not defaulted', () => {
+    const input = baseInput()
+    input.evidence.faces = []
+    const r = compileEditPlan({ ...input, policy: policy() })
+    expect(r.plan.video.zooms[0].offsetXPx).toBe(0)
+    expect(r.plan.video.zooms[0].offsetYPx).toBe(0)
+    // ...and says so, rather than looking identical to a deliberate centre.
+    expect(r.warnings.some((w) => w.code === 'zoom_centred_no_face_evidence')).toBe(true)
+  })
+
+  it('CONTROL: a centred subject yields a centred punch', () => {
+    const input = baseInput()
+    input.evidence.faces = [{ timeMs: 0, centreXPx: 540, centreYPx: 960 }]
+    const plan = compileEditPlan({ ...input, policy: policy() }).plan
+    expect(plan.video.zooms[0].offsetXPx).toBe(0)
+    expect(plan.video.zooms[0].offsetYPx).toBe(0)
+  })
+
+  it('uses the face NEAREST the anchor in time, not an average of the take', () => {
+    // Where the subject was thirty seconds earlier is not evidence about this
+    // moment. The anchor word (index 26) starts at 27000ms in the fixture.
+    const input = baseInput()
+    input.evidence.faces = [
+      { timeMs: 0, centreXPx: 1000, centreYPx: 200 },      // far away in time
+      { timeMs: 27000, centreXPx: 540, centreYPx: 960 },   // at the anchor
+    ]
+    const plan = compileEditPlan({ ...input, policy: policy() }).plan
+    expect(plan.video.zooms[0].offsetXPx).toBe(0)
+  })
+
+  it('maps through the renderer\'s OWN cover-crop for a non-9:16 source', () => {
+    // A 1920x1080 landscape source is cover-scaled and centre-cropped to
+    // 1080x1920 before any zoom. A face at the source's centre is still centred
+    // afterwards; one off-centre horizontally is mostly cropped away. Getting
+    // this transform wrong would move the punch in the wrong direction.
+    const input = baseInput()
+    input.source = { ...input.source, displayWidthPx: 1920, displayHeightPx: 1080 }
+    input.evidence.faces = [{ timeMs: 27000, centreXPx: 960, centreYPx: 540 }]
+    const plan = compileEditPlan({ ...input, policy: policy() }).plan
+    expect(plan.video.zooms[0].offsetXPx).toBe(0)
+    expect(plan.video.zooms[0].offsetYPx).toBe(0)
+  })
+})

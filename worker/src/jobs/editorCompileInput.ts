@@ -47,6 +47,7 @@ import { EditPlanError } from './editPlanContract.js'
 import type {
   CompileInput, CompileWord, CompileCandidate, CompileVisualWaste,
   CompileAudioFacts, CompileEvidence, CompileDecision, CompileIdentity, CompileSource,
+  CompileFaceSample,
   SpeechCandidateKind, CandidateConfidence,
 } from './editorCompile.js'
 import {
@@ -171,6 +172,43 @@ export function readComponentVisualWaste(visual: Record<string, unknown> | null)
   return out
 }
 
+/**
+ * The largest face in each sampled frame, as a centre point in source pixels.
+ *
+ * Defensive in the same way readComponentVisualWaste is: a malformed detection
+ * is skipped rather than defaulted, and a sample with no detections produces no
+ * entry at all. "No face evidence" and "the face is centred" are different
+ * facts and this must never turn the first into the second.
+ */
+export function readComponentFaces(visual: Record<string, unknown> | null): CompileFaceSample[] {
+  const raw = visual?.faces
+  if (!Array.isArray(raw)) return []
+  const out: CompileFaceSample[] = []
+  for (const s of raw as Array<Record<string, unknown>>) {
+    const timeMs = s.timeMs
+    if (!isInt(timeMs) || timeMs < 0) continue
+    const dets = s.detections
+    if (!Array.isArray(dets) || dets.length === 0) continue
+    let best: { x: number; y: number; w: number; h: number } | null = null
+    for (const d of dets as Array<Record<string, unknown>>) {
+      const x = d.x, y = d.y, w = d.width, h = d.height
+      if (typeof x !== 'number' || typeof y !== 'number'
+        || typeof w !== 'number' || typeof h !== 'number') continue
+      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(w) || !Number.isFinite(h)) continue
+      if (w <= 0 || h <= 0) continue
+      if (!best || w * h > best.w * best.h) best = { x, y, w, h }
+    }
+    if (!best) continue
+    out.push({
+      timeMs,
+      centreXPx: Math.round(best.x + best.w / 2),
+      centreYPx: Math.round(best.y + best.h / 2),
+    })
+  }
+  out.sort((a, b) => a.timeMs - b.timeMs)
+  return out
+}
+
 export function readComponentAudioFacts(audio: Record<string, unknown> | null): CompileAudioFacts | null {
   if (!audio || typeof audio !== 'object') return null
   const snr = (audio as { snrDbMilli?: unknown }).snrDbMilli
@@ -278,13 +316,23 @@ export function buildCompileInput(args: AssembleArgs): CompileInput {
   const words = readComponentWords(args.speech)
   const candidates = readComponentCandidates(args.speech, words.length)
   const visualWaste = readComponentVisualWaste(args.visual)
+  const faces = readComponentFaces(args.visual)
+  // The face boxes are in the visual analyzer's display space, so the raster
+  // they are measured against has to travel with them. Read from the SAME
+  // component, never from the inspection row, so a component recomputed at a
+  // different resolution cannot be paired with the previous one's geometry.
+  const dw = (args.visual as { displayWidth?: unknown } | null)?.displayWidth
+  const dh = (args.visual as { displayHeight?: unknown } | null)?.displayHeight
+  const sourceWithRaster: CompileSource = (isInt(dw) && isInt(dh) && dw > 0 && dh > 0)
+    ? { ...args.source, displayWidthPx: dw, displayHeightPx: dh }
+    : args.source
   const audio = readComponentAudioFacts(args.audio)
-  const evidence: CompileEvidence = { words, candidates, visualWaste, audio }
+  const evidence: CompileEvidence = { words, candidates, visualWaste, audio, faces }
   const decision = readDecision(args.decision, {
     candidates: candidates.length, visualWaste: visualWaste.length, words: words.length,
   })
   const brandColors = readComponentBrandColors(args.brand ?? null)
-  return { identity: args.identity, source: args.source, evidence, decision, brandColors }
+  return { identity: args.identity, source: sourceWithRaster, evidence, decision, brandColors }
 }
 
 /**
