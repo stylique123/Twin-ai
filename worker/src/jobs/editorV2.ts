@@ -698,6 +698,21 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         // without it, and the guard that decided so is the only thing that
         // knows why. One event per rejected role, so support can answer "why
         // are my captions white" with a measurement instead of a guess.
+        // WHAT THE RENDER COST, on the same durable trail and for the same
+        // reason. renderMs, the budget it ran against, and the graph digest
+        // are all computed on every render and then discarded — so today a
+        // render that failed after burning 95% of its budget and one that
+        // failed in two seconds leave identical records. Without this, every
+        // question about capacity, timeouts and unit cost is answered with an
+        // estimate rather than a measurement.
+        await appendEvent(job, projectId, 'render_measured', {
+          render_ms: rendered.renderMs,
+          render_budget_ms: rendered.renderBudgetMs,
+          realtime_ratio_milli: rendered.realtimeRatioMilli,
+          output_bytes: rendered.outputBytes,
+          graph_sha256: rendered.graphSha256,
+          argv_length: rendered.argvLength,
+        })
         for (const r of rendered.captionColourRejections) {
           await appendEvent(job, projectId, 'caption_colour_rejected', {
             role: r.role,

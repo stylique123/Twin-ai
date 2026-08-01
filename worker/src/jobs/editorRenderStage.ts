@@ -72,6 +72,12 @@ export interface RenderStageOutcome {
    *  than the expected one, so only real measurements can narrow it. */
   audioMinusVideoDurationMs: number | null
   audioMinusVideoStartMs: number | null
+  /** What the render actually cost, against what it was allowed. Every one of
+   *  these is computed today and then dropped on the floor, which is why a
+   *  render that failed after burning 95% of its budget and one that failed in
+   *  two seconds are indistinguishable in the durable record. */
+  renderBudgetMs: number
+  argvLength: number
 }
 export interface ValidateStageOutcome {
   outputAssetId: string
@@ -214,6 +220,8 @@ export async function runRenderingStage(
       captionColourRejections: colourRejections,
       audioMinusVideoDurationMs: validation.measurements.audioMinusVideoDurationMs,
       audioMinusVideoStartMs: validation.measurements.audioMinusVideoStartMs,
+      renderBudgetMs: evidence.budgetMs,
+      argvLength: evidence.argvLength,
     }
   } finally {
     watch.stop()
