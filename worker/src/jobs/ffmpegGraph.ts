@@ -190,28 +190,161 @@ function segmentChain(seg: PlanSegment, plan: EditPlanV1, nodes: FilterNode[]): 
   return { v: vIn, a: aIn }
 }
 
-function zoomChain(plan: EditPlanV1, zoom: PlanZoom, vIn: string, nodes: FilterNode[]): string {
-  const i = zoom.index
-  const out = `vz${i}`
-  // A zoom is a bounded, time-gated scale about the frame centre. The plan
-  // carries integers only; the enable expression and the scale literal are built
-  // here from those integers.
+// A zoom is a bounded, time-gated scale about the frame centre — bounded means
+// framing MUST return to normal once `outputEndMs` passes, and time-gated means
+// two zooms must never compound into each other's scale. Neither property held
+// before this batch: the old `zoomChain` applied `scale`+`crop` to whatever it
+// was handed and chained the result onward unconditionally, so the zoomed
+// framing never ended and a second zoom scaled the first zoom's OUTPUT rather
+// than the original frame.
+//
+// The obvious fix — a single time-varying filter, `scale` gated by
+// `enable=between(t,a,b)` — is unavailable: `VALUE_RE` deliberately excludes
+// the comma `between(t,a,b)` requires, because a value that needs one of the
+// excluded characters is exactly a value this module refuses to trust into a
+// filter string. So the graph is time-gated STRUCTURALLY instead: the joined
+// video is split by `trim` into pieces that alternate between "outside every
+// zoom" (passed through untouched) and "inside a zoom" (given a FIXED,
+// non-time-varying scale+crop), and the pieces are `concat`-ed back in order.
+// A piece is trimmed from the ORIGINAL joined stream, never from a previous
+// piece's output, which is what makes compounding structurally impossible
+// rather than merely untested.
+//
+// Smooth easing needs the scale to vary continuously across a window, which is
+// the same comma-shaped wall. It is approximated instead by slicing each ease
+// phase into a small fixed number of equal-length steps, each a constant scale
+// at that step's midpoint fraction into the ramp — a staircase standing in for
+// a ramp, close enough at the policy's ~250ms ease lengths (a handful of
+// frames per step) to read as easing rather than a snap.
+const EASE_STEPS = 5
+
+interface ZoomWindow {
+  startMs: number
+  endMs: number
+  // null = outside every zoom: pass the frame through with no scale/crop.
+  scaleMilli: number | null
+}
+
+function rampWindows(fromMs: number, toMs: number, fromScale: number, toScale: number): ZoomWindow[] {
+  const span = toMs - fromMs
+  if (span <= 0) return []
+  const out: ZoomWindow[] = []
+  for (let k = 0; k < EASE_STEPS; k++) {
+    const startMs = fromMs + Math.round((k * span) / EASE_STEPS)
+    const endMs = fromMs + Math.round(((k + 1) * span) / EASE_STEPS)
+    if (endMs <= startMs) continue
+    const fraction = (k + 0.5) / EASE_STEPS
+    const scaleMilli = Math.round(fromScale + fraction * (toScale - fromScale))
+    out.push({ startMs, endMs, scaleMilli })
+  }
+  return out
+}
+
+function zoomWindows(zoom: PlanZoom): ZoomWindow[] {
+  const holdStart = zoom.outputStartMs + zoom.easeInMs
+  const holdEnd = zoom.outputEndMs - zoom.easeOutMs
+  const windows: ZoomWindow[] = [
+    ...rampWindows(zoom.outputStartMs, holdStart, 1000, zoom.scaleMilli),
+  ]
+  if (holdEnd > holdStart) windows.push({ startMs: holdStart, endMs: holdEnd, scaleMilli: zoom.scaleMilli })
+  windows.push(...rampWindows(holdEnd, zoom.outputEndMs, zoom.scaleMilli, 1000))
+  return windows
+}
+
+// The full, gap-filled timeline: every zoom's own windows, plus a
+// pass-through window for every stretch of video no zoom claims. Zooms are
+// validated elsewhere to be sorted and non-overlapping, so a single forward
+// cursor is enough to find the gaps.
+function allWindows(plan: EditPlanV1): ZoomWindow[] {
+  const windows: ZoomWindow[] = []
+  let cursor = 0
+  for (const zoom of plan.video.zooms) {
+    if (zoom.outputStartMs > cursor) windows.push({ startMs: cursor, endMs: zoom.outputStartMs, scaleMilli: null })
+    windows.push(...zoomWindows(zoom))
+    cursor = zoom.outputEndMs
+  }
+  if (cursor < plan.output.durationMs) windows.push({ startMs: cursor, endMs: plan.output.durationMs, scaleMilli: null })
+  const coveredMs = windows.reduce((n, w) => n + (w.endMs - w.startMs), 0)
+  // Recomputed independently of `plan.output.durationMs`, exactly the way
+  // `joinSegments` re-derives its own total and requires it to agree with the
+  // plan: a disagreement here is a defect in this fold, not a video that is
+  // quietly the wrong length.
+  if (coveredMs !== plan.output.durationMs) {
+    invalid(`zoom windows cover ${coveredMs}ms but the plan declares ${plan.output.durationMs}ms`)
+  }
+  return windows
+}
+
+function windowChain(plan: EditPlanV1, win: ZoomWindow, vJoined: string, nodes: FilterNode[], idx: number): string {
+  const vTrim = `vzwt${idx}`
   nodes.push({
-    id: `zoom${i}`, filter: 'scale',
+    id: `vzwtrim${idx}`, filter: 'trim',
     args: [
-      { key: 'w', value: `iw*${milliToScalarLiteral(zoom.scaleMilli)}` },
-      { key: 'h', value: `ih*${milliToScalarLiteral(zoom.scaleMilli)}` },
+      { key: 'start', value: msToSecondsLiteral(win.startMs) },
+      { key: 'end', value: msToSecondsLiteral(win.endMs) },
+    ],
+    inputs: [vJoined], outputs: [vTrim],
+  })
+  const vPts = `vzwp${idx}`
+  nodes.push({ id: `vzwpts${idx}`, filter: 'setpts', args: [{ key: '', value: 'PTS-STARTPTS' }], inputs: [vTrim], outputs: [vPts] })
+  if (win.scaleMilli === null) return vPts
+
+  const vScaled = `vzws${idx}`
+  nodes.push({
+    id: `vzwscale${idx}`, filter: 'scale',
+    args: [
+      { key: 'w', value: `iw*${milliToScalarLiteral(win.scaleMilli)}` },
+      { key: 'h', value: `ih*${milliToScalarLiteral(win.scaleMilli)}` },
       { key: 'eval', value: 'init' },
     ],
-    inputs: [vIn], outputs: [`vzs${i}`],
+    inputs: [vPts], outputs: [vScaled],
   })
+  const vCropped = `vzwc${idx}`
   nodes.push({
-    id: `zoomcrop${i}`, filter: 'crop',
+    id: `vzwcrop${idx}`, filter: 'crop',
     args: [
       { key: 'w', value: plan.output.width }, { key: 'h', value: plan.output.height },
       { key: 'x', value: `(iw-ow)/2` }, { key: 'y', value: `(ih-oh)/2` },
     ],
-    inputs: [`vzs${i}`], outputs: [out],
+    inputs: [vScaled], outputs: [vCropped],
+  })
+  // `scale=w=iw*1.012:...` rounds each dimension to a whole pixel count
+  // independently, so the two roundings are not exactly proportional — ffmpeg
+  // compensates by attaching a corrective, non-1:1 SAR rather than distorting
+  // the pixel grid. `crop` carries that SAR forward unchanged. Every OTHER
+  // piece in this graph (segments, and the un-zoomed pass-through windows) is
+  // still exactly 1:1, so left uncorrected the final `concat` refuses to join
+  // them: "Input link parameters ... do not match". Pixel content is already
+  // exactly `plan.output.width`x`plan.output.height` after `crop`; this only
+  // corrects the metadata to match everything else in the pipeline.
+  const vSar = `vzwsar${idx}`
+  nodes.push({ id: `vzwsetsar${idx}`, filter: 'setsar', args: [{ key: 'sar', value: '1' }], inputs: [vCropped], outputs: [vSar] })
+  return vSar
+}
+
+function applyTimeGatedZooms(plan: EditPlanV1, vJoined: string, nodes: FilterNode[]): string {
+  if (plan.video.zooms.length === 0) return vJoined
+  const windows = allWindows(plan)
+  if (windows.length === 1) return windowChain(plan, windows[0], vJoined, nodes, 0)
+
+  // A filtergraph label is a SINGLE-CONSUMER pad: `vJoined` cannot be wired as
+  // the input of every window's `trim` at once, only of one. `split` is the
+  // filter that turns one stream into N independent copies, which is what
+  // makes it safe for every window to be trimmed from the ORIGINAL joined
+  // stream (never from a previous window's processed output) without ffmpeg
+  // rejecting the graph as a pad used twice.
+  const splitLabels = windows.map((_w, idx) => `vzwsplit${idx}`)
+  nodes.push({
+    id: 'zoomsplit', filter: 'split',
+    args: [{ key: 'outputs', value: windows.length }],
+    inputs: [vJoined], outputs: splitLabels,
+  })
+  const labels = windows.map((w, idx) => windowChain(plan, w, splitLabels[idx], nodes, idx))
+  const out = 'vzcat'
+  nodes.push({
+    id: 'zoomconcat', filter: 'concat',
+    args: [{ key: 'n', value: labels.length }, { key: 'v', value: 1 }, { key: 'a', value: 0 }],
+    inputs: labels, outputs: [out],
   })
   return out
 }
@@ -391,12 +524,12 @@ export function buildFfmpegGraph(
   // it was "never substitute".
   const { v: vJoined, a: aJoined } = joinSegments(plan, vLabels, aLabels, nodes, bounds)
 
-  // Zooms, applied in output-time order over the joined video.
-  let vCur = vJoined
+  // Zooms, time-gated so each applies only within its own window and framing
+  // returns to normal the instant it ends. See `applyTimeGatedZooms`.
   for (const zoom of plan.video.zooms) {
     if (zoom.scaleMilli <= 1000) invalid(`zoom ${zoom.index} has a non-magnifying scale`)
-    vCur = zoomChain(plan, zoom, vCur, nodes)
   }
+  let vCur = applyTimeGatedZooms(plan, vJoined, nodes)
 
   // Captions: burned in from the plan's ASS document. The subtitles filter takes
   // a FILE, never inline text, so caption text never enters an argument at all.

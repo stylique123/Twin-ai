@@ -121,7 +121,9 @@ describe('hard-cut plans are byte-unchanged from Batch 8.1', () => {
   // that would have caught that.
   it('still emits ONE n-way concat, not a chain of pairwise ones', () => {
     const graph = buildFfmpegGraph(hardCutPlan(), ASSETS, BOUNDS)
-    const concats = graph.nodes.filter((n) => n.filter === 'concat')
+    // The segment join's concat is id `concat`; a separate `zoomconcat` node
+    // rejoins the time-gated zoom windows and is not what this test is about.
+    const concats = graph.nodes.filter((n) => n.filter === 'concat' && n.id === 'concat')
     expect(concats.length).toBe(1)
     expect(concats[0].args.find((a) => a.key === 'n')!.value).toBe(hardCutPlan().timeline.segments.length)
   })
