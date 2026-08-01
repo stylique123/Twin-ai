@@ -423,11 +423,32 @@ jobs:
           # "answered no". Waiting for a real answer is strictly stronger than
           # guessing from a race.
           #
-          # COST NOTE: while waiting, this job occupies a runner. That is real
-          # billable time on a private repo, roughly the length of one matrix
-          # run per push. If that trade stops being worth it, lower
-          # MAX_WAIT_SECS to 0 and the old fail-fast behaviour returns exactly.
-          MAX_WAIT_SECS=${MAX_WAIT_SECS:-3000}   # 50 min; matrix runs ~45
+          # WAITING IS OFF, AND THE NUMBER IS WHY.
+          #
+          # I first set this to 3000s "because the matrix runs ~45 min". That
+          # was an estimate, not a measurement, and it was wrong: the last
+          # SUCCESSFUL staging-integration run took 77 MINUTES. So the gate
+          # waited the full 50, burned a runner for all of it, and then failed
+          # anyway — the worst of both, and the third threshold I picked from a
+          # guess when the real figure was one API call away.
+          #
+          # Raising the cap to 80+ minutes is not the fix. That is 80 minutes
+          # of held, billable runner PER PUSH, which is a worse trade than the
+          # noise it buys — especially with an org already over quota.
+          #
+          # The problem is structural and no timeout value solves it: this
+          # check runs at PUSH time, and the evidence it needs does not exist
+          # for another 77 minutes. It can only fail early or wait an hour.
+          #
+          # THE RIGHT DESIGN, not built here: trigger the gate from
+          # `workflow_run` on staging-integration COMPLETION rather than on
+          # push. Then it costs seconds, fires once, and reports the true
+          # answer. That is a real change to a merge-protection gate and wants
+          # a review, so it is written down rather than slipped in.
+          #
+          # Until then: 0 restores fail-fast. The check is red until the matrix
+          # finishes and someone re-runs it — annoying, honest, and free.
+          MAX_WAIT_SECS=${MAX_WAIT_SECS:-0}
           POLL_SECS=60
           WAITED=0
           while :; do
