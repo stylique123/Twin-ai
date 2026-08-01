@@ -44,7 +44,14 @@ export const env = {
   // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI
   // editor. build_dna stays edge-driven (dna-poll), never add it here or the worker
   // would dead-letter it.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source,editor_v2').split(',').map((s) => s.trim()),
+  // purge_media is in the DEFAULT set deliberately. It is enqueued by a
+  // database trigger (0099), so nothing in application code would reveal its
+  // absence: every deletion would queue a job no worker claims, it would sit
+  // until it aged out, and the bytes behind a deleted recording would stay
+  // exactly where they were — with the migration, the trigger and the handler
+  // all looking correct. A job type nobody drains is a feature that does
+  // nothing, quietly.
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source,editor_v2,purge_media').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight
