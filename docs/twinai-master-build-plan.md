@@ -708,30 +708,47 @@ never "your audience IS students".
 
 Without this the hard rule is a comment. With it, it is a check.
 
-### 8a.3 The gallery is not a second pipeline
+### 8a.3 The gallery is ONE entry point, not the pipeline
 
-**There is no gallery today.** Pasting a reference is the only path
-(`generate-blueprint` takes `reference_url` or `reference_note`). So the question
-is not "why does a pasted reference follow the gallery" — it is what the gallery
-should be when it exists.
+**Correction.** An earlier revision of this section claimed no gallery existed.
+That was wrong — `/gallery` ships, with "Remix in my voice", and an upload mode
+(`V2Capture ?mode=upload`) ships alongside recording. The error came from
+misreading a grep result. The architectural point survives the correction and is
+actually strengthened by it.
 
-**It is a way of CHOOSING a reference, nothing more.** Both routes converge one
-step later and every stage after that is identical:
+There are **four ways a video starts**, and they are peers:
+
+| Entry | What the user brings |
+|---|---|
+| Gallery | Picks a ranked reference |
+| Paste a link | Brings their own reference |
+| Own idea | Brings a topic, no reference |
+| Upload a take | Brings FOOTAGE — already filmed |
+
+The first three converge at the same place and everything after is identical:
 
 ```
-pick from gallery  ─┐
-                    ├─→  reference read  →  brief card  →  script  →  record  →  edit
-paste a link       ─┘
+gallery ─┐
+paste   ─┼─→ reference read → brief card → script → record → edit → post
+idea    ─┘                                    ↑
+upload a take ────────────────────────────────┘  (joins at the edit)
 ```
 
-A pasted link must get the same brief card, the same hooks-with-reasons, the same
-scene plan. Anything the gallery route gets and the paste route does not is a bug.
+**Anything one entry gets that another does not is a bug**, with one honest
+exception: an upload has no script, so it cannot have teleprompter alignment or
+scene-level keep/retake. It still gets transcript, cuts, captions, punch-ins,
+loudness and every output check — `origin: 'upload'` is already a first-class
+case in the compiler, where the allowed domain is the whole file.
 
-**Why today's suggestions are wrong, mechanically:** ranking needs a PRODUCTION
-profile, and nothing produces one. A reference matching your niche is recommended
-even when it is a dance video and you make software walkthroughs. Q5 plus observed
-format is exactly the missing input — §7a's "production-mode match" has had no data
-behind it.
+What an upload MUST also get, and does not today: the brief card cannot precede
+it (the video is already shot), but the REVIEW screen and the "what Twin
+changed" summary apply unchanged, and so does the transcript-as-editor.
+
+**Why gallery suggestions are wrong today, mechanically:** ranking needs a
+PRODUCTION profile and nothing produces one. A reference is recommended for
+matching your niche even when it is a dance video and you make software
+walkthroughs. Q5 plus observed format is exactly the missing input — §7a's
+"production-mode match" has never had data behind it.
 
 **The container rule.** A reference shaped "three products I stopped using" is a
 CONTAINER, and Q3+Q4 decide what fills it:
@@ -743,8 +760,9 @@ CONTAINER, and Q3+Q4 decide what fills it:
 | Product brand | Confirmed own products only, never inferred ones |
 | Non-commercial educator | Three ideas or three mistakes; a product is not forced in |
 
-That last row is the one that matters. Forcing a commercial container onto someone
-with nothing to sell is how a tool starts producing videos its user cannot post.
+That last row is the one that matters. Forcing a commercial container onto
+someone with nothing to sell is how a tool starts producing videos its user
+cannot post.
 
 ### 8a.4 Extra clips — when the question appears
 

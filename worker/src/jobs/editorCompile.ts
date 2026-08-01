@@ -73,6 +73,7 @@ export interface EditPolicyV1 {
   edges: {
     trimLeading: boolean; trimTrailing: boolean; keepMs: number; minTrimMs: number
   }
+  hook: { maxTrimMs: number; maxTrimFractionMilli: number }
   captions: {
     maxCues: number; maxLinesPerCue: number; presetIds: string[]
     /** How far before the end of the video the LAST caption must finish. */
@@ -662,7 +663,38 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       bad(`hook: start word ${idx} is outside the allowed source domain`, 'edit_plan_unsafe_cut')
     }
     const trimEnd = Math.max(allowedDomain[0].startMs, word.startMs - policy.cuts.minPhonemeHandleMs)
-    if (trimEnd > allowedDomain[0].startMs) {
+    // HOW MUCH THIS IS ALLOWED TO THROW AWAY.
+    //
+    // The only previous guard was "did it remove ALL the media", so a start
+    // word late in the recording silently discarded most of it — a 60s take
+    // became a 6s video, and every check downstream passed because the plan
+    // was internally consistent. The creator just got a video missing the
+    // middle of what they said, with nothing anywhere explaining it.
+    //
+    // Measured against the ACCEPTED material rather than the file, because
+    // rejected takes are not the creator's video and must not make a trim look
+    // proportionally smaller than it is.
+    // MEASURED AS ACCEPTED MATERIAL REMOVED, not as elapsed span. The domain
+    // can have rejected takes between its windows, so the wall-clock distance
+    // from the domain start to the cut counts time that was never the
+    // creator's video — it can exceed the accepted total outright and make the
+    // fraction meaningless. Subtracting and re-measuring reuses the same
+    // interval arithmetic the timeline is built from, so the number here is
+    // exactly the material the trim would cost.
+    const durationOf = (ws: Interval[]): number => ws.reduce((n, w) => n + (w.endMs - w.startMs), 0)
+    const acceptedMs = durationOf(allowedDomain)
+    const trimMs = acceptedMs - durationOf(
+      subtractIntervals(allowedDomain, [{ startMs: allowedDomain[0].startMs, endMs: trimEnd }]),
+    )
+    const fractionMilli = acceptedMs > 0 ? Math.round((trimMs * 1000) / acceptedMs) : 0
+    const overAbsolute = trimMs > policy.hook.maxTrimMs
+    const overFraction = fractionMilli > policy.hook.maxTrimFractionMilli
+    if (overAbsolute || overFraction) {
+      // Not a hard failure. The real opening is always a usable opening, so
+      // falling back to it produces a correct video rather than no video —
+      // and the fallback is announced, mirroring hook_open_at_word_noop.
+      warn.add('hook_trim_too_large', `word_${idx}_${trimMs}ms_${fractionMilli}milli`)
+    } else if (trimEnd > allowedDomain[0].startMs) {
       hookTrimStartMs = allowedDomain[0].startMs
       hookTrimEndMs = trimEnd
       hookStartWordIndex = idx

@@ -75,6 +75,31 @@
     "keepMs": 120,
     "minTrimMs": 200
   },
+  "_hookComment": [
+    "HOW MUCH OF A RECORDING A HOOK CHOICE MAY DISCARD.",
+    "hookTreatment 'open_at_word' drops everything before a chosen word, and",
+    "the only guard was 'did it remove ALL the media'. So a Director picking a",
+    "late word could silently discard most of a take: a 60s recording becomes",
+    "a 6s video, the plan validates, the render succeeds, and nothing anywhere",
+    "says why. The creator sees a video missing the middle of what they said.",
+    "A hook trim exists to drop a greeting or preamble -- 'hey guys, welcome",
+    "back, so today' -- which is seconds, not tens of seconds. Both bounds",
+    "must hold: 15s absolute, and half the accepted material.",
+    "The fraction was first set at a quarter and that was a GUESS -- it refused",
+    "an existing, legitimate case (a 12.9s open-at-word over a 45s domain,",
+    "28.7%, which the suite already asserted works). Refusing real behaviour on",
+    "an unmeasured threshold is the mistake roomyEarlyEnergyRatioMilliMax made.",
+    "Half is where 'discarded most of the recording' actually begins, and the",
+    "15s absolute carries the rest: a greeting is seconds, so any trim long",
+    "enough to matter trips the absolute long before the fraction.",
+    "Exceeding either does NOT fail the render. It falls back to keeping the",
+    "real opening and says so, mirroring hook_open_at_word_noop, which already",
+    "establishes that an unusable hook choice is announced and not applied."
+  ],
+  "hook": {
+    "maxTrimMs": 15000,
+    "maxTrimFractionMilli": 500
+  },
   "captions": {
     "_tailGuardComment": [
     "How far before the END OF THE PLANNED DURATION the last caption must finish.",

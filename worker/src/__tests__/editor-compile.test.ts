@@ -906,6 +906,75 @@ describe('the policy cannot ask for more than the contract will accept', () => {
   })
 })
 
+describe('a hook choice may not discard the recording', () => {
+  // THE DEFECT. hookTreatment 'open_at_word' drops everything before the chosen
+  // word, and the ONLY guard was "did it remove ALL the media". A start word
+  // late in the take therefore discarded most of it silently: the plan stayed
+  // internally consistent, every downstream check passed, and the creator got
+  // a video missing the middle of what they said with nothing explaining why.
+  function openAt(idx: number, pol = policy()) {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.decision.hookTreatment = 'open_at_word'
+    input.decision.hookStartWordIndex = idx
+    return compileEditPlan({ ...input, policy: pol })
+  }
+
+  it('a small trim still applies — the feature works', () => {
+    const { plan, warnings } = openAt(1)
+    expect(warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(false)
+    expect(plan.hook.treatment).toBe('open_at_word')
+  })
+
+  it('a trim past the bound falls back to the real opening, and says so', () => {
+    // The last word in the fixture: opening there would throw away nearly
+    // everything before it.
+    const last = baseInput().evidence.words.length - 1
+    const { plan, warnings } = openAt(last)
+    expect(warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(true)
+    expect(plan.hook.treatment).toBe('keep')
+  })
+
+  it('keeps the whole recording when it refuses — nothing is quietly lost', () => {
+    const last = baseInput().evidence.words.length - 1
+    const refused = openAt(last).plan
+    const kept = compileEditPlan({
+      ...(() => { const i = baseInput(); i.decision.transitionPolicy = 'hard_cuts_only'; return i })(),
+      policy: policy(),
+    }).plan
+    expect(refused.output.durationMs).toBe(kept.output.durationMs)
+  })
+
+  it('CONTROL: raising the bound lets the same trim through', () => {
+    // Proves the refusal is the BOUND acting, not the fixture failing to reach
+    // the branch for some other reason.
+    const last = baseInput().evidence.words.length - 1
+    const loose = policy()
+    loose.hook.maxTrimMs = 10_000_000
+    loose.hook.maxTrimFractionMilli = 1000
+    const { plan, warnings } = openAt(last, loose)
+    expect(warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(false)
+    expect(plan.hook.treatment).toBe('open_at_word')
+    expect(plan.output.durationMs).toBeLessThan(compileEditPlan({
+      ...(() => { const i = baseInput(); i.decision.transitionPolicy = 'hard_cuts_only'; return i })(),
+      policy: policy(),
+    }).plan.output.durationMs)
+  })
+
+  it('EITHER bound alone is enough to refuse', () => {
+    // Both must hold. A short recording is protected by the fraction (15s is
+    // most of it); a long one by the absolute (a quarter is a lot).
+    const last = baseInput().evidence.words.length - 1
+    const absoluteOnly = policy()
+    absoluteOnly.hook.maxTrimFractionMilli = 1000 // fraction can never bind
+    expect(openAt(last, absoluteOnly).warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(true)
+
+    const fractionOnly = policy()
+    fractionOnly.hook.maxTrimMs = 10_000_000 // absolute can never bind
+    expect(openAt(last, fractionOnly).warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(true)
+  })
+})
+
 describe('a word too wide for a line is broken, not run off the frame', () => {
   // THE DEFECT. layoutLines starts a line with a token however long it is
   // (`|| current === ''`), because a token that fits nowhere still has to go
