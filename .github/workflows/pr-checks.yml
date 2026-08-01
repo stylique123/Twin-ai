@@ -403,16 +403,57 @@ jobs:
           # Ask ONLY for runs of this workflow at this exact SHA. A run on an ancestor
           # commit does not count: the whole point is that the bytes being merged are
           # the bytes that were proven.
-          RESP=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/$REPO/actions/workflows/staging-integration.yml/runs?head_sha=$HEAD_SHA&per_page=100")
-          TOTAL=$(printf '%s' "$RESP" | jq -r '.total_count // 0')
-          OK=$(printf '%s' "$RESP" | jq -r '[.workflow_runs[]? | select(.conclusion=="success")] | length')
-          echo "staging-integration runs at this head: $TOTAL (successful: $OK)"
-          printf '%s' "$RESP" | jq -r '.workflow_runs[]? | "  \(.status)/\(.conclusion // "-")  \(.html_url)"'
-          if [ "${OK:-0}" -ge 1 ]; then
-            echo "OK: the Phase 1-7 staging matrix passed on the exact head being merged."
-            exit 0
-          fi
+          # WAIT FOR THE ANSWER, DO NOT RACE IT.
+          #
+          # This step used to read the API once, ~3 seconds after the push that
+          # triggered it, and fail because the staging run it was looking for
+          # had only just started. The matrix takes ~45 minutes. So the check
+          # reported FAILURE on every push for a run that was proceeding
+          # normally, turned the whole PR-checks workflow red, and emailed the
+          # owner each time — one push, one false alarm.
+          #
+          # That is not a strictness problem, it is a TIMING problem, and the
+          # noise had a real cost beyond annoyance: two genuine staging
+          # failures (a caption-timing defect, and an auth flake) were sitting
+          # among dozens of identical false ones and were harder to see.
+          #
+          # This does NOT weaken the gate. It still passes only on a genuine
+          # `conclusion == success` at this exact head. What changes is that a
+          # run still in flight is treated as "not answered yet" rather than as
+          # "answered no". Waiting for a real answer is strictly stronger than
+          # guessing from a race.
+          #
+          # COST NOTE: while waiting, this job occupies a runner. That is real
+          # billable time on a private repo, roughly the length of one matrix
+          # run per push. If that trade stops being worth it, lower
+          # MAX_WAIT_SECS to 0 and the old fail-fast behaviour returns exactly.
+          MAX_WAIT_SECS=${MAX_WAIT_SECS:-3000}   # 50 min; matrix runs ~45
+          POLL_SECS=60
+          WAITED=0
+          while :; do
+            RESP=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$REPO/actions/workflows/staging-integration.yml/runs?head_sha=$HEAD_SHA&per_page=100")
+            TOTAL=$(printf '%s' "$RESP" | jq -r '.total_count // 0')
+            OK=$(printf '%s' "$RESP" | jq -r '[.workflow_runs[]? | select(.conclusion=="success")] | length')
+            PENDING=$(printf '%s' "$RESP" | jq -r '[.workflow_runs[]? | select(.status=="queued" or .status=="in_progress" or .status=="waiting" or .status=="pending")] | length')
+            echo "staging-integration runs at this head: $TOTAL (successful: $OK, still running: $PENDING) [waited ${WAITED}s]"
+            printf '%s' "$RESP" | jq -r '.workflow_runs[]? | "  \(.status)/\(.conclusion // "-")  \(.html_url)"'
+
+            if [ "${OK:-0}" -ge 1 ]; then
+              echo "OK: the Phase 1-7 staging matrix passed on the exact head being merged."
+              exit 0
+            fi
+            # Nothing in flight means the answer is final: either every run at
+            # this head concluded without success, or no run was ever started.
+            # Both are genuine failures of this gate and are reported below.
+            [ "${PENDING:-0}" -eq 0 ] && break
+            [ "$WAITED" -ge "$MAX_WAIT_SECS" ] && {
+              echo "::error::Waited ${WAITED}s for the staging matrix at head $HEAD_SHA and it has not finished. Not passing a gate whose evidence has not arrived — re-run this check once the matrix completes."
+              exit 1
+            }
+            sleep "$POLL_SECS"
+            WAITED=$((WAITED + POLL_SECS))
+          done
           echo "::error::No SUCCESSFUL staging-integration run exists for head $HEAD_SHA. The Phase 1-7 matrix is what proves this change against real infrastructure — migrations on a real database, real ASR, and the live Director call. Unit tests and Gate-D cannot substitute: every defect found in the Phase-7 exit round was invisible to them. To clear this check, run the matrix on THIS head (push the branch as rebuild/editor-v2-<name>, or dispatch staging-integration against it) and let it pass. Do not merge around this check."
           exit 1
