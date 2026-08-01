@@ -9,6 +9,7 @@ import { db, claimJob, completeJob, deadLetterJob, failJob, heartbeat } from './
 import { handlers } from './jobs/index.js'
 import { env } from './env.js'
 import { isLeaseLost, isPermanent } from './errors.js'
+import { redact } from './sanitizeError.js'
 
 let running = true
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -51,6 +52,24 @@ async function tick(): Promise<boolean> {
     log('info', 'done', { job: job.id, type: job.type })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // WHAT GOES IN A ROW A CLIENT CAN READ.
+    //
+    // sanitizeError.ts states the rule for durable state — signed URLs, tokens,
+    // temp paths and raw command lines must never be persisted — and editorV2
+    // honours it. This loop, which settles EVERY OTHER job type, did not: it
+    // wrote `err.message` straight into jobs.error and ops_events.detail.
+    //
+    // The messages reaching here carry exactly what the rule names. media.ts
+    // rejects with `${cmd} exited ${code}: ${stderr.slice(-400)}`, and
+    // validateSource.ts with `not decodable media: ${String(e)}` — so yt-dlp
+    // and ffprobe internals, local temp paths, and scraped CDN URLs with their
+    // signature query strings all land in rows the owner can select (jobs is
+    // owner-readable per 0002).
+    //
+    // Raw still goes to stdout below, which is the split the sanitizer's own
+    // header describes: container logs are access-controlled and rotate; a
+    // database row is neither.
+    const safeMessage = redact(message)
     // A lost lease means another worker owns the job now. Every settle RPC is
     // fenced (would no-op), so just abandon — the new owner drives it.
     if (isLeaseLost(err)) {
@@ -60,19 +79,19 @@ async function tick(): Promise<boolean> {
     const permanent = isPermanent(err)
     if (permanent) {
       // Non-retryable: settle immediately instead of burning the retry budget.
-      await deadLetterJob(job.id, message, job.attempts)
+      await deadLetterJob(job.id, safeMessage, job.attempts)
     } else {
       // Exponential backoff (30s, 60s, 120s… capped at 10min) so a flaky yt-dlp/Apify
       // call gets progressively more breathing room instead of hammering on a fixed 30s.
       const backoff = Math.min(env.retryBackoffBaseSecs * 2 ** Math.max(0, job.attempts - 1), 600)
-      await failJob(job.id, message, backoff, job.attempts) // fail_job retries or dead-letters by attempts
+      await failJob(job.id, safeMessage, backoff, job.attempts) // fail_job retries or dead-letters by attempts
     }
     log('error', 'failed', { job: job.id, type: job.type, attempt: job.attempts, permanent, error: message })
     // Dead-letter alert: the LAST attempt failed → surface it so spikes are visible
     // (the reliability panel's "alert when fail-rate spikes"). Best-effort.
     if (permanent || job.attempts >= job.max_attempts) {
       await db.from('ops_events')
-        .insert({ kind: 'job_dead_letter', severity: 'warn', user_id: job.owner_id ?? null, detail: { job_id: job.id, type: job.type, attempts: job.attempts, error: message.slice(0, 300) } })
+        .insert({ kind: 'job_dead_letter', severity: 'warn', user_id: job.owner_id ?? null, detail: { job_id: job.id, type: job.type, attempts: job.attempts, error: safeMessage } })
         .then(() => {}, () => {})
     }
   } finally {
