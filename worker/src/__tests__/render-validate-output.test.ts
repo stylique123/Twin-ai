@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   validateProbedOutput, validateCaptionsAgainstOutput, validateCoverFile,
-  secondsStringToMs, parseRational, type ProbeResult,
+  validateRenderedOutput, secondsStringToMs, parseRational, type ProbeResult,
 } from '../jobs/editorValidateOutput.js'
 import { loadRenderCatalog } from '../jobs/editorRender.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
@@ -292,5 +292,87 @@ describe('every code this module emits is in the FROZEN catalog (Gate-0 §5)', (
     collect(() => validateCoverFile('/nonexistent/cover.jpg', CATALOG))
     expect(seen.size).toBeGreaterThanOrEqual(6)
     for (const c of seen) expect(FROZEN.has(c)).toBe(true)
+  })
+})
+
+// ---- the ASYNC WRAPPER, which is where the loudness meter was added ---------
+//
+// Everything above tests pure functions. `validateRenderedOutput` is the thing
+// production actually calls, and until Phase 9 no test in this file touched it
+// — so the meter's wiring (as opposed to its arithmetic, covered in
+// loudness.test.ts) had no coverage at all. Both children are injected, so this
+// runs with no ffmpeg and no media file.
+describe('validateRenderedOutput — the wrapper production calls', () => {
+  const REPORT = (i: string, tp: string): string =>
+    `frame= 90 fps=0.0 q=-0.0 Lsize=N/A\n[Parsed_loudnorm_0 @ 0x5]\n` +
+    `{\n\t"input_i" : "${i}",\n\t"input_tp" : "${tp}",\n\t"input_lra" : "0.10",\n` +
+    `\t"input_thresh" : "-31.80",\n\t"output_i" : "-13.99",\n\t"output_tp" : "-8.29",\n` +
+    `\t"output_lra" : "0.00",\n\t"output_thresh" : "-23.99",\n` +
+    `\t"normalization_type" : "dynamic",\n\t"target_offset" : "-0.01"\n}`
+
+  function outputFile(): { dir: string; path: string } {
+    const dir = mkdtempSync(join(tmpdir(), 'validate-wrapper-'))
+    const path = join(dir, 'output.mp4')
+    // Real bytes on disk: the wrapper stats the file for its size, so an
+    // injected probe alone would not get it past the existence check.
+    writeFileSync(path, Buffer.alloc(4_000_000, 7))
+    return { dir, path }
+  }
+
+  async function run(i: string, tp: string): Promise<Awaited<ReturnType<typeof validateRenderedOutput>>> {
+    const { dir, path } = outputFile()
+    const p = plan()
+    try {
+      return await validateRenderedOutput(
+        { outputPath: path, coverPath: null, plan: p },
+        {
+          spawn: (() => { throw new Error('no child should be spawned when both deps are injected') }) as never,
+          now: () => 0,
+          probe: () => Promise.resolve(goodProbe(p)),
+          measureLoudnessText: () => Promise.resolve(REPORT(i, tp)),
+        },
+      )
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  }
+
+  it('measures the delivered loudness and returns it alongside the structure', async () => {
+    const v = await run('-14.04', '-6.80')
+    expect(v.loudness.measurement).toEqual({
+      silent: false, integratedLufsMilli: -14040, truePeakDbtpMilli: -6800,
+    })
+    expect(v.loudness.integratedDeviationMilli).toBe(-40)
+    // Still does everything it did before.
+    expect(v.measurements.width).toBe(1080)
+  })
+
+  it('a true peak over the frozen ceiling is REPORTED, and the video survives', async () => {
+    // The measured pink-noise case. This is the assertion that stops a future
+    // tightening from silently starting to destroy real renders.
+    const v = await run('-14.05', '-0.12')
+    expect(v.loudness.truePeakOvershootMilli).toBe(880)
+  })
+
+  it('SILENT audio fails the whole validation', async () => {
+    await expect(run('-inf', '-inf')).rejects.toMatchObject({ code: 'output_audio_invalid' })
+  })
+
+  it('CLIPPING fails the whole validation', async () => {
+    await expect(run('-14.00', '0.30')).rejects.toMatchObject({ code: 'output_audio_invalid' })
+  })
+
+  it('an unreadable meter report fails rather than being treated as "fine"', async () => {
+    const { dir, path } = outputFile()
+    const p = plan()
+    try {
+      await expect(validateRenderedOutput(
+        { outputPath: path, coverPath: null, plan: p },
+        {
+          spawn: (() => { throw new Error('unexpected spawn') }) as never,
+          now: () => 0,
+          probe: () => Promise.resolve(goodProbe(p)),
+          measureLoudnessText: () => Promise.resolve('frame= 90 fps=0.0 — no report here'),
+        },
+      )).rejects.toMatchObject({ code: 'output_audio_invalid' })
+    } finally { rmSync(dir, { recursive: true, force: true }) }
   })
 })

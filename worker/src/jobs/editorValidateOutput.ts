@@ -18,28 +18,31 @@
 //
 // WHAT IT DOES NOT MEASURE, STATED SO NOBODY INFERS OTHERWISE.
 //
-// The paragraph above lists "the audio landed on its loudness target" among the
-// things a zero exit status does not prove. That is true — and THIS MODULE DOES
-// NOT MEASURE LOUDNESS EITHER. It runs one ffprobe and reads metadata. An audit
-// caught the implication, and the correction matters more than the missing
-// feature: a reviewer trusting that sentence would believe the output is
-// audited far more deeply than it is, and would not think to add the checks
-// that are actually absent.
+// This list is kept honest deliberately. An earlier version of this header let
+// the paragraph above imply loudness was audited when it was not; the audit that
+// caught it noted the correction mattered more than the missing feature, because
+// a reviewer trusting the sentence would not think to add the checks that were
+// absent. The same rule applies to every line below — when one of these lands,
+// it moves up rather than quietly staying here.
 //
-// Structural, today:
+// Structural, from one ffprobe of the container metadata:
 //   container, stream count, codecs, raster, pixel format, frame rate,
 //   sample rate, channels, duration, byte ceiling, caption cue bounds,
 //   cover file size.
 //
-// NOT done — each a real gap, not a deliberate exclusion:
-//   full video/audio decode, integrated loudness and true-peak measurement,
-//   A/V drift, decoded frame count, whether captions actually RENDERED as
-//   pixels, caption safe-area, golden frames, and a real decode of the cover
-//   (its size is checked; its contents are not).
+// Decoded, from a real pass over the audio (Phase 9):
+//   integrated loudness and true peak. Gate-0 §4 freezes -14 LUFS +/-1 and
+//   -1.0 dBTP and the graph asks loudnorm for exactly those; this now confirms
+//   what came back out. What is ENFORCED is narrower than what is MEASURED —
+//   silence, clipping and gross level error fail, while the frozen ±1/-1.0
+//   target is recorded rather than enforced, because single-pass loudnorm
+//   provably cannot hold it. jobs/loudness.ts carries the measurements that
+//   establish that and explains why enforcing it would reject good renders.
 //
-// Gate-0 §4 freezes -14 LUFS +/-1 and -1.0 dBTP, and the graph builder asks
-// loudnorm for exactly those — so the plan REQUESTS the right target and
-// nothing here confirms the encoder delivered it.
+// NOT done — each a real gap, not a deliberate exclusion:
+//   full VIDEO decode, A/V drift, decoded frame count, whether captions
+//   actually RENDERED as pixels, caption safe-area, golden frames, and a real
+//   decode of the cover (its size is checked; its contents are not).
 //
 // THE MEASUREMENT/CLAIM DISTINCTION IS LOAD-BEARING. `format.duration` is what
 // the container header asserts; that header is written by the same encoder whose
@@ -53,6 +56,8 @@ import { EditPlanError, type EditPlanV1 } from './editPlanContract.js'
 import {
   loadRenderCatalog, runMediaProcess, type RenderCatalogV1, type OutputProfile, type SpawnDeps,
 } from './editorRender.js'
+import { milliToScalarLiteral } from './ffmpegGraph.js'
+import { parseLoudnormJson, checkLoudness, type LoudnessVerdict } from './loudness.js'
 import type { CancelWatch } from './editorCancel.js'
 
 function bad(message: string, code: string): never {
@@ -90,6 +95,9 @@ export interface ProbeDeps extends SpawnDeps {
   /** Injected so the validator's own logic can be tested without a media file.
    *  Production leaves it undefined and the real ffprobe runs. */
   probe?: (path: string) => Promise<ProbeResult>
+  /** Same, for the loudness meter. Returns ffmpeg's raw measurement text; the
+   *  parsing is `jobs/loudness.ts`'s job and is tested directly there. */
+  measureLoudnessText?: (path: string) => Promise<string>
 }
 
 export async function probeFile(
@@ -127,6 +135,72 @@ export async function probeFile(
       if (code !== 0) return finish(new EditPlanError(`output: ffprobe failed (exit ${String(code)})`, 'output_decode_failed'))
       try { finish(null, JSON.parse(out) as ProbeResult) }
       catch { finish(new EditPlanError('output: ffprobe produced unparseable output', 'output_decode_failed')) }
+    })
+  })
+}
+
+/**
+ * Run ffmpeg as a METER over the finished file and return its raw report.
+ *
+ * Piped directly rather than routed through `runMediaProcess`, for the reason
+ * `probeFile` gives just above: this is a call whose OUTPUT is the answer, not
+ * a side effect. `runMediaProcess` keeps an 8 KiB stderr tail expressly marked
+ * "for DIAGNOSIS ONLY", and reading a measurement out of a truncating diagnostic
+ * buffer would silently start returning nothing the day ffmpeg gets chattier.
+ *
+ * The raw text NEVER LEAVES THIS FUNCTION'S CALLER as text. Gate-0 §5 forbids
+ * persisting raw stderr, and what escapes is the parsed integers — the report
+ * is a channel for numbers, not something to store.
+ *
+ * `-vn` skips video decoding entirely: the question is about audio, and
+ * decoding 1080p frames to answer it would multiply the cost of a check that
+ * runs on every render.
+ */
+export async function measureLoudnessText(
+  path: string, plan: EditPlanV1, catalog: RenderCatalogV1,
+  opts: { watch?: CancelWatch; ffmpegBin?: string } = {}, deps?: ProbeDeps,
+): Promise<string> {
+  if (deps?.measureLoudnessText) return deps.measureLoudnessText(path)
+  if (!existsSync(path)) bad('the output file is missing', 'output_decode_failed')
+
+  // Built from the plan's own integers through the same milli-unit literal
+  // helper the graph builder uses, so the meter is asked about exactly the
+  // target the graph requested — not a second copy of the numbers that could
+  // drift from it.
+  const filter = `loudnorm=I=${milliToScalarLiteral(plan.audio.targetLufsMilli)}`
+    + `:TP=${milliToScalarLiteral(plan.audio.truePeakCeilingDbtpMilli)}`
+    + ':LRA=11:print_format=json'
+
+  return new Promise<string>((resolve, reject) => {
+    const child = (deps?.spawn ?? spawn)(
+      opts.ffmpegBin ?? 'ffmpeg',
+      ['-hide_banner', '-nostdin', '-i', path, '-vn', '-af', filter, '-f', 'null', '-'],
+      { detached: true, stdio: ['ignore', 'ignore', 'pipe'] },
+    )
+    let err = ''
+    let settled = false
+    const killGroup = () => { try { if (child.pid) process.kill(-child.pid, 'SIGKILL') } catch { /* gone */ } }
+    const timer = setTimeout(
+      () => { killGroup(); finish(new EditPlanError('output: the loudness meter timed out', 'output_audio_invalid')) },
+      catalog.loudness.measureTimeoutMs,
+    )
+    const onAbort = () => { killGroup(); finish(new EditPlanError('output: loudness measurement cancelled', 'output_audio_invalid')) }
+    opts.watch?.signal.addEventListener('abort', onAbort, { once: true })
+    function finish(e: Error | null, value?: string) {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      opts.watch?.signal.removeEventListener('abort', onAbort)
+      if (e) reject(e); else resolve(value!)
+    }
+    // loudnorm writes its report to stderr, mixed in with progress lines. The
+    // whole stream is kept rather than a tail, because the report is emitted at
+    // the END and a tail sized for diagnosis is not a contract about capacity.
+    child.stderr?.on('data', (d: Buffer) => { err += d.toString('utf8') })
+    child.on('error', (e) => finish(e))
+    child.on('close', (code) => {
+      if (code !== 0) return finish(new EditPlanError(`output: the loudness meter failed (exit ${String(code)})`, 'output_audio_invalid'))
+      finish(null, err)
     })
   })
 }
@@ -316,11 +390,12 @@ export interface ValidateOutputRequest {
   plan: EditPlanV1
   watch?: CancelWatch
   ffprobeBin?: string
+  ffmpegBin?: string
 }
 
 export async function validateRenderedOutput(
   req: ValidateOutputRequest, deps?: ProbeDeps,
-): Promise<OutputValidation & { cover: CoverValidation | null }> {
+): Promise<OutputValidation & { cover: CoverValidation | null; loudness: LoudnessVerdict }> {
   const catalog = loadRenderCatalog()
   const profile = catalog.outputProfiles[req.plan.output.profileId]
   if (!profile) bad('the plan names an output profile that is not in the frozen catalog', 'render_output_profile_invalid')
@@ -330,8 +405,19 @@ export async function validateRenderedOutput(
   const probe = await probeFile(req.outputPath, catalog, { watch: req.watch, ffprobeBin: req.ffprobeBin }, deps)
   const result = validateProbedOutput(probe, req.plan, profile, bytes)
   validateCaptionsAgainstOutput(req.plan, result.measurements.durationMs)
+
+  // The structural checks above pass on a file whose audio is silence, or is
+  // clipping, or is 20 LU from where it was asked to be — every one of those
+  // has correct codecs, raster and duration. This is the check that decodes.
+  const text = await measureLoudnessText(
+    req.outputPath, req.plan, catalog, { watch: req.watch, ffmpegBin: req.ffmpegBin }, deps,
+  )
+  const measurement = parseLoudnormJson(text)
+  if (!measurement) bad('the loudness meter produced no readable measurement', 'output_audio_invalid')
+  const loudness = checkLoudness(measurement, req.plan.audio, catalog.loudness)
+
   const cover = req.coverPath ? validateCoverFile(req.coverPath, catalog) : null
-  return { ...result, cover }
+  return { ...result, cover, loudness }
 }
 
 // Re-exported so a caller validating an output does not have to know that the

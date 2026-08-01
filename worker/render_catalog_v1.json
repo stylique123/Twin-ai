@@ -187,6 +187,27 @@
     "maxBytes": 2097152
   },
 
+  "_loudnessComment": [
+    "The DISASTER BAND for delivered audio — deliberately not the frozen target.",
+    "",
+    "Gate-0 §4 freezes -14 LUFS +/-1 and -1.0 dBTP, and the graph asks loudnorm",
+    "for exactly those. Enforcing that ceiling literally on the finished file",
+    "would reject renders the pipeline produced correctly: single-pass loudnorm",
+    "is a best-effort dynamic limiter, and measured on this chain it lands ABOVE",
+    "the true-peak ceiling it was given by up to ~0.9 dB on broadband content",
+    "(pink noise: -0.12 dBTP against a -1.0 request), while integrated loudness",
+    "stays within ~0.94 LU. jobs/loudness.ts carries the full measurement table.",
+    "",
+    "So the target stays the target and these are the bounds that mean BROKEN:",
+    "silence, clipping, or a level nowhere near what was asked for. The measured",
+    "numbers are recorded either way, so whether to invest in two-pass loudnorm",
+    "becomes a question about real runs rather than about anybody's intuition."
+  ],
+  "loudness": {
+    "maxIntegratedDeviationMilli": 3000,
+    "clippingDbtpMilli": 0,
+    "measureTimeoutMs": 120000
+  },
   "limits": {
     "_comment": [
       "Gate-0 §9 capacity thresholds, restated as enforcement. The render",

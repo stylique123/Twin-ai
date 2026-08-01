@@ -37,6 +37,7 @@ import { fileURLToPath } from 'node:url'
 import { EditPlanError, editPlanSha256, type EditPlanV1 } from './editPlanContract.js'
 import { buildFfmpegGraph, buildFfmpegArgs, ffmpegGraphSha256, type CrossfadeBounds } from './ffmpegGraph.js'
 import { sha256Hex, canonicalJson } from './editorManifest.js'
+import type { LoudnessBounds } from './loudness.js'
 import type { CancelWatch } from './editorCancel.js'
 
 const WORKER_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -84,7 +85,15 @@ export interface RenderCatalogV1 {
   fonts: Record<string, { sha256: string | null }>
   transitions: { crossfade: CrossfadeBounds }
   cover: CoverSpec
+  loudness: LoudnessSpec
   limits: RenderLimits
+}
+
+/** The disaster band for delivered audio, plus its measurement budget. The
+ *  bounds half is `LoudnessBounds` exactly, so the judge in jobs/loudness.ts
+ *  cannot be handed a shape the catalog did not actually freeze. */
+export interface LoudnessSpec extends LoudnessBounds {
+  measureTimeoutMs: number
 }
 
 function bad(message: string, code: string): never {
@@ -118,7 +127,7 @@ export function loadRenderCatalog(path = join(WORKER_ROOT, 'render_catalog_v1.js
   if (doc.schemaVersion !== 1 || doc.catalogVersion !== RENDER_CATALOG_VERSION) {
     bad('the render catalog is not the frozen version this build expects', 'render_output_profile_invalid')
   }
-  for (const key of ['outputProfiles', 'captionPresets', 'fonts', 'transitions', 'cover', 'limits'] as const) {
+  for (const key of ['outputProfiles', 'captionPresets', 'fonts', 'transitions', 'cover', 'loudness', 'limits'] as const) {
     if (!doc[key] || typeof doc[key] !== 'object') {
       bad(`the render catalog is missing its ${key} section`, 'render_output_profile_invalid')
     }
@@ -128,6 +137,16 @@ export function loadRenderCatalog(path = join(WORKER_ROOT, 'render_catalog_v1.js
     || !Number.isInteger(b.maxOverlapFractionOfShorterSegmentMilli)
     || b.minOverlapMs <= 0 || b.maxOverlapMs < b.minOverlapMs) {
     bad('the render catalog has no usable crossfade bounds', 'render_output_profile_invalid')
+  }
+  const ln = doc.loudness
+  // A zero or negative deviation bound would fail every render; a negative
+  // clipping bound would fail renders quieter than the ceiling they were asked
+  // for. Both are the kind of typo that turns a guard into an outage, so the
+  // catalog is refused rather than obeyed.
+  if (!ln || !Number.isInteger(ln.maxIntegratedDeviationMilli) || ln.maxIntegratedDeviationMilli <= 0
+    || !Number.isInteger(ln.clippingDbtpMilli) || ln.clippingDbtpMilli < 0
+    || !Number.isInteger(ln.measureTimeoutMs) || ln.measureTimeoutMs <= 0) {
+    bad('the render catalog has no usable loudness bounds', 'render_output_profile_invalid')
   }
   const l = doc.limits
   if (!Number.isInteger(l.maxRealtimeRatio) || l.maxRealtimeRatio <= 0

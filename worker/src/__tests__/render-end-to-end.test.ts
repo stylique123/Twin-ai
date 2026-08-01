@@ -164,6 +164,17 @@ maybe('the graph ffmpeg is actually given', () => {
     expect(validation.measurements.height).toBe(renderPlan.output.height)
     expect(Math.abs(validation.measurements.durationMs - renderPlan.output.durationMs)).toBeLessThanOrEqual(250)
 
+    // THE LOUDNESS METER, AGAINST A FILE THIS FFMPEG ACTUALLY PRODUCED.
+    // loudness.test.ts proves the arithmetic on captured text; only this proves
+    // the meter runs, that its report survives a real render's stderr, and that
+    // real output clears the disaster band. An `expect(...).not.toThrow()` on
+    // the wrapper would have proven none of it — the numbers are asserted to be
+    // present and finite so a meter that silently stopped measuring fails here.
+    expect(validation.loudness.measurement.silent).toBe(false)
+    expect(Number.isInteger(validation.loudness.measurement.integratedLufsMilli)).toBe(true)
+    expect(Number.isInteger(validation.loudness.measurement.truePeakDbtpMilli)).toBe(true)
+    expect(validation.loudness.measurement.truePeakDbtpMilli!).toBeLessThan(0)
+
     // The cover, from the finished file rather than the source.
     const { coverPath, bytes } = await extractCover(outputPath, renderPlan, workDir)
     expect(bytes).toBeGreaterThan(0)
