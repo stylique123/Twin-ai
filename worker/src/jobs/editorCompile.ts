@@ -991,7 +991,15 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
   const pending = [...staged]
   const flush = (): void => {
     if (group.length === 0) return
-    if (cues.length >= maxCues) { group = []; return }
+    // Hitting the cue ceiling DROPS the rest of the captions. Silently, until
+    // now — a 15-minute take on the punchiest preset can reach it, and the
+    // symptom is "my captions just stop halfway", with nothing anywhere saying
+    // why. It is still a drop, but it is now a recorded one.
+    if (cues.length >= maxCues) {
+      warn.add('caption_dropped_max_cues', `cue_${cues.length}`)
+      group = []
+      return
+    }
     const texts = group.map((g) => g.text)
     let layout = layoutLines(texts, preset.maxCharsPerLine, maxLines)
     while (layout === null && group.length > 1) {

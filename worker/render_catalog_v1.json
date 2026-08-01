@@ -223,15 +223,22 @@
     "twinai-mark.svg (the twin mark, brand book p.08).",
     "",
     "Opacity is applied by the render graph from opacityMilli rather than baked",
-    "into the PNG, so it stays auditable and tunable without a new binary."
+    "into the PNG, so it stays auditable and tunable without a new binary.",
+    "",
+    "THE MARGINS CLEAR edit_policy_v1.json's OWN SAFE AREA (safeBottomPx 320,",
+    "safeRightPx 60). They were first set to 56/44 by eye against a mockup, which",
+    "put the mark 264px inside the band TikTok and Reels cover with the caption",
+    "bar and the right-hand action rail -- invisible on the platforms it exists",
+    "to advertise on. buildFfmpegGraph now REFUSES margins that violate the",
+    "plan's framing, so this is a checked property rather than a tuned number."
   ],
   "watermark": {
     "assetBasename": "twinai-watermark.png",
     "sha256": "c19eb4d24d4584fc357a420fc8ae87af1c3a685389c8a33cb7f40036f7b431e8",
     "displayWidthPx": 300,
     "opacityMilli": 820,
-    "marginRightPx": 44,
-    "marginBottomPx": 56
+    "marginRightPx": 64,
+    "marginBottomPx": 344
   },
   "limits": {
     "_comment": [

@@ -581,6 +581,24 @@ export function buildFfmpegGraph(
     }
     if (!Number.isInteger(wm.marginRightPx) || wm.marginRightPx < 0) invalid('watermark right margin is negative')
     if (!Number.isInteger(wm.marginBottomPx) || wm.marginBottomPx < 0) invalid('watermark bottom margin is negative')
+    // THE MARK MUST CLEAR THE PLAN'S OWN SAFE AREA.
+    //
+    // The margins were first chosen by eye against a mockup and put the mark
+    // 264px inside the band TikTok and Reels cover with the caption bar and the
+    // right-hand action rail — invisible on exactly the platforms it exists to
+    // advertise on, and invisible in a way no test or reviewer would notice,
+    // because the render is perfect and the frame is correct.
+    //
+    // The plan already carries the safe area; it was simply read by nothing in
+    // the render path. Checking against it here makes the placement a property
+    // the builder enforces rather than a number somebody tuned.
+    const safe = plan.video.framing
+    if (wm.marginBottomPx < safe.safeBottomPx) {
+      invalid(`watermark sits ${safe.safeBottomPx - wm.marginBottomPx}px inside the plan's bottom safe area`)
+    }
+    if (wm.marginRightPx < safe.safeRightPx) {
+      invalid(`watermark sits ${safe.safeRightPx - wm.marginRightPx}px inside the plan's right safe area`)
+    }
     // A second INPUT, not a filter that reads a file. `movie=` would embed a
     // path inside the filter string; an input keeps the path an argv element,
     // which is the property this whole module exists to preserve.
@@ -664,6 +682,19 @@ export function buildFfmpegGraph(
     '-ar', String(plan.output.audioSampleRateHz),
     '-ac', String(plan.output.audioChannels),
     '-t', msToSecondsLiteral(plan.output.durationMs),
+    // COLOUR METADATA, WITHOUT WHICH THE EXPORT LOOKS WASHED OUT.
+    //
+    // An untagged H.264 file is interpreted by QuickTime, Safari and iOS as
+    // BT.601, while libswscale actually produced BT.709 for a 1920-tall frame.
+    // The result is the classic hue-and-saturation shift a creator describes as
+    // "the colours look wrong / faded compared to my recording" — with nothing
+    // in any log, because every stage did its job and only the label is absent.
+    //
+    // `tv` range is stated for the same reason: a full-range phone capture
+    // converted with no range signalling reads as crushed blacks or milky
+    // greys depending on the player's guess.
+    '-colorspace', 'bt709', '-color_primaries', 'bt709',
+    '-color_trc', 'bt709', '-color_range', 'tv',
   ]
   if (plan.output.faststart) outputOptions.push('-movflags', '+faststart')
 

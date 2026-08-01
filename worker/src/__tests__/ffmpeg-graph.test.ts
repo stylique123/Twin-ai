@@ -11,6 +11,8 @@ import {
 } from '../jobs/ffmpegGraph.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
 import { EditPlanError, type EditPlanV1 } from '../jobs/editPlanContract.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { baseInput, policy } from './fixtures/editPlanFixture.js'
 
 function codeOf(fn: () => unknown): string {
@@ -337,7 +339,7 @@ describe('determinism', () => {
 describe('the free-tier watermark', () => {
   const PLACEMENT = {
     path: '/opt/assets/twinai-watermark.png',
-    displayWidthPx: 300, opacityMilli: 820, marginRightPx: 44, marginBottomPx: 56,
+    displayWidthPx: 300, opacityMilli: 820, marginRightPx: 64, marginBottomPx: 344,
   }
   function markedPlan(): EditPlanV1 {
     const input = baseInput()
@@ -384,8 +386,8 @@ describe('the free-tier watermark', () => {
     const alpha = graph.nodes.find((n) => n.id === 'wmalpha')!
     expect(alpha.args).toContainEqual({ key: 'aa', value: '0.820' })
     const overlay = graph.nodes.find((n) => n.id === 'wmoverlay')!
-    expect(overlay.args).toContainEqual({ key: 'x', value: 'W-w-44' })
-    expect(overlay.args).toContainEqual({ key: 'y', value: 'H-h-56' })
+    expect(overlay.args).toContainEqual({ key: 'x', value: 'W-w-64' })
+    expect(overlay.args).toContainEqual({ key: 'y', value: 'H-h-344' })
   })
 
   it('sits LAST in the video chain, on top of the captions', () => {
@@ -432,5 +434,67 @@ describe('the free-tier watermark', () => {
     const marked = ffmpegGraphSha256(buildFfmpegGraph(markedPlan(), { ...ASSETS, watermark: PLACEMENT }))
     const clean = ffmpegGraphSha256(buildFfmpegGraph(hardCutPlan(), ASSETS))
     expect(marked).not.toBe(clean)
+  })
+})
+
+describe('the output is tagged with the colour it was actually encoded in', () => {
+  // AN UNTAGGED H.264 FILE IS THE CLASSIC "why does my export look washed out".
+  // QuickTime, Safari and iOS assume BT.601 for an untagged stream while
+  // libswscale produced BT.709 for a 1920-tall frame — a visible hue and
+  // saturation shift, with nothing wrong in any log, because every stage did
+  // its job and only the label was missing.
+  it('states colourspace, primaries, transfer and range', () => {
+    const args = buildFfmpegArgs(buildFfmpegGraph(hardCutPlan(), ASSETS))
+    for (const [flag, value] of [
+      ['-colorspace', 'bt709'], ['-color_primaries', 'bt709'],
+      ['-color_trc', 'bt709'], ['-color_range', 'tv'],
+    ] as const) {
+      const i = args.indexOf(flag)
+      expect(i).toBeGreaterThan(-1)
+      expect(args[i + 1]).toBe(value)
+    }
+  })
+})
+
+describe('the watermark cannot be placed where the platform will cover it', () => {
+  const OK = {
+    path: '/opt/assets/twinai-watermark.png',
+    displayWidthPx: 300, opacityMilli: 820, marginRightPx: 64, marginBottomPx: 344,
+  }
+  function markedPlan(): EditPlanV1 {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.watermark = true
+    return compileEditPlan({ ...input, policy: policy() }).plan
+  }
+
+  it('REFUSES a mark inside the plan\'s bottom safe area', () => {
+    // The original 56px margin put the mark 264px inside the band TikTok and
+    // Reels cover with the caption bar — invisible on exactly the platforms it
+    // exists to advertise on, and invisible in a way nothing would have caught,
+    // because the render is perfect and the frame is correct.
+    const p = markedPlan()
+    expect(codeOf(() => buildFfmpegGraph(p, { ...ASSETS, watermark: { ...OK, marginBottomPx: 56 } })))
+      .toBe('render_graph_invalid')
+  })
+
+  it('REFUSES a mark inside the right safe area', () => {
+    const p = markedPlan()
+    expect(codeOf(() => buildFfmpegGraph(p, { ...ASSETS, watermark: { ...OK, marginRightPx: 10 } })))
+      .toBe('render_graph_invalid')
+  })
+
+  it('CONTROL: the catalog\'s own shipped geometry clears both', () => {
+    // Reads the FROZEN numbers rather than restating them, so retuning the
+    // catalog into the unsafe band fails here instead of in a user's video.
+    const catalog = JSON.parse(readFileSync(join(import.meta.dirname, '..', '..', 'render_catalog_v1.json'), 'utf8')) as
+      { watermark: { displayWidthPx: number; opacityMilli: number; marginRightPx: number; marginBottomPx: number } }
+    const p = markedPlan()
+    expect(() => buildFfmpegGraph(p, {
+      ...ASSETS,
+      watermark: { path: OK.path, ...catalog.watermark },
+    })).not.toThrow()
+    expect(catalog.watermark.marginBottomPx).toBeGreaterThanOrEqual(p.video.framing.safeBottomPx)
+    expect(catalog.watermark.marginRightPx).toBeGreaterThanOrEqual(p.video.framing.safeRightPx)
   })
 })

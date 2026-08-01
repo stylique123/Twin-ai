@@ -54,7 +54,7 @@
   },
 
   "captions": {
-    "maxCues": 2000,
+    "maxCues": 1000,
     "maxLinesPerCue": 2,
     "presetIds": [
       "caption-clean-keyword-v1",
@@ -87,7 +87,7 @@
         "maxCueDurationMs": 5000,
         "maxCharsPerSecondMilli": 17000,
         "fontSizePx": 56,
-        "marginVerticalPx": 240
+        "marginVerticalPx": 320
       }
     }
   },

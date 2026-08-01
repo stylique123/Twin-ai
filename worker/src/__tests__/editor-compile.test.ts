@@ -8,7 +8,10 @@
 // green assertion on its own never does.
 import { describe, it, expect } from 'vitest'
 import { compileEditPlan, buildTimeMap, type CompileInput } from '../jobs/editorCompile.js'
-import { EditPlanError, validateEditPlan } from '../jobs/editPlanContract.js'
+import {
+  EditPlanError, validateEditPlan,
+  MAX_CUES, MAX_ZOOMS, MAX_SEGMENTS, MAX_REMOVALS,
+} from '../jobs/editPlanContract.js'
 import {
   baseInput, policy, EXPECTED, WINDOW_A, WINDOW_B, SOURCE_DURATION_MS,
 } from './fixtures/editPlanFixture.js'
@@ -791,5 +794,45 @@ describe('determinism + self-validation', () => {
     expect(plan.complexity.zoomCount).toBe(plan.video.zooms.length)
     expect(plan.complexity.transitionCount).toBe(plan.video.transitions.length)
     expect(plan.complexity.wordCount).toBe(39)
+  })
+})
+
+describe('the policy cannot ask for more than the contract will accept', () => {
+  // THIS PAIR ALREADY DRIFTED ONCE, and the result was a guaranteed permanent
+  // failure rather than a degradation. MAX_CUES was halved to 1000 when
+  // lineTokens doubled a cue's worst-case bytes (to keep the plan under the
+  // 1 MiB cap by construction) and the policy was left at 2000 — so the
+  // compiler was licensed to emit a plan its own validator would reject with
+  // `edit_plan_invalid`, no retry, on any take long enough to reach it.
+  //
+  // Nothing caught it because each number is individually correct and each
+  // file is individually consistent. Only the RELATIONSHIP was wrong, and
+  // nothing was looking at the relationship.
+
+  it('captions.maxCues never exceeds the contract ceiling', () => {
+    const pol = policy()
+    expect(pol.captions.maxCues).toBeLessThanOrEqual(MAX_CUES)
+  })
+
+  it('every array bound in the policy is within its contract bound', () => {
+    const pol = policy()
+    expect(pol.zooms.maxCount).toBeLessThanOrEqual(MAX_ZOOMS)
+    expect(pol.cuts.maxKeptSegments).toBeLessThanOrEqual(MAX_SEGMENTS)
+    expect(pol.cuts.maxRemovals).toBeLessThanOrEqual(MAX_REMOVALS)
+  })
+})
+
+describe('captions stay clear of the platform UI band', () => {
+  // caption-minimal-subtitle-v1 placed its baseline 80px INSIDE the band that
+  // TikTok and Reels cover with the caption stack and CTA — declared unsafe by
+  // this same policy file, three keys away, and read by nothing.
+  it('every preset respects the framing safe area it is shipped alongside', () => {
+    const pol = policy()
+    for (const [id, preset] of Object.entries(pol.captions.presets)) {
+      expect(
+        preset.marginVerticalPx,
+        `caption preset ${id} sits inside framing.safeBottomPx`,
+      ).toBeGreaterThanOrEqual(pol.framing.safeBottomPx)
+    }
   })
 })
