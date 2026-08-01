@@ -906,6 +906,80 @@ describe('the policy cannot ask for more than the contract will accept', () => {
   })
 })
 
+describe('cut density — too many cuts is unwatchable', () => {
+  // The cap SHIPS and was never tested: nothing in the suite referenced
+  // maxCutsPerMinuteMilli or removal_dropped_cut_density. It is also the one
+  // guard whose failure is invisible in every other assertion — a plan with
+  // forty cuts in forty seconds validates perfectly, renders perfectly, and is
+  // unwatchable. Correctness checks cannot see it; only this can.
+  //
+  // With the shipped rate (30 cuts/min) the fixture's 3 removals sit far under
+  // the ceiling, so these lower the RATE rather than inventing a fixture with
+  // hundreds of cuts — same branch, no new hand-derived baseline to keep true.
+  function atRate(milliPerMinute: number) {
+    const p = policy()
+    p.cuts.maxCutsPerMinuteMilli = milliPerMinute
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    return compileEditPlan({ ...input, policy: p })
+  }
+
+  it('CONTROL: under the shipped rate every removal survives', () => {
+    const { plan, warnings } = atRate(30000)
+    expect(plan.timeline.removals).toHaveLength(EXPECTED.removals.length)
+    expect(warnings.some((w) => w.code === 'removal_dropped_cut_density')).toBe(false)
+  })
+
+  it('over the cap, the excess is given back and announced', () => {
+    // A cut silently not made is a creator wondering why their pause is still
+    // there. Every drop is warned.
+    const { plan, warnings } = atRate(1333) // -> maxCuts = 1 over this domain
+    expect(plan.timeline.removals).toHaveLength(1)
+    const dropped = warnings.filter((w) => w.code === 'removal_dropped_cut_density')
+    expect(dropped).toHaveLength(EXPECTED.removals.length - 1)
+  })
+
+  it('keeps the LONGEST removals — the ones worth making', () => {
+    // Dropping by position would keep whichever cuts happened to come first.
+    // Length is the proxy for value: a 3s dead-air removal earns its cut, a
+    // 120ms one barely changes the video.
+    const { plan } = atRate(1333)
+    const kept = plan.timeline.removals[0]
+    const keptMs = kept.sourceEndMs - kept.sourceStartMs
+    const longest = Math.max(...EXPECTED.removals.map((r) => r.sourceEndMs - r.sourceStartMs))
+    expect(keptMs).toBe(longest)
+  })
+
+  it('is deterministic — the same plan twice is the same plan', () => {
+    // The ordering is (length desc, start asc) precisely so a tie cannot make
+    // two compiles of one decision differ. A plan hash that moves on a tie
+    // would make every downstream digest meaningless.
+    const a = atRate(1333).plan
+    const b = atRate(1333).plan
+    expect(a.timeline.removals).toEqual(b.timeline.removals)
+    expect(a.output.durationMs).toBe(b.output.durationMs)
+  })
+
+  it('giving cuts back makes the video LONGER, not shorter', () => {
+    // The obvious way to get this backwards is to drop the removal from the
+    // list but keep its time subtracted from the timeline.
+    expect(atRate(1333).plan.output.durationMs)
+      .toBeGreaterThan(atRate(30000).plan.output.durationMs)
+  })
+
+  it('always allows at least one cut, however low the rate', () => {
+    // maxCuts floors to zero on a short domain; the guard is max(1, ...).
+    // Zero would mean a policy value could disable cutting altogether without
+    // anyone intending it.
+    const { plan } = atRate(1)
+    expect(plan.timeline.removals.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('the surviving plan still validates', () => {
+    expect(() => validateEditPlan(atRate(1333).plan)).not.toThrow()
+  })
+})
+
 describe('a hook choice may not discard the recording', () => {
   // THE DEFECT. hookTreatment 'open_at_word' drops everything before the chosen
   // word, and the ONLY guard was "did it remove ALL the media". A start word
