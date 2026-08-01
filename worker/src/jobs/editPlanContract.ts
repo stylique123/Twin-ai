@@ -28,7 +28,7 @@ import { canonicalJson, sha256Hex } from './editorManifest.js'
 // pinned. A plan pinned under an earlier version lacks these fields and is
 // never reinterpreted as v3 — a project's boot manifest is fixed at pin time,
 // so each bump only affects NEW plans compiled after it.
-export const EDIT_PLAN_SCHEMA_VERSION = 3
+export const EDIT_PLAN_SCHEMA_VERSION = 4
 export const EDIT_PLAN_VERSION = 'edit-plan-v1'
 export const EDIT_PLAN_MAX_BYTES = 1048576
 
@@ -108,6 +108,14 @@ export interface PlanOutput {
   audioChannels: number
   faststart: boolean
   durationMs: number
+  /** Whether the free-tier TwinAI mark is burned into this render.
+   *
+   *  It lives in the PLAN rather than being decided at render time for the same
+   *  reason the caption colours do: the plan is the recorded contract, its hash
+   *  covers this field, and two renders of one plan must produce the same video.
+   *  A watermark resolved from live account state at render time would make a
+   *  replayed render silently differ from the one the user was shown. */
+  watermark: boolean
 }
 export interface PlanSegment {
   index: number
@@ -334,7 +342,7 @@ const IDENTITY_KEYS = ['planVersion', 'policyVersion', 'compilerVersion', 'proje
   'sourceAssetId', 'sourceChecksum', 'bootManifestSha', 'scriptSnapshotSha', 'decisionSha256'] as const
 const SOURCE_KEYS = ['origin', 'durationMs', 'allowedWindows'] as const
 const OUTPUT_KEYS = ['profileId', 'width', 'height', 'fpsNum', 'fpsDen', 'videoCodec', 'audioCodec',
-  'pixelFormat', 'audioSampleRateHz', 'audioChannels', 'faststart', 'durationMs'] as const
+  'pixelFormat', 'audioSampleRateHz', 'audioChannels', 'faststart', 'durationMs', 'watermark'] as const
 const SEGMENT_KEYS = ['index', 'sourceStartMs', 'sourceEndMs', 'outputStartMs', 'outputEndMs',
   'transitionInOverlapMs'] as const
 const REMOVAL_KEYS = ['sourceStartMs', 'sourceEndMs', 'origin', 'ref', 'reasonCode'] as const
@@ -455,6 +463,7 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     audioChannels: int(out.audioChannels, 1, 2, 'output.audioChannels'),
     faststart: bool(out.faststart, 'output.faststart'),
     durationMs: int(out.durationMs, 1, MAX_MS, 'output.durationMs'),
+    watermark: bool(out.watermark, 'output.watermark'),
   }
   if (output.width % 2 !== 0 || output.height % 2 !== 0) fail('output: dimensions must be even')
 

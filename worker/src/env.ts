@@ -130,6 +130,10 @@ export const env = {
   // Where the catalog's caption fonts live in the image. Only read when a plan
   // actually has cues.
   editorFontsDir: (process.env.EDITOR_FONTS_DIR ?? '/usr/share/fonts/truetype/dejavu').trim(),
+  // The worker's own frozen brand assets, COPYed to ./assets by the Dockerfile.
+  // Relative to the process's working directory in the image; overridable for a
+  // developer run out of the repository.
+  editorAssetsDir: (process.env.EDITOR_ASSETS_DIR ?? 'assets').trim(),
   // Refuse a caption font with no pinned digest. Defaults ON: an absent digest
   // silently satisfying an integrity check is how a font substitution reaches
   // production wearing a green tick, so a deployment that has not pinned its

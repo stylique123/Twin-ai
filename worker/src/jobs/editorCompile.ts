@@ -331,6 +331,13 @@ export interface CompileInput {
   // absent is treated exactly like { primaryHex: null, highlightHex: null },
   // never as "colors pending" or any other state.
   brandColors?: CompileBrandColors
+  /** Whether this render carries the free-tier TwinAI mark.
+   *
+   *  ABSENT MEANS NO WATERMARK, deliberately. A caller that has not resolved
+   *  the account's entitlement must not accidentally brand a paying customer's
+   *  video; the failure direction that matters is "we watermarked someone who
+   *  paid not to be", so the default is the one that cannot do that. */
+  watermark?: boolean
 }
 export interface CompileResult {
   plan: EditPlanV1
@@ -852,6 +859,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       pixelFormat: policy.output.pixelFormat,
       audioSampleRateHz: policy.output.audioSampleRateHz, audioChannels: policy.output.audioChannels,
       faststart: policy.output.faststart, durationMs: outputDurationMs,
+      watermark: input.watermark === true,
     },
     timeline: { segments, removals, cutsPerMinuteMilli },
     captions: {

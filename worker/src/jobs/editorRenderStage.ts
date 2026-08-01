@@ -158,6 +158,7 @@ export async function runRenderingStage(
     const { outputPath, evidence } = await renderEditPlan({
       plan, sourcePath, assPath, fontsDir, workDir, watch,
       strictFontIntegrity: env.editorStrictFontIntegrity,
+      assetsDir: env.editorAssetsDir,
     })
     if (watch.cancelled()) throw new RenderStageCancelledError('after_render')
 

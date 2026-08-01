@@ -328,3 +328,109 @@ describe('determinism', () => {
     expect(ffmpegGraphSha256(a)).not.toBe(ffmpegGraphSha256(b))
   })
 })
+
+// ---- the free-tier mark ------------------------------------------------------
+//
+// The failure that matters here is not a broken overlay, it is a QUIET one: a
+// paying customer's video acquiring a mark, or a free video silently losing the
+// one the plan asked for. Both directions are asserted.
+describe('the free-tier watermark', () => {
+  const PLACEMENT = {
+    path: '/opt/assets/twinai-watermark.png',
+    displayWidthPx: 300, opacityMilli: 820, marginRightPx: 44, marginBottomPx: 56,
+  }
+  function markedPlan(): EditPlanV1 {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.watermark = true
+    return compileEditPlan({ ...input, policy: policy() }).plan
+  }
+
+  it('an unmarked plan emits NO overlay and NO second input', () => {
+    // The default. A paying customer's render must not be able to pick up a
+    // mark from an asset merely being available.
+    const plan = hardCutPlan()
+    expect(plan.output.watermark).toBe(false)
+    const graph = buildFfmpegGraph(plan, ASSETS, undefined)
+    expect(graph.inputs).toHaveLength(1)
+    expect(graph.nodes.some((n) => n.filter === 'overlay')).toBe(false)
+    expect(graph.nodes.some((n) => n.id.startsWith('wm'))).toBe(false)
+  })
+
+  it('CONTROL: supplying an asset to an unmarked plan STILL emits nothing', () => {
+    // Proves the instruction comes from the PLAN, not from the caller's assets.
+    const graph = buildFfmpegGraph(hardCutPlan(), { ...ASSETS, watermark: PLACEMENT })
+    expect(graph.inputs).toHaveLength(1)
+    expect(graph.nodes.some((n) => n.filter === 'overlay')).toBe(false)
+  })
+
+  it('a marked plan composites the asset as a SECOND INPUT, never an inline path', () => {
+    const graph = buildFfmpegGraph(markedPlan(), { ...ASSETS, watermark: PLACEMENT })
+    expect(graph.inputs).toHaveLength(2)
+    expect(graph.inputs[1].path).toBe(PLACEMENT.path)
+    // `movie=` would put the path inside the filter string; an input keeps it an
+    // argv element, which is the property the whole module preserves.
+    const filter = serializeFilterGraph(graph)
+    expect(filter).not.toContain('movie=')
+    expect(filter).toContain('[1:v]')
+  })
+
+  it('carries the catalog geometry and multiplies the artwork alpha', () => {
+    const graph = buildFfmpegGraph(markedPlan(), { ...ASSETS, watermark: PLACEMENT })
+    const scale = graph.nodes.find((n) => n.id === 'wmscale')!
+    expect(scale.args).toContainEqual({ key: 'w', value: 300 })
+    // -1 keeps the artwork's aspect rather than a second number able to disagree.
+    expect(scale.args).toContainEqual({ key: 'h', value: -1 })
+    const alpha = graph.nodes.find((n) => n.id === 'wmalpha')!
+    expect(alpha.args).toContainEqual({ key: 'aa', value: '0.820' })
+    const overlay = graph.nodes.find((n) => n.id === 'wmoverlay')!
+    expect(overlay.args).toContainEqual({ key: 'x', value: 'W-w-44' })
+    expect(overlay.args).toContainEqual({ key: 'y', value: 'H-h-56' })
+  })
+
+  it('sits LAST in the video chain, on top of the captions', () => {
+    const plan = markedPlan()
+    expect(plan.captions.cues.length).toBeGreaterThan(0)
+    const graph = buildFfmpegGraph(plan, { ...ASSETS, watermark: PLACEMENT })
+    // The mark is what the encoder is handed...
+    expect(graph.videoOut).toBe('vwm')
+    // ...and its base input is the subtitles' output, so a caption line can
+    // never be drawn over the attribution.
+    const overlay = graph.nodes.find((n) => n.id === 'wmoverlay')!
+    expect(overlay.inputs[0]).toBe('vsub')
+  })
+
+  it('a marked plan with NO asset is REFUSED, never rendered unmarked', () => {
+    // Failing closed matters more here than anywhere else in this file: the
+    // alternative is shipping an unmarked free export and never knowing.
+    expect(codeOf(() => buildFfmpegGraph(markedPlan(), ASSETS))).toBe('render_graph_invalid')
+  })
+
+  it('refuses out-of-range placement rather than clamping it', () => {
+    const p = markedPlan()
+    const bad = [
+      { ...PLACEMENT, displayWidthPx: 0 },
+      { ...PLACEMENT, opacityMilli: 0 },
+      { ...PLACEMENT, opacityMilli: 1001 },
+      { ...PLACEMENT, marginRightPx: -1 },
+      { ...PLACEMENT, marginBottomPx: -1 },
+    ]
+    for (const wm of bad) {
+      expect(codeOf(() => buildFfmpegGraph(p, { ...ASSETS, watermark: wm }))).toBe('render_graph_invalid')
+    }
+  })
+
+  it('refuses a watermark path that could become behaviour', () => {
+    const p = markedPlan()
+    for (const path of ['relative/wm.png', 'http://evil/wm.png', '-i', '/a/../../etc/passwd', "/tmp/a'b.png"]) {
+      expect(codeOf(() => buildFfmpegGraph(p, { ...ASSETS, watermark: { ...PLACEMENT, path } })))
+        .toBe('render_graph_invalid')
+    }
+  })
+
+  it('changes the graph digest, so a marked render is not mistaken for an unmarked one', () => {
+    const marked = ffmpegGraphSha256(buildFfmpegGraph(markedPlan(), { ...ASSETS, watermark: PLACEMENT }))
+    const clean = ffmpegGraphSha256(buildFfmpegGraph(hardCutPlan(), ASSETS))
+    expect(marked).not.toBe(clean)
+  })
+})

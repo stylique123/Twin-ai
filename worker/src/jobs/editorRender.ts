@@ -35,7 +35,10 @@ import { createHash } from 'node:crypto'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { EditPlanError, editPlanSha256, type EditPlanV1 } from './editPlanContract.js'
-import { buildFfmpegGraph, buildFfmpegArgs, ffmpegGraphSha256, type CrossfadeBounds } from './ffmpegGraph.js'
+import {
+  buildFfmpegGraph, buildFfmpegArgs, ffmpegGraphSha256,
+  type CrossfadeBounds, type WatermarkPlacement,
+} from './ffmpegGraph.js'
 import { sha256Hex, canonicalJson } from './editorManifest.js'
 import type { LoudnessBounds } from './loudness.js'
 import type { CancelWatch } from './editorCancel.js'
@@ -86,6 +89,7 @@ export interface RenderCatalogV1 {
   transitions: { crossfade: CrossfadeBounds }
   cover: CoverSpec
   loudness: LoudnessSpec
+  watermark: WatermarkSpec
   limits: RenderLimits
 }
 
@@ -94,6 +98,19 @@ export interface RenderCatalogV1 {
  *  cannot be handed a shape the catalog did not actually freeze. */
 export interface LoudnessSpec extends LoudnessBounds {
   measureTimeoutMs: number
+}
+
+/** The free-tier mark: which file, what it must hash to, and how it sits on the
+ *  frame. Geometry is in output pixels because the output raster is itself
+ *  frozen by the profile — a fraction would be a second way to express the same
+ *  constant and a second thing to keep in sync. */
+export interface WatermarkSpec {
+  assetBasename: string
+  sha256: string
+  displayWidthPx: number
+  opacityMilli: number
+  marginRightPx: number
+  marginBottomPx: number
 }
 
 function bad(message: string, code: string): never {
@@ -127,7 +144,10 @@ export function loadRenderCatalog(path = join(WORKER_ROOT, 'render_catalog_v1.js
   if (doc.schemaVersion !== 1 || doc.catalogVersion !== RENDER_CATALOG_VERSION) {
     bad('the render catalog is not the frozen version this build expects', 'render_output_profile_invalid')
   }
-  for (const key of ['outputProfiles', 'captionPresets', 'fonts', 'transitions', 'cover', 'loudness', 'limits'] as const) {
+  for (const key of [
+    'outputProfiles', 'captionPresets', 'fonts', 'transitions', 'cover',
+    'loudness', 'watermark', 'limits',
+  ] as const) {
     if (!doc[key] || typeof doc[key] !== 'object') {
       bad(`the render catalog is missing its ${key} section`, 'render_output_profile_invalid')
     }
@@ -147,6 +167,19 @@ export function loadRenderCatalog(path = join(WORKER_ROOT, 'render_catalog_v1.js
     || !Number.isInteger(ln.clippingDbtpMilli) || ln.clippingDbtpMilli < 0
     || !Number.isInteger(ln.measureTimeoutMs) || ln.measureTimeoutMs <= 0) {
     bad('the render catalog has no usable loudness bounds', 'render_output_profile_invalid')
+  }
+  const w = doc.watermark
+  // A blank basename, an unpinned digest or a zero size would each turn the
+  // watermark into something that silently does not happen. The catalog is
+  // refused rather than obeyed — a brand asset that fails open is not a brand
+  // asset, it is an absence nobody notices.
+  if (!w || typeof w.assetBasename !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(w.assetBasename)
+    || typeof w.sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(w.sha256)
+    || !Number.isInteger(w.displayWidthPx) || w.displayWidthPx <= 0
+    || !Number.isInteger(w.opacityMilli) || w.opacityMilli <= 0 || w.opacityMilli > 1000
+    || !Number.isInteger(w.marginRightPx) || w.marginRightPx < 0
+    || !Number.isInteger(w.marginBottomPx) || w.marginBottomPx < 0) {
+    bad('the render catalog has no usable watermark spec', 'render_output_profile_invalid')
   }
   const l = doc.limits
   if (!Number.isInteger(l.maxRealtimeRatio) || l.maxRealtimeRatio <= 0
@@ -397,6 +430,10 @@ export interface RenderRequest {
   watch?: CancelWatch
   /** Refuse a font with no pinned digest. Production sets this. */
   strictFontIntegrity?: boolean
+  /** Directory holding the worker's own frozen brand assets. Required only when
+   *  the plan asks for a watermark; absent then is a hard failure, never a
+   *  quietly unmarked render. */
+  assetsDir?: string
   ffmpegBin?: string
 }
 
@@ -411,6 +448,7 @@ export interface RenderEvidence {
   renderMs: number
   realtimeRatioMilli: number
   fontIntegrity: FontIntegrityResult | null
+  watermarkSha256: string | null
   budgetMs: number
 }
 export interface RenderResult {
@@ -457,6 +495,33 @@ export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realD
     fontIntegrity = await verifyCaptionFont(req.fontsDir!, preset, catalog, { strict: req.strictFontIntegrity === true })
   }
 
+  // THE MARK IS VERIFIED LIKE THE FONT IS, and for the same reason: a
+  // substituted brand asset changes what every free user's video carries, and
+  // it changes it silently. There is no `strict` escape hatch here as there is
+  // for fonts — a font may legitimately be unpinned on a developer machine,
+  // whereas this asset ships in the repository and its digest is always known.
+  let watermarkPlacement: WatermarkPlacement | undefined
+  let watermarkSha256: string | null = null
+  if (req.plan.output.watermark) {
+    const spec = catalog.watermark
+    if (spec.assetBasename.includes('/') || spec.assetBasename.includes('..')) {
+      bad('the catalog names a watermark outside the assets directory', 'render_watermark_integrity_failed')
+    }
+    if (!req.assetsDir) bad('the plan asks for a watermark but no assets directory was provided', 'render_watermark_integrity_failed')
+    const path = join(req.assetsDir, spec.assetBasename)
+    if (!existsSync(path)) bad(`the watermark ${spec.assetBasename} is missing`, 'render_watermark_integrity_failed')
+    const actual = await fileSha256(path)
+    if (actual !== spec.sha256) bad(`the watermark ${spec.assetBasename} does not match its pinned digest`, 'render_watermark_integrity_failed')
+    watermarkSha256 = actual
+    watermarkPlacement = {
+      path,
+      displayWidthPx: spec.displayWidthPx,
+      opacityMilli: spec.opacityMilli,
+      marginRightPx: spec.marginRightPx,
+      marginBottomPx: spec.marginBottomPx,
+    }
+  }
+
   mkdirSync(req.workDir, { recursive: true })
   const outputPath = join(req.workDir, 'output.mp4')
   // A previous attempt's file must never be mistaken for this attempt's. ffmpeg
@@ -466,7 +531,10 @@ export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realD
 
   const graph = buildFfmpegGraph(
     req.plan,
-    { sourcePath: req.sourcePath, assPath: req.assPath, fontsDir: req.fontsDir, outputPath },
+    {
+      sourcePath: req.sourcePath, assPath: req.assPath, fontsDir: req.fontsDir, outputPath,
+      watermark: watermarkPlacement,
+    },
     catalog.transitions.crossfade,
   )
   const args = buildFfmpegArgs(graph)
@@ -519,6 +587,7 @@ export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realD
         ? Math.round((run.durationMs * 1000) / req.plan.output.durationMs)
         : 0,
       fontIntegrity,
+      watermarkSha256,
       budgetMs,
     },
   }

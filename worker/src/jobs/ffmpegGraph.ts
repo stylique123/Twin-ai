@@ -109,6 +109,21 @@ export interface GraphAssets {
   assPath: string | null
   fontsDir: string | null
   outputPath: string
+  /** The free-tier mark, supplied ONLY when the plan asks for one. Like the
+   *  crossfade bounds, the geometry is handed down by the caller rather than
+   *  read here — this module resolves no paths and opens no catalogs. */
+  watermark?: WatermarkPlacement
+}
+
+/** Where the mark sits and how solid it is. Integers only; every literal the
+ *  graph emits is built from these by the same helpers the rest of the file
+ *  uses, so nothing here can introduce a value the alphabet would reject. */
+export interface WatermarkPlacement {
+  path: string
+  displayWidthPx: number
+  opacityMilli: number
+  marginRightPx: number
+  marginBottomPx: number
 }
 
 function segmentChain(seg: PlanSegment, plan: EditPlanV1, nodes: FilterNode[]): { v: string; a: string } {
@@ -543,6 +558,64 @@ export function buildFfmpegGraph(
     }
     nodes.push({ id: 'subs', filter: 'subtitles', args, inputs: [vCur], outputs: ['vsub'] })
     vCur = 'vsub'
+  }
+
+  // THE FREE-TIER MARK, LAST OF THE VIDEO STAGES.
+  //
+  // After the captions on purpose: the mark is an attribution on the finished
+  // frame, and a caption line drawn over it would both obscure the mark and
+  // look like a bug. Being last also means it is composited over whatever the
+  // rest of the graph produced, so a zoom cannot scale it and a transition
+  // cannot fade it out from under itself.
+  //
+  // NOTHING HAPPENS WITHOUT THE PLAN. The instruction is `plan.output.watermark`
+  // and the asset is supplied by the caller; a plan that does not ask for a mark
+  // cannot acquire one from a stray asset being present, and a plan that DOES
+  // ask fails loudly rather than rendering an unmarked video.
+  if (plan.output.watermark) {
+    const wm = assets.watermark
+    if (!wm) invalid('the plan asks for a watermark but no watermark asset was supplied')
+    if (!Number.isInteger(wm.displayWidthPx) || wm.displayWidthPx <= 0) invalid('watermark width is not a positive integer')
+    if (!Number.isInteger(wm.opacityMilli) || wm.opacityMilli <= 0 || wm.opacityMilli > 1000) {
+      invalid('watermark opacity is out of range')
+    }
+    if (!Number.isInteger(wm.marginRightPx) || wm.marginRightPx < 0) invalid('watermark right margin is negative')
+    if (!Number.isInteger(wm.marginBottomPx) || wm.marginBottomPx < 0) invalid('watermark bottom margin is negative')
+    // A second INPUT, not a filter that reads a file. `movie=` would embed a
+    // path inside the filter string; an input keeps the path an argv element,
+    // which is the property this whole module exists to preserve.
+    const inputIndex = inputs.length
+    inputs.push({ path: checkPath(wm.path, 'watermark'), preOptions: [] })
+
+    // `-1` keeps the source aspect: the asset is authored at one size and the
+    // catalog names only a width, so a height here would be a second number
+    // able to disagree with the artwork.
+    nodes.push({
+      id: 'wmscale', filter: 'scale',
+      args: [{ key: 'w', value: wm.displayWidthPx }, { key: 'h', value: -1 }],
+      inputs: [`${inputIndex}:v`], outputs: ['wms'],
+    })
+    // The alpha the artwork already carries is MULTIPLIED by the catalog's
+    // opacity rather than replaced by it, so a fully transparent pixel stays
+    // transparent instead of becoming a faint box.
+    nodes.push({ id: 'wmfmt', filter: 'format', args: [{ key: '', value: 'rgba' }], inputs: ['wms'], outputs: ['wmf'] })
+    nodes.push({
+      id: 'wmalpha', filter: 'colorchannelmixer',
+      args: [{ key: 'aa', value: milliToScalarLiteral(wm.opacityMilli) }],
+      inputs: ['wmf'], outputs: ['wma'],
+    })
+    // Bottom-right, measured from the frame's own edges. `W`/`H` are the base
+    // frame and `w`/`h` the overlay, so the margins hold whatever either turns
+    // out to be — no arithmetic here needs the output raster to be a constant.
+    nodes.push({
+      id: 'wmoverlay', filter: 'overlay',
+      args: [
+        { key: 'x', value: `W-w-${wm.marginRightPx}` },
+        { key: 'y', value: `H-h-${wm.marginBottomPx}` },
+      ],
+      inputs: [vCur, 'wma'], outputs: ['vwm'],
+    })
+    vCur = 'vwm'
   }
 
   // Audio conditioning, then loudness normalisation to the frozen targets.

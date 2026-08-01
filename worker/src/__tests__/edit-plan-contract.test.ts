@@ -491,3 +491,71 @@ process.stdout.write(JSON.stringify({ pid: process.pid, segs: r.plan.timeline.se
     expect(child.segs).toBe(5)
   }, 60000)
 })
+
+describe('captions can never overlap each other', () => {
+  // A REPORTED DEFECT FROM THE OLD EDITOR, written down as a law rather than a
+  // memory: captions used to pile up — one sentence still on screen while the
+  // next drew over it, words muffling into each other. The contract has always
+  // refused overlapping cues; until now NOTHING TESTED THAT, which meant the
+  // guarantee could be removed by a refactor and every suite would stay green.
+  //
+  // This is the guard that makes it structurally impossible: a plan whose cues
+  // overlap is not a plan, so it cannot be stored, cannot be rendered, and
+  // cannot reach a viewer.
+
+  it('CONTROL: the compiler\'s own cues are strictly ordered and disjoint', () => {
+    const cues = goodPlan().captions.cues
+    expect(cues.length).toBeGreaterThan(1)
+    for (let i = 1; i < cues.length; i++) {
+      expect(cues[i].outputStartMs).toBeGreaterThanOrEqual(cues[i - 1].outputEndMs)
+    }
+  })
+
+  it('a cue that STARTS BEFORE THE PREVIOUS ONE ENDS is refused', () => {
+    // The exact shape of the reported bug: two captions on screen at once.
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      const cues = (p.captions as { cues: Array<Record<string, number>> }).cues
+      cues[1].outputStartMs = cues[0].outputEndMs - 1
+    })))).toBe('edit_plan_invalid')
+  })
+
+  it('a cue that overlaps by a LOT is refused the same way', () => {
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      const cues = (p.captions as { cues: Array<Record<string, number>> }).cues
+      cues[1].outputStartMs = cues[0].outputStartMs
+    })))).toBe('edit_plan_invalid')
+  })
+
+  it('cues delivered OUT OF ORDER are refused, not silently sorted', () => {
+    // Sorting them would hide a compiler that had lost track of its own
+    // timeline; the disorder is the evidence.
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      const cues = (p.captions as { cues: Array<Record<string, unknown>> }).cues
+      const a = { ...cues[0] }, b = { ...cues[1] }
+      cues[0] = { ...b, index: 0 }
+      cues[1] = { ...a, index: 1 }
+    })))).toBe('edit_plan_invalid')
+  })
+
+  it('a cue that does not advance in time is refused', () => {
+    // Zero-length and reversed cues are the other way a caption can sit on top
+    // of its neighbour rather than replacing it.
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      const cues = (p.captions as { cues: Array<Record<string, number>> }).cues
+      cues[0].outputEndMs = cues[0].outputStartMs
+    })))).toBe('edit_plan_invalid')
+    expect(codeOf(() => validateEditPlan(mutate((p) => {
+      const cues = (p.captions as { cues: Array<Record<string, number>> }).cues
+      cues[0].outputEndMs = cues[0].outputStartMs - 10
+    })))).toBe('edit_plan_invalid')
+  })
+
+  it('CONTROL: cues that merely TOUCH are allowed — that is a clean handover', () => {
+    // One ending exactly where the next begins is the normal case and must not
+    // be mistaken for an overlap, or every real plan would be rejected.
+    expect(() => validateEditPlan(mutate((p) => {
+      const cues = (p.captions as { cues: Array<Record<string, number>> }).cues
+      cues[1].outputStartMs = cues[0].outputEndMs
+    }))).not.toThrow()
+  })
+})

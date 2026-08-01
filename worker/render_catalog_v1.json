@@ -208,6 +208,31 @@
     "clippingDbtpMilli": 0,
     "measureTimeoutMs": 120000
   },
+
+  "_watermarkComment": [
+    "The free-tier TwinAI mark, burned in when the PLAN says so (output.watermark).",
+    "",
+    "Named by BASENAME and pinned by sha256, for exactly the reasons the font",
+    "comment above gives: the path differs between container, VPS and laptop, and",
+    "a substituted image is a silent change to what every free user's video",
+    "carries. A wrong digest is render_watermark_integrity_failed, never a",
+    "warning — an unpinned or mismatched brand asset is not a passing one.",
+    "",
+    "Regenerate with worker/scripts/build_watermark.sh, which is deterministic",
+    "and prints the digest to paste here. The source vector is assets/",
+    "twinai-mark.svg (the twin mark, brand book p.08).",
+    "",
+    "Opacity is applied by the render graph from opacityMilli rather than baked",
+    "into the PNG, so it stays auditable and tunable without a new binary."
+  ],
+  "watermark": {
+    "assetBasename": "twinai-watermark.png",
+    "sha256": "c19eb4d24d4584fc357a420fc8ae87af1c3a685389c8a33cb7f40036f7b431e8",
+    "displayWidthPx": 300,
+    "opacityMilli": 820,
+    "marginRightPx": 44,
+    "marginBottomPx": 56
+  },
   "limits": {
     "_comment": [
       "Gate-0 §9 capacity thresholds, restated as enforcement. The render",

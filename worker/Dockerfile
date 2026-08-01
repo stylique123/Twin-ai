@@ -122,6 +122,10 @@ COPY models/faster-whisper-small.manifest.json ./models/faster-whisper-small.man
 # bytes before every load (fail closed, exit 3).
 COPY models/vision.manifest.json ./models/vision.manifest.json
 COPY models/face_detection_yunet_2023mar.onnx ./models/face_detection_yunet_2023mar.onnx
+# Frozen brand assets. The free-tier watermark is COMMITTED in-repo alongside
+# the vector it is generated from, and editorRender digest-verifies it against
+# render_catalog_v1.json before every marked render (fail closed).
+COPY assets ./assets
 COPY scripts/fetch_model.py ./scripts/fetch_model.py
 # Boot-manifest build provenance inputs, hashed at runtime (editorManifest.ts):
 # the Dockerfile + the dependency locks. WORKER_GIT_SHA is injected below.

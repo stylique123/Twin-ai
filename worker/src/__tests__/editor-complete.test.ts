@@ -49,6 +49,7 @@ describe('error classification decides retry behaviour, so it is tested directly
       'edit_plan_identity_mismatch', 'edit_plan_invalid', 'edit_plan_too_large',
       'edit_plan_divergent', 'edit_plan_unsafe_cut', 'edit_plan_filler_disabled',
       'edit_plan_no_kept_media', 'render_asset_integrity_failed', 'render_font_integrity_failed',
+      'render_watermark_integrity_failed',
       'render_music_license_invalid', 'render_graph_invalid', 'render_output_profile_invalid',
       'output_decode_failed', 'output_duration_mismatch', 'output_stream_mismatch',
       'output_audio_invalid', 'output_caption_invalid', 'output_cover_invalid',
