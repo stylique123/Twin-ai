@@ -10,6 +10,7 @@
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { buildLinkAllowlist, sanitizeBlueprintLinks } from '../_shared/outputLinks.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we
 // can quietly change the credit<->video rate later WITHOUT a code change and
@@ -730,7 +731,45 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include at least one b-roll or insert shot and the cover frame shot, so the editor is never guessing.`
 
     const raw = await callModel(apiKey, SYSTEM, userPrompt)
-    const blueprint = normalizeHookLine(stripDashes(JSON.parse(raw)))
+
+    // OUTPUT-SIDE LINK VALIDATION — the other half of the fencing above.
+    //
+    // The fence is an instruction to the model, and beating instructions is
+    // what an injection is for. This does not depend on the model having
+    // obeyed it: it inspects the parsed blueprint and removes any link, handle
+    // or phone number the creator never vouched for, because that destination
+    // is what an injection has to land to be worth running. `script[].line` is
+    // read aloud off a teleprompter and `publish_plan[].caption` is posted
+    // under the creator's name, so a link that arrives here is not a log entry.
+    //
+    // The allowlist is built ONLY from things the creator owns: their
+    // confirmed handle, their own DNA, and the note they typed themselves. The
+    // reference transcript and derived structure are deliberately NOT passed —
+    // they are the attacker-controlled surface, and allowlisting a domain
+    // because the injected text mentioned it twice would defeat the whole
+    // thing. reference_url is left out too: it points at someone else's video,
+    // and no field of a shooting brief should carry it.
+    const linkAllow = buildLinkAllowlist({
+      handle: voice?.handle ?? null,
+      ownDnaText: creatorDna,
+      userNote: reference_note || null,
+    })
+    const { blueprint, removals: linkRemovals } = sanitizeBlueprintLinks(
+      normalizeHookLine(stripDashes(JSON.parse(raw))),
+      linkAllow,
+    )
+    if (linkRemovals.length) {
+      // Loud on purpose. A non-zero count here is either a model that wandered
+      // or an injection that got through the fence, and both are things we
+      // want to find in the logs rather than infer later from a creator
+      // complaining about what their video said.
+      console.warn(JSON.stringify({
+        event: 'blueprint_links_stripped',
+        user_id: user.id,
+        count: linkRemovals.length,
+        removals: linkRemovals.slice(0, 20),
+      }))
+    }
 
     const { data: gen, error: insErr } = await admin
       .from('generations')
@@ -752,7 +791,10 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // product metrics / the data room. Best-effort — never fail the response on it.
     await admin
       .from('analytics_events')
-      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, real_video: !!transcript_id } })
+      // links_stripped is COUNTS and PATHS only, never the removed text. The
+      // text is attacker-influenced and belongs in the log line above, not in
+      // a props blob that analytics queries and dashboards read back.
+      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path) } })
       .then(() => {}, () => {})
 
     return json(gen)
