@@ -1,6 +1,23 @@
 # TwinAI — Master Build Plan
 
 **Status:** living document. This is the consolidated plan of record.
+
+> ### ⚠️ READ THIS FIRST — sections 1–8 are HYPOTHESES, not decisions
+> A fresh 4-person panel reviewed this document and found its weakest
+> assumption: **the raw take is treated as a solved input.** Everything here
+> optimises which sentence to cut and which clip goes where, on top of a
+> recording step nobody has ever observed. The real video-#1 failures are bad
+> room audio, a backlit window, a cropped head, a phone in landscape, eyes
+> reading below the lens, and a monotone teleprompter delivery. **This plan has
+> no mechanism for any of them** — and §4.1 deletes the only screen where they
+> could have lived, conflating *technical vocabulary* with *the technical
+> problem*.
+>
+> The rules below are written in the register of decisions ("Hard rule:",
+> "Absolute rule:") — the register that makes a team stop testing them. The
+> renderer earned that voice with evidence. The creative half has not.
+> **Apply §2.1's own provenance schema to this document**: every rule needs a
+> `source: observed` stamp before it is treated as settled.
 **Sources:** a 10-person user panel run over two rounds; three independent
 codebase audits (transcription/captions, cuts/hooks/zooms/framing,
 branding/output); the Phase 8/9 render rebuild; and the founder's
@@ -31,7 +48,16 @@ And the operational form of that rule:
 
 The audience, while the brand scan is already loading. What is in the clip,
 while they are filming it. Which line to cut, while they are reading it back.
-Each costs the user seconds, because it is asked when they already know.
+
+**CORRECTED BY PANEL — the original framing said "each costs the user seconds."
+That is wrong. The cost of a question is the DECISION, not the seconds.** As
+written there are ~15 decision surfaces between signup and a posted video,
+against a manual workflow of four. A tool that is 60% automated with a higher
+step count than manual loses to one that is 80% automated with fewer — which is
+this plan's own churn metric (§9.3) pointed back at itself.
+
+**Budget: no more than 6 decision surfaces from signup to posted.** Every new
+screen must retire one.
 
 ---
 
@@ -126,7 +152,43 @@ Can they record screens? Do they have product footage? Multiple locations? A
 media library? Without it, Twin writes plans requiring footage that does not
 exist — which is exactly how "add B-roll here" becomes unusable.
 
-### 2.2 Creator archetypes — the missing routing layer
+### 2.2 ~~Creator archetypes~~ → THREE CAPABILITY FLAGS
+
+**The archetype model was reviewed and rejected — unanimously, for different
+reasons.** Kept here only as the reasoning; **do not build it.**
+
+Why it is a trap:
+1. **It sorts the person; the variable is the video.** One panellist is three
+   archetypes in a week, another is four. The one persona it fits cleanly is
+   the simplest user, who needs routing least.
+2. **It is not one dimension.** Explainer/Demonstrator/Maker are content
+   formats, Brand is an org structure, Reluctant is a motivation state. Three
+   taxonomies in one enum — and three subsystems were to be routed off it.
+3. **This document could not finish it.** §6 gives briefs for three of five.
+   The maintenance cost appeared before a line of code was written.
+4. **One bucket is a rejection, not an archetype** ("Maker: not servable").
+5. **No escape hatch existed** — one-way routing off a loading-screen tap.
+
+**Build this instead — three booleans already being collected:**
+
+```
+can_film_objects     from "Can you show a product?"
+can_record_screen    from "Can you record your screen?"
+needs_approval       from "Who approves?" / org account
+```
+
+`can_film_objects=false` → no footage checklist ever shown.
+`can_record_screen=true` → screen clip type offered.
+`needs_approval=true` → the review screen gains a lock, comments, and a record
+of who approved what.
+
+**Flags compose; archetypes don't. Flags change per video; archetypes don't.**
+No detection model, no ×5 script matrix, no naming.
+
+Keep exactly **one** named distinction, because it is a genuine pricing and
+product boundary rather than a content one: **solo seller vs. team.**
+
+### 2.2a The archetype reasoning (retained for context only — DO NOT BUILD)
 
 Twin currently collects a lot of DNA and then treats everyone identically.
 **Half of all users should never be asked to film extra clips at all.**
@@ -414,12 +476,22 @@ time-gating (#235) · loudness measurement (#236)
 4. Transcript-as-editor review gate
 5. Failure path — explain, retain footage, retry without refilming
 
-### Phase 11 — know your creator
-6. Archetype detection at onboarding
-7. Archetype-specific surfaces
-8. Archetype-specific script generation
-9. Reference validation *(reject unusable links before they poison a script)*
-10. Scene-by-scene recording
+### Phase 11 — the take itself *(REORDERED — this is now the highest-risk area)*
+6. **Preflight check before recording** — room echo, backlight, orientation,
+   head cropped, mic source. *The panel's #1 gap. Nothing in the pipeline
+   addresses the actual failures of video #1.*
+7. **Teleprompter design** — eyeline relative to lens, scroll speed matched to
+   the speaker, font size, pause markers. *The word "teleprompter" appeared
+   once in the first draft of this document, as a subordinate clause, in a
+   teleprompter product.*
+8. **Edit the script BEFORE filming.** Three of four panellists hit this
+   independently: you cannot currently change a word before reading it into a
+   camera 40 times.
+9. **Capability flags** (§2.2) replace archetype routing.
+10. Reference validation *(reject unusable links before they poison a script)*
+11. Scene-by-scene recording — **with continuity preserved.** Camera stopping
+    between scenes breaks a gym/kitchen workflow where scene 3 must physically
+    follow scene 2. Make stopping the default, not the law.
 
 ### Phase 12 — show the right thing
 11. Declared clips (`[SHOW: …]` → guided capture → name-matched)
@@ -427,10 +499,82 @@ time-gating (#235) · loudness measurement (#236)
 13. Screen recording as a clip type
 14. Research layer with verification
 
+### Phase 12a — after the render *(MISSING ENTIRELY from the first draft)*
+The plan ended at "Make my video." The user's job ends at "posted."
+- Download, cover/first-frame selection, description + hashtag text,
+  aspect and safe-zone variants, scheduling and posting.
+
 ### Phase 13 — don't all look the same
 15. Output variation + 3 moods (calm / normal / punchy)
 16. Creative Transfer page with honest OBSERVED / NOT OBSERVED labels
-17. Performance feedback into DNA
+    — **or do not ship the page at all.** §1.1 calls the fabricated version
+    "the single thing that destroys the product the first time a user checks",
+    so shipping it dishonest for three phases is not an option.
+17. Performance feedback — see §7a for its contract.
+
+---
+
+## 7a. THE RECOMMENDATION GALLERY
+
+Solves: **which reference should THIS creator use?** Belongs after provenance
+and the capability flags, before deeper research automation.
+
+Rank every reference by:
+
+| Signal | Question |
+|---|---|
+| DNA match | does this voice/tone fit them? |
+| Goal match | does this structure serve their stated goal? |
+| Production-mode match | can they physically shoot this? *(reads the flags)* |
+| Recreate feasibility | is this achievable with what they have? |
+| Structure transferability | does the format survive a topic change? |
+| Content availability | do we have something to fill its containers? |
+| Freshness | is this format still working, or exhausted? |
+
+**Production-mode match is the one nobody builds and it is the most valuable:**
+it is what stops the gallery recommending a multi-clip montage to someone who
+answered "no" to filming objects. The flags already carry it.
+
+## 7b. PERFORMANCE FEEDBACK — ITS OWN CONTRACT
+
+"Feed performance back into the DNA" is too vague to build and dangerous to
+guess at. Five distinct claim types, never conflated:
+
+| Type | Example | Evidence needed |
+|---|---|---|
+| **Correlation** | "list-format videos average higher watch time" | ≥N videos, stated N |
+| **Hypothesis** | "the hook may be contributing" | flagged as untested |
+| **Confirmed preference** | "this creator prefers this style" | repeated, explicit choice |
+| **Business outcome** | clicks, leads, sales | attributed, not inferred |
+| **Platform outcome** | views, retention, saves, comments | measured |
+
+**Absolute rule: never conclude "this hook caused performance" from one
+successful video.** A single result is an anecdote; the product must say so.
+A confident causal claim from n=1 is the same failure as "Attention Score 9.6"
+(§1.2) wearing a different costume.
+
+**START LOGGING NOW, even though the feature is late.** Video → outcome rows
+must be written from the first render onward. **You cannot recover history you
+did not record**, and this is the only real moat in the document.
+
+## 7c. WHAT MAKES A HIGH-PERFORMING VIDEO
+
+Two layers, and they must never be mixed:
+
+**Craft rules — general, checkable, explainable.** Hook lands in the first 2–3
+seconds · no dead air before the first word · visual change often enough to
+hold attention · captions legible muted and clear of platform UI · audio at
+platform loudness · vertical, safe-area respected · ends on a reason to act.
+These are stated as *checks with reasons*, never as scores:
+> *"Your hook takes 6 seconds to reach its point; the reference reached its
+> point in 2."* — checkable, arguable, honest.
+
+**Learned preferences — theirs, earned over time, through §7b's contract.**
+Never general advice dressed as personal insight.
+
+**The honesty line: Twin may say what it CHECKED. It may never say what will
+PERFORM.** The moment it predicts a number it has not measured, it becomes the
+thing §1.2 exists to prevent.
 
 ### After
 Brand lock · approval workflow · Spanish + Portuguese *(Latin script — nearly
