@@ -11,7 +11,7 @@ import {
   validateDirectorDecision as sharedValidateDecision,
   DIRECTOR_MODEL, DIRECTOR_PROVIDER, DIRECTOR_VERSION, DIRECTOR_INPUT_MAX_BYTES,
   EXPECTED_MAX_COMPAT_ENVELOPE_BYTES, MAX_WORDS, MAX_CANDIDATES, MAX_BOUNDARIES,
-  DIRECTOR_DECISION_SCHEMA_VERSION, DECISION_PACING, DECISION_MUSIC, DECISION_HOOK,
+  DIRECTOR_DECISION_SCHEMA_VERSION, DECISION_PACING, DECISION_HOOK,
   MAX_EMPHASIS_WORDS, MAX_VISUAL_WASTE, MAX_ZOOM_REQUESTS, VISUAL_WASTE_CLASSES,
   MAX_DECISION_OUTPUT_BYTES, DIRECTOR_MAX_OUTPUT_TOKENS, DIRECTOR_THINKING_BUDGET_TOKENS,
   MAX_DECISION_KEPT_BOUNDARIES, MAX_DECISION_SELECTIONS, MAX_DECISION_SUMMARY_CHARS,
@@ -86,25 +86,24 @@ describe('Gate 7: worker director contract == shared authority', () => {
     expect(wr).toBe('director_decision_bad_ref')
   })
 
-  it('decision v2 creative choices re-resolve identically (pacing/music/emphasis + fabricated rejection)', () => {
+  it('decision v2 creative choices re-resolve identically (pacing/emphasis + fabricated rejection)', () => {
     const env = buildMaxUpstreamCompatFixture() as unknown as SharedEnvelope
     const small: SharedEnvelope = {
       ...env, words: [['a', 0, 90], ['b', 10, 90]], candidates: [[0, 3, 8, 1, 2, 1, []]], boundaries: [[1, 0, 1]],
     }
     const code = (fn: () => unknown) => { try { fn(); return 'ok' } catch (e) { return (e as { code: string }).code } }
     // valid v2 decision resolves identically in both copies
-    const raw = { selections: [0], pacing: 'punchy', music: 'subtle', emphasisWordIndices: [0, 1] }
+    const raw = { selections: [0], pacing: 'punchy', emphasisWordIndices: [0, 1] }
     const s = sharedValidateDecision(raw, small)
     const w = W.validateDirectorDecision(raw, small as unknown as W.DirectorEnvelope)
     expect(JSON.stringify(w)).toBe(JSON.stringify(s))
-    expect(w.pacing).toBe('punchy'); expect(w.music).toBe('subtle'); expect(w.emphasisWordIndices).toEqual([0, 1])
+    expect(w.pacing).toBe('punchy'); expect(w.emphasisWordIndices).toEqual([0, 1])
     // absent → safe defaults, never invented
     const def = W.validateDirectorDecision({ selections: [] }, small as unknown as W.DirectorEnvelope)
-    expect(def.pacing).toBe('balanced'); expect(def.music).toBe('none'); expect(def.emphasisWordIndices).toEqual([])
+    expect(def.pacing).toBe('balanced'); expect(def.emphasisWordIndices).toEqual([])
     // bad enums / fabricated + duplicate emphasis → same stable codes in both copies
     for (const [bad, expected] of [
       [{ selections: [], pacing: 'chaotic' }, 'director_decision_bad_pacing'],
-      [{ selections: [], music: 'lofi' }, 'director_decision_bad_music'],
       [{ selections: [], emphasisWordIndices: [2] }, 'director_decision_bad_emphasis'],
       [{ selections: [], emphasisWordIndices: [0, 0] }, 'director_decision_duplicate'],
     ] as const) {
@@ -128,10 +127,37 @@ describe('Gate 7: worker director contract == shared authority', () => {
     }
   })
 
+  it('a decision that still carries `music` is IGNORED, not rejected', () => {
+    // The compatibility claim made when DECISION_MUSIC was deleted, pinned
+    // here rather than asserted in a comment. `music` was dead: no music asset
+    // pipeline exists and the plan contract refuses any plan whose audio.music
+    // is not null, so the model was being asked a question the renderer is
+    // built to reject.
+    //
+    // Deleting it must not break a decision already stored, or one from a
+    // model still emitting the old shape. The decision parser reads KNOWN keys
+    // and does not reject unknown ones (unlike the envelope, which is strict
+    // via requireKeys) — so the field simply falls on the floor.
+    const env = buildMaxUpstreamCompatFixture() as unknown as SharedEnvelope
+    const small: SharedEnvelope = {
+      ...env, words: [['a', 0, 90], ['b', 10, 90]], candidates: [[0, 3, 8, 1, 2, 1, []]], boundaries: [[1, 0, 1]],
+    }
+    const legacy = { selections: [0], pacing: 'punchy', music: 'subtle' }
+    const w = W.validateDirectorDecision(legacy, small as unknown as W.DirectorEnvelope)
+    const sh = sharedValidateDecision(legacy, small)
+    expect(w).not.toHaveProperty('music')
+    expect(w.pacing).toBe('punchy')
+    // and the two copies still agree exactly, which is the point of this file
+    expect(JSON.stringify(w)).toBe(JSON.stringify(sh))
+    // even a value that used to be REJECTED is now simply ignored
+    const nonsense = W.validateDirectorDecision(
+      { selections: [0], music: 'lofi' }, small as unknown as W.DirectorEnvelope)
+    expect(nonsense).not.toHaveProperty('music')
+  })
+
   it('Decision v2 constants + catalogs match the shared authority (full set)', () => {
     expect(W.DIRECTOR_DECISION_SCHEMA_VERSION).toBe(DIRECTOR_DECISION_SCHEMA_VERSION)
     expect([...W.DECISION_PACING]).toEqual([...DECISION_PACING])
-    expect([...W.DECISION_MUSIC]).toEqual([...DECISION_MUSIC])
     expect([...W.DECISION_HOOK]).toEqual([...DECISION_HOOK])
     expect(W.MAX_EMPHASIS_WORDS).toBe(MAX_EMPHASIS_WORDS)
     expect(W.MAX_VISUAL_WASTE).toBe(MAX_VISUAL_WASTE)
@@ -196,7 +222,7 @@ describe('Gate 7: worker director contract == shared authority', () => {
       selections: Array.from({ length: MAX_DECISION_SELECTIONS }, (_, i) => 1000 + (i % 3901)),
       keptBoundaries: Array.from({ length: MAX_DECISION_KEPT_BOUNDARIES }, () => 9522),
       summary,
-      pacing: 'balanced', music: 'energetic',
+      pacing: 'balanced',
       emphasisWordIndices: Array.from({ length: MAX_EMPHASIS_WORDS }, () => 16948),
       hookTreatment: 'open_at_word', hookStartWordIndex: 16948,
       visualWasteSelections: Array.from({ length: MAX_VISUAL_WASTE }, (_, i) => i),

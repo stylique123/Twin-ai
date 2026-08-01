@@ -491,19 +491,39 @@ time-gating (#235) · loudness measurement (#236)
       guard against a real 93–120 ms shortfall). **Unblocks with:** a screenshot
       of one real posted video per platform, which makes the safe zone
       measurable in pixels instead of remembered.
-- [ ] **Wire `pacing`.** Confirmed dead: `directorContract.ts` defines,
-      validates and returns `pacing` (`calm`/`balanced`/`punchy`), and
-      `editorCompileInput.ts` maps `hookTreatment`, `captionPresetId`,
-      `transitionPolicy`, `zoomRequests`, `emphasis`, `selections` and
-      `visualWasteSelections` — but never `pacing`. The model is spending
-      tokens on a decision that is thrown away. Wiring it means deciding what
-      calm and punchy MEAN in numbers (how short a pause is worth removing,
-      how many cuts a minute may carry), which changes how every video looks
-      and belongs in `edit_policy_v1.json` as a new frozen block. **Unblocks
-      with:** a product call on that mapping. `music` (`none`/`subtle`/
-      `energetic`) is dead in the same way and is worse — there is no music
-      asset pipeline at all, so it should be removed from the contract rather
-      than wired.
+- [x] **Wire `pacing`** — DONE. Decided and built. Pacing controls exactly one
+      thing: **how much silence survives**. It deliberately does not touch
+      caption style (the Director already picks `captionPresetId` separately),
+      zooms or transitions — bundling those would couple four independent
+      decisions that currently work.
+
+      | | calm | **balanced** | punchy |
+      |---|---|---|---|
+      | shortest gap worth cutting | 400ms | **120ms** | 120ms |
+      | max cuts/min | 12 | **30** | 45 |
+      | protected pause before an emphasised word | 500ms | **350ms** | 250ms |
+
+      **The safety property:** `balanced` declares NO overrides — it is the
+      empty profile, so it resolves to the *same policy object*, and enabling
+      pacing cannot change any video that already renders correctly. Only a
+      recording the Director marked calm or punchy differs. Punchy gets its
+      speed from the cut ceiling, never from cutting closer to the words:
+      `minPhonemeHandleMs` is 60, so a sub-120ms removal lands inside natural
+      word spacing and clips speech — that does not sound fast, it sounds
+      broken.
+
+      **These three columns are chosen, not measured**, and ship the way
+      loudness did: `compileEditPlan` now returns `cutStats` recording the
+      REAL cut density of every render, so the numbers get corrected from what
+      actually happens to real videos rather than remaining an estimate with no
+      expiry date.
+- [x] **Delete `music`** — DONE. `none`/`subtle`/`energetic` was dead in a
+      worse way than pacing: there is no music asset pipeline, no licensing
+      path, and `editPlanContract.ts` *refuses* any plan whose `audio.music` is
+      not null. The model was being asked a question the renderer is built to
+      reject. Removed from the contract, the schema and the Director prompt; a
+      decision that still carries the field is simply ignored, so nothing
+      stored or in flight breaks.
 
 ### Phase 10 — stop guessing
 1. Provenance stamping on every DNA field

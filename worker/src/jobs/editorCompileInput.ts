@@ -314,6 +314,10 @@ export function readDecision(decision: DirectorDecision, counts: { candidates: n
     captionPresetId: decision.captionPresetId,
     transitionPolicy: decision.transitionPolicy,
     zoomRequests,
+    // The field the compiler used to throw away. directorContract already
+    // validated it against DECISION_PACING and defaulted it to 'balanced', so
+    // there is nothing to re-check here — dropping it was the whole bug.
+    pacing: decision.pacing,
   }
 }
 

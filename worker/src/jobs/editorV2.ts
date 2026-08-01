@@ -658,6 +658,30 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           }
           throw err
         }
+        // WHAT THE PACING CHOICE ACTUALLY PRODUCED, on the durable trail.
+        //
+        // Same reasoning as `audio_measured` below, and the same precedent:
+        // edit_policy_v1.json says outright that the calm/balanced/punchy
+        // numbers were CHOSEN by reasoning about how short-form content cuts,
+        // not measured from our own renders. Numbers picked that way have been
+        // wrong three times on this project. Recording the realised density on
+        // every render is what turns "is punchy actually 45 cuts a minute" from
+        // an argument into a query.
+        //
+        // OUTSIDE THE try ON PURPOSE, exactly like the audio measurement: a
+        // failed bookkeeping write must never be caught by the handler above,
+        // labelled `compile_failed`, and used to fail a compile that already
+        // succeeded. Evidence must not be able to destroy the thing it is
+        // evidence of.
+        await appendEvent(job, projectId, 'cuts_measured', {
+          pacing: compiled.cutStats.pacingId,
+          applied_cuts: compiled.cutStats.appliedCuts,
+          cuts_per_minute_milli: compiled.cutStats.cutsPerMinuteMilli,
+          max_cuts_allowed: compiled.cutStats.maxCutsAllowed,
+          dropped_for_density: compiled.cutStats.droppedForDensity,
+          min_removal_ms: compiled.cutStats.minRemovalMs,
+          domain_ms: compiled.cutStats.domainMs,
+        })
       } else if (stage === 'rendering' && env.editorRenderEnabled) {
         // Phase 8 Batch 8.5: the REAL rendering stage. Reserve, render,
         // validate, THEN publish — nothing unmeasured reaches a durable path.

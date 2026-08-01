@@ -70,6 +70,11 @@ export interface EditPolicyV1 {
     maxKeptSegments: number; maxRemovals: number; emphasisPauseGuardMs: number
     sceneBoundaryGuardMs: number; minRemovalMs: number
   }
+  pacing: {
+    defaultId: PacingId
+    profileIds: PacingId[]
+    profiles: Record<string, PacingProfile>
+  }
   edges: {
     trimLeading: boolean; trimTrailing: boolean; keepMs: number; minTrimMs: number
   }
@@ -96,6 +101,54 @@ export interface EditPolicyV1 {
 }
 
 let cachedPolicy: EditPolicyV1 | null = null
+/** The three pacing modes the Director may choose between. */
+export type PacingId = 'calm' | 'balanced' | 'punchy'
+/**
+ * The ONLY three knobs pacing is allowed to move. See _pacingComment.
+ *
+ * Every field is optional and a profile lists ONLY what it changes — omitted
+ * keys keep the frozen `cuts` value. `balanced` is therefore the empty object,
+ * which is what makes it a true no-op rather than three numbers that happen to
+ * equal today's and can drift apart from them later.
+ */
+export interface PacingProfile {
+  minRemovalMs?: number
+  maxCutsPerMinuteMilli?: number
+  emphasisPauseGuardMs?: number
+}
+const PACING_KEYS = ['minRemovalMs', 'maxCutsPerMinuteMilli', 'emphasisPauseGuardMs'] as const
+
+/**
+ * Resolve the cut policy for a pacing choice.
+ *
+ * THE SAFETY PROPERTY OF THIS WHOLE FEATURE lives in the early return: for
+ * `balanced` — the Director's own default, and what an absent/unknown value
+ * falls back to — this hands back the SAME OBJECT it was given, unmodified.
+ * Not an equal copy: the identical reference. So enabling pacing cannot change
+ * a single video that already renders correctly, and that claim is provable by
+ * identity rather than by comparing numbers.
+ *
+ * Falling back to balanced on an unrecognized id is the right failure
+ * direction too: if a profile is ever misspelled or dropped from the policy,
+ * every video renders exactly as it does today rather than picking up whatever
+ * the nearest profile happened to be.
+ *
+ * ONLY THE KEYS A PROFILE DECLARES ARE APPLIED. An earlier version wrote all
+ * three unconditionally from absolute values, which meant the default pacing
+ * silently RESTORED `cuts` values that a caller had deliberately overridden —
+ * it looked like a no-op only because the shipped numbers matched.
+ */
+export function resolvePacingCuts(policy: EditPolicyV1, pacing?: PacingId | null): EditPolicyV1 {
+  const id = pacing ?? policy.pacing?.defaultId ?? 'balanced'
+  const profile = policy.pacing?.profiles?.[id]
+  if (!profile) return policy
+  const present = PACING_KEYS.filter((k) => typeof profile[k] === 'number')
+  if (present.length === 0) return policy // `balanced`: untouched, same object
+  const merged = { ...policy.cuts }
+  for (const k of present) merged[k] = profile[k] as number
+  return { ...policy, cuts: merged }
+}
+
 export function loadEditPolicy(path = join(WORKER_ROOT, 'edit_policy_v1.json')): EditPolicyV1 {
   if (cachedPolicy) return cachedPolicy
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
@@ -372,6 +425,13 @@ export interface CompileDecision {
   captionPresetId: CaptionPresetId
   transitionPolicy: TransitionPolicy
   zoomRequests: Array<{ anchorWordIndex: number; intensity: ZoomIntensity; reasonCode: ZoomReasonCode }>
+  /**
+   * How much silence survives. OPTIONAL, and absent means `balanced` — which
+   * resolves to today's exact policy. That default is deliberate: if this ever
+   * fails to arrive, the video renders as it always has rather than picking up
+   * a pace nobody chose.
+   */
+  pacing?: PacingId
 }
 export interface CompileIdentity {
   projectId: string
@@ -413,11 +473,42 @@ export interface CompileInput {
    *  paid not to be", so the default is the one that cannot do that. */
   watermark?: boolean
 }
+/**
+ * What the pacing choice ACTUALLY produced on this render.
+ *
+ * These numbers are the reason it is honest to ship chosen-not-measured pacing
+ * values. edit_policy_v1.json's `_pacingComment` sets the three profiles by
+ * reasoning about how short-form content cuts, which is exactly the kind of
+ * estimate that has been wrong three times on this project. So this follows the
+ * loudness precedent: enforce only the band, and RECORD the real distribution,
+ * so the thresholds get corrected from what happens to real videos.
+ *
+ * Deliberately NOT part of the plan. The plan is a hashed contract; adding a
+ * measurement to it would change the hash of every render and make an
+ * observation into a contract term. This rides on the result instead.
+ */
+export interface CompileCutStats {
+  pacingId: PacingId
+  /** Length of the material the cuts were chosen from. */
+  domainMs: number
+  /** Cuts actually applied, after the density cap AND the min-segment repair. */
+  appliedCuts: number
+  /** The realised density — the number the profiles are guesses at. */
+  cutsPerMinuteMilli: number
+  /** The ceiling this pacing allowed, for comparison against the above. */
+  maxCutsAllowed: number
+  /** Cuts the Director asked for that the density cap gave back. */
+  droppedForDensity: number
+  /** The floor in force: removals shorter than this were never eligible. */
+  minRemovalMs: number
+}
+
 export interface CompileResult {
   plan: EditPlanV1
   planSha256: string
   canonical: string
   warnings: PlanWarning[]
+  cutStats: CompileCutStats
 }
 
 function bad(message: string, code = 'edit_plan_invalid'): never {
@@ -615,7 +706,15 @@ function hexToAssColour(hex: string): string {
 }
 
 export function compileEditPlan(input: CompileInput): CompileResult {
-  const policy = input.policy ?? loadEditPolicy()
+  // PACING IS RESOLVED HERE, ONCE, INTO THE POLICY OBJECT ITSELF — rather than
+  // read at the three call sites it affects. Every `policy.cuts.*` read below
+  // therefore sees the pacing-resolved value automatically, so a knob added to
+  // a pacing profile later cannot take effect in two places and be silently
+  // missed in a third. For `balanced` this is the identity function and
+  // `policy` is the same object it would have been before this line existed.
+  const basePolicy = input.policy ?? loadEditPolicy()
+  const pacingId = input.decision.pacing ?? basePolicy.pacing?.defaultId ?? 'balanced'
+  const policy = resolvePacingCuts(basePolicy, pacingId)
   const warn = new WarningSink()
   const { evidence, decision, identity } = input
   const brandColors = input.brandColors ?? { primaryHex: null, highlightHex: null }
@@ -790,7 +889,9 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const domainMs = totalDurationMs(effectiveDomain)
   const maxCuts = Math.max(1, Math.floor((policy.cuts.maxCutsPerMinuteMilli * domainMs) / (1000 * 60000)))
   let accepted = safe
+  let droppedForDensity = 0
   if (accepted.length > maxCuts) {
+    droppedForDensity = accepted.length - maxCuts
     const ranked = [...accepted].sort((a, b) =>
       (b.interval.endMs - b.interval.startMs) - (a.interval.endMs - a.interval.startMs)
       || a.interval.startMs - b.interval.startMs)
@@ -1114,7 +1215,25 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   // producer would face. It is not trusted because it is local.
   const plan = validateEditPlan(draft)
   assertNoRemovedWordIsCaptioned(plan, evidence.words, timeMap)
-  return { plan, planSha256: editPlanSha256(plan), canonical: canonicalEditPlan(plan), warnings: plan.warnings }
+  // The realised pacing, measured rather than assumed. `appliedRemovals` is the
+  // final set — after the density cap AND after the min-segment repair pass
+  // gave cuts back — so this is what the viewer actually gets, not what the
+  // Director asked for.
+  const cutStats: CompileCutStats = {
+    pacingId,
+    domainMs,
+    appliedCuts: appliedRemovals.length,
+    cutsPerMinuteMilli: domainMs > 0
+      ? Math.floor((appliedRemovals.length * 1000 * 60000) / domainMs)
+      : 0,
+    maxCutsAllowed: maxCuts,
+    droppedForDensity,
+    minRemovalMs: policy.cuts.minRemovalMs,
+  }
+  return {
+    plan, planSha256: editPlanSha256(plan), canonical: canonicalEditPlan(plan),
+    warnings: plan.warnings, cutStats,
+  }
 }
 
 // ---- caption cue construction ----------------------------------------------
