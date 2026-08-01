@@ -76,7 +76,20 @@
     "minTrimMs": 200
   },
   "captions": {
-    "maxCues": 1000,
+    "_tailGuardComment": [
+    "How far before the end of the video the LAST caption must finish.",
+    "The output validator compares cues to the MEASURED duration of the",
+    "encoded file with ZERO tolerance, because a cue past the end means the",
+    "caption and video timelines came from different maps. An encoder asked",
+    "to stop at -t 38.760 can deliver a file a frame short, so a cue planned",
+    "to end exactly at the planned duration is a render that fails on",
+    "rounding. 80 ms is over two frames at 30 fps, and is invisible: the",
+    "final caption leaves the screen fractionally before the video ends.",
+    "Set here rather than as a validator tolerance, because a tolerance wide",
+    "enough to absorb rounding is wide enough to hide real map divergence."
+  ],
+  "tailGuardMs": 80,
+  "maxCues": 1000,
     "maxLinesPerCue": 2,
     "presetIds": [
       "caption-clean-keyword-v1",

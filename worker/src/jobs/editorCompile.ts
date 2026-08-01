@@ -75,6 +75,8 @@ export interface EditPolicyV1 {
   }
   captions: {
     maxCues: number; maxLinesPerCue: number; presetIds: string[]
+    /** How far before the end of the video the LAST caption must finish. */
+    tailGuardMs: number
     presets: Record<string, CaptionPresetPolicy>
   }
   zooms: {
@@ -894,6 +896,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const cues = buildCaptionCues({
     words: evidence.words, timeMap, preset: captionPreset,
     maxLines: policy.captions.maxLinesPerCue, maxCues: policy.captions.maxCues,
+    tailGuardMs: policy.captions.tailGuardMs,
     outputDurationMs, emphasisSet, warn,
   })
 
@@ -1089,6 +1092,7 @@ interface CueBuildInputs {
   preset: CaptionPresetPolicy
   maxLines: number
   maxCues: number
+  tailGuardMs: number
   outputDurationMs: number
   emphasisSet: Set<number>
   warn: WarningSink
@@ -1135,6 +1139,29 @@ function layoutLines(
 
 function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
   const { words, timeMap, preset, maxLines, maxCues, outputDurationMs, emphasisSet, warn } = inp
+  // THE LAST CAPTION MUST NOT REACH THE LAST FRAME.
+  //
+  // The compiler clamps cues to `outputDurationMs`; the output validator
+  // compares them to the MEASURED duration of the encoded file, with zero
+  // tolerance and for good reason — a cue past the end means the caption
+  // timeline and the video timeline came from different maps, which makes the
+  // cues that ARE inside suspect too.
+  //
+  // Those two are only compatible while something else leaves slack at the
+  // end. Trailing silence used to: before the edge trim, the fixture ended
+  // 600 ms after its last cue. The edge trim cuts the video to keepMs (120 ms)
+  // after the last spoken word, and the reading-speed rule will happily extend
+  // a final cue into whatever room is left — so the planned cue ends exactly
+  // at the planned duration, and an encoded file even one frame shorter than
+  // requested fails the render. That is what
+  // `output_caption_invalid: caption cue 4 ends after the video does` was.
+  //
+  // Fixed here rather than by loosening the validator: the validator's zero
+  // tolerance is what makes it able to detect genuine map divergence, and a
+  // tolerance wide enough to absorb container rounding is also wide enough to
+  // hide a real bug. The plan simply must not promise a caption on a frame the
+  // encoder was never asked to produce.
+  const captionCeilingMs = Math.max(0, outputDurationMs - inp.tailGuardMs)
   // Stage every word that survives into output time, in one pass over the words
   // and the pieces together (O(words + pieces), no pairwise search).
   const staged: Array<StagedWord & { pieceIndex: number }> = []
@@ -1213,8 +1240,15 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     const want = Math.max(preset.minCueDurationMs, wantByRead)
     if (endMs - startMs < want) endMs = Math.min(startMs + want, room)
     if (endMs - startMs > preset.maxCueDurationMs) endMs = startMs + preset.maxCueDurationMs
-    if (endMs > outputDurationMs) endMs = outputDurationMs
-    if (endMs <= startMs) { group = []; return }
+    if (endMs > captionCeilingMs) endMs = captionCeilingMs
+    if (endMs <= startMs) {
+      // Dropped rather than shown past the end. Announced, because a caption
+      // the creator was promised and did not get is exactly the kind of silent
+      // degradation this pipeline keeps producing.
+      warn.add('caption_dropped_past_tail_guard', String(cues.length))
+      group = []
+      return
+    }
     const emphasisWordIndices = group.map((g) => g.index).filter((i) => emphasisSet.has(i)).slice(0, MAX_CUE_EMPHASIS)
     cues.push({
       index: cues.length, outputStartMs: startMs, outputEndMs: endMs,

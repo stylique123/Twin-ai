@@ -690,6 +690,72 @@ describe('brand caption colors', () => {
   })
 })
 
+describe('the last caption never reaches the last frame', () => {
+  // THE REGRESSION. The compiler clamps cues to plan.output.durationMs; the
+  // output validator compares them to the MEASURED duration of the encoded
+  // file with ZERO tolerance. Those only coexist while something leaves slack
+  // at the end, and trailing silence used to. The edge trim removed it: the
+  // video now ends 120 ms after the last spoken word and the reading-speed
+  // rule extends the final cue into whatever room is left, so the planned cue
+  // ended exactly at the planned duration and a file one frame short failed
+  // the whole render with `output_caption_invalid`.
+  //
+  // This suite ran green throughout, because its policy() fixture has the edge
+  // trim OFF. Staging found it. So these assert against the SHIPPED policy.
+  it('leaves at least the tail guard between the final cue and the end', () => {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    const { plan } = compileEditPlan({ ...input, policy: shippedPolicy() })
+    const last = plan.captions.cues[plan.captions.cues.length - 1]
+    expect(plan.output.durationMs - last.outputEndMs).toBeGreaterThanOrEqual(shippedPolicy().captions.tailGuardMs)
+  })
+
+  it('holds for EVERY cue, not merely the last one', () => {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    const { plan } = compileEditPlan({ ...input, policy: shippedPolicy() })
+    for (const c of plan.captions.cues) {
+      expect(c.outputEndMs).toBeLessThanOrEqual(plan.output.durationMs - shippedPolicy().captions.tailGuardMs)
+    }
+  })
+
+  it('CONTROL: the ceiling actually BINDS — raising the guard moves the last cue earlier', () => {
+    // Worth stating precisely, because my first attempt at this control was
+    // wrong. On THIS fixture the final cue already ends 120 ms early — that
+    // slack comes from edges.keepMs, not from the guard. What broke staging
+    // was a cue the reading-speed rule EXTENDED into the remaining room until
+    // it touched the planned duration. So the property to prove is not "the
+    // fixture has slack" but "the ceiling is load-bearing when a cue reaches
+    // for it": raise the guard and the final cue must move.
+    const lastEnd = (tailGuardMs: number): number => {
+      const p = shippedPolicy()
+      p.captions.tailGuardMs = tailGuardMs
+      const input = baseInput()
+      input.decision.transitionPolicy = 'hard_cuts_only'
+      const { plan } = compileEditPlan({ ...input, policy: p })
+      const cues = plan.captions.cues
+      return cues[cues.length - 1].outputEndMs
+    }
+    const loose = lastEnd(0)
+    const tight = lastEnd(400)
+    expect(tight).toBeLessThan(loose)
+    // And it lands exactly on the ceiling, not merely somewhere earlier.
+    const { plan } = compileEditPlan({ ...baseInput(), decision: { ...baseInput().decision, transitionPolicy: 'hard_cuts_only' }, policy: shippedPolicy() })
+    expect(tight).toBe(plan.output.durationMs - 400)
+  })
+
+  it('a cue squeezed out entirely is announced, never silently dropped', () => {
+    const p = shippedPolicy()
+    // Absurd guard: nothing can fit. The point is that the loss is REPORTED.
+    p.captions.tailGuardMs = 10_000_000
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    const { plan, warnings } = compileEditPlan({ ...input, policy: p })
+    expect(plan.captions.cues).toHaveLength(0)
+    expect(warnings.some((w) => w.code === 'caption_dropped_past_tail_guard')).toBe(true)
+  })
+})
+
 describe('audio instructions', () => {
   it('chooses a frozen preset from bounded numeric evidence and emits no filter string', () => {
     const clean = compileEditPlan({ ...baseInput(), policy: policy() }).plan
