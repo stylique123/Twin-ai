@@ -15,12 +15,23 @@
 //      WORKER_JOB_TYPES unset (worker/src/env.ts is the canonical registry);
 //      a committed override — even an incomplete non-retired one like
 //      `WORKER_JOB_TYPES=ingest` — silently narrows/drifts the running set.
-//   3. The canonical registry in worker/src/env.ts is not EXACTLY the five
-//      allowed job types (order-insensitive, no extras, no duplicates):
-//      ingest, build_voice, scrape_dna, validate_source, editor_v2. Strict
-//      set-equality catches bypass names like `render_v2` / `edit_plan`.
-//      Future EditPlan/renderer stages live INSIDE editor_v2, not as competing
-//      top-level job types.
+//   3. The canonical registry in worker/src/env.ts is not EXACTLY the allowed
+//      job types (order-insensitive, no extras, no duplicates):
+//      ingest, build_voice, scrape_dna, validate_source, editor_v2,
+//      purge_media. Strict set-equality catches bypass names like `render_v2`
+//      / `edit_plan`. Future EditPlan/renderer stages live INSIDE editor_v2,
+//      not as competing top-level job types.
+//
+//      WHY purge_media IS ON THIS LIST. The list is not "the five" as an
+//      end in itself — it exists so a second RENDERING path cannot appear
+//      beside editor_v2. purge_media renders nothing: it deletes the storage
+//      bytes behind a removed media_asset (migration 0099), and it is
+//      enqueued by a DATABASE TRIGGER rather than by application code. That
+//      makes its presence here load-bearing in BOTH directions. As an extra
+//      it would fail the build (it did, on c5abfaa). As a MISSING entry the
+//      worker stops draining the type, every deletion job piles up unclaimed,
+//      and every deleted recording's bytes survive with nothing anywhere
+//      looking wrong — so `missing` is pinned by a selftest case too.
 //
 //   node scripts/ci/check_single_deploy_path.mjs            # PR guard
 //   node scripts/ci/check_single_deploy_path.mjs --selftest # unit-test the logic
@@ -29,7 +40,7 @@ import { readFileSync } from 'node:fs'
 
 const SELF = 'scripts/ci/check_single_deploy_path.mjs'
 const ENV = 'worker/src/env.ts'
-const ALLOWED_REGISTRY = ['ingest', 'build_voice', 'scrape_dna', 'validate_source', 'editor_v2']
+const ALLOWED_REGISTRY = ['ingest', 'build_voice', 'scrape_dna', 'validate_source', 'editor_v2', 'purge_media']
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.
 const FORBIDDEN_MANIFEST = [
@@ -127,6 +138,12 @@ function selftest() {
     ['registry extra edit_plan', { ...base, registry: [...R, 'edit_plan'] }, false],
     ['registry missing editor_v2', { ...base, registry: R.filter((t) => t !== 'editor_v2') }, false],
     ['registry duplicate editor_v2', { ...base, registry: [...R, 'editor_v2'] }, false],
+    // Dropping purge_media is the quiet failure: a trigger keeps enqueueing
+    // the type, no worker claims it, and deleted recordings' bytes survive.
+    ['registry missing purge_media', { ...base, registry: R.filter((t) => t !== 'purge_media') }, false],
+    // The teeth that matter — widening the list for a storage job must not
+    // have made room for a second RENDERING path beside editor_v2.
+    ['registry extra render_v3 (list widened, teeth intact)', { ...base, registry: [...R, 'render_v3'] }, false],
   ]
   let failed = 0
   for (const [name, state, exp] of cases) {
