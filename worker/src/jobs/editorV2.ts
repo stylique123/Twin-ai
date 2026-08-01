@@ -688,6 +688,19 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           true_peak_dbtp_milli: rendered.truePeakDbtpMilli,
           true_peak_overshoot_milli: rendered.truePeakOvershootMilli,
         })
+        // A BRAND COLOUR WE REFUSED TO USE, on the same durable trail and for
+        // the same reason. The owner pinned a colour, the video shipped
+        // without it, and the guard that decided so is the only thing that
+        // knows why. One event per rejected role, so support can answer "why
+        // are my captions white" with a measurement instead of a guess.
+        for (const r of rendered.captionColourRejections) {
+          await appendEvent(job, projectId, 'caption_colour_rejected', {
+            role: r.role,
+            colour_ass: r.colourAss,
+            contrast_ratio_milli: r.contrastRatioMilli,
+            minimum_ratio_milli: r.minimumRatioMilli,
+          })
+        }
       } else if (stage === 'validating' && env.editorRenderEnabled) {
         // Phase 8 Batch 8.5: mint the output asset and complete. Both fenced;
         // both refuse unless the output row is genuinely READY.

@@ -40,7 +40,7 @@ import {
 } from './editorRender.js'
 import { validateRenderedOutput } from './editorValidateOutput.js'
 import { renderAssDocument, assertNoOverrideBlock, assDocumentSha256 } from './assCaptions.js'
-import { resolveCaptionColours } from './captionColours.js'
+import { resolveCaptionColours, type CaptionColourRejection } from './captionColours.js'
 import {
   reserveOutput, markOutputReady, createOutputAsset, completeOutput, type Fence,
 } from './editorComplete.js'
@@ -61,6 +61,11 @@ export interface RenderStageOutcome {
   integratedLufsMilli: number | null
   truePeakDbtpMilli: number | null
   truePeakOvershootMilli: number | null
+  /** Brand caption colours the contrast guard refused, with the measurement
+   *  that refused them. Empty on the happy path and when there are no cues.
+   *  Carried on the outcome for the same reason the loudness numbers are: a
+   *  quality decision the user did not make must be visible to someone. */
+  captionColourRejections: CaptionColourRejection[]
 }
 export interface ValidateStageOutcome {
   outputAssetId: string
@@ -103,8 +108,10 @@ async function loadPlan(projectId: string): Promise<EditPlanV1> {
  *  `assertNoOverrideBlock` runs on the DOCUMENT, independently of the escaper
  *  that produced it. Checking the escaper's output with the escaper's own logic
  *  would only prove it is self-consistent. */
-function writeAssDocument(plan: EditPlanV1, workDir: string): string | null {
-  if (plan.captions.cues.length === 0) return null
+function writeAssDocument(
+  plan: EditPlanV1, workDir: string,
+): { path: string | null; colourRejections: CaptionColourRejection[] } {
+  if (plan.captions.cues.length === 0) return { path: null, colourRejections: [] }
   const catalog = loadRenderCatalog()
   const preset = catalog.captionPresets[plan.captions.presetId]
   if (!preset) {
@@ -113,7 +120,11 @@ function writeAssDocument(plan: EditPlanV1, workDir: string): string | null {
       'render_output_profile_invalid',
     )
   }
-  const { primaryColourAss, emphasisColourAss } = resolveCaptionColours(plan.captions, preset)
+  // A brand colour too dark to read inside the preset's outline is dropped
+  // here, and the drop is carried back out rather than swallowed — see
+  // captionColours.ts. Rendering continues either way; the catalog colour is
+  // always legible.
+  const { primaryColourAss, emphasisColourAss, rejected } = resolveCaptionColours(plan.captions, preset)
   const doc = renderAssDocument(plan, {
     playResX: plan.output.width,
     playResY: plan.output.height,
@@ -126,7 +137,7 @@ function writeAssDocument(plan: EditPlanV1, workDir: string): string | null {
   assertNoOverrideBlock(doc, plan.captions.cues.length, emphasisColourAss)
   const path = join(workDir, 'captions.ass')
   writeFileSync(path, doc, 'utf8')
-  return path
+  return { path, colourRejections: rejected }
 }
 
 export async function runRenderingStage(
@@ -152,7 +163,7 @@ export async function runRenderingStage(
     if (watch.cancelled()) throw new RenderStageCancelledError('after_download')
 
     mkdirSync(workDir, { recursive: true })
-    const assPath = writeAssDocument(plan, workDir)
+    const { path: assPath, colourRejections } = writeAssDocument(plan, workDir)
     const fontsDir = assPath ? env.editorFontsDir : null
 
     const { outputPath, evidence } = await renderEditPlan({
@@ -194,6 +205,7 @@ export async function runRenderingStage(
       integratedLufsMilli: validation.loudness.measurement.integratedLufsMilli,
       truePeakDbtpMilli: validation.loudness.measurement.truePeakDbtpMilli,
       truePeakOvershootMilli: validation.loudness.truePeakOvershootMilli,
+      captionColourRejections: colourRejections,
     }
   } finally {
     watch.stop()
