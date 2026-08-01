@@ -292,10 +292,25 @@ describe('the SHIPPED policy survives a real encode', () => {
       strictFontIntegrity: false,
     })
 
+    // THE VIDEO STREAM, not the container — and this distinction is the whole
+    // point of the case. `format=duration` reports the LONGER of the two
+    // streams, and audio consistently runs past video here: measured on real
+    // renders the video stream lands 93-120 ms short of the planned duration
+    // while audio matches it almost exactly. validateProbedOutput deliberately
+    // prefers the video stream ("the header is written by the encoder under
+    // audit; the stream extent is what a decoder will actually play"), so a
+    // test probing the container measures a number the validator never uses —
+    // and passes while production fails. The first version of this test did
+    // exactly that.
     const probed = await execFile('/usr/bin/ffprobe', [
-      '-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', outputPath,
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=duration', '-of', 'csv=p=0', outputPath,
     ], { timeout: 120_000 })
     const measuredDurationMs = Math.round(Number(probed.stdout.trim()) * 1000)
+    // The shortfall is real and must be visible in this test, or a future
+    // change that removes it would make the case vacuous without anyone
+    // noticing.
+    expect(measuredDurationMs).toBeLessThan(shipped.output.durationMs)
 
     // THE ASSERTION THAT WOULD HAVE CAUGHT IT. Not "the plan is
     // self-consistent" — the plan always was. This runs the production
