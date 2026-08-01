@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   EDIT_PLAN_SCHEMA_VERSION, EDIT_PLAN_VERSION, EditPlanError, validateEditPlan, editPlanSha256, canonicalEditPlan,
+  type PlanHookTitle,
   MAX_WARNINGS, MAX_CUE_EMPHASIS,
   type EditPlanV1, type PlanSegment, type PlanRemoval, type PlanCue, type PlanWarning,
   type PlanZoom, type PlanTransition, type AudioPresetId, type CaptionPresetId,
@@ -79,6 +80,11 @@ export interface EditPolicyV1 {
     trimLeading: boolean; trimTrailing: boolean; keepMs: number; minTrimMs: number
   }
   hook: { maxTrimMs: number; maxTrimFractionMilli: number }
+  titleHook: {
+    enabled: boolean; startMs: number; durationMs: number
+    minWords: number; maxWords: number; maxChars: number
+    fontSizePx: number; marginTopPx: number
+  }
   captions: {
     maxCues: number; maxLinesPerCue: number; presetIds: string[]
     /** How far before the end of the video the LAST caption must finish. */
@@ -1197,6 +1203,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       sourceTrimStartMs: hookTrimStartMs,
       sourceTrimEndMs: hookTrimEndMs,
       reasonCode: hookReason,
+      title: buildHookTitle(cues, policy, outputDurationMs),
     },
     cover: { sourceTimeMs: coverSourceTimeMs, outputTimeMs: coverOutputTimeMs },
     warnings: warn.list,
@@ -1315,6 +1322,68 @@ function layoutLines(
   if (current !== '') { lines.push(current); groups.push(currentGroup) }
   if (lines.length === 0 || lines.length > maxLines) return null
   return { lines, groups }
+}
+
+/**
+ * The VISUAL hook: the creator's own first spoken words, big, over the opening.
+ *
+ * IT READS THE CUES, NOT THE TRANSCRIPT, and that is the whole trick. The cues
+ * are what SURVIVED the cut, already in output order, already the exact tokens
+ * the renderer will draw. Deriving from `evidence.words` instead would let the
+ * title show words the hook trim or a removal had just deleted — a title that
+ * promises something the video never says.
+ *
+ * Nothing here is invented: every token came from the transcript, so the title
+ * cannot carry a fabricated claim, a brand name the ASR misheard into a
+ * different spelling, or an instruction that arrived inside a transcript.
+ *
+ * Returns null rather than a short title when too few words survive. A
+ * one-word title is not a hook, it is a fragment, and it would read as a bug.
+ */
+export function buildHookTitle(
+  cues: PlanCue[],
+  policy: EditPolicyV1,
+  outputDurationMs: number,
+): PlanHookTitle | null {
+  const cfg = policy.titleHook
+  if (!cfg?.enabled) return null
+
+  const words: string[] = []
+  for (const cue of cues) {
+    for (const line of cue.lineTokens) {
+      for (const tok of line) {
+        // Collapse whitespace INSIDE a token. A transcript token is normally
+        // one word, but nothing guarantees it: the ass-captions suite feeds
+        // payloads like "{\\an8}top of screen" through as a single token, and
+        // treating that as one word made `wordCount` disagree with the
+        // validator's own recount — two sources of truth for the same fact,
+        // which is exactly what the validator refuses.
+        const t = tok.replace(/\s+/g, ' ').trim()
+        if (t) words.push(t)
+        if (words.length >= cfg.maxWords) break
+      }
+      if (words.length >= cfg.maxWords) break
+    }
+    if (words.length >= cfg.maxWords) break
+  }
+  // Trim to the character budget by DROPPING WHOLE WORDS from the end. Cutting
+  // mid-word would put a truncated fragment of the creator's own speech on
+  // screen, which looks like a rendering fault rather than a design choice.
+  while (words.length > 0 && words.join(' ').length > cfg.maxChars) words.pop()
+  if (words.length < cfg.minWords) return null
+
+  // The title cannot outlive the video. A short recording is exactly where a
+  // fixed 2000ms window would otherwise run past the end, and the output
+  // validator compares every span to the measured duration with no tolerance.
+  const startMs = Math.max(0, Math.min(cfg.startMs, Math.max(0, outputDurationMs - 1)))
+  const endMs = Math.min(startMs + cfg.durationMs, outputDurationMs)
+  if (endMs <= startMs) return null
+
+  const text = words.join(' ')
+  // Counted from the FINISHED text, the same way the validator counts it, so
+  // the two cannot drift apart by construction rather than by agreement.
+  const wordCount = text.split(/\s+/).filter(Boolean).length
+  return { text, wordCount, outputStartMs: startMs, outputEndMs: endMs }
 }
 
 function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {

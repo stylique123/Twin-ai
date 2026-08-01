@@ -89,6 +89,8 @@ export interface AssStyleOptions {
   // by the caller (editorRenderStage.ts), never here; this file only ever
   // splices whatever it's given.
   primaryColourAss: string
+  /** Visual-hook title. Absent/null means this render has no title at all. */
+  title?: { text: string; startMs: number; endMs: number; fontSizePx: number; marginTopPx: number } | null
 }
 
 // The ONLY live (unescaped) braces this file ever deliberately emits — the
@@ -96,6 +98,7 @@ export interface AssStyleOptions {
 // tight format before it can ever reach here, and it comes from the frozen
 // render catalog, never from a transcript or any other free text. `{\c}` with
 // no argument resets to the style's own PrimaryColour, closing the run.
+export const ASS_TITLE_STYLE_NAME = 'TwinAITitle'
 const EMPHASIS_CLOSE = '{\\c}'
 function emphasisOpen(emphasisColourAss: string): string {
   return `{\\c${emphasisColourAss}}`
@@ -156,13 +159,37 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
       + ' Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     `Style: ${ASS_STYLE_NAME},${style.fontName},${style.fontSizePx},${style.primaryColourAss},${style.primaryColourAss},&H00000000,`
       + `&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,${style.marginVerticalPx},1`,
+  ]
+  // The VISUAL HOOK gets its OWN style rather than reusing the caption style
+  // with per-event margin overrides. Alignment differs (8 = top-centre, against
+  // the caption's 2 = bottom-centre) and so does the size, and an event-level
+  // override is expressed with braces — the one thing assertNoOverrideBlock
+  // exists to forbid outside the single code-authored emphasis tag. A second
+  // style keeps the audit's rule absolute instead of carving an exception.
+  if (style.title) {
+    lines.push(
+      `Style: ${ASS_TITLE_STYLE_NAME},${style.fontName},${style.title.fontSizePx},${style.primaryColourAss},${style.primaryColourAss},&H00000000,`
+      + `&H64000000,-1,0,0,0,100,100,0,0,1,6,0,8,40,40,${style.title.marginTopPx},1`,
+    )
+  }
+  lines.push(
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
-  ]
+  )
+  // The title is emitted FIRST so it is the first Dialogue line in the file,
+  // which keeps the document byte-stable regardless of how many cues follow.
+  let expectedEvents = plan.captions.cues.length
+  if (style.title) {
+    expectedEvents += 1
+    lines.push(
+      `Dialogue: 0,${formatAssTime(style.title.startMs)},${formatAssTime(style.title.endMs)},${ASS_TITLE_STYLE_NAME},,0,0,0,,`
+      + escapeAssText(style.title.text),
+    )
+  }
   for (const cue of plan.captions.cues) lines.push(dialogueLine(cue, style.emphasisColourAss))
   const doc = `${lines.join('\n')}\n`
-  assertNoOverrideBlock(doc, plan.captions.cues.length, style.emphasisColourAss)
+  assertNoOverrideBlock(doc, expectedEvents, style.emphasisColourAss)
   return doc
 }
 
@@ -197,7 +224,7 @@ export function assertNoOverrideBlock(doc: string, expectedEvents: number | unde
   }
   if (expectedEvents !== undefined && events !== expectedEvents) {
     throw new EditPlanError(
-      `ass: emitted ${events} events for ${expectedEvents} cues`, 'output_caption_invalid')
+      `ass: emitted ${events} events, expected ${expectedEvents}`, 'output_caption_invalid')
   }
 }
 
@@ -215,7 +242,13 @@ export const PLACEHOLDER_PRIMARY_COLOUR = '&H00FFFFFF'
 
 export function buildAssCaptions(
   plan: EditPlanV1,
-  opts: { fontName: string; emphasisColourAss?: string; primaryColourAss?: string },
+  // titleFontSizePx / titleMarginTopPx come from the frozen policy via the
+  // render stage, exactly like the caption size does — never from the plan,
+  // which carries WHAT to show and not how big to draw it.
+  opts: {
+    fontName: string; emphasisColourAss?: string; primaryColourAss?: string
+    titleFontSizePx?: number; titleMarginTopPx?: number
+  },
 ): {
   document: string; sha256: string; eventCount: number
 } {
@@ -225,8 +258,24 @@ export function buildAssCaptions(
     fontName: opts.fontName,
     fontSizePx: plan.captions.fontSizePx,
     marginVerticalPx: plan.captions.marginVerticalPx,
+    title: plan.hook.title
+      ? {
+          text: plan.hook.title.text,
+          startMs: plan.hook.title.outputStartMs,
+          endMs: plan.hook.title.outputEndMs,
+          fontSizePx: opts.titleFontSizePx ?? 96,
+          marginTopPx: opts.titleMarginTopPx ?? 420,
+        }
+      : null,
     emphasisColourAss: opts.emphasisColourAss ?? PLACEHOLDER_EMPHASIS_COLOUR,
     primaryColourAss: opts.primaryColourAss ?? PLACEHOLDER_PRIMARY_COLOUR,
   })
-  return { document, sha256: assDocumentSha256(document), eventCount: plan.captions.cues.length }
+  // The REAL number of Dialogue events, title included. Reporting the cue
+  // count here would disagree with the document the same function just
+  // produced — and this value is what callers use to sanity-check the burn.
+  return {
+    document,
+    sha256: assDocumentSha256(document),
+    eventCount: plan.captions.cues.length + (plan.hook.title ? 1 : 0),
+  }
 }

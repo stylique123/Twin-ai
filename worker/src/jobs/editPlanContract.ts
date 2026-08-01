@@ -28,7 +28,7 @@ import { canonicalJson, sha256Hex } from './editorManifest.js'
 // pinned. A plan pinned under an earlier version lacks these fields and is
 // never reinterpreted as v3 — a project's boot manifest is fixed at pin time,
 // so each bump only affects NEW plans compiled after it.
-export const EDIT_PLAN_SCHEMA_VERSION = 4
+export const EDIT_PLAN_SCHEMA_VERSION = 5
 export const EDIT_PLAN_VERSION = 'edit-plan-v1'
 export const EDIT_PLAN_MAX_BYTES = 1048576
 
@@ -230,12 +230,34 @@ export interface PlanAudio {
   truePeakCeilingDbtpMilli: number
   music: null
 }
+/**
+ * The VISUAL hook — a few big words burned over the opening of the video.
+ *
+ * `text` is composed from the creator's own first surviving spoken words, so it
+ * can never carry a fabricated claim, a misspelled brand, or an instruction
+ * that arrived in a transcript. It is free text in the same, and only, sense
+ * caption lines are (Gate-0 s3.1) — bounded in length, exempt from the
+ * metacharacter scan for that reason, and escaped at the ASS boundary.
+ *
+ * `wordCount` is kept beside it because the renderer and the tests both need
+ * to reason about the word budget without re-splitting the string, and a split
+ * is exactly the kind of derivation that drifts from what was validated.
+ */
+export interface PlanHookTitle {
+  text: string
+  wordCount: number
+  outputStartMs: number
+  outputEndMs: number
+}
 export interface PlanHook {
   treatment: HookTreatment
   startWordIndex: number | null
   sourceTrimStartMs: number
   sourceTrimEndMs: number
   reasonCode: string
+  /** null is a REAL state: most videos have no visual hook, and null is how
+   *  that is said. It is never a placeholder for "not computed yet". */
+  title: PlanHookTitle | null
 }
 export interface PlanCover {
   sourceTimeMs: number
@@ -376,7 +398,10 @@ const FRAMING_KEYS = ['modeId', 'safeTopPx', 'safeBottomPx', 'safeLeftPx', 'safe
 const VIDEO_KEYS = ['framing', 'transitionPolicy', 'transitions', 'zooms'] as const
 const AUDIO_KEYS = ['presetId', 'highpassHz', 'denoiseMilli', 'deesserMilli', 'targetLufsMilli',
   'toleranceLuMilli', 'truePeakCeilingDbtpMilli', 'music'] as const
-const HOOK_KEYS = ['treatment', 'startWordIndex', 'sourceTrimStartMs', 'sourceTrimEndMs', 'reasonCode'] as const
+const HOOK_KEYS = ['treatment', 'startWordIndex', 'sourceTrimStartMs', 'sourceTrimEndMs', 'reasonCode', 'title'] as const
+const HOOK_TITLE_KEYS = ['text', 'wordCount', 'outputStartMs', 'outputEndMs'] as const
+export const MAX_TITLE_CHARS = 60
+export const MAX_TITLE_WORDS = 8
 const COVER_KEYS = ['sourceTimeMs', 'outputTimeMs'] as const
 const WARNING_KEYS = ['code', 'detail'] as const
 const COMPLEXITY_KEYS = ['wordCount', 'candidateCount', 'segmentCount', 'removalCount', 'cueCount',
@@ -415,7 +440,20 @@ export function assertNoExpressionStrings(plan: EditPlanV1): void {
   walk(plan.timeline, 'timeline')
   walk(plan.video, 'video')
   walk(plan.audio, 'audio')
-  walk(plan.hook, 'hook')
+  // hook: everything EXCEPT the title text, for the same reason cue lines are
+  // exempt below — it is transcript-sourced free text, so it legitimately
+  // carries apostrophes and commas that this scan rejects everywhere else. It
+  // is bounded in length by the validator and escaped at the ASS boundary.
+  walk(plan.hook.treatment, 'hook.treatment')
+  walk(plan.hook.startWordIndex, 'hook.startWordIndex')
+  walk(plan.hook.sourceTrimStartMs, 'hook.sourceTrimStartMs')
+  walk(plan.hook.sourceTrimEndMs, 'hook.sourceTrimEndMs')
+  walk(plan.hook.reasonCode, 'hook.reasonCode')
+  if (plan.hook.title) {
+    walk(plan.hook.title.wordCount, 'hook.title.wordCount')
+    walk(plan.hook.title.outputStartMs, 'hook.title.outputStartMs')
+    walk(plan.hook.title.outputEndMs, 'hook.title.outputEndMs')
+  }
   walk(plan.cover, 'cover')
   walk(plan.warnings, 'warnings')
   walk(plan.complexity, 'complexity')
@@ -747,6 +785,28 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     sourceTrimStartMs: int(hk.sourceTrimStartMs, 0, sourceDurationMs, 'hook.sourceTrimStartMs'),
     sourceTrimEndMs: int(hk.sourceTrimEndMs, 0, sourceDurationMs, 'hook.sourceTrimEndMs'),
     reasonCode: token(hk.reasonCode, 'hook.reasonCode'),
+    title: null,
+  }
+  // -- hook.title (the visual hook). Validated HERE rather than trusted from
+  // the compiler, like every other element: a plan read back out of the
+  // database goes through this same path and is not more trustworthy for
+  // having been stored.
+  if (hk.title !== null && hk.title !== undefined) {
+    const t = strictKeys(hk.title, HOOK_TITLE_KEYS, 'hook.title')
+    if (typeof t.text !== 'string' || t.text.length === 0) fail('hook.title.text: empty or not a string')
+    if (t.text.length > MAX_TITLE_CHARS) fail('hook.title.text: too long')
+    // A newline would split one ASS Dialogue event into two physical lines and
+    // smuggle whatever followed past the per-event audit.
+    if (/[\n\r]/.test(t.text as string)) fail('hook.title.text: contains a line break')
+    const wordCount = int(t.wordCount, 1, MAX_TITLE_WORDS, 'hook.title.wordCount')
+    // The count must DESCRIBE the text, or it is a second source of truth that
+    // can disagree with the thing it describes.
+    const actual = (t.text as string).trim().split(/\s+/).filter(Boolean).length
+    if (actual !== wordCount) fail('hook.title.wordCount: does not match the text')
+    const startMs = int(t.outputStartMs, 0, MAX_MS, 'hook.title.outputStartMs')
+    const endMs = int(t.outputEndMs, 0, MAX_MS, 'hook.title.outputEndMs')
+    if (endMs <= startMs) fail('hook.title: reversed or empty span')
+    hook.title = { text: t.text as string, wordCount, outputStartMs: startMs, outputEndMs: endMs }
   }
   if (hook.sourceTrimEndMs < hook.sourceTrimStartMs) fail('hook: reversed trim span')
   if (treatment === 'keep' && hook.sourceTrimEndMs !== hook.sourceTrimStartMs) {
