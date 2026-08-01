@@ -699,9 +699,27 @@ describe('audio instructions', () => {
     noisyInput.evidence.audio = { snrDbMilli: 9000, earlyEnergyRatioMilli: 100 }
     expect(compileEditPlan({ ...noisyInput, policy: policy() }).plan.audio.presetId).toBe('speech-noisy-v1')
 
+    // THE ROOMY BRANCH IS UNREACHABLE ON PURPOSE. `earlyEnergyRatio` is the
+    // first-3s RMS against the whole-file RMS; reverberation is a decay
+    // property. They share a word and nothing else. Equal levels give 1000
+    // milli and the old threshold fired above 350, so nearly every recording
+    // with speech at the start would have been de-reverbed once the facts
+    // actually reached the compiler. See the comment at the branch.
     const roomyInput = baseInput()
     roomyInput.evidence.audio = { snrDbMilli: 30000, earlyEnergyRatioMilli: 900 }
-    expect(compileEditPlan({ ...roomyInput, policy: policy() }).plan.audio.presetId).toBe('speech-roomy-v1')
+    const roomy = compileEditPlan({ ...roomyInput, policy: policy() })
+    expect(roomy.plan.audio.presetId).toBe('speech-clean-v1')
+    expect(roomy.warnings.some((w) => w.code === 'audio_roomy_detection_unavailable')).toBe(true)
+  })
+
+  it('CONTROL: a clean recording still reaches the compiler as FACTS, not as a missing component', () => {
+    // The defect this replaced: readComponentAudioFacts asked for keys the
+    // analyzer never wrote, so evidence.audio was null on every render and the
+    // plan carried `audio_preset_defaulted/no_audio_component` — a warning
+    // that names the wrong cause. Present-and-clean must be distinguishable
+    // from absent, or the noisy preset can never fire.
+    const { warnings } = compileEditPlan({ ...baseInput(), policy: policy() })
+    expect(warnings.some((w) => w.code === 'audio_preset_defaulted')).toBe(false)
   })
 
   it('carries the frozen loudness targets and never a music bed', () => {

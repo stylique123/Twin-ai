@@ -87,6 +87,10 @@ export interface ComponentCandidate {
 }
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v)
+/** A real measurement. The analyzer emits floats in natural units and nulls
+ *  where there was nothing to measure, so null/NaN/Infinity all mean "no fact"
+ *  rather than "zero". */
+const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
 
 /** `w12` -> 12. Positional ids are the codebase's one convention for this and
  *  are enforced by the envelope projection too; resolving by the id rather than
@@ -209,14 +213,45 @@ export function readComponentFaces(visual: Record<string, unknown> | null): Comp
   return out
 }
 
+/**
+ * The audio component's quality facts, in the compiler's milli-integer units.
+ *
+ * THIS FUNCTION RETURNED null ON EVERY RENDER EVER MADE. It asked the
+ * component for `snrDbMilli` and `earlyEnergyRatioMilli`. The analyzer writes
+ * `snrDb` and `earlyEnergyRatio` — floats in natural units, named without the
+ * suffix (editorAudio.ts, and its header's derivation notes). Neither key
+ * existed, `isInt(undefined)` is false, and the compiler took its
+ * `evidence.audio === null` branch every single time:
+ *
+ *     warn.add('audio_preset_defaulted', 'no_audio_component')
+ *
+ * So every video shipped with `speech-clean-v1` — highpass 80 Hz, no denoise,
+ * no de-esser — and `speech-noisy-v1` has never once run. The warning made it
+ * worse rather than better: it says the component is MISSING, which is false.
+ * The component is present, pinned and correct. Anyone debugging this went
+ * looking for a storage bug.
+ *
+ * The fix belongs on this side. The component is content-addressed and carries
+ * an analyzer bundle version; renaming the producer's fields would invalidate
+ * every stored analysis to fix a reader's typo.
+ *
+ * Floats in, integers out — deliberately. The compiler's whole numeric
+ * discipline is integer milli-units so a plan hash cannot drift on a float
+ * repr, and this is the boundary where that conversion has to happen.
+ */
 export function readComponentAudioFacts(audio: Record<string, unknown> | null): CompileAudioFacts | null {
   if (!audio || typeof audio !== 'object') return null
-  const snr = (audio as { snrDbMilli?: unknown }).snrDbMilli
-  const eer = (audio as { earlyEnergyRatioMilli?: unknown }).earlyEnergyRatioMilli
+  const snrDb = (audio as { snrDb?: unknown }).snrDb
+  const earlyEnergyRatio = (audio as { earlyEnergyRatio?: unknown }).earlyEnergyRatio
   // Partial audio facts are NOT half-usable. A missing SNR is not zero SNR, and
   // a compiler decision made on a defaulted number is a decision nobody made.
-  if (!isInt(snr) || !isInt(eer)) return null
-  return { snrDbMilli: snr, earlyEnergyRatioMilli: eer }
+  // A track with no audio yields null for both (editorAudio.ts's own contract),
+  // which lands here as "no facts" — correct, and distinct from "zero".
+  if (!isFiniteNumber(snrDb) || !isFiniteNumber(earlyEnergyRatio)) return null
+  return {
+    snrDbMilli: Math.round(snrDb * 1000),
+    earlyEnergyRatioMilli: Math.round(earlyEnergyRatio * 1000),
+  }
 }
 
 /**

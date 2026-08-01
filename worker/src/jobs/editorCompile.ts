@@ -960,8 +960,33 @@ export function compileEditPlan(input: CompileInput): CompileResult {
     warn.add('audio_preset_defaulted', 'no_audio_component')
   } else if (evidence.audio.snrDbMilli < policy.audio.noisySnrDbMilliMax) {
     audioPresetId = 'speech-noisy-v1'
-  } else if (evidence.audio.earlyEnergyRatioMilli > policy.audio.roomyEarlyEnergyRatioMilliMax) {
-    audioPresetId = 'speech-roomy-v1'
+  } else {
+    // THE ROOMY BRANCH IS DELIBERATELY NOT TAKEN, and this is not an oversight
+    // to tidy up later. It used to read:
+    //
+    //   else if (evidence.audio.earlyEnergyRatioMilli > policy.audio.roomyEarlyEnergyRatioMilliMax)
+    //
+    // `earlyEnergyRatio` borrows the vocabulary of room acoustics and measures
+    // none of it. Its definition (editorAudio.ts header) is
+    // `10^((earlyDb - wholeDb)/20)` — the RMS level of the first three seconds
+    // against the RMS level of the whole file. Reverberation is a DECAY
+    // property, measured as early-to-late energy within an impulse response
+    // (C50/D50, RT60). This is a head-versus-whole loudness comparison. The two
+    // share a word and nothing else.
+    //
+    // Worse, the threshold points the wrong way in practice. Equal levels give
+    // a ratio of 1.0 -> 1000 milli, and the branch fires ABOVE 350, i.e.
+    // whenever the opening is louder than -9.1 dB relative to the file. Almost
+    // every recording where someone is talking at the start clears that. Now
+    // that the facts actually reach the compiler (they never did before — see
+    // readComponentAudioFacts), taking this branch would apply de-reverb and
+    // denoise to the majority of GOOD recordings.
+    //
+    // So the honest state is: `speech-roomy-v1` stays unreachable, as it has
+    // always been in practice, but now it is unreachable on purpose and on the
+    // record. Restoring it needs a real reverberation estimate, not a rewiring.
+    // Until then the compiler says what it CHECKED rather than pretending.
+    warn.add('audio_roomy_detection_unavailable', 'early_energy_ratio_is_not_reverberation')
   }
   const audioPreset = policy.audio.presets[audioPresetId]
   if (!audioPreset) bad(`audio: unknown preset ${audioPresetId}`)
