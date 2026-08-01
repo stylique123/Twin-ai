@@ -625,8 +625,151 @@ clip system — demos, screen walkthroughs, charts, before/after, cooking.
 
 ---
 
+## 9a. VERIFIED DEFECTS — these are not risks, they are live
+
+Everything in §§1–8 is a hypothesis about what to build. **This section is
+different: every item was read in the shipped source and confirmed by hand
+before being written down.** Nothing here is a report I took on trust. Where a
+claim could not be checked from the repository, it says so.
+
+They came out of three parallel reviews on 2026-08-01 — a pre-mortem, a
+security/privacy audit, and an efficiency/measurability audit — and they
+reorder the build, because polishing the renderer matters less than the fact
+that the renderer has been executing partly-empty plans.
+
+### 9a.1 The four silent joints — evidence computed, then read by nobody
+
+This is the same failure mode §7's Phase 9 list already names five times over
+(emphasis, brand colours, face positions, safe area, cue limits). It is worse
+than recorded: **four joints are disconnected in a way that produces no error
+and no warning a human ever sees.**
+
+| # | Defect | Verified at | Consequence |
+|---|---|---|---|
+| 1 | Analyzer writes `snrDb` / `earlyEnergyRatio`; compiler reads `snrDbMilli` / `earlyEnergyRatioMilli` | `editorAudio.ts:286,290` vs `editorCompileInput.ts:213-214` | `readComponentAudioFacts` returns `null` on every render. **Every video ever made used `speech-clean-v1`.** `speech-noisy-v1` and `speech-roomy-v1` — the only response to a bad room — have never once run. |
+| 2 | Hook writes `scriptAlignment.matchedTokenRatio` (nested); Director reads `hk.matchedTokenRatio` (flat) | `editorHook.ts:62` vs `editorDirector.ts:135` | The Director has always been told `null`. It has never known whether the creator actually said the hook they were shown. |
+| 3 | `\|\|` binds tighter than `?:`, so the ternary consumes the whole condition and the real CTA is never read | `recordingScriptAdapter.ts:150-152` | **Every video ever made ended on "Follow for more like this"** — while the blueprint prompt spends a paragraph demanding a concrete CTA pointing at the creator's actual offer. For §8's buyer persona, that line is worthless. |
+| 4 | Catalog declares `x264Crf`, `x264Preset`, `gopSizeFrames`, `audioBitrateKbps`; the argv builder emits none of them | `render_catalog_v1.json:41-46` vs `ffmpegGraph.ts` (zero matches for `crf`/`preset`/`-g`) | Every render used ffmpeg's compiled-in defaults. "Deterministic output" was never true: an ffmpeg bump on the worker silently changes every customer's video while every hash, test and validator reports green. |
+
+**Why the test suite did not catch a single one.** At each of these joints the
+fixture was written from the *consumer's type declaration* rather than the
+*producer's real output* — `compile-input.test.ts:53` invents
+`{snrDbMilli, earlyEnergyRatioMilli}`, `director-summaries.test.ts:46` invents
+a flat `matchedTokenRatio`, `fixtures/editPlanFixture.ts:88` repeats the first
+invention. Every module proves it honours its own types. **Nothing proves any
+two modules are connected.**
+
+The renderer is the exception, and the reason is instructive: `validateEditPlan`
+is *the same validator on both sides of the wall*. No other joint in the system
+has that property, and every joint that lacks it is broken.
+
+> **RULE — stage-boundary contract tests.** Every producer→consumer joint gets
+> one test that feeds the producer's **actually persisted** output into the
+> consumer. Not a literal. This is the only defect class here that recurs, and
+> it is the one that hid the other three.
+
+### 9a.2 Security — one critical, fixed; three that gate later phases
+
+**FIXED 2026-08-01 (commit `6ea86ac`).** `ci-bootstrap` vends the project's
+service-role key to a GitHub-OIDC caller. Its header says "never deployed to
+prod"; `deploy-edge.yml` ran `supabase functions deploy` with **no function
+list**, which deploys every directory, and the function had **no project pin** —
+its gate checks repo/workflow/ref, never which project answered. A copy on
+production would hand out production credentials to anyone able to trigger
+`staging-integration.yml`. Fixed in two independent layers: the function now
+refuses to run anywhere but staging (checked first, before the body is parsed),
+and the deploy set is explicit and *closed* — an unclassified function fails
+the build, so a new one can neither be silently skipped nor silently shipped.
+
+> **STILL NEEDS A HUMAN WITH CONSOLE ACCESS:** set `CI_BOOTSTRAP_DISABLED=1` on
+> the production project and delete the function from it. The commit stops the
+> next deploy from re-creating it; it cannot remove what is already deployed.
+
+Three more, each of which **blocks a named later phase**:
+
+- **Nothing in the codebase ever deletes a stored recording.** No
+  `storage.remove`, no object DELETE, anywhere. Account deletion cascades the DB
+  rows; the raw takes — a person's face and voice — survive indefinitely and
+  unreferenced. Retention trims telemetry only. **Blocks Phase 11**, which adds
+  preflight capture and many more discarded retakes.
+- **`generate-blueprint` has none of the Director's injection discipline.**
+  Scraped page text and reference transcripts are concatenated into the prompt
+  with no data/instruction boundary, while `editorDirector.ts:64-65` states
+  exactly the right one. Attack path: publish a video whose speech contains
+  instructions → target pastes the link → it reaches the prompt verbatim → the
+  model's output is read aloud and posted to the creator's audience.
+  **Blocks Phase 12a (posting) and the research layer**, which turns this from
+  opportunistic into trivial.
+- **Social OAuth access + refresh tokens are plaintext at rest.** Column grants
+  are correct so clients can never read them, but any dump or service-role leak
+  buys the ability to post as every connected creator. **Blocks §7b analytics
+  scopes**, which would widen a leak from "post a video" to "read this
+  creator's whole audience".
+
+Also worth recording, because it is the correct instinct applied unevenly: the
+render half — the EditPlan contract, the argv alphabet, the ASS escaper, the
+Director's index-only protocol, the digest-pinned model/font/watermark chain —
+audited clean, with no bypass found. The risk is entirely in the perimeter.
+
+### 9a.3 Cost and measurability
+
+- **The source is downloaded three times per video**, and ~60% of unit cost is
+  storage egress. `runRenderingStage` constructs its **own**
+  `VerifiedSourceSession` (`editorRenderStage.ts:148`) writing to the exact path
+  the orchestrator's session (`editorV2.ts:536`) already downloaded to. This
+  contradicts three module headers that assert "at most ONE download per
+  attempt", and `source_downloads` on the durable record is consequently always
+  wrong. **Fix is passing one parameter.** At 1,000 videos/day it is ~$540/mo.
+- **`posts` has no join key to a render.** It has `generation_id`; one
+  generation has many `edit_projects`. So even with perfect view counts you
+  cannot say *which render* was posted. §7b calls performance feedback the only
+  real moat and says you cannot recover history you did not record — **this one
+  column is the difference, and every video posted before it exists is
+  permanently unattributable.** One `ALTER TABLE`. It is the highest-value
+  change in this document.
+- **Render timing is computed and discarded.** `RenderEvidence` carries
+  `renderMs`, `realtimeRatioMilli`, `budgetMs`, `graphSha256`; `editorV2`
+  consumes the three loudness fields and drops the rest. A render that failed
+  after burning 95% of its budget and one that failed in 2 s are
+  indistinguishable in the record. Gemini `usageMetadata` token counts are
+  parsed and dropped too, so LLM spend per project is unknown.
+- **`EDITOR_RENDER_ENABLED` defaults OFF** (`env.ts:120` requires the literal
+  `'true'`). Combined with `scaffoldBoundary`, a project can be `completed`
+  with `output_asset_id` NULL. **Any success-rate query must require a non-null
+  `output_asset_id`, never `status='completed'`.**
+- **Retention deletes the moat.** The nightly trim drops `analytics_events`
+  after 90 days. Whatever performance tables get built must be explicitly
+  excluded, *with the reason written in the migration that does the trimming*.
+
+### 9a.4 What this changes about the order of work
+
+§7's Phase 9 spends nine items polishing the render of footage nobody has ever
+recorded. That was defensible when the inputs were believed sound. They are not.
+
+**Revised order:**
+
+1. The four silent joints (§9a.1) — three are one-line fixes; #4 is a handful
+2. Stage-boundary contract tests — without these, this recurs elsewhere
+3. `posts.edit_project_id` + the decision/outcome tables — irrecoverable if delayed
+4. The single-download fix + persist `RenderEvidence` + capture token counts
+5. Media deletion and retention — **before** Phase 11 adds preflight capture
+6. The blueprint injection envelope — **before** Phase 12a posting
+7. *Then* the rest of Phase 9 (long-token wrapping, caption band vs platform UI,
+   A/V drift, `pacing`)
+
+§9's item 1 — real footage, one human, one phone — moves ahead of all of it.
+Every defect above was findable in an afternoon that way, and the pre-mortem's
+sharpest line is that a phone recording may not survive ingest at all: a
+`MediaRecorder` WebM often has no duration in its container, and
+`validateSource.ts` reads `format.duration ?? '0'` and rejects on `too_short`.
+**That one is not yet verified against a real device** — and it is the single
+cheapest thing left to check.
+
+---
+
 ## 10. CHANGE LOG
 
 | Date | Change |
 |---|---|
 | 2026-08-01 | Created. Consolidates 10-person panel (2 rounds), 3 codebase audits, Phase 8/9 rebuild, and the information-architecture critique. |
+| 2026-08-01 | Added §9a from a pre-mortem, a security/privacy audit and an efficiency/measurability audit run in parallel. Four silently-broken pipeline joints, one critical credential-vending defect (fixed), and the missing post→render join key. Reorders Phase 9: the inputs come before the polish. |
