@@ -1,0 +1,241 @@
+# The staging-matrix merge gate, triggered by the matrix FINISHING rather than
+# by a push that happens ~77 minutes before the matrix can answer.
+#
+# It reports a COMMIT STATUS (context `staging-matrix-gate`) rather than a check
+# run, and that is the entire mechanism. A commit status has a `pending` state;
+# a check run's terminal conclusions do not. The gate this replaces
+# (`staging-matrix-required` in pr-checks.yml) therefore had no way to say "the
+# evidence has not arrived yet" and had to choose between failing immediately
+# and holding a billable runner for over an hour. It failed immediately, so
+# every push to a PR produced a red X meaning "not yet", and clearing it was a
+# thing somebody had to remember to do.
+#
+# WHAT IS AND IS NOT WEAKENED. Green still requires exactly what it always
+# required: a `staging-integration` run with conclusion `success` at the exact
+# head SHA being merged. A required status in `pending` blocks a merge exactly
+# as a failure does, so no head that was unmergeable before becomes mergeable
+# now. No run at all stays `pending` forever rather than drifting green —
+# silence is not evidence. All of that is in scripts/ci/staging_matrix_gate.mjs
+# with a selftest; this file only does HTTP.
+#
+# ── THE ONE MANUAL STEP THIS PR CANNOT DO FOR YOU ──────────────────────────
+# Branch protection currently requires the check named `staging-matrix-required`.
+# That job is deleted by this change, and a required check that never reports
+# leaves every PR blocked on "Expected — waiting for status to be reported".
+# So when this merges, update branch protection on `main` in the same sitting:
+#   remove the required check   staging-matrix-required
+#   add the required status     staging-matrix-gate
+# Nothing in a workflow file can change branch protection — it is an admin
+# setting, by design.
+#
+# ── AND THE ONE THING THAT ONLY WORKS AFTER MERGE ──────────────────────────
+# `workflow_run` workflows always execute the DEFAULT BRANCH's copy of the file.
+# Until this is on `main`, the completion-triggered half cannot fire at all; the
+# `pull_request` half runs normally from the PR branch. That is a property of
+# the trigger, not of this file, and it means this gate's own PR is judged by
+# the old rules.
+name: staging-matrix-gate
+
+on:
+  # The authoritative signal: the matrix concluded, so the answer now exists.
+  # Costs seconds, fires once per matrix run, and reports the truth.
+  workflow_run:
+    workflows: ['staging-integration']
+    types: [completed]
+  # The PR-time half exists so a PR gets a status at all — otherwise a required
+  # status that has never been posted reads as "expected, never reported" with
+  # no explanation of what is missing. It answers with whatever is already true
+  # (usually `pending`) and never waits.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Per head SHA, not per PR: the workflow_run and pull_request halves both judge
+# a SHA, and the later verdict on a given SHA is the one that should stand.
+# Not cancel-in-progress — an in-flight run posting a status takes seconds, and
+# cancelling it could leave the status stale.
+concurrency:
+  group: staging-matrix-gate-${{ github.event.workflow_run.head_sha || github.event.pull_request.head.sha }}
+  cancel-in-progress: false
+
+permissions:
+  statuses: write
+  actions: read
+  contents: read
+  pull-requests: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      # THE GATE'S OWN LOGIC IS TAKEN FROM THE BASE BRANCH, NEVER FROM THE PR.
+      # On a `pull_request` event the default checkout is the PR's head, which
+      # would let a PR ship its own exemption rules and then be judged by them —
+      # e.g. widening the documentation allowlist to match every file, and
+      # merging having proven nothing. Checking out `base.sha` means a PR is
+      # always judged by the rules already on main. On `workflow_run` the
+      # default checkout is already the default branch.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || '' }}
+
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }   # the gate script is plain ESM, no deps
+
+      - name: Resolve the head under judgement
+        id: head
+        env:
+          EVENT: ${{ github.event_name }}
+          WR_SHA: ${{ github.event.workflow_run.head_sha }}
+          WR_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          PR_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = "workflow_run" ]; then
+            SHA="$WR_SHA"
+            echo "staging-integration concluded '$WR_CONCLUSION' at $SHA"
+          else
+            SHA="$PR_SHA"
+            # A fork PR's GITHUB_TOKEN is read-only, so the status POST below
+            # would 403 and the gate would never report — leaving the PR blocked
+            # with no visible reason. Say so loudly instead of failing opaquely.
+            if [ "$PR_HEAD_REPO" != "$REPO" ]; then
+              echo "::error::This PR's head is on a fork ($PR_HEAD_REPO). The pull_request token cannot write commit statuses, so this gate cannot report on it. Push the branch to $REPO."
+              exit 1
+            fi
+            echo "PR head under merge: $SHA"
+          fi
+          if [ -z "$SHA" ]; then
+            echo "::error::Could not resolve a head SHA from a '$EVENT' event. Failing closed."
+            exit 1
+          fi
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      # Only the PR half classifies. On a workflow_run the matrix has actually
+      # run, so whether it was *required* is moot — a real result is a real
+      # result, and recording it is never wrong.
+      - name: Decide whether this PR needs the matrix at all
+        id: scope
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          # Paginated deliberately: `per_page` is silently CAPPED AT 100 by
+          # GitHub, so an unpaginated query classifies a >100-file PR on a
+          # truncated list. Any failure to enumerate the diff fails this check
+          # rather than exempting it.
+          : > /tmp/pr_files.txt
+          PAGE=1
+          while :; do
+            RESP=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$REPO/pulls/$PR/files?per_page=100&page=$PAGE")
+            N=$(printf '%s' "$RESP" | jq 'if type=="array" then length else -1 end')
+            if [ "$N" -lt 0 ]; then
+              echo "::error::Could not enumerate the PR's changed files (page $PAGE). Failing closed — this gate will not pass on an unknown diff."
+              exit 1
+            fi
+            [ "$N" -eq 0 ] && break
+            printf '%s' "$RESP" | jq -r '.[].filename' >> /tmp/pr_files.txt
+            [ "$N" -lt 100 ] && break
+            PAGE=$((PAGE + 1))
+            if [ "$PAGE" -gt 50 ]; then
+              echo "::error::PR exceeds 5000 changed files; refusing to classify. Failing closed."
+              exit 1
+            fi
+          done
+          echo "changed files:"; sed 's/^/  /' /tmp/pr_files.txt
+          # BOOTSTRAP: on the PR that introduces this gate, `base.sha` predates
+          # the script, so the checkout above has no copy of it. Absent rules
+          # mean the matrix is REQUIRED — the fail-closed direction. It must
+          # never mean "exempt", which is how a missing file usually behaves.
+          if [ ! -f scripts/ci/staging_matrix_gate.mjs ]; then
+            echo "::warning::No gate script on the base branch yet (this is the PR that adds it). Treating the matrix as REQUIRED."
+            echo "required=1" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/ci/staging_matrix_gate.mjs --classify --files /tmp/pr_files.txt
+
+      - name: Read the staging-integration runs at this head
+        id: verdict
+        if: github.event_name == 'workflow_run' || steps.scope.outputs.required == '1'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.head.outputs.sha }}
+        run: |
+          set -euo pipefail
+          # ONLY runs at this exact SHA. A run on an ancestor commit does not
+          # count: the point of the gate is that the bytes being merged are the
+          # bytes that were proven.
+          curl -sS -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$REPO/actions/workflows/staging-integration.yml/runs?head_sha=$HEAD_SHA&per_page=100" \
+            > /tmp/runs.json
+          if [ ! -f scripts/ci/staging_matrix_gate.mjs ]; then
+            # Same bootstrap case as above, and the same fail-closed direction:
+            # report pending, which blocks the merge and explains itself.
+            echo "state=pending" >> "$GITHUB_OUTPUT"
+            echo "description=Gate script not on the base branch yet; cannot evaluate. Blocking." >> "$GITHUB_OUTPUT"
+            echo "target_url=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          node scripts/ci/staging_matrix_gate.mjs --verdict --runs /tmp/runs.json
+
+      # The documentation-only exemption. Reported as an explicit success rather
+      # than by skipping, because a required status that is never posted blocks
+      # forever — "not applicable" has to be said out loud.
+      - name: Post the verdict
+        if: always() && steps.head.outputs.sha != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ steps.head.outputs.sha }}
+          STATE: ${{ steps.verdict.outputs.state }}
+          DESCRIPTION: ${{ steps.verdict.outputs.description }}
+          TARGET_URL: ${{ steps.verdict.outputs.target_url }}
+          EXEMPT: ${{ steps.scope.outputs.required == '0' }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EXEMPT" = "true" ]; then
+            STATE=success
+            DESCRIPTION="Documentation-only PR — the staging matrix cannot prove anything about it."
+            TARGET_URL="$RUN_URL"
+          fi
+          # A missing verdict means an earlier step failed. Never silently pass:
+          # post `error`, which blocks the merge and points at this run's log.
+          if [ -z "${STATE:-}" ]; then
+            STATE=error
+            DESCRIPTION="The gate could not reach a verdict — see the workflow log."
+            TARGET_URL="$RUN_URL"
+          fi
+          [ -z "${TARGET_URL:-}" ] && TARGET_URL="$RUN_URL"
+          echo "posting $STATE on $HEAD_SHA: $DESCRIPTION"
+          CODE=$(jq -n \
+            --arg state "$STATE" \
+            --arg description "$DESCRIPTION" \
+            --arg target_url "$TARGET_URL" \
+            --arg context 'staging-matrix-gate' \
+            '{state:$state, description:$description, target_url:$target_url, context:$context}' \
+          | curl -sS -o /tmp/status_resp.json -w '%{http_code}' \
+              -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$REPO/statuses/$HEAD_SHA" \
+              -d @-)
+          if [ "$CODE" != "201" ]; then
+            echo "::error::Posting the commit status failed with HTTP $CODE. The gate has no way to report, so this run fails rather than appearing to have passed."
+            cat /tmp/status_resp.json
+            exit 1
+          fi
+          # A gate that reports `error`/`failure` should itself be red in the
+          # Actions list, so a scan of recent runs shows the real state.
+          case "$STATE" in
+            success|pending) ;;
+            *) echo "::error::Gate verdict: $STATE — $DESCRIPTION"; exit 1 ;;
+          esac

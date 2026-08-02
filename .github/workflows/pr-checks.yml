@@ -144,6 +144,12 @@ jobs:
         run: |
           node scripts/ci/check_single_deploy_path.mjs --selftest
           node scripts/ci/check_single_deploy_path.mjs
+      # The merge gate decides whether a head may land at all, so its predicates
+      # are exercised here rather than only in production. The cases that matter
+      # are the fail-closed ones: no matrix run must read as "wait", never as
+      # "fine", and an unrecognised conclusion must never read as success.
+      - name: Staging-matrix gate predicates (offline selftest — silence is never a pass)
+        run: node scripts/ci/staging_matrix_gate.mjs --selftest
       - name: VPS sign-off assertion logic (offline selftest — bad states must fail)
         run: bash worker/scripts/vps_signoff_assert.sh --selftest
       - name: VPS-diag authority (no caller SHA override; pinned strict host key)
@@ -303,116 +309,34 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: node scripts/director-eval/count_tokens.mjs
 
-  # The gate that was missing when PR #200 merged. `staging-integration` runs the
-  # REAL Phase 1-7 matrix (live Gemini call, real ASR, real ffprobe, migrations
-  # applied to the staging database) — but it only triggers on push to
-  # `rebuild/editor-v2-*` or manual dispatch. A head that lands via any other branch
-  # can therefore merge having proven nothing beyond typechecks.
+  # ── `staging-matrix-required` LIVED HERE AND HAS MOVED ────────────────────
+  # It is now .github/workflows/staging-matrix-gate.yml, reporting the commit
+  # status `staging-matrix-gate`, and it is NOT the same trigger.
   #
-  # That is not hypothetical: #200 merged on `a2cd85f` with PR checks only, carrying a
-  # Phase-6 assertion (D1, the oversized-script guard) that had silently stopped
-  # testing anything — it fed a huge generation to an origin='upload' source, which
-  # can never be oversize, so the project just completed. The matrix would have caught
-  # it; the matrix was never run on that head.
+  # WHAT IT DID, AND WHY IT IS NOT COMING BACK IN THIS FILE. `staging-integration`
+  # runs the REAL Phase 1-7 matrix (live Gemini call, real ASR, real ffprobe,
+  # migrations applied to the staging database) but only triggers on push to
+  # `rebuild/editor-v2-*` or manual dispatch. A head that lands via any other
+  # branch could therefore merge having proven nothing beyond typechecks. That
+  # is not hypothetical: #200 merged on `a2cd85f` with PR checks only, carrying
+  # a Phase-6 assertion (D1, the oversized-script guard) that had silently
+  # stopped testing anything. The matrix would have caught it; the matrix was
+  # never run on that head. So the gate stays, and it is still the merge
+  # requirement — it just cannot live on `pull_request`.
   #
-  # This job makes the matrix the GATE rather than something we remember to run. It is
-  # deliberately NOT a `pull_request` trigger on staging-integration itself: that would
-  # fire a ~45-minute run costing real Gemini + real ASR on every push to every PR,
-  # and the concurrency group serialises them against ONE shared staging project.
-  # Instead: run the matrix when you want (push to a phase branch, or dispatch), and
-  # this check simply refuses to go green until a SUCCESSFUL run exists for the exact
-  # head being merged.
-  staging-matrix-required:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    permissions:
-      actions: read
-      contents: read
-    steps:
-      - name: Decide whether this PR needs the matrix
-        id: scope
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          # STRICT ALLOWLIST, FAIL CLOSED. The matrix is REQUIRED unless every changed
-          # file is provably incapable of altering runtime behaviour — documentation,
-          # and nothing else.
-          #
-          # An earlier version exempted `.github/*` wholesale. That was wrong: it
-          # exempted deploy-worker.yml and deploy-edge.yml, so a change to WHAT GETS
-          # DEPLOYED TO PRODUCTION could bypass the gate. CI config is not
-          # "non-runtime" — it decides what runs.
-          #
-          # It also used per_page=300, which GitHub silently CAPS AT 100, so a PR
-          # touching more than 100 files was classified on a truncated list. Now
-          # paginated; and any failure to enumerate the diff fails this check rather
-          # than exempting it.
-          : > /tmp/pr_files.txt
-          PAGE=1
-          while :; do
-            RESP=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
-              -H 'Accept: application/vnd.github+json' \
-              "https://api.github.com/repos/$REPO/pulls/$PR/files?per_page=100&page=$PAGE")
-            N=$(printf '%s' "$RESP" | jq 'if type=="array" then length else -1 end')
-            if [ "$N" -lt 0 ]; then
-              echo "::error::Could not enumerate the PR's changed files (page $PAGE). Failing closed — this check will not pass on an unknown diff."
-              exit 1
-            fi
-            [ "$N" -eq 0 ] && break
-            printf '%s' "$RESP" | jq -r '.[].filename' >> /tmp/pr_files.txt
-            [ "$N" -lt 100 ] && break
-            PAGE=$((PAGE + 1))
-            if [ "$PAGE" -gt 50 ]; then
-              echo "::error::PR exceeds 5000 changed files; refusing to classify. Failing closed."
-              exit 1
-            fi
-          done
-          COUNT=$(grep -c . /tmp/pr_files.txt || true)
-          if [ "${COUNT:-0}" -eq 0 ]; then
-            echo "::error::Resolved zero changed files. That is an API problem or an empty PR; neither is evidence of safety. Failing closed."
-            exit 1
-          fi
-          echo "changed files ($COUNT):"; sed 's/^/  /' /tmp/pr_files.txt
-          NEEDED=0
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            case "$f" in
-              docs/*|*.md|LICENSE|.github/ISSUE_TEMPLATE/*|.github/PULL_REQUEST_TEMPLATE*) ;;
-              *) NEEDED=1 ;;
-            esac
-          done < /tmp/pr_files.txt
-          echo "needed=$NEEDED" >> "$GITHUB_OUTPUT"
-          if [ "$NEEDED" = "0" ]; then
-            echo "Documentation-only PR — the editor matrix cannot prove anything about it. Skipping."
-          else
-            echo "This PR touches runtime-capable files. A successful staging-integration run on THIS exact head is REQUIRED."
-          fi
-
-      - name: Require a successful staging-integration run on THIS head
-        if: steps.scope.outputs.needed == '1'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          REPO: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          echo "head under merge: $HEAD_SHA"
-          # Ask ONLY for runs of this workflow at this exact SHA. A run on an ancestor
-          # commit does not count: the whole point is that the bytes being merged are
-          # the bytes that were proven.
-          RESP=$(curl -sS -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/$REPO/actions/workflows/staging-integration.yml/runs?head_sha=$HEAD_SHA&per_page=100")
-          TOTAL=$(printf '%s' "$RESP" | jq -r '.total_count // 0')
-          OK=$(printf '%s' "$RESP" | jq -r '[.workflow_runs[]? | select(.conclusion=="success")] | length')
-          echo "staging-integration runs at this head: $TOTAL (successful: $OK)"
-          printf '%s' "$RESP" | jq -r '.workflow_runs[]? | "  \(.status)/\(.conclusion // "-")  \(.html_url)"'
-          if [ "${OK:-0}" -ge 1 ]; then
-            echo "OK: the Phase 1-7 staging matrix passed on the exact head being merged."
-            exit 0
-          fi
-          echo "::error::No SUCCESSFUL staging-integration run exists for head $HEAD_SHA. The Phase 1-7 matrix is what proves this change against real infrastructure — migrations on a real database, real ASR, and the live Director call. Unit tests and Gate-D cannot substitute: every defect found in the Phase-7 exit round was invisible to them. To clear this check, run the matrix on THIS head (push the branch as rebuild/editor-v2-<name>, or dispatch staging-integration against it) and let it pass. Do not merge around this check."
-          exit 1
+  # THE REASON IT CANNOT. This job ran at PUSH time and demanded a SUCCESSFUL
+  # matrix run at the exact head. The matrix takes ~77 minutes. There is no
+  # value of any timeout that fixes that: the check could only fail an hour
+  # early or hold a billable runner for the hour and then usually fail anyway.
+  # It failed early, so every push produced a red X meaning "not yet" and a
+  # human had to re-run it later. A `check run` has no `pending` conclusion to
+  # express "not answered yet"; a `commit status` does, which is why the
+  # replacement reports a status and is triggered by the matrix COMPLETING.
+  #
+  # The green condition is unchanged: a `staging-integration` run with
+  # conclusion `success` at the exact head being merged.
+  #
+  # BRANCH PROTECTION MUST BE UPDATED WHEN THIS MERGES — remove the required
+  # check `staging-matrix-required`, add the required status
+  # `staging-matrix-gate`. A required check that no longer reports leaves every
+  # PR blocked on "Expected — waiting for status to be reported".
