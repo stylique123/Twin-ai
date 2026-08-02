@@ -526,6 +526,40 @@ time-gating (#235) · loudness measurement (#236)
       stored or in flight breaks.
 
 ### Phase 10 — stop guessing
+
+**STATUS (measured, not remembered):**
+
+| item | state |
+|---|---|
+| Provenance stamping on every DNA field | **done** |
+| Script-anchored forced alignment | **engine built + 29 tests; NOT wired into the pipeline** |
+| Onboarding questions + confirm screen | not started |
+| Transcript-as-editor review gate | not started |
+| Failure path (explain, retain footage, retry without refilming) | not started |
+
+**A CORRECTION WORTH KEEPING.** During the Phase-9 close I reported that the
+live Director call was broken in staging, on the strength of phase-7 failures
+showing `state=unknown`. That was WRONG, and the way it was wrong is the
+instructive part.
+
+`unknown` is a DESIGNED state: it means a worker died with a model call in
+flight, so the system refuses to guess whether the model answered. Phase 7
+CREATES that state on purpose — it kills a worker mid-call to prove crash
+recovery works. Reading the table directly shows the signature plainly: exactly
+one `unknown` and one `received` per run, bracketed by successes, identical
+across separate runs. Overall 222 succeeded against 77 unknown.
+
+So a healthy, deliberately-induced state was read as a fault, an alarm was
+raised on it, and a revert (`ef4282c`, restoring `music`) was applied on
+correlation rather than on understanding. The revert is harmless — the plan
+contract refuses any non-null `audio.music` regardless — but it was not
+justified by what the evidence actually said.
+
+The general lesson, which applies well beyond this incident: a state named
+`unknown` is not automatically a failure, and a NULL `failure_code` beside it
+was CORRECT rather than missing. Read what a state MEANS in its own schema
+before treating it as a defect.
+
 1. Provenance stamping on every DNA field
 2. Onboarding questions during the scan + confirm screen
 3. **Script-anchored forced alignment** *(largest single accuracy win — fixes
