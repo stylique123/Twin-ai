@@ -709,16 +709,7 @@ export const MAX_DECISION_SUMMARY_CHARS = 2000
 // positional in the envelope), bounded so the decision stays small.
 export const MAX_EMPHASIS_WORDS = 40
 export const DECISION_PACING = ['calm', 'balanced', 'punchy'] as const
-// DECISION_MUSIC IS GONE. The Director used to pick none/subtle/energetic and
-// nothing existed to act on it: there is no music asset pipeline, no licensing
-// path, and the plan contract refuses any plan whose audio.music is not null
-// ("only null is permitted in this epoch"). So the model was being asked a
-// question the renderer is built to reject. Wiring it would mean building a
-// music system; asking it was the only part that was free, and free is not the
-// same as harmless — it spends tokens and implies a capability we do not have.
-// A decision that still carries `music` is simply ignored: this parser reads
-// known keys and does not reject unknown ones, so no stored or in-flight
-// decision breaks.
+export const DECISION_MUSIC = ['none', 'subtle', 'energetic'] as const
 // Hook treatment: 'keep' the real opening, or 'open_at_word' — start on a real spoken
 // word (dropping greeting/preamble BEFORE it). The word is referenced by index and must
 // exist, so a hook can never be fabricated.
@@ -742,6 +733,7 @@ export interface RawDirectorDecision {
   keptBoundaries?: number[]
   summary?: string
   pacing?: string
+  music?: string
   emphasisWordIndices?: number[]
   hookTreatment?: string
   hookStartWordIndex?: number
@@ -801,6 +793,7 @@ export interface DirectorZoomRequest {
   reasonCode: ZoomReasonCode
 }
 export type DecisionPacing = (typeof DECISION_PACING)[number]
+export type DecisionMusic = (typeof DECISION_MUSIC)[number]
 export type DecisionHook = (typeof DECISION_HOOK)[number]
 export interface DirectorDecision {
   schemaVersion: number
@@ -808,6 +801,7 @@ export interface DirectorDecision {
   keptBoundaries: number[]
   summary: string
   pacing: DecisionPacing
+  music: DecisionMusic
   emphasisWordIndices: number[]
   hookTreatment: DecisionHook
   hookStartWordIndex: number | null
@@ -839,6 +833,7 @@ export function directorResponseSchema(): Record<string, unknown> {
       keptBoundaries: { type: 'array', items: { type: 'integer' } },
       summary: { type: 'string' },
       pacing: { type: 'string', enum: [...DECISION_PACING] },
+      music: { type: 'string', enum: [...DECISION_MUSIC] },
       emphasisWordIndices: { type: 'array', items: { type: 'integer' } },
       hookTreatment: { type: 'string', enum: [...DECISION_HOOK] },
       hookStartWordIndex: { type: 'integer' },
@@ -925,6 +920,11 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
   if ('pacing' in raw && raw.pacing !== undefined) {
     if (!(DECISION_PACING as readonly unknown[]).includes(raw.pacing)) failDecision(`decision: bad pacing ${String(raw.pacing)}`, 'director_decision_bad_pacing')
     pacing = raw.pacing as DecisionPacing
+  }
+  let music: DecisionMusic = 'none'
+  if ('music' in raw && raw.music !== undefined) {
+    if (!(DECISION_MUSIC as readonly unknown[]).includes(raw.music)) failDecision(`decision: bad music ${String(raw.music)}`, 'director_decision_bad_music')
+    music = raw.music as DecisionMusic
   }
   let emphasisWordIndices: number[] = []
   if ('emphasisWordIndices' in raw && raw.emphasisWordIndices !== undefined) {
@@ -1015,5 +1015,5 @@ export function validateDirectorDecision(raw: unknown, envelope: DirectorEnvelop
     })
   }
 
-  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary, pacing, emphasisWordIndices, hookTreatment, hookStartWordIndex, visualWasteSelections, captionPresetId, transitionPolicy, zoomRequests }
+  return { schemaVersion: DIRECTOR_DECISION_SCHEMA_VERSION, selections, keptBoundaries, summary, pacing, music, emphasisWordIndices, hookTreatment, hookStartWordIndex, visualWasteSelections, captionPresetId, transitionPolicy, zoomRequests }
 }

@@ -6,7 +6,7 @@
 // (which retries). Model is the frozen DIRECTOR_MODEL constant, never env.
 import { env } from '../env.js'
 import {
-  DIRECTOR_MODEL, DECISION_PACING, DECISION_HOOK,
+  DIRECTOR_MODEL, DECISION_PACING, DECISION_MUSIC, DECISION_HOOK,
   CAPTION_PRESET_IDS, TRANSITION_POLICIES, ZOOM_INTENSITIES, ZOOM_REASON_CODES,
   DIRECTOR_MAX_OUTPUT_TOKENS, DIRECTOR_THINKING_BUDGET_TOKENS,
 } from './directorContract.js'
@@ -35,6 +35,7 @@ export const RESPONSE_SCHEMA = {
     keptBoundaries: { type: 'ARRAY', items: { type: 'INTEGER' } },
     summary: { type: 'STRING' },
     pacing: enumStr(DECISION_PACING),
+    music: enumStr(DECISION_MUSIC),
     emphasisWordIndices: { type: 'ARRAY', items: { type: 'INTEGER' } },
     hookTreatment: enumStr(DECISION_HOOK),
     hookStartWordIndex: { type: 'INTEGER' },
