@@ -78,6 +78,13 @@ describe('boot manifest', () => {
   const CAP_SHA = 'c'.repeat(64)
   const v2opts = { inspectorVersion: 'inspect-1', speechVersion: 'speech-6', brandSnapshot: { schemaVersion: 1, visual: { colorsSource: 'none' } }, brandSnapshotSha: BRAND_SHA, captureManifestSha: CAP_SHA }
 
+  // 30s, not the 5s default. This test HASHES REAL FILES to build the manifest
+  // digests, so its runtime tracks how busy the machine is rather than anything
+  // about the code. It timed out once at 5s on a loaded CI box while passing in
+  // 5.2s moments earlier — and a suite that fails randomly is worse than a slow
+  // one, because the next genuine failure gets waved through as "probably just
+  // load". The number is deliberately far above the observed cost rather than
+  // just above it; this bound exists to catch a hang, not to police speed.
   it('builds a complete v2 manifest with digests, epoch-2 pins and a canonical sha', async () => {
     const built = await buildBootManifest(v2opts)
     const m = built.manifest as Record<string, any>
@@ -115,7 +122,7 @@ describe('boot manifest', () => {
     expect(m.build.workerCommit).toMatch(/^[0-9a-f]{40}$/)
     expect(m.build.dockerfileSha256).toMatch(/^[0-9a-f]{64}$/)
     expect(m.build.dependencyLockSha256).toMatch(/^[0-9a-f]{64}$/)
-  })
+  }, 30_000)
 
   it('fails closed when the deployed commit provenance is missing/invalid', async () => {
     const saved = process.env.WORKER_GIT_SHA
