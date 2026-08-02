@@ -84,6 +84,8 @@ export interface AssStyleOptions {
   fontName: string
   fontSizePx: number
   marginVerticalPx: number
+  /** Left/right inset. Defaults to the historical 40 when a caller omits it. */
+  marginHorizontalPx?: number
   emphasisColourAss: string
   // The caption's own text color — brand-resolved-or-catalog-default is decided
   // by the caller (editorRenderStage.ts), never here; this file only ever
@@ -145,6 +147,7 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
   if (!/^&H[0-9A-Fa-f]{8}$/.test(style.primaryColourAss)) {
     throw new EditPlanError('ass: primary colour is not a plain &HAABBGGRR value', 'render_font_integrity_failed')
   }
+  const mh = style.marginHorizontalPx ?? 40
   const lines: string[] = [
     '[Script Info]',
     `ScriptType: ${ASS_SCRIPT_TYPE}`,
@@ -158,7 +161,7 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
       + ' Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline,'
       + ' Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
     `Style: ${ASS_STYLE_NAME},${style.fontName},${style.fontSizePx},${style.primaryColourAss},${style.primaryColourAss},&H00000000,`
-      + `&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,40,40,${style.marginVerticalPx},1`,
+      + `&H64000000,-1,0,0,0,100,100,0,0,1,4,0,2,${mh},${mh},${style.marginVerticalPx},1`,
   ]
   // The VISUAL HOOK gets its OWN style rather than reusing the caption style
   // with per-event margin overrides. Alignment differs (8 = top-centre, against
@@ -169,7 +172,7 @@ export function renderAssDocument(plan: EditPlanV1, style: AssStyleOptions): str
   if (style.title) {
     lines.push(
       `Style: ${ASS_TITLE_STYLE_NAME},${style.fontName},${style.title.fontSizePx},${style.primaryColourAss},${style.primaryColourAss},&H00000000,`
-      + `&H64000000,-1,0,0,0,100,100,0,0,1,6,0,8,40,40,${style.title.marginTopPx},1`,
+      + `&H64000000,-1,0,0,0,100,100,0,0,1,6,0,8,${mh},${mh},${style.title.marginTopPx},1`,
     )
   }
   lines.push(
@@ -247,7 +250,7 @@ export function buildAssCaptions(
   // which carries WHAT to show and not how big to draw it.
   opts: {
     fontName: string; emphasisColourAss?: string; primaryColourAss?: string
-    titleFontSizePx?: number; titleMarginTopPx?: number
+    titleFontSizePx?: number; titleMarginTopPx?: number; marginHorizontalPx?: number
   },
 ): {
   document: string; sha256: string; eventCount: number
@@ -258,6 +261,7 @@ export function buildAssCaptions(
     fontName: opts.fontName,
     fontSizePx: plan.captions.fontSizePx,
     marginVerticalPx: plan.captions.marginVerticalPx,
+    marginHorizontalPx: opts.marginHorizontalPx,
     title: plan.hook.title
       ? {
           text: plan.hook.title.text,

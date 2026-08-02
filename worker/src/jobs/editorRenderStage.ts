@@ -25,6 +25,7 @@
 // can be passed is a path that can be wrong, the second because 0094 shipped a
 // completion that took an asset id with nothing able to create one, and the fix
 // was an RPC rather than an unfenced insert.
+import { loadEditPolicy } from './editorCompile.js'
 import { writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { PermanentJobError } from '../errors.js'
@@ -143,10 +144,25 @@ function writeAssDocument(
     fontName: preset.fontFamily,
     fontSizePx: plan.captions.fontSizePx,
     marginVerticalPx: plan.captions.marginVerticalPx,
+    // Left/right inset comes from the frozen policy, not the plan: it is a
+    // DRAWING parameter like the font, and the plan carries what to show
+    // rather than how wide to draw it. Measured from a real feed screenshot —
+    // the like/comment rail sits ~100px in from the right edge, and the old
+    // hardcoded 40 let a wide line run underneath it.
+    marginHorizontalPx: loadEditPolicy().captions.marginHorizontalPx,
+    title: plan.hook.title
+      ? {
+          text: plan.hook.title.text,
+          startMs: plan.hook.title.outputStartMs,
+          endMs: plan.hook.title.outputEndMs,
+          fontSizePx: loadEditPolicy().titleHook.fontSizePx,
+          marginTopPx: loadEditPolicy().titleHook.marginTopPx,
+        }
+      : null,
     emphasisColourAss,
     primaryColourAss,
   })
-  assertNoOverrideBlock(doc, plan.captions.cues.length, emphasisColourAss)
+  assertNoOverrideBlock(doc, plan.captions.cues.length + (plan.hook.title ? 1 : 0), emphasisColourAss)
   const path = join(workDir, 'captions.ass')
   writeFileSync(path, doc, 'utf8')
   return { path, colourRejections: rejected }

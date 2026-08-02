@@ -245,7 +245,25 @@
     "video ends, and the words it shows finished before that."
   ],
   "tailGuardMs": 250,
-  "maxCues": 1000,
+  "_marginHorizontalComment": [
+      "How far a caption line stops short of the LEFT and RIGHT edges.",
+      "Was 40, hardcoded in assCaptions.ts. MEASURED from a real TikTok feed",
+      "screenshot: the like/comment/share rail sits about 100 px in from the",
+      "right edge, so a wide centred line at a 40 px margin runs UNDER the",
+      "buttons. 140 clears the rail with room, and because the style is centred",
+      "it costs a little width on both sides rather than shifting the text",
+      "off-centre.",
+      "",
+      "marginVerticalPx went 320/360 -> 600 in the same change, and that one is",
+      "the bigger fix: Instagram stacks a comment bar, a likes row, a username",
+      "row and the caption itself, reaching ~500-650 px up in frame",
+      "coordinates. Captions at 320 were underneath all of it. 600 is chosen",
+      "high on purpose -- slightly too high still looks fine, hidden ruins the",
+      "video -- and is provisional until the safe-zone ruler gives the exact",
+      "number."
+    ],
+    "marginHorizontalPx": 140,
+    "maxCues": 1000,
     "maxLinesPerCue": 2,
     "presetIds": [
       "caption-clean-keyword-v1",
@@ -260,7 +278,7 @@
         "maxCueDurationMs": 4000,
         "maxCharsPerSecondMilli": 20000,
         "fontSizePx": 72,
-        "marginVerticalPx": 320
+        "marginVerticalPx": 600
       },
       "caption-punchy-word-v1": {
         "maxWordsPerCue": 2,
@@ -269,7 +287,7 @@
         "maxCueDurationMs": 2500,
         "maxCharsPerSecondMilli": 24000,
         "fontSizePx": 88,
-        "marginVerticalPx": 360
+        "marginVerticalPx": 600
       },
       "caption-minimal-subtitle-v1": {
         "maxWordsPerCue": 8,
@@ -278,7 +296,7 @@
         "maxCueDurationMs": 5000,
         "maxCharsPerSecondMilli": 17000,
         "fontSizePx": 56,
-        "marginVerticalPx": 320
+        "marginVerticalPx": 600
       }
     }
   },

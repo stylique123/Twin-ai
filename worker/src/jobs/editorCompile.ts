@@ -87,6 +87,8 @@ export interface EditPolicyV1 {
   }
   captions: {
     maxCues: number; maxLinesPerCue: number; presetIds: string[]
+    /** Left/right inset for a caption line. */
+    marginHorizontalPx: number
     /** How far before the end of the video the LAST caption must finish. */
     tailGuardMs: number
     presets: Record<string, CaptionPresetPolicy>
