@@ -798,7 +798,36 @@ before treating it as a defect.
            (400000) already spends most of. Cheap to build, not cheap to land —
            and worth doing as one deliberate `alignment-2` rather than smuggled
            in beside something else.
-     - [ ] **Exact `hookStartWordIndex`** — today the hook component reports
+     - [x] **Exact hook boundary — BUILT, and landed FROZEN OFF.**
+           `scriptStartSpokenIndex` (scriptAlignment.ts) gives the spoken word
+           index at which the SCRIPT actually starts; everything before it is
+           preamble — settling into frame, "hey guys welcome back", clearing the
+           throat. That is the boundary `hookStartWordIndex` needs.
+           **It does not depend on `snapshot.hook`, and could not.**
+           `spokenScriptFromSnapshot` builds the aligned script from scene
+           DIALOGUE and ignores the hook field, so the hook line is not reliably
+           part of what alignment sees. The first-script-word boundary is
+           derivable without it and is the more useful fact anyway.
+           Matches on `startMs` ALONE: the Director's envelope projects words
+           without `endMs` (`SpeechWordLike`), and reaching around that
+           projection would use a shape the envelope has decided not to expose.
+           A start claimed by two words yields null rather than a guess — an
+           index on the wrong word opens the video in the wrong place.
+           **`DIRECTOR_SEES_ALIGNMENT` is FALSE, and that is the safety
+           property.** Adding a field to `summaries` changes the envelope bytes,
+           therefore `envelopeSha256`, therefore what the model sees — which is
+           what the director-eval harness and quality gate exist to judge. So the
+           plumbing lands with the envelope PROVABLY byte-identical (a test
+           compares summaries with and without the component; the field is
+           omitted rather than set to null, because a null key still moves the
+           bytes). **Flipping the flag IS the eval**, and it is one line.
+           With the flag on the Director gains
+           `hook.scriptStartWordIndex` beside the existing `matchedTokenRatio`
+           — *where* the script begins, next to *how much* of the hook was said.
+           A test pins `consumedByDirector` to the flag, so the catalog and the
+           code cannot drift apart in either direction.
+     - [ ] ~~**Exact `hookStartWordIndex`**~~ *(superseded above; the analysis is
+           kept because it is what produced the design)* — today the hook component reports
            `matchedTokenRatio`, an UNORDERED multiset intersection between the
            hook's tokens and the opening window. That is a similarity score, not
            a boundary: it says how much of the hook was said, never where it

@@ -38,6 +38,7 @@ import {
   type DirectorEnvelope, type EnvVisualWaste, type SpeechBoundaryLike, type SpeechCandidateLike, type SpeechWordLike,
 } from './directorContract.js'
 import { callDirectorOnce, DirectorProviderError, type DirectorProviderResult } from './directorProvider.js'
+import { scriptStartSpokenIndex } from './scriptAlignment.js'
 
 export interface DirectorOutcome {
   reused: boolean            // a prior succeeded decision was reused (no call)
@@ -106,10 +107,32 @@ const finite = (v: unknown): number | null => (typeof v === 'number' && Number.i
 // evidence (never raw component JSON), plus the ALLOWED Decision-v2 catalogs and the
 // frozen feature flags. brand states exactly what is confirmed vs none. Bounded by
 // MAX_SUMMARY_BYTES (validateDirectorEnvelope enforces the cap fail-closed).
+// ── THE DIRECTOR AND THE ALIGNMENT COMPONENT ───────────────────────────────
+// FROZEN OFF, and that is the entire safety property of this change.
+//
+// Alignment can tell the Director something it has never had: the spoken word
+// index where the SCRIPT actually starts, so `hookStartWordIndex` can be an
+// exact boundary instead of a guess informed by an unordered token ratio.
+//
+// But adding a field to `summaries` changes the envelope bytes, therefore
+// envelopeSha256, therefore what the model sees — and this project has a
+// director-eval harness and a quality gate precisely because that is not a
+// judgement to make by reasoning. So the plumbing lands with the flag FALSE:
+// the envelope is byte-identical, no decision changes, and nothing needs an
+// eval to merge. Flipping this to true IS the eval, and it is a one-line
+// change rather than a feature to write under time pressure.
+//
+// While it is false the component catalog's `consumedByDirector: false` for
+// alignment remains exactly true. A test pins that relationship, so the two
+// cannot drift apart in either direction.
+export const DIRECTOR_SEES_ALIGNMENT = false
+
 export function buildDirectorSummaries(
   brandSummary: unknown, visual: Record<string, unknown> | null,
   audio: Record<string, unknown> | null, hook: Record<string, unknown> | null,
   visualWaste: EnvVisualWaste[],
+  alignmentArg: Record<string, unknown> | null = null,
+  words: ReadonlyArray<{ startMs: number }> = [],
 ): Record<string, unknown> {
   const shot = Array.isArray((visual as { shotBoundaries?: unknown } | null)?.shotBoundaries)
     ? (visual as { shotBoundaries: unknown[] }).shotBoundaries.length : 0
@@ -125,6 +148,7 @@ export function buildDirectorSummaries(
   // Null remains correct and meaningful here: `scriptAlignment` is genuinely
   // null when there was no script hook to compare the opening against.
   const alignment = (hk.scriptAlignment ?? {}) as Record<string, unknown>
+  const alignmentComponent = alignmentArg
   return {
     brand: brandSummary,
     visual: {
@@ -141,6 +165,14 @@ export function buildDirectorSummaries(
       firstWordStartMs: finite(opening.firstWordStartMs),
       wordCount: finite(opening.wordCount),
       matchedTokenRatio: finite(alignment.matchedTokenRatio),
+      // The exact boundary, when the flag is on. `matchedTokenRatio` above says
+      // how MUCH of the hook was said; this says WHERE the script begins, which
+      // is what an index actually needs. Omitted entirely — not set to null —
+      // while the flag is off, so the envelope bytes are unchanged.
+      ...(DIRECTOR_SEES_ALIGNMENT
+        ? { scriptStartWordIndex: scriptStartSpokenIndex(
+            ((alignmentComponent ?? {}) as { scriptWordTimings?: [] }).scriptWordTimings ?? [], words) }
+        : {}),
     },
     // The allowed Decision-v2 choices, so the model picks only real catalog IDs.
     catalogs: {
@@ -154,7 +186,7 @@ export function buildDirectorSummaries(
 function buildEnvelope(
   projectId: string, asset: { id: string; content_sha256: string },
   pinned: PinnedContext, speech: Record<string, unknown>, brandSummary: unknown,
-  components: { visual: Record<string, unknown> | null; audio: Record<string, unknown> | null; hook: Record<string, unknown> | null },
+  components: { visual: Record<string, unknown> | null; audio: Record<string, unknown> | null; hook: Record<string, unknown> | null; alignment?: Record<string, unknown> | null },
 ): DirectorEnvelope {
   // generationId comes from the PINNED snapshot (authoritative), not a re-read.
   const generationId = String((pinned.snapshot.snapshot as { generationId?: string }).generationId ?? '')
@@ -190,7 +222,8 @@ function buildEnvelope(
     // The Director sees the whole bounded picture (§3.5): brand (colorsSource/logoSource
     // are 'none' when nothing is confirmed — never a fabricated colour/logo), compact
     // visual/audio/hook facts, the allowed Decision-v2 catalogs, and the frozen features.
-    summaries: buildDirectorSummaries(brandSummary, components.visual, components.audio, components.hook, visualWaste),
+    summaries: buildDirectorSummaries(brandSummary, components.visual, components.audio, components.hook, visualWaste,
+      components.alignment ?? null, (speech.words as SpeechWordLike[]) ?? []),
     words: proj.words, candidates: proj.candidates, boundaries: proj.boundaries,
     // The server-issued visual-waste candidate stream, from the pinned visual component's
     // corroborated dead-air intervals (only dead_air is selectable — same honesty rule as
@@ -371,7 +404,13 @@ export async function runDirectingStage(
         'brand_snapshot_corrupt')
     }
 
-    const envelope = buildEnvelope(projectId, asset, pinned, speech, brandSnapshot, { visual, audio, hook })
+    // OPTIONAL, exactly as in the compile stage: a project pinned before
+    // alignment existed has no such digest, and requiring one would break every
+    // in-flight project for a hint the Director does not yet use anyway.
+    const alignment = (digests as { alignment?: string }).alignment
+      ? await lookupCached(asset.id, asset.content_sha256, 'alignment', (digests as { alignment: string }).alignment)
+      : null
+    const envelope = buildEnvelope(projectId, asset, pinned, speech, brandSnapshot, { visual, audio, hook, alignment })
     const serialized = serializeDirectorEnvelope(envelope)
     const envelopeSha256 = sha256Hex(serialized)
 

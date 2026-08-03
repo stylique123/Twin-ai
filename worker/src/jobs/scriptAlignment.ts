@@ -307,6 +307,63 @@ export function alignScriptToSpoken(script: AlignToken[], spoken: AlignToken[]):
 }
 
 /** A script token's place in the recording, or null when it was never spoken. */
+// ── WHERE THE SCRIPT ACTUALLY STARTS IN THE RECORDING ──────────────────────
+//
+// The Director chooses `hookStartWordIndex` — the spoken word to open on,
+// dropping everything before it. Until now the only evidence it had about the
+// opening was `matchedTokenRatio` from the hook component: an UNORDERED
+// multiset overlap between the script's hook tokens and the words spoken in the
+// first few seconds. That says how MUCH of the hook was said. It cannot say
+// WHERE, which is the one thing an index needs.
+//
+// Alignment can say where, and without depending on `snapshot.hook` at all —
+// which matters, because the aligned script is built from scene DIALOGUE
+// (spokenScriptFromSnapshot skips hidden scenes and ignores the hook field), so
+// the hook line is not reliably part of it.
+//
+// The boundary this returns is the first script word the creator ACTUALLY SAID.
+// Everything before it is preamble: settling into frame, "hey guys welcome
+// back", clearing the throat — the material the edges trim and the hook
+// mechanism exists to skip. An index at or after this point opens on script; an
+// index before it opens on throat-clearing.
+//
+// EXACT INTEGER TIMES, like the caption spelling map, and for the same reason:
+// scriptWordTimings copies its times verbatim from the spoken words it paired
+// with, so this is an equality join with no tolerance to tune.
+//
+// ON startMs ALONE, deliberately. The Director's envelope projects words
+// WITHOUT endMs (SpeechWordLike carries id/text/startMs/confidence), and
+// reaching around that projection to get an end time would be using a shape the
+// envelope has decided not to expose. startMs is a unique key in a monotonic
+// word list, which is what the compiler already validates, and the ambiguity
+// guard below covers the case where it somehow is not.
+//
+// A startMs claimed by two spoken words yields null rather than a guess: an
+// index pointing at the wrong word opens the video in the wrong place, which is
+// worse than the Director simply not having the hint.
+export function scriptStartSpokenIndex(
+  timings: ReadonlyArray<{ startMs: number | null; endMs?: number | null; via?: string }>,
+  spokenWords: ReadonlyArray<{ startMs: number }>,
+): number | null {
+  if (!Array.isArray(timings) || !Array.isArray(spokenWords)) return null
+  // First script word with a real time — i.e. actually spoken. `not_spoken`
+  // entries carry nulls and are skipped rather than interpolated.
+  let first: number | null = null
+  for (const t of timings) {
+    if (!Number.isInteger(t?.startMs)) continue
+    first = t.startMs as number
+    break
+  }
+  if (first === null) return null
+  let found = -1
+  for (let i = 0; i < spokenWords.length; i++) {
+    if (spokenWords[i]?.startMs !== first) continue
+    if (found >= 0) return null   // ambiguous: two words claim the same start
+    found = i
+  }
+  return found >= 0 ? found : null
+}
+
 // ── FALSE STARTS ───────────────────────────────────────────────────────────
 // A false start is the creator saying a piece of the script, stopping, and
 // saying it again. It is the single most common thing a person does in front of
