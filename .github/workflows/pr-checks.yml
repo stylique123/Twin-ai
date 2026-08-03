@@ -243,6 +243,14 @@ jobs:
         run: |
           node scripts/ci/check_analysis_components.mjs --selftest
           node scripts/ci/check_analysis_components.mjs
+      # Routing existed before its catalog did — a frozen constant, an env knob
+      # at one call site, and an implicit fallthrough, with nothing comparing
+      # them. This is the comparison, and it also stops the two pinned copies of
+      # DIRECTOR_MODEL drifting from what the catalog records.
+      - name: Model routing agrees with the code (one catalog; decide stays frozen)
+        run: |
+          node scripts/ci/check_model_routing.mjs --selftest
+          node scripts/ci/check_model_routing.mjs
       - name: Build provenance (Docker npm-ci/lockfile, no dev deps, WORKER_GIT_SHA injection, OpenCV wheel hash)
         run: |
           node scripts/ci/check_build_provenance.mjs --selftest

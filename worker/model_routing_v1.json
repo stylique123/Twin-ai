@@ -1,0 +1,117 @@
+{
+  "$why": [
+    "PER-TASK MODEL ROUTING — the single place that says which model does which",
+    "kind of work. §2.4 of docs/twinai-master-build-plan.md.",
+    "",
+    "THIS DOES NOT INTRODUCE ROUTING. Routing already existed, decided three",
+    "separate ways and written down nowhere:",
+    "",
+    "  DIRECTOR_MODEL      a frozen constant in directorContract.ts, deliberately",
+    "                      never read from env, recorded in the decision row and",
+    "                      the analyzer bundle",
+    "  env.fastModel       an env knob passed at exactly ONE call site",
+    "                      (structure.ts), whose own comment gives a task-class",
+    "                      argument: 'MECHANICAL ... schema-constrained tasks'",
+    "  the geminiJson      an implicit fallthrough to GEMINI_MODEL for everything",
+    "  default             that passed no model at all",
+    "",
+    "Three mechanisms, two different default models, and nothing comparing them.",
+    "That is the same shape as the twelve analysis-component allowlists removed",
+    "in #244 — a decision made in several places that no one place records.",
+    "",
+    "SO THIS FILE ENCODES WHAT IS ALREADY TRUE. Every entry below is the model",
+    "that task uses TODAY. Landing it changes no model for any task, which is",
+    "the only safe way to introduce an authority over live behaviour — the same",
+    "property that made wiring `pacing` safe: the default path returns exactly",
+    "what it returned before.",
+    "",
+    "WHY TASK CLASS AND NOT CALL SITE. A call site is where the twelve-allowlist",
+    "defect comes from: a dozen places each privately encoding a choice, none",
+    "referencing any other. A task class is the granularity the work actually",
+    "has — extracting structured evidence, choosing among candidates, and writing",
+    "prose differ in cost, in latency, and in what a wrong answer costs.",
+    "",
+    "PROVENANCE IS THE NON-NEGOTIABLE. Which model produced an artefact must stay",
+    "recoverable. `envOverride: null` means the model is FROZEN and cannot be",
+    "changed by configuration — that is what makes the Director's decision",
+    "reproducible from its recorded bundle, and it must stay null."
+  ],
+
+  "routingVersion": "model-routing-v1",
+
+  "$taskClasses": [
+    "id            what it is",
+    "─────────────────────────────────────────────────────────────────────────",
+    "decide        choose among candidates against evidence; the answer is a",
+    "              structured decision somebody will be held to",
+    "extract       pull structured facts out of a document under a fixed schema;",
+    "              mechanical, and the schema does the constraining",
+    "profile       infer and write prose about a brand or voice; open-ended, and",
+    "              the cost of a mediocre answer is a worse script"
+  ],
+
+  "$THE_ROUTING_LOOKS_INVERTED": [
+    "RECORDED ON THE DAY THIS CATALOG WAS BUILT, because writing the three",
+    "choices next to each other for the first time made it visible. It is a",
+    "FINDING, not a change: nothing here has been re-pointed.",
+    "",
+    "  decide   the Director -- picks cuts, hook, pacing, captions and zooms",
+    "           from evidence, at temperature 0.2, and every video is shaped by",
+    "           it                                        -> FLASH",
+    "  extract  schema-constrained reference extraction, whose own env comment",
+    "           argued a flash model costs 'no quality loss on these",
+    "           schema-constrained tasks'                 -> PRO",
+    "",
+    "The hardest judgement runs on the cheap model; the most mechanical task",
+    "pays the premium its own documentation said it did not need. Nobody chose",
+    "that. It is what three independent decisions add up to: the Director was",
+    "pinned to flash, GEMINI_FAST_MODEL was never set so extraction fell back to",
+    "the expensive default, and profile reached its model by passing nothing.",
+    "",
+    "WHY THIS IS NOT FIXED HERE. Re-pointing `decide` changes what the model",
+    "sees and therefore what it produces, and this project has a director-eval",
+    "harness and a quality gate precisely because that is not a judgement to",
+    "make by reasoning. Changing `extract` is cheaper to justify -- the argument",
+    "is already written in the code -- but it is still a live behaviour change",
+    "and belongs in its own reviewable step, measured rather than assumed.",
+    "",
+    "So this catalog LANDS AS A NO-OP and makes the question askable. The next",
+    "move is an eval, not an edit. Naming replacement model ids from memory",
+    "would be the same chosen-not-measured mistake this repo has already made",
+    "three times over -- a 50-minute CI cap against a real 77, a 25% hook-trim",
+    "threshold against a legitimate 28.7% case, and an 80 ms caption tail guard",
+    "against a real 93-120 ms shortfall."
+  ],
+
+  "taskClasses": {
+    "decide": {
+      "model": "gemini-3.5-flash",
+      "envOverride": null,
+      "$note": [
+        "The Director. FROZEN — directorContract.ts pins DIRECTOR_MODEL and the",
+        "provider layer says 'never env' in as many words, because the decision",
+        "row and the analyzer bundle both record the model and a decision must",
+        "be reproducible from what was recorded. envOverride MUST stay null."
+      ]
+    },
+    "extract": {
+      "model": "gemini-3.1-pro-preview",
+      "envOverride": "GEMINI_FAST_MODEL",
+      "$note": [
+        "Reference-structure extraction. The env knob already exists and its",
+        "comment already makes the task-class case: pointing it at a flash model",
+        "'cuts COGS with no quality loss on these schema-constrained tasks'.",
+        "The default here is today's resolved default, so nothing moves."
+      ]
+    },
+    "profile": {
+      "model": "gemini-3.1-pro-preview",
+      "envOverride": "GEMINI_MODEL",
+      "$note": [
+        "Voice profile and post analysis. Reached the model by passing nothing",
+        "at all and landing on geminiJson's fallthrough, which is exactly the",
+        "kind of choice-by-omission this file exists to make visible."
+      ]
+    }
+  }
+}

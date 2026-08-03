@@ -12,6 +12,12 @@
 // ---- frozen identity/version constants (must equal the shared authority) ----
 export const DIRECTOR_VERSION = 'director-1'
 export const DIRECTOR_PROVIDER = 'google'
+// FROZEN. Deliberately still a LITERAL, not a modelForTask call: this file is a
+// byte-for-byte runtime duplicate of packages/shared/src/editor/director.ts,
+// pinned by a parity test, and the shared module cannot read the worker's
+// routing catalog. So the catalog does not OWN this value — it RECORDS it, and
+// check_model_routing.mjs fails if the two ever disagree. One authority, without
+// breaking the duplication the parity test exists to enforce.
 export const DIRECTOR_MODEL = 'gemini-3.5-flash'
 export const DIRECTOR_ENVELOPE_SCHEMA_VERSION = 1
 export const DIRECTOR_DECISION_SCHEMA_VERSION = 2

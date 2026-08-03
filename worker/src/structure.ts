@@ -1,4 +1,5 @@
 import { geminiJson, obj, arr, str, num } from './gemini.js'
+import { modelForTask } from './modelRouting.js'
 import { env } from './env.js'
 import type { Transcript } from './media.js'
 
@@ -59,5 +60,7 @@ ${timed || '(no speech detected)'}
 
 Derive the structure.`
 
-  return (await geminiJson(SYSTEM, prompt, schema, 60_000, undefined, env.fastModel)) as ReferenceStructure
+  // EXTRACT: mechanical, schema-constrained. Resolves to the same id
+  // env.fastModel resolved to; the class is what records why it may differ.
+  return (await geminiJson(SYSTEM, prompt, schema, 60_000, undefined, modelForTask('extract'))) as ReferenceStructure
 }
