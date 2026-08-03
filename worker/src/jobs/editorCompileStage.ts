@@ -77,7 +77,7 @@ export class CompileCancelledError extends Error {
 export interface PinnedLike {
   manifest: {
     manifest: unknown
-    componentDigests: { visual: string; audio: string; hook: string }
+    componentDigests: { visual: string; audio: string; hook: string; alignment?: string }
     manifestSha: string
   }
   snapshot: { snapshotSha: string }
@@ -137,9 +137,19 @@ export async function runCompilingStage(
     const versions = (pinned.manifest.manifest as { componentVersions: Record<string, string> }).componentVersions
     const speech = await loadComponentStrict(asset.id, asset.content_sha256, 'speech', versions.speech)
     const digests = pinned.manifest.componentDigests
-    const [visual, audio] = await Promise.all([
+    // ALIGNMENT IS OPTIONAL HERE AND MUST STAY OPTIONAL. Every project pinned
+    // before #242 has no `alignment` digest in its boot manifest, and those
+    // renders must keep compiling untouched — requiring it would break every
+    // in-flight project permanently, for a caption spelling improvement. So a
+    // missing digest, and a missing row at that digest, both mean "no script
+    // spelling", never a failure. visual/audio stay REQUIRED below because
+    // decisions depend on them; nothing depends on this one.
+    const [visual, audio, alignment] = await Promise.all([
       lookupCached(asset.id, asset.content_sha256, 'visual', digests.visual),
       lookupCached(asset.id, asset.content_sha256, 'audio', digests.audio),
+      digests.alignment
+        ? lookupCached(asset.id, asset.content_sha256, 'alignment', digests.alignment)
+        : Promise.resolve(null),
     ])
     for (const [name, comp] of [['visual', visual], ['audio', audio]] as const) {
       if (!comp) {
@@ -189,6 +199,12 @@ export async function runCompilingStage(
       speech,
       visual,
       audio,
+      // Read at the digest the boot manifest pinned, like every other
+      // component — so a caption's spelling comes from the SAME alignment the
+      // project was pinned to, never a recomputed one. Null whenever the
+      // manifest carries no alignment digest (pre-#242 projects), which yields
+      // captions identical to those rendered before this consumer.
+      alignment,
       decision,
       // The SAME pinned brandSnapshot the Director's envelope was built from
       // (editorDirector.ts) — read off the boot manifest here rather than

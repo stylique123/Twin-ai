@@ -15,12 +15,16 @@
 // truth table's "hook-only recompute => 0 downloads" row exists precisely
 // because those costs were kept apart.
 //
-// NOT WIRED YET, and that is deliberate rather than unfinished: registering a
-// new immutable component means a schema version, a digest, a row in the
-// download truth table and a change to the frozen identity system
-// (componentVersions / componentDigests). This module is the part that can
-// land complete and tested on its own; the registration is the next step and
-// wants a full context budget rather than a rushed one.
+// WIRED (#242) and now CONSUMED, in one place: captions take the script's
+// spelling at the recording's time (see buildScriptSpellingMap in
+// editorCompile.ts). That consumer is bounded to SUBSTITUTIONS above a
+// similarity floor, so it can only change the letters of a word the aligner
+// already paired -- never add, drop, reorder or retime one.
+//
+// The other two consumers the plan names are NOT built: false-start detection
+// (a script region spoken twice) and an exact hookStartWordIndex boundary.
+// Nothing passes this component into the Director either, which is why the
+// component catalog records `consumedByDirector: false` for alignment.
 import {
   alignScriptToSpoken, scriptToAlignTokens, toAlignTokens, scriptWordTimings,
   spokenScriptFromSnapshot,
