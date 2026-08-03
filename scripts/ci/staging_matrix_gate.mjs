@@ -373,6 +373,13 @@ function selftest() {
       // granting it.
       const looseReads = [...live.matchAll(/steps\.scope\.outputs\.required\s*==\s*'([^']*)'/g)].map((m) => m[1])
       ok(looseReads.every((v) => v === '1'), `every live YAML read of required compares against '1' (fail-closed); saw [${looseReads.join(', ')}]`)
+      // The workflow keeps a fallback for when the base branch's copy of this
+      // script is missing or older than --resolve — version skew is the normal
+      // case, since the workflow comes from the PR head and the script from
+      // base.sha. That fallback may only ever BLOCK, so no line of the workflow
+      // may hand out a green on its own; `success` must come from here.
+      ok(!/\bSTATE=(success|"success"|'success')/.test(live), 'no shell line in the workflow assigns STATE=success — a green may only come from resolvePostedStatus')
+      ok(!/DESCRIPTION=.*[Dd]ocumentation-only/.test(live), 'the documentation-only description is not reproduced in the workflow — the exemption has exactly one source')
     }
   }
 

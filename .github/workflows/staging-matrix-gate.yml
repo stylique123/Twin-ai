@@ -215,17 +215,39 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          if [ -f scripts/ci/staging_matrix_gate.mjs ]; then
-            node scripts/ci/staging_matrix_gate.mjs --resolve > /tmp/resolved.json
-            STATE=$(jq -r '.state' /tmp/resolved.json)
-            DESCRIPTION=$(jq -r '.description' /tmp/resolved.json)
-            TARGET_URL=$(jq -r '.targetUrl' /tmp/resolved.json)
-          else
-            # BOOTSTRAP: the base branch predates the gate script, so there are
-            # no rules to judge by. Absent rules mean BLOCK — never exempt.
+          # VERSION SKEW IS THE NORMAL CASE HERE, not an edge case. This file is
+          # taken from the PR head, but the checkout above is deliberately
+          # `base.sha` — so the workflow is always one version AHEAD of the
+          # script it calls. A PR that teaches the script a new mode therefore
+          # runs against a base copy that does not have it yet. That is what the
+          # existing "no script on the base branch" bootstrap is about; an
+          # OLDER script is the same situation and gets the same answer.
+          RESOLVED=0
+          if node scripts/ci/staging_matrix_gate.mjs --resolve > /tmp/resolved.json 2> /tmp/resolve_err.txt; then
+            # An exit code of 0 is not enough: a script old enough to ignore an
+            # unknown flag, or new enough to have a different output shape,
+            # exits 0 and leaves this empty. An empty `state` must take the
+            # fail-closed branch rather than POSTing an empty status.
+            STATE=$(jq -r '.state // empty' /tmp/resolved.json 2>/dev/null || true)
+            if [ -n "$STATE" ]; then
+              DESCRIPTION=$(jq -r '.description // empty' /tmp/resolved.json)
+              TARGET_URL=$(jq -r '.targetUrl // empty' /tmp/resolved.json)
+              RESOLVED=1
+            fi
+            cat /tmp/resolve_err.txt
+          fi
+          if [ "$RESOLVED" != "1" ]; then
+            # The base branch cannot resolve — missing, older than --resolve, or
+            # broken. There are no rules to judge by, so BLOCK. Fail-closed and
+            # in one direction only: this branch reports whatever verdict was
+            # already reached and `error` otherwise. It must NEVER reach for the
+            # documentation-only exemption, because the exemption is exactly the
+            # thing that has no trustworthy source here.
+            echo "::warning::The base branch's gate script could not --resolve; falling back to the verdict alone. Never exempting."
+            cat /tmp/resolve_err.txt || true
             STATE="${VERDICT_STATE:-error}"
-            DESCRIPTION="Gate script not on the base branch yet; cannot evaluate. Blocking."
-            TARGET_URL="$RUN_URL"
+            DESCRIPTION="${VERDICT_DESCRIPTION:-The gate could not reach a verdict — see the workflow log.}"
+            TARGET_URL="${VERDICT_TARGET_URL:-$RUN_URL}"
           fi
           [ -z "${TARGET_URL:-}" ] && TARGET_URL="$RUN_URL"
           echo "posting $STATE on $HEAD_SHA: $DESCRIPTION"
