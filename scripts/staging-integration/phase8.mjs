@@ -36,6 +36,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
+import { captionChecks } from './captionAssertions.mjs'
 
 const execFile = promisify(_execFile)
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
@@ -352,6 +353,17 @@ async function main() {
       coverBytes > 0 && (coverProbe.streams ?? [])[0]?.width === 1080 && (coverProbe.streams ?? [])[0]?.height === 1920,
       `${coverBytes}B ${(coverProbe.streams ?? [])[0]?.width}x${(coverProbe.streams ?? [])[0]?.height}`)
 
+    // ---- CAPTIONS ---------------------------------------------------------
+    // The predicates live in captionAssertions.mjs so they can be run offline
+    // against a real compiled plan. They were inline first, with a copy in a
+    // scratch script to try them out, and the copy immediately disagreed with
+    // the original -- three of seven were written against `startMs`/`endMs`
+    // when a cue actually carries `outputStartMs`/`outputEndMs`. That would
+    // have failed the matrix and cost a full ~40-minute run to discover.
+    const policy = JSON.parse(await readFile(new URL('../../worker/edit_policy_v1.json', import.meta.url), 'utf8'))
+    for (const c of captionChecks(plans[0]?.plan ?? {}, policy, durMs)) {
+      check(c.name, c.ok, c.detail)
+    }
     }
 
     const codes = (await getEvents(pid)).map((e) => e.message_code)
