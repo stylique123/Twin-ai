@@ -29,6 +29,7 @@ import { mkdtemp, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { authHeader } from './authSession.mjs'
 
 const execFile = promisify(_execFile)
 
@@ -75,10 +76,10 @@ async function newGen(ownerId) {
 
 // ---------- edge fn + storage helpers ----------
 async function edge(client, body) {
-  const { data: { session } } = await client.auth.getSession()
+  const auth = await authHeader(client)
   const res = await fetch(`${URL}/functions/v1/source-asset`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${session.access_token}` },
+    headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: auth },
     body: JSON.stringify(body),
   })
   return { status: res.status, body: await res.json().catch(() => ({})) }
@@ -564,9 +565,13 @@ async function main() {
     check('T10 outsider cannot sign', !!eOut || !sOut?.signedUrl)
     const { data: sAnon, error: eAnon } = await cAnon.storage.from('takes').createSignedUrl(t1.storage_path, 120)
     check('T10 anonymous cannot sign', !!eAnon || !sAnon?.signedUrl)
-    const { data: { session: outSess } } = await cOutsider.auth.getSession()
+    // A LIVE outsider token, deliberately. This assertion proves the outsider
+    // is refused BECAUSE THEY ARE AN OUTSIDER. Presenting a stale token here
+    // would also be refused — for the wrong reason — and the check would pass
+    // while proving nothing about ownership at all.
+    const outAuth = await authHeader(cOutsider)
     const direct = await fetch(`${URL}/storage/v1/object/authenticated/takes/${t1.storage_path}`, {
-      headers: { apikey: ANON, Authorization: `Bearer ${outSess.access_token}` },
+      headers: { apikey: ANON, Authorization: outAuth },
     })
     check('T10 outsider direct object download refused', direct.status >= 400, `status=${direct.status}`)
   }

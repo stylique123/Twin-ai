@@ -4,6 +4,7 @@ import { handleBuildVoice } from './voice.js'
 import { handleScrapeDna } from './scrapeDna.js'
 import { handleValidateSource } from './validateSource.js'
 import { handleEditorV2 } from './editorV2.js'
+import { handlePurgeMedia } from './purgeMedia.js'
 
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
@@ -19,4 +20,7 @@ export const handlers: Record<string, JobHandler> = {
   scrape_dna: handleScrapeDna,
   validate_source: handleValidateSource,
   editor_v2: handleEditorV2,
+  // Deletes the BYTES behind a removed media_asset. Enqueued by a database
+  // trigger, not by application code, so every route to deletion is covered.
+  purge_media: handlePurgeMedia,
 }

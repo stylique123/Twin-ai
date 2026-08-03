@@ -21,7 +21,7 @@ import {
   type Interval,
 } from '../jobs/editorCompile.js'
 import { buildFfmpegGraph } from '../jobs/ffmpegGraph.js'
-import { baseInput, policy } from './fixtures/editPlanFixture.js'
+import { baseInput, policy, shippedEncoder } from './fixtures/editPlanFixture.js'
 
 function rng(seed: number): () => number {
   let a = seed >>> 0
@@ -205,7 +205,7 @@ describe('time map — the seven frozen laws', () => {
     const hcPlan = compileEditPlan({ ...hardCut, policy: policy() }).plan
     const graph = buildFfmpegGraph(hcPlan, {
       sourcePath: '/var/tmp/edit/source.mp4', assPath: '/var/tmp/edit/c.ass',
-      fontsDir: null, outputPath: '/var/tmp/edit/out.mp4',
+      fontsDir: null, outputPath: '/var/tmp/edit/out.mp4', encoder: shippedEncoder(),
     })
     // Segment trims are id-prefixed `vtrim`; the zoom pass also emits `trim`
     // filter nodes (id-prefixed `vzwtrim`) on the already-joined stream, so

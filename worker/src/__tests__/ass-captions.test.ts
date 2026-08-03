@@ -43,6 +43,13 @@ const INJECTIONS = [
   '{\\p1}m 0 0 l 100 0 100 100 0 100{\\p0}',
 ] as const
 
+// The document now carries the VISUAL HOOK as an extra Dialogue event when the
+// plan has one, so "one event per cue" became "one per cue, plus the title".
+// Written as a helper rather than a hard-coded +1 so these tests keep asserting
+// the real relationship instead of a number that happens to match today.
+const expectedEvents = (plan: { captions: { cues: unknown[] }; hook: { title: unknown } }): number =>
+  plan.captions.cues.length + (plan.hook.title ? 1 : 0)
+
 describe('escaping', () => {
   it('escapes every brace so no override block can open', () => {
     for (const payload of INJECTIONS) {
@@ -102,13 +109,17 @@ describe('document structure', () => {
   it('emits one event per cue with the plan geometry', () => {
     const plan = compileEditPlan({ ...baseInput(), policy: policy() }).plan
     const { document, eventCount } = buildAssCaptions(plan, { fontName: 'Inter' })
-    expect(eventCount).toBe(plan.captions.cues.length)
+    expect(eventCount).toBe(expectedEvents(plan))
     const events = document.split('\n').filter((l) => l.startsWith('Dialogue:'))
-    expect(events).toHaveLength(plan.captions.cues.length)
+    expect(events).toHaveLength(expectedEvents(plan))
+    // The visual hook is emitted FIRST, so cue assertions must address cue
+    // events specifically rather than events[0] — which is the title now.
+    const cueEvents = events.filter((l) => !l.includes(',TwinAITitle,'))
+    expect(cueEvents).toHaveLength(plan.captions.cues.length)
     expect(document).toContain('PlayResX: 1080')
     expect(document).toContain('PlayResY: 1920')
     expect(document).toContain(`,Inter,${plan.captions.fontSizePx},`)
-    expect(events[0]).toContain(formatAssTime(plan.captions.cues[0].outputStartMs))
+    expect(cueEvents[0]).toContain(formatAssTime(plan.captions.cues[0].outputStartMs))
   })
 
   it('joins the two caption lines with the ASS hard break', () => {
@@ -155,7 +166,7 @@ describe('end-to-end injection resistance', () => {
         }
       }
       // The audit runs over the finished document too.
-      expect(() => assertNoOverrideBlock(document, plan.captions.cues.length, PLACEHOLDER_EMPHASIS_COLOUR)).not.toThrow()
+      expect(() => assertNoOverrideBlock(document, expectedEvents(plan), PLACEHOLDER_EMPHASIS_COLOUR)).not.toThrow()
     })
   }
 
@@ -201,7 +212,7 @@ describe('word emphasis', () => {
         expect(hasUnescapedBrace(stripTrustedEmphasisTags(line, PLACEHOLDER_EMPHASIS_COLOUR))).toBe(false)
       }
     }
-    expect(() => assertNoOverrideBlock(document, plan.captions.cues.length, PLACEHOLDER_EMPHASIS_COLOUR)).not.toThrow()
+    expect(() => assertNoOverrideBlock(document, expectedEvents(plan), PLACEHOLDER_EMPHASIS_COLOUR)).not.toThrow()
   })
 
   it('CONTROL: the audit strips the exact trusted literal only — a near-miss brace still fails closed', () => {

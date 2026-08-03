@@ -117,6 +117,14 @@ export function buildDirectorSummaries(
   const aud = (audio ?? {}) as Record<string, unknown>
   const hk = (hook ?? {}) as Record<string, unknown>
   const opening = (hk.spokenOpening ?? {}) as Record<string, unknown>
+  // Nested, exactly like spokenOpening above. This line used to read
+  // `hk.matchedTokenRatio` — flat, one level too shallow — so the Director has
+  // been told `matchedTokenRatio: null` on every call it has ever made. It has
+  // never once known whether the creator actually said the hook they were
+  // shown, which is the single fact the hookTreatment choice most depends on.
+  // Null remains correct and meaningful here: `scriptAlignment` is genuinely
+  // null when there was no script hook to compare the opening against.
+  const alignment = (hk.scriptAlignment ?? {}) as Record<string, unknown>
   return {
     brand: brandSummary,
     visual: {
@@ -132,7 +140,7 @@ export function buildDirectorSummaries(
     hook: {
       firstWordStartMs: finite(opening.firstWordStartMs),
       wordCount: finite(opening.wordCount),
-      matchedTokenRatio: finite(hk.matchedTokenRatio),
+      matchedTokenRatio: finite(alignment.matchedTokenRatio),
     },
     // The allowed Decision-v2 choices, so the model picks only real catalog IDs.
     catalogs: {

@@ -5,9 +5,11 @@
 // expected output nobody can derive is a fixture that cannot detect a wrong
 // answer, only a crash.
 import type {
-  CompileInput, CompileWord, CompileCandidate, CompileVisualWaste, EditPolicyV1,
+  CompileInput, CompileWord, CompileCandidate, CompileVisualWaste, CompileFaceSample, EditPolicyV1,
 } from '../../jobs/editorCompile.js'
 import { loadEditPolicy } from '../../jobs/editorCompile.js'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 
 export const PROJECT_ID = '11111111-1111-4111-8111-111111111111'
 export const GENERATION_ID = '22222222-2222-4222-8222-222222222222'
@@ -63,6 +65,15 @@ export function buildVisualWaste(): CompileVisualWaste[] {
   ]
 }
 
+// The subject sits LOW AND LEFT — 380,1240 in a 1080x1920 display space, not
+// the 540,960 geometric centre. A fixture whose face is already centred cannot
+// tell a face-aware zoom from the blind centre crop it replaced.
+export function buildFaces(): CompileFaceSample[] {
+  const out: CompileFaceSample[] = []
+  for (let t = 0; t <= SOURCE_DURATION_MS; t += 5000) out.push({ timeMs: t, centreXPx: 380, centreYPx: 1240 })
+  return out
+}
+
 export function baseInput(overrides: Partial<CompileInput> = {}): CompileInput {
   const input: CompileInput = {
     identity: {
@@ -72,10 +83,12 @@ export function baseInput(overrides: Partial<CompileInput> = {}): CompileInput {
     source: {
       origin: 'teleprompter', durationMs: SOURCE_DURATION_MS,
       acceptedWindows: [{ ...WINDOW_A }, { ...WINDOW_B }],
+      displayWidthPx: 1080, displayHeightPx: 1920,
     },
     evidence: {
       words: buildWords(), candidates: buildCandidates(), visualWaste: buildVisualWaste(),
       audio: { snrDbMilli: 26000, earlyEnergyRatioMilli: 120 },
+      faces: buildFaces(),
     },
     decision: {
       selections: [0, 2, 3, 4],
@@ -92,10 +105,29 @@ export function baseInput(overrides: Partial<CompileInput> = {}): CompileInput {
   return input
 }
 
+/** The SHIPPED policy, exactly as production reads it. */
+export function shippedPolicy(): EditPolicyV1 {
+  return JSON.parse(JSON.stringify(loadEditPolicy())) as EditPolicyV1
+}
+
+/** The Batch 8.1 BASELINE: the shipped policy with the deterministic edge trim
+ *  switched off.
+ *
+ *  Every `EXPECTED` number below was hand-derived against a domain that begins
+ *  at the capture window, and a dozen suites assert exact protections, hook,
+ *  zoom and cover boundaries against it. Turning edge trimming on in the shared
+ *  fixture would shift all of those by 880 ms — they would still pass once
+ *  updated, and they would each be proving something subtly different from what
+ *  they were written to prove. Edge trimming gets its own suite with the rule
+ *  explicitly ON, and `shippedPolicy()` is pinned so the production default
+ *  cannot drift unnoticed. */
 export function policy(): EditPolicyV1 {
   // A deep copy, so a test that mutates a threshold to build a mutation control
   // cannot leak that change into any other test through the module cache.
-  return JSON.parse(JSON.stringify(loadEditPolicy())) as EditPolicyV1
+  const p = shippedPolicy()
+  p.edges.trimLeading = false
+  p.edges.trimTrailing = false
+  return p
 }
 
 // Worked out by hand from the fixture above; see the suite for the derivation.
@@ -116,3 +148,31 @@ export const EXPECTED = {
   transitionOverlapMs: 120,
   transitionAtSegmentIndex: 3,
 } as const
+
+/**
+ * The SHIPPED encoder settings, read from render_catalog_v1.json rather than
+ * transcribed into a literal.
+ *
+ * Read, not copied, deliberately. These settings were declared in the catalog
+ * and never passed to ffmpeg for the whole life of the renderer, and a
+ * hand-typed fixture is exactly what let four other joints in this pipeline
+ * stay broken behind a green suite — in every case because the fixture was
+ * written from what the reader expected instead of what the producer emits.
+ * Reading the real file means a test can assert "the argv carries CRF 20" and
+ * have that remain true of PRODUCTION, not just of this file.
+ */
+export function shippedEncoder(): {
+  x264Preset: string; x264Crf: number; x264Profile: string; x264Level: string
+  gopSizeFrames: number; audioBitrateKbps: number
+} {
+  const catalog = JSON.parse(
+    readFileSync(join(import.meta.dirname, '..', '..', '..', 'render_catalog_v1.json'), 'utf8'),
+  ) as { outputProfiles: Record<string, Record<string, unknown>> }
+  const p = catalog.outputProfiles['vertical-social-1080x1920-h264-aac-v1']
+  if (!p) throw new Error('editPlanFixture: the frozen output profile is missing from the catalog')
+  return {
+    x264Preset: String(p.x264Preset), x264Crf: Number(p.x264Crf),
+    x264Profile: String(p.x264Profile), x264Level: String(p.x264Level),
+    gopSizeFrames: Number(p.gopSizeFrames), audioBitrateKbps: Number(p.audioBitrateKbps),
+  }
+}

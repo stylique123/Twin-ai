@@ -21,13 +21,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execFile as _execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { mkdtempSync, rmSync, existsSync, writeFileSync, statSync } from 'node:fs'
+import { mkdtempSync, rmSync, existsSync, writeFileSync, statSync, mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { compileEditPlan } from '../jobs/editorCompile.js'
-import { baseInput, policy, SOURCE_DURATION_MS } from './fixtures/editPlanFixture.js'
+import { baseInput, policy, shippedPolicy, SOURCE_DURATION_MS } from './fixtures/editPlanFixture.js'
 import { renderEditPlan, extractCover, fileSha256, cleanupRenderWorkDir } from '../jobs/editorRender.js'
-import { validateRenderedOutput } from '../jobs/editorValidateOutput.js'
+import { validateRenderedOutput, validateCaptionsAgainstOutput } from '../jobs/editorValidateOutput.js'
 import { renderAssDocument, assertNoOverrideBlock } from '../jobs/assCaptions.js'
 import { loadRenderCatalog } from '../jobs/editorRender.js'
 import { resolveCaptionColours } from '../jobs/captionColours.js'
@@ -236,4 +236,91 @@ maybe('what a real encode refuses', () => {
     const past = { ...plan, cover: { ...plan.cover, outputTimeMs: plan.output.durationMs + 1 } }
     await expect(extractCover(sourcePath, past, join(dir, 'w3'))).rejects.toThrow()
   }, 60_000)
+})
+
+
+// THE GAP THAT LET A BROKEN RENDER REACH STAGING.
+//
+// Every case above compiles with `policy()`, whose edge trim is OFF — it is
+// the Batch 8.1 baseline and deliberately frozen. So the SHIPPED policy, the
+// one production actually renders with, had never once been through a real
+// ffmpeg here. Staging caught what this suite could not:
+//
+//     output_caption_invalid: caption cue 4 ends after the video does
+//
+// The edge trim ends the video keepMs after the last spoken word, the
+// reading-speed rule extends the final cue into whatever room remains, and
+// the output validator compares cues to the MEASURED duration with zero
+// tolerance. Planned duration and measured duration are not the same number.
+//
+// This case closes the gap the only way that actually proves anything: encode
+// with the shipped policy, probe what came out, and run the real validator
+// against it.
+describe('the SHIPPED policy survives a real encode', () => {
+  const maybe = HAVE_FFMPEG ? it : it.skip
+
+  maybe('captions fit inside the video that was ACTUALLY produced', async () => {
+    // A LONG FINAL WORD, which is what actually reproduces the staging
+    // failure. The reading-speed rule sizes a cue by its character count, so a
+    // long last word makes the final cue reach for every millisecond left in
+    // the video. With the edge trim ending the file keepMs after that word,
+    // "every millisecond left" is the exact planned duration — and the encoded
+    // file is not exactly that long. The stock fixture does NOT reproduce it:
+    // its final cue ends 120 ms early by luck of where its words fall, which
+    // is why the first version of this test passed with the guard disabled and
+    // proved nothing.
+    const input = baseInput()
+    const words = input.evidence.words
+    words[words.length - 1] = { ...words[words.length - 1], text: 'extraordinarily'.repeat(6) }
+    const compiled = compileEditPlan({ ...input, policy: shippedPolicy() })
+    const shipped: EditPlanV1 = {
+      ...compiled.plan,
+      identity: { ...compiled.plan.identity, sourceChecksum: await fileSha256(sourcePath) },
+    }
+    expect(shipped.captions.cues.length).toBeGreaterThan(0)
+
+    // Rendered WITHOUT burning the captions, deliberately. What is under test
+    // is whether the planned cue timings fit the encoded duration, and burn-in
+    // does not change how long the file is — it is the timeline and `-t` that
+    // decide that. Dropping the cues for the encode keeps this case working on
+    // any machine, instead of skipping wherever the pinned fonts are absent,
+    // which is exactly how the gap it closes stayed open.
+    const workDir = join(dir, 'shipped')
+    const forEncode: EditPlanV1 = { ...shipped, captions: { ...shipped.captions, cues: [] } }
+    const { outputPath } = await renderEditPlan({
+      plan: forEncode, sourcePath, assPath: null, fontsDir: null, workDir,
+      strictFontIntegrity: false,
+    })
+
+    // THE VIDEO STREAM, not the container — and this distinction is the whole
+    // point of the case. `format=duration` reports the LONGER of the two
+    // streams, and audio consistently runs past video here: measured on real
+    // renders the video stream lands 93-120 ms short of the planned duration
+    // while audio matches it almost exactly. validateProbedOutput deliberately
+    // prefers the video stream ("the header is written by the encoder under
+    // audit; the stream extent is what a decoder will actually play"), so a
+    // test probing the container measures a number the validator never uses —
+    // and passes while production fails. The first version of this test did
+    // exactly that.
+    const probed = await execFile('/usr/bin/ffprobe', [
+      '-v', 'error', '-select_streams', 'v:0',
+      '-show_entries', 'stream=duration', '-of', 'csv=p=0', outputPath,
+    ], { timeout: 120_000 })
+    const measuredDurationMs = Math.round(Number(probed.stdout.trim()) * 1000)
+    // The shortfall is real and must be visible in this test, or a future
+    // change that removes it would make the case vacuous without anyone
+    // noticing.
+    expect(measuredDurationMs).toBeLessThan(shipped.output.durationMs)
+
+    // THE ASSERTION THAT WOULD HAVE CAUGHT IT. Not "the plan is
+    // self-consistent" — the plan always was. This runs the production
+    // validator against the real file's real duration.
+    expect(() => validateCaptionsAgainstOutput(shipped, measuredDurationMs)).not.toThrow()
+
+    // And state the margin, so a future change that erodes it is visible in the
+    // failure rather than only in a staging log an hour later.
+    const last = shipped.captions.cues[shipped.captions.cues.length - 1]
+    expect(measuredDurationMs - last.outputEndMs).toBeGreaterThan(0)
+    cleanupRenderWorkDir(workDir)
+  }, 400_000)
 })

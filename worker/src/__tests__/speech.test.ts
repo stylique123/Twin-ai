@@ -1,4 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest'
+import { assertPinnedLanguage } from '../jobs/speechLanguage.js'
+import { PermanentJobError } from '../errors.js'
+
+function codeOf(fn: () => unknown): string {
+  try { fn() } catch (e) { return (e as PermanentJobError).code }
+  throw new Error('expected a throw, got none')
+}
 
 beforeAll(() => {
   process.env.SUPABASE_URL ||= 'https://stub.supabase.co'
@@ -564,5 +571,46 @@ describe('bridge-corruption backstop (speech_transcript_mismatch)', () => {
   it('legitimate output (words == transcript tokens) passes untouched', async () => {
     const { buildSpeechAnalysis } = await import('../jobs/editorSpeech.js')
     expect(() => buildSpeechAnalysis(asset, fixtureBridge(), opts)).not.toThrow()
+  })
+})
+
+describe('the editor will not transcribe under language auto-detection', () => {
+  // THE #1 CAPTION-QUALITY BUG, made unreachable rather than merely avoided.
+  //
+  // whisper_transcribe.py's own comment records the symptom: faster-whisper
+  // "mis-detects accented/noisy English takes as Arabic/Urdu/Welsh and burns in
+  // unreadable captions". Both bridges pin the language and have for a long
+  // time — but the pin was defended by nothing. WHISPER_LANGUAGE=auto in the
+  // environment would have restored the defect with every suite still green,
+  // because the bridges accept "auto" by design and the default merely happened
+  // to be "en". A default is not a guarantee.
+
+  it('refuses every spelling of "let the model guess"', () => {
+    for (const v of ['auto', 'AUTO', 'detect', '', '  ', ' Auto ']) {
+      expect(codeOf(() => assertPinnedLanguage(v))).toBe('speech_language_policy_invalid')
+    }
+  })
+
+  it('accepts a specific ISO code — including a non-English one', () => {
+    // Deliberate multi-language support is the POINT of pinning rather than
+    // banning: a creator working in Urdu gets Urdu because someone chose it,
+    // not because a noisy room made the model guess it.
+    expect(assertPinnedLanguage('en')).toBe('en')
+    expect(assertPinnedLanguage('ur')).toBe('ur')
+    expect(assertPinnedLanguage('es')).toBe('es')
+    expect(assertPinnedLanguage('EN')).toBe('en')
+    expect(assertPinnedLanguage('pt-BR')).toBe('pt-br')
+  })
+
+  it('refuses junk rather than passing it to the bridge', () => {
+    for (const v of ['english', '--task=translate', 'e', 'en;rm -rf /', '123']) {
+      expect(codeOf(() => assertPinnedLanguage(v))).toBe('speech_language_policy_invalid')
+    }
+  })
+
+  it('CONTROL: the shipped default is a pinned code, not auto-detect', () => {
+    // If someone changes env.ts's default to 'auto', this fails here rather
+    // than in a user's captions.
+    expect(() => assertPinnedLanguage(process.env.WHISPER_LANGUAGE ?? 'en')).not.toThrow()
   })
 })

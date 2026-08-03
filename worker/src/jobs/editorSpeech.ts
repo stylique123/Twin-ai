@@ -29,6 +29,7 @@ import { PermanentJobError } from '../errors.js'
 import { makeSlowPoint, watchCancellation, type CancelWatch } from './editorCancel.js'
 import { loadEligibleSource } from './editorInspect.js'
 import { stageDownloadOpts, type VerifiedSourceSession } from './sourceSession.js'
+import { assertPinnedLanguage } from './speechLanguage.js'
 
 export const SPEECH_ANALYSIS_SCHEMA_VERSION = 1
 
@@ -620,7 +621,10 @@ async function runAsrBridge(wavPath: string, outPath: string, watch: CancelWatch
       '--model-manifest', (env.speechModelManifest
         || join(import.meta.dirname, '..', '..', 'models', 'faster-whisper-small.manifest.json')),
       '--require-pinned-model',
-      '--language', env.whisperLanguage, '--beam-size', '1',
+      // Refused rather than passed through when it is "auto" — see
+      // assertPinnedLanguage. The check is HERE, at the call, so it cannot be
+      // bypassed by a caller that built its own argv.
+      '--language', assertPinnedLanguage(env.whisperLanguage), '--beam-size', '1',
       '--max-seconds', String(Math.ceil(env.sourceMaxDurationMs / 1000)),
       ...(env.speechBridgeHoldAt ? ['--hold-at', env.speechBridgeHoldAt, '--hold-ms', String(env.speechBridgeHoldMs)] : [])],
     env.speechAsrTimeoutMs, watch, 'during_asr',

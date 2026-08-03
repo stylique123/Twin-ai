@@ -77,6 +77,7 @@ export interface ProbeStream {
   sample_rate?: string
   channels?: number
   duration?: string
+  start_time?: string
   nb_frames?: string
   bit_rate?: string
 }
@@ -234,6 +235,14 @@ export function parseRational(r: string | undefined): { num: number; den: number
   return { num, den }
 }
 
+/** Beyond this, one stream genuinely ended without the other. Real renders on
+ *  this build diverge by 93-120 ms; this is four times the worst of them. */
+export const AV_DURATION_DIVERGENCE_MAX_MS = 500
+/** Beyond this the streams are pinned to different origins, which is a
+ *  whole-video lip-sync error rather than encoder rounding. Real renders
+ *  measure exactly 0. */
+export const AV_START_OFFSET_MAX_MS = 100
+
 // ---- validation -------------------------------------------------------------
 
 export interface OutputMeasurements {
@@ -249,6 +258,13 @@ export interface OutputMeasurements {
   fpsNum: number
   fpsDen: number
   bytes: number
+  /** AUDIO/VIDEO GEOMETRY — recorded on every render, enforced only at the
+   *  disaster band. Positive means audio outlasts video. */
+  audioMinusVideoDurationMs: number | null
+  /** Difference in stream start timestamps. Non-zero here is lip-sync error:
+   *  the two streams are pinned to different origins, so the offset applies
+   *  for the WHOLE video and gets worse the longer someone watches. */
+  audioMinusVideoStartMs: number | null
 }
 export interface OutputValidation {
   measurements: OutputMeasurements
@@ -331,6 +347,52 @@ export function validateProbedOutput(
     )
   }
 
+  // ---- A/V GEOMETRY ---------------------------------------------------------
+  //
+  // Nothing compared the two streams to each other. Everything above measures
+  // VIDEO against the plan; the audio stream's own extent and origin were
+  // never looked at. For a product whose entire output is a person talking to
+  // camera, drift between them is the single most damaging defect that can
+  // ship, and it is invisible to every check that existed: codec right, raster
+  // right, frame rate right, duration right, lips wrong.
+  //
+  // ENFORCED NARROWLY, RECORDED ALWAYS — the posture jobs/loudness.ts argues
+  // for, and for the same reason: what real renders do here is measured, and
+  // what a broken one does is not. Measured on this build:
+  //
+  //   edges off   video 40000 ms   audio 40120 ms   delta +120   start delta 0
+  //   shipped     video 38667 ms   audio 38760 ms   delta  +93   start delta 0
+  //
+  // Audio consistently outlasts video, because video truncates to whole frames
+  // and to segment boundaries while audio does not. That is normal and must
+  // not fail a render. So the bounds below are set where a stream has genuinely
+  // run out or been pinned to the wrong origin, not where an encoder rounds:
+  // half a second of divergence is far outside anything measured, and 100 ms of
+  // start offset is already past the point a viewer sees the lips disagree
+  // (ITU-R BT.1359 puts detectability near 45 ms audio-early / 125 ms late).
+  const audioMs = secondsStringToMs(audio.duration)
+  const videoStreamMs = streamMs
+  const audioMinusVideoDurationMs = audioMs !== null && videoStreamMs !== null ? audioMs - videoStreamMs : null
+  const vStartMs = secondsStringToMs(video.start_time)
+  const aStartMs = secondsStringToMs(audio.start_time)
+  const audioMinusVideoStartMs = aStartMs !== null && vStartMs !== null ? aStartMs - vStartMs : null
+
+  if (audioMinusVideoDurationMs !== null && Math.abs(audioMinusVideoDurationMs) > AV_DURATION_DIVERGENCE_MAX_MS) {
+    bad(
+      `the audio and video streams disagree on length by ${audioMinusVideoDurationMs}ms ` +
+      `(limit ±${AV_DURATION_DIVERGENCE_MAX_MS}ms) — one of them ran out early`,
+      'output_av_drift',
+    )
+  }
+  if (audioMinusVideoStartMs !== null && Math.abs(audioMinusVideoStartMs) > AV_START_OFFSET_MAX_MS) {
+    bad(
+      `the audio starts ${audioMinusVideoStartMs}ms away from the video ` +
+      `(limit ±${AV_START_OFFSET_MAX_MS}ms) — the streams are pinned to different origins ` +
+      'and the whole video is out of sync',
+      'output_av_drift',
+    )
+  }
+
   if (bytes <= 0) bad('the output file is empty', 'output_decode_failed')
   // An upper bound on bytes-per-millisecond catches a runaway encode; there is
   // deliberately no lower bound in bytes, because a static frame legitimately
@@ -342,6 +404,7 @@ export function validateProbedOutput(
   return {
     measurements: {
       durationMs, durationSourceField,
+      audioMinusVideoDurationMs, audioMinusVideoStartMs,
       width: video.width!, height: video.height!,
       pixelFormat: video.pix_fmt!,
       videoCodec: video.codec_name!, audioCodec: audio.codec_name!,

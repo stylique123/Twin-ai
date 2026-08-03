@@ -658,11 +658,35 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           }
           throw err
         }
+        // WHAT THE PACING CHOICE ACTUALLY PRODUCED, on the durable trail.
+        //
+        // Same reasoning as `audio_measured` below, and the same precedent:
+        // edit_policy_v1.json says outright that the calm/balanced/punchy
+        // numbers were CHOSEN by reasoning about how short-form content cuts,
+        // not measured from our own renders. Numbers picked that way have been
+        // wrong three times on this project. Recording the realised density on
+        // every render is what turns "is punchy actually 45 cuts a minute" from
+        // an argument into a query.
+        //
+        // OUTSIDE THE try ON PURPOSE, exactly like the audio measurement: a
+        // failed bookkeeping write must never be caught by the handler above,
+        // labelled `compile_failed`, and used to fail a compile that already
+        // succeeded. Evidence must not be able to destroy the thing it is
+        // evidence of.
+        await appendEvent(job, projectId, 'cuts_measured', {
+          pacing: compiled.cutStats.pacingId,
+          applied_cuts: compiled.cutStats.appliedCuts,
+          cuts_per_minute_milli: compiled.cutStats.cutsPerMinuteMilli,
+          max_cuts_allowed: compiled.cutStats.maxCutsAllowed,
+          dropped_for_density: compiled.cutStats.droppedForDensity,
+          min_removal_ms: compiled.cutStats.minRemovalMs,
+          domain_ms: compiled.cutStats.domainMs,
+        })
       } else if (stage === 'rendering' && env.editorRenderEnabled) {
         // Phase 8 Batch 8.5: the REAL rendering stage. Reserve, render,
         // validate, THEN publish — nothing unmeasured reaches a durable path.
         try {
-          rendered = await runRenderingStage(job, projectId, dir)
+          rendered = await runRenderingStage(job, projectId, dir, session)
         } catch (err) {
           if (await cancelledMidStage(err)) return { cancelled: true, at_stage: stage, stages_ran: ranStages }
           if (!isLeaseLost(err)) {
@@ -687,7 +711,40 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
           integrated_lufs_milli: rendered.integratedLufsMilli,
           true_peak_dbtp_milli: rendered.truePeakDbtpMilli,
           true_peak_overshoot_milli: rendered.truePeakOvershootMilli,
+          // A/V geometry on the same trail. Enforced only at the disaster
+          // band, so the distribution of what real renders actually do is the
+          // only thing that can ever justify tightening it.
+          av_duration_delta_ms: rendered.audioMinusVideoDurationMs,
+          av_start_delta_ms: rendered.audioMinusVideoStartMs,
         })
+        // A BRAND COLOUR WE REFUSED TO USE, on the same durable trail and for
+        // the same reason. The owner pinned a colour, the video shipped
+        // without it, and the guard that decided so is the only thing that
+        // knows why. One event per rejected role, so support can answer "why
+        // are my captions white" with a measurement instead of a guess.
+        // WHAT THE RENDER COST, on the same durable trail and for the same
+        // reason. renderMs, the budget it ran against, and the graph digest
+        // are all computed on every render and then discarded — so today a
+        // render that failed after burning 95% of its budget and one that
+        // failed in two seconds leave identical records. Without this, every
+        // question about capacity, timeouts and unit cost is answered with an
+        // estimate rather than a measurement.
+        await appendEvent(job, projectId, 'render_measured', {
+          render_ms: rendered.renderMs,
+          render_budget_ms: rendered.renderBudgetMs,
+          realtime_ratio_milli: rendered.realtimeRatioMilli,
+          output_bytes: rendered.outputBytes,
+          graph_sha256: rendered.graphSha256,
+          argv_length: rendered.argvLength,
+        })
+        for (const r of rendered.captionColourRejections) {
+          await appendEvent(job, projectId, 'caption_colour_rejected', {
+            role: r.role,
+            colour_ass: r.colourAss,
+            contrast_ratio_milli: r.contrastRatioMilli,
+            minimum_ratio_milli: r.minimumRatioMilli,
+          })
+        }
       } else if (stage === 'validating' && env.editorRenderEnabled) {
         // Phase 8 Batch 8.5: mint the output asset and complete. Both fenced;
         // both refuse unless the output row is genuinely READY.

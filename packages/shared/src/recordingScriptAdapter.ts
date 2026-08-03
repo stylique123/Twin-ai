@@ -100,13 +100,33 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   // teleprompter or the worker's caption pass.
   const isPlaceholder = (l: string) =>
     /^\[[^\]]*\]$/.test(l) || /\b(hook option\s*\d*|selected hook|insert (the )?hook|your hook (above|here)|hook from above)\b/i.test(l)
-  const body = (blueprint.script ?? []).filter((s) => {
+  // The model is instructed to write a CTA beat in the script, pointing at the
+  // creator's real offer, and explicitly NOT to write "follow for more". So the
+  // spoken CTA already exists in `script` — it must be held aside here rather
+  // than left in the body, or the video ends on a plain talking scene and then
+  // a SECOND, appended ending.
+  //
+  // "Re-hook" must not match: it is a mid-script beat, and treating it as the
+  // ending would move the middle of the video to the end. `\bhook\b` is checked
+  // before the CTA test for exactly that reason.
+  const isCtaSection = (section: string): boolean =>
+    /\b(cta|call[ -]?to[ -]?action|outro|closing|sign[ -]?off)\b/i.test(section)
+
+  const usable = (blueprint.script ?? []).filter((s) => {
     const l = (s.line || '').trim()
     if (!l) return false
     if (isPlaceholder(l)) return false
     if (/hook|opener/i.test(s.section || '')) return false
     return !looksLikeHook(l)
   })
+  // The LAST CTA-labelled beat, not the first: if the model labels more than
+  // one, the ending is the one at the end.
+  let ctaIdx = -1
+  for (let i = usable.length - 1; i >= 0; i--) {
+    if (isCtaSection(usable[i].section || '')) { ctaIdx = i; break }
+  }
+  const ctaBeat = ctaIdx >= 0 ? usable[ctaIdx] : null
+  const body = ctaIdx >= 0 ? usable.filter((_, i) => i !== ctaIdx) : usable
 
   body.forEach((seg, i) => {
     const n = scenes.length + 1
@@ -146,18 +166,41 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     })
   })
 
-  // Final action (CTA) scene.
-  const cta = blueprint.publish_plan?.[0]?.caption?.trim() || blueprint.reference_read?.format_label
-    ? 'Follow for more like this'
-    : 'Follow for more'
+  // Final action (CTA) scene — the words the creator actually reads.
+  //
+  // THIS LINE USED TO BE A BUG THAT REACHED EVERY VIDEO EVER MADE:
+  //
+  //   const cta = blueprint.publish_plan?.[0]?.caption?.trim() || blueprint.reference_read?.format_label
+  //     ? 'Follow for more like this'
+  //     : 'Follow for more'
+  //
+  // `||` binds tighter than `?:`, so the whole `a || b` was the CONDITION and
+  // the caption was never read. Both branches are string literals, so the
+  // result was always one of two hardcoded lines — in practice always the
+  // first, since a blueprint essentially always has one of those two fields.
+  // Meanwhile the prompt spends a paragraph demanding a concrete CTA that
+  // points at the creator's offer and explicitly forbidding "a generic follow
+  // for more". The model wrote one. Nothing read it.
+  //
+  // The fix is not to repair the ternary — the source it reached for was wrong
+  // too. `publish_plan[].caption` is the POST caption, the text typed into the
+  // platform's caption box. Reading it aloud is a category error. The spoken
+  // CTA is the CTA beat of the script, which is why it is held out of the body
+  // above.
+  //
+  // The fallback stays deliberately plain. "Follow for more" is weak, and a
+  // weak line the creator can see and rewrite is better than a confident one
+  // that misstates their offer — nothing here knows what they actually sell.
+  const ctaLine = (ctaBeat?.line || '').trim()
+  const cta = ctaLine || 'Follow for more'
   const ctaN = scenes.length + 1
   scenes.push({
     scene_number: ctaN,
     scene_type: 'cta',
-    purpose: 'End with one clear final action',
+    purpose: ctaBeat?.section?.trim() || 'End with one clear final action',
     dialogue: cta,
     duration_sec: estimateDurationSec(cta, wpm),
-    ...framingFor(scenes.length, blueprint),
+    ...framingFor(scenes.length, blueprint, ctaBeat ?? undefined),
     caption_text: pushCaption(captionFromLine(cta), ctaN),
     pause_after: false,
     show_in_teleprompter: true,
