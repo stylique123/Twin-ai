@@ -40,7 +40,8 @@
     { "name": "speech", "digestKeyed": false, "consumedByDirector": false, "maxResultBytes": null },
     { "name": "visual", "digestKeyed": true, "consumedByDirector": true, "maxResultBytes": 262144 },
     { "name": "audio", "digestKeyed": true, "consumedByDirector": true, "maxResultBytes": 65536 },
-    { "name": "hook", "digestKeyed": true, "consumedByDirector": true, "maxResultBytes": 16384 }
+    { "name": "hook", "digestKeyed": true, "consumedByDirector": true, "maxResultBytes": 16384 },
+    { "name": "alignment", "digestKeyed": true, "consumedByDirector": false, "maxResultBytes": 524288 }
   ],
 
   "$recordAnalysisDefaultCapBytes": "The `else` branch of editor_record_analysis's cap CASE. Declared so the guard can compute each component's EFFECTIVE cap and catch one silently inheriting it.",
