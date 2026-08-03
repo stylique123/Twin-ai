@@ -11,17 +11,39 @@
 | Green when | a `staging-integration` run with conclusion `success` exists at the exact head SHA | **unchanged** |
 | While unknown | red | `pending` |
 
-## The one manual step
+## The one manual step ✅ DONE
 
-Branch protection is an admin setting; no workflow file can change it. When this
-lands on `main`, update protection on `main` **in the same sitting**:
+Branch protection is an admin setting; no workflow file can change it. This was
+applied by hand when the gate merged. The current state of the `main protection`
+ruleset (id `19777534`, enforcement `active`, targeting `~DEFAULT_BRANCH`):
 
-- remove the required check `staging-matrix-required`
-- add the required status `staging-matrix-gate`
+| required check | why |
+|---|---|
+| `staging-matrix-gate` | this gate — replaced `staging-matrix-required` |
+| `unit-tests` | |
+| `web-and-shared` | typecheck + web build |
+| `worker` | worker typecheck |
 
-A required check that no longer reports leaves every PR blocked on
-*"Expected — waiting for status to be reported"*, so skipping this does not fail
-open, it fails stuck.
+**The last three are deliberate, and are new.** Before this, the matrix was the
+*only* required check, so a PR could merge with a passing matrix and a **failing
+typecheck**. They entered as a bridge — a ruleset refuses an empty required list,
+so the old check could not simply be removed — and were kept because that hole
+was worth closing.
+
+Two footnotes for whoever changes this next:
+
+- **The order was: bridge, merge, swap.** The gate's own PR deletes the job the
+  ruleset required, so `staging-matrix-required` could never report on it and the
+  merge button never lit up. The required check has to be replaced *before* the
+  merge, not after. A required check that no longer reports leaves every PR
+  blocked on *"Expected — waiting for status to be reported"* — skipping this does
+  not fail open, it fails stuck.
+- **All four are stored as "any source"**, i.e. no `integration_id` pin. The
+  originals were pinned to GitHub Actions (`15368`); typing a check name rather
+  than picking it from the dropdown stores it unpinned, and re-saving the rule
+  reset the one that was pinned. Any app with `statuses: write` can therefore
+  satisfy them. Worth re-pinning by removing and re-adding each from the
+  suggestion list.
 
 ## Why the trigger had to change
 
