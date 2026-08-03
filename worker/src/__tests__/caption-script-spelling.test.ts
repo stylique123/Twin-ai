@@ -128,6 +128,32 @@ describe('script spelling map — only substitutions, only above the floor', () 
     }
   })
 
+  it('THE OFF SWITCH: enabled=false reverts to the ASR spelling entirely', () => {
+    // The blunt remedy for a wrong word in a posted video: one boolean, no code
+    // change. It must be TOTAL — "mostly off" is not a state anyone wants to
+    // reason about while looking at a bad video.
+    const m = buildScriptSpellingMap([sub('TwinAI', 1, 2, 1000)], FLOOR, false)
+    expect(m.byTime.size).toBe(0)
+    expect(m.applied).toBe(0)
+    expect(m.belowFloor).toBe(0)
+  })
+
+  it('the switch defaults to ON when omitted, so existing callers are unchanged', () => {
+    expect(buildScriptSpellingMap([sub('TwinAI', 1, 2, 1000)], FLOOR).byTime.size).toBe(1)
+  })
+
+  it('only a literal true enables it — a truthy value is not an on switch', () => {
+    for (const notTrue of [undefined as unknown as boolean, 1 as unknown as boolean, 'yes' as unknown as boolean]) {
+      if (notTrue === undefined) continue
+      expect(buildScriptSpellingMap([sub('TwinAI', 1, 2, 1000)], FLOOR, notTrue).byTime.size).toBe(0)
+    }
+  })
+
+  it('the shipped policy carries the switch, and it is a real boolean', () => {
+    const enabled = loadEditPolicy().captions.scriptSpellingEnabled
+    expect(typeof enabled).toBe('boolean')
+  })
+
   it('applied starts at zero — the compiler counts real changes, the map does not presume any', () => {
     expect(buildScriptSpellingMap([sub('TwinAI', 1, 2, 1000)], FLOOR).applied).toBe(0)
   })
@@ -227,6 +253,46 @@ describe('END TO END through compileEditPlan — the bound that matters', () => 
       .toEqual(plain.captions.cues.map((c) => [c.startMs, c.endMs]))
     expect(respelt.captions.cues.map((c) => c.lines.join(' ').split(' ').length))
       .toEqual(plain.captions.cues.map((c) => c.lines.join(' ').split(' ').length))
+  })
+
+  it('THE OFF SWITCH end to end: captions revert to exactly what they were', () => {
+    const p = policy()
+    p.captions.scriptSpellingEnabled = false
+    const off = compileEditPlan({
+      ...baseInput({
+        evidence: {
+          ...baseInput().evidence,
+          scriptWordTimings: [{
+            text: 'TwinAI', startMs: target.startMs, endMs: target.endMs,
+            via: 'substitution', similarityMilli: 950,
+          }],
+        },
+      }),
+      policy: p,
+    }).plan.captions.cues.map((c) => c.lines.join(' ')).join(' | ')
+    expect(off).toBe(cueText(baseInput()))
+    expect(off).not.toContain('TwinAI')
+  })
+
+  it('a re-spelling is RECORDED as a warning — a wrong word is traceable', () => {
+    const res = compileEditPlan({
+      ...baseInput({
+        evidence: {
+          ...baseInput().evidence,
+          scriptWordTimings: [{
+            text: 'TwinAI', startMs: target.startMs, endMs: target.endMs,
+            via: 'substitution', similarityMilli: 950,
+          }],
+        },
+      }),
+      policy: policy(),
+    })
+    const w = res.warnings.filter((x) => x.code === 'caption_script_spelling_applied')
+    expect(w).toHaveLength(1)
+    // The INDEX, not the text: the plan contract validates warning details
+    // against TOKEN_RE, and caption text is arbitrary human speech. A version
+    // that put the words here failed every render that re-spelled anything.
+    expect(w[0].detail).toBe('word_0')
   })
 
   it('a timing that matches NO spoken word changes nothing', () => {

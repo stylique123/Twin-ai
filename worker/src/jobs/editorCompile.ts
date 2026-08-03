@@ -107,6 +107,10 @@ export interface EditPolicyV1 {
     maxWidthPx: number
     /** How far before the end of the video the LAST caption must finish. */
     tailGuardMs: number
+    /** Master switch. False reverts captions to the ASR's spelling entirely —
+     *  the blunt remedy for a wrong word on screen, reachable without a code
+     *  change while the precise fix (the floor) is worked out. */
+    scriptSpellingEnabled: boolean
     /** Minimum aligner similarity (0..1000) before a SUBSTITUTION's script
      *  spelling replaces the ASR's in a caption. Below it the pairing is more
      *  likely two unrelated words in the same position, and re-spelling would
@@ -1065,7 +1069,8 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   // (upload, no captured script, or a project pinned before alignment existed)
   // and yields captions byte-identical to those produced before this consumer.
   const spelling = buildScriptSpellingMap(
-    evidence.scriptWordTimings, policy.captions.scriptSpellingMinSimilarityMilli)
+    evidence.scriptWordTimings, policy.captions.scriptSpellingMinSimilarityMilli,
+    policy.captions.scriptSpellingEnabled)
   const cues = buildCaptionCues({
     words: evidence.words, timeMap, preset: captionPreset,
     maxLines: policy.captions.maxLinesPerCue, maxCues: policy.captions.maxCues,
@@ -1344,9 +1349,15 @@ export interface ScriptSpellingMap {
 export function buildScriptSpellingMap(
   timings: readonly CompileScriptWordTiming[] | undefined,
   minSimilarityMilli: number,
+  enabled = true,
 ): ScriptSpellingMap {
   const byTime = new Map<string, string>()
   const seen = new Set<string>()
+  // THE OFF SWITCH, honoured before anything else. `false` must mean captions
+  // read exactly as they did before this feature existed — not "mostly", and
+  // not "unless some other branch below applies". One early return is the only
+  // shape that cannot be partially true.
+  if (enabled !== true) return { byTime, belowFloor: 0, ambiguous: 0, applied: 0 }
   // FAIL CLOSED ON A MISSING FLOOR. `(similarityMilli ?? 0) < undefined` is
   // false, so an absent threshold would silently accept EVERY substitution —
   // the fail-open direction, on the one decision here that can put a word on
@@ -1543,7 +1554,22 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     // else `w.text` is untouched, so a take with no alignment produces
     // byte-identical captions to before this existed.
     const respelt = inp.spelling.byTime.get(`${w.startMs}:${w.endMs}`)
-    if (respelt !== undefined && respelt !== w.text) inp.spelling.applied++
+    if (respelt !== undefined && respelt !== w.text) {
+      inp.spelling.applied++
+      // RECORDED, not silent. When a wrong word reaches a posted video the
+      // question is immediately "which word", and without this the answer means
+      // re-reading the alignment component by hand.
+      //
+      // THE WORD INDEX, NOT THE WORDS. The plan contract validates every
+      // warning detail against TOKEN_RE, so caption text — which is arbitrary
+      // human speech and may contain spaces, punctuation or any script — cannot
+      // go in this field. A first version put `${'${w.text}'}->${'${respelt}'}` here and
+      // every render carrying a re-spelling would have thrown edit_plan_invalid
+      // and failed. The index is always a valid token and loses nothing: it
+      // points at the exact transcript word, whose before-and-after and
+      // similarity score both live in the alignment component already.
+      inp.warn.add('caption_script_spelling_applied', `word_${i}`)
+    }
     staged.push({ index: i, text: respelt ?? w.text, outStartMs, outEndMs, pieceIndex: piece.index })
   }
 

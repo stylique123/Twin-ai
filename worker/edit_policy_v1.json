@@ -345,6 +345,22 @@
       "floor, so this number gets corrected from what actually happens to real",
       "videos instead of remaining an estimate with no expiry date."
     ],
+    "_scriptSpellingEnabledComment": [
+      "THE OFF SWITCH. Set false and captions revert to the ASR's spelling",
+      "everywhere, exactly as they read before this feature existed -- no code",
+      "change, no logic change, one boolean.",
+      "",
+      "It exists because the failure mode here is a WRONG WORD ON SCREEN in a",
+      "video somebody has already posted, and the remedy must not be 'wait for a",
+      "patch'. Lowering the floor is the precise fix once you know which word",
+      "went wrong; this is the blunt one you can reach for first and think",
+      "afterwards. Reverting is always available and always total.",
+      "",
+      "The floor and the switch are separate on purpose: a floor of 1000 would",
+      "very nearly disable the feature but not quite, and 'nearly off' is not a",
+      "state anyone wants to reason about while looking at a bad video."
+    ],
+    "scriptSpellingEnabled": true,
     "scriptSpellingMinSimilarityMilli": 700,
     "marginHorizontalPx": 200,
     "railInsetPx": 200,
