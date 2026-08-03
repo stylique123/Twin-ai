@@ -92,7 +92,7 @@ describe('boot manifest', () => {
     expect(m.manifestEpoch).toBe(2)
     expect(m.componentVersions).toEqual({
       inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-2', audio: 'audio-1', hook: 'hook-1',
-      alignment: 'alignment-1',
+      alignment: 'alignment-2',
     })
     expect(m.brandSnapshotSha).toBe(BRAND_SHA)
     // §3.2: the brand snapshot CONTENT is pinned (frozen), not just its hash — the

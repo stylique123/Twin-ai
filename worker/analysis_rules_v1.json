@@ -38,6 +38,39 @@
     "earlyWindowMs": 3000,
     "earlyEnergyRatioMax": 4
   },
+  "_falseStartsComment": [
+    "WHEN A REPEATED RUN COUNTS AS A FALSE START rather than an aside.",
+    "",
+    "A false start -- saying a piece of the script, stopping, saying it again --",
+    "appears in the alignment as a run of insertions sitting beside the script",
+    "region then said properly. Most insertion runs are NOT false starts: they",
+    "are ad-libs, filler, an aside. What separates a restart is that the",
+    "abandoned run RESEMBLES what follows it, IN ORDER.",
+    "",
+    "800/1000 is CHOSEN, NOT MEASURED, and errs HIGH deliberately. This is",
+    "evidence, and evidence that cries wolf is worse than none: a reviewer who",
+    "learns the false-start list is mostly wrong stops reading it, and the real",
+    "ones become invisible too. Too high merely misses some; too low destroys",
+    "the signal. falseStartCount is recorded on every alignment so this gets",
+    "corrected from real recordings rather than staying an estimate -- the same",
+    "treatment the pacing block and the caption spelling floor carry.",
+    "",
+    "minTokens 2 refuses one-word runs outright: a single repeated word is a",
+    "stutter or a filler, not a restart, and reporting those would bury the real",
+    "ones in noise.",
+    "",
+    "THESE LIVE HERE, NOT IN edit_policy_v1.json. That file is the COMPILER's",
+    "authority; this one is the ANALYSIS stage's, and the alignment component is",
+    "built in the analysis stage. They also enter alignmentEffectiveConfig and",
+    "therefore the component DIGEST, because they change the evidence produced --",
+    "without that, retuning a threshold would silently reuse a record computed",
+    "under the old one, which is a cache hit returning the wrong answer."
+  ],
+  "falseStarts": {
+    "minSimilarityMilli": 800,
+    "minTokens": 2,
+    "maxReported": 50
+  },
   "hook": {
     "windowMs": 3000
   }

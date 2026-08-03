@@ -735,9 +735,34 @@ before treating it as a defect.
            carry no alignment digest at all. Alignment is therefore OPTIONAL at
            compile time; requiring it would have broken every in-flight project
            permanently for a spelling improvement.
-     - [ ] **False starts** — a script region spoken twice becomes detectable.
-           **BLOCKED ON `alignment-2`, and this was measured rather than
-           assumed.** The component records `insertionCount` and nothing else
+     - [x] **False starts — DONE, as `alignment-2`.** `detectFalseStarts`
+           (scriptAlignment.ts) reads the alignment OPS, which only exist at
+           analyze time: the record keeps timings and counts, not the op list,
+           so a later reader could not reconstruct this without re-aligning.
+           A restart falls out as a RUN OF INSERTIONS beside the script region
+           then said properly — every false start has that shape. What separates
+           it from an ad-lib is that the abandoned run RESEMBLES what follows,
+           **in order**, which is why the measure is sequence-wise rather than
+           the unordered overlap `matchedTokenRatio` uses.
+           Thresholds live in `analysis_rules_v1.json` (the ANALYSIS stage's
+           authority, not the compiler's) and enter `alignmentEffectiveConfig`
+           and therefore the component digest — so retuning one cannot silently
+           reuse a record computed under the old one. Bounded by construction:
+           `maxReported` caps the list and each entry is six small integers, so
+           it cannot threaten the byte budget the way timings can.
+           **The measure was corrected by probing, not by reasoning.** The first
+           version refused *"this changes ev— this changes everything"*, the most
+           characteristic restart a person makes, because Levenshtein scores
+           "ev" against "everything" at 733, just under the 800 floor. The floor
+           was not wrong; the measure was. A strict prefix at the FINAL position
+           now counts as a match — final position only, because that is where
+           abandonment physically happens, and allowing it anywhere would make
+           "show" match "shoulder" mid-sentence and start inventing restarts.
+           Nothing consumes it yet: it is EVIDENCE, for the review gate (item 4)
+           and the failure path (item 5).
+     - [ ] ~~**False starts** — blocked on `alignment-2`~~ *(superseded; the
+           analysis below is kept because it is what made the design)*
+           **The earlier reading was measured rather than assumed:** The component records `insertionCount` and nothing else
            about insertions (editorAlignment.ts) — a count, not where they are
            or what was said. A false start IS a run of insertions adjacent to
            the region that was then said properly, so the count alone cannot

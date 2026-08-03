@@ -27,12 +27,12 @@
 // component catalog records `consumedByDirector: false` for alignment.
 import {
   alignScriptToSpoken, scriptToAlignTokens, toAlignTokens, scriptWordTimings,
-  spokenScriptFromSnapshot,
-  type SnapshotForAlignment,
+  spokenScriptFromSnapshot, detectFalseStarts,
+  type SnapshotForAlignment, type FalseStart,
 } from './scriptAlignment.js'
 
 export const ALIGNMENT_EVIDENCE_SCHEMA_VERSION = 1
-export const ALIGNMENT_EVIDENCE_VERSION = 'alignment-1'
+export const ALIGNMENT_EVIDENCE_VERSION = 'alignment-2'
 
 // ── SIZE, AND WHY IT IS BOUNDED IN BYTES RATHER THAN IN WORDS ──────────────
 // This is the first component whose payload grows with the SCRIPT. `visual`,
@@ -92,8 +92,19 @@ export function fitTimingsToBudget<T>(
 /** A spoken word as the speech component records it. */
 export interface AlignSpeechWord { text: string; startMs: number; endMs: number }
 
+export interface FalseStartPolicy {
+  minSimilarityMilli: number
+  minTokens: number
+  maxReported: number
+}
+
 export interface AlignmentEvidenceInput {
   words: AlignSpeechWord[]
+  /** Thresholds for false-start detection. Chosen numbers, so they belong to
+   *  the frozen policy and are passed in rather than defaulted here. Omitted
+   *  means DETECT NOTHING — a missing threshold must not silently become a
+   *  permissive one, which is how the caption spelling floor nearly shipped. */
+  falseStarts?: FalseStartPolicy
   speechVersion: string
   /** The pinned snapshot — the script the creator was shown. */
   snapshot: SnapshotForAlignment | null
@@ -122,6 +133,7 @@ export function buildAlignmentEvidence(
   let alignment: Record<string, unknown> | null = null
   let reason: string | null = null
   let timings: Array<Record<string, unknown>> = []
+  let falseStarts: FalseStart[] = []
 
   if (result.ok) {
     const a = result.alignment
@@ -134,6 +146,24 @@ export function buildAlignmentEvidence(
       insertionCount: a.insertionCount,
       coverageMilli: a.coverageMilli,
       editDistance: a.editDistance,
+    }
+    // FALSE STARTS — the creator saying a piece of the script, stopping, and
+    // saying it again. Detected here rather than left to a consumer because it
+    // is a read of the ALIGNMENT OPS, which only exist at this moment: the
+    // record keeps timings and counts, not the op list, so a later reader could
+    // not reconstruct it without re-aligning.
+    //
+    // BOUNDED BY CONSTRUCTION. maxReported caps the list, and each entry is six
+    // small integers, so this cannot threaten the byte budget the way timings
+    // can. That is why it is a detected RESULT rather than raw insertion spans:
+    // spans grow with the ad-libbing, the result grows with the restarts.
+    if (input.falseStarts) {
+      falseStarts = detectFalseStarts(
+        a, scriptTokens, spokenTokens,
+        input.falseStarts.minSimilarityMilli,
+        input.falseStarts.minTokens,
+        input.falseStarts.maxReported,
+      )
     }
     // The payload downstream actually wants: the SCRIPT's spelling at the
     // RECORDING's time. Words never spoken keep a null time rather than an
@@ -169,6 +199,8 @@ export function buildAlignmentEvidence(
     unavailableReason: reason,
     scriptWordTimings: fitted.kept,
     droppedTimings: fitted.dropped,
+    falseStarts,
+    falseStartCount: falseStarts.length,
     scriptSnapshotSha256: input.scriptSnapshotSha256,
     provenance: {
       speechVersion: input.speechVersion,

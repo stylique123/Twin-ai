@@ -218,6 +218,7 @@ export async function runAnalyzingStage(
           speechVersion: versions.speech,
           snapshot: pinned.snapshot.snapshot as never,
           scriptSnapshotSha256: pinned.snapshot.snapshotSha,
+          falseStarts: rules.falseStarts,
         })
     }
     if (watch.cancelled()) throw new AnalyzeCancelledError('before_persist')
