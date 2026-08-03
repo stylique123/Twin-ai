@@ -89,6 +89,22 @@ export interface EditPolicyV1 {
     maxCues: number; maxLinesPerCue: number; presetIds: string[]
     /** Left/right inset for a caption line. */
     marginHorizontalPx: number
+    /**
+     * How far in from the right edge the platform ACTION RAIL starts, measured
+     * from a safe-zone ruler screenshotted in both feeds (TikTok ~200, Reels
+     * ~150-200). The rail is vertical, so it is cleared by narrowing captions,
+     * never by raising them.
+     */
+    railInsetPx: number
+    /**
+     * The widest a centred caption line may be. Must satisfy both
+     * `playResX - 2*marginHorizontalPx <= maxWidthPx` (the ASS box actually
+     * delivers it) and `maxWidthPx <= playResX - 2*railInsetPx` (it clears the
+     * rail). Both directions are pinned by a contract test that reads the
+     * frozen policy, so retuning either number into the rail fails CI rather
+     * than a user's video.
+     */
+    maxWidthPx: number
     /** How far before the end of the video the LAST caption must finish. */
     tailGuardMs: number
     presets: Record<string, CaptionPresetPolicy>

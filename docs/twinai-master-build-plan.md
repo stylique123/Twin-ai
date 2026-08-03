@@ -225,6 +225,50 @@ the most expensive failure this product can produce.
 
 ---
 
+### 2.4 Per-task model routing — A NAMED GAP, NOT YET A DESIGN
+
+*Written down 2026-08-03. This requirement — "different models for different
+things, not one call" — had been stated repeatedly in conversation and appeared
+**nowhere in this document**, which meant it could not be planned, estimated or
+built. A requirement that lives only in chat is not a requirement; it is a
+recurring conversation. This section exists to end that, and it deliberately
+records the QUESTION rather than inventing an answer.*
+
+**The requirement.** The pipeline should not route every language task to one
+model. The work is not homogeneous — extracting structured evidence from a
+transcript, choosing a hook, writing scene dialogue, and judging a rendered
+result are different jobs with different cost, latency, quality and
+failure-tolerance profiles. Sending them all through a single call means paying
+the most capable model's price for the cheapest task, and accepting the cheapest
+model's judgement on the hardest one.
+
+**What already exists and must not be broken by this.** Model identity is
+already pinned and enforced — `check_model_pin_coupling.mjs` is a required CI
+guard, the boot manifest records `componentVersions`/`componentDigests`, and
+`editor_record_analysis` refuses a write whose bundle version disagrees with the
+pinned manifest (0087). Any routing scheme has to keep that property: **which
+model produced a given artefact must remain recoverable from the record.**
+Routing that makes provenance ambiguous is worse than no routing.
+
+**Open questions, all unanswered:**
+- What is the unit of routing — the job type, the individual call site, or a
+  declared task class? A task class is the only one that stays pinnable without
+  a new allowlist per call site, and this project has just spent a day removing
+  one such family of allowlists (see the analysis-component catalog, #244).
+- Where does the mapping live? It is a frozen numeric/identity authority, so on
+  current form it belongs beside `edit_policy_v1.json` and the model pin, read
+  by exactly one loader — not scattered at the call sites.
+- What happens on a model being unavailable or deprecated? A silent fallback to
+  a different model would break the provenance property above.
+- How is a routing choice evaluated? Phase 7's quality gate and the
+  director-eval harness already measure output quality; routing changes should
+  be judged there rather than by impression.
+
+**Blocked on:** a human decision on the routing unit. Until that exists this is
+a gap with a name, which is strictly better than a gap without one.
+
+---
+
 ## 3. THE B-ROLL PROBLEM — DIAGNOSED AND SOLVED
 
 B-roll was removed previously because output was **inaccurate** (wrong content)
@@ -450,7 +494,7 @@ risk permanently.
 
 ## 7. THE BUILD PLAN
 
-### Phase 9 — the render truth layer *(in progress)*
+### Phase 9 — the render truth layer *(COMPLETE — 10/10)*
 
 **Merged and live:** caption emphasis (#233) · brand colours (#234) · zoom
 time-gating (#235) · loudness measurement (#236)
@@ -479,18 +523,48 @@ time-gating (#235) · loudness measurement (#236)
 - [x] Cut-density cap test — `editor-compile.test.ts:909`, both directions:
       under the cap produces no `removal_dropped_cut_density`, over it does.
 
-**Remaining — and BOTH are decisions, not engineering:**
-- [ ] **Caption band out of the platform UI zone.** Today captions sit at ASS
-      alignment 2 (bottom-centre) with `marginVerticalPx` 320–360 on a 1920px
-      frame. Whether that clears TikTok's caption/username block and Reels'
-      bottom bar is the entire question, and I do not have a measurement — only
-      recollection of published safe-area figures. Picking a number from
-      recollection is precisely the mistake already made three times on this
-      project (the 50-minute CI cap against a real 77 minutes; the 25% hook-trim
-      threshold against a real legitimate 28.7% case; the 80 ms caption tail
-      guard against a real 93–120 ms shortfall). **Unblocks with:** a screenshot
-      of one real posted video per platform, which makes the safe zone
-      measurable in pixels instead of remembered.
+- [x] **Caption band out of the platform UI zone — DONE, and the question was
+      wrong.** This item was written as a vertical problem: whether captions at
+      `marginVerticalPx` 320–360 clear TikTok's caption/username block and
+      Reels' bottom bar. It refused to guess a number, correctly, and waited for
+      a measurement. The measurement arrived — a safe-zone ruler posted and
+      screenshotted in both feeds — and **overturned the premise.**
+
+      | | TikTok (17 Pro Max) | Reels (11 Pro Max) |
+      |---|---|---|
+      | action rail, in from right edge | ~200 px | ~150–200 px |
+      | rail icons in the 320–360 band | bookmark ~340 | share ~370 / send ~320 |
+      | caption/username block, up from bottom | ~130–200 px | ~60–110 px |
+
+      **The bottom caption block was never the problem.** It sits far below the
+      600 px captions already clear (raised in #237 from an earlier screenshot).
+      The collision is the **action rail**, and the rail is **horizontal** —
+      it runs up the side of the frame. It cannot be escaped by raising the
+      band: doing so means clearing the heart at ~600 px, which puts captions in
+      the middle of the video.
+
+      So the fix is **width, not height**, and `marginVerticalPx` is deliberately
+      **unchanged at 600**. `captions.maxWidthPx` = 680 (= 1080 − 2×200), with
+      `captions.railInsetPx` = 200 recorded beside it as the measurement itself,
+      and `marginHorizontalPx` raised 140 → 200 so the ASS box actually delivers
+      that width. Centring is why the arithmetic doubles: every extra pixel of
+      width is spent on both sides at once.
+
+      Pinned by `caption-safe-area.test.ts`, which **reads the frozen policy**
+      rather than restating it — both directions, so lowering the margin for
+      nicer line length and widening `maxWidthPx` past the rail each fail CI
+      rather than a user's video. The old 140 px margin is kept as an explicit
+      non-vacuity control.
+
+      *Not claimed:* that each preset's `maxCharsPerLine` fits `maxWidthPx` in
+      pixels. That is a character proxy (`fragmentToken` — "the renderer
+      measures nothing here"), and turning it into a pixel claim needs a
+      glyph-advance constant nobody has measured. The ASS box is the hard bound
+      regardless; an over-wide preset is a planned-vs-rendered line-count
+      mismatch, a different defect with a different fix.
+
+**Both former blockers — each was a decision, not engineering, and both are now
+decided. Phase 9 is COMPLETE (10/10).**
 - [x] **Wire `pacing`** — DONE. Decided and built. Pacing controls exactly one
       thing: **how much silence survives**. It deliberately does not touch
       caption style (the Director already picks `captionPresetId` separately),
@@ -598,6 +672,31 @@ before treating it as a defect.
    the speaker, font size, pause markers. *The word "teleprompter" appeared
    once in the first draft of this document, as a subordinate clause, in a
    teleprompter product.*
+
+   7a. **Teleprompter behaviour differentiated BY CONTENT TYPE.** *(Written
+   down 2026-08-03 because it existed only in conversation and therefore could
+   not be built. Item 7 above covers the CRAFT of the teleprompter — eyeline,
+   scroll speed, font, pause markers — and treats it as one artefact tuned the
+   same way for every video. The requirement is that it should not be: a
+   demonstration read while the creator's hands are busy is not the same
+   instrument as a piece to camera.*
+
+   **UNSPECIFIED, and deliberately not guessed here.** What is recorded is the
+   requirement and the open questions, not an invented answer:
+   - Which axis differentiates? Item 9 retires archetypes in favour of the
+     three capability flags (§2.2), so "content type" must be defined against
+     those flags or against something new — it cannot quietly reintroduce
+     Explainer/Demonstrator/Brand. See the §6/§2.2 conflict item 9 already owns.
+   - What actually varies — scroll speed, chunk size, whether it scrolls at all,
+     whether it shows the next line or the next beat, whether it hides during
+     a declared `[SHOW: …]` clip (Phase 12, item 11)?
+   - Is the choice the creator's, the Director's, or derived from the script?
+     A Director-chosen value needs a contract both copies agree on, which is
+     the cost item 9's capability flags were introduced to avoid paying twice.
+
+   **Blocked on:** a human decision on the axis. Until that lands this is a
+   named gap, not a buildable item — which is the whole reason it is written
+   here rather than left in a conversation nobody can grep.
 8. **Edit the script BEFORE filming.** Three of four panellists hit this
    independently: you cannot currently change a word before reading it into a
    camera 40 times.
@@ -1066,3 +1165,4 @@ cheapest thing left to check.
 | 2026-08-01 | Created. Consolidates 10-person panel (2 rounds), 3 codebase audits, Phase 8/9 rebuild, and the information-architecture critique. |
 | 2026-08-01 | Added §8a: five-question onboarding adopted with five corrections (offer as free text, Q4/Q5 moved to the confirm screen, no float confidence, never-merged sources, observed-vs-inferred audience). Gallery defined as a chooser, not a second pipeline. Cost per addition estimated, and re-cut priced at ~25-30% of a render. |
 | 2026-08-01 | Added §9a from a pre-mortem, a security/privacy audit and an efficiency/measurability audit run in parallel. Four silently-broken pipeline joints, one critical credential-vending defect (fixed), and the missing post→render join key. Reorders Phase 9: the inputs come before the polish. |
+| 2026-08-03 | **Phase 9 COMPLETE (10/10).** Its last item is closed by measurement, and the measurement overturned the item's premise: the caption collision is the platform ACTION RAIL, which is horizontal, not the bottom caption block. Fixed by width (`captions.maxWidthPx` 680, `railInsetPx` 200, `marginHorizontalPx` 140→200) with `marginVerticalPx` deliberately unchanged at 600; pinned by a contract test that reads the frozen policy in both directions. Also written down two requirements that existed only in conversation and were therefore unbuildable: §2.4 per-task model routing, and Phase 11 item 7a teleprompter-by-content-type. Both are recorded as named gaps with their open questions, not as invented designs — each is blocked on a human decision. |
