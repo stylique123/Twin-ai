@@ -307,6 +307,141 @@ export function alignScriptToSpoken(script: AlignToken[], spoken: AlignToken[]):
 }
 
 /** A script token's place in the recording, or null when it was never spoken. */
+// ── FALSE STARTS ───────────────────────────────────────────────────────────
+// A false start is the creator saying a piece of the script, stopping, and
+// saying it again. It is the single most common thing a person does in front of
+// a camera, and until now nothing in the pipeline could see one.
+//
+// IN ALIGNMENT TERMS IT IS NOT A SPECIAL CASE, which is why this can be a pure
+// read rather than a new measurement. The aligner pairs ONE of the attempts
+// with the script and has nowhere to put the other, so the abandoned attempt
+// falls out as a RUN OF INSERTIONS sitting immediately beside the script region
+// that was then said properly. Every false start has that shape.
+//
+// SO WHY NOT JUST REPORT INSERTION RUNS. Because most of them are not false
+// starts — they are ad-libs, filler, an aside, a laugh. The thing that
+// distinguishes a restart is that the abandoned run RESEMBLES the script region
+// that follows it. Reporting every insertion run as a false start would be the
+// "confident number we do not have" failure the plan opens by warning about.
+//
+// SIMILARITY IS SEQUENCE-WISE AND ORDERED. A multiset overlap would call
+// "the thing about the thing" a restart of "about the thing" — which is the
+// exact weakness of the hook component's `matchedTokenRatio`, an unordered
+// intersection that can say how MUCH matched but never WHERE. Here the run is
+// compared token-for-token against the script region in order.
+export interface FalseStart {
+  /** Spoken-token range of the ABANDONED attempt, half-open [from, to). */
+  spokenFromIdx: number
+  spokenToIdx: number
+  /** The script region it appears to be an attempt at, half-open. */
+  scriptFromIdx: number
+  scriptToIdx: number
+  /** 0..1000, how closely the abandoned run tracks that script region. */
+  similarityMilli: number
+  /** Tokens in the abandoned attempt. */
+  tokenCount: number
+}
+
+/**
+ * How closely an ordered run of spoken tokens tracks an ordered run of script
+ * tokens. Position-for-position, so word ORDER counts — a restart repeats the
+ * words in the same order, which is exactly what distinguishes it from an
+ * aside that happens to reuse vocabulary.
+ *
+ * Compared over the SHORTER length and divided by the LONGER, so a two-word
+ * fragment cannot score 1000 against a ten-word region by matching a prefix.
+ */
+export function runSimilarityMilli(
+  a: AlignToken[], b: AlignToken[], lastMayBeTruncated = false,
+): number {
+  if (a.length === 0 || b.length === 0) return 0
+  const n = Math.min(a.length, b.length)
+  let total = 0
+  for (let i = 0; i < n; i++) {
+    // THE ABANDONED WORD. A false start is usually abandoned MID-WORD — "this
+    // changes ev— this changes everything" — and that truncated token is the
+    // most characteristic thing about it. Levenshtein scores "ev" against
+    // "everything" very low, so the run that most obviously IS a restart was
+    // the one being refused: measured, not supposed. A strict prefix at the
+    // FINAL position only is therefore counted as a match.
+    //
+    // Final position only, and strict prefix only, because that is where
+    // truncation physically happens. Allowing it anywhere would make "show"
+    // match "shoulder" mid-sentence and start inventing restarts.
+    const isLast = i === n - 1
+    if (lastMayBeTruncated && isLast && a[i].key.length > 0 && a[i].key !== b[i].key
+        && b[i].key.startsWith(a[i].key)) {
+      total += 1000
+      continue
+    }
+    total += tokenSimilarityMilli(a[i].key, b[i].key)
+  }
+  return Math.round(total / Math.max(a.length, b.length))
+}
+
+/**
+ * Detect false starts in a completed alignment.
+ *
+ * `minSimilarityMilli` is the line between "they restarted the sentence" and
+ * "they said something else". It is a CHOSEN number and the caller owns it, so
+ * it lives in the frozen policy rather than here — the same rule the caption
+ * spelling floor follows.
+ *
+ * `minTokens` refuses one-word runs outright. A single repeated word is a
+ * stutter or a filler, not a false start, and calling it one would flood the
+ * record with noise that buries the real ones.
+ */
+export function detectFalseStarts(
+  alignment: ScriptAlignment,
+  script: AlignToken[],
+  spoken: AlignToken[],
+  minSimilarityMilli: number,
+  minTokens = 2,
+  maxReported = 50,
+): FalseStart[] {
+  const out: FalseStart[] = []
+  if (!Number.isFinite(minSimilarityMilli)) return out
+  const ops = alignment.ops
+  let i = 0
+  while (i < ops.length && out.length < maxReported) {
+    if (ops[i].kind !== 'insertion') { i++; continue }
+    // Collect the maximal run of consecutive insertions.
+    let j = i
+    while (j < ops.length && ops[j].kind === 'insertion') j++
+    const run = ops.slice(i, j) as Array<{ kind: 'insertion'; spokenIdx: number }>
+    const from = run[0].spokenIdx
+    const to = run[run.length - 1].spokenIdx + 1
+
+    // The script region that follows: the next ops that consume script tokens.
+    // A restart is abandoned and then RE-ATTEMPTED, so the thing it resembles
+    // is what comes after it, not before.
+    const after: number[] = []
+    for (let k = j; k < ops.length && after.length < run.length; k++) {
+      const op = ops[k]
+      if (op.kind === 'match' || op.kind === 'substitution') after.push(op.scriptIdx)
+      else if (op.kind === 'deletion') after.push(op.scriptIdx)
+      else break
+    }
+    if (run.length >= minTokens && after.length > 0) {
+      const spokenRun = run.map((o) => spoken[o.spokenIdx]).filter(Boolean)
+      const scriptRun = after.map((idx) => script[idx]).filter(Boolean)
+      const sim = runSimilarityMilli(spokenRun, scriptRun, true)
+      if (sim >= minSimilarityMilli) {
+        out.push({
+          spokenFromIdx: from,
+          spokenToIdx: to,
+          scriptFromIdx: after[0],
+          scriptToIdx: after[after.length - 1] + 1,
+          similarityMilli: sim,
+          tokenCount: run.length,
+        })
+      }
+    }
+    i = j
+  }
+  return out
+}
+
 export interface ScriptWordTiming {
   scriptIdx: number
   /** The script's spelling — the whole point of anchoring to it. */

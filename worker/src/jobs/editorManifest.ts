@@ -111,6 +111,10 @@ export interface AnalysisRules {
     earlyEnergyRatioMax: number
   }
   hook: { windowMs: number }
+  /** False-start detection thresholds. Chosen numbers, so they live in
+   *  analysis_rules_v1.json and enter alignmentEffectiveConfig — and therefore
+   *  the component digest, because they change the evidence produced. */
+  falseStarts: { minSimilarityMilli: number; minTokens: number; maxReported: number }
 }
 
 let cachedRules: { rules: AnalysisRules; boundsSha256: string } | null = null
@@ -153,16 +157,18 @@ export function audioEffectiveConfig(rules: AnalysisRules): Record<string, unkno
 export function hookEffectiveConfig(rules: AnalysisRules): Record<string, unknown> {
   return { ...rules.hook }
 }
-// Alignment takes no tunable numeric rules — it is a pure sequence alignment,
-// so there is no entry for it in analysis_rules_v1.json.
+// Alignment's tunables are the FALSE-START thresholds. They belong in the
+// digest for the same reason the byte budget does, stated below: they change
+// the evidence produced, so a retuned threshold must not silently reuse a
+// record computed under the old one.
 //
-// The byte budget IS config, though, and it belongs in the digest: it decides
+// The byte budget IS config too, and it belongs in the digest: it decides
 // where the stored record gets truncated, so two runs with different budgets
 // produce genuinely different evidence. Omitting it would let a retuned budget
 // silently reuse a record truncated under the old one — a cache hit that
 // returns the wrong answer, which is worse than a recompute.
-export function alignmentEffectiveConfig(): Record<string, unknown> {
-  return { timingsMaxBytes: ALIGNMENT_TIMINGS_MAX_BYTES }
+export function alignmentEffectiveConfig(rules: AnalysisRules): Record<string, unknown> {
+  return { timingsMaxBytes: ALIGNMENT_TIMINGS_MAX_BYTES, ...rules.falseStarts }
 }
 
 // ---- model manifests --------------------------------------------------------
@@ -273,7 +279,7 @@ export async function buildBootManifest(opts: {
       { faceDetector: face.artifactSha256 }, boundsSha256),
     audio: componentDigest(AUDIO_ANALYSIS_VERSION, audioEffectiveConfig(rules), {}, boundsSha256),
     hook: componentDigest(HOOK_EVIDENCE_VERSION, hookEffectiveConfig(rules), {}, boundsSha256),
-    alignment: componentDigest(ALIGNMENT_EVIDENCE_VERSION, alignmentEffectiveConfig(), {}, boundsSha256),
+    alignment: componentDigest(ALIGNMENT_EVIDENCE_VERSION, alignmentEffectiveConfig(rules), {}, boundsSha256),
   }
   const manifest: Record<string, unknown> = {
     schemaVersion: 1,
