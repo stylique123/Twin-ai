@@ -49,6 +49,10 @@ import { fileURLToPath } from 'node:url'
 // here rather than letting the API do it keeps the visible text ours.
 export const MAX_DESCRIPTION = 140
 
+// The selftest reads this to prove the workflow has not re-grown a copy of the
+// decision in YAML. Repo-root-relative: the selftest runs from the repo root.
+export const WORKFLOW_PATH = '.github/workflows/staging-matrix-gate.yml'
+
 // In flight = HAS NOT REACHED A CONCLUSION. Keyed on the absence of
 // `conclusion` rather than on a whitelist of queue statuses, deliberately.
 // GitHub has grown that status list over time — `queued`, `in_progress`,
@@ -153,6 +157,79 @@ export function clampDescription(text) {
   return s.length <= MAX_DESCRIPTION ? s : `${s.slice(0, MAX_DESCRIPTION - 1)}…`
 }
 
+export const DOC_ONLY_DESCRIPTION =
+  'Documentation-only PR — the staging matrix cannot prove anything about it.'
+export const NO_VERDICT_DESCRIPTION =
+  'The gate could not reach a verdict — see the workflow log.'
+
+// WHICH STATUS ACTUALLY GETS POSTED. This used to be a YAML expression and a
+// shell `if`, which is how it came to fail open:
+//
+//     EXEMPT: ${{ steps.scope.outputs.required == '0' }}     # WRONG
+//
+// The classify step that sets `required` runs only on `pull_request`. On the
+// `workflow_run` path it is correctly SKIPPED, so `steps.scope.outputs.required`
+// is null — and GitHub Actions coerces null → 0 and '0' → 0, which makes
+// `null == '0'` TRUE. Every workflow_run therefore took the exemption branch and
+// posted `success — "Documentation-only PR"`, overwriting STATE before the real
+// verdict was read. A runtime PR went green whether the matrix had passed OR
+// FAILED. Observed on #242: `pending` at 12:10 from the pull_request half, then
+// `success — Documentation-only PR…` at 12:53 from the workflow_run half.
+//
+// Two independent guards now stand where one loose comparison did:
+//   1. the exemption is UNREACHABLE unless the event is literally
+//      `pull_request` — a skipped classify step can no longer exempt anything;
+//   2. a real verdict OUTRANKS the exemption, so even if guard 1 were somehow
+//      defeated, evidence beats the absence of it.
+// Both are string-exact comparisons: '' , null and undefined are all not-'0'.
+//
+// Living here rather than in YAML is the point. This file's whole claim is that
+// the selftest proves the logic the gate runs rather than a copy of it, and the
+// one predicate left behind in YAML is the one that broke.
+export function resolvePostedStatus({
+  eventName,
+  required,
+  state,
+  description,
+  targetUrl,
+  runUrl = '',
+} = {}) {
+  const fallbackUrl = String(runUrl ?? '')
+  const verdictState = String(state ?? '').trim()
+
+  // A verdict exists: it is evidence, and evidence always wins.
+  if (verdictState) {
+    return {
+      state: verdictState,
+      description: clampDescription(description),
+      targetUrl: String(targetUrl ?? '') || fallbackUrl,
+      exempt: false,
+    }
+  }
+
+  // No verdict. The documentation-only exemption is the ONLY thing that may
+  // turn that into a green, and only on the event that computed it.
+  // Strict identity, not `==` and not coerced: Actions' loose `==` is precisely
+  // what turned a skipped step's null into a green.
+  if (eventName === 'pull_request' && required === '0') {
+    return {
+      state: 'success',
+      description: clampDescription(DOC_ONLY_DESCRIPTION),
+      targetUrl: fallbackUrl,
+      exempt: true,
+    }
+  }
+
+  // Anything else means an earlier step failed or was skipped. Never silently
+  // pass: `error` blocks the merge and points at this run's log.
+  return {
+    state: 'error',
+    description: clampDescription(NO_VERDICT_DESCRIPTION),
+    targetUrl: fallbackUrl,
+    exempt: false,
+  }
+}
+
 function selftest() {
   let failed = 0
   const ok = (cond, msg) => { if (!cond) { console.error(`SELFTEST FAIL: ${msg}`); failed++ } else console.log(`  ok: ${msg}`) }
@@ -211,6 +288,109 @@ function selftest() {
   threw = false
   try { matrixRequiredForFiles(['  ', '']) } catch { threw = true }
   ok(threw, 'a list of blanks THROWS too — it resolves to zero real files')
+
+  // --- the exemption must be unreachable on workflow_run ------------------
+  // The regression this section exists for: `required` is NULL on the
+  // workflow_run path because the classify step is skipped there, and Actions'
+  // `null == '0'` is true. Every one of these used to come back green.
+  const wr = (extra = {}) => resolvePostedStatus({ eventName: 'workflow_run', runUrl: 'https://example.invalid/gate', ...extra })
+  for (const absent of [undefined, null, '']) {
+    const label = absent === undefined ? 'undefined' : absent === null ? 'null' : "''"
+    ok(!wr({ required: absent, state: 'failure', description: 'matrix failed' }).exempt,
+      `workflow_run with required=${label} is NOT exempt — a skipped classify step cannot exempt anything`)
+    ok(wr({ required: absent, state: 'failure', description: 'matrix failed' }).state === 'failure',
+      `REGRESSION: workflow_run + required=${label} + a FAILED matrix posts failure, not "Documentation-only PR"`)
+    ok(wr({ required: absent, state: 'success', description: 'matrix passed' }).state === 'success',
+      `workflow_run + required=${label} + a passed matrix posts the real success`)
+    ok(wr({ required: absent }).state === 'error',
+      `workflow_run + required=${label} + NO verdict → error, never a green exemption`)
+  }
+  // Even the literal '0' cannot exempt a workflow_run: the event guard is
+  // independent of the value, so a future step that sets `required` on the
+  // wrong path still cannot open the gate.
+  ok(!wr({ required: '0' }).exempt, 'workflow_run with required="0" is still NOT exempt — the exemption is pull_request-only')
+  ok(wr({ required: '0' }).state === 'error', 'workflow_run + required="0" + no verdict → error')
+  ok(wr({ required: '0', state: 'failure', description: 'matrix failed' }).state === 'failure',
+    'workflow_run + required="0" + a failed matrix still posts failure')
+
+  // --- the verdict outranks the exemption when both are set ---------------
+  const pr = (extra = {}) => resolvePostedStatus({ eventName: 'pull_request', runUrl: 'https://example.invalid/gate', ...extra })
+  for (const s of ['failure', 'pending', 'error', 'success']) {
+    const r = pr({ required: '0', state: s, description: `verdict says ${s}` })
+    ok(r.state === s, `pull_request + required="0" + verdict "${s}" → the VERDICT wins, not the exemption`)
+    ok(!r.exempt, `pull_request + required="0" + verdict "${s}" → not reported as exempt`)
+    ok(r.description === `verdict says ${s}`, `the verdict's own description survives (${s})`)
+  }
+
+  // --- the exemption still works where it is supposed to ------------------
+  ok(pr({ required: '0' }).exempt, 'pull_request + required="0" + no verdict → exempt (the documentation-only case still works)')
+  ok(pr({ required: '0' }).state === 'success', 'the documentation-only exemption still posts success')
+  ok(pr({ required: '0' }).description === DOC_ONLY_DESCRIPTION, 'the exemption posts the documentation-only description')
+  ok(pr({ required: '1' }).state === 'error', 'CONTROL: pull_request + required="1" + no verdict → error, never success')
+  ok(pr({ required: '1', state: 'pending', description: 'still running' }).state === 'pending', 'a required PR awaiting the matrix posts pending')
+  for (const absent of [undefined, null, ''])
+    ok(pr({ required: absent }).state === 'error',
+      `CONTROL: pull_request with an UNSET required → error — a classify step that failed exempts nothing`)
+
+  // Exhaustive: across every event/required pair we can name, `exempt` is true
+  // for exactly one of them.
+  {
+    let exemptCount = 0
+    for (const eventName of ['pull_request', 'workflow_run', 'push', 'schedule', '', null, undefined])
+      for (const required of ['0', '1', '', ' 0 ', 0, null, undefined])
+        if (resolvePostedStatus({ eventName, required }).exempt) exemptCount++
+    ok(exemptCount === 1, `exactly one (event, required) pair is exempt across the whole grid — got ${exemptCount}`)
+  }
+  ok(!resolvePostedStatus({ eventName: 'pull_request', required: 0 }).exempt, 'a NUMERIC 0 is not the string "0" — no loose coercion is reintroduced')
+  ok(!resolvePostedStatus({}).exempt, 'an empty resolve call is not exempt')
+  ok(resolvePostedStatus({}).state === 'error', 'an empty resolve call fails closed')
+
+  // A verdict with no target_url falls back to the run URL rather than posting
+  // a status that links nowhere.
+  ok(wr({ state: 'failure', description: 'x' }).targetUrl === 'https://example.invalid/gate', 'a verdict with no target_url falls back to the run URL')
+  ok(wr({ state: 'failure', description: 'x', targetUrl: 'https://example.invalid/run' }).targetUrl === 'https://example.invalid/run', 'a verdict keeps its own target_url')
+
+  // --- the workflow must not recompute any of this in YAML ----------------
+  // The bug was never in this file; it was in a YAML expression that duplicated
+  // this decision. Read the frozen workflow and fail if that shape returns.
+  // Read UNGUARDED, like every sibling check in scripts/ci. An earlier draft
+  // skipped these when the file could not be read, which would have let the
+  // five assertions below vanish silently the moment anything changed about the
+  // checkout — a contract test that can quietly stop testing is worse than none.
+  // The selftest runs from the repo root in pr-checks.yml; if it cannot, that is
+  // a real finding and should be loud.
+  {
+    let wf
+    try {
+      wf = readFileSync(WORKFLOW_PATH, 'utf8')
+    } catch (err) {
+      console.error(`SELFTEST FAIL: cannot read ${WORKFLOW_PATH} (${err.code ?? err.message}). Run the selftest from the repo root — these assertions must never be skipped.`)
+      failed++
+    }
+    if (wf !== undefined) {
+      // Comment lines are stripped first: the file DESCRIBES the broken
+      // expression at length so the next reader knows why it went, and quoting
+      // a bug must not read as committing it.
+      const live = wf.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n')
+      ok(/#.*EXEMPT/.test(wf), 'CONTROL: the comment explaining the fail-open is still there (so the check below is not passing by deletion)')
+      ok(!/EXEMPT\s*:/.test(live), 'the workflow no longer computes an EXEMPT flag in YAML — that expression is what failed open')
+      ok(!/steps\.scope\.outputs\.required\s*==\s*'0'/.test(live), "no live YAML expression compares required == '0' (Actions coerces a SKIPPED step's null to 0, so it matched on workflow_run)")
+      ok(/--resolve/.test(live), 'the workflow posts the status resolved by --resolve, so the tested logic is the shipped logic')
+      // The one place `required` may still be read in YAML is the verdict
+      // step's guard, and only in the fail-CLOSED direction: `null == '1'` is
+      // false, so a skipped classify step withholds the verdict rather than
+      // granting it.
+      const looseReads = [...live.matchAll(/steps\.scope\.outputs\.required\s*==\s*'([^']*)'/g)].map((m) => m[1])
+      ok(looseReads.every((v) => v === '1'), `every live YAML read of required compares against '1' (fail-closed); saw [${looseReads.join(', ')}]`)
+      // The workflow keeps a fallback for when the base branch's copy of this
+      // script is missing or older than --resolve — version skew is the normal
+      // case, since the workflow comes from the PR head and the script from
+      // base.sha. That fallback may only ever BLOCK, so no line of the workflow
+      // may hand out a green on its own; `success` must come from here.
+      ok(!/\bSTATE=(success|"success"|'success')/.test(live), 'no shell line in the workflow assigns STATE=success — a green may only come from resolvePostedStatus')
+      ok(!/DESCRIPTION=.*[Dd]ocumentation-only/.test(live), 'the documentation-only description is not reproduced in the workflow — the exemption has exactly one source')
+    }
+  }
 
   // --- description clamping ----------------------------------------------
   ok(clampDescription('short').length === 5, 'a short description is untouched')
@@ -272,8 +452,26 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     emit('state', verdict.state)
     emit('description', clampDescription(verdict.description))
     emit('target_url', verdict.targetUrl ?? '')
+  } else if (process.argv.includes('--resolve')) {
+    // Reads the step outputs the workflow collected and prints the status to
+    // POST as JSON on stdout. JSON rather than shell assignments because the
+    // description is arbitrary text and `eval` of it would be an injection.
+    // Diagnostics go to stderr so stdout stays parseable.
+    const resolved = resolvePostedStatus({
+      eventName: process.env.EVENT,
+      required: process.env.REQUIRED,
+      state: process.env.VERDICT_STATE,
+      description: process.env.VERDICT_DESCRIPTION,
+      targetUrl: process.env.VERDICT_TARGET_URL,
+      runUrl: process.env.RUN_URL,
+    })
+    console.error(
+      `resolve: event=${process.env.EVENT ?? '-'} required=${process.env.REQUIRED || '(unset — classify did not run)'} ` +
+      `verdict=${process.env.VERDICT_STATE || '(none)'} → ${resolved.state}${resolved.exempt ? ' (documentation-only exemption)' : ''}`,
+    )
+    console.log(JSON.stringify(resolved))
   } else {
-    console.error('usage: staging_matrix_gate.mjs [--selftest | --classify --files <path> | --verdict --runs <path>]')
+    console.error('usage: staging_matrix_gate.mjs [--selftest | --classify --files <path> | --verdict --runs <path> | --resolve]')
     process.exit(1)
   }
 }
