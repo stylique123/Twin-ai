@@ -353,12 +353,21 @@ function selftest() {
   // --- the workflow must not recompute any of this in YAML ----------------
   // The bug was never in this file; it was in a YAML expression that duplicated
   // this decision. Read the frozen workflow and fail if that shape returns.
+  // Read UNGUARDED, like every sibling check in scripts/ci. An earlier draft
+  // skipped these when the file could not be read, which would have let the
+  // five assertions below vanish silently the moment anything changed about the
+  // checkout — a contract test that can quietly stop testing is worse than none.
+  // The selftest runs from the repo root in pr-checks.yml; if it cannot, that is
+  // a real finding and should be loud.
   {
-    let wf = null
-    try { wf = readFileSync(WORKFLOW_PATH, 'utf8') } catch { /* not run from the repo root */ }
-    if (wf === null) {
-      console.log(`  skip: ${WORKFLOW_PATH} not readable from this cwd`)
-    } else {
+    let wf
+    try {
+      wf = readFileSync(WORKFLOW_PATH, 'utf8')
+    } catch (err) {
+      console.error(`SELFTEST FAIL: cannot read ${WORKFLOW_PATH} (${err.code ?? err.message}). Run the selftest from the repo root — these assertions must never be skipped.`)
+      failed++
+    }
+    if (wf !== undefined) {
       // Comment lines are stripped first: the file DESCRIBES the broken
       // expression at length so the next reader knows why it went, and quoting
       // a bug must not read as committing it.
