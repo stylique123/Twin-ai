@@ -17,12 +17,12 @@ Branch protection is an admin setting; no workflow file can change it. This was
 applied by hand when the gate merged. The current state of the `main protection`
 ruleset (id `19777534`, enforcement `active`, targeting `~DEFAULT_BRANCH`):
 
-| required check | why |
-|---|---|
-| `staging-matrix-gate` | this gate — replaced `staging-matrix-required` |
-| `unit-tests` | |
-| `web-and-shared` | typecheck + web build |
-| `worker` | worker typecheck |
+| required check | source | why |
+|---|---|---|
+| `staging-matrix-gate` | GitHub Actions (`15368`) | this gate — replaced `staging-matrix-required` |
+| `unit-tests` | GitHub Actions (`15368`) | shared + worker suites |
+| `web-and-shared` | GitHub Actions (`15368`) | typecheck + web build |
+| `worker` | GitHub Actions (`15368`) | worker typecheck |
 
 **The last three are deliberate, and are new.** Before this, the matrix was the
 *only* required check, so a PR could merge with a passing matrix and a **failing
@@ -38,12 +38,21 @@ Two footnotes for whoever changes this next:
   merge, not after. A required check that no longer reports leaves every PR
   blocked on *"Expected — waiting for status to be reported"* — skipping this does
   not fail open, it fails stuck.
-- **All four are stored as "any source"**, i.e. no `integration_id` pin. The
-  originals were pinned to GitHub Actions (`15368`); typing a check name rather
-  than picking it from the dropdown stores it unpinned, and re-saving the rule
-  reset the one that was pinned. Any app with `statuses: write` can therefore
-  satisfy them. Worth re-pinning by removing and re-adding each from the
-  suggestion list.
+- **All four are pinned to GitHub Actions (`15368`)** — keep it that way. An
+  unpinned ("any source") required check can be satisfied by ANY app holding
+  `statuses: write` on the repo, which for a merge gate means an app that is not
+  CI could mark the gate green. Pinning is not automatic: typing a check name
+  stores it unpinned, and only picking it from the suggestion dropdown carries
+  the app across. Re-saving the rule can also drop an existing pin, so re-read
+  the ruleset after any edit rather than trusting the form:
+
+      gh api repos/stylique123/Twin-ai/rulesets/19777534 \
+        --jq '.rules[] | select(.type=="required_status_checks")
+              | .parameters.required_status_checks'
+
+  `staging-matrix-gate` is posted with `GITHUB_TOKEN`, so it is attributed to
+  `github-actions[bot]` and `15368` is the correct pin for it, exactly as for
+  the workflow jobs beside it.
 
 ## Why the trigger had to change
 
