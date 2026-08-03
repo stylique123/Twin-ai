@@ -276,6 +276,7 @@ describe('every code this module emits is in the FROZEN catalog (Gate-0 §5)', (
       'edit_plan_identity_mismatch', 'edit_plan_invalid', 'edit_plan_too_large',
       'edit_plan_divergent', 'edit_plan_unsafe_cut', 'edit_plan_filler_disabled',
       'edit_plan_no_kept_media', 'render_asset_integrity_failed', 'render_font_integrity_failed',
+      'render_watermark_integrity_failed', 'speech_language_policy_invalid',
       'render_music_license_invalid', 'render_graph_invalid', 'render_output_profile_invalid',
       'output_decode_failed', 'output_duration_mismatch', 'output_stream_mismatch',
       'output_audio_invalid', 'output_caption_invalid', 'output_cover_invalid',
@@ -374,5 +375,87 @@ describe('validateRenderedOutput — the wrapper production calls', () => {
         },
       )).rejects.toMatchObject({ code: 'output_audio_invalid' })
     } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
+})
+
+
+describe('the audio and video streams are compared to EACH OTHER', () => {
+  // Everything else in this file measures VIDEO against the plan. Nothing
+  // looked at the audio stream's own extent or origin, so drift between the
+  // two was invisible to every check: codec right, raster right, frame rate
+  // right, duration right, lips wrong. For a product whose whole output is a
+  // person talking to camera that is the most damaging defect that can ship.
+  // Sign handled explicitly: a naive `${Math.floor(n/1000)}.${n%1000}` renders
+  // -300 as "-1.-300", which ffprobe would never emit and secondsStringToMs
+  // correctly refuses — so the negative cases below would have passed by
+  // failing to parse rather than by being caught.
+  const ms = (n: number): string => {
+    const sign = n < 0 ? '-' : ''
+    const a = Math.abs(n)
+    return `${sign}${Math.floor(a / 1000)}.${String(a % 1000).padStart(3, '0')}`
+  }
+
+  /** A probe whose audio stream differs from its video stream on purpose. */
+  function drifted(p: EditPlanV1, o: { audioDeltaMs?: number; startDeltaMs?: number }): ProbeResult {
+    const base = goodProbe(p)
+    const vMs = p.output.durationMs
+    const streams = base.streams!.map((st) => st.codec_type === 'audio'
+      ? { ...st, duration: ms(vMs + (o.audioDeltaMs ?? 0)), start_time: ms(o.startDeltaMs ?? 0) }
+      : { ...st, start_time: '0.000' })
+    return { ...base, streams }
+  }
+
+  it('records the geometry on every render, not only when it is wrong', () => {
+    // The recurring defect in this codebase is a number computed and read by
+    // nobody. These are carried out to the durable event trail.
+    const p = plan()
+    const r = validateProbedOutput(drifted(p, { audioDeltaMs: 93, startDeltaMs: 0 }), p, PROFILE, BYTES)
+    expect(r.measurements.audioMinusVideoDurationMs).toBe(93)
+    expect(r.measurements.audioMinusVideoStartMs).toBe(0)
+  })
+
+  it('accepts audio outlasting video by the amount real renders produce', () => {
+    // MEASURED, not assumed: real renders on this build put audio 93-120ms
+    // past video, because video truncates to whole frames and to segment
+    // boundaries and audio does not. Failing those would fail every render.
+    const p = plan()
+    for (const delta of [93, 120, 200]) {
+      expect(() => validateProbedOutput(drifted(p, { audioDeltaMs: delta }), p, PROFILE, BYTES)).not.toThrow()
+    }
+  })
+
+  it('refuses a stream that genuinely ran out early', () => {
+    const p = plan()
+    expect(codeOf(() => validateProbedOutput(drifted(p, { audioDeltaMs: 1500 }), p, PROFILE, BYTES)))
+      .toBe('output_av_drift')
+    expect(codeOf(() => validateProbedOutput(drifted(p, { audioDeltaMs: -1500 }), p, PROFILE, BYTES)))
+      .toBe('output_av_drift')
+  })
+
+  it('refuses streams pinned to different origins — the whole video is out of sync', () => {
+    // This is the one that matters most and is hardest to see: a constant
+    // offset does not shorten anything, so every other check passes.
+    const p = plan()
+    expect(codeOf(() => validateProbedOutput(drifted(p, { startDeltaMs: 300 }), p, PROFILE, BYTES)))
+      .toBe('output_av_drift')
+    expect(codeOf(() => validateProbedOutput(drifted(p, { startDeltaMs: -300 }), p, PROFILE, BYTES)))
+      .toBe('output_av_drift')
+  })
+
+  it('CONTROL: an offset just inside the bound passes, so the bound is the thing being tested', () => {
+    const p = plan()
+    expect(() => validateProbedOutput(drifted(p, { startDeltaMs: 90 }), p, PROFILE, BYTES)).not.toThrow()
+  })
+
+  it('a probe that omits the fields records null rather than inventing a zero', () => {
+    // "We could not measure" must stay distinct from "measured zero drift",
+    // or a probe that lost a field would read as a perfectly synced render.
+    const p = plan()
+    const base = goodProbe(p)
+    const streams = base.streams!.map((st) => st.codec_type === 'audio'
+      ? { ...st, duration: undefined, start_time: undefined } : st)
+    const r = validateProbedOutput({ ...base, streams }, p, PROFILE, BYTES)
+    expect(r.measurements.audioMinusVideoDurationMs).toBeNull()
+    expect(r.measurements.audioMinusVideoStartMs).toBeNull()
   })
 })

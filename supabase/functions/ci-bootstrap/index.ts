@@ -29,6 +29,22 @@
 import * as jose from 'https://esm.sh/jose@5.9.6'
 import { selectSecretKey } from './keyselect.mjs'
 
+// THE PROJECT PIN. Read this together with the header above: that header says
+// "never deployed to prod", and for a long time nothing enforced it. The
+// deploy workflow ran `supabase functions deploy --project-ref <prod>` with no
+// function list, which deploys EVERY directory under supabase/functions/ —
+// this one included. Nothing in the identity gate below looks at which project
+// answered the request, so a copy running on production would have handed out
+// the PRODUCTION secret key to any caller holding a valid staging-integration
+// OIDC token.
+//
+// The workflow is fixed too, but a comment and a workflow are both things that
+// can drift. This is the check that cannot: it asks the runtime which project
+// it is, and refuses to be anything but staging. It runs FIRST, before the
+// token is even parsed, so a misdeployed copy is inert rather than merely
+// well-guarded.
+const STAGING_PROJECT_REF = 'otgzjsagybpgtwweuptj'
+
 const ISSUER = 'https://token.actions.githubusercontent.com'
 const AUDIENCE = 'twinai-staging-integration'
 const REPOSITORY = 'stylique123/Twin-ai'
@@ -49,7 +65,26 @@ function serviceCredential(): { key?: string; source: string } {
   return selectSecretKey(Deno.env.get('SUPABASE_SECRET_KEYS'))
 }
 
+/** True only when this copy is running on the staging project.
+ *
+ *  Hosted Edge Functions are injected with their own project's SUPABASE_URL,
+ *  which is `https://<ref>.supabase.co`. Matching the ref as a labelled host
+ *  component — not a substring — so a lookalike host cannot satisfy it. A
+ *  missing or unparseable URL is NOT staging: unknown fails closed. */
+function isStagingProject(): boolean {
+  const raw = Deno.env.get('SUPABASE_URL') ?? ''
+  try {
+    return new URL(raw).hostname.split('.')[0] === STAGING_PROJECT_REF
+  } catch {
+    return false
+  }
+}
+
 Deno.serve(async (req: Request) => {
+  // BEFORE EVERYTHING. Not after the identity gate, and not after the body is
+  // parsed: a copy of this function on the wrong project must be incapable of
+  // vending anything, no matter how good the caller's credentials are.
+  if (!isStagingProject()) return refuse('not the staging project')
   if (Deno.env.get('CI_BOOTSTRAP_DISABLED') === '1') return refuse('disabled')
   if (req.method !== 'POST') return new Response('method not allowed', { status: 405 })
   let token = ''

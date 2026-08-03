@@ -27,6 +27,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   EDIT_PLAN_SCHEMA_VERSION, EDIT_PLAN_VERSION, EditPlanError, validateEditPlan, editPlanSha256, canonicalEditPlan,
+  type PlanHookTitle,
   MAX_WARNINGS, MAX_CUE_EMPHASIS,
   type EditPlanV1, type PlanSegment, type PlanRemoval, type PlanCue, type PlanWarning,
   type PlanZoom, type PlanTransition, type AudioPresetId, type CaptionPresetId,
@@ -70,8 +71,26 @@ export interface EditPolicyV1 {
     maxKeptSegments: number; maxRemovals: number; emphasisPauseGuardMs: number
     sceneBoundaryGuardMs: number; minRemovalMs: number
   }
+  pacing: {
+    defaultId: PacingId
+    profileIds: PacingId[]
+    profiles: Record<string, PacingProfile>
+  }
+  edges: {
+    trimLeading: boolean; trimTrailing: boolean; keepMs: number; minTrimMs: number
+  }
+  hook: { maxTrimMs: number; maxTrimFractionMilli: number }
+  titleHook: {
+    enabled: boolean; startMs: number; durationMs: number
+    minWords: number; maxWords: number; maxChars: number
+    fontSizePx: number; marginTopPx: number
+  }
   captions: {
     maxCues: number; maxLinesPerCue: number; presetIds: string[]
+    /** Left/right inset for a caption line. */
+    marginHorizontalPx: number
+    /** How far before the end of the video the LAST caption must finish. */
+    tailGuardMs: number
     presets: Record<string, CaptionPresetPolicy>
   }
   zooms: {
@@ -90,6 +109,54 @@ export interface EditPolicyV1 {
 }
 
 let cachedPolicy: EditPolicyV1 | null = null
+/** The three pacing modes the Director may choose between. */
+export type PacingId = 'calm' | 'balanced' | 'punchy'
+/**
+ * The ONLY three knobs pacing is allowed to move. See _pacingComment.
+ *
+ * Every field is optional and a profile lists ONLY what it changes — omitted
+ * keys keep the frozen `cuts` value. `balanced` is therefore the empty object,
+ * which is what makes it a true no-op rather than three numbers that happen to
+ * equal today's and can drift apart from them later.
+ */
+export interface PacingProfile {
+  minRemovalMs?: number
+  maxCutsPerMinuteMilli?: number
+  emphasisPauseGuardMs?: number
+}
+const PACING_KEYS = ['minRemovalMs', 'maxCutsPerMinuteMilli', 'emphasisPauseGuardMs'] as const
+
+/**
+ * Resolve the cut policy for a pacing choice.
+ *
+ * THE SAFETY PROPERTY OF THIS WHOLE FEATURE lives in the early return: for
+ * `balanced` — the Director's own default, and what an absent/unknown value
+ * falls back to — this hands back the SAME OBJECT it was given, unmodified.
+ * Not an equal copy: the identical reference. So enabling pacing cannot change
+ * a single video that already renders correctly, and that claim is provable by
+ * identity rather than by comparing numbers.
+ *
+ * Falling back to balanced on an unrecognized id is the right failure
+ * direction too: if a profile is ever misspelled or dropped from the policy,
+ * every video renders exactly as it does today rather than picking up whatever
+ * the nearest profile happened to be.
+ *
+ * ONLY THE KEYS A PROFILE DECLARES ARE APPLIED. An earlier version wrote all
+ * three unconditionally from absolute values, which meant the default pacing
+ * silently RESTORED `cuts` values that a caller had deliberately overridden —
+ * it looked like a no-op only because the shipped numbers matched.
+ */
+export function resolvePacingCuts(policy: EditPolicyV1, pacing?: PacingId | null): EditPolicyV1 {
+  const id = pacing ?? policy.pacing?.defaultId ?? 'balanced'
+  const profile = policy.pacing?.profiles?.[id]
+  if (!profile) return policy
+  const present = PACING_KEYS.filter((k) => typeof profile[k] === 'number')
+  if (present.length === 0) return policy // `balanced`: untouched, same object
+  const merged = { ...policy.cuts }
+  for (const k of present) merged[k] = profile[k] as number
+  return { ...policy, cuts: merged }
+}
+
 export function loadEditPolicy(path = join(WORKER_ROOT, 'edit_policy_v1.json')): EditPolicyV1 {
   if (cachedPolicy) return cachedPolicy
   const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>
@@ -288,11 +355,74 @@ export interface CompileAudioFacts {
   snrDbMilli: number
   earlyEnergyRatioMilli: number
 }
+/**
+ * Turn "where the face was" into "how far to displace the zoom crop", bounded.
+ *
+ * PURE AND SEPARATELY TESTABLE, because the arithmetic is the whole risk: an
+ * offset larger than the scale reveals reads past the edge of the scaled image,
+ * ffmpeg clamps it silently, and the punch lands somewhere nobody chose. The
+ * contract re-derives the same bound independently.
+ *
+ * Source pixels are mapped to output pixels first. The renderer conforms every
+ * frame to the output raster with `force_original_aspect_ratio=increase` then a
+ * centre crop, so a source point maps by the SAME cover-scale-then-centre
+ * transform — reproducing it here is what keeps the offset meaningful for a
+ * source whose shape is not already 9:16.
+ */
+export function zoomOffset(
+  faces: CompileFaceSample[], anchorSourceMs: number, scaleMilli: number,
+  outWidth: number, outHeight: number, srcWidth: number, srcHeight: number,
+): { offsetXPx: number; offsetYPx: number } {
+  if (faces.length === 0 || srcWidth <= 0 || srcHeight <= 0) return { offsetXPx: 0, offsetYPx: 0 }
+
+  let best = faces[0]
+  for (const f of faces) {
+    if (Math.abs(f.timeMs - anchorSourceMs) < Math.abs(best.timeMs - anchorSourceMs)) best = f
+  }
+
+  // The renderer's own conformance, reproduced: cover-scale, then centre-crop.
+  const cover = Math.max(outWidth / srcWidth, outHeight / srcHeight)
+  const scaledW = srcWidth * cover
+  const scaledH = srcHeight * cover
+  const faceOutX = best.centreXPx * cover - (scaledW - outWidth) / 2
+  const faceOutY = best.centreYPx * cover - (scaledH - outHeight) / 2
+
+  // How far the subject sits from the middle of the finished frame...
+  const wantX = faceOutX - outWidth / 2
+  const wantY = faceOutY - outHeight / 2
+  // ...and how far the zoom is actually able to travel. A 1.12x zoom on a
+  // 1080-wide frame reveals 64px of slack each way; asking for more than that
+  // is asking to see outside the image.
+  const maxX = Math.floor((outWidth * (scaleMilli - 1000)) / 2000)
+  const maxY = Math.floor((outHeight * (scaleMilli - 1000)) / 2000)
+  const clamp = (v: number, m: number): number => Math.max(-m, Math.min(m, Math.round(v)))
+  return { offsetXPx: clamp(wantX, maxX), offsetYPx: clamp(wantY, maxY) }
+}
+
 export interface CompileEvidence {
   words: CompileWord[]
   candidates: CompileCandidate[]
   visualWaste: CompileVisualWaste[]
   audio: CompileAudioFacts | null
+  /** Where the subject actually is, sampled through the take.
+   *
+   *  The detector has produced these all along and only a COUNT of them ever
+   *  reached a decision-maker, so every zoom punched into the geometric centre
+   *  of the frame regardless of where the person sat. Empty is honest and means
+   *  "no face evidence" — never "the face is centred". */
+  faces?: CompileFaceSample[]
+}
+
+/** One sampled instant, in SOURCE time, with the largest face found in it.
+ *
+ *  Only the largest is carried: a zoom is a punch at ONE subject, and a frame
+ *  with a bystander in the background must not pull the crop toward the average
+ *  of two people, which is a point on neither of them. */
+export interface CompileFaceSample {
+  timeMs: number
+  /** Centre of the face box, in SOURCE display pixels. */
+  centreXPx: number
+  centreYPx: number
 }
 export interface CompileDecision {
   selections: number[]
@@ -303,6 +433,13 @@ export interface CompileDecision {
   captionPresetId: CaptionPresetId
   transitionPolicy: TransitionPolicy
   zoomRequests: Array<{ anchorWordIndex: number; intensity: ZoomIntensity; reasonCode: ZoomReasonCode }>
+  /**
+   * How much silence survives. OPTIONAL, and absent means `balanced` — which
+   * resolves to today's exact policy. That default is deliberate: if this ever
+   * fails to arrive, the video renders as it always has rather than picking up
+   * a pace nobody chose.
+   */
+  pacing?: PacingId
 }
 export interface CompileIdentity {
   projectId: string
@@ -316,6 +453,11 @@ export interface CompileIdentity {
 export interface CompileSource {
   origin: SourceOrigin
   durationMs: number
+  /** The raster the face boxes are expressed in — the visual analyzer's own
+   *  display space. Optional: absent means face evidence cannot be mapped into
+   *  output pixels, and a zoom falls back to centre rather than guessing. */
+  displayWidthPx?: number
+  displayHeightPx?: number
   // Teleprompter ONLY: the pinned capture manifest's accepted windows. Anything
   // outside them was rejected by the creator and is unavailable forever.
   acceptedWindows: Interval[]
@@ -331,12 +473,50 @@ export interface CompileInput {
   // absent is treated exactly like { primaryHex: null, highlightHex: null },
   // never as "colors pending" or any other state.
   brandColors?: CompileBrandColors
+  /** Whether this render carries the free-tier TwinAI mark.
+   *
+   *  ABSENT MEANS NO WATERMARK, deliberately. A caller that has not resolved
+   *  the account's entitlement must not accidentally brand a paying customer's
+   *  video; the failure direction that matters is "we watermarked someone who
+   *  paid not to be", so the default is the one that cannot do that. */
+  watermark?: boolean
 }
+/**
+ * What the pacing choice ACTUALLY produced on this render.
+ *
+ * These numbers are the reason it is honest to ship chosen-not-measured pacing
+ * values. edit_policy_v1.json's `_pacingComment` sets the three profiles by
+ * reasoning about how short-form content cuts, which is exactly the kind of
+ * estimate that has been wrong three times on this project. So this follows the
+ * loudness precedent: enforce only the band, and RECORD the real distribution,
+ * so the thresholds get corrected from what happens to real videos.
+ *
+ * Deliberately NOT part of the plan. The plan is a hashed contract; adding a
+ * measurement to it would change the hash of every render and make an
+ * observation into a contract term. This rides on the result instead.
+ */
+export interface CompileCutStats {
+  pacingId: PacingId
+  /** Length of the material the cuts were chosen from. */
+  domainMs: number
+  /** Cuts actually applied, after the density cap AND the min-segment repair. */
+  appliedCuts: number
+  /** The realised density — the number the profiles are guesses at. */
+  cutsPerMinuteMilli: number
+  /** The ceiling this pacing allowed, for comparison against the above. */
+  maxCutsAllowed: number
+  /** Cuts the Director asked for that the density cap gave back. */
+  droppedForDensity: number
+  /** The floor in force: removals shorter than this were never eligible. */
+  minRemovalMs: number
+}
+
 export interface CompileResult {
   plan: EditPlanV1
   planSha256: string
   canonical: string
   warnings: PlanWarning[]
+  cutStats: CompileCutStats
 }
 
 function bad(message: string, code = 'edit_plan_invalid'): never {
@@ -534,7 +714,15 @@ function hexToAssColour(hex: string): string {
 }
 
 export function compileEditPlan(input: CompileInput): CompileResult {
-  const policy = input.policy ?? loadEditPolicy()
+  // PACING IS RESOLVED HERE, ONCE, INTO THE POLICY OBJECT ITSELF — rather than
+  // read at the three call sites it affects. Every `policy.cuts.*` read below
+  // therefore sees the pacing-resolved value automatically, so a knob added to
+  // a pacing profile later cannot take effect in two places and be silently
+  // missed in a third. For `balanced` this is the identity function and
+  // `policy` is the same object it would have been before this line existed.
+  const basePolicy = input.policy ?? loadEditPolicy()
+  const pacingId = input.decision.pacing ?? basePolicy.pacing?.defaultId ?? 'balanced'
+  const policy = resolvePacingCuts(basePolicy, pacingId)
   const warn = new WarningSink()
   const { evidence, decision, identity } = input
   const brandColors = input.brandColors ?? { primaryHex: null, highlightHex: null }
@@ -582,7 +770,38 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       bad(`hook: start word ${idx} is outside the allowed source domain`, 'edit_plan_unsafe_cut')
     }
     const trimEnd = Math.max(allowedDomain[0].startMs, word.startMs - policy.cuts.minPhonemeHandleMs)
-    if (trimEnd > allowedDomain[0].startMs) {
+    // HOW MUCH THIS IS ALLOWED TO THROW AWAY.
+    //
+    // The only previous guard was "did it remove ALL the media", so a start
+    // word late in the recording silently discarded most of it — a 60s take
+    // became a 6s video, and every check downstream passed because the plan
+    // was internally consistent. The creator just got a video missing the
+    // middle of what they said, with nothing anywhere explaining it.
+    //
+    // Measured against the ACCEPTED material rather than the file, because
+    // rejected takes are not the creator's video and must not make a trim look
+    // proportionally smaller than it is.
+    // MEASURED AS ACCEPTED MATERIAL REMOVED, not as elapsed span. The domain
+    // can have rejected takes between its windows, so the wall-clock distance
+    // from the domain start to the cut counts time that was never the
+    // creator's video — it can exceed the accepted total outright and make the
+    // fraction meaningless. Subtracting and re-measuring reuses the same
+    // interval arithmetic the timeline is built from, so the number here is
+    // exactly the material the trim would cost.
+    const durationOf = (ws: Interval[]): number => ws.reduce((n, w) => n + (w.endMs - w.startMs), 0)
+    const acceptedMs = durationOf(allowedDomain)
+    const trimMs = acceptedMs - durationOf(
+      subtractIntervals(allowedDomain, [{ startMs: allowedDomain[0].startMs, endMs: trimEnd }]),
+    )
+    const fractionMilli = acceptedMs > 0 ? Math.round((trimMs * 1000) / acceptedMs) : 0
+    const overAbsolute = trimMs > policy.hook.maxTrimMs
+    const overFraction = fractionMilli > policy.hook.maxTrimFractionMilli
+    if (overAbsolute || overFraction) {
+      // Not a hard failure. The real opening is always a usable opening, so
+      // falling back to it produces a correct video rather than no video —
+      // and the fallback is announced, mirroring hook_open_at_word_noop.
+      warn.add('hook_trim_too_large', `word_${idx}_${trimMs}ms_${fractionMilli}milli`)
+    } else if (trimEnd > allowedDomain[0].startMs) {
       hookTrimStartMs = allowedDomain[0].startMs
       hookTrimEndMs = trimEnd
       hookStartWordIndex = idx
@@ -594,6 +813,47 @@ export function compileEditPlan(input: CompileInput): CompileResult {
     } else {
       warn.add('hook_open_at_word_noop', `word_${idx}`)
     }
+  }
+
+  // ---- the edges of the recording ------------------------------------------
+  //
+  // ALWAYS WASTE, AND NOT A JUDGEMENT CALL. Before this, whatever sat outside
+  // the first and last spoken word was removed only if the Director happened to
+  // select the silence candidate covering it. So a video could open on someone
+  // settling into frame and end on them reaching for the stop button — which
+  // the creator is ALWAYS doing, because they are the one operating the camera.
+  //
+  // The hook mechanism already trims the head when the Director chooses to open
+  // on a word. This is the floor beneath it: hook or no hook, the outside comes
+  // off. `keepMs` leaves a breath so the first word does not begin on frame one.
+  const edgeTrims: Interval[] = []
+  const effectiveDomainStartForLabel = effectiveDomain[0].startMs
+  if (evidence.words.length > 0) {
+    const first = evidence.words[0]
+    const last = evidence.words[evidence.words.length - 1]
+    const domStart = effectiveDomain[0].startMs
+    const domEnd = effectiveDomain[effectiveDomain.length - 1].endMs
+
+    if (policy.edges.trimLeading) {
+      const cutTo = Math.max(domStart, first.startMs - policy.edges.keepMs)
+      // A sliver is a glitch, not an edit — same reasoning as cuts.minRemovalMs.
+      if (cutTo - domStart >= policy.edges.minTrimMs) edgeTrims.push({ startMs: domStart, endMs: cutTo })
+    }
+    if (policy.edges.trimTrailing) {
+      const cutFrom = Math.min(domEnd, last.endMs + policy.edges.keepMs)
+      if (domEnd - cutFrom >= policy.edges.minTrimMs) edgeTrims.push({ startMs: cutFrom, endMs: domEnd })
+    }
+  }
+  if (edgeTrims.length > 0) {
+    const afterEdges = subtractIntervals(effectiveDomain, edgeTrims)
+    // Refused rather than applied if it would leave nothing. A recording whose
+    // edges are the whole recording is a recording with no speech in it, and
+    // that is a different failure with its own code.
+    if (afterEdges.length === 0) {
+      bad('edges: trimming the leading and trailing silence removes all media', 'edit_plan_no_kept_media')
+    }
+    effectiveDomain = afterEdges
+    for (const t of edgeTrims) warn.add('edge_trimmed', `${t.startMs}_${t.endMs}`)
   }
 
   // ---- removals -------------------------------------------------------------
@@ -637,7 +897,9 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const domainMs = totalDurationMs(effectiveDomain)
   const maxCuts = Math.max(1, Math.floor((policy.cuts.maxCutsPerMinuteMilli * domainMs) / (1000 * 60000)))
   let accepted = safe
+  let droppedForDensity = 0
   if (accepted.length > maxCuts) {
+    droppedForDensity = accepted.length - maxCuts
     const ranked = [...accepted].sort((a, b) =>
       (b.interval.endMs - b.interval.startMs) - (a.interval.endMs - a.interval.startMs)
       || a.interval.startMs - b.interval.startMs)
@@ -743,6 +1005,16 @@ export function compileEditPlan(input: CompileInput): CompileResult {
     if (hookStartWordIndex !== null && iv.startMs >= hookTrimStartMs && iv.endMs <= hookTrimEndMs) {
       return { origin: 'hook_trim', ref: hookStartWordIndex, reasonCode: hookReason }
     }
+    // Checked BEFORE the candidate owners: an edge trim can overlap a silence
+    // candidate the Director also selected, and when it does the honest reason
+    // is that it is an edge — that removal was going to happen either way.
+    const edge = edgeTrims.find((t) => t.startMs <= iv.startMs && iv.endMs <= t.endMs)
+    if (edge) {
+      return {
+        origin: 'edge_trim', ref: null,
+        reasonCode: edge.startMs === effectiveDomainStartForLabel ? 'edge_leading' : 'edge_trailing',
+      }
+    }
     const owner = appliedRemovals.find((r) => r.interval.startMs <= iv.startMs && iv.endMs <= r.interval.endMs)
     if (owner) return { origin: owner.origin, ref: owner.ref, reasonCode: owner.reasonCode }
     return { origin: 'speech_candidate', ref: null, reasonCode: 'derived_complement' }
@@ -765,6 +1037,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const cues = buildCaptionCues({
     words: evidence.words, timeMap, preset: captionPreset,
     maxLines: policy.captions.maxLinesPerCue, maxCues: policy.captions.maxCues,
+    tailGuardMs: policy.captions.tailGuardMs,
     outputDurationMs, emphasisSet, warn,
   })
 
@@ -798,10 +1071,30 @@ export function compileEditPlan(input: CompileInput): CompileResult {
     }
     const scaleMilli = policy.zooms.scaleMilli[req.intensity]
     if (typeof scaleMilli !== 'number') bad(`zoom: unknown intensity ${req.intensity}`)
+    // WHERE THE PUNCH LANDS.
+    //
+    // The crop was always the geometric centre of the frame, so a creator
+    // sitting low or off to one side — the normal case in a hand-held vertical
+    // selfie — had a zoom crop their chin or forehead, or punch into the wall
+    // beside them. The detector has been producing face boxes the whole time
+    // and only a COUNT of them reached any decision-maker.
+    //
+    // The face nearest the anchor word IN SOURCE TIME is used, not an average
+    // over the take: the zoom is a moment, and where the subject was thirty
+    // seconds earlier is not evidence about this one.
+    const { offsetXPx, offsetYPx } = zoomOffset(
+      evidence.faces ?? [], word.startMs, scaleMilli, policy.output.width, policy.output.height,
+      input.source.displayWidthPx ?? policy.output.width,
+      input.source.displayHeightPx ?? policy.output.height,
+    )
+    if (offsetXPx === 0 && offsetYPx === 0 && (evidence.faces ?? []).length === 0) {
+      warn.add('zoom_centred_no_face_evidence', `word_${req.anchorWordIndex}`)
+    }
     zooms.push({
       index: zooms.length, outputStartMs: start, outputEndMs: end, scaleMilli,
       intensity: req.intensity, reasonCode: req.reasonCode, anchorWordIndex: req.anchorWordIndex,
       easeInMs: policy.zooms.easeInMs, easeOutMs: policy.zooms.easeOutMs,
+      offsetXPx, offsetYPx,
     })
   }
 
@@ -811,8 +1104,33 @@ export function compileEditPlan(input: CompileInput): CompileResult {
     warn.add('audio_preset_defaulted', 'no_audio_component')
   } else if (evidence.audio.snrDbMilli < policy.audio.noisySnrDbMilliMax) {
     audioPresetId = 'speech-noisy-v1'
-  } else if (evidence.audio.earlyEnergyRatioMilli > policy.audio.roomyEarlyEnergyRatioMilliMax) {
-    audioPresetId = 'speech-roomy-v1'
+  } else {
+    // THE ROOMY BRANCH IS DELIBERATELY NOT TAKEN, and this is not an oversight
+    // to tidy up later. It used to read:
+    //
+    //   else if (evidence.audio.earlyEnergyRatioMilli > policy.audio.roomyEarlyEnergyRatioMilliMax)
+    //
+    // `earlyEnergyRatio` borrows the vocabulary of room acoustics and measures
+    // none of it. Its definition (editorAudio.ts header) is
+    // `10^((earlyDb - wholeDb)/20)` — the RMS level of the first three seconds
+    // against the RMS level of the whole file. Reverberation is a DECAY
+    // property, measured as early-to-late energy within an impulse response
+    // (C50/D50, RT60). This is a head-versus-whole loudness comparison. The two
+    // share a word and nothing else.
+    //
+    // Worse, the threshold points the wrong way in practice. Equal levels give
+    // a ratio of 1.0 -> 1000 milli, and the branch fires ABOVE 350, i.e.
+    // whenever the opening is louder than -9.1 dB relative to the file. Almost
+    // every recording where someone is talking at the start clears that. Now
+    // that the facts actually reach the compiler (they never did before — see
+    // readComponentAudioFacts), taking this branch would apply de-reverb and
+    // denoise to the majority of GOOD recordings.
+    //
+    // So the honest state is: `speech-roomy-v1` stays unreachable, as it has
+    // always been in practice, but now it is unreachable on purpose and on the
+    // record. Restoring it needs a real reverberation estimate, not a rewiring.
+    // Until then the compiler says what it CHECKED rather than pretending.
+    warn.add('audio_roomy_detection_unavailable', 'early_energy_ratio_is_not_reverberation')
   }
   const audioPreset = policy.audio.presets[audioPresetId]
   if (!audioPreset) bad(`audio: unknown preset ${audioPresetId}`)
@@ -852,6 +1170,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       pixelFormat: policy.output.pixelFormat,
       audioSampleRateHz: policy.output.audioSampleRateHz, audioChannels: policy.output.audioChannels,
       faststart: policy.output.faststart, durationMs: outputDurationMs,
+      watermark: input.watermark === true,
     },
     timeline: { segments, removals, cutsPerMinuteMilli },
     captions: {
@@ -886,6 +1205,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       sourceTrimStartMs: hookTrimStartMs,
       sourceTrimEndMs: hookTrimEndMs,
       reasonCode: hookReason,
+      title: buildHookTitle(cues, policy, outputDurationMs),
     },
     cover: { sourceTimeMs: coverSourceTimeMs, outputTimeMs: coverOutputTimeMs },
     warnings: warn.list,
@@ -904,7 +1224,25 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   // producer would face. It is not trusted because it is local.
   const plan = validateEditPlan(draft)
   assertNoRemovedWordIsCaptioned(plan, evidence.words, timeMap)
-  return { plan, planSha256: editPlanSha256(plan), canonical: canonicalEditPlan(plan), warnings: plan.warnings }
+  // The realised pacing, measured rather than assumed. `appliedRemovals` is the
+  // final set — after the density cap AND after the min-segment repair pass
+  // gave cuts back — so this is what the viewer actually gets, not what the
+  // Director asked for.
+  const cutStats: CompileCutStats = {
+    pacingId,
+    domainMs,
+    appliedCuts: appliedRemovals.length,
+    cutsPerMinuteMilli: domainMs > 0
+      ? Math.floor((appliedRemovals.length * 1000 * 60000) / domainMs)
+      : 0,
+    maxCutsAllowed: maxCuts,
+    droppedForDensity,
+    minRemovalMs: policy.cuts.minRemovalMs,
+  }
+  return {
+    plan, planSha256: editPlanSha256(plan), canonical: canonicalEditPlan(plan),
+    warnings: plan.warnings, cutStats,
+  }
 }
 
 // ---- caption cue construction ----------------------------------------------
@@ -914,6 +1252,7 @@ interface CueBuildInputs {
   preset: CaptionPresetPolicy
   maxLines: number
   maxCues: number
+  tailGuardMs: number
   outputDurationMs: number
   emphasisSet: Set<number>
   warn: WarningSink
@@ -932,6 +1271,35 @@ interface StagedWord { index: number; text: string; outStartMs: number; outEndMs
 // a single entry of `texts` is not guaranteed free of internal whitespace (the
 // injection-resistance tests deliberately feed such tokens), so splitting on
 // space downstream would misalign word boundaries whenever one occurs.
+/**
+ * Break a token that cannot fit one line into pieces that can.
+ *
+ * WHY THIS EXISTS. `layoutLines` starts a line with a token no matter how long
+ * it is (`|| current === ''`), because a token that fits nowhere still has to
+ * go somewhere. That produced a LINE longer than the preset allows: a 30-char
+ * word under `caption-punchy-word-v1` (16) renders at nearly double the
+ * intended width and runs off the side of the frame. Nothing caught it — the
+ * plan contract bounds a line at 200 chars, which is a safety limit against
+ * absurd input, not the typographic width the preset actually designs for.
+ *
+ * Long tokens are not exotic in this product: URLs, hashtags, handles,
+ * hyphenated compounds and German/Nordic compounds all clear 16 characters
+ * routinely, and ASR emits them as single tokens.
+ *
+ * Splitting at a fixed character count rather than at a syllable or a hyphen
+ * because the renderer measures nothing here: `maxCharsPerLine` is itself a
+ * proxy for width, and a proxy that stays consistent is worth more than a
+ * cleverer break that can still overflow. Each piece is a real token in
+ * `lineTokens`, so `lineTokens[j].join(' ') === lines[j]` still holds — the
+ * invariant the plan validator checks.
+ */
+function fragmentToken(text: string, maxCharsPerLine: number): string[] {
+  if (text.length <= maxCharsPerLine || maxCharsPerLine < 1) return [text]
+  const out: string[] = []
+  for (let i = 0; i < text.length; i += maxCharsPerLine) out.push(text.slice(i, i + maxCharsPerLine))
+  return out
+}
+
 function layoutLines(
   texts: string[], maxCharsPerLine: number, maxLines: number,
 ): { lines: string[]; groups: number[][] } | null {
@@ -958,8 +1326,93 @@ function layoutLines(
   return { lines, groups }
 }
 
+/**
+ * The VISUAL hook: the creator's own first spoken words, big, over the opening.
+ *
+ * IT READS THE CUES, NOT THE TRANSCRIPT, and that is the whole trick. The cues
+ * are what SURVIVED the cut, already in output order, already the exact tokens
+ * the renderer will draw. Deriving from `evidence.words` instead would let the
+ * title show words the hook trim or a removal had just deleted — a title that
+ * promises something the video never says.
+ *
+ * Nothing here is invented: every token came from the transcript, so the title
+ * cannot carry a fabricated claim, a brand name the ASR misheard into a
+ * different spelling, or an instruction that arrived inside a transcript.
+ *
+ * Returns null rather than a short title when too few words survive. A
+ * one-word title is not a hook, it is a fragment, and it would read as a bug.
+ */
+export function buildHookTitle(
+  cues: PlanCue[],
+  policy: EditPolicyV1,
+  outputDurationMs: number,
+): PlanHookTitle | null {
+  const cfg = policy.titleHook
+  if (!cfg?.enabled) return null
+
+  const words: string[] = []
+  for (const cue of cues) {
+    for (const line of cue.lineTokens) {
+      for (const tok of line) {
+        // Collapse whitespace INSIDE a token. A transcript token is normally
+        // one word, but nothing guarantees it: the ass-captions suite feeds
+        // payloads like "{\\an8}top of screen" through as a single token, and
+        // treating that as one word made `wordCount` disagree with the
+        // validator's own recount — two sources of truth for the same fact,
+        // which is exactly what the validator refuses.
+        const t = tok.replace(/\s+/g, ' ').trim()
+        if (t) words.push(t)
+        if (words.length >= cfg.maxWords) break
+      }
+      if (words.length >= cfg.maxWords) break
+    }
+    if (words.length >= cfg.maxWords) break
+  }
+  // Trim to the character budget by DROPPING WHOLE WORDS from the end. Cutting
+  // mid-word would put a truncated fragment of the creator's own speech on
+  // screen, which looks like a rendering fault rather than a design choice.
+  while (words.length > 0 && words.join(' ').length > cfg.maxChars) words.pop()
+  if (words.length < cfg.minWords) return null
+
+  // The title cannot outlive the video. A short recording is exactly where a
+  // fixed 2000ms window would otherwise run past the end, and the output
+  // validator compares every span to the measured duration with no tolerance.
+  const startMs = Math.max(0, Math.min(cfg.startMs, Math.max(0, outputDurationMs - 1)))
+  const endMs = Math.min(startMs + cfg.durationMs, outputDurationMs)
+  if (endMs <= startMs) return null
+
+  const text = words.join(' ')
+  // Counted from the FINISHED text, the same way the validator counts it, so
+  // the two cannot drift apart by construction rather than by agreement.
+  const wordCount = text.split(/\s+/).filter(Boolean).length
+  return { text, wordCount, outputStartMs: startMs, outputEndMs: endMs }
+}
+
 function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
   const { words, timeMap, preset, maxLines, maxCues, outputDurationMs, emphasisSet, warn } = inp
+  // THE LAST CAPTION MUST NOT REACH THE LAST FRAME.
+  //
+  // The compiler clamps cues to `outputDurationMs`; the output validator
+  // compares them to the MEASURED duration of the encoded file, with zero
+  // tolerance and for good reason — a cue past the end means the caption
+  // timeline and the video timeline came from different maps, which makes the
+  // cues that ARE inside suspect too.
+  //
+  // Those two are only compatible while something else leaves slack at the
+  // end. Trailing silence used to: before the edge trim, the fixture ended
+  // 600 ms after its last cue. The edge trim cuts the video to keepMs (120 ms)
+  // after the last spoken word, and the reading-speed rule will happily extend
+  // a final cue into whatever room is left — so the planned cue ends exactly
+  // at the planned duration, and an encoded file even one frame shorter than
+  // requested fails the render. That is what
+  // `output_caption_invalid: caption cue 4 ends after the video does` was.
+  //
+  // Fixed here rather than by loosening the validator: the validator's zero
+  // tolerance is what makes it able to detect genuine map divergence, and a
+  // tolerance wide enough to absorb container rounding is also wide enough to
+  // hide a real bug. The plan simply must not promise a caption on a frame the
+  // encoder was never asked to produce.
+  const captionCeilingMs = Math.max(0, outputDurationMs - inp.tailGuardMs)
   // Stage every word that survives into output time, in one pass over the words
   // and the pieces together (O(words + pieces), no pairwise search).
   const staged: Array<StagedWord & { pieceIndex: number }> = []
@@ -983,26 +1436,43 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
   const pending = [...staged]
   const flush = (): void => {
     if (group.length === 0) return
-    if (cues.length >= maxCues) { group = []; return }
-    const texts = group.map((g) => g.text)
-    let layout = layoutLines(texts, preset.maxCharsPerLine, maxLines)
+    // Hitting the cue ceiling DROPS the rest of the captions. Silently, until
+    // now — a 15-minute take on the punchiest preset can reach it, and the
+    // symptom is "my captions just stop halfway", with nothing anywhere saying
+    // why. It is still a drop, but it is now a recorded one.
+    if (cues.length >= maxCues) {
+      warn.add('caption_dropped_max_cues', `cue_${cues.length}`)
+      group = []
+      return
+    }
+    // Fragments, not raw words: a token too wide for a line is broken here so
+    // no LINE can exceed the preset width. `wordIdx` points back at the word
+    // in `group` that a fragment came from, so emphasis still lands on the
+    // right token after a split.
+    const fragmentsOf = (g: StagedWord[]): { text: string; wordIdx: number }[] =>
+      g.flatMap((w, i) => fragmentToken(w.text, preset.maxCharsPerLine).map((text) => ({ text, wordIdx: i })))
+    let frags = fragmentsOf(group)
+    let layout = layoutLines(frags.map((f) => f.text), preset.maxCharsPerLine, maxLines)
     while (layout === null && group.length > 1) {
       // Too much text to lay out: give the tail back to the next cue rather than
       // dropping any of it.
       const tail = group.pop()
       if (tail) pending.unshift(tail)
-      layout = layoutLines(group.map((g) => g.text), preset.maxCharsPerLine, maxLines)
+      frags = fragmentsOf(group)
+      layout = layoutLines(frags.map((f) => f.text), preset.maxCharsPerLine, maxLines)
     }
     let lines: string[]
     // The original-token indices (into `group`) behind each line — `[[0]]` in
     // the single-overflow-word fallback below, `layout.groups` otherwise.
     let lineGroups: number[][]
     if (layout === null) {
-      // A single word longer than two full lines. Keep it as one line — the
-      // validator bounds the line length, and truncating transcript text is not
-      // something this compiler does silently.
-      lines = [group[0].text.slice(0, preset.maxCharsPerLine * maxLines)]
-      lineGroups = [[0]]
+      // ONE word too long for every line this preset allows. It used to become
+      // a single line of maxCharsPerLine * maxLines characters — i.e. the
+      // fallback for "too wide to fit" emitted the widest line in the system,
+      // guaranteed off-frame. Now it fills the lines it is allowed, at the
+      // width it is allowed, and the truncation is announced as before.
+      lines = frags.slice(0, maxLines).map((f) => f.text)
+      lineGroups = lines.map((_, j) => [j])
       warn.add('caption_line_overflow', `word_${group[0].index}`)
     } else {
       lines = layout.lines
@@ -1013,11 +1483,13 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     // text actually being displayed, keeping `lineTokens[j].join(' ') ===
     // lines[j]` true in every case, exactly as the validator requires.
     const lineTokens: string[][] = layout === null
-      ? [[lines[0]]]
-      : lineGroups.map((idxs) => idxs.map((idx) => texts[idx]))
+      ? lines.map((ln) => [ln])
+      : lineGroups.map((idxs) => idxs.map((idx) => frags[idx].text))
     // One flag per token, straight from the SAME index groups — exact by
     // construction, never by re-parsing rendered text apart.
-    const lineEmphasis: boolean[][] = lineGroups.map((idxs) => idxs.map((idx) => emphasisSet.has(group[idx].index)))
+    const lineEmphasis: boolean[][] = layout === null
+      ? lines.map(() => [emphasisSet.has(group[0].index)])
+      : lineGroups.map((idxs) => idxs.map((idx) => emphasisSet.has(group[frags[idx].wordIdx].index)))
     const startMs = group[0].outStartMs
     let endMs = group[group.length - 1].outEndMs
     const chars = lines.join(' ').length
@@ -1030,8 +1502,15 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     const want = Math.max(preset.minCueDurationMs, wantByRead)
     if (endMs - startMs < want) endMs = Math.min(startMs + want, room)
     if (endMs - startMs > preset.maxCueDurationMs) endMs = startMs + preset.maxCueDurationMs
-    if (endMs > outputDurationMs) endMs = outputDurationMs
-    if (endMs <= startMs) { group = []; return }
+    if (endMs > captionCeilingMs) endMs = captionCeilingMs
+    if (endMs <= startMs) {
+      // Dropped rather than shown past the end. Announced, because a caption
+      // the creator was promised and did not get is exactly the kind of silent
+      // degradation this pipeline keeps producing.
+      warn.add('caption_dropped_past_tail_guard', String(cues.length))
+      group = []
+      return
+    }
     const emphasisWordIndices = group.map((g) => g.index).filter((i) => emphasisSet.has(i)).slice(0, MAX_CUE_EMPHASIS)
     cues.push({
       index: cues.length, outputStartMs: startMs, outputEndMs: endMs,

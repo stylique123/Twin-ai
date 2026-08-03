@@ -43,7 +43,15 @@ describe('§3.5 runtime wiring: visual-waste stream from the pinned visual compo
 describe('§3.5 runtime wiring: bounded director summaries', () => {
   const visual = { shotBoundaries: [{}, {}, {}], faceCoverage: { samplesWithFace: 4, samplesTotal: 5 }, blankIntervals: [] }
   const audio = { integratedLufs: -16.2, truePeakDbtp: -1.1, noiseFloorDb: -60, snrDb: 40 }
-  const hook = { spokenOpening: { firstWordStartMs: 120, wordCount: 8 }, matchedTokenRatio: 0.75 }
+  // The hook component's REAL persisted shape. `matchedTokenRatio` lives
+  // inside `scriptAlignment` — see editorHook.ts, and hook.test.ts, which has
+  // been pinning that truth from the producer's side the whole time. This
+  // fixture used to carry it flat, invented from what the reader expected, and
+  // that is why the reader read the wrong path for so long with a green suite.
+  const hook = {
+    spokenOpening: { firstWordStartMs: 120, wordCount: 8 },
+    scriptAlignment: { scriptHookTokenCount: 8, matchedTokenRatio: 0.75 },
+  }
 
   it('projects compact facts + the allowed catalogs + frozen features, well under the cap', () => {
     const vw = buildVisualWasteStream({ blankIntervals: [{ startMs: 0, endMs: 2000, classification: 'dead_air', selectableWaste: true }] })
@@ -53,6 +61,10 @@ describe('§3.5 runtime wiring: bounded director summaries', () => {
     expect(s.visual.faceCoverage).toEqual({ withFace: 4, total: 5 })
     expect(s.audio.integratedLufs).toBe(-16.2)
     expect(s.hook.firstWordStartMs).toBe(120)
+    // THE REGRESSION. This was null on every Director call ever made, so the
+    // model never knew whether the creator said the hook they were shown —
+    // the fact hookTreatment most depends on.
+    expect(s.hook.matchedTokenRatio).toBe(0.75)
     expect(s.catalogs.captionPresets).toContain('caption-clean-keyword-v1')
     expect(s.features).toEqual({ autoFillerRemoval: false })
     expect(Buffer.byteLength(canonicalJson(s), 'utf8')).toBeLessThan(MAX_SUMMARY_BYTES)
@@ -64,5 +76,31 @@ describe('§3.5 runtime wiring: bounded director summaries', () => {
     expect(s.hook).toEqual({ firstWordStartMs: null, wordCount: null, matchedTokenRatio: null })
     expect(s.visual.faceCoverage).toBeNull()
     expect(s.visual.shotCount).toBe(0)
+  })
+
+  it('CONTROL: a FLAT matchedTokenRatio is ignored — that shape is not what the analyzer writes', () => {
+    // Without this, a future edit could re-accept the invented shape and the
+    // suite would go green against a component production never emits.
+    const flat = { spokenOpening: { firstWordStartMs: 120, wordCount: 8 }, matchedTokenRatio: 0.75 }
+    const s = buildDirectorSummaries({ colorsSource: 'none' }, null, null, flat, []) as Record<string, any>
+    expect(s.hook.matchedTokenRatio).toBeNull()
+  })
+
+  it('a take with no script hook to compare against reports null, not zero', () => {
+    // editorHook.ts leaves scriptAlignment null when there was no snapshot
+    // hook. "We could not check" must stay distinct from "they said none of it".
+    const noScript = { spokenOpening: { firstWordStartMs: 120, wordCount: 8 }, scriptAlignment: null }
+    const s = buildDirectorSummaries({ colorsSource: 'none' }, null, null, noScript, []) as Record<string, any>
+    expect(s.hook.matchedTokenRatio).toBeNull()
+    expect(s.hook.wordCount).toBe(8)
+  })
+
+  it('a hook the creator did not say at all reports 0, which is a measurement', () => {
+    const missed = {
+      spokenOpening: { firstWordStartMs: 120, wordCount: 8 },
+      scriptAlignment: { scriptHookTokenCount: 8, matchedTokenRatio: 0 },
+    }
+    const s = buildDirectorSummaries({ colorsSource: 'none' }, null, null, missed, []) as Record<string, any>
+    expect(s.hook.matchedTokenRatio).toBe(0)
   })
 })

@@ -23,7 +23,7 @@ import { db, type Job } from '../db.js'
 import { loadEligibleSource } from './editorInspect.js'
 import { loadComponentStrict } from './editorSpeech.js'
 import { lookupCached } from './editorAnalyze.js'
-import { compileEditPlan } from './editorCompile.js'
+import { compileEditPlan, type CompileCutStats } from './editorCompile.js'
 import { buildCompileInput, assertNoCentisecondLeak } from './editorCompileInput.js'
 import { recordEditPlan, type Fence } from './editorComplete.js'
 import { EditPlanError, editPlanSha256, type EditPlanV1 } from './editPlanContract.js'
@@ -38,6 +38,21 @@ export interface CompileOutcome {
   segments: number
   outputDurationMs: number
   warnings: number
+  /**
+   * The REALISED cut density of this render.
+   *
+   * Carried out of the stage rather than left on the compile result because a
+   * measurement nothing persists is not a measurement. edit_policy_v1.json
+   * states plainly that the three pacing profiles are chosen by reasoning
+   * rather than measured, and this is the instrument that corrects them: it
+   * rides the stage outcome into the stored job result, so the real
+   * distribution across real videos is queryable instead of theoretical.
+   *
+   * The alternative — putting it in the plan — was rejected: the plan is a
+   * hashed contract, and an observation must not change the hash of a render
+   * or become a term the renderer has to honour.
+   */
+  cutStats: CompileCutStats
 }
 
 export class CompileCancelledError extends Error {
@@ -204,6 +219,7 @@ export async function runCompilingStage(
       segments: result.plan.timeline.segments.length,
       outputDurationMs: result.plan.output.durationMs,
       warnings: result.warnings.length,
+      cutStats: result.cutStats,
     }
   } finally {
     watch.stop()

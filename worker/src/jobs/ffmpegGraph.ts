@@ -109,6 +109,89 @@ export interface GraphAssets {
   assPath: string | null
   fontsDir: string | null
   outputPath: string
+  /** The frozen encoder settings. Required — see EncoderSettings for why an
+   *  optional one would reintroduce the defect it exists to fix. */
+  encoder: EncoderSettings
+  /** The free-tier mark, supplied ONLY when the plan asks for one. Like the
+   *  crossfade bounds, the geometry is handed down by the caller rather than
+   *  read here — this module resolves no paths and opens no catalogs. */
+  watermark?: WatermarkPlacement
+}
+
+/**
+ * The frozen encoder settings, handed down like every other catalog value.
+ *
+ * THESE WERE DECLARED AND NEVER SENT. The catalog has carried `x264Preset`,
+ * `x264Crf`, `x264Profile`, `x264Level`, `gopSizeFrames` and
+ * `audioBitrateKbps` all along, under a comment insisting that "the operator
+ * picked a different preset that day" must never be something the audit trail
+ * has to say. The argv this file built contained none of them. Every render
+ * ever made used ffmpeg's compiled-in defaults.
+ *
+ * That made the determinism claim false in the one dimension nobody measured:
+ * the plan hash, the graph hash and the validator were all stable while the
+ * actual picture quality and bitrate were whatever the worker's ffmpeg build
+ * happened to default to. A version bump on the host silently changed every
+ * customer's video and nothing anywhere went red.
+ *
+ * REQUIRED, not optional. An optional encoder setting reintroduces exactly the
+ * failure being fixed — silence that looks like success — so the type system
+ * refuses to build a graph that has not declared one.
+ */
+export interface EncoderSettings {
+  x264Preset: string
+  x264Crf: number
+  x264Profile: string
+  x264Level: string
+  gopSizeFrames: number
+  audioBitrateKbps: number
+}
+
+// x264's own preset names. A closed set, because this reaches argv: an
+// unrecognised preset is a configuration error we want loudly, not a token
+// handed to a process to interpret.
+const X264_PRESETS = new Set([
+  'ultrafast', 'superfast', 'veryfast', 'faster', 'fast',
+  'medium', 'slow', 'slower', 'veryslow', 'placebo',
+])
+const X264_PROFILES = new Set(['baseline', 'main', 'high', 'high10', 'high422', 'high444'])
+// H.264 levels are `<digit>.<digit>` or a bare digit. Pinned as a shape rather
+// than a list so a future 6.2 does not need a code change, while `-anything`
+// still cannot be read as a flag.
+const X264_LEVEL_RE = /^[1-6](\.[0-9])?$/
+
+/** Every encoder value checked before it becomes argv. Same posture as the
+ *  rest of this file: the catalog is JSON on disk, so "it came from the
+ *  catalog" is not the same as "it is safe to hand to a process". */
+function checkEncoder(e: EncoderSettings, invalid: (m: string) => never): EncoderSettings {
+  if (!X264_PRESETS.has(e.x264Preset)) invalid(`encoder: ${JSON.stringify(e.x264Preset)} is not an x264 preset`)
+  if (!X264_PROFILES.has(e.x264Profile)) invalid(`encoder: ${JSON.stringify(e.x264Profile)} is not an x264 profile`)
+  if (!X264_LEVEL_RE.test(e.x264Level)) invalid(`encoder: ${JSON.stringify(e.x264Level)} is not an H.264 level`)
+  // CRF 0 is lossless and 51 is unwatchable; both are real x264 values and
+  // neither is a thing this product should ever ship, but the bound that
+  // matters here is that it is an integer in range and cannot carry a sign
+  // that argv would read as a flag.
+  if (!Number.isInteger(e.x264Crf) || e.x264Crf < 0 || e.x264Crf > 51) {
+    invalid(`encoder: CRF ${String(e.x264Crf)} is not an integer in 0..51`)
+  }
+  if (!Number.isInteger(e.gopSizeFrames) || e.gopSizeFrames < 1 || e.gopSizeFrames > 600) {
+    invalid(`encoder: GOP ${String(e.gopSizeFrames)} is not an integer in 1..600`)
+  }
+  if (!Number.isInteger(e.audioBitrateKbps) || e.audioBitrateKbps < 32 || e.audioBitrateKbps > 512) {
+    invalid(`encoder: audio bitrate ${String(e.audioBitrateKbps)} kbps is not an integer in 32..512`)
+  }
+  return e
+}
+
+/** Where the mark sits and how solid it is. Integers only; every literal the
+ *  graph emits is built from these by the same helpers the rest of the file
+ *  uses, so nothing here can introduce a value the alphabet would reject. */
+export interface WatermarkPlacement {
+  path: string
+  displayWidthPx: number
+  opacityMilli: number
+  marginRightPx: number
+  marginBottomPx: number
 }
 
 function segmentChain(seg: PlanSegment, plan: EditPlanV1, nodes: FilterNode[]): { v: string; a: string } {
@@ -223,9 +306,16 @@ interface ZoomWindow {
   endMs: number
   // null = outside every zoom: pass the frame through with no scale/crop.
   scaleMilli: number | null
+  // Displacement of the crop from the frame centre, so the punch lands on the
+  // subject. Zero for pass-through windows and for zooms with no face evidence.
+  offsetXPx: number
+  offsetYPx: number
 }
 
-function rampWindows(fromMs: number, toMs: number, fromScale: number, toScale: number): ZoomWindow[] {
+function rampWindows(
+  fromMs: number, toMs: number, fromScale: number, toScale: number,
+  offsetXPx: number, offsetYPx: number,
+): ZoomWindow[] {
   const span = toMs - fromMs
   if (span <= 0) return []
   const out: ZoomWindow[] = []
@@ -235,7 +325,14 @@ function rampWindows(fromMs: number, toMs: number, fromScale: number, toScale: n
     if (endMs <= startMs) continue
     const fraction = (k + 0.5) / EASE_STEPS
     const scaleMilli = Math.round(fromScale + fraction * (toScale - fromScale))
-    out.push({ startMs, endMs, scaleMilli })
+    // The displacement eases WITH the scale. Snapping to the full offset on the
+    // first step would jerk the framing sideways before the zoom has revealed
+    // the slack to move into — and at the ease's first step there is barely any.
+    const t = (scaleMilli - 1000) / Math.max(1, toScale === 1000 ? fromScale - 1000 : toScale - 1000)
+    out.push({
+      startMs, endMs, scaleMilli,
+      offsetXPx: Math.round(offsetXPx * t), offsetYPx: Math.round(offsetYPx * t),
+    })
   }
   return out
 }
@@ -244,10 +341,15 @@ function zoomWindows(zoom: PlanZoom): ZoomWindow[] {
   const holdStart = zoom.outputStartMs + zoom.easeInMs
   const holdEnd = zoom.outputEndMs - zoom.easeOutMs
   const windows: ZoomWindow[] = [
-    ...rampWindows(zoom.outputStartMs, holdStart, 1000, zoom.scaleMilli),
+    ...rampWindows(zoom.outputStartMs, holdStart, 1000, zoom.scaleMilli, zoom.offsetXPx, zoom.offsetYPx),
   ]
-  if (holdEnd > holdStart) windows.push({ startMs: holdStart, endMs: holdEnd, scaleMilli: zoom.scaleMilli })
-  windows.push(...rampWindows(holdEnd, zoom.outputEndMs, zoom.scaleMilli, 1000))
+  if (holdEnd > holdStart) {
+    windows.push({
+      startMs: holdStart, endMs: holdEnd, scaleMilli: zoom.scaleMilli,
+      offsetXPx: zoom.offsetXPx, offsetYPx: zoom.offsetYPx,
+    })
+  }
+  windows.push(...rampWindows(holdEnd, zoom.outputEndMs, zoom.scaleMilli, 1000, zoom.offsetXPx, zoom.offsetYPx))
   return windows
 }
 
@@ -259,11 +361,15 @@ function allWindows(plan: EditPlanV1): ZoomWindow[] {
   const windows: ZoomWindow[] = []
   let cursor = 0
   for (const zoom of plan.video.zooms) {
-    if (zoom.outputStartMs > cursor) windows.push({ startMs: cursor, endMs: zoom.outputStartMs, scaleMilli: null })
+    if (zoom.outputStartMs > cursor) {
+      windows.push({ startMs: cursor, endMs: zoom.outputStartMs, scaleMilli: null, offsetXPx: 0, offsetYPx: 0 })
+    }
     windows.push(...zoomWindows(zoom))
     cursor = zoom.outputEndMs
   }
-  if (cursor < plan.output.durationMs) windows.push({ startMs: cursor, endMs: plan.output.durationMs, scaleMilli: null })
+  if (cursor < plan.output.durationMs) {
+    windows.push({ startMs: cursor, endMs: plan.output.durationMs, scaleMilli: null, offsetXPx: 0, offsetYPx: 0 })
+  }
   const coveredMs = windows.reduce((n, w) => n + (w.endMs - w.startMs), 0)
   // Recomputed independently of `plan.output.durationMs`, exactly the way
   // `joinSegments` re-derives its own total and requires it to agree with the
@@ -300,11 +406,16 @@ function windowChain(plan: EditPlanV1, win: ZoomWindow, vJoined: string, nodes: 
     inputs: [vPts], outputs: [vScaled],
   })
   const vCropped = `vzwc${idx}`
+  // The crop is displaced from centre by the plan's own offset, so the punch
+  // lands on the subject. `signedTerm` keeps the expression inside the value
+  // alphabet — `+`/`-` and digits only, no comma, no conditional.
+  const signedTerm = (n: number): string => (n === 0 ? '' : n > 0 ? `+${n}` : `-${Math.abs(n)}`)
   nodes.push({
     id: `vzwcrop${idx}`, filter: 'crop',
     args: [
       { key: 'w', value: plan.output.width }, { key: 'h', value: plan.output.height },
-      { key: 'x', value: `(iw-ow)/2` }, { key: 'y', value: `(ih-oh)/2` },
+      { key: 'x', value: `(iw-ow)/2${signedTerm(win.offsetXPx)}` },
+      { key: 'y', value: `(ih-oh)/2${signedTerm(win.offsetYPx)}` },
     ],
     inputs: [vScaled], outputs: [vCropped],
   })
@@ -545,6 +656,82 @@ export function buildFfmpegGraph(
     vCur = 'vsub'
   }
 
+  // THE FREE-TIER MARK, LAST OF THE VIDEO STAGES.
+  //
+  // After the captions on purpose: the mark is an attribution on the finished
+  // frame, and a caption line drawn over it would both obscure the mark and
+  // look like a bug. Being last also means it is composited over whatever the
+  // rest of the graph produced, so a zoom cannot scale it and a transition
+  // cannot fade it out from under itself.
+  //
+  // NOTHING HAPPENS WITHOUT THE PLAN. The instruction is `plan.output.watermark`
+  // and the asset is supplied by the caller; a plan that does not ask for a mark
+  // cannot acquire one from a stray asset being present, and a plan that DOES
+  // ask fails loudly rather than rendering an unmarked video.
+  if (plan.output.watermark) {
+    const wm = assets.watermark
+    if (!wm) invalid('the plan asks for a watermark but no watermark asset was supplied')
+    if (!Number.isInteger(wm.displayWidthPx) || wm.displayWidthPx <= 0) invalid('watermark width is not a positive integer')
+    if (!Number.isInteger(wm.opacityMilli) || wm.opacityMilli <= 0 || wm.opacityMilli > 1000) {
+      invalid('watermark opacity is out of range')
+    }
+    if (!Number.isInteger(wm.marginRightPx) || wm.marginRightPx < 0) invalid('watermark right margin is negative')
+    if (!Number.isInteger(wm.marginBottomPx) || wm.marginBottomPx < 0) invalid('watermark bottom margin is negative')
+    // THE MARK MUST CLEAR THE PLAN'S OWN SAFE AREA.
+    //
+    // The margins were first chosen by eye against a mockup and put the mark
+    // 264px inside the band TikTok and Reels cover with the caption bar and the
+    // right-hand action rail — invisible on exactly the platforms it exists to
+    // advertise on, and invisible in a way no test or reviewer would notice,
+    // because the render is perfect and the frame is correct.
+    //
+    // The plan already carries the safe area; it was simply read by nothing in
+    // the render path. Checking against it here makes the placement a property
+    // the builder enforces rather than a number somebody tuned.
+    const safe = plan.video.framing
+    if (wm.marginBottomPx < safe.safeBottomPx) {
+      invalid(`watermark sits ${safe.safeBottomPx - wm.marginBottomPx}px inside the plan's bottom safe area`)
+    }
+    if (wm.marginRightPx < safe.safeRightPx) {
+      invalid(`watermark sits ${safe.safeRightPx - wm.marginRightPx}px inside the plan's right safe area`)
+    }
+    // A second INPUT, not a filter that reads a file. `movie=` would embed a
+    // path inside the filter string; an input keeps the path an argv element,
+    // which is the property this whole module exists to preserve.
+    const inputIndex = inputs.length
+    inputs.push({ path: checkPath(wm.path, 'watermark'), preOptions: [] })
+
+    // `-1` keeps the source aspect: the asset is authored at one size and the
+    // catalog names only a width, so a height here would be a second number
+    // able to disagree with the artwork.
+    nodes.push({
+      id: 'wmscale', filter: 'scale',
+      args: [{ key: 'w', value: wm.displayWidthPx }, { key: 'h', value: -1 }],
+      inputs: [`${inputIndex}:v`], outputs: ['wms'],
+    })
+    // The alpha the artwork already carries is MULTIPLIED by the catalog's
+    // opacity rather than replaced by it, so a fully transparent pixel stays
+    // transparent instead of becoming a faint box.
+    nodes.push({ id: 'wmfmt', filter: 'format', args: [{ key: '', value: 'rgba' }], inputs: ['wms'], outputs: ['wmf'] })
+    nodes.push({
+      id: 'wmalpha', filter: 'colorchannelmixer',
+      args: [{ key: 'aa', value: milliToScalarLiteral(wm.opacityMilli) }],
+      inputs: ['wmf'], outputs: ['wma'],
+    })
+    // Bottom-right, measured from the frame's own edges. `W`/`H` are the base
+    // frame and `w`/`h` the overlay, so the margins hold whatever either turns
+    // out to be — no arithmetic here needs the output raster to be a constant.
+    nodes.push({
+      id: 'wmoverlay', filter: 'overlay',
+      args: [
+        { key: 'x', value: `W-w-${wm.marginRightPx}` },
+        { key: 'y', value: `H-h-${wm.marginBottomPx}` },
+      ],
+      inputs: [vCur, 'wma'], outputs: ['vwm'],
+    })
+    vCur = 'vwm'
+  }
+
   // Audio conditioning, then loudness normalisation to the frozen targets.
   const a = plan.audio
   let aCur = aJoined
@@ -581,16 +768,43 @@ export function buildFfmpegGraph(
 
   if (a.music !== null) invalid('music beds are not supported in this epoch')
 
+  const enc = checkEncoder(assets.encoder, invalid)
   const outputOptions = [
     '-map', `[${vCur}]`,
     '-map', `[${aCur}]`,
     '-c:v', plan.output.videoCodec,
     '-pix_fmt', plan.output.pixelFormat,
     '-r', `${plan.output.fpsNum}/${plan.output.fpsDen}`,
+    // THE FROZEN ENCODER PROFILE, which until now was declared in the catalog
+    // and never passed to ffmpeg. `-g` with `keyint_min` equal to it pins the
+    // GOP exactly, rather than letting x264 place keyframes on scene changes —
+    // which for a hard-cut edit would vary with the CONTENT and make two
+    // renders of one plan differ.
+    '-preset', enc.x264Preset,
+    '-crf', String(enc.x264Crf),
+    '-profile:v', enc.x264Profile,
+    '-level:v', enc.x264Level,
+    '-g', String(enc.gopSizeFrames),
+    '-keyint_min', String(enc.gopSizeFrames),
+    '-sc_threshold', '0',
     '-c:a', plan.output.audioCodec,
+    '-b:a', `${enc.audioBitrateKbps}k`,
     '-ar', String(plan.output.audioSampleRateHz),
     '-ac', String(plan.output.audioChannels),
     '-t', msToSecondsLiteral(plan.output.durationMs),
+    // COLOUR METADATA, WITHOUT WHICH THE EXPORT LOOKS WASHED OUT.
+    //
+    // An untagged H.264 file is interpreted by QuickTime, Safari and iOS as
+    // BT.601, while libswscale actually produced BT.709 for a 1920-tall frame.
+    // The result is the classic hue-and-saturation shift a creator describes as
+    // "the colours look wrong / faded compared to my recording" — with nothing
+    // in any log, because every stage did its job and only the label is absent.
+    //
+    // `tv` range is stated for the same reason: a full-range phone capture
+    // converted with no range signalling reads as crushed blacks or milky
+    // greys depending on the player's guess.
+    '-colorspace', 'bt709', '-color_primaries', 'bt709',
+    '-color_trc', 'bt709', '-color_range', 'tv',
   ]
   if (plan.output.faststart) outputOptions.push('-movflags', '+faststart')
 

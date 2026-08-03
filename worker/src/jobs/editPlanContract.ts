@@ -28,7 +28,7 @@ import { canonicalJson, sha256Hex } from './editorManifest.js'
 // pinned. A plan pinned under an earlier version lacks these fields and is
 // never reinterpreted as v3 — a project's boot manifest is fixed at pin time,
 // so each bump only affects NEW plans compiled after it.
-export const EDIT_PLAN_SCHEMA_VERSION = 3
+export const EDIT_PLAN_SCHEMA_VERSION = 5
 export const EDIT_PLAN_VERSION = 'edit-plan-v1'
 export const EDIT_PLAN_MAX_BYTES = 1048576
 
@@ -62,7 +62,12 @@ export const TRANSITION_POLICIES = ['hard_cuts_only', 'restrained'] as const
 export const TRANSITION_KINDS = ['crossfade'] as const
 export const ZOOM_REASON_CODES = ['emphasis_word', 'scene_open', 'retention_beat'] as const
 export const ZOOM_INTENSITIES = ['subtle', 'medium'] as const
-export const REMOVAL_ORIGINS = ['speech_candidate', 'visual_waste', 'hook_trim'] as const
+// `edge_trim` is the deterministic head/tail removal: whatever sits outside the
+// first and last spoken word. It is its own origin rather than being folded
+// into speech_candidate because the RECORD has to say why a cut happened, and
+// "the Director selected a silence here" and "this is always waste" are
+// different facts about the same missing seconds.
+export const REMOVAL_ORIGINS = ['speech_candidate', 'visual_waste', 'hook_trim', 'edge_trim'] as const
 export const HOOK_TREATMENTS = ['keep', 'open_at_word'] as const
 export const SOURCE_ORIGINS = ['teleprompter', 'upload'] as const
 
@@ -108,6 +113,14 @@ export interface PlanOutput {
   audioChannels: number
   faststart: boolean
   durationMs: number
+  /** Whether the free-tier TwinAI mark is burned into this render.
+   *
+   *  It lives in the PLAN rather than being decided at render time for the same
+   *  reason the caption colours do: the plan is the recorded contract, its hash
+   *  covers this field, and two renders of one plan must produce the same video.
+   *  A watermark resolved from live account state at render time would make a
+   *  replayed render silently differ from the one the user was shown. */
+  watermark: boolean
 }
 export interface PlanSegment {
   index: number
@@ -167,6 +180,17 @@ export interface PlanCaptions {
   cues: PlanCue[]
 }
 export interface PlanZoom {
+  /** How far the zoom's crop is displaced from the frame centre, in OUTPUT
+   *  pixels, so the punch lands on the subject rather than on the geometry.
+   *
+   *  Zero is the old behaviour and remains correct when there is no face
+   *  evidence — it means "centre", chosen, rather than "centre" by default.
+   *  The magnitude is bounded by how much the scale actually reveals: a 1.12x
+   *  zoom on a 1080-wide frame can only pan +/-64px before the crop leaves the
+   *  scaled image, and the validator re-derives that bound rather than trusting
+   *  the compiler to have respected it. */
+  offsetXPx: number
+  offsetYPx: number
   index: number
   outputStartMs: number
   outputEndMs: number
@@ -206,12 +230,34 @@ export interface PlanAudio {
   truePeakCeilingDbtpMilli: number
   music: null
 }
+/**
+ * The VISUAL hook — a few big words burned over the opening of the video.
+ *
+ * `text` is composed from the creator's own first surviving spoken words, so it
+ * can never carry a fabricated claim, a misspelled brand, or an instruction
+ * that arrived in a transcript. It is free text in the same, and only, sense
+ * caption lines are (Gate-0 s3.1) — bounded in length, exempt from the
+ * metacharacter scan for that reason, and escaped at the ASS boundary.
+ *
+ * `wordCount` is kept beside it because the renderer and the tests both need
+ * to reason about the word budget without re-splitting the string, and a split
+ * is exactly the kind of derivation that drifts from what was validated.
+ */
+export interface PlanHookTitle {
+  text: string
+  wordCount: number
+  outputStartMs: number
+  outputEndMs: number
+}
 export interface PlanHook {
   treatment: HookTreatment
   startWordIndex: number | null
   sourceTrimStartMs: number
   sourceTrimEndMs: number
   reasonCode: string
+  /** null is a REAL state: most videos have no visual hook, and null is how
+   *  that is said. It is never a placeholder for "not computed yet". */
+  title: PlanHookTitle | null
 }
 export interface PlanCover {
   sourceTimeMs: number
@@ -334,7 +380,7 @@ const IDENTITY_KEYS = ['planVersion', 'policyVersion', 'compilerVersion', 'proje
   'sourceAssetId', 'sourceChecksum', 'bootManifestSha', 'scriptSnapshotSha', 'decisionSha256'] as const
 const SOURCE_KEYS = ['origin', 'durationMs', 'allowedWindows'] as const
 const OUTPUT_KEYS = ['profileId', 'width', 'height', 'fpsNum', 'fpsDen', 'videoCodec', 'audioCodec',
-  'pixelFormat', 'audioSampleRateHz', 'audioChannels', 'faststart', 'durationMs'] as const
+  'pixelFormat', 'audioSampleRateHz', 'audioChannels', 'faststart', 'durationMs', 'watermark'] as const
 const SEGMENT_KEYS = ['index', 'sourceStartMs', 'sourceEndMs', 'outputStartMs', 'outputEndMs',
   'transitionInOverlapMs'] as const
 const REMOVAL_KEYS = ['sourceStartMs', 'sourceEndMs', 'origin', 'ref', 'reasonCode'] as const
@@ -346,13 +392,16 @@ const CAPTIONS_KEYS = [
   'presetId', 'fontSizePx', 'marginVerticalPx', 'brandPrimaryColourAss', 'brandHighlightColourAss', 'cues',
 ] as const
 const ZOOM_KEYS = ['index', 'outputStartMs', 'outputEndMs', 'scaleMilli', 'intensity', 'reasonCode',
-  'anchorWordIndex', 'easeInMs', 'easeOutMs'] as const
+  'anchorWordIndex', 'easeInMs', 'easeOutMs', 'offsetXPx', 'offsetYPx'] as const
 const TRANSITION_KEYS = ['index', 'atSegmentIndex', 'kind', 'overlapMs'] as const
 const FRAMING_KEYS = ['modeId', 'safeTopPx', 'safeBottomPx', 'safeLeftPx', 'safeRightPx'] as const
 const VIDEO_KEYS = ['framing', 'transitionPolicy', 'transitions', 'zooms'] as const
 const AUDIO_KEYS = ['presetId', 'highpassHz', 'denoiseMilli', 'deesserMilli', 'targetLufsMilli',
   'toleranceLuMilli', 'truePeakCeilingDbtpMilli', 'music'] as const
-const HOOK_KEYS = ['treatment', 'startWordIndex', 'sourceTrimStartMs', 'sourceTrimEndMs', 'reasonCode'] as const
+const HOOK_KEYS = ['treatment', 'startWordIndex', 'sourceTrimStartMs', 'sourceTrimEndMs', 'reasonCode', 'title'] as const
+const HOOK_TITLE_KEYS = ['text', 'wordCount', 'outputStartMs', 'outputEndMs'] as const
+export const MAX_TITLE_CHARS = 60
+export const MAX_TITLE_WORDS = 8
 const COVER_KEYS = ['sourceTimeMs', 'outputTimeMs'] as const
 const WARNING_KEYS = ['code', 'detail'] as const
 const COMPLEXITY_KEYS = ['wordCount', 'candidateCount', 'segmentCount', 'removalCount', 'cueCount',
@@ -391,7 +440,20 @@ export function assertNoExpressionStrings(plan: EditPlanV1): void {
   walk(plan.timeline, 'timeline')
   walk(plan.video, 'video')
   walk(plan.audio, 'audio')
-  walk(plan.hook, 'hook')
+  // hook: everything EXCEPT the title text, for the same reason cue lines are
+  // exempt below — it is transcript-sourced free text, so it legitimately
+  // carries apostrophes and commas that this scan rejects everywhere else. It
+  // is bounded in length by the validator and escaped at the ASS boundary.
+  walk(plan.hook.treatment, 'hook.treatment')
+  walk(plan.hook.startWordIndex, 'hook.startWordIndex')
+  walk(plan.hook.sourceTrimStartMs, 'hook.sourceTrimStartMs')
+  walk(plan.hook.sourceTrimEndMs, 'hook.sourceTrimEndMs')
+  walk(plan.hook.reasonCode, 'hook.reasonCode')
+  if (plan.hook.title) {
+    walk(plan.hook.title.wordCount, 'hook.title.wordCount')
+    walk(plan.hook.title.outputStartMs, 'hook.title.outputStartMs')
+    walk(plan.hook.title.outputEndMs, 'hook.title.outputEndMs')
+  }
   walk(plan.cover, 'cover')
   walk(plan.warnings, 'warnings')
   walk(plan.complexity, 'complexity')
@@ -455,6 +517,7 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     audioChannels: int(out.audioChannels, 1, 2, 'output.audioChannels'),
     faststart: bool(out.faststart, 'output.faststart'),
     durationMs: int(out.durationMs, 1, MAX_MS, 'output.durationMs'),
+    watermark: bool(out.watermark, 'output.watermark'),
   }
   if (output.width % 2 !== 0 || output.height % 2 !== 0) fail('output: dimensions must be even')
 
@@ -677,6 +740,8 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
       anchorWordIndex: int(zz.anchorWordIndex, 0, 1_000_000, `video.zooms[${i}].anchorWordIndex`),
       easeInMs: int(zz.easeInMs, 0, 2000, `video.zooms[${i}].easeInMs`),
       easeOutMs: int(zz.easeOutMs, 0, 2000, `video.zooms[${i}].easeOutMs`),
+      offsetXPx: int(zz.offsetXPx, -4096, 4096, `video.zooms[${i}].offsetXPx`),
+      offsetYPx: int(zz.offsetYPx, -4096, 4096, `video.zooms[${i}].offsetYPx`),
     }
     if (zoom.index !== i) fail(`video.zooms[${i}]: index must equal position`)
     if (zoom.outputEndMs <= zoom.outputStartMs) fail(`video.zooms[${i}]: non-positive duration`)
@@ -684,6 +749,13 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     if (zoom.easeInMs + zoom.easeOutMs > zoom.outputEndMs - zoom.outputStartMs) {
       fail(`video.zooms[${i}]: eases exceed the zoom duration`)
     }
+    // RE-DERIVED, not trusted. A crop displaced further than the scale reveals
+    // reads past the edge of the scaled image; ffmpeg would clamp it silently
+    // and the punch would land somewhere nobody chose.
+    const maxOffX = Math.floor((output.width * (zoom.scaleMilli - 1000)) / 2000)
+    const maxOffY = Math.floor((output.height * (zoom.scaleMilli - 1000)) / 2000)
+    if (Math.abs(zoom.offsetXPx) > maxOffX) fail(`video.zooms[${i}]: offsetXPx exceeds what the scale reveals`)
+    if (Math.abs(zoom.offsetYPx) > maxOffY) fail(`video.zooms[${i}]: offsetYPx exceeds what the scale reveals`)
     if (zoom.outputStartMs < prevZoomEnd) fail(`video.zooms[${i}]: overlaps or unsorted`)
     prevZoomEnd = zoom.outputEndMs
     return zoom
@@ -713,6 +785,28 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     sourceTrimStartMs: int(hk.sourceTrimStartMs, 0, sourceDurationMs, 'hook.sourceTrimStartMs'),
     sourceTrimEndMs: int(hk.sourceTrimEndMs, 0, sourceDurationMs, 'hook.sourceTrimEndMs'),
     reasonCode: token(hk.reasonCode, 'hook.reasonCode'),
+    title: null,
+  }
+  // -- hook.title (the visual hook). Validated HERE rather than trusted from
+  // the compiler, like every other element: a plan read back out of the
+  // database goes through this same path and is not more trustworthy for
+  // having been stored.
+  if (hk.title !== null && hk.title !== undefined) {
+    const t = strictKeys(hk.title, HOOK_TITLE_KEYS, 'hook.title')
+    if (typeof t.text !== 'string' || t.text.length === 0) fail('hook.title.text: empty or not a string')
+    if (t.text.length > MAX_TITLE_CHARS) fail('hook.title.text: too long')
+    // A newline would split one ASS Dialogue event into two physical lines and
+    // smuggle whatever followed past the per-event audit.
+    if (/[\n\r]/.test(t.text as string)) fail('hook.title.text: contains a line break')
+    const wordCount = int(t.wordCount, 1, MAX_TITLE_WORDS, 'hook.title.wordCount')
+    // The count must DESCRIBE the text, or it is a second source of truth that
+    // can disagree with the thing it describes.
+    const actual = (t.text as string).trim().split(/\s+/).filter(Boolean).length
+    if (actual !== wordCount) fail('hook.title.wordCount: does not match the text')
+    const startMs = int(t.outputStartMs, 0, MAX_MS, 'hook.title.outputStartMs')
+    const endMs = int(t.outputEndMs, 0, MAX_MS, 'hook.title.outputEndMs')
+    if (endMs <= startMs) fail('hook.title: reversed or empty span')
+    hook.title = { text: t.text as string, wordCount, outputStartMs: startMs, outputEndMs: endMs }
   }
   if (hook.sourceTrimEndMs < hook.sourceTrimStartMs) fail('hook: reversed trim span')
   if (treatment === 'keep' && hook.sourceTrimEndMs !== hook.sourceTrimStartMs) {

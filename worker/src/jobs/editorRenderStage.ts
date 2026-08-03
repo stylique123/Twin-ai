@@ -25,6 +25,7 @@
 // can be passed is a path that can be wrong, the second because 0094 shipped a
 // completion that took an asset id with nothing able to create one, and the fix
 // was an RPC rather than an unfenced insert.
+import { loadEditPolicy } from './editorCompile.js'
 import { writeFileSync, mkdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { PermanentJobError } from '../errors.js'
@@ -40,7 +41,7 @@ import {
 } from './editorRender.js'
 import { validateRenderedOutput } from './editorValidateOutput.js'
 import { renderAssDocument, assertNoOverrideBlock, assDocumentSha256 } from './assCaptions.js'
-import { resolveCaptionColours } from './captionColours.js'
+import { resolveCaptionColours, type CaptionColourRejection } from './captionColours.js'
 import {
   reserveOutput, markOutputReady, createOutputAsset, completeOutput, type Fence,
 } from './editorComplete.js'
@@ -61,6 +62,23 @@ export interface RenderStageOutcome {
   integratedLufsMilli: number | null
   truePeakDbtpMilli: number | null
   truePeakOvershootMilli: number | null
+  /** Brand caption colours the contrast guard refused, with the measurement
+   *  that refused them. Empty on the happy path and when there are no cues.
+   *  Carried on the outcome for the same reason the loudness numbers are: a
+   *  quality decision the user did not make must be visible to someone. */
+  captionColourRejections: CaptionColourRejection[]
+  /** How far the audio and video streams disagree, in ms. Positive means audio
+   *  outlasts video, which is normal. Recorded rather than merely checked, for
+   *  the same reason the loudness numbers are: the enforced band is much wider
+   *  than the expected one, so only real measurements can narrow it. */
+  audioMinusVideoDurationMs: number | null
+  audioMinusVideoStartMs: number | null
+  /** What the render actually cost, against what it was allowed. Every one of
+   *  these is computed today and then dropped on the floor, which is why a
+   *  render that failed after burning 95% of its budget and one that failed in
+   *  two seconds are indistinguishable in the durable record. */
+  renderBudgetMs: number
+  argvLength: number
 }
 export interface ValidateStageOutcome {
   outputAssetId: string
@@ -103,8 +121,10 @@ async function loadPlan(projectId: string): Promise<EditPlanV1> {
  *  `assertNoOverrideBlock` runs on the DOCUMENT, independently of the escaper
  *  that produced it. Checking the escaper's output with the escaper's own logic
  *  would only prove it is self-consistent. */
-function writeAssDocument(plan: EditPlanV1, workDir: string): string | null {
-  if (plan.captions.cues.length === 0) return null
+function writeAssDocument(
+  plan: EditPlanV1, workDir: string,
+): { path: string | null; colourRejections: CaptionColourRejection[] } {
+  if (plan.captions.cues.length === 0) return { path: null, colourRejections: [] }
   const catalog = loadRenderCatalog()
   const preset = catalog.captionPresets[plan.captions.presetId]
   if (!preset) {
@@ -113,28 +133,68 @@ function writeAssDocument(plan: EditPlanV1, workDir: string): string | null {
       'render_output_profile_invalid',
     )
   }
-  const { primaryColourAss, emphasisColourAss } = resolveCaptionColours(plan.captions, preset)
+  // A brand colour too dark to read inside the preset's outline is dropped
+  // here, and the drop is carried back out rather than swallowed — see
+  // captionColours.ts. Rendering continues either way; the catalog colour is
+  // always legible.
+  const { primaryColourAss, emphasisColourAss, rejected } = resolveCaptionColours(plan.captions, preset)
   const doc = renderAssDocument(plan, {
     playResX: plan.output.width,
     playResY: plan.output.height,
     fontName: preset.fontFamily,
     fontSizePx: plan.captions.fontSizePx,
     marginVerticalPx: plan.captions.marginVerticalPx,
+    // Left/right inset comes from the frozen policy, not the plan: it is a
+    // DRAWING parameter like the font, and the plan carries what to show
+    // rather than how wide to draw it. Measured from a real feed screenshot —
+    // the like/comment rail sits ~100px in from the right edge, and the old
+    // hardcoded 40 let a wide line run underneath it.
+    marginHorizontalPx: loadEditPolicy().captions.marginHorizontalPx,
+    title: plan.hook.title
+      ? {
+          text: plan.hook.title.text,
+          startMs: plan.hook.title.outputStartMs,
+          endMs: plan.hook.title.outputEndMs,
+          fontSizePx: loadEditPolicy().titleHook.fontSizePx,
+          marginTopPx: loadEditPolicy().titleHook.marginTopPx,
+        }
+      : null,
     emphasisColourAss,
     primaryColourAss,
   })
-  assertNoOverrideBlock(doc, plan.captions.cues.length, emphasisColourAss)
+  assertNoOverrideBlock(doc, plan.captions.cues.length + (plan.hook.title ? 1 : 0), emphasisColourAss)
   const path = join(workDir, 'captions.ass')
   writeFileSync(path, doc, 'utf8')
-  return path
+  return { path, colourRejections: rejected }
 }
 
+/**
+ * @param session the ATTEMPT-SCOPED session the orchestrator already opened.
+ *
+ * REQUIRED, and taken rather than made. This function used to construct its
+ * own `new VerifiedSourceSession(...)` over the same asset, writing to the
+ * exact path the orchestrator's session had already downloaded to — so the
+ * source was fetched TWICE inside one attempt, and three times counting
+ * validate_source.
+ *
+ * That contradicted three module headers asserting the opposite (editorV2's
+ * "at most ONE verified download per attempt", sourceSession's "localPath()
+ * performs AT MOST ONE download per attempt", editorAnalyze's download truth
+ * table), and it made `source_downloads` on the durable record wrong by one
+ * forever, since that counter only ever saw the orchestrator's session.
+ *
+ * On a 200 MB take it is ~200 MB of egress and ~25 s per render, and storage
+ * egress is the single largest line in the unit cost.
+ *
+ * Passed in rather than defaulted so ownership is unambiguous: the caller
+ * opened it and the caller disposes it. This function must NOT — disposing a
+ * session it does not own would delete bytes the orchestrator still needs.
+ */
 export async function runRenderingStage(
-  job: Job, projectId: string, dir: string,
+  job: Job, projectId: string, dir: string, session: VerifiedSourceSession,
 ): Promise<RenderStageOutcome> {
-  const { proj, asset, meta } = await loadEligibleSource(projectId, 'render')
+  const { proj } = await loadEligibleSource(projectId, 'render')
   const watch: CancelWatch = watchCancellation(projectId)
-  const session = new VerifiedSourceSession(asset, meta, dir)
   const workDir = join(dir, 'render')
   try {
     if (proj.cancel_requested_at) throw new RenderStageCancelledError('before_rendering')
@@ -152,12 +212,13 @@ export async function runRenderingStage(
     if (watch.cancelled()) throw new RenderStageCancelledError('after_download')
 
     mkdirSync(workDir, { recursive: true })
-    const assPath = writeAssDocument(plan, workDir)
+    const { path: assPath, colourRejections } = writeAssDocument(plan, workDir)
     const fontsDir = assPath ? env.editorFontsDir : null
 
     const { outputPath, evidence } = await renderEditPlan({
       plan, sourcePath, assPath, fontsDir, workDir, watch,
       strictFontIntegrity: env.editorStrictFontIntegrity,
+      assetsDir: env.editorAssetsDir,
     })
     if (watch.cancelled()) throw new RenderStageCancelledError('after_render')
 
@@ -193,10 +254,18 @@ export async function runRenderingStage(
       integratedLufsMilli: validation.loudness.measurement.integratedLufsMilli,
       truePeakDbtpMilli: validation.loudness.measurement.truePeakDbtpMilli,
       truePeakOvershootMilli: validation.loudness.truePeakOvershootMilli,
+      captionColourRejections: colourRejections,
+      audioMinusVideoDurationMs: validation.measurements.audioMinusVideoDurationMs,
+      audioMinusVideoStartMs: validation.measurements.audioMinusVideoStartMs,
+      renderBudgetMs: evidence.budgetMs,
+      argvLength: evidence.argvLength,
     }
   } finally {
     watch.stop()
-    session.dispose()
+    // The session is NOT disposed here — the orchestrator owns it and other
+    // stages may still need the bytes. Disposing a borrowed session would
+    // delete the source out from under them.
+    //
     // CANCELLATION IS NOT FAILURE, and its local half is this: the partial
     // files go, the immutable plan and the reservation stay, and no pointer was
     // ever published because nothing uploads before it validates.

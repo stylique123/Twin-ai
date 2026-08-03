@@ -44,7 +44,14 @@ export const env = {
   // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI
   // editor. build_dna stays edge-driven (dna-poll), never add it here or the worker
   // would dead-letter it.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source,editor_v2').split(',').map((s) => s.trim()),
+  // purge_media is in the DEFAULT set deliberately. It is enqueued by a
+  // database trigger (0099), so nothing in application code would reveal its
+  // absence: every deletion would queue a job no worker claims, it would sit
+  // until it aged out, and the bytes behind a deleted recording would stay
+  // exactly where they were — with the migration, the trigger and the handler
+  // all looking correct. A job type nobody drains is a feature that does
+  // nothing, quietly.
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source,editor_v2,purge_media').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight
@@ -130,6 +137,12 @@ export const env = {
   // Where the catalog's caption fonts live in the image. Only read when a plan
   // actually has cues.
   editorFontsDir: (process.env.EDITOR_FONTS_DIR ?? '/usr/share/fonts/truetype/dejavu').trim(),
+  // The worker's own frozen brand assets, COPYed to /app/assets by the
+  // Dockerfile (WORKDIR /app). ABSOLUTE ON PURPOSE: ffmpegGraph's PATH_RE
+  // accepts only absolute plain paths, so a relative default would pass the
+  // existence and digest checks and then be refused by the graph builder as
+  // `render_graph_invalid` — a late, opaque failure for a trivial reason.
+  editorAssetsDir: (process.env.EDITOR_ASSETS_DIR ?? '/app/assets').trim(),
   // Refuse a caption font with no pinned digest. Defaults ON: an absent digest
   // silently satisfying an integrity check is how a font substitution reaches
   // production wearing a green tick, so a deployment that has not pinned its

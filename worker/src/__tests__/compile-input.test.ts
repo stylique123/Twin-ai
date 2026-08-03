@@ -50,7 +50,9 @@ const visual = () => ({
     { startMs: 5001, endMs: 5333, classification: 'ambiguous' },
   ],
 })
-const audio = () => ({ snrDbMilli: 18400, earlyEnergyRatioMilli: 720 })
+// The analyzer's REAL persisted shape: floats, natural units, no milli suffix.
+// Copied from editorAudio.ts's own output, not invented from the reader's type.
+const audio = () => ({ snrDb: 18.4, earlyEnergyRatio: 0.72 })
 
 function decision(over: Partial<DirectorDecision> = {}): DirectorDecision {
   return {
@@ -168,15 +170,42 @@ describe('visual waste is read in MILLISECONDS', () => {
 })
 
 describe('audio facts are all-or-nothing', () => {
-  it('reads both integers when present', () => {
+  // THE FIXTURE ABOVE USED TO BE THE BUG. It was `{snrDbMilli, earlyEnergyRatioMilli}`
+  // — a shape nothing in production has ever emitted. The analyzer writes
+  // `snrDb` and `earlyEnergyRatio`, floats in natural units. Because the
+  // fixture was invented from the CONSUMER's type instead of copied from the
+  // PRODUCER's output, this suite passed while the real function returned null
+  // on every render ever made, and every video shipped with the clean-room
+  // preset. The fixture is now the producer's actual shape.
+  it('reads the analyzer\'s float fields and converts them to milli-integers', () => {
     expect(readComponentAudioFacts(audio())).toEqual({ snrDbMilli: 18400, earlyEnergyRatioMilli: 720 })
+  })
+
+  it('CONTROL: the OLD milli-suffixed keys yield null — they are not what the analyzer writes', () => {
+    // Without this, a future edit could quietly re-accept the invented shape
+    // and the suite would go green against production output it never sees.
+    expect(readComponentAudioFacts({ snrDbMilli: 18400, earlyEnergyRatioMilli: 720 })).toBeNull()
   })
 
   it('MUTATION: a PARTIAL audio component yields null, not a defaulted zero', () => {
     // A missing SNR is not zero SNR. A compiler decision made on a defaulted
     // number is a decision nobody made.
-    expect(readComponentAudioFacts({ snrDbMilli: 18400 })).toBeNull()
+    expect(readComponentAudioFacts({ snrDb: 18.4 })).toBeNull()
     expect(readComponentAudioFacts(null)).toBeNull()
+  })
+
+  it('a track with no audio reads as no facts, not as zero', () => {
+    // editorAudio.ts's contract: no audio track -> every derived field null.
+    expect(readComponentAudioFacts({ snrDb: null, earlyEnergyRatio: null })).toBeNull()
+  })
+
+  it('rounds rather than truncates, and handles a negative SNR', () => {
+    // A recording whose noise floor sits above the speech level is a real
+    // (bad) recording, not an impossible one.
+    expect(readComponentAudioFacts({ snrDb: 12.3456, earlyEnergyRatio: 0.7215 }))
+      .toEqual({ snrDbMilli: 12346, earlyEnergyRatioMilli: 722 })
+    expect(readComponentAudioFacts({ snrDb: -3.5, earlyEnergyRatio: 1 }))
+      .toEqual({ snrDbMilli: -3500, earlyEnergyRatioMilli: 1000 })
   })
 })
 

@@ -8,9 +8,12 @@
 // green assertion on its own never does.
 import { describe, it, expect } from 'vitest'
 import { compileEditPlan, buildTimeMap, type CompileInput } from '../jobs/editorCompile.js'
-import { EditPlanError, validateEditPlan } from '../jobs/editPlanContract.js'
 import {
-  baseInput, policy, EXPECTED, WINDOW_A, WINDOW_B, SOURCE_DURATION_MS,
+  EditPlanError, validateEditPlan,
+  MAX_CUES, MAX_ZOOMS, MAX_SEGMENTS, MAX_REMOVALS,
+} from '../jobs/editPlanContract.js'
+import {
+  baseInput, policy, shippedPolicy, EXPECTED, WINDOW_A, WINDOW_B, SOURCE_DURATION_MS,
 } from './fixtures/editPlanFixture.js'
 
 function codeOf(fn: () => unknown): string {
@@ -687,6 +690,72 @@ describe('brand caption colors', () => {
   })
 })
 
+describe('the last caption never reaches the last frame', () => {
+  // THE REGRESSION. The compiler clamps cues to plan.output.durationMs; the
+  // output validator compares them to the MEASURED duration of the encoded
+  // file with ZERO tolerance. Those only coexist while something leaves slack
+  // at the end, and trailing silence used to. The edge trim removed it: the
+  // video now ends 120 ms after the last spoken word and the reading-speed
+  // rule extends the final cue into whatever room is left, so the planned cue
+  // ended exactly at the planned duration and a file one frame short failed
+  // the whole render with `output_caption_invalid`.
+  //
+  // This suite ran green throughout, because its policy() fixture has the edge
+  // trim OFF. Staging found it. So these assert against the SHIPPED policy.
+  it('leaves at least the tail guard between the final cue and the end', () => {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    const { plan } = compileEditPlan({ ...input, policy: shippedPolicy() })
+    const last = plan.captions.cues[plan.captions.cues.length - 1]
+    expect(plan.output.durationMs - last.outputEndMs).toBeGreaterThanOrEqual(shippedPolicy().captions.tailGuardMs)
+  })
+
+  it('holds for EVERY cue, not merely the last one', () => {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    const { plan } = compileEditPlan({ ...input, policy: shippedPolicy() })
+    for (const c of plan.captions.cues) {
+      expect(c.outputEndMs).toBeLessThanOrEqual(plan.output.durationMs - shippedPolicy().captions.tailGuardMs)
+    }
+  })
+
+  it('CONTROL: the ceiling actually BINDS — raising the guard moves the last cue earlier', () => {
+    // Worth stating precisely, because my first attempt at this control was
+    // wrong. On THIS fixture the final cue already ends 120 ms early — that
+    // slack comes from edges.keepMs, not from the guard. What broke staging
+    // was a cue the reading-speed rule EXTENDED into the remaining room until
+    // it touched the planned duration. So the property to prove is not "the
+    // fixture has slack" but "the ceiling is load-bearing when a cue reaches
+    // for it": raise the guard and the final cue must move.
+    const lastEnd = (tailGuardMs: number): number => {
+      const p = shippedPolicy()
+      p.captions.tailGuardMs = tailGuardMs
+      const input = baseInput()
+      input.decision.transitionPolicy = 'hard_cuts_only'
+      const { plan } = compileEditPlan({ ...input, policy: p })
+      const cues = plan.captions.cues
+      return cues[cues.length - 1].outputEndMs
+    }
+    const loose = lastEnd(0)
+    const tight = lastEnd(400)
+    expect(tight).toBeLessThan(loose)
+    // And it lands exactly on the ceiling, not merely somewhere earlier.
+    const { plan } = compileEditPlan({ ...baseInput(), decision: { ...baseInput().decision, transitionPolicy: 'hard_cuts_only' }, policy: shippedPolicy() })
+    expect(tight).toBe(plan.output.durationMs - 400)
+  })
+
+  it('a cue squeezed out entirely is announced, never silently dropped', () => {
+    const p = shippedPolicy()
+    // Absurd guard: nothing can fit. The point is that the loss is REPORTED.
+    p.captions.tailGuardMs = 10_000_000
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    const { plan, warnings } = compileEditPlan({ ...input, policy: p })
+    expect(plan.captions.cues).toHaveLength(0)
+    expect(warnings.some((w) => w.code === 'caption_dropped_past_tail_guard')).toBe(true)
+  })
+})
+
 describe('audio instructions', () => {
   it('chooses a frozen preset from bounded numeric evidence and emits no filter string', () => {
     const clean = compileEditPlan({ ...baseInput(), policy: policy() }).plan
@@ -696,9 +765,27 @@ describe('audio instructions', () => {
     noisyInput.evidence.audio = { snrDbMilli: 9000, earlyEnergyRatioMilli: 100 }
     expect(compileEditPlan({ ...noisyInput, policy: policy() }).plan.audio.presetId).toBe('speech-noisy-v1')
 
+    // THE ROOMY BRANCH IS UNREACHABLE ON PURPOSE. `earlyEnergyRatio` is the
+    // first-3s RMS against the whole-file RMS; reverberation is a decay
+    // property. They share a word and nothing else. Equal levels give 1000
+    // milli and the old threshold fired above 350, so nearly every recording
+    // with speech at the start would have been de-reverbed once the facts
+    // actually reached the compiler. See the comment at the branch.
     const roomyInput = baseInput()
     roomyInput.evidence.audio = { snrDbMilli: 30000, earlyEnergyRatioMilli: 900 }
-    expect(compileEditPlan({ ...roomyInput, policy: policy() }).plan.audio.presetId).toBe('speech-roomy-v1')
+    const roomy = compileEditPlan({ ...roomyInput, policy: policy() })
+    expect(roomy.plan.audio.presetId).toBe('speech-clean-v1')
+    expect(roomy.warnings.some((w) => w.code === 'audio_roomy_detection_unavailable')).toBe(true)
+  })
+
+  it('CONTROL: a clean recording still reaches the compiler as FACTS, not as a missing component', () => {
+    // The defect this replaced: readComponentAudioFacts asked for keys the
+    // analyzer never wrote, so evidence.audio was null on every render and the
+    // plan carried `audio_preset_defaulted/no_audio_component` — a warning
+    // that names the wrong cause. Present-and-clean must be distinguishable
+    // from absent, or the noisy preset can never fire.
+    const { warnings } = compileEditPlan({ ...baseInput(), policy: policy() })
+    expect(warnings.some((w) => w.code === 'audio_preset_defaulted')).toBe(false)
   })
 
   it('carries the frozen loudness targets and never a music bed', () => {
@@ -791,5 +878,419 @@ describe('determinism + self-validation', () => {
     expect(plan.complexity.zoomCount).toBe(plan.video.zooms.length)
     expect(plan.complexity.transitionCount).toBe(plan.video.transitions.length)
     expect(plan.complexity.wordCount).toBe(39)
+  })
+})
+
+describe('the policy cannot ask for more than the contract will accept', () => {
+  // THIS PAIR ALREADY DRIFTED ONCE, and the result was a guaranteed permanent
+  // failure rather than a degradation. MAX_CUES was halved to 1000 when
+  // lineTokens doubled a cue's worst-case bytes (to keep the plan under the
+  // 1 MiB cap by construction) and the policy was left at 2000 — so the
+  // compiler was licensed to emit a plan its own validator would reject with
+  // `edit_plan_invalid`, no retry, on any take long enough to reach it.
+  //
+  // Nothing caught it because each number is individually correct and each
+  // file is individually consistent. Only the RELATIONSHIP was wrong, and
+  // nothing was looking at the relationship.
+
+  it('captions.maxCues never exceeds the contract ceiling', () => {
+    const pol = policy()
+    expect(pol.captions.maxCues).toBeLessThanOrEqual(MAX_CUES)
+  })
+
+  it('every array bound in the policy is within its contract bound', () => {
+    const pol = policy()
+    expect(pol.zooms.maxCount).toBeLessThanOrEqual(MAX_ZOOMS)
+    expect(pol.cuts.maxKeptSegments).toBeLessThanOrEqual(MAX_SEGMENTS)
+    expect(pol.cuts.maxRemovals).toBeLessThanOrEqual(MAX_REMOVALS)
+  })
+})
+
+describe('cut density — too many cuts is unwatchable', () => {
+  // The cap SHIPS and was never tested: nothing in the suite referenced
+  // maxCutsPerMinuteMilli or removal_dropped_cut_density. It is also the one
+  // guard whose failure is invisible in every other assertion — a plan with
+  // forty cuts in forty seconds validates perfectly, renders perfectly, and is
+  // unwatchable. Correctness checks cannot see it; only this can.
+  //
+  // With the shipped rate (30 cuts/min) the fixture's 3 removals sit far under
+  // the ceiling, so these lower the RATE rather than inventing a fixture with
+  // hundreds of cuts — same branch, no new hand-derived baseline to keep true.
+  function atRate(milliPerMinute: number) {
+    const p = policy()
+    p.cuts.maxCutsPerMinuteMilli = milliPerMinute
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    return compileEditPlan({ ...input, policy: p })
+  }
+
+  it('CONTROL: under the shipped rate every removal survives', () => {
+    const { plan, warnings } = atRate(30000)
+    expect(plan.timeline.removals).toHaveLength(EXPECTED.removals.length)
+    expect(warnings.some((w) => w.code === 'removal_dropped_cut_density')).toBe(false)
+  })
+
+  it('over the cap, the excess is given back and announced', () => {
+    // A cut silently not made is a creator wondering why their pause is still
+    // there. Every drop is warned.
+    const { plan, warnings } = atRate(1333) // -> maxCuts = 1 over this domain
+    expect(plan.timeline.removals).toHaveLength(1)
+    const dropped = warnings.filter((w) => w.code === 'removal_dropped_cut_density')
+    expect(dropped).toHaveLength(EXPECTED.removals.length - 1)
+  })
+
+  it('keeps the LONGEST removals — the ones worth making', () => {
+    // Dropping by position would keep whichever cuts happened to come first.
+    // Length is the proxy for value: a 3s dead-air removal earns its cut, a
+    // 120ms one barely changes the video.
+    const { plan } = atRate(1333)
+    const kept = plan.timeline.removals[0]
+    const keptMs = kept.sourceEndMs - kept.sourceStartMs
+    const longest = Math.max(...EXPECTED.removals.map((r) => r.sourceEndMs - r.sourceStartMs))
+    expect(keptMs).toBe(longest)
+  })
+
+  it('is deterministic — the same plan twice is the same plan', () => {
+    // The ordering is (length desc, start asc) precisely so a tie cannot make
+    // two compiles of one decision differ. A plan hash that moves on a tie
+    // would make every downstream digest meaningless.
+    const a = atRate(1333).plan
+    const b = atRate(1333).plan
+    expect(a.timeline.removals).toEqual(b.timeline.removals)
+    expect(a.output.durationMs).toBe(b.output.durationMs)
+  })
+
+  it('giving cuts back makes the video LONGER, not shorter', () => {
+    // The obvious way to get this backwards is to drop the removal from the
+    // list but keep its time subtracted from the timeline.
+    expect(atRate(1333).plan.output.durationMs)
+      .toBeGreaterThan(atRate(30000).plan.output.durationMs)
+  })
+
+  it('always allows at least one cut, however low the rate', () => {
+    // maxCuts floors to zero on a short domain; the guard is max(1, ...).
+    // Zero would mean a policy value could disable cutting altogether without
+    // anyone intending it.
+    const { plan } = atRate(1)
+    expect(plan.timeline.removals.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('the surviving plan still validates', () => {
+    expect(() => validateEditPlan(atRate(1333).plan)).not.toThrow()
+  })
+})
+
+describe('a hook choice may not discard the recording', () => {
+  // THE DEFECT. hookTreatment 'open_at_word' drops everything before the chosen
+  // word, and the ONLY guard was "did it remove ALL the media". A start word
+  // late in the take therefore discarded most of it silently: the plan stayed
+  // internally consistent, every downstream check passed, and the creator got
+  // a video missing the middle of what they said with nothing explaining why.
+  function openAt(idx: number, pol = policy()) {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.decision.hookTreatment = 'open_at_word'
+    input.decision.hookStartWordIndex = idx
+    return compileEditPlan({ ...input, policy: pol })
+  }
+
+  it('a small trim still applies — the feature works', () => {
+    const { plan, warnings } = openAt(1)
+    expect(warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(false)
+    expect(plan.hook.treatment).toBe('open_at_word')
+  })
+
+  it('a trim past the bound falls back to the real opening, and says so', () => {
+    // The last word in the fixture: opening there would throw away nearly
+    // everything before it.
+    const last = baseInput().evidence.words.length - 1
+    const { plan, warnings } = openAt(last)
+    expect(warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(true)
+    expect(plan.hook.treatment).toBe('keep')
+  })
+
+  it('keeps the whole recording when it refuses — nothing is quietly lost', () => {
+    const last = baseInput().evidence.words.length - 1
+    const refused = openAt(last).plan
+    const kept = compileEditPlan({
+      ...(() => { const i = baseInput(); i.decision.transitionPolicy = 'hard_cuts_only'; return i })(),
+      policy: policy(),
+    }).plan
+    expect(refused.output.durationMs).toBe(kept.output.durationMs)
+  })
+
+  it('CONTROL: raising the bound lets the same trim through', () => {
+    // Proves the refusal is the BOUND acting, not the fixture failing to reach
+    // the branch for some other reason.
+    const last = baseInput().evidence.words.length - 1
+    const loose = policy()
+    loose.hook.maxTrimMs = 10_000_000
+    loose.hook.maxTrimFractionMilli = 1000
+    const { plan, warnings } = openAt(last, loose)
+    expect(warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(false)
+    expect(plan.hook.treatment).toBe('open_at_word')
+    expect(plan.output.durationMs).toBeLessThan(compileEditPlan({
+      ...(() => { const i = baseInput(); i.decision.transitionPolicy = 'hard_cuts_only'; return i })(),
+      policy: policy(),
+    }).plan.output.durationMs)
+  })
+
+  it('EITHER bound alone is enough to refuse', () => {
+    // Both must hold. A short recording is protected by the fraction (15s is
+    // most of it); a long one by the absolute (a quarter is a lot).
+    const last = baseInput().evidence.words.length - 1
+    const absoluteOnly = policy()
+    absoluteOnly.hook.maxTrimFractionMilli = 1000 // fraction can never bind
+    expect(openAt(last, absoluteOnly).warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(true)
+
+    const fractionOnly = policy()
+    fractionOnly.hook.maxTrimMs = 10_000_000 // absolute can never bind
+    expect(openAt(last, fractionOnly).warnings.some((w) => w.code === 'hook_trim_too_large')).toBe(true)
+  })
+})
+
+describe('a word too wide for a line is broken, not run off the frame', () => {
+  // THE DEFECT. layoutLines starts a line with a token however long it is
+  // (`|| current === ''`), because a token that fits nowhere still has to go
+  // somewhere. So a single long word became a LINE wider than the preset — a
+  // 30-char word under a 22-char preset renders ~36% past the intended width
+  // and off the side of a 1080-wide frame. Nothing caught it: the plan
+  // contract bounds a line at 200 chars, which is an anti-absurdity limit, not
+  // the typographic width the preset designs for. URLs, handles, hashtags and
+  // hyphenated compounds clear these limits routinely.
+  const LONG = 'Sonderzeichenverkettungswort' // 28 chars vs the preset's 22
+
+  function planWithLongWord(): ReturnType<typeof compileEditPlan> {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.evidence.words = input.evidence.words.map((w, i) => (i === 0 ? { ...w, text: LONG } : w))
+    return compileEditPlan({ ...input, policy: policy() })
+  }
+
+  it('no line exceeds the preset width', () => {
+    const { plan } = planWithLongWord()
+    const maxChars = policy().captions.presets['caption-clean-keyword-v1'].maxCharsPerLine
+    for (const cue of plan.captions.cues) {
+      for (const line of cue.lines) expect(line.length).toBeLessThanOrEqual(maxChars)
+    }
+  })
+
+  it('CONTROL: the long word really is present and really is over the limit', () => {
+    // Otherwise "no line is too long" could be true because the word never
+    // reached a cue at all.
+    const { plan } = planWithLongWord()
+    const maxChars = policy().captions.presets['caption-clean-keyword-v1'].maxCharsPerLine
+    expect(LONG.length).toBeGreaterThan(maxChars)
+    const all = plan.captions.cues.flatMap((c) => c.lines).join(' ')
+    // Present as fragments that reassemble, not dropped.
+    expect(all.replace(/ /g, '')).toContain(LONG)
+  })
+
+  it('keeps the validator invariant: joined tokens reproduce the line exactly', () => {
+    // The plan validator checks lineTokens[j].join(' ') === lines[j]. Splitting
+    // a token is exactly the operation that could break it.
+    const { plan } = planWithLongWord()
+    for (const cue of plan.captions.cues) {
+      cue.lines.forEach((line, j) => expect(cue.lineTokens[j].join(' ')).toBe(line))
+      expect(cue.lineEmphasis.length).toBe(cue.lines.length)
+      cue.lineTokens.forEach((toks, j) => expect(cue.lineEmphasis[j].length).toBe(toks.length))
+    }
+  })
+
+  it('the whole plan still validates', () => {
+    // The real proof that nothing downstream was broken by the split.
+    const { plan } = planWithLongWord()
+    expect(() => validateEditPlan(plan)).not.toThrow()
+  })
+
+  it('a word too long for EVERY line fills them at the allowed width, and says so', () => {
+    // The old fallback emitted one line of maxCharsPerLine * maxLines — the
+    // widest line in the system, produced by the branch whose job was handling
+    // "too wide to fit".
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.evidence.words = input.evidence.words.map((w, i) => (i === 0 ? { ...w, text: 'x'.repeat(300) } : w))
+    const { plan, warnings } = compileEditPlan({ ...input, policy: policy() })
+    const pol = policy()
+    const maxChars = pol.captions.presets['caption-clean-keyword-v1'].maxCharsPerLine
+    const first = plan.captions.cues[0]
+    expect(first.lines.length).toBeLessThanOrEqual(pol.captions.maxLinesPerCue)
+    for (const line of first.lines) expect(line.length).toBeLessThanOrEqual(maxChars)
+    expect(warnings.some((w) => w.code === 'caption_line_overflow')).toBe(true)
+    expect(() => validateEditPlan(plan)).not.toThrow()
+  })
+
+  it('an ordinary cue is untouched — fragmentation only fires on over-wide tokens', () => {
+    // CONTROL against the fix being a blunt instrument that reformats
+    // everything: normal words must still share a line.
+    const { plan } = compileEditPlan({ ...baseInput(), policy: policy() })
+    expect(plan.captions.cues.some((c) => c.lineTokens.some((t) => t.length > 1))).toBe(true)
+  })
+})
+
+describe('captions stay clear of the platform UI band', () => {
+  // caption-minimal-subtitle-v1 placed its baseline 80px INSIDE the band that
+  // TikTok and Reels cover with the caption stack and CTA — declared unsafe by
+  // this same policy file, three keys away, and read by nothing.
+  it('every preset respects the framing safe area it is shipped alongside', () => {
+    const pol = policy()
+    for (const [id, preset] of Object.entries(pol.captions.presets)) {
+      expect(
+        preset.marginVerticalPx,
+        `caption preset ${id} sits inside framing.safeBottomPx`,
+      ).toBeGreaterThanOrEqual(pol.framing.safeBottomPx)
+    }
+  })
+})
+
+describe('a zoom punches at the subject, not at the geometry', () => {
+  // THE DETECTOR HAS ALWAYS RUN AND NOTHING EVER READ IT. Face boxes were
+  // produced per sample and reduced to a COUNT before any decision-maker saw
+  // them, so every zoom cropped the geometric centre of the frame. A creator
+  // sitting low or off to one side — the normal case for a hand-held vertical
+  // selfie — got their chin or forehead cropped, or a punch into the wall.
+
+  it('displaces the crop toward an off-centre face', () => {
+    // The fixture's subject sits at 380,1240 in 1080x1920 — left of and below
+    // the 540,960 centre. So the crop moves left (negative X) and down.
+    const plan = compileEditPlan({ ...baseInput(), policy: policy() }).plan
+    const z = plan.video.zooms[0]
+    expect(z.offsetXPx).toBeLessThan(0)
+    expect(z.offsetYPx).toBeGreaterThan(0)
+  })
+
+  it('never displaces further than the scale actually reveals', () => {
+    // A crop displaced past the edge of the scaled image is one ffmpeg clamps
+    // silently, landing the punch somewhere nobody chose. The subject here is
+    // 160px left of centre but a 1.12x zoom only reveals 64px of slack.
+    const plan = compileEditPlan({ ...baseInput(), policy: policy() }).plan
+    const z = plan.video.zooms[0]
+    const maxX = Math.floor((plan.output.width * (z.scaleMilli - 1000)) / 2000)
+    const maxY = Math.floor((plan.output.height * (z.scaleMilli - 1000)) / 2000)
+    expect(Math.abs(z.offsetXPx)).toBeLessThanOrEqual(maxX)
+    expect(Math.abs(z.offsetYPx)).toBeLessThanOrEqual(maxY)
+    expect(z.offsetXPx).toBe(-maxX) // clamped, because the face is further out
+  })
+
+  it('CONTROL: with NO face evidence it centres — chosen, not defaulted', () => {
+    const input = baseInput()
+    input.evidence.faces = []
+    const r = compileEditPlan({ ...input, policy: policy() })
+    expect(r.plan.video.zooms[0].offsetXPx).toBe(0)
+    expect(r.plan.video.zooms[0].offsetYPx).toBe(0)
+    // ...and says so, rather than looking identical to a deliberate centre.
+    expect(r.warnings.some((w) => w.code === 'zoom_centred_no_face_evidence')).toBe(true)
+  })
+
+  it('CONTROL: a centred subject yields a centred punch', () => {
+    const input = baseInput()
+    input.evidence.faces = [{ timeMs: 0, centreXPx: 540, centreYPx: 960 }]
+    const plan = compileEditPlan({ ...input, policy: policy() }).plan
+    expect(plan.video.zooms[0].offsetXPx).toBe(0)
+    expect(plan.video.zooms[0].offsetYPx).toBe(0)
+  })
+
+  it('uses the face NEAREST the anchor in time, not an average of the take', () => {
+    // Where the subject was thirty seconds earlier is not evidence about this
+    // moment. The anchor word (index 26) starts at 27000ms in the fixture.
+    const input = baseInput()
+    input.evidence.faces = [
+      { timeMs: 0, centreXPx: 1000, centreYPx: 200 },      // far away in time
+      { timeMs: 27000, centreXPx: 540, centreYPx: 960 },   // at the anchor
+    ]
+    const plan = compileEditPlan({ ...input, policy: policy() }).plan
+    expect(plan.video.zooms[0].offsetXPx).toBe(0)
+  })
+
+  it('maps through the renderer\'s OWN cover-crop for a non-9:16 source', () => {
+    // A 1920x1080 landscape source is cover-scaled and centre-cropped to
+    // 1080x1920 before any zoom. A face at the source's centre is still centred
+    // afterwards; one off-centre horizontally is mostly cropped away. Getting
+    // this transform wrong would move the punch in the wrong direction.
+    const input = baseInput()
+    input.source = { ...input.source, displayWidthPx: 1920, displayHeightPx: 1080 }
+    input.evidence.faces = [{ timeMs: 27000, centreXPx: 960, centreYPx: 540 }]
+    const plan = compileEditPlan({ ...input, policy: policy() }).plan
+    expect(plan.video.zooms[0].offsetXPx).toBe(0)
+    expect(plan.video.zooms[0].offsetYPx).toBe(0)
+  })
+})
+
+describe('the edges of a recording are always removed', () => {
+  // NOT A JUDGEMENT CALL. Before this, whatever sat outside the first and last
+  // spoken word came off only if the Director happened to select the silence
+  // candidate covering it. So a video could open on someone settling into
+  // frame and end on them reaching for the stop button — which the creator is
+  // ALWAYS doing, because they are the one operating the camera.
+  //
+  // These run against shippedPolicy(), NOT the Batch 8.1 baseline, because the
+  // rule being tested is the production default.
+
+  it('CONTROL: the SHIPPED policy has the rule on', () => {
+    // The baseline fixture disables edges so the hand-derived suites keep their
+    // meaning. This is what stops that convenience from hiding a production
+    // default that quietly drifted off.
+    const p = shippedPolicy()
+    expect(p.edges.trimLeading).toBe(true)
+    expect(p.edges.trimTrailing).toBe(true)
+    expect(p.edges.keepMs).toBeGreaterThan(0)
+    expect(p.edges.minTrimMs).toBeGreaterThan(0)
+  })
+
+  it('removes the lead-in before the first word and the tail after the last', () => {
+    const r = compileEditPlan({ ...baseInput(), policy: shippedPolicy() })
+    const edges = r.plan.timeline.removals.filter((x) => x.origin === 'edge_trim')
+    expect(edges).toHaveLength(2)
+    expect(edges.map((e) => e.reasonCode)).toEqual(['edge_leading', 'edge_trailing'])
+  })
+
+  it('leaves a breath, so the first word does not begin on frame one', () => {
+    const p = shippedPolicy()
+    const input = baseInput()
+    const first = input.evidence.words[0]
+    const r = compileEditPlan({ ...input, policy: p })
+    const lead = r.plan.timeline.removals.find((x) => x.reasonCode === 'edge_leading')!
+    expect(lead.sourceEndMs).toBe(first.startMs - p.edges.keepMs)
+  })
+
+  it('records the trim as edge_trim, never as a speech candidate', () => {
+    // The record has to say WHY. "The Director selected a silence here" and
+    // "this is always waste" are different facts about the same seconds, and a
+    // removal labelled with the wrong one is a lie in the audit trail.
+    const r = compileEditPlan({ ...baseInput(), policy: shippedPolicy() })
+    const lead = r.plan.timeline.removals.find((x) => x.sourceStartMs === 0)!
+    expect(lead.origin).toBe('edge_trim')
+    expect(lead.ref).toBeNull()
+  })
+
+  it('shortens the finished video by exactly what it removed', () => {
+    const withEdges = compileEditPlan({ ...baseInput(), policy: shippedPolicy() })
+    const without = compileEditPlan({ ...baseInput(), policy: policy() })
+    const trimmed = withEdges.plan.timeline.removals
+      .filter((x) => x.origin === 'edge_trim')
+      .reduce((n, x) => n + (x.sourceEndMs - x.sourceStartMs), 0)
+    expect(without.plan.output.durationMs - withEdges.plan.output.durationMs).toBe(trimmed)
+  })
+
+  it('ignores a sliver — a 40ms shave is a glitch, not an edit', () => {
+    const p = shippedPolicy()
+    p.edges.minTrimMs = 5000 // above the fixture's real lead-in, so it stops qualifying
+    const r = compileEditPlan({ ...baseInput(), policy: p })
+    expect(r.plan.timeline.removals.some((x) => x.origin === 'edge_trim')).toBe(false)
+  })
+
+  it('a recording with no speech at all is refused, not trimmed to nothing', () => {
+    // With zero words there is no first or last word to trim against, so the
+    // edge rule cannot fire — the refusal comes from having no speech, which is
+    // its own failure with its own code. Asserted so the two stay distinct.
+    const input = baseInput()
+    input.evidence.words = []
+    input.decision.emphasisWordIndices = []
+    input.decision.zoomRequests = []
+    input.decision.selections = []
+    input.decision.visualWasteSelections = []
+    input.decision.hookTreatment = 'keep'
+    const r = compileEditPlan({ ...input, policy: shippedPolicy() })
+    expect(r.plan.timeline.removals.some((x) => x.origin === 'edge_trim')).toBe(false)
   })
 })

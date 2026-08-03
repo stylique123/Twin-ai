@@ -20,6 +20,7 @@ import { mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
+import { authHeader } from './authSession.mjs'
 
 const execFile = promisify(_execFile)
 const URL = need('STAGING_URL')
@@ -58,8 +59,7 @@ async function newGen(ownerId) {
 async function callEdge(client, fn, body) {
   const headers = { 'Content-Type': 'application/json', apikey: ANON }
   if (client) {
-    const { data: { session } } = await client.auth.getSession()
-    headers.Authorization = `Bearer ${session.access_token}`
+    headers.Authorization = await authHeader(client)
   }
   const res = await fetch(`${URL}/functions/v1/${fn}`, { method: 'POST', headers, body: JSON.stringify(body) })
   return { status: res.status, body: await res.json().catch(() => ({})) }

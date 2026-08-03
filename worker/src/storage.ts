@@ -127,3 +127,28 @@ export async function signObject(bucket: string, path: string, expiresInSecs: nu
 function encodePath(p: string): string {
   return p.split('/').map(encodeURIComponent).join('/')
 }
+
+/**
+ * Delete an object. Idempotent by design.
+ *
+ * WHY THIS DID NOT EXIST. Nothing in this repository ever removed a stored
+ * object — no `remove`, no object DELETE, anywhere in worker, edge functions
+ * or migrations. Deleting a generation cascades the `media_assets` rows;
+ * deleting an ACCOUNT cascades from `auth.users` and drops the rows too. The
+ * BYTES stayed in both cases: storage has no foreign key to `auth.users`, so
+ * every raw take — a recording of a person's face and voice — survived
+ * indefinitely, unreferenced and unauditable.
+ *
+ * A 404 is SUCCESS, not an error. This runs from a retryable job, and a purge
+ * that already happened must not fail its retry and dead-letter — "the object
+ * is not there" is exactly the state being asked for.
+ */
+export async function removeObject(bucket: string, path: string): Promise<{ removed: boolean }> {
+  const res = await fetch(`${base}/object/${bucket}/${encodePath(path)}`, {
+    method: 'DELETE',
+    headers: auth,
+  })
+  if (res.status === 404) return { removed: false }
+  if (!res.ok) throw new Error(`storage delete ${res.status}: ${(await res.text()).slice(0, 160)}`)
+  return { removed: true }
+}

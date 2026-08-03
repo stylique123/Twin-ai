@@ -8,6 +8,7 @@
 // operates normally.
 import { createClient } from '@supabase/supabase-js'
 import { randomUUID } from 'node:crypto'
+import { authHeader } from './authSession.mjs'
 
 const URL = need('STAGING_URL')
 const ANON = need('STAGING_ANON_KEY')
@@ -34,7 +35,6 @@ async function main() {
   const client = createClient(URL, ANON, { auth: { persistSession: false } })
   const { error: lErr } = await client.auth.signInWithPassword({ email, password: pw })
   if (lErr) throw new Error(lErr.message)
-  const { data: { session } } = await client.auth.getSession()
 
   const { count: projBefore } = await admin.from('edit_projects').select('id', { count: 'exact', head: true })
   const { count: jobsBefore } = await admin.from('jobs').select('id', { count: 'exact', head: true }).eq('type', 'editor_v2')
@@ -42,7 +42,7 @@ async function main() {
   const call = async (body) => {
     const res = await fetch(`${URL}/functions/v1/start-editor-v2`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: `Bearer ${session.access_token}` },
+      headers: { 'Content-Type': 'application/json', apikey: ANON, Authorization: await authHeader(client) },
       body: JSON.stringify(body),
     })
     return { status: res.status, body: await res.json().catch(() => ({})) }

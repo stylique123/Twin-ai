@@ -141,6 +141,14 @@ describe('the frozen catalog governs, and a broken one fails closed', () => {
     const fontDigests = Object.values(cat.fonts ?? {}).map((f) => f.sha256).filter(Boolean) as string[]
     for (const d of fontDigests) expect(d).toMatch(/^[0-9a-f]{64}$/)
     delete cat.fonts
+    // The WATERMARK DIGEST is removed the same way and for the same reason: it
+    // is a sha256 of an asset committed in this repository, which anyone can
+    // recompute — a public fact about bytes, not a credential. Removing the one
+    // named field keeps the entropy scan able to catch a real key; widening the
+    // regex to tolerate 64-hex anywhere would not.
+    const wm = (cat as { watermark?: { sha256?: string } }).watermark
+    expect(wm?.sha256).toMatch(/^[0-9a-f]{64}$/)
+    delete (cat as { watermark?: unknown }).watermark
     const raw = JSON.stringify(cat)
     // ASS colour literals (&H00FFFFFF) are the one hex-looking value that
     // legitimately belongs here, so they are removed before the entropy scan
