@@ -81,10 +81,65 @@ export function captionChecks(plan, policy, measuredDurationMs) {
   return out
 }
 
-// NOT CHECKED HERE, and named rather than left as a silent hole: "no caption
-// word is invented". Since captions began taking the script's spelling, a
-// caption word may legitimately come from EITHER the ASR transcript or the
-// pinned script snapshot, so the check needs both sources loaded and compared.
-// That is a larger read than this module is given, and it is the most valuable
-// caption assertion still missing — a follow-up, not something to bolt on as a
-// guess.
+// ── NO CAPTION WORD IS INVENTED ────────────────────────────────────────────
+// The assertion the previous version named as missing, now built.
+//
+// WHY IT NEEDED TWO SOURCES. Captions used to be pure ASR text, so "did we make
+// this up" was a one-list question. Since captions began taking the script's
+// spelling at the recording's time, a caption word may legitimately come from
+// EITHER the transcript or the pinned script snapshot — and a check against
+// only one of them would flag every correctly re-spelled brand name as an
+// invention. Both go in; a token is evidenced if either explains it.
+//
+// FRAGMENTS ARE WHY THIS IS SUBSTRING-BASED. `fragmentToken` splits a word too
+// long for a caption line at a fixed character count, so a caption token is not
+// always a whole word — "internationalisation" can legitimately appear as
+// "internationalis" + "ation". Requiring an exact match would fail on every
+// long word. So a token counts as evidenced when some source word CONTAINS it.
+//
+// That is deliberately the loose direction, and the reason is which failure
+// costs more. A missed invention is a bad caption; a false accusation is a red
+// matrix on a perfectly good render, which teaches people to ignore the check —
+// and a check people ignore is the thing this whole file exists to stop being.
+// Short tokens match trivially under this rule, and that is accepted: an
+// invented "a" is not the defect anyone is worried about. What it still catches
+// is the thing that matters — a WORD that appears in no source at all.
+
+const norm = (s) => String(s ?? '').normalize('NFC').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '')
+
+/**
+ * @param {object} plan             the edit_plans.plan JSONB
+ * @param {string[]} spokenWords    ASR words from the pinned speech component
+ * @param {string[]} scriptWords    script words from the pinned snapshot ([] if none)
+ * @returns {{name: string, ok: boolean, detail: string}[]}
+ */
+export function captionEvidenceChecks(plan, spokenWords, scriptWords) {
+  const cues = Array.isArray(plan?.captions?.cues) ? plan.captions.cues : []
+  const sources = [...(spokenWords ?? []), ...(scriptWords ?? [])].map(norm).filter(Boolean)
+
+  // A REQUIRED anchor: with no sources every token would be "unevidenced" and
+  // the check would fail for the wrong reason, or — worse, if inverted — pass
+  // vacuously. Say which it is.
+  if (sources.length === 0) {
+    return [{ name: 'A18h caption words trace to the transcript or the script',
+      ok: false, detail: 'no source words were loaded — cannot evidence anything (fail closed)' }]
+  }
+
+  const unevidenced = []
+  for (const c of cues) {
+    for (const line of c.lines ?? []) {
+      for (const raw of String(line).split(/\s+/)) {
+        const t = norm(raw)
+        if (!t) continue
+        if (!sources.some((w) => w.includes(t))) unevidenced.push(raw)
+      }
+    }
+  }
+  return [{
+    name: 'A18h caption words trace to the transcript or the script — nothing is invented',
+    ok: unevidenced.length === 0,
+    detail: unevidenced.length === 0
+      ? `${cues.length} cues, all words evidenced by ${sources.length} source words`
+      : `${unevidenced.length} unevidenced: ${[...new Set(unevidenced)].slice(0, 5).join(', ')}`,
+  }]
+}

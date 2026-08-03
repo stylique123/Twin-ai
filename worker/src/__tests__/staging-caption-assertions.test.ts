@@ -18,7 +18,7 @@
 // to close.
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { captionChecks } from '../../../scripts/staging-integration/captionAssertions.mjs'
+import { captionChecks, captionEvidenceChecks } from '../../../scripts/staging-integration/captionAssertions.mjs'
 import { compileEditPlan, loadEditPolicy } from '../jobs/editorCompile.js'
 import { baseInput, policy } from './fixtures/editPlanFixture.js'
 
@@ -128,5 +128,60 @@ describe('staging caption assertions — against a real compiled plan', () => {
     loose.captions.presets[(plan as unknown as { captions: { presetId: string } }).captions.presetId].maxCharsPerLine = 1000
     const names = captionChecks(plan, loose, measured(plan)).filter((c) => !c.ok).map((c) => c.name)
     expect(names).not.toContain('A18e no caption LINE exceeds the preset maxCharsPerLine')
+  })
+})
+
+describe('A18h — no caption word is invented', () => {
+  const plan = (...lines: string[]) => ({ captions: { cues: lines.map((l) => ({ lines: [l] })) } })
+  const run = (p: unknown, spoken: string[], script: string[]) =>
+    captionEvidenceChecks(p, spoken, script)[0]
+
+  it('a caption drawn from the TRANSCRIPT is evidenced', () => {
+    expect(run(plan('hello world'), ['hello', 'world'], []).ok).toBe(true)
+  })
+
+  it('a caption drawn from the SCRIPT is evidenced — the re-spelling case', () => {
+    // The reason this needs two sources. Since captions take the script's
+    // spelling, "TwinAI" appears in no ASR word; checking the transcript alone
+    // would flag every correctly re-spelled brand name as an invention.
+    expect(run(plan('TwinAI rocks'), ['twinny', 'rocks'], ['TwinAI']).ok).toBe(true)
+    expect(run(plan('TwinAI rocks'), ['twinny', 'rocks'], []).ok).toBe(false)
+  })
+
+  it('NEGATIVE: a word in neither source is caught and named', () => {
+    const r = run(plan('hello kubernetes'), ['hello', 'world'], ['script', 'words'])
+    expect(r.ok).toBe(false)
+    expect(r.detail).toContain('kubernetes')
+  })
+
+  it('a FRAGMENT of a long word is evidenced — fragmentToken splits them', () => {
+    // "internationalisation" exceeds every preset's maxCharsPerLine, so it is
+    // split. Requiring an exact match would fail on every long word.
+    expect(run(plan('internationalis ation'), ['internationalisation'], []).ok).toBe(true)
+  })
+
+  it('punctuation and case do not make a word an invention', () => {
+    expect(run(plan('Hello, world!'), ['hello', 'WORLD'], []).ok).toBe(true)
+  })
+
+  it('FAIL CLOSED: no source words at all is a failure, not a vacuous pass', () => {
+    // With an empty source list every token is unevidenced. The danger is the
+    // opposite reading — "nothing to check, so pass" — which would make this
+    // green on exactly the run where the evidence failed to load.
+    const r = run(plan('anything'), [], [])
+    expect(r.ok).toBe(false)
+    expect(r.detail).toContain('no source words')
+  })
+
+  it('a plan with no cues is evidenced trivially — A18a owns "there are cues"', () => {
+    // Not this predicate's job to complain about missing captions; splitting
+    // them keeps each failure pointing at one cause.
+    expect(run({ captions: { cues: [] } }, ['hello'], []).ok).toBe(true)
+  })
+
+  it('a REAL compiled plan passes against its own fixture words', () => {
+    const p = realPlan() as unknown as { captions: { cues: Array<{ lines: string[] }> } }
+    const words = p.captions.cues.flatMap((c) => c.lines.join(' ').split(' '))
+    expect(run(p, words, []).ok).toBe(true)
   })
 })
