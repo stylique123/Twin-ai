@@ -544,6 +544,7 @@ export interface BootArtifactManifest {
     visual: string
     audio: string
     hook: string
+    alignment: string
   }
   modelArtifacts: {
     speech: {

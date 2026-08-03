@@ -20,7 +20,7 @@ const ENVELOPE = {
   identity: {
     projectId: '00000000-0000-0000-0000-000000000000', generationId: '00000000-0000-0000-0000-000000000000',
     sourceAssetId: '00000000-0000-0000-0000-000000000000', sourceChecksum: 'f'.repeat(64), bootManifestSha: 'f'.repeat(64), scriptSnapshotSha: 'f'.repeat(64),
-    componentVersions: { inspection: 'i', speech: 's' }, componentDigests: { visual: 'f'.repeat(64), audio: 'f'.repeat(64), hook: 'f'.repeat(64) },
+    componentVersions: { inspection: 'i', speech: 's' }, componentDigests: { visual: 'f'.repeat(64), audio: 'f'.repeat(64), hook: 'f'.repeat(64), alignment: 'f'.repeat(64) },
   },
   script: {}, summaries: {},
   words: [['a', 0, 90], ['b', 10, 90]],

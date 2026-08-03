@@ -115,7 +115,12 @@ export const DIRECTOR_INPUT_MAX_BYTES = 819200 // > analytic max, <= token ceili
 // The exact measured serialized size of buildMaxUpstreamCompatFixture(), frozen
 // by the Gate-0 tests (recomputed from the real serializer and asserted for
 // byte EQUALITY — never approximate).
-export const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563730
+// Re-frozen when componentDigests gained `alignment` (+79 bytes: one key plus
+// one 64-hex value). The number is MEASURED from the serializer, never
+// estimated — scripts/director-eval/count_tokens.mjs re-derives it and CI's
+// director-token-evidence job runs a real countTokens against this envelope,
+// so a drift between the two ports fails the build rather than the inference.
+export const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563809
 
 // Legends (index == code in the compact tuples). Order is FROZEN — a decision
 // signal the server cross-checks against the re-resolved immutable component.
@@ -185,7 +190,7 @@ export interface DirectorEnvelopeIdentity {
   bootManifestSha: string // 64-hex
   scriptSnapshotSha: string // 64-hex
   componentVersions: { inspection: string; speech: string }
-  componentDigests: { visual: string; audio: string; hook: string } // 64-hex each
+  componentDigests: { visual: string; audio: string; hook: string; alignment: string } // 64-hex each
 }
 
 export interface DirectorBundleIdentity {
@@ -370,10 +375,11 @@ export function validateDirectorEnvelope(input: unknown): DirectorEnvelope {
   requireShortString(cv.speech, 64, 'componentVersions.speech')
   const cd = identity.componentDigests
   if (!isPlainObject(cd)) fail('identity.componentDigests: not an object', 'director_envelope_bad_identity')
-  requireKeys(cd, ['visual', 'audio', 'hook'], 'identity.componentDigests')
+  requireKeys(cd, ['visual', 'audio', 'hook', 'alignment'], 'identity.componentDigests')
   requireMatch(cd.visual, HEX64_RE, 'componentDigests.visual')
   requireMatch(cd.audio, HEX64_RE, 'componentDigests.audio')
   requireMatch(cd.hook, HEX64_RE, 'componentDigests.hook')
+  requireMatch(cd.alignment, HEX64_RE, 'componentDigests.alignment')
   const idBytes = safeCanonicalBytes({ bundle, identity }, 'identity+bundle')
   if (idBytes > IDENTITY_BUNDLE_MAX_BYTES) {
     fail(`identity+bundle ${idBytes} > ${IDENTITY_BUNDLE_MAX_BYTES}`, 'director_identity_too_large')
@@ -676,7 +682,7 @@ export function buildMaxUpstreamCompatFixture(): DirectorEnvelope {
       projectId: UUID0, generationId: UUID0, sourceAssetId: UUID0,
       sourceChecksum: HEX64, bootManifestSha: HEX64, scriptSnapshotSha: HEX64,
       componentVersions: { inspection: max64, speech: max64 },
-      componentDigests: { visual: HEX64, audio: HEX64, hook: HEX64 },
+      componentDigests: { visual: HEX64, audio: HEX64, hook: HEX64, alignment: HEX64 },
     },
     script,
     summaries,

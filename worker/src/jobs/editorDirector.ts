@@ -184,7 +184,7 @@ function buildEnvelope(
       projectId, generationId, sourceAssetId: asset.id, sourceChecksum: asset.content_sha256,
       bootManifestSha: pinned.manifest.manifestSha, scriptSnapshotSha: pinned.snapshot.snapshotSha,
       componentVersions: { inspection: versions.inspection, speech: versions.speech },
-      componentDigests: { visual: digests.visual, audio: digests.audio, hook: digests.hook },
+      componentDigests: { visual: digests.visual, audio: digests.audio, hook: digests.hook, alignment: digests.alignment },
     },
     script: pinned.snapshot.snapshot,
     // The Director sees the whole bounded picture (§3.5): brand (colorsSource/logoSource

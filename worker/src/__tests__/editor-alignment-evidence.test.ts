@@ -12,6 +12,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildAlignmentEvidence, ALIGNMENT_EVIDENCE_SCHEMA_VERSION,
+  fitTimingsToBudget, ALIGNMENT_TIMINGS_MAX_BYTES, ALIGNMENT_RESULT_MAX_BYTES,
 } from '../jobs/editorAlignment.js'
 
 const ASSET = { id: 'a1', content_sha256: 'f'.repeat(64) }
@@ -128,5 +129,70 @@ describe('NEGATIVE: a word never spoken keeps a null time', () => {
     const texts = (rec.scriptWordTimings as Array<{ text: string }>).map((t) => t.text)
     expect(texts).toEqual(['Ship', 'it'])
     expect(texts).not.toContain('cutaway')
+  })
+})
+
+// ── THE PAYLOAD BOUND ──────────────────────────────────────────────────────
+// The defect these guard against: `editor_record_analysis` caps each
+// component's payload and raises `component_too_large` — permanent, no retry.
+// A newly-registered component inherits the CASE `else` branch (16384 bytes),
+// which at ~145 bytes per timing is about 90 seconds of speech. The bound and
+// the DB cap are a RELATIONSHIP, and the MAX_CUES defect in this same pipeline
+// happened because nothing was checking one.
+describe('alignment evidence — the payload bound', () => {
+  const entry = (i: number) => ({ scriptIdx: i, text: `word${i}`, startMs: i * 400, endMs: i * 400 + 350, via: 'match' })
+
+  it('leaves a payload that already fits completely alone', () => {
+    const small = Array.from({ length: 50 }, (_, i) => entry(i))
+    const r = fitTimingsToBudget(small)
+    expect(r.dropped).toBe(0)
+    expect(r.kept).toEqual(small)
+  })
+
+  it('truncates an over-budget payload to something that FITS', () => {
+    const huge = Array.from({ length: 20000 }, (_, i) => entry(i))
+    const r = fitTimingsToBudget(huge)
+    expect(r.dropped).toBeGreaterThan(0)
+    expect(Buffer.byteLength(JSON.stringify(r.kept), 'utf8')).toBeLessThanOrEqual(ALIGNMENT_TIMINGS_MAX_BYTES)
+    expect(r.kept.length + r.dropped).toBe(huge.length)   // nothing vanishes unaccounted for
+  })
+
+  it('keeps a contiguous PREFIX, so the kept region is interpretable', () => {
+    const huge = Array.from({ length: 20000 }, (_, i) => entry(i))
+    const r = fitTimingsToBudget(huge)
+    expect(r.kept).toEqual(huge.slice(0, r.kept.length))
+  })
+
+  it('is bounded by BYTES, not by a word count a single long token could defeat', () => {
+    // One pathological 200KB "word". A count-based budget would wave this
+    // through; the whole point of measuring is that this cannot happen.
+    const pathological = [{ scriptIdx: 0, text: 'x'.repeat(200000), startMs: 0, endMs: 10, via: 'match' }, entry(1)]
+    const r = fitTimingsToBudget(pathological)
+    expect(Buffer.byteLength(JSON.stringify(r.kept), 'utf8')).toBeLessThanOrEqual(ALIGNMENT_TIMINGS_MAX_BYTES)
+  })
+
+  it('a single entry too large for the whole budget yields an EMPTY set, never an oversized one', () => {
+    const one = [{ scriptIdx: 0, text: 'x'.repeat(ALIGNMENT_TIMINGS_MAX_BYTES + 1000), startMs: 0, endMs: 1, via: 'match' }]
+    const r = fitTimingsToBudget(one)
+    expect(r.kept).toEqual([])
+    expect(r.dropped).toBe(1)
+  })
+
+  it('THE RELATIONSHIP: the timings budget leaves room for the rest of the record inside the DB cap', () => {
+    // The check that was missing for MAX_CUES. If either number is retuned
+    // without the other, this fails here rather than in a user's video.
+    expect(ALIGNMENT_TIMINGS_MAX_BYTES).toBeLessThan(ALIGNMENT_RESULT_MAX_BYTES)
+    const headroom = ALIGNMENT_RESULT_MAX_BYTES - ALIGNMENT_TIMINGS_MAX_BYTES
+    expect(headroom).toBeGreaterThan(65536)  // ample room for the envelope + jsonb overhead
+  })
+
+  it('a worst-case full record still fits the DB cap end to end', () => {
+    const huge = Array.from({ length: 20000 }, (_, i) => entry(i))
+    const rec = buildAlignmentEvidence(
+      { id: 'a'.repeat(36), content_sha256: 'f'.repeat(64) },
+      { words: [], speechVersion: 'speech-1', snapshot: null, scriptSnapshotSha256: 'e'.repeat(64) },
+    )
+    const withTimings = { ...rec, scriptWordTimings: fitTimingsToBudget(huge).kept }
+    expect(Buffer.byteLength(JSON.stringify(withTimings), 'utf8')).toBeLessThanOrEqual(ALIGNMENT_RESULT_MAX_BYTES)
   })
 })

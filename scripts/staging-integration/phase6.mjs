@@ -345,9 +345,9 @@ async function main() {
       pinEv.length === 1 && pinEv[0].dedupe_key === `pin:${proj.boot_manifest_sha}`)
 
     const rows = {}
-    for (const comp of ['visual', 'audio', 'hook']) rows[comp] = await componentRows(S.assetId, comp)
+    for (const comp of ['visual', 'audio', 'hook', 'alignment']) rows[comp] = await componentRows(S.assetId, comp)
     check('A6 exactly one digest row per component, digest == manifest digest, provenance bound',
-      ['visual', 'audio', 'hook'].every((c) =>
+      ['visual', 'audio', 'hook', 'alignment'].every((c) =>
         rows[c].length === 1
         && rows[c][0].component_digest === digests[c]
         && rows[c][0].manifest_sha === proj.boot_manifest_sha
@@ -355,9 +355,9 @@ async function main() {
       JSON.stringify(Object.fromEntries(Object.entries(rows).map(([k, v]) => [k, v.length]))))
 
     const recEv = events.filter((e) => e.message_code === 'analysis_component_recorded')
-    check('A7 three analysis_component_recorded events with dedupe keys',
-      recEv.length === 3
-      && ['visual', 'audio', 'hook'].every((c) =>
+    check('A7 four analysis_component_recorded events with dedupe keys',
+      recEv.length === 4
+      && ['visual', 'audio', 'hook', 'alignment'].every((c) =>
         recEv.some((e) => e.dedupe_key === `analysis:${c}:${digests[c]}:recorded`)))
 
     const doneEv = events.find((e) => e.message_code === 'project_completed')
@@ -444,9 +444,9 @@ async function main() {
     check('B3 no new component rows (converged on the cache)', before === after, `${before} -> ${after}`)
     const events = await getEvents(pid)
     const reused = events.filter((e) => e.message_code === 'analysis_component_reused')
-    check('B4 three analysis_component_reused events with dedupe keys',
-      reused.length === 3
-      && ['visual', 'audio', 'hook'].every((c) => reused.some((e) => e.dedupe_key === `analysis:${c}:${digests[c]}:reused`)))
+    check('B4 four analysis_component_reused events with dedupe keys',
+      reused.length === 4
+      && ['visual', 'audio', 'hook', 'alignment'].every((c) => reused.some((e) => e.dedupe_key === `analysis:${c}:${digests[c]}:reused`)))
     const doneEv = events.find((e) => e.message_code === 'project_completed')
     check('B5 download truth table: full reuse => ZERO downloads',
       doneEv?.details?.source_downloads === 0

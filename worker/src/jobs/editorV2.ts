@@ -366,7 +366,11 @@ async function reuseStoredPin(
     throw new PermanentJobError('pin: stored script snapshot does not hash to its pinned SHA', 'manifest_corrupt')
   }
   assertPinnedWorkerIdentity(stored, local.manifest as Record<string, unknown>)
-  const digests = (stored.componentDigests ?? {}) as { visual: string; audio: string; hook: string }
+  // Safe to assert the shape: assertPinnedWorkerIdentity above has already
+  // proven `stored.componentDigests` is byte-identical to this worker's, so a
+  // manifest pinned before `alignment` existed has already failed closed with
+  // `manifest_mismatch` — versions are never mixed.
+  const digests = (stored.componentDigests ?? {}) as { visual: string; audio: string; hook: string; alignment: string }
   return {
     manifest: { manifest: stored, manifestSha: pinRow.boot_manifest_sha, componentDigests: digests },
     snapshot: {
