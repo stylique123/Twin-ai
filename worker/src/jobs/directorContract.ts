@@ -86,7 +86,7 @@ export interface DirectorEnvelope {
     projectId: string; generationId: string; sourceAssetId: string
     sourceChecksum: string; bootManifestSha: string; scriptSnapshotSha: string
     componentVersions: { inspection: string; speech: string }
-    componentDigests: { visual: string; audio: string; hook: string }
+    componentDigests: { visual: string; audio: string; hook: string; alignment: string }
   }
   script: unknown
   summaries: unknown
@@ -204,10 +204,11 @@ export function validateDirectorEnvelope(input: unknown): DirectorEnvelope {
   requireShortString(cv.speech, 64, 'componentVersions.speech')
   const cd = identity.componentDigests
   if (!isPlainObject(cd)) fail('identity.componentDigests: not an object', 'director_envelope_bad_identity')
-  requireKeys(cd, ['visual', 'audio', 'hook'], 'identity.componentDigests')
+  requireKeys(cd, ['visual', 'audio', 'hook', 'alignment'], 'identity.componentDigests')
   requireMatch(cd.visual, HEX64_RE, 'componentDigests.visual')
   requireMatch(cd.audio, HEX64_RE, 'componentDigests.audio')
   requireMatch(cd.hook, HEX64_RE, 'componentDigests.hook')
+  requireMatch(cd.alignment, HEX64_RE, 'componentDigests.alignment')
   const idBytes = safeCanonicalBytes({ bundle, identity }, 'identity+bundle')
   if (idBytes > IDENTITY_BUNDLE_MAX_BYTES) fail(`identity+bundle ${idBytes} > ${IDENTITY_BUNDLE_MAX_BYTES}`, 'director_identity_too_large')
 

@@ -29,6 +29,9 @@ import {
 import { buildVisualAnalysis, coarseIntervalMs, runVisualBridge, type VisualFacts } from './editorVisual.js'
 import { computeAudioComponent, type SpeechWordInterval } from './editorAudio.js'
 import { buildHookEvidence, type HookSpeechWord } from './editorHook.js'
+import {
+  buildAlignmentEvidence, ALIGNMENT_EVIDENCE_SCHEMA_VERSION, ALIGNMENT_EVIDENCE_VERSION,
+} from './editorAlignment.js'
 import { stageDownloadOpts, type VerifiedSourceSession } from './sourceSession.js'
 
 const slowPoint = (point: string, watch: CancelWatch) =>
@@ -44,6 +47,7 @@ export interface AnalyzeOutcome {
   visual: AnalyzeComponentOutcome
   audio: AnalyzeComponentOutcome
   hook: AnalyzeComponentOutcome
+  alignment: AnalyzeComponentOutcome
   sourceDownloads: number
 }
 
@@ -56,7 +60,7 @@ interface PinnedContext {
 // accountant: analysis_component_recorded/reused with dedupe keys.
 async function recordAnalysis(
   job: Job, projectId: string,
-  component: 'visual' | 'audio' | 'hook', schemaVersion: number, bundleVersion: string,
+  component: 'visual' | 'audio' | 'hook' | 'alignment', schemaVersion: number, bundleVersion: string,
   digest: string, sourceHash: string, result: Record<string, unknown>,
 ): Promise<{ recorded: boolean }> {
   const { data, error } = await db.rpc('editor_record_analysis', {
@@ -192,12 +196,42 @@ export async function runAnalyzingStage(
       HOOK_EVIDENCE_SCHEMA_VERSION, HOOK_EVIDENCE_VERSION, digests.hook,
       asset.content_sha256, hookResult)
 
+    // ---- alignment (pure — the whole script against what was said, no bytes) --
+    //
+    // Kept a SEPARATE component from `hook` on purpose. The hook answers how the
+    // opening related to the script and is capped to a window; this answers
+    // where every script word landed in the recording. Folding them together
+    // would make every hook recompute pay for a whole-script alignment, and the
+    // download truth table's "hook-only recompute => 0 downloads" row exists
+    // precisely because those costs are kept apart.
+    //
+    // Like `hook`, it consumes already-computed components plus the pinned
+    // snapshot and touches no source bytes, so it can never trigger a download.
+    await slowPoint('before_alignment', watch)
+    let alignResult = await lookupCached(asset.id, asset.content_sha256, 'alignment', digests.alignment)
+    const alignCacheHit = alignResult !== null
+    if (!alignResult) {
+      alignResult = buildAlignmentEvidence(
+        { id: asset.id, content_sha256: asset.content_sha256 },
+        {
+          words: speechWords.map((w) => ({ text: w.text, startMs: w.startMs, endMs: w.endMs })),
+          speechVersion: versions.speech,
+          snapshot: pinned.snapshot.snapshot as never,
+          scriptSnapshotSha256: pinned.snapshot.snapshotSha,
+        })
+    }
+    if (watch.cancelled()) throw new AnalyzeCancelledError('before_persist')
+    const alignRec = await recordAnalysis(job, projectId, 'alignment',
+      ALIGNMENT_EVIDENCE_SCHEMA_VERSION, ALIGNMENT_EVIDENCE_VERSION, digests.alignment,
+      asset.content_sha256, alignResult)
+
     await slowPoint('after_persist', watch)
 
     return {
       visual: { digest: digests.visual, recorded: visualRec.recorded, cacheHit: visualCacheHit },
       audio: { digest: digests.audio, recorded: audioRec.recorded, cacheHit: audioCacheHit },
       hook: { digest: digests.hook, recorded: hookRec.recorded, cacheHit: hookCacheHit },
+      alignment: { digest: digests.alignment, recorded: alignRec.recorded, cacheHit: alignCacheHit },
       sourceDownloads: session.downloadsPerformed,
     }
   } finally {

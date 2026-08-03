@@ -18,7 +18,7 @@
 //   node scripts/director-eval/count_tokens.mjs --selftest # offline: port parity + conservative bound only
 
 // ---- frozen constants (must equal packages/shared/src/editor/director.ts) ----
-const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563730 // re-frozen when the visualWaste stream was added
+const EXPECTED_MAX_COMPAT_ENVELOPE_BYTES = 563809 // re-frozen when componentDigests gained `alignment`
 const DIRECTOR_INPUT_MAX_BYTES = 819200
 const PROVIDER_TOKEN_CEILING = 838860 // floor(1048576 * 0.8)
 const UPSTREAM_SPEECH_BUDGET_BYTES = 1_000_000
@@ -141,7 +141,7 @@ function buildFixture() {
       projectId: UUID0, generationId: UUID0, sourceAssetId: UUID0,
       sourceChecksum: HEX64, bootManifestSha: HEX64, scriptSnapshotSha: HEX64,
       componentVersions: { inspection: max64, speech: max64 },
-      componentDigests: { visual: HEX64, audio: HEX64, hook: HEX64 },
+      componentDigests: { visual: HEX64, audio: HEX64, hook: HEX64, alignment: HEX64 },
     },
     script, summaries,
     words: proj.words, candidates: proj.candidates, boundaries: proj.boundaries,

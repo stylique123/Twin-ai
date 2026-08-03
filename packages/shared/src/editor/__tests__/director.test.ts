@@ -409,7 +409,7 @@ function baseEnvelope(): DirectorEnvelope {
       projectId: UUID0, generationId: UUID0, sourceAssetId: UUID0, sourceChecksum: HEX64,
       bootManifestSha: HEX64, scriptSnapshotSha: HEX64,
       componentVersions: { inspection: 'inspection-1', speech: 'speech-6' },
-      componentDigests: { visual: HEX64, audio: HEX64, hook: HEX64 },
+      componentDigests: { visual: HEX64, audio: HEX64, hook: HEX64, alignment: HEX64 },
     },
     script: { schemaVersion: 1, generationId: UUID0, hook: null, scenes: [] },
     summaries: {},

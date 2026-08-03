@@ -22,6 +22,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { PermanentJobError } from '../errors.js'
+import { ALIGNMENT_EVIDENCE_VERSION, ALIGNMENT_TIMINGS_MAX_BYTES, ALIGNMENT_RESULT_MAX_BYTES } from './editorAlignment.js'
 
 // Analyzer bundle versions — frozen constants, never env-driven. Bumping one
 // is a code change that also changes the component digest via `version`.
@@ -41,6 +42,11 @@ export const HOOK_EVIDENCE_SCHEMA_VERSION = 1
 export const VISUAL_COMPONENT_MAX_BYTES = 262144
 export const AUDIO_COMPONENT_MAX_BYTES = 65536
 export const HOOK_COMPONENT_MAX_BYTES = 16384
+// Re-exported rather than restated: the number lives with the code that
+// enforces the budget producing it (editorAlignment.ts), so the cap and the
+// truncation bound cannot drift into disagreeing — which is exactly how the
+// MAX_CUES defect happened.
+export const ALIGNMENT_COMPONENT_MAX_BYTES = ALIGNMENT_RESULT_MAX_BYTES
 export const SCRIPT_SNAPSHOT_MAX_BYTES = 65536
 
 // The worker root (dist/jobs/editorManifest.js -> ../../ == /app), both in the
@@ -147,6 +153,17 @@ export function audioEffectiveConfig(rules: AnalysisRules): Record<string, unkno
 export function hookEffectiveConfig(rules: AnalysisRules): Record<string, unknown> {
   return { ...rules.hook }
 }
+// Alignment takes no tunable numeric rules — it is a pure sequence alignment,
+// so there is no entry for it in analysis_rules_v1.json.
+//
+// The byte budget IS config, though, and it belongs in the digest: it decides
+// where the stored record gets truncated, so two runs with different budgets
+// produce genuinely different evidence. Omitting it would let a retuned budget
+// silently reuse a record truncated under the old one — a cache hit that
+// returns the wrong answer, which is worse than a recompute.
+export function alignmentEffectiveConfig(): Record<string, unknown> {
+  return { timingsMaxBytes: ALIGNMENT_TIMINGS_MAX_BYTES }
+}
 
 // ---- model manifests --------------------------------------------------------
 interface PinManifest {
@@ -226,7 +243,7 @@ export function ffmpegBannerSha256(): Promise<string | null> {
 export interface BuiltManifest {
   manifest: Record<string, unknown>
   manifestSha: string
-  componentDigests: { visual: string; audio: string; hook: string }
+  componentDigests: { visual: string; audio: string; hook: string; alignment: string }
 }
 
 export async function buildBootManifest(opts: {
@@ -256,6 +273,7 @@ export async function buildBootManifest(opts: {
       { faceDetector: face.artifactSha256 }, boundsSha256),
     audio: componentDigest(AUDIO_ANALYSIS_VERSION, audioEffectiveConfig(rules), {}, boundsSha256),
     hook: componentDigest(HOOK_EVIDENCE_VERSION, hookEffectiveConfig(rules), {}, boundsSha256),
+    alignment: componentDigest(ALIGNMENT_EVIDENCE_VERSION, alignmentEffectiveConfig(), {}, boundsSha256),
   }
   const manifest: Record<string, unknown> = {
     schemaVersion: 1,
@@ -266,6 +284,7 @@ export async function buildBootManifest(opts: {
       visual: VISUAL_ANALYSIS_VERSION,
       audio: AUDIO_ANALYSIS_VERSION,
       hook: HOOK_EVIDENCE_VERSION,
+      alignment: ALIGNMENT_EVIDENCE_VERSION,
     },
     componentDigests: digests,
     modelArtifacts: { speech, faceDetector: face },

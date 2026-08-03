@@ -92,6 +92,7 @@ describe('boot manifest', () => {
     expect(m.manifestEpoch).toBe(2)
     expect(m.componentVersions).toEqual({
       inspection: 'inspect-1', speech: 'speech-6', visual: 'visual-2', audio: 'audio-1', hook: 'hook-1',
+      alignment: 'alignment-1',
     })
     expect(m.brandSnapshotSha).toBe(BRAND_SHA)
     // §3.2: the brand snapshot CONTENT is pinned (frozen), not just its hash — the
@@ -102,8 +103,11 @@ describe('boot manifest', () => {
     expect(built.componentDigests.visual).toMatch(/^[0-9a-f]{64}$/)
     expect(built.componentDigests.audio).toMatch(/^[0-9a-f]{64}$/)
     expect(built.componentDigests.hook).toMatch(/^[0-9a-f]{64}$/)
+    expect(built.componentDigests.alignment).toMatch(/^[0-9a-f]{64}$/)
     // The three digests are distinct identities.
-    expect(new Set(Object.values(built.componentDigests)).size).toBe(3)
+    // Every component must have a DISTINCT digest — a collision would make two
+    // components share a cache identity and serve each other's records.
+    expect(new Set(Object.values(built.componentDigests)).size).toBe(4)
     expect(built.manifestSha).toBe(sha256Hex(canonicalJson(built.manifest)))
     // Rebuild is byte-stable for the same inputs.
     const again = await buildBootManifest(v2opts)
