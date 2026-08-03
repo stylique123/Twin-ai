@@ -264,8 +264,47 @@ Routing that makes provenance ambiguous is worse than no routing.
   director-eval harness already measure output quality; routing changes should
   be judged there rather than by impression.
 
-**Blocked on:** a human decision on the routing unit. Until that exists this is
-a gap with a name, which is strictly better than a gap without one.
+**RECOMMENDED DECISION — the routing unit is a TASK CLASS, declared in one
+frozen catalog.** *(Proposed 2026-08-03, recorded with its reasoning so it can
+be accepted, amended or rejected on the merits rather than re-derived in
+conversation each time.)*
+
+Not the call site, and not the job type:
+
+- **Per call site** fails exactly as the analysis-component namespace failed.
+  Every site privately encoding its own model choice is a dozen allowlists that
+  nothing compares — the defect removed in #244, which cost four staging matrix
+  runs to diagnose because each failure named a symptom rather than the cause.
+  Do not rebuild it in a new place.
+- **Per job type** is too coarse. `editorAnalyze` alone does extraction,
+  scoring and summarisation; one model for the job means the cheapest sub-task
+  pays the dearest model's price and the hardest gets whatever suited the
+  cheapest.
+- **Per task class** is the granularity the work actually has: *extract
+  structured evidence*, *choose among candidates*, *write prose*, *judge a
+  result*. Those differ in cost, latency, and in what a wrong answer costs —
+  which is the whole reason to route at all.
+
+**Shape, following what this repo already does well.** One catalog beside
+`edit_policy_v1.json` and the model pin, mapping task class -> pinned model id,
+read by exactly one loader. Then:
+
+- provenance survives, which is the non-negotiable: a task class resolves to a
+  pinned id already recorded in `componentVersions`/`componentDigests`, so which
+  model produced an artefact stays recoverable;
+- a CI guard of the `check_analysis_components.mjs` shape asserts every task
+  class used in code exists in the catalog and every catalogued class is
+  reachable, so the two cannot drift;
+- an unavailable model is a HARD FAILURE, never a silent fallback. A quiet
+  substitution breaks the provenance property above, which is worth more than
+  the render it would have saved.
+
+**Cost of being wrong is low and reversible:** the mapping is data, so a bad
+routing choice is a catalog edit rather than a refactor.
+
+**Deliberately not decided here:** the initial class list, and whether a class
+may be overridden per environment. Both are cheap once the unit is settled, and
+neither blocks starting.
 
 ---
 
@@ -697,16 +736,41 @@ before treating it as a defect.
            compile time; requiring it would have broken every in-flight project
            permanently for a spelling improvement.
      - [ ] **False starts** — a script region spoken twice becomes detectable.
+           **BLOCKED ON `alignment-2`, and this was measured rather than
+           assumed.** The component records `insertionCount` and nothing else
+           about insertions (editorAlignment.ts) — a count, not where they are
+           or what was said. A false start IS a run of insertions adjacent to
+           the region that was then said properly, so the count alone cannot
+           distinguish "they restarted a sentence" from "they ad-libbed
+           throughout". Detecting it needs insertion SPANS in the record, which
+           is a schema-version bump: a new `ALIGNMENT_EVIDENCE_VERSION`, a new
+           digest, and therefore a recompute for every pinned project, plus room
+           inside the 524288-byte cap that `ALIGNMENT_TIMINGS_MAX_BYTES`
+           (400000) already spends most of. Cheap to build, not cheap to land —
+           and worth doing as one deliberate `alignment-2` rather than smuggled
+           in beside something else.
      - [ ] **Exact `hookStartWordIndex`** — today the hook component reports
            `matchedTokenRatio`, an UNORDERED multiset intersection between the
            hook's tokens and the opening window. That is a similarity score, not
            a boundary: it says how much of the hook was said, never where it
            ended. Alignment gives an ordered, timestamped script→recording map,
            which is the thing a boundary can actually be read off.
-     - Note: none of these three passes alignment into the DIRECTOR, so the
-       component catalog's `consumedByDirector: false` remains correct. Flipping
-       it is a separate decision about the model's inputs, not a prerequisite
-       for reading the evidence in the compiler.
+           **BLOCKED ON AN EVAL, NOT ON PLUMBING.** The plumbing is small:
+           `buildEnvelope` already receives `{ visual, audio, hook }` and
+           alignment is already pinned and digested beside them
+           (editorDirector.ts:374), so passing it in is a few lines and needs no
+           change to the hook component at all — an earlier reading of this item
+           assumed a hook schema bump and that was wrong. What it does change is
+           WHAT THE MODEL SEES, and this project has a director-eval harness and
+           a quality gate precisely because a changed Director input changes
+           Director output. So the gate on this is an eval run, not an
+           implementation. It is also the change that makes
+           `consumedByDirector: true` correct.
+     - Note: none of the three consumers built or described here passes
+       alignment into the DIRECTOR, so the component catalog's
+       `consumedByDirector: false` remains correct today. The hook item above is
+       what flips it, and flipping it is a decision about the model's inputs
+       rather than a prerequisite for reading the evidence in the compiler.
 4. Transcript-as-editor review gate
 5. Failure path — explain, retain footage, retry without refilming
 
@@ -740,9 +804,42 @@ before treating it as a defect.
      A Director-chosen value needs a contract both copies agree on, which is
      the cost item 9's capability flags were introduced to avoid paying twice.
 
-   **Blocked on:** a human decision on the axis. Until that lands this is a
-   named gap, not a buildable item — which is the whole reason it is written
-   here rather than left in a conversation nobody can grep.
+   **RECOMMENDED DECISION — differentiate on the SCRIPT'S OWN STRUCTURE, never
+   on a content-type enum.** *(Proposed 2026-08-03, with reasoning, so it can be
+   accepted or rejected on the merits.)*
+
+   The scene timeline already carries `scene_type` (`talking_head`,
+   `demonstration`, …), `purpose` (`hook`, …) and `show_in_teleprompter` per
+   scene. Route the teleprompter off those, and off nothing new.
+
+   Why that and not a content-type field:
+
+   1. **A content-type enum is the archetype trap in a new costume.** §2.2
+      retired archetypes because *they sort the person; the variable is the
+      video* — and a per-video content type is one short step from a per-creator one
+      the moment anybody defaults it from the brand. Item 9 owns that
+      reconciliation and a new enum would hand it a second one to do.
+   2. **The granularity is wrong, and the script already has the right one.**
+      "This video is a demonstration" is false of a video whose first scene is a
+      piece to camera and whose third is hands-on. The teleprompter should
+      change BETWEEN SCENES, which is what the existing per-scene fields
+      describe.
+   3. **It costs zero decision surfaces.** §0 budgets six from signup to posted
+      and requires every new screen to retire one. Deriving from the script asks
+      the creator nothing they are not already answering.
+   4. **It cannot be fabricated.** The scene timeline is pinned in the script
+      snapshot, so what the teleprompter did is recoverable from evidence the
+      render already carries — the same rule the rest of this pipeline runs on.
+
+   **What varies, concretely:** whether it scrolls at all (a `demonstration`
+   scene wants a fixed beat, not a moving line, because the creator's hands and
+   eyes are busy), the chunk shown (a line vs the next beat), and whether it
+   hides entirely during a declared `[SHOW: …]` clip (Phase 12 item 11).
+
+   **Deliberately not decided here:** the per-`scene_type` parameter values.
+   Those are craft numbers and belong with item 7, chosen against a real
+   recording rather than guessed — the same discipline the caption safe area
+   waited for and was right to.
 8. **Edit the script BEFORE filming.** Three of four panellists hit this
    independently: you cannot currently change a word before reading it into a
    camera 40 times.
@@ -1211,5 +1308,6 @@ cheapest thing left to check.
 | 2026-08-01 | Created. Consolidates 10-person panel (2 rounds), 3 codebase audits, Phase 8/9 rebuild, and the information-architecture critique. |
 | 2026-08-01 | Added §8a: five-question onboarding adopted with five corrections (offer as free text, Q4/Q5 moved to the confirm screen, no float confidence, never-merged sources, observed-vs-inferred audience). Gallery defined as a chooser, not a second pipeline. Cost per addition estimated, and re-cut priced at ~25-30% of a render. |
 | 2026-08-01 | Added §9a from a pre-mortem, a security/privacy audit and an efficiency/measurability audit run in parallel. Four silently-broken pipeline joints, one critical credential-vending defect (fixed), and the missing post→render join key. Reorders Phase 9: the inputs come before the polish. |
+| 2026-08-03 | Two blocked items given RECOMMENDED DECISIONS rather than left as named gaps: §2.4 routes per TASK CLASS from one frozen catalog (not per call site, which rebuilds the twelve-allowlist defect, and not per job type, which is too coarse), with provenance preserved and no silent model fallback; Phase 11 item 7a differentiates the teleprompter on the SCRIPT'S OWN per-scene structure (`scene_type`/`purpose`/`show_in_teleprompter`), never a content-type enum, which would be the retired archetype trap at a per-video granularity that is still wrong. Both recorded with reasoning so they can be rejected on the merits. Also measured why the two remaining alignment consumers are not "just a read": false starts need an `alignment-2` schema bump (the component records `insertionCount` only, and a count cannot distinguish a restart from an ad-lib), and the exact hook boundary needs a director-eval run rather than plumbing (the envelope change is a few lines; changing what the model sees is the risk). |
 | 2026-08-03 | Phase 10 status corrected against the code: forced alignment is now WIRED and STORABLE (#242), not "NOT wired into the pipeline". Nothing consumes it, and that is a declared state rather than an omission — `analysis_components.json` records `consumedByDirector: false` and CI fails if any site disagrees. Consuming it is the next step and is now a read, not a rebuild. |
 | 2026-08-03 | **Phase 9 COMPLETE (10/10).** Its last item is closed by measurement, and the measurement overturned the item's premise: the caption collision is the platform ACTION RAIL, which is horizontal, not the bottom caption block. Fixed by width (`captions.maxWidthPx` 680, `railInsetPx` 200, `marginHorizontalPx` 140→200) with `marginVerticalPx` deliberately unchanged at 600; pinned by a contract test that reads the frozen policy in both directions. Also written down two requirements that existed only in conversation and were therefore unbuildable: §2.4 per-task model routing, and Phase 11 item 7a teleprompter-by-content-type. Both are recorded as named gaps with their open questions, not as invented designs — each is blocked on a human decision. |
