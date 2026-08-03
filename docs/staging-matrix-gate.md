@@ -11,17 +11,48 @@
 | Green when | a `staging-integration` run with conclusion `success` exists at the exact head SHA | **unchanged** |
 | While unknown | red | `pending` |
 
-## The one manual step
+## The one manual step ✅ DONE
 
-Branch protection is an admin setting; no workflow file can change it. When this
-lands on `main`, update protection on `main` **in the same sitting**:
+Branch protection is an admin setting; no workflow file can change it. This was
+applied by hand when the gate merged. The current state of the `main protection`
+ruleset (id `19777534`, enforcement `active`, targeting `~DEFAULT_BRANCH`):
 
-- remove the required check `staging-matrix-required`
-- add the required status `staging-matrix-gate`
+| required check | source | why |
+|---|---|---|
+| `staging-matrix-gate` | GitHub Actions (`15368`) | this gate — replaced `staging-matrix-required` |
+| `unit-tests` | GitHub Actions (`15368`) | shared + worker suites |
+| `web-and-shared` | GitHub Actions (`15368`) | typecheck + web build |
+| `worker` | GitHub Actions (`15368`) | worker typecheck |
 
-A required check that no longer reports leaves every PR blocked on
-*"Expected — waiting for status to be reported"*, so skipping this does not fail
-open, it fails stuck.
+**The last three are deliberate, and are new.** Before this, the matrix was the
+*only* required check, so a PR could merge with a passing matrix and a **failing
+typecheck**. They entered as a bridge — a ruleset refuses an empty required list,
+so the old check could not simply be removed — and were kept because that hole
+was worth closing.
+
+Two footnotes for whoever changes this next:
+
+- **The order was: bridge, merge, swap.** The gate's own PR deletes the job the
+  ruleset required, so `staging-matrix-required` could never report on it and the
+  merge button never lit up. The required check has to be replaced *before* the
+  merge, not after. A required check that no longer reports leaves every PR
+  blocked on *"Expected — waiting for status to be reported"* — skipping this does
+  not fail open, it fails stuck.
+- **All four are pinned to GitHub Actions (`15368`)** — keep it that way. An
+  unpinned ("any source") required check can be satisfied by ANY app holding
+  `statuses: write` on the repo, which for a merge gate means an app that is not
+  CI could mark the gate green. Pinning is not automatic: typing a check name
+  stores it unpinned, and only picking it from the suggestion dropdown carries
+  the app across. Re-saving the rule can also drop an existing pin, so re-read
+  the ruleset after any edit rather than trusting the form:
+
+      gh api repos/stylique123/Twin-ai/rulesets/19777534 \
+        --jq '.rules[] | select(.type=="required_status_checks")
+              | .parameters.required_status_checks'
+
+  `staging-matrix-gate` is posted with `GITHUB_TOKEN`, so it is attributed to
+  `github-actions[bot]` and `15368` is the correct pin for it, exactly as for
+  the workflow jobs beside it.
 
 ## Why the trigger had to change
 
