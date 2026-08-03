@@ -606,7 +606,7 @@ decided. Phase 9 is COMPLETE (10/10).**
 | item | state |
 |---|---|
 | Provenance stamping on every DNA field | **done** |
-| Script-anchored forced alignment | **engine built + 29 tests; NOT wired into the pipeline** |
+| Script-anchored forced alignment | **engine built; WIRED (#242) and STORABLE; nothing consumes it yet** |
 | Onboarding questions + confirm screen | not started |
 | Transcript-as-editor review gate | not started |
 | Failure path (explain, retain footage, retry without refilming) | not started |
@@ -651,16 +651,37 @@ before treating it as a defect.
          because they were never on screen to read, and an UPLOAD (no captured
          script) returns null as a normal state, so upload-a-take keeps working
          on ASR alone exactly as it does today.
-   - [ ] **Wiring it into the analyze stage** — this is the next step and it is
-         not small: a new immutable component needs a schema version, digest,
-         and a row in the download truth table, and it touches the frozen
-         identity system (`componentVersions`, `componentDigests`,
-         `scriptSnapshotSha`). Landing it half-wired would be worse than not
-         landing it.
-   - [ ] **Consuming it** — captions take the script's spelling at the
-         recording's time; false starts become detectable as a script region
-         spoken twice; `hookStartWordIndex` becomes an exact boundary instead
-         of the current unordered token ratio.
+   - [x] **Wiring it into the analyze stage** — DONE (#242), and it was not
+         small: it took twelve allowlists, four staging matrix runs, and a
+         migration. Verified against the code, not from memory:
+         `editorAnalyze.ts:199-226` records the component (cache lookup by
+         digest, then `recordAnalysis`); `ALIGNMENT_EVIDENCE_SCHEMA_VERSION` 1
+         and `ALIGNMENT_EVIDENCE_VERSION` `alignment-1` in
+         `editorAlignment.ts:30-31`; `editorManifest.ts:276,287` puts
+         `alignment` in both `componentDigests` and `componentVersions`;
+         `directorContract.ts:207,211` requires it and validates 64-hex.
+         Migration `0100` bounds the namespace and gives alignment its OWN
+         524288-byte cap rather than the 16384 the CASE's `else` would have
+         handed it silently — the payload scales with the script (~145 B/word),
+         so 16 KiB is ~230 words, and `component_too_large` is PERMANENT.
+         `ALIGNMENT_TIMINGS_MAX_BYTES` (400000) bounds the worker side by
+         MEASURED bytes, with a test pinning the relationship.
+
+         **The half-wiring warning was heeded, not ignored.** Storable is a
+         complete state, not a partial one: nothing reads the component, and
+         `editorDirector.ts:356` still iterates `visual/audio/hook` only. That
+         is now DECLARED rather than incidental —
+         `scripts/ci/analysis_components.json` records
+         `"consumedByDirector": false` for alignment, and the CI guard (#244)
+         fails if any site disagrees. Flipping that flag to `true` names
+         `editorDirector.ts` as the file that must change.
+   - [ ] **Consuming it — THE NEXT STEP, and now unblocked.** Captions take the
+         script's spelling at the recording's time; false starts become
+         detectable as a script region spoken twice; `hookStartWordIndex`
+         becomes an exact boundary instead of the current unordered token
+         ratio. The evidence is stored and identity-pinned, so this is now a
+         read, not a rebuild. Starts by flipping `consumedByDirector` to `true`
+         in the component catalog, which will name every site that must change.
 4. Transcript-as-editor review gate
 5. Failure path — explain, retain footage, retry without refilming
 
@@ -1165,4 +1186,5 @@ cheapest thing left to check.
 | 2026-08-01 | Created. Consolidates 10-person panel (2 rounds), 3 codebase audits, Phase 8/9 rebuild, and the information-architecture critique. |
 | 2026-08-01 | Added §8a: five-question onboarding adopted with five corrections (offer as free text, Q4/Q5 moved to the confirm screen, no float confidence, never-merged sources, observed-vs-inferred audience). Gallery defined as a chooser, not a second pipeline. Cost per addition estimated, and re-cut priced at ~25-30% of a render. |
 | 2026-08-01 | Added §9a from a pre-mortem, a security/privacy audit and an efficiency/measurability audit run in parallel. Four silently-broken pipeline joints, one critical credential-vending defect (fixed), and the missing post→render join key. Reorders Phase 9: the inputs come before the polish. |
+| 2026-08-03 | Phase 10 status corrected against the code: forced alignment is now WIRED and STORABLE (#242), not "NOT wired into the pipeline". Nothing consumes it, and that is a declared state rather than an omission — `analysis_components.json` records `consumedByDirector: false` and CI fails if any site disagrees. Consuming it is the next step and is now a read, not a rebuild. |
 | 2026-08-03 | **Phase 9 COMPLETE (10/10).** Its last item is closed by measurement, and the measurement overturned the item's premise: the caption collision is the platform ACTION RAIL, which is horizontal, not the bottom caption block. Fixed by width (`captions.maxWidthPx` 680, `railInsetPx` 200, `marginHorizontalPx` 140→200) with `marginVerticalPx` deliberately unchanged at 600; pinned by a contract test that reads the frozen policy in both directions. Also written down two requirements that existed only in conversation and were therefore unbuildable: §2.4 per-task model routing, and Phase 11 item 7a teleprompter-by-content-type. Both are recorded as named gaps with their open questions, not as invented designs — each is blocked on a human decision. |
