@@ -36,7 +36,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID, createHash } from 'node:crypto'
 import { authHeader } from './authSession.mjs'
-import { captionChecks } from './captionAssertions.mjs'
+import { captionChecks, captionEvidenceChecks } from './captionAssertions.mjs'
 
 const execFile = promisify(_execFile)
 const REPO_ROOT = join(import.meta.dirname, '..', '..')
@@ -362,6 +362,23 @@ async function main() {
     // have failed the matrix and cost a full ~40-minute run to discover.
     const policy = JSON.parse(await readFile(new URL('../../worker/edit_policy_v1.json', import.meta.url), 'utf8'))
     for (const c of captionChecks(plans[0]?.plan ?? {}, policy, durMs)) {
+      check(c.name, c.ok, c.detail)
+    }
+
+    // NO CAPTION WORD IS INVENTED. Read from the DB independently rather than
+    // from anything the compiler produced — a check fed by the thing it is
+    // checking proves nothing. The speech component is the transcript; the
+    // pinned snapshot is the script, and since captions began taking the
+    // script's spelling a word may legitimately come from either.
+    const speechRows = (await admin.from('media_analyses').select('result')
+      .eq('source_asset_id', assetId).eq('component', 'speech')).data ?? []
+    const spokenWords = speechRows.flatMap((r) =>
+      (Array.isArray(r?.result?.words) ? r.result.words : []).map((w) => String(w?.text ?? '')))
+    const snapRows = (await admin.from('source_script_snapshots').select('snapshot')
+      .eq('source_asset_id', assetId)).data ?? []
+    const scriptWords = snapRows.flatMap((r) =>
+      JSON.stringify(r?.snapshot ?? {}).split(/[^\p{L}\p{N}]+/u).filter(Boolean))
+    for (const c of captionEvidenceChecks(plans[0]?.plan ?? {}, spokenWords, scriptWords)) {
       check(c.name, c.ok, c.detail)
     }
     }
