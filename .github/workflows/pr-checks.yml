@@ -311,6 +311,15 @@ jobs:
       # repair live in .github/workflows/migration-reconcile.yml.
       - name: migration-reconcile (expected-state build + hostile suite + mutation controls)
         run: bash scripts/db-tests/migration-reconcile/run.sh
+      # migration-presence answers a different question — which committed
+      # migrations a DEPLOYED database is missing — and it cannot run against one
+      # from here: no credentials, and no reason to hand CI any. What runs here is
+      # its selftest, which parses the REAL supabase/migrations tree. That is the
+      # part that rots: a migration written in a shape the parser does not read
+      # would drop out of the expected state silently, and the probe would report
+      # a database as in sync precisely about the file nobody checked.
+      - name: migration-presence (parser selftest against the real migrations tree)
+        run: node scripts/db-tests/migration-presence/probe.mjs --selftest
 
   # Phase-7 Gate 0 MANDATORY real-token evidence: run the provider countTokens on
   # the EXACT maximum-legal Director envelope and FAIL CLOSED if GEMINI_API_KEY is
