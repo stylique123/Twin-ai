@@ -91,13 +91,16 @@ describe('caption safe area — read from the frozen policy, not restated', () =
     expect(captions.maxWidthPx).toBeGreaterThan(0)
   })
 
-  // NOT ASSERTED, deliberately: that each preset's maxCharsPerLine fits inside
-  // maxWidthPx in pixels. maxCharsPerLine is a CHARACTER proxy — editorCompile
-  // says so where it splits long tokens ("the renderer measures nothing here")
-  // — and turning it into a pixel claim needs a glyph-advance constant nobody
-  // has measured. Inventing one to make this file look more thorough would be
-  // the same chosen-not-measured mistake the policy already records three times.
-  // The ASS box is the hard bound either way: libass wraps inside it, so an
-  // over-wide preset is a planned-vs-rendered LINE COUNT mismatch, which is a
-  // different defect with a different fix.
+  // NOT ASSERTED HERE — MEASURED NEXT DOOR. Whether each preset's
+  // maxCharsPerLine fits inside maxWidthPx in pixels is a glyph question, and
+  // this file declined to answer it by inventing a constant. caption-line-width
+  // .test.ts answers it from the pinned font's own advance widths, and the
+  // answer is no: ordinary caption text runs 1.45x-1.57x the box.
+  //
+  // Two things in the old note here were wrong and are worth correcting rather
+  // than deleting. libass does NOT wrap inside the box — assCaptions emits
+  // `WrapStyle: 2`, which is "no word wrapping", so the compiler's own `\N` is
+  // the only break. An over-wide line is therefore not a line-COUNT mismatch;
+  // it is drawn wider than the box, through the rail inset this file exists to
+  // protect. The safe area asserted above is only as good as that proxy.
 })
