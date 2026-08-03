@@ -745,7 +745,7 @@ async function main() {
     // Phase 6 made `analyzing` real: a completed project also records the
     // visual/audio/hook evidence components. The five analysis components are
     // the whole legal namespace; speech (this phase's subject) must be present.
-    const SANCTIONED = ['inspection', 'speech', 'visual', 'audio', 'hook']
+    const SANCTIONED = ['inspection', 'speech', 'visual', 'audio', 'hook', 'alignment']
     check('B1 only sanctioned analysis components exist; speech present',
       [...kinds].every((k) => SANCTIONED.includes(k)) && kinds.has('speech'), [...kinds].join(','))
     // SCOPED TO THIS RUN. These two counted edit_plans and kind='output' assets
@@ -786,7 +786,7 @@ async function main() {
     // `completed` with only ANALYSIS evidence (inspection/speech/visual/audio/
     // hook); no plan rows (B2) and no output pointer exist, which is the
     // observable proof that no Director/EditPlan generation or render ran.
-    check('B6 no analysis beyond the five sanctioned components (no Gemini Director output)',
+    check('B6 no analysis beyond the six sanctioned components (no Gemini Director output)',
       (comps ?? []).every((c) => SANCTIONED.includes(c.component)))
 
     // Temp hygiene: every attempt dir belonging to THIS run's jobs is gone —

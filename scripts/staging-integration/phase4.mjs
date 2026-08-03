@@ -532,8 +532,8 @@ async function main() {
     // real downstream boundary (checked below).
     const { count: beyondAnalysis } = await admin.from('media_analyses')
       .select('id', { count: 'exact', head: true })
-      .not('component', 'in', '("inspection","speech","visual","audio","hook")')
-    check('K1 zero components beyond the five sanctioned analysis components', (beyondAnalysis ?? 0) === 0)
+      .not('component', 'in', '("inspection","speech","visual","audio","hook","alignment")')
+    check('K1 zero components beyond the six sanctioned analysis components', (beyondAnalysis ?? 0) === 0)
     const { count: transcripts } = await admin.from('transcripts')
       .select('id', { count: 'exact', head: true }).in('owner_id', [uA.id, uB.id])
     check('K2 zero legacy transcript rows for this run (speech lives in media_analyses)', (transcripts ?? 0) === 0)
