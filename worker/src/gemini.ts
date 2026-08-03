@@ -1,4 +1,5 @@
 import { env } from './env.js'
+import { modelForTask } from './modelRouting.js'
 
 // Minimal Gemini JSON client for the worker (structure derivation, later steps).
 // Provider is isolated here so it can be swapped without touching job handlers.
@@ -23,10 +24,14 @@ export async function geminiJson(
   images: InlineImage[] = [],
 ): Promise<unknown> {
   if (!env.geminiKey) throw new Error('GEMINI_API_KEY not configured')
-  // Per-call model wins (so cheap mechanical tasks can run on a fast/flash model),
-  // else the configured default. Routing structure extraction to a flash model
-  // is a large COGS cut with no quality loss on these schema-constrained tasks.
-  const m = model ?? process.env.GEMINI_MODEL ?? 'gemini-3.1-pro-preview'
+  // Per-call model wins, else the TASK CLASS decides (§2.4).
+  //
+  // This used to fall through to `process.env.GEMINI_MODEL ?? 'gemini-3.1-…'`,
+  // which made "which model runs this" a property of whoever forgot to pass one
+  // — a choice by omission. `profile` resolves to the same id and honours the
+  // same env var, so nothing moves; what changes is that the choice is now
+  // written down in model_routing_v1.json where it can be seen and argued with.
+  const m = model ?? modelForTask('profile')
   // SPEED: cap the thinking model's reasoning. Unbounded thinking is the biggest
   // latency sink — these are schema-constrained JSON tasks that don't need deep
   // reasoning. Per-call budget wins; else env GEMINI_THINKING_BUDGET; else 2048.

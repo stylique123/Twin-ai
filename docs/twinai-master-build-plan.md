@@ -264,8 +264,32 @@ Routing that makes provenance ambiguous is worse than no routing.
   director-eval harness already measure output quality; routing changes should
   be judged there rather than by impression.
 
-**RECOMMENDED DECISION — the routing unit is a TASK CLASS, declared in one
-frozen catalog.** *(Proposed 2026-08-03, recorded with its reasoning so it can
+**DECIDED AND BUILT (2026-08-03) — the routing unit is a TASK CLASS, declared
+in one frozen catalog: `worker/model_routing_v1.json`, resolved by
+`modelForTask` in `worker/src/modelRouting.ts`, enforced by
+`scripts/ci/check_model_routing.mjs`.**
+
+**IT LANDED AS A NO-OP.** The catalog encodes the model each task ALREADY used,
+so nothing was re-pointed — the only safe way to put an authority over live
+behaviour, and the same property that made wiring `pacing` safe.
+
+**ROUTING ALREADY EXISTED, decided three ways and recorded nowhere:** a frozen
+`DIRECTOR_MODEL` constant, an env knob passed at exactly one call site, and an
+implicit fallthrough for everything that passed no model at all. Three
+mechanisms, two different default models, nothing comparing them.
+
+**AND WRITING THEM SIDE BY SIDE SHOWED THE ROUTING IS INVERTED.** The Director —
+which picks cuts, hook, pacing, captions and zooms, and shapes every video —
+runs on **flash**. Schema-constrained reference extraction, whose own code
+comment argued a flash model costs *"no quality loss on these schema-constrained
+tasks"*, runs on **pro**. Nobody chose that; it is what three independent
+decisions added up to once `GEMINI_FAST_MODEL` was never set. **Not fixed in the
+same change:** re-pointing `decide` changes what the model produces, which is
+what the director-eval harness and quality gate exist to judge. The next move is
+an eval, not an edit — and naming replacement model ids from memory would be the
+chosen-not-measured mistake this project has already made three times.
+
+*The original reasoning, kept because it is what produced the design:* *(Proposed 2026-08-03, recorded with its reasoning so it can
 be accepted, amended or rejected on the merits rather than re-derived in
 conversation each time.)*
 
