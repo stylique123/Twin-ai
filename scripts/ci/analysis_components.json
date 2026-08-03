@@ -1,0 +1,58 @@
+{
+  "$schema": "./analysis_components.schema.md",
+  "$why": [
+    "THE SINGLE SOURCE OF TRUTH for the media_analyses component namespace.",
+    "",
+    "Registering ONE analysis component used to require editing a dozen places that",
+    "each privately encoded 'how many analysis components exist', none of them",
+    "referencing any other: a CHECK constraint, a stored procedure's guard, that",
+    "procedure's per-component byte cap, a hand-picked migration list in a workflow,",
+    "four staging-integration phase scripts, and four TypeScript sites. Nothing",
+    "compared them, so a disagreement surfaced only as a staging matrix failure ~40",
+    "minutes in, naming a symptom rather than the cause.",
+    "",
+    "check_analysis_components.mjs reads THIS file and fails the build when any of",
+    "those sites disagrees with it. Change a component here first, then make the",
+    "sites agree; the guard tells you which ones you missed, in seconds, offline.",
+    "",
+    "THE CAP TRAP, which is why maxResultBytes is declared per component rather than",
+    "left implicit: editor_record_analysis picks its cap with a CASE whose `else`",
+    "branch is 16384 bytes. A component added without its own branch SILENTLY",
+    "inherits 16 KiB, and `component_too_large` is PERMANENT — there is no retry.",
+    "The guard computes what the CASE would actually return for every component and",
+    "compares it to the value declared here, so an inherited default has to be a",
+    "decision somebody wrote down rather than an accident nobody noticed."
+  ],
+
+  "$axes": [
+    "digestKeyed      — editor_record_analysis writes it, keyed by component digest.",
+    "consumedByDirector — editorDirector passes its evidence into the Director call.",
+    "",
+    "THESE ARE NOT THE SAME SET, and conflating them is a real hazard. A component",
+    "can be STORABLE before anything READS it: that is the deliberate state the",
+    "build plan describes for alignment, which lists 'wiring it' and 'consuming it'",
+    "as separate items and warns that landing it half-wired would be worse than not",
+    "landing it. Declaring the two axes separately makes 'recorded but not yet",
+    "consumed' something somebody wrote down, rather than a site everyone forgot."
+  ],
+  "components": [
+    { "name": "inspection", "digestKeyed": false, "consumedByDirector": false, "maxResultBytes": null },
+    { "name": "speech", "digestKeyed": false, "consumedByDirector": false, "maxResultBytes": null },
+    { "name": "visual", "digestKeyed": true, "consumedByDirector": true, "maxResultBytes": 262144 },
+    { "name": "audio", "digestKeyed": true, "consumedByDirector": true, "maxResultBytes": 65536 },
+    { "name": "hook", "digestKeyed": true, "consumedByDirector": true, "maxResultBytes": 16384 }
+  ],
+
+  "$recordAnalysisDefaultCapBytes": "The `else` branch of editor_record_analysis's cap CASE. Declared so the guard can compute each component's EFFECTIVE cap and catch one silently inheriting it.",
+  "recordAnalysisDefaultCapBytes": 16384,
+
+  "$stagingMigrationBaseline": [
+    "The staging matrix applies a HAND-PICKED list of migrations, not everything in",
+    "supabase/migrations/. Migrations at or below this number reached staging before",
+    "that list existed and are assumed present. Any migration ABOVE it that touches",
+    "the component contract must appear in the workflow's apply list, or the matrix",
+    "runs against a schema that does not match the checkout — which is how 0100",
+    "failed, as something that looked unrelated."
+  ],
+  "stagingMigrationBaseline": 89
+}

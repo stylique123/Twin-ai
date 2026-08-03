@@ -233,6 +233,16 @@ jobs:
         run: |
           node scripts/ci/check_analysis_consistency.mjs --selftest
           node scripts/ci/check_analysis_consistency.mjs
+      # Registering ONE analysis component used to mean editing twelve places
+      # that each privately encoded the component namespace, none referencing
+      # any other. Nothing compared them, so every disagreement surfaced ~40
+      # minutes into a staging matrix run against real Gemini and ASR — four
+      # runs for #242, each naming a symptom rather than the cause. This is the
+      # comparison, offline and in under a second.
+      - name: Analysis components agree with the frozen catalog (one namespace, twelve sites)
+        run: |
+          node scripts/ci/check_analysis_components.mjs --selftest
+          node scripts/ci/check_analysis_components.mjs
       - name: Build provenance (Docker npm-ci/lockfile, no dev deps, WORKER_GIT_SHA injection, OpenCV wheel hash)
         run: |
           node scripts/ci/check_build_provenance.mjs --selftest
