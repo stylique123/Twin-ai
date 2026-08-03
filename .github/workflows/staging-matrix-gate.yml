@@ -186,32 +186,45 @@ jobs:
           fi
           node scripts/ci/staging_matrix_gate.mjs --verdict --runs /tmp/runs.json
 
-      # The documentation-only exemption. Reported as an explicit success rather
-      # than by skipping, because a required status that is never posted blocks
-      # forever — "not applicable" has to be said out loud.
+      # WHICH STATUS GETS POSTED — including the documentation-only exemption,
+      # which is reported as an explicit success rather than by skipping, because
+      # a required status that is never posted blocks forever; "not applicable"
+      # has to be said out loud.
+      #
+      # THIS DECISION IS NOT MADE HERE. It used to be, as
+      # `EXEMPT: ${{ steps.scope.outputs.required == '0' }}`, and that failed
+      # OPEN: the classify step runs only on `pull_request`, so on the
+      # workflow_run path `required` is null, Actions coerces null and '0' alike
+      # to 0, and the comparison was TRUE on every single workflow_run. The real
+      # verdict was overwritten with `success — "Documentation-only PR"` before
+      # it was ever read, so a runtime PR went green whether the matrix had
+      # passed or failed. Deciding in the script means the offline selftest
+      # exercises the shipped predicate instead of a paraphrase of it, and the
+      # selftest also reads THIS FILE to fail if the YAML copy comes back.
       - name: Post the verdict
         if: always() && steps.head.outputs.sha != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ steps.head.outputs.sha }}
-          STATE: ${{ steps.verdict.outputs.state }}
-          DESCRIPTION: ${{ steps.verdict.outputs.description }}
-          TARGET_URL: ${{ steps.verdict.outputs.target_url }}
-          EXEMPT: ${{ steps.scope.outputs.required == '0' }}
+          EVENT: ${{ github.event_name }}
+          REQUIRED: ${{ steps.scope.outputs.required }}
+          VERDICT_STATE: ${{ steps.verdict.outputs.state }}
+          VERDICT_DESCRIPTION: ${{ steps.verdict.outputs.description }}
+          VERDICT_TARGET_URL: ${{ steps.verdict.outputs.target_url }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          if [ "$EXEMPT" = "true" ]; then
-            STATE=success
-            DESCRIPTION="Documentation-only PR — the staging matrix cannot prove anything about it."
-            TARGET_URL="$RUN_URL"
-          fi
-          # A missing verdict means an earlier step failed. Never silently pass:
-          # post `error`, which blocks the merge and points at this run's log.
-          if [ -z "${STATE:-}" ]; then
-            STATE=error
-            DESCRIPTION="The gate could not reach a verdict — see the workflow log."
+          if [ -f scripts/ci/staging_matrix_gate.mjs ]; then
+            node scripts/ci/staging_matrix_gate.mjs --resolve > /tmp/resolved.json
+            STATE=$(jq -r '.state' /tmp/resolved.json)
+            DESCRIPTION=$(jq -r '.description' /tmp/resolved.json)
+            TARGET_URL=$(jq -r '.targetUrl' /tmp/resolved.json)
+          else
+            # BOOTSTRAP: the base branch predates the gate script, so there are
+            # no rules to judge by. Absent rules mean BLOCK — never exempt.
+            STATE="${VERDICT_STATE:-error}"
+            DESCRIPTION="Gate script not on the base branch yet; cannot evaluate. Blocking."
             TARGET_URL="$RUN_URL"
           fi
           [ -z "${TARGET_URL:-}" ] && TARGET_URL="$RUN_URL"
