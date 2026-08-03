@@ -92,15 +92,44 @@ export function parseCreatedTables(sql) {
 const FUNC_RE = /create\s+(?:or\s+replace\s+)?function\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?\s*\(/gi
 
 /**
+ * Count the parameters in a signature, starting AT the opening paren.
+ * Top-level commas only: a `default` expression or a type with its own parens
+ * must not inflate the count.
+ */
+export function countParams(sqlFromParen) {
+  let depth = 0
+  let params = 0
+  let seenAny = false
+  for (let i = 0; i < sqlFromParen.length; i++) {
+    const c = sqlFromParen[i]
+    if (c === '(') { depth++; continue }
+    if (c === ')') { depth--; if (depth === 0) return seenAny ? params + 1 : 0; continue }
+    if (depth === 1 && c === ',') { params++; continue }
+    if (depth === 1 && !/\s/.test(c)) seenAny = true
+  }
+  return null // unbalanced — the caller must not guess
+}
+
+/**
  * Functions a migration defines, with the exact dollar-quoted body Postgres
- * stores in `pg_proc.prosrc`. Overloads collapse to the name: this repo has none,
- * and `parseFunctions` reports a collision rather than silently keeping one.
+ * stores in `pg_proc.prosrc`, and the ARITY of the signature.
+ *
+ * ARITY IS PART OF THE IDENTITY, and getting that wrong produced a false report
+ * the first time this tool was run for real. Postgres keys functions by
+ * (name, argument types); staging carries TWO `editor_create_output_asset`
+ * overloads — the committed 9-argument one plus a 10-argument variant no
+ * migration in this tree creates. Keyed by NAME alone, the probe compared the
+ * committed body against whichever row the catalog happened to return and
+ * reported a perfectly up-to-date function as stale. A drift tool that cries
+ * wolf is worse than none: it teaches people to skip its output.
  */
 export function parseFunctions(sql) {
   const clean = stripSqlComments(sql)
   const out = []
   for (const m of clean.matchAll(FUNC_RE)) {
     const after = clean.slice(m.index)
+    const nargs = countParams(after.slice(m[0].length - 1))
+    if (nargs === null) continue
     // The body is the first dollar-quoted string after the signature. `as $$`
     // and `as $function$` are both used in this tree.
     const open = /\$([A-Za-z_][A-Za-z0-9_]*)?\$/.exec(after)
@@ -109,10 +138,13 @@ export function parseFunctions(sql) {
     const bodyStart = open.index + tag.length
     const bodyEnd = after.indexOf(tag, bodyStart)
     if (bodyEnd === -1) continue
-    out.push({ name: m[1], body: after.slice(bodyStart, bodyEnd) })
+    out.push({ name: m[1], nargs, body: after.slice(bodyStart, bodyEnd) })
   }
   return out
 }
+
+/** The key a function is identified by, here and in the emitted SQL. */
+export const fnKey = (name, nargs) => `${name}/${nargs}`
 
 export const sha256 = (s) => createHash('sha256').update(s, 'utf8').digest('hex')
 
@@ -130,7 +162,9 @@ export function buildExpected(dir = MIGRATIONS_DIR, since = '') {
   for (const file of files) {
     const sql = readFileSync(`${dir}/${file}`, 'utf8')
     for (const t of parseCreatedTables(sql)) if (!tables.has(t)) tables.set(t, file)
-    for (const f of parseFunctions(sql)) functions.set(f.name, { file, sha256: sha256(f.body) })
+    for (const f of parseFunctions(sql)) {
+      functions.set(fnKey(f.name, f.nargs), { name: f.name, nargs: f.nargs, file, sha256: sha256(f.body) })
+    }
   }
   // `since` NARROWS THE REPORT, NOT THE FOLD. Every migration is still read, so
   // last-writer-wins still resolves against the whole history — a function
@@ -155,16 +189,21 @@ const quote = (s) => `'${String(s).replace(/'/g, "''")}'`
  */
 export function buildProbeSql(expected) {
   const tables = [...expected.tables.keys()]
-  const funcs = [...expected.functions.keys()]
+  const names = [...new Set([...expected.functions.values()].map((v) => v.name))]
+  // KEYED BY name/nargs, never by name. jsonb_object_agg keeps the LAST value
+  // for a duplicate key, so aggregating overloads under a bare name silently
+  // discards one of them and compares the survivor — which is exactly how the
+  // first real run reported an up-to-date function as stale.
   return `select jsonb_build_object(
   'tables', (
     select coalesce(jsonb_object_agg(t, to_regclass('public.' || t) is not null), '{}'::jsonb)
     from unnest(array[${tables.map(quote).join(', ')}]) as t
   ),
   'functions', (
-    select coalesce(jsonb_object_agg(p.proname, encode(pg_catalog.sha256(convert_to(p.prosrc, 'UTF8')), 'hex')), '{}'::jsonb)
+    select coalesce(jsonb_object_agg(p.proname || '/' || p.pronargs,
+             encode(pg_catalog.sha256(convert_to(p.prosrc, 'UTF8')), 'hex')), '{}'::jsonb)
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname = any (array[${funcs.map(quote).join(', ')}])
+    where n.nspname = 'public' and p.proname = any (array[${names.map(quote).join(', ')}])
   )
 ) as probe;`
 }
@@ -186,18 +225,30 @@ export function buildProbeSql(expected) {
  */
 export function buildDiffSql(expected) {
   const tvals = [...expected.tables].map(([t, f]) => `(${quote(t)}, ${quote(f)})`).join(', ')
-  const fvals = [...expected.functions].map(([n, v]) => `(${quote(n)}, ${quote(v.sha256)}, ${quote(v.file)})`).join(', ')
+  const fvals = [...expected.functions.values()]
+    .map((v) => `(${quote(v.name)}, ${v.nargs}, ${quote(v.sha256)}, ${quote(v.file)})`).join(', ')
   return `with want_t(name, file) as (values ${tvals}),
-     want_f(name, sha, file) as (values ${fvals}),
+     want_f(name, nargs, sha, file) as (values ${fvals}),
      got_f as (
-       select p.proname as name, encode(pg_catalog.sha256(convert_to(p.prosrc, 'UTF8')), 'hex') as sha
+       select p.proname as name, p.pronargs as nargs,
+              encode(pg_catalog.sha256(convert_to(p.prosrc, 'UTF8')), 'hex') as sha
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'
      )
 select 'missing_table' as kind, w.name, w.file from want_t w where to_regclass('public.' || w.name) is null
 union all
-select case when g.name is null then 'absent_function' else 'stale_function' end, w.name, w.file
-  from want_f w left join got_f g on g.name = w.name
+select case when g.name is null then 'absent_function' else 'stale_function' end,
+       w.name || '/' || w.nargs, w.file
+  from want_f w left join got_f g on g.name = w.name and g.nargs = w.nargs
   where g.name is null or g.sha is distinct from w.sha
+union all
+-- ADDITIVE DRIFT. An overload of a function the migrations own, at an arity no
+-- migration in this tree creates, is something a hand-applied change left
+-- behind. It cannot make the committed body wrong, but it can shadow it at a
+-- call site — which is worth seeing, and is not the same finding as "behind".
+select 'extra_overload', g.name || '/' || g.nargs, ''
+  from got_f g
+  where g.name in (select name from want_f)
+    and not exists (select 1 from want_f w where w.name = g.name and w.nargs = g.nargs)
 order by file, kind, name;`
 }
 
@@ -218,11 +269,16 @@ export function diagnose(expected, probe) {
   }
   const staleFunctions = []
   const absentFunctions = []
-  for (const [name, want] of expected.functions) {
-    const got = probe.functions[name]
-    if (got === undefined) absentFunctions.push({ name, file: want.file })
-    else if (got !== want.sha256) staleFunctions.push({ name, file: want.file })
+  for (const [key, want] of expected.functions) {
+    const got = probe.functions[key]
+    if (got === undefined) absentFunctions.push({ name: key, file: want.file })
+    else if (got !== want.sha256) staleFunctions.push({ name: key, file: want.file })
   }
+  // Overloads the database carries that no migration creates. Reported, never
+  // folded into `behind`: an extra arity does not make the committed one wrong.
+  const expectedNames = new Set([...expected.functions.values()].map((v) => v.name))
+  const extraOverloads = Object.keys(probe.functions)
+    .filter((k) => expectedNames.has(k.split('/')[0]) && !expected.functions.has(k))
   // The headline: which migration files have evidence of not being applied. A
   // stale function body is evidence for the migration that LAST defined it.
   const behind = [...new Set([
@@ -247,6 +303,7 @@ export function diagnose(expected, probe) {
     staleFunctions,
     behind,
     unprobed,
+    extraOverloads,
   }
 }
 
@@ -256,7 +313,11 @@ export function formatReport(d) {
     ? `\n${d.unprobed.length} migration(s) carry no table or function and are NOT covered:\n`
       + d.unprobed.map((f) => `  ? ${f}`).join('\n')
     : ''
-  if (d.ok) return 'in sync: every table exists and every function body matches the migrations' + coverage
+  const extras = d.extraOverloads?.length
+    ? `\nOVERLOADS no migration creates (additive drift, not "behind"):\n`
+      + d.extraOverloads.map((k) => `  + public.${k.split('/')[0]}() with ${k.split('/')[1]} args`).join('\n')
+    : ''
+  if (d.ok) return 'in sync: every table exists and every function body matches the migrations' + coverage + extras
   const lines = [`BEHIND on ${d.behind.length} migration file(s):`, ...d.behind.map((f) => `  - ${f}`)]
   if (d.missingTables.length) {
     lines.push('missing tables:', ...d.missingTables.map((m) => `  - public.${m.name}  (${m.file})`))
@@ -268,7 +329,7 @@ export function formatReport(d) {
     lines.push('functions whose body is NOT the committed one:',
       ...d.staleFunctions.map((m) => `  - public.${m.name}()  should be from ${m.file}`))
   }
-  return lines.join('\n') + coverage
+  return lines.join('\n') + coverage + extras
 }
 
 // ── selftest ───────────────────────────────────────────────────────────────
@@ -329,6 +390,26 @@ function selftest() {
     diagnose(texp, { tables: { t: true } }).unreadable)
 
   // And against the real tree, so a restructure that breaks parsing is caught.
+  check('arity is counted from the signature', countParams('(a int, b text)') === 2)
+  check('a zero-argument signature counts 0', countParams('()') === 0)
+  check('a nested paren does not inflate the count',
+    countParams('(a numeric(10,2), b text)') === 2)
+  check('an unbalanced signature returns null rather than a guess',
+    countParams('(a int, b text') === null)
+  check('parseFunctions reports arity',
+    parseFunctions('create function public.f(a int, b text) returns int language sql as $$ select 1 $$;')[0].nargs === 2)
+
+  // THE FALSE POSITIVE THIS TOOL ACTUALLY PRODUCED, pinned so it cannot return.
+  const ovl = {
+    tables: new Map(),
+    functions: new Map([[fnKey('f', 9), { name: 'f', nargs: 9, file: '0096_x.sql', sha256: sha256('NINE') }]]),
+  }
+  const ovlDiag = diagnose(ovl, { tables: {}, functions: { 'f/9': sha256('NINE'), 'f/10': sha256('TEN') } })
+  check('an EXTRA overload does not make the committed arity look stale', ovlDiag.ok)
+  check('the extra overload is still reported', ovlDiag.extraOverloads.includes('f/10'))
+  check('the committed arity being wrong is STILL caught alongside an overload',
+    !diagnose(ovl, { tables: {}, functions: { 'f/9': sha256('OLD'), 'f/10': sha256('TEN') } }).ok)
+
   const real = buildExpected()
   check('a migration that creates no table and no function is reported UNPROBED',
     diagnose(buildExpected(MIGRATIONS_DIR, '0098'), { tables: {}, functions: {} })
@@ -338,10 +419,15 @@ function selftest() {
       .unprobed.includes('0099_media_purge.sql'))
   check('the real migrations parse to a non-trivial expected state',
     real.files.length > 50 && real.tables.size > 20 && real.functions.size > 50)
+  check('every parsed function has a real arity',
+    [...real.functions.values()].every((v) => Number.isInteger(v.nargs) && v.nargs >= 0))
   check('a known table resolves to the migration that creates it',
     real.tables.get('creative_transfer_plans') === '0095_creative_transfer_lineage.sql')
   check('a REPLACED function resolves to the LAST migration to define it',
-    real.functions.get('editor_record_analysis')?.file === '0100_register_alignment_component.sql')
+    real.functions.get(fnKey('editor_record_analysis', 10))?.file === '0100_register_alignment_component.sql')
+  check('the committed editor_create_output_asset is the 9-argument one',
+    real.functions.has(fnKey('editor_create_output_asset', 9))
+      && !real.functions.has(fnKey('editor_create_output_asset', 10)))
 
   if (fails.length) {
     console.error(`selftest FAILED (${fails.length}):`)

@@ -50,6 +50,21 @@ same direction as the thing it checks. `--sql | --report` is the authority.
 Nothing in this directory connects to a database. It emits SQL and interprets an
 answer, so it cannot mutate anything it examines.
 
+## Arity is part of the identity
+
+Postgres keys functions by *(name, argument types)*, and the first real run of this
+tool got that wrong. Staging carries **two** `editor_create_output_asset` overloads —
+the committed 9-argument one plus a 10-argument variant no migration in this tree
+creates. Keyed by name alone, the probe compared the committed body against whichever
+row the catalog happened to return and reported an up-to-date function as **stale**.
+
+Functions are therefore keyed `name/nargs`. An overload the database carries that no
+migration creates is reported separately as `extra_overload` — additive drift, not
+"behind". It cannot make the committed body wrong, but it can shadow it at a call
+site, which is worth seeing and is a different finding.
+
+A drift tool that cries wolf is worse than none: it teaches people to skip its output.
+
 ## What it cannot see
 
 A migration that creates no table and defines no function — one that only `ALTER`s a
