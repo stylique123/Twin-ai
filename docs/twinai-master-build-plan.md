@@ -675,13 +675,38 @@ before treating it as a defect.
          `"consumedByDirector": false` for alignment, and the CI guard (#244)
          fails if any site disagrees. Flipping that flag to `true` names
          `editorDirector.ts` as the file that must change.
-   - [ ] **Consuming it — THE NEXT STEP, and now unblocked.** Captions take the
-         script's spelling at the recording's time; false starts become
-         detectable as a script region spoken twice; `hookStartWordIndex`
-         becomes an exact boundary instead of the current unordered token
-         ratio. The evidence is stored and identity-pinned, so this is now a
-         read, not a rebuild. Starts by flipping `consumedByDirector` to `true`
-         in the component catalog, which will name every site that must change.
+   - **Consuming it — STARTED. One of three consumers is built.**
+     - [x] **Captions take the script's spelling at the recording's time.** The
+           script is ground truth for SPELLING, the recording for TIMING; until
+           now captions used the ASR's spelling for both, so a brand name or
+           handle the ASR never heard correctly went on screen misspelled even
+           though the creator had typed it correctly minutes earlier.
+           `buildScriptSpellingMap` (editorCompile.ts) joins script words to
+           spoken words on EXACT integer (startMs, endMs) — no tolerance to
+           tune — and applies only to SUBSTITUTIONS at or above
+           `captions.scriptSpellingMinSimilarityMilli` (700, chosen not
+           measured, with the count of applications and floor-refusals returned
+           so it gets corrected from real videos).
+           **The bound is the point:** it can only change the LETTERS of a word
+           the aligner already paired. It cannot add, drop, reorder or retime a
+           caption word, ad-libs keep their ASR text (the transcript is
+           evidence), and a take with no alignment renders byte-identical
+           captions to before it existed — which covers uploads, scripts with
+           no dialogue, and every project pinned before #242, whose manifests
+           carry no alignment digest at all. Alignment is therefore OPTIONAL at
+           compile time; requiring it would have broken every in-flight project
+           permanently for a spelling improvement.
+     - [ ] **False starts** — a script region spoken twice becomes detectable.
+     - [ ] **Exact `hookStartWordIndex`** — today the hook component reports
+           `matchedTokenRatio`, an UNORDERED multiset intersection between the
+           hook's tokens and the opening window. That is a similarity score, not
+           a boundary: it says how much of the hook was said, never where it
+           ended. Alignment gives an ordered, timestamped script→recording map,
+           which is the thing a boundary can actually be read off.
+     - Note: none of these three passes alignment into the DIRECTOR, so the
+       component catalog's `consumedByDirector: false` remains correct. Flipping
+       it is a separate decision about the model's inputs, not a prerequisite
+       for reading the evidence in the compiler.
 4. Transcript-as-editor review gate
 5. Failure path — explain, retain footage, retry without refilming
 

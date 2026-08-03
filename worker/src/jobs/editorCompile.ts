@@ -107,6 +107,11 @@ export interface EditPolicyV1 {
     maxWidthPx: number
     /** How far before the end of the video the LAST caption must finish. */
     tailGuardMs: number
+    /** Minimum aligner similarity (0..1000) before a SUBSTITUTION's script
+     *  spelling replaces the ASR's in a caption. Below it the pairing is more
+     *  likely two unrelated words in the same position, and re-spelling would
+     *  put a word on screen the creator never said. */
+    scriptSpellingMinSimilarityMilli: number
     presets: Record<string, CaptionPresetPolicy>
   }
   zooms: {
@@ -427,6 +432,12 @@ export interface CompileEvidence {
    *  of the frame regardless of where the person sat. Empty is honest and means
    *  "no face evidence" — never "the face is centred". */
   faces?: CompileFaceSample[]
+  /** Script words with the time they were actually spoken, from the alignment
+   *  component (#242). OPTIONAL, and absence is a normal state rather than a
+   *  degraded one: an upload has no captured script, and a project pinned
+   *  before alignment existed has no such component in its manifest. Both must
+   *  keep compiling exactly as they did, so nothing here may be required. */
+  scriptWordTimings?: CompileScriptWordTiming[]
 }
 
 /** One sampled instant, in SOURCE time, with the largest face found in it.
@@ -1050,11 +1061,16 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const captionPreset = policy.captions.presets[decision.captionPresetId]
   if (!captionPreset) bad(`captions: unknown preset ${decision.captionPresetId}`)
   const emphasisSet = new Set(decision.emphasisWordIndices)
+  // Built once per render, before the cues. An absent map is the ordinary case
+  // (upload, no captured script, or a project pinned before alignment existed)
+  // and yields captions byte-identical to those produced before this consumer.
+  const spelling = buildScriptSpellingMap(
+    evidence.scriptWordTimings, policy.captions.scriptSpellingMinSimilarityMilli)
   const cues = buildCaptionCues({
     words: evidence.words, timeMap, preset: captionPreset,
     maxLines: policy.captions.maxLinesPerCue, maxCues: policy.captions.maxCues,
     tailGuardMs: policy.captions.tailGuardMs,
-    outputDurationMs, emphasisSet, warn,
+    outputDurationMs, emphasisSet, warn, spelling,
   })
 
   // ---- zooms ----------------------------------------------------------------
@@ -1272,8 +1288,86 @@ interface CueBuildInputs {
   outputDurationMs: number
   emphasisSet: Set<number>
   warn: WarningSink
+  /** Script spelling for spoken words the aligner paired. Empty when there is
+   *  no alignment evidence — an upload, a pre-#242 pinned project, or a take
+   *  with no captured script — and captions then read exactly as they always
+   *  have. Absence is a normal state, never a degraded one. */
+  spelling: ScriptSpellingMap
 }
 interface StagedWord { index: number; text: string; outStartMs: number; outEndMs: number }
+
+/**
+ * SCRIPT SPELLING AT THE RECORDING'S TIME — the first consumer of the alignment
+ * component (#242), and deliberately the most bounded one.
+ *
+ * The script is ground truth for SPELLING, the recording for TIMING. Captions
+ * used the ASR's spelling for both, so a brand name or handle the ASR never
+ * heard correctly went on screen misspelled even though the creator had typed
+ * it correctly minutes earlier.
+ *
+ * KEYED BY EXACT (startMs, endMs), not by index. `scriptWordTimings` copies its
+ * times verbatim from the spoken words it paired with, so the join is an exact
+ * integer match rather than a nearest-neighbour search — there is no tolerance
+ * to tune and no way for it to drift onto a neighbouring word.
+ *
+ * AMBIGUITY IS DROPPED, NOT RESOLVED. If two timings claim the same span the
+ * pairing is not decidable, so neither is applied. Guessing between them could
+ * put a word on screen the creator never said, which is the one failure this
+ * must not have.
+ *
+ * Only substitutions, only above the floor. A `match` needs nothing, a
+ * `not_spoken` word was never said, and an INSERTION is an ad-lib that keeps
+ * the ASR's text — `editorSpeech` requires off-script words to survive, because
+ * the transcript is evidence and evidence is not edited to agree with the plan.
+ */
+export interface CompileScriptWordTiming {
+  text: string
+  startMs: number | null
+  endMs: number | null
+  via: string
+  similarityMilli?: number
+}
+
+export interface ScriptSpellingMap {
+  /** key: `${startMs}:${endMs}` → the script's spelling for that spoken word. */
+  byTime: Map<string, string>
+  /** Refused by the similarity floor — reported so the floor can be corrected. */
+  belowFloor: number
+  /** Two timings claimed one span; neither applied. */
+  ambiguous: number
+  /** How many caption words actually changed spelling on this render. Counted
+   *  rather than assumed: the floor is a chosen number, and it gets corrected
+   *  from what real videos do, not from an estimate with no expiry date. */
+  applied: number
+}
+
+export function buildScriptSpellingMap(
+  timings: readonly CompileScriptWordTiming[] | undefined,
+  minSimilarityMilli: number,
+): ScriptSpellingMap {
+  const byTime = new Map<string, string>()
+  const seen = new Set<string>()
+  // FAIL CLOSED ON A MISSING FLOOR. `(similarityMilli ?? 0) < undefined` is
+  // false, so an absent threshold would silently accept EVERY substitution —
+  // the fail-open direction, on the one decision here that can put a word on
+  // screen the creator never said. A threshold that is not a real number means
+  // no re-spelling at all.
+  if (!Number.isFinite(minSimilarityMilli)) return { byTime, belowFloor: 0, ambiguous: 0, applied: 0 }
+  let belowFloor = 0
+  let ambiguous = 0
+  for (const t of timings ?? []) {
+    if (t?.via !== 'substitution') continue
+    if (!Number.isInteger(t.startMs) || !Number.isInteger(t.endMs)) continue
+    const text = String(t.text ?? '')
+    if (text === '') continue
+    const key = `${t.startMs}:${t.endMs}`
+    if (seen.has(key)) { byTime.delete(key); ambiguous++; continue }
+    seen.add(key)
+    if ((t.similarityMilli ?? 0) < minSimilarityMilli) { belowFloor++; continue }
+    byTime.set(key, text)
+  }
+  return { byTime, belowFloor, ambiguous, applied: 0 }
+}
 
 // Greedy line fill: words are never split, truncated or reordered. A word longer
 // than the line limit gets its own line rather than being cut, because caption
@@ -1444,7 +1538,13 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     const outStartMs = piece.outputStartMs + (w.startMs - piece.sourceStartMs)
     const outEndMs = piece.outputStartMs + (w.endMs - piece.sourceStartMs)
     if (outEndMs <= outStartMs) continue
-    staged.push({ index: i, text: w.text, outStartMs, outEndMs, pieceIndex: piece.index })
+    // THE ONE PLACE CAPTION TEXT IS CHOSEN. The script's spelling replaces the
+    // ASR's only where the aligner paired this exact spoken word; everywhere
+    // else `w.text` is untouched, so a take with no alignment produces
+    // byte-identical captions to before this existed.
+    const respelt = inp.spelling.byTime.get(`${w.startMs}:${w.endMs}`)
+    if (respelt !== undefined && respelt !== w.text) inp.spelling.applied++
+    staged.push({ index: i, text: respelt ?? w.text, outStartMs, outEndMs, pieceIndex: piece.index })
   }
 
   const cues: PlanCue[] = []

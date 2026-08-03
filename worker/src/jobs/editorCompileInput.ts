@@ -47,6 +47,7 @@ import { EditPlanError } from './editPlanContract.js'
 import type {
   CompileInput, CompileWord, CompileCandidate, CompileVisualWaste,
   CompileAudioFacts, CompileEvidence, CompileDecision, CompileIdentity, CompileSource,
+  CompileScriptWordTiming,
   CompileFaceSample,
   SpeechCandidateKind, CandidateConfidence,
 } from './editorCompile.js'
@@ -333,6 +334,12 @@ export interface AssembleArgs {
   // existing callers that don't pass one keep compiling unchanged; absent is
   // treated exactly like null, never like "some" brand.
   brand?: Record<string, unknown> | null
+  // The pinned alignment component (#242), untyped here for the same reason as
+  // `brand`. OPTIONAL, and absent is treated exactly like null: an upload, a
+  // take with no captured script, and every project pinned before alignment
+  // existed all arrive here with nothing, and must compile identically to how
+  // they did before this consumer.
+  alignment?: Record<string, unknown> | null
 }
 
 const HEX_COLOUR_RE = /^#[0-9a-fA-F]{6}$/
@@ -351,6 +358,37 @@ export function readComponentBrandColors(brand: Record<string, unknown> | null):
   return { primaryHex, highlightHex }
 }
 
+/**
+ * The alignment component's per-script-word timings, defensively.
+ *
+ * Returns `[]` for every shape that is not an array of usable entries, because
+ * the only consumer treats an empty list as "no script spelling" — which is the
+ * correct behaviour for an upload, a take with no captured script, or a project
+ * pinned before this component existed. A malformed component must degrade to
+ * that same state rather than throwing: captions are not worth failing a render
+ * over, and the ASR text is always a correct fallback.
+ */
+export function readComponentScriptWordTimings(
+  alignment: Record<string, unknown> | null,
+): CompileScriptWordTiming[] {
+  const raw = (alignment as { scriptWordTimings?: unknown } | null)?.scriptWordTimings
+  if (!Array.isArray(raw)) return []
+  const out: CompileScriptWordTiming[] = []
+  for (const e of raw) {
+    if (e === null || typeof e !== 'object') continue
+    const t = e as Record<string, unknown>
+    if (typeof t.text !== 'string' || typeof t.via !== 'string') continue
+    out.push({
+      text: t.text,
+      startMs: isInt(t.startMs) ? t.startMs : null,
+      endMs: isInt(t.endMs) ? t.endMs : null,
+      via: t.via,
+      ...(isInt(t.similarityMilli) ? { similarityMilli: t.similarityMilli } : {}),
+    })
+  }
+  return out
+}
+
 export function buildCompileInput(args: AssembleArgs): CompileInput {
   const words = readComponentWords(args.speech)
   const candidates = readComponentCandidates(args.speech, words.length)
@@ -366,7 +404,8 @@ export function buildCompileInput(args: AssembleArgs): CompileInput {
     ? { ...args.source, displayWidthPx: dw, displayHeightPx: dh }
     : args.source
   const audio = readComponentAudioFacts(args.audio)
-  const evidence: CompileEvidence = { words, candidates, visualWaste, audio, faces }
+  const scriptWordTimings = readComponentScriptWordTimings(args.alignment ?? null)
+  const evidence: CompileEvidence = { words, candidates, visualWaste, audio, faces, scriptWordTimings }
   const decision = readDecision(args.decision, {
     candidates: candidates.length, visualWaste: visualWaste.length, words: words.length,
   })
