@@ -48,9 +48,10 @@ import type {
   CompileInput, CompileWord, CompileCandidate, CompileVisualWaste,
   CompileAudioFacts, CompileEvidence, CompileDecision, CompileIdentity, CompileSource,
   CompileScriptWordTiming,
-  CompileFaceSample,
+  CompileFaceSample, CompileReviewEdits,
   SpeechCandidateKind, CandidateConfidence,
 } from './editorCompile.js'
+import { applyReviewOverlay, validateReviewOverlay } from './reviewOverlay.js'
 import {
   SPEECH_CANDIDATE_KINDS, CANDIDATE_CONFIDENCE_CODES, VISUAL_WASTE_CLASSES,
   visualWasteSelectionEnabled, type DirectorDecision,
@@ -340,6 +341,46 @@ export interface AssembleArgs {
   // existed all arrive here with nothing, and must compile identically to how
   // they did before this consumer.
   alignment?: Record<string, unknown> | null
+  // The two overlay fields the DECISION cannot express, already composed by
+  // `composeReviewedDecision` below. Optional, and absent is exactly "nobody
+  // reviewed" — the state every project is in until the review screen is used.
+  review?: CompileReviewEdits
+}
+
+/**
+ * THE DECISION THE COMPILER ACTUALLY CONSUMES, when a person has reviewed it.
+ *
+ * Two things happen here and they belong together, because doing one without
+ * the other produces a plan that is internally inconsistent:
+ *
+ *  1. the overlay is validated against THIS recording's word count — the only
+ *     place the two are ever seen side by side. An overlay written against an
+ *     earlier transcript would otherwise strike whatever sentence now occupies
+ *     those indices, which is worse than any refusal;
+ *  2. the parts the decision can carry are composed into it (`applyReviewOverlay`)
+ *     and the parts it cannot are returned separately for the compiler.
+ *
+ * THE COMPOSED DECISION IS WHAT EVERY LATER CHECK MUST SEE. `assertNoCentisecondLeak`
+ * pairs `input.decision.selections[i]` with `decision.selections[i]` positionally;
+ * handing it the RAW decision after a restore dropped a selection would compare
+ * span i against record i+1 and raise a units failure that is not there. So this
+ * returns the decision to use, and callers use it for both.
+ *
+ * A null overlay returns the SAME OBJECT, matching `applyReviewOverlay`'s own
+ * identity guarantee — nothing about a project without a review is even copied.
+ */
+export function composeReviewedDecision(args: {
+  decision: DirectorDecision
+  speech: Record<string, unknown> | null
+  overlay: unknown | null
+}): { decision: DirectorDecision; review?: CompileReviewEdits } {
+  if (args.overlay === null || args.overlay === undefined) return { decision: args.decision }
+  const spokenWordCount = readComponentWords(args.speech).length
+  const overlay = validateReviewOverlay(args.overlay, spokenWordCount)
+  return {
+    decision: applyReviewOverlay(args.decision, overlay),
+    review: { removeWordRanges: overlay.removeWordRanges, respellWords: overlay.respellWords },
+  }
 }
 
 const HEX_COLOUR_RE = /^#[0-9a-fA-F]{6}$/
@@ -410,7 +451,10 @@ export function buildCompileInput(args: AssembleArgs): CompileInput {
     candidates: candidates.length, visualWaste: visualWaste.length, words: words.length,
   })
   const brandColors = readComponentBrandColors(args.brand ?? null)
-  return { identity: args.identity, source: sourceWithRaster, evidence, decision, brandColors }
+  return {
+    identity: args.identity, source: sourceWithRaster, evidence, decision, brandColors,
+    ...(args.review ? { review: args.review } : {}),
+  }
 }
 
 /**
