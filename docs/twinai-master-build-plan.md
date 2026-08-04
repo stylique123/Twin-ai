@@ -672,7 +672,7 @@ decided. Phase 9 is COMPLETE (10/10).**
 | Script-anchored forced alignment | **engine built; WIRED (#242) and STORABLE; nothing consumes it yet** |
 | Onboarding questions + confirm screen | not started |
 | Transcript-as-editor review gate | **contract built** (`reviewOverlay.ts`); the SCREEN is not |
-| Failure path (explain, retain footage, retry without refilming) | not started |
+| Failure path (explain, retain footage, retry without refilming) | **explain built** (`failureExplain.ts`); retain + retry were ALREADY TRUE — see item 5 |
 
 **A CORRECTION WORTH KEEPING.** During the Phase-9 close I reported that the
 live Director call was broken in staging, on the strength of phase-7 failures
@@ -888,7 +888,32 @@ before treating it as a defect.
    stage consuming `removeWordRanges` and `respellWords` — which cannot live in
    the decision, because it expresses removals as indices into the Director's
    CANDIDATE list and a struck sentence may have no candidate at all.
-5. Failure path — explain, retain footage, retry without refilming
+5. **Failure path — the EXPLAIN half is built; the other two were already true.**
+   `worker/src/jobs/failureExplain.ts`.
+   **Checking first changed the work.** "Retain footage" and "retry without
+   refilming" read like things to build and are not: 0099's purge fires on a
+   `media_assets` DELETE or status→deleted, and a failed PROJECT does neither,
+   so footage is retained by construction; and
+   `edit_projects_active_source_uniq` is PARTIAL (active statuses only), so a
+   failed project does not block a new one on the same asset, while
+   `media_analyses_reuse_uniq` means the retry reuses the analysis rather than
+   paying for it twice. The gap was never the mechanism. It was that nobody
+   TOLD the creator any of it.
+   **Classes, not a paragraph per code.** A creator is asking four things — is
+   my footage still there, must I film it again, will retry help, is this my
+   fault — and there are only five answers: `retry_helps`, `retry_wont_help`,
+   `refilm`, `reupload`, `our_config`, plus `unknown`. One explanation per code
+   would be 40+ pieces of prose that all say the same four things and drift.
+   **The coverage guard found four codes on its first run** that a hand-written
+   grep had missed (`brand_snapshot_corrupt`, `model_version_mismatch`,
+   `speech_transcript_mismatch`, `source_not_ready`) — it reads every
+   `new PermanentJobError` in the tree from source, and a companion test refuses
+   entries for codes nothing can emit, so the catalogue cannot rot in either
+   direction.
+   **Fails safe:** an unclassified code is `unknown`, never a guess, and
+   specifically never claims a retry will help — telling someone to retry a
+   failure that can never clear is exactly how this defect hurts.
+   *Still to build:* surfacing it (the API/UI), and the retry button itself.
 
 ### Phase 11 — the take itself *(REORDERED — this is now the highest-risk area)*
 6. **Preflight check before recording** — room echo, backlight, orientation,
