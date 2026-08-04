@@ -31,6 +31,10 @@ import type { DirectorDecision } from './directorContract.js'
 import { watchCancellation } from './editorCancel.js'
 import { env } from '../env.js'
 
+/** Postgres `undefined_table`. Named rather than inlined so the one place that
+ *  treats a database error as a normal state says which error, out loud. */
+export const UNDEFINED_TABLE = '42P01'
+
 export interface CompileOutcome {
   planId: string
   planSha256: string
@@ -306,14 +310,43 @@ export function requireSha(value: unknown, what: string): string {
  * both "no row" and "the query failed", and treating a failed read as "nobody
  * reviewed" would render the video WITHOUT the creator's edits and report
  * success — the exact silent-degradation shape this pipeline keeps producing.
+ *
+ * ── THE ONE ERROR THAT IS NOT A DEGRADATION: THE TABLE ITSELF IS ABSENT ───
+ *
+ * A push to `main` touching `worker/` DEPLOYS THE WORKER; migrations are
+ * applied separately and by hand. So there is a real window in which this code
+ * is running against a database that has never seen 0102, and without the
+ * branch below every compile in that window would fail on
+ * `relation "edit_review_overlays" does not exist`, retry, and burn the project
+ * — for a feature that is switched off.
+ *
+ * `42P01` (undefined_table) is treated as "nobody reviewed" NOT because it is a
+ * convenient default, but because it is ENTAILED: no table means no row, no row
+ * means no overlay was ever submitted, and there is therefore no creator edit
+ * that could be silently dropped. That is a proof, not a hope, and it is the
+ * only error code with that property. Every other failure — a permission
+ * error, a timeout, a broken connection — is a database that MIGHT be holding
+ * an overlay it will not give us, and those still fail loudly.
  */
-async function loadReviewOverlay(projectId: string): Promise<unknown | null> {
-  const { data, error } = await db.from('edit_review_overlays')
-    .select('overlay').eq('edit_project_id', projectId).maybeSingle()
-  if (error) throw new Error(`compiling: reading the review overlay failed: ${error.message}`)
+export function readOverlayResult(
+  result: { data: unknown; error: { code?: string; message?: string } | null },
+): unknown | null {
+  const { data, error } = result
+  if (error) {
+    if ((error as { code?: string }).code === UNDEFINED_TABLE) return null
+    throw new Error(`compiling: reading the review overlay failed: ${error.message}`)
+  }
   const overlay = (data as { overlay?: unknown } | null)?.overlay
   if (overlay === undefined || overlay === null) return null
   return overlay
+}
+
+/** The read itself. Split from `readOverlayResult` only so the decision that
+ *  branch encodes is testable without a database — it is the one place a
+ *  database error is allowed to mean "carry on". */
+async function loadReviewOverlay(projectId: string): Promise<unknown | null> {
+  return readOverlayResult(await db.from('edit_review_overlays')
+    .select('overlay').eq('edit_project_id', projectId).maybeSingle())
 }
 
 async function loadProjectGeneration(projectId: string): Promise<string> {

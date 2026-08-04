@@ -22,6 +22,9 @@
 // Every guard carries a mutation control, in the form this suite already uses:
 // the policy is an argument, so a control can genuinely disable the guard.
 import { describe, expect, it } from 'vitest'
+
+process.env.SUPABASE_URL ||= 'https://stub.supabase.co'
+process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'stub-service-role-key'
 import { compileEditPlan, struckRangeInterval, type CompileInput } from '../jobs/editorCompile.js'
 import { EditPlanError, validateEditPlan } from '../jobs/editPlanContract.js'
 import { composeReviewedDecision } from '../jobs/editorCompileInput.js'
@@ -408,5 +411,49 @@ describe('composeReviewedDecision — validation and composition happen together
     // Carried to the compiler: the two the decision has no vocabulary for.
     expect(out.review?.removeWordRanges).toEqual([struck(6, 6)])
     expect(out.review?.respellWords).toEqual([{ wordIndex: 8, text: 'TwinAI' }])
+  })
+})
+
+// Imported at the top level, after the env stubs above: `editorCompileStage`
+// reaches `db.js`, which refuses to load without a Supabase URL and key. It
+// never connects — only the pure result reader below is called.
+const { readOverlayResult, UNDEFINED_TABLE } = await import('../jobs/editorCompileStage.js')
+
+describe('THE DEPLOY WINDOW — the worker ships before its migration does', () => {
+  // A push to `main` touching `worker/` deploys the worker; migrations are
+  // applied separately and by hand. So this code genuinely runs against
+  // databases that have never seen 0102, and what it does then is not a
+  // detail — without the branch under test, every compile in that window
+  // fails, retries, and burns the project for a feature that is switched off.
+  it('an ABSENT TABLE reads as "nobody reviewed" — which is entailed, not assumed', () => {
+    // No table means no row, no row means no overlay was ever submitted, so
+    // there is provably no creator edit being dropped. That property belongs to
+    // this error code and to no other.
+    expect(readOverlayResult({
+      data: null, error: { code: UNDEFINED_TABLE, message: 'relation "edit_review_overlays" does not exist' },
+    })).toBeNull()
+  })
+
+  it('EVERY OTHER database error still fails loudly', () => {
+    // A permission error, a timeout, a dropped connection: each is a database
+    // that MIGHT be holding an overlay it will not hand over. Rendering without
+    // the creator's edits and reporting success is the silent degradation this
+    // pipeline keeps producing.
+    for (const code of ['42501', '57014', '08006', undefined]) {
+      expect(() => readOverlayResult({ data: null, error: { code, message: 'nope' } }))
+        .toThrow(/reading the review overlay failed/)
+    }
+  })
+
+  it('a present table with no row is the ordinary case, and reads the same', () => {
+    expect(readOverlayResult({ data: null, error: null })).toBeNull()
+    expect(readOverlayResult({ data: { overlay: null }, error: null })).toBeNull()
+  })
+
+  it('a stored overlay is returned verbatim — this function never validates', () => {
+    // Validation happens in `composeReviewedDecision`, against THIS recording's
+    // word count. A reader that also validated would validate against nothing.
+    const overlay = { schemaVersion: 1, removeWordRanges: [{ startWordIndex: 1, endWordIndex: 2 }] }
+    expect(readOverlayResult({ data: { overlay }, error: null })).toEqual(overlay)
   })
 })

@@ -20,6 +20,20 @@ supabase db push   # applies every file in supabase/migrations/ in order:
 > push` yourself whenever new files land in `supabase/migrations/`. (Edge functions
 > and the worker auto-deploy via GitHub Actions on push to `main`; see §2/§3.)
 
+> **THE MERGE IS THE DEPLOY, AND THE MIGRATION IS NOT.** Those two sentences
+> together describe a window: a PR touching both `worker/` and
+> `supabase/migrations/` ships the worker the moment it merges, against a
+> database that does not yet have the migration. Anything the new worker reads
+> unconditionally will fail for every job until someone runs `db push`.
+>
+> So worker code that reads a table added in the same PR must treat
+> `42P01 undefined_table` as the pre-migration state — and only where that state
+> is *entailed* rather than merely convenient. `loadReviewOverlay`
+> (`editorCompileStage.ts`) is the worked example: no table means no row means no
+> overlay was ever submitted, so "nobody reviewed" is provably correct there,
+> while every other error code still fails loudly. Where absence cannot be
+> reasoned about that way, apply the migration BEFORE merging instead.
+
 ## 2. Edge functions — deploy + secrets
 On push to `main`, `.github/workflows/deploy-edge.yml` deploys **every** function
 in `supabase/functions/` automatically — you normally don't run these by hand. Set
