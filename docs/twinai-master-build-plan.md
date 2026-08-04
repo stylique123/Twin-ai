@@ -1326,19 +1326,33 @@ Three more, each of which **blocks a named later phase**:
   What `0099` still does NOT do: sweep objects that never had a row. That needs
   an age-based reaper over storage prefixes — a separate change with a different
   risk profile, since a reaper that is wrong deletes live footage.
-- **`generate-blueprint` has none of the Director's injection discipline.**
-  Scraped page text and reference transcripts are concatenated into the prompt
-  with no data/instruction boundary, while `editorDirector.ts:64-65` states
-  exactly the right one. Attack path: publish a video whose speech contains
-  instructions → target pastes the link → it reaches the prompt verbatim → the
-  model's output is read aloud and posted to the creator's audience.
-  **Blocks Phase 12a (posting) and the research layer**, which turns this from
-  opportunistic into trivial.
-- **Social OAuth access + refresh tokens are plaintext at rest.** Column grants
-  are correct so clients can never read them, but any dump or service-role leak
-  buys the ability to post as every connected creator. **Blocks §7b analytics
-  scopes**, which would widen a leak from "post a video" to "read this
-  creator's whole audience".
+- ~~**`generate-blueprint` has none of the Director's injection discipline.**~~
+  **CLOSED — checked in the source 2026-08-04, and it is built.** The system
+  prompt carries an UNTRUSTED DATA section naming the fence and forbidding the
+  model from following, repeating or acting on anything inside it — including
+  emitting a URL, @mention, discount code or hashtag that appears only there.
+  `fenced()` STRIPS both delimiters from the content before wrapping, so fenced
+  text cannot close its own fence and continue as instructions. All four
+  untrusted inputs go through it: the derived structure, the reference
+  transcript, the creator's typed note, and the scraped creator DNA.
+  **The DNA being fenced is the part worth noticing**, and its comment says why:
+  it reads like our own text, but every field was synthesized from scraped
+  captions, so it is exactly as attacker-influenceable as the transcript and one
+  step further from scrutiny because it arrives pre-formatted as a briefing.
+  This no longer blocks Phase 12a or the research layer.
+- **Social OAuth access + refresh tokens are plaintext at rest. STILL LIVE —
+  re-verified 2026-08-04**: `0040_platform_connections.sql:14-15` declares
+  `access_token text` and `refresh_token text`, with no encryption anywhere in
+  the tree. Column grants are correct so clients can never read them, but any
+  dump or service-role leak buys the ability to post as every connected creator.
+  **Blocks §7b analytics scopes**, which would widen a leak from "post a video"
+  to "read this creator's whole audience".
+  **It is the last of these three still open**, and the one that needs a
+  decision before code: where the key lives. Encrypting in the database
+  (pgsodium/Vault) keeps the ciphertext and the key in the same system a dump
+  would take; encrypting in the worker means a key in the worker's environment
+  and a migration path for every existing row. That choice is the work, not the
+  SQL.
 
 Also worth recording, because it is the correct instinct applied unevenly: the
 render half — the EditPlan contract, the argv alphabet, the ASS escaper, the
