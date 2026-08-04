@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Sparkles, Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob } from '../../lib/api'
+import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
 import { buildRecordingScript } from '../../lib/api'
@@ -55,6 +56,10 @@ export default function V2Building() {
   // time). Drives a slow crawl so the bar never freezes at 12% and reads as stuck.
   const [ingesting, setIngesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Why we did NOT use the reference the creator pasted. Shown rather than
+  // swallowed: silently building from something else is how they end up with a
+  // script that has nothing to do with the video they chose, and no idea why.
+  const [refNote, setRefNote] = useState<string | null>(null)
   const started = useRef(false)
   // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
   // Calendar…) keeps the build running in the background, but Cancel truly stops
@@ -137,7 +142,34 @@ export default function V2Building() {
                 if (cancelled.current) return // explicit Cancel → stop, no spend
                 const job = await getJob(jobId)
                 if (!job) continue
-                if (job.status === 'done' && job.result?.transcript_id) { transcript_id = job.result.transcript_id; break }
+                if (job.status === 'done' && job.result?.transcript_id) {
+                  // REJECT AN UNUSABLE REFERENCE BEFORE IT POISONS THE SCRIPT.
+                  // §5: "a bad reference link — 12 minutes, no speech, a
+                  // slideshow, a song. Currently goes straight in and produces
+                  // confident nonsense." The nonsense is confident precisely
+                  // because nothing said the input was unusable.
+                  //
+                  // Withholding the transcript id is the WHOLE mechanism —
+                  // `generate-blueprint` already builds from the reference plus
+                  // the creator's DNA when no transcript arrives, which is the
+                  // same pattern mode a failed read has always fallen back to.
+                  // So this adds a reason, not a new code path.
+                  //
+                  // An UNKNOWN verdict proceeds. A reference we could not
+                  // measure is one we have no opinion about, and discarding the
+                  // creator's own choice on no evidence is the same overreach in
+                  // the other direction.
+                  const check = assessReference({
+                    durationSec: job.result.duration_sec ?? null,
+                    wordCount: job.result.words ?? null,
+                  })
+                  if (mayUseReference(check)) {
+                    transcript_id = job.result.transcript_id
+                  } else {
+                    setRefNote(REFERENCE_REASON_TEXT[check.reason])
+                  }
+                  break
+                }
                 if (job.status === 'failed') break // unreadable → fall through to pattern mode
               }
             }
@@ -266,6 +298,11 @@ export default function V2Building() {
               })}
             </ul>
 
+            {refNote && (
+              <p className="mt-6 rounded-card border border-amber/25 bg-amber/[0.06] px-4 py-3 text-center text-xs leading-relaxed text-sand">
+                {refNote} We are building from your idea and your own style instead.
+              </p>
+            )}
             <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-xs leading-relaxed text-stone">
               Usually 30–60 seconds. Leave anytime — we keep building and it lands in your Library.
             </p>

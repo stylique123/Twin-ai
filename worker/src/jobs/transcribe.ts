@@ -64,6 +64,16 @@ export async function handleTranscribe(job: Job): Promise<Record<string, unknown
     transcript_id: data.id,
     language: t.language,
     words: t.words.length,
+    // DECLARED BY THE CLIENT ALL ALONG AND NEVER EMITTED. `IngestJob.result`
+    // (packages/shared/src/api.ts) has carried an optional `duration_sec` since
+    // it was written; nothing ever set it, so every reader saw `undefined` and
+    // had no way to tell that from a reference with no duration.
+    //
+    // It matters now because reference validation needs exactly two facts —
+    // how long it is and how much is said in it — and a caller that cannot see
+    // the first cannot distinguish "a twelve-minute podcast" from "we did not
+    // measure", which is the one distinction that whole check is built around.
+    duration_sec: t.duration_sec,
     structured: structure !== null,
     structure_error: structureError,
   }
