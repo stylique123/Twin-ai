@@ -125,11 +125,25 @@ export function idleVerdict(now: number = Date.now(), store: Storage | null = de
  */
 export function startIdleWatch(
   onExpire: (reason: 'idle' | 'unknown') => void,
-  opts: { now?: () => number, pollMs?: number, store?: Storage } = {},
+  opts: { now?: () => number, pollMs?: number, store?: Storage, isBusy?: () => boolean } = {},
 ): () => void {
   const now = opts.now ?? (() => Date.now())
   const pollMs = opts.pollMs ?? IDLE_POLL_MS
   const store = opts.store ?? defaultStore()
+  // BUSY DEFERS THE SIGN-OUT, and this is the whole reason the previous
+  // idle-logout was deleted rather than tuned. It "read as 'it goes blank and
+  // logs me out'" — the complaint was about LOST WORK, not about a policy.
+  //
+  // A recording in progress produces no pointer or keyboard events: someone
+  // talking to camera for four minutes is maximally engaged and looks, to an
+  // activity listener, exactly like someone who walked away. Signing them out
+  // there destroys the one thing in this product that cannot be cheaply
+  // repeated.
+  //
+  // So busy does not merely postpone the check — it STAMPS, so the hour starts
+  // again when the work ends. Otherwise the sign-out fires the instant the
+  // recording stops, which is the same defect one second later.
+  const isBusy = opts.isBusy ?? (() => false)
   let fired = false
 
   const stamp = () => {
@@ -139,6 +153,7 @@ export function startIdleWatch(
   }
   const check = () => {
     if (fired) return
+    if (isBusy()) { markActivity(now(), store); return }
     const v = idleVerdict(now(), store)
     if (v.expired) { fired = true; onExpire(v.reason) }
   }

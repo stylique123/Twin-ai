@@ -1,5 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Session } from '@supabase/supabase-js'
+import { idleVerdict, markActivity, startIdleWatch } from '../lib/idleTimeout'
+import { rememberSignOut } from '../lib/idleSignOut'
 import { supabase } from '../lib/supabase'
 import { getProfileStrict, redeemReferral, REFERRAL_CODE_KEY } from '../lib/api'
 import type { Profile } from '../lib/types'
@@ -14,6 +16,8 @@ interface AuthState {
   refreshSession: () => Promise<Session | null>
   refreshProfile: () => Promise<Profile | null>
   signOut: () => Promise<void>
+  /** Hold off the idle sign-out while real work is in flight. Returns the release. */
+  holdIdle: () => () => void
 }
 
 const Ctx = createContext<AuthState>({
@@ -26,11 +30,25 @@ const Ctx = createContext<AuthState>({
   refreshSession: async () => null,
   refreshProfile: async () => null,
   signOut: async () => {},
+  holdIdle: () => () => {},
 })
 
-// Legacy idle-logout marker — the hour-long idle auto-logout is GONE (it kicked
-// creators out every time they reopened the app after an hour away, which read
-// as "it goes blank and logs me out"). Clean the stale key up on sign-out only.
+// THE IDLE LOGOUT IS BACK, and this comment is kept because it is the reason it
+// has to be built differently this time. It was deleted for kicking creators
+// out when they reopened the app after an hour away, "which read as 'it goes
+// blank and logs me out'".
+//
+// That is TWO complaints and only one is about the policy:
+//   "it logs me out"  the policy — asked for again, and now deliberate.
+//   "it goes blank"   the presentation — nobody was told, and work vanished.
+//
+// So the policy returns with the three things it lacked:
+//   1. it NEVER fires mid-recording or mid-upload (idleTimeout's `isBusy`),
+//      because "it goes blank" only matters when work is lost;
+//   2. the login screen states the reason (idleSignOut);
+//   3. signing back in returns to where you were, not to a dashboard.
+//
+// Rebuilding it without those would simply earn the deletion again.
 const IDLE_KEY = 'twinai_last_active'
 
 // Fully clear the session: local-scope sign-out + strip any persisted auth token
@@ -56,6 +74,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Only the newest profile read may commit, otherwise a slower stale
   // onboarded=false response can overwrite the verified post-onboarding profile.
   const profileRequest = useRef(0)
+  // A COUNTER, not a boolean: a recording and an upload can overlap, and a
+  // boolean would let whichever finished first declare the app idle while the
+  // other was still running.
+  const busyRef = useRef(0)
 
   // Retry the trigger-created profile briefly, but report a real result to
   // callers. Critical flows (auth routing and onboarding completion) must never
@@ -144,8 +166,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    // Sessions persist until the user signs out (or the refresh token is revoked
-    // server-side) — no idle auto-logout. Supabase refreshes the token itself.
+    const expire = (reason: 'idle' | 'unknown') => {
+      try { rememberSignOut(reason, window.location.pathname + window.location.search) } catch { /* ignore */ }
+      void doSignOut().then(() => { setSession(null); setProfile(null) })
+    }
+
+    // THE BOOT CHECK is the half that fixes the reported symptom. A live timer
+    // does nothing for a tab that was closed: no timer was running while the
+    // person was away for a month.
+    const boot = idleVerdict()
+    if (boot.expired) {
+      void supabase.auth.getSession().then(({ data }) => {
+        if (data.session) expire(boot.reason)
+        else markActivity()
+      })
+    } else {
+      markActivity()
+    }
+
+    // `isBusy` is read live from a ref so a recording that starts after this
+    // effect still defers the sign-out.
+    const stopIdle = startIdleWatch(expire, { isBusy: () => busyRef.current > 0 })
+
     void refreshSession()
 
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
@@ -160,9 +202,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setProfileError(null)
       }
     })
-    return () => { sub.subscription.unsubscribe() }
+    return () => { sub.subscription.unsubscribe(); stopIdle() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /**
+   * Mark real work in flight — a recording, an upload — so the idle sign-out
+   * defers. Release is idempotent: calling it twice must not decrement someone
+   * else's hold, which would let the sign-out fire mid-recording.
+   */
+  const holdIdle = () => {
+    busyRef.current++
+    let released = false
+    return () => { if (!released) { released = true; busyRef.current = Math.max(0, busyRef.current - 1) } }
+  }
 
   const signOut = async () => {
     // Clear local state FIRST so the UI (route guards, nav) flips to logged-out
@@ -187,6 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       refreshSession,
       refreshProfile,
       signOut,
+      holdIdle,
     }}>
       {children}
     </Ctx.Provider>

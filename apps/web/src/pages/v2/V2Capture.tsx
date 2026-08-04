@@ -20,6 +20,7 @@ import type { CaptureUploadPayload } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
+import { useAuth } from '../../context/AuthContext'
 import {
   type RecordingScript,
   type RecordingScene,
@@ -153,6 +154,12 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // lock: warn (native "Leave site?" prompt) whenever a take is being recorded or
   // reviewed but not yet safely autosaved server-side. beforeunload only fires on
   // real browser unloads, not SPA navigation.
+  const { holdIdle } = useAuth()
+  // Released when recording stops; also on unmount, so a navigation mid-take
+  // cannot leave the idle timer held open forever.
+  const releaseIdleHold = useRef<null | (() => void)>(null)
+  useEffect(() => () => { releaseIdleHold.current?.(); releaseIdleHold.current = null }, [])
+
   const dirtyRef = useRef(false)
   useEffect(() => {
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -350,6 +357,12 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     ensureRecorder()
     const rec = recRef.current
     if (!rec) return
+    // HOLD THE IDLE SIGN-OUT for the whole recording session. Someone talking to
+    // camera generates no pointer or key events, so to an activity listener they
+    // are indistinguishable from someone who walked away — and scenes share ONE
+    // MediaRecorder session, so a sign-out here loses every scene shot so far,
+    // not just this one.
+    if (!releaseIdleHold.current) releaseIdleHold.current = holdIdle()
     if (rec.state === 'inactive') rec.start(250)       // first scene: begin the single session
     else if (rec.state === 'paused') rec.resume()       // later scene: resume same session
     // This scene's kept window opens at the current cumulative active time. (After a
@@ -405,6 +418,8 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
     recRef.current = null
+    releaseIdleHold.current?.()      // recording over — the idle hour may start
+    releaseIdleHold.current = null
     reviewBlobRef.current = blob
     setRecording(false)
     setReviewUrl(URL.createObjectURL(blob))

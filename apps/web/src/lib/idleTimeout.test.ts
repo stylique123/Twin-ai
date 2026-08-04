@@ -158,3 +158,62 @@ describe('NO STORAGE is not the same as NO STAMP', () => {
     expect(idleVerdict(Date.now(), store())).toEqual({ expired: true, reason: 'unknown' })
   })
 })
+
+describe('BUSY DEFERS THE SIGN-OUT — the reason the old one was deleted', () => {
+  const store = () => {
+    const m = new Map<string, string>()
+    return {
+      getItem: (k: string) => m.get(k) ?? null,
+      setItem: (k: string, v: string) => { m.set(k, v) },
+      removeItem: (k: string) => { m.delete(k) },
+    }
+  }
+
+  it('does NOT sign out while a recording is in progress', async () => {
+    // Someone talking to camera for four minutes produces no pointer or key
+    // events. To an activity listener they look exactly like someone who walked
+    // away — and signing them out there destroys the one thing in this product
+    // that cannot be cheaply repeated.
+    let calls = 0
+    let clock = 1_000_000_000_000
+    const s = store()
+    const stop = startIdleWatch(() => { calls++ },
+      { now: () => clock, pollMs: 1, store: s, isBusy: () => true })
+    clock += IDLE_LIMIT_MS * 5
+    await new Promise((r) => setTimeout(r, 25))
+    stop()
+    expect(calls).toBe(0)
+  })
+
+  it('BUSY STAMPS, so the hour restarts when the work ends', async () => {
+    // Without stamping, the sign-out fires the instant recording stops — the
+    // same defect one second later.
+    let busy = true
+    let clock = 1_000_000_000_000
+    const s = store()
+    let calls = 0
+    const stop = startIdleWatch(() => { calls++ },
+      { now: () => clock, pollMs: 1, store: s, isBusy: () => busy })
+    clock += IDLE_LIMIT_MS * 3
+    await new Promise((r) => setTimeout(r, 20))
+    busy = false                       // recording ends
+    await new Promise((r) => setTimeout(r, 20))
+    stop()
+    expect(calls).toBe(0)              // the clock restarted; not idle yet
+  })
+
+  it('and once it is no longer busy, the hour still expires normally', async () => {
+    let busy = true
+    let clock = 1_000_000_000_000
+    const s = store()
+    let calls = 0
+    const stop = startIdleWatch(() => { calls++ },
+      { now: () => clock, pollMs: 1, store: s, isBusy: () => busy })
+    await new Promise((r) => setTimeout(r, 20))
+    busy = false
+    clock += IDLE_LIMIT_MS + 1
+    await new Promise((r) => setTimeout(r, 25))
+    stop()
+    expect(calls).toBe(1)
+  })
+})
