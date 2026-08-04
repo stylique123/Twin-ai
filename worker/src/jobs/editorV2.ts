@@ -40,7 +40,10 @@ import {
 } from './editorRenderStage.js'
 import { LeaseLostError, PermanentJobError, classifyDbError, isLeaseLost, declaresPermanent } from '../errors.js'
 import { queueSafeError, sanitizeError } from '../sanitizeError.js'
-import { EDITOR_STAGES, isTerminal, stagePct, stagesFrom, type EditorStage } from './editorPipeline.js'
+import {
+  EDITOR_STAGES, REVIEW_PAUSE_STATUS, isAwaitingReview, isTerminal, stagePct, stagesFrom,
+  type EditorStage,
+} from './editorPipeline.js'
 import { AnalyzeCancelledError, DirectorCancelledError } from './editorCancel.js'
 import { InspectionCancelledError, loadEligibleSource, runInspectingStage } from './editorInspect.js'
 import { SpeechCancelledError, runTranscribingStage } from './editorSpeech.js'
@@ -123,6 +126,24 @@ async function advanceStage(job: Job, projectId: string, to: EditorStage): Promi
   // PostgREST returns a composite either bare or single-element depending on
   // client version — normalize.
   return (Array.isArray(data) ? data[0] : data) as EditProjectRow
+}
+
+/**
+ * Park a directed project and hand it to its creator.
+ *
+ * Uses the SAME fenced advance every stage transition uses, so parking is
+ * subject to the identical lease proof — a worker that lost its lease cannot
+ * park a project any more than it can advance one. `stagePct` is not consulted
+ * because this is not a stage: no work happens here, so the progress the
+ * creator sees must not move.
+ */
+async function parkForReview(job: Job, projectId: string, pct: number): Promise<void> {
+  const { error } = await db.rpc('editor_advance_stage', {
+    p_project: projectId, p_job: job.id, p_worker: env.workerId, p_attempt: job.attempts,
+    p_to: REVIEW_PAUSE_STATUS, p_pct: pct, p_message_code: 'awaiting_review',
+    p_details: { attempt: job.attempts, simulated: false },
+  })
+  if (error) throw classifyDbError(error.message)
 }
 
 async function finishProject(
@@ -520,6 +541,15 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
       await finishProject(job, projectId, 'cancelled')
       return { cancelled: true, before_stage: proj.status }
     }
+    // WAITING ON THE CREATOR. This claim must do NOTHING — and returning early
+    // is not a tidiness choice. `stagesFrom('awaiting_review')` is empty, and an
+    // empty stage list falls straight through to `finishProject('completed')`
+    // at the bottom of this function: a duplicate or reconciler-requeued job
+    // would mark a project complete that has not been compiled, rendered or
+    // validated, with `output_asset_id` null and no plan in existence.
+    if (isAwaitingReview(proj.status)) {
+      return { noop: true, awaiting_review: true, project_status: proj.status }
+    }
 
     const resume = proj.status !== 'queued'
     if (resume) {
@@ -765,6 +795,35 @@ export async function handleEditorV2(job: Job): Promise<Record<string, unknown>>
         await runStageWithTimeout(stage, job, dir)
       }
       ranStages.push(stage)
+
+      // ---- THE REVIEW GATE -------------------------------------------------
+      //
+      // The pipeline stops here and the creator picks it up: §4.8's screen sits
+      // between the Director deciding and the compiler cutting, because the
+      // vocabulary it edits — strike a sentence, restore a cut, drop a zoom —
+      // is the decision's, and the plan is what the decision becomes.
+      //
+      // GATED ON A REAL DECISION EXISTING, not only on the flag. A simulated
+      // directing stage writes no decision, so parking one would hand the
+      // creator a review screen with nothing on it and leave the project
+      // resting on an edit it can never receive. `director` is non-null exactly
+      // when the real stage ran.
+      if (stage === 'directing' && env.editorReviewGateEnabled && director) {
+        await parkForReview(job, projectId, stagePct(stage))
+        // RETURNS WITHOUT FINISHING. The job is done; the PROJECT is not, and
+        // the two are different facts. Submitting the review (0102's
+        // `editor_submit_review`) is what releases it into compiling and queues
+        // the run that finishes it.
+        return {
+          awaiting_review: true,
+          stages_ran: ranStages,
+          manifest_sha: pinned.manifest.manifestSha,
+          director: director as unknown as Record<string, unknown>,
+          source_downloads: session.downloadsPerformed,
+          swept_orphan_dirs: sweptOrphans,
+          temp_dir_cleaned: true,
+        }
+      }
     }
 
     await finishProject(job, projectId, 'completed', undefined, {

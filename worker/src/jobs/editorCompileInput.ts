@@ -51,7 +51,7 @@ import type {
   CompileFaceSample, CompileReviewEdits,
   SpeechCandidateKind, CandidateConfidence,
 } from './editorCompile.js'
-import { applyReviewOverlay, validateReviewOverlay } from './reviewOverlay.js'
+import { applyReviewOverlay, reviewOverlaySha256, validateReviewOverlay } from './reviewOverlay.js'
 import {
   SPEECH_CANDIDATE_KINDS, CANDIDATE_CONFIDENCE_CODES, VISUAL_WASTE_CLASSES,
   visualWasteSelectionEnabled, type DirectorDecision,
@@ -358,7 +358,11 @@ export interface AssembleArgs {
  *     earlier transcript would otherwise strike whatever sentence now occupies
  *     those indices, which is worse than any refusal;
  *  2. the parts the decision can carry are composed into it (`applyReviewOverlay`)
- *     and the parts it cannot are returned separately for the compiler.
+ *     and the parts it cannot are returned separately for the compiler;
+ *  3. the digest the plan will cite is taken, over the VALIDATED form. Taken
+ *     here because this is where validation happens: a digest computed anywhere
+ *     else is a digest of a different document, and one read from a column is a
+ *     second answer to a question that must have exactly one.
  *
  * THE COMPOSED DECISION IS WHAT EVERY LATER CHECK MUST SEE. `assertNoCentisecondLeak`
  * pairs `input.decision.selections[i]` with `decision.selections[i]` positionally;
@@ -373,13 +377,16 @@ export function composeReviewedDecision(args: {
   decision: DirectorDecision
   speech: Record<string, unknown> | null
   overlay: unknown | null
-}): { decision: DirectorDecision; review?: CompileReviewEdits } {
-  if (args.overlay === null || args.overlay === undefined) return { decision: args.decision }
+}): { decision: DirectorDecision; review?: CompileReviewEdits; overlaySha256: string | null } {
+  if (args.overlay === null || args.overlay === undefined) {
+    return { decision: args.decision, overlaySha256: null }
+  }
   const spokenWordCount = readComponentWords(args.speech).length
   const overlay = validateReviewOverlay(args.overlay, spokenWordCount)
   return {
     decision: applyReviewOverlay(args.decision, overlay),
     review: { removeWordRanges: overlay.removeWordRanges, respellWords: overlay.respellWords },
+    overlaySha256: reviewOverlaySha256(overlay),
   }
 }
 
