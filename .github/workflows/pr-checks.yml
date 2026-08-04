@@ -319,6 +319,12 @@ jobs:
       # nobody executes is a comment.
       - name: Gate-H (capability flags — the shape CHECK and the column grants)
         run: bash scripts/db-tests/gate-h/run.sh
+      # Gate-I proves §7b's absolute rule as a CONSTRAINT: n=1 is never a
+      # correlation. That rule never ships broken as a decision — it ships as an
+      # absent check on a hurried Tuesday — so it is a CHECK, and a CHECK nobody
+      # executes is a comment.
+      - name: Gate-I (outcome log — the n=1 refusal and the append-only measurement)
+        run: bash scripts/db-tests/gate-i/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no
