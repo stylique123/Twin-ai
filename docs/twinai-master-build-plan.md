@@ -677,7 +677,7 @@ decided. Phase 9 is COMPLETE (10/10).**
 | Script-anchored forced alignment | **engine built; WIRED (#242); three consumers built** |
 | Onboarding questions + confirm screen | not started — and BLOCKED behind capability flags (Phase 11 item 9), see the note in item 2 |
 | Transcript-as-editor review gate | **the backend is complete end to end**: contract (`reviewOverlay.ts`), compiler consumption, persistence + the pause (0102), and a screen that is BUILT BUT UNSEEN — no human has used it |
-| Failure path (explain, retain footage, retry without refilming) | **explain built** (`failureExplain.ts`); retain + retry were ALREADY TRUE — see item 5 |
+| Failure path (explain, retain footage, retry without refilming) | **COMPLETE** — explain built (`failureExplain.ts`), SURFACED on Result with a class-gated retry button, and a CI guard keeps the worker's catalogue and the client mirror in agreement. Retain + retry were ALREADY TRUE — see item 5 |
 
 **A CORRECTION WORTH KEEPING.** During the Phase-9 close I reported that the
 live Director call was broken in staging, on the strength of phase-7 failures
