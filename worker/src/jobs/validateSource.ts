@@ -45,6 +45,8 @@ export interface ProbeStream {
   sample_rate?: string
   channels?: number
   channel_layout?: string
+  duration?: string
+  tags?: Record<string, string>
 }
 export interface ProbeResult {
   streams?: ProbeStream[]
@@ -110,6 +112,49 @@ export type ProbeAssessment =
     }
   | { ok: false; code: string; detail: string }
 
+/**
+ * The duration ffprobe reported, in ms — or NULL when it reported none.
+ *
+ * THREE PLACES, IN DESCENDING AUTHORITY, because a WebM written live carries it
+ * in whichever of them the muxer managed to fill:
+ *
+ *   1. `format.duration`   — what a finalized container states. Absent or "N/A"
+ *                            on a MediaRecorder stream whose Segment duration
+ *                            was never patched back into the header.
+ *   2. the video stream's `duration` — sometimes present when the format's is not.
+ *   3. the stream's `DURATION` TAG — "HH:MM:SS.nnnnnnnnn", which is what
+ *                            Matroska/WebM muxers write per track. For many
+ *                            phone recordings this is the ONLY place a real
+ *                            length appears.
+ *
+ * NULL IS RETURNED RATHER THAN ZERO. Zero is a claim about the file; null is
+ * the absence of one, and the caller must not be able to confuse them — that
+ * confusion is the bug this function exists to remove.
+ *
+ * Only finite, non-negative values count. A negative or NaN duration is not a
+ * shorter video, it is a container saying nothing usable.
+ */
+export function probeDurationMs(probe: ProbeResult): number | null {
+  const fromSeconds = (v: unknown): number | null => {
+    if (typeof v !== 'string' && typeof v !== 'number') return null
+    const n = Number(v)
+    return Number.isFinite(n) && n >= 0 ? Math.round(n * 1000) : null
+  }
+  // "HH:MM:SS.nnnnnnnnn" — Matroska/WebM per-track DURATION tag.
+  const fromTag = (v: unknown): number | null => {
+    if (typeof v !== 'string') return null
+    const m = /^(\d+):([0-5]?\d):([0-5]?\d(?:\.\d+)?)$/.exec(v.trim())
+    if (!m) return null
+    const s = Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3])
+    return Number.isFinite(s) && s >= 0 ? Math.round(s * 1000) : null
+  }
+  const video = probe.streams?.find((s) => s.codec_type === 'video')
+  return fromSeconds(probe.format?.duration)
+    ?? fromSeconds(video?.duration)
+    ?? fromTag(video?.tags?.DURATION)
+    ?? fromTag(video?.tags?.duration)
+}
+
 // Pure assessment of an ffprobe result against the source bounds — separated
 // from I/O so the accept/reject rules are unit-testable without ffmpeg.
 export function assessProbe(probe: ProbeResult, limits: SourceLimits): ProbeAssessment {
@@ -117,8 +162,27 @@ export function assessProbe(probe: ProbeResult, limits: SourceLimits): ProbeAsse
   const audio = probe.streams?.find((s) => s.codec_type === 'audio')
   if (!video) return { ok: false, code: 'no_video_stream', detail: 'file contains no video stream' }
 
-  const durationMs = Math.round(Number(probe.format?.duration ?? '0') * 1000)
-  if (!Number.isFinite(durationMs) || durationMs < limits.minDurationMs) {
+  const durationMs = probeDurationMs(probe)
+  // "NOT REPORTED" IS NOT "TOO SHORT", and conflating them told the creator
+  // something false about their own recording. This read `format.duration ?? '0'`
+  // and rejected as `too_short`, so a container that does not carry a duration
+  // produced "your video is too short" for a perfectly good sixty-second take.
+  //
+  // THAT IS THE EXPECTED SHAPE OF A PHONE RECORDING, which is why it matters
+  // rather than being pedantry. A `MediaRecorder` WebM is written as a live
+  // stream: the Segment duration is not known when the header goes out and is
+  // frequently never patched in, so ffprobe reports `format.duration` absent or
+  // "N/A" — and `Number('N/A')` is NaN, which took the same branch as zero.
+  // The pre-mortem calls this "the single cheapest thing left to check" and it
+  // has still not been checked against a real device; what this does is make
+  // sure that when it IS checked, the failure names its own cause.
+  if (durationMs === null) {
+    return {
+      ok: false, code: 'duration_unknown',
+      detail: 'the container reports no duration (format, stream, or DURATION tag) — cannot validate length',
+    }
+  }
+  if (durationMs < limits.minDurationMs) {
     return { ok: false, code: 'too_short', detail: `duration ${durationMs}ms below minimum ${limits.minDurationMs}ms` }
   }
   if (durationMs > limits.maxDurationMs) {
