@@ -426,7 +426,18 @@ function selftest() {
   // happened to contain no tables (`--sql-diff 0099`). The syntax error was the
   // lucky outcome; the tempting small fix — drop the empty branch — would have
   // returned zero rows, which reads exactly like "in sync".
-  const noTables = buildExpected(MIGRATIONS_DIR, '0099')
+  //
+  // THE SCOPE IS EMPTIED EXPLICITLY, not chosen because it happened to be empty.
+  // This read `buildExpected(MIGRATIONS_DIR, '0099')` and relied on 0099+
+  // containing no CREATE TABLE — true when it was written, false the moment
+  // 0102 added one, and the failure named this case rather than the migration
+  // that caused it. The property under test is "tables empty -> no table
+  // branch"; which migration numbers happen to create tables is not part of it.
+  // Everything else still comes from the REAL tree, so a restructure that
+  // breaks parsing is caught here exactly as before.
+  const realTail = buildExpected(MIGRATIONS_DIR, '0099')
+  check('the real tail scope still parses into functions', realTail.functions.size > 0)
+  const noTables = { ...realTail, tables: new Map() }
   check('a scope with no TABLES still emits valid SQL', !buildDiffSql(noTables).includes('values )'))
   check('...and still checks the functions in that scope',
     buildDiffSql(noTables).includes('stale_function') && buildDiffSql(noTables).includes('extra_overload'))
