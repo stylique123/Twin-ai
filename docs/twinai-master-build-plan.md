@@ -882,9 +882,15 @@ before treating it as a defect.
      A Director-chosen value needs a contract both copies agree on, which is
      the cost item 9's capability flags were introduced to avoid paying twice.
 
-   **RECOMMENDED DECISION — differentiate on the SCRIPT'S OWN STRUCTURE, never
-   on a content-type enum.** *(Proposed 2026-08-03, with reasoning, so it can be
-   accepted or rejected on the merits.)*
+   **DECISION — ACCEPTED 2026-08-04: differentiate on the SCRIPT'S OWN
+   STRUCTURE, never on a content-type enum.** *(Proposed 2026-08-03 with the
+   reasoning below so it could be rejected on the merits; accepted unchanged.)*
+   The open questions at the top of this item are answered by it: the axis is
+   the existing per-scene `scene_type` / `purpose` / `show_in_teleprompter`
+   fields, the choice is DERIVED from the script rather than made by the creator
+   or the Director, and no new enum, screen or contract is introduced. What
+   remains open is only the per-`scene_type` parameter values, which are craft
+   numbers and stay with item 7 — chosen against a real recording, not guessed.
 
    The scene timeline already carries `scene_type` (`talking_head`,
    `demonstration`, …), `purpose` (`hook`, …) and `show_in_teleprompter` per

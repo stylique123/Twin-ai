@@ -351,7 +351,14 @@ describe('canonical serialization and hash', () => {
     const canonical = canonicalEditPlan(plan)
     const round = validateEditPlan(JSON.parse(canonical))
     expect(canonicalEditPlan(round)).toBe(canonical)
-    expect(round.captions.cues[0].lines.join(' ')).toContain('café — naïve 日本語 🎬 Ω')
+    // Compared with whitespace collapsed. This token is 21 characters and the
+    // preset's measured ceiling is 13, so it is FRAGMENTED across two lines and
+    // the join inserts a second space at the break. That is layout, and layout
+    // is not what this test is about: the claim is that canonicalization does
+    // not corrupt non-ASCII bytes, so the characters and their order are what
+    // must survive, not the line breaks around them.
+    const text = round.captions.cues[0].lines.join(' ').replace(/\s+/g, ' ')
+    expect(text).toContain('café — naïve 日本語 🎬 Ω'.replace(/\s+/g, ' '))
     // The emoji is outside the BMP; JSON escaping must not corrupt the pair.
     expect([...round.captions.cues[0].lines.join(' ')].includes('🎬')).toBe(true)
   })

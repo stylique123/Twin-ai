@@ -90,9 +90,9 @@ const CORPUS = [
  * chars-per-line fix would have to reach.
  */
 const MEASURED: Record<string, { widestPx: number, fits: boolean, fitsAtChars: number }> = {
-  'caption-clean-keyword-v1': { widestPx: 1070, fits: false, fitsAtChars: 13 },
-  'caption-punchy-word-v1': { widestPx: 984, fits: false, fitsAtChars: 10 },
-  'caption-minimal-subtitle-v1': { widestPx: 1016, fits: false, fitsAtChars: 17 },
+  'caption-clean-keyword-v1': { widestPx: 654, fits: true, fitsAtChars: 13 },
+  'caption-punchy-word-v1': { widestPx: 636, fits: true, fitsAtChars: 10 },
+  'caption-minimal-subtitle-v1': { widestPx: 665, fits: true, fitsAtChars: 17 },
 }
 
 // The two DejaVu builds in circulation differ in BYTES; their advance widths are
@@ -182,13 +182,29 @@ describe.skipIf(!isPinnedFont)('caption lines against the frozen box, measured',
     })
   }
 
-  it('the overflow is not a rounding gap — it is at least 40%', () => {
-    // Guards against the reading that this is a tolerance problem someone could
-    // close by nudging a margin. If this ever stops holding, the gap has been
-    // genuinely worked on and the numbers above are stale.
+  it('EVERY preset fits — and this cannot pass vacuously', () => {
+    // The previous version of this test asserted the OVERFLOW was at least 40%,
+    // and skipped any preset marked `fits`. Now that all three fit, that loop
+    // would have skipped every preset and passed while checking nothing — the
+    // exact shape of defect this file was written to close, arriving by way of
+    // the fix rather than the bug. So it asserts the live direction instead,
+    // and counts what it checked.
+    let checked = 0
     for (const presetId of Object.keys(MEASURED)) {
-      if (MEASURED[presetId].fits) continue
-      expect(widestFor(presetId) / captions.maxWidthPx).toBeGreaterThan(1.4)
+      expect(widestFor(presetId)).toBeLessThanOrEqual(captions.maxWidthPx)
+      checked++
+    }
+    expect(checked).toBe(Object.keys(captions.presets).length)
+    expect(checked).toBeGreaterThan(0)
+  })
+
+  it('the fit is TIGHT — these ceilings are the measured maximum, not a guess', () => {
+    // Every preset should be using most of the box. A preset far under it would
+    // mean the ceiling was lowered further than the measurement required, which
+    // costs cues and readability for nothing. `fitsAtChars` already pins that
+    // n+1 does not fit; this states the consequence in pixels.
+    for (const presetId of Object.keys(MEASURED)) {
+      expect(widestFor(presetId) / captions.maxWidthPx).toBeGreaterThan(0.85)
     }
   })
 })

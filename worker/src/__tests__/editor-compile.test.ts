@@ -1058,7 +1058,23 @@ describe('a word too wide for a line is broken, not run off the frame', () => {
   // contract bounds a line at 200 chars, which is an anti-absurdity limit, not
   // the typographic width the preset designs for. URLs, handles, hashtags and
   // hyphenated compounds clear these limits routinely.
-  const LONG = 'Sonderzeichenverkettungswort' // 28 chars vs the preset's 22
+  //
+  // AND WHAT MEASUREMENT LATER SHOWED ABOUT THE FIX. Fragmenting kept every
+  // line inside maxCharsPerLine, which was the right shape — but at the old
+  // 22-character ceiling a fragment of this word draws 997 px in a 680 px box
+  // inside a 1080 px frame. It was never displayed; it ran off both sides. The
+  // ceilings are now the MEASURED fit (13/10/17, caption-line-width.test.ts),
+  // which means the longest displayable word is maxCharsPerLine * maxLinesPerCue
+  // = 26 characters here, and this 28-character word is TRUNCATED rather than
+  // reassembled.
+  //
+  // That is a loss and it is the better of the two. The alternative was drawing
+  // it edge-to-edge past the safe area, unreadable, with nothing reported;
+  // truncation is bounded, visible, and announced as `caption_line_overflow`.
+  // The test below asserts the truncation and the warning TOGETHER, because a
+  // silent truncation would be the worse defect of the two and the warning is
+  // the only thing that distinguishes them.
+  const LONG = 'Sonderzeichenverkettungswort' // 28 chars vs a 13*2 = 26 budget
 
   function planWithLongWord(): ReturnType<typeof compileEditPlan> {
     const input = baseInput()
@@ -1075,15 +1091,44 @@ describe('a word too wide for a line is broken, not run off the frame', () => {
     }
   })
 
-  it('CONTROL: the long word really is present and really is over the limit', () => {
+  it('CONTROL: the long word really reached a cue, and really is over the limit', () => {
     // Otherwise "no line is too long" could be true because the word never
     // reached a cue at all.
     const { plan } = planWithLongWord()
-    const maxChars = policy().captions.presets['caption-clean-keyword-v1'].maxCharsPerLine
-    expect(LONG.length).toBeGreaterThan(maxChars)
-    const all = plan.captions.cues.flatMap((c) => c.lines).join(' ')
-    // Present as fragments that reassemble, not dropped.
-    expect(all.replace(/ /g, '')).toContain(LONG)
+    const p = policy().captions.presets['caption-clean-keyword-v1']
+    expect(LONG.length).toBeGreaterThan(p.maxCharsPerLine)
+    const all = plan.captions.cues.flatMap((c) => c.lines).join(' ').replace(/ /g, '')
+    // As much of it as the preset can DISPLAY is present, in order, as
+    // fragments that reassemble — the word was broken, not dropped or reordered.
+    const budget = p.maxCharsPerLine * policy().captions.maxLinesPerCue
+    expect(all).toContain(LONG.slice(0, budget))
+  })
+
+  it('the tail past the display budget is TRUNCATED, and says so', () => {
+    // The honest half of the line above. 28 characters do not fit 13x2, so two
+    // are lost — and the only thing separating that from a silent corruption is
+    // the warning. If this ever passes without the warning, captions are being
+    // quietly shortened and nobody downstream can tell.
+    const { plan } = planWithLongWord()
+    const p = policy().captions.presets['caption-clean-keyword-v1']
+    const budget = p.maxCharsPerLine * policy().captions.maxLinesPerCue
+    expect(LONG.length).toBeGreaterThan(budget)
+    const all = plan.captions.cues.flatMap((c) => c.lines).join(' ').replace(/ /g, '')
+    expect(all).not.toContain(LONG)
+    expect(plan.warnings.map((w) => w.code)).toContain('caption_line_overflow')
+  })
+
+  it('a word INSIDE the display budget still reassembles whole', () => {
+    // The boundary, from the other side: fragmenting must not lose anything it
+    // did not have to. A 26-character word is exactly the budget and must come
+    // back complete.
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    const fits = 'a'.repeat(13) + 'b'.repeat(13)   // exactly 13*2
+    input.evidence.words = input.evidence.words.map((w, i) => (i === 0 ? { ...w, text: fits } : w))
+    const { plan } = compileEditPlan({ ...input, policy: policy() })
+    const all = plan.captions.cues.flatMap((c) => c.lines).join(' ').replace(/ /g, '')
+    expect(all).toContain(fits)
   })
 
   it('keeps the validator invariant: joined tokens reproduce the line exactly', () => {
