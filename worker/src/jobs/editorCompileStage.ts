@@ -241,6 +241,11 @@ export async function runCompilingStage(
       // re-resolved, so a caption color can never disagree with the brand the
       // Director actually saw for this project.
       brand: (pinned.manifest.manifest as { brandSnapshot?: Record<string, unknown> }).brandSnapshot ?? null,
+      // The glossary the project was PINNED with, never the live one — a hard
+      // word added mid-project must not retro-alter a running edit, and one
+      // deleted must not fail it. Absent for every project pinned before the
+      // glossary existed, which compiles exactly as it did then.
+      glossaryTerms: readPinnedGlossary(pinned.manifest.manifest),
     })
 
     // The units tripwire, run on the REAL assembled input rather than only in
@@ -287,6 +292,21 @@ export async function runCompilingStage(
  * stored sha is missing — so an absent digest here means the pin is broken, not
  * that the recording had no script.
  */
+/**
+ * The pinned glossary's terms, or nothing.
+ *
+ * STRICT ABOUT WHAT IT ACCEPTS, because these strings become caption text. A
+ * term with whitespace in it would let one spoken word render as several — the
+ * bound the review overlay and the shared validator both enforce, re-enforced
+ * here because this reads a manifest that could have been written by an older
+ * worker with a looser rule.
+ */
+export function readPinnedGlossary(manifest: unknown): string[] {
+  const raw = (manifest as { glossary?: unknown } | null)?.glossary
+  if (!Array.isArray(raw)) return []
+  return raw.filter((t): t is string => typeof t === 'string' && t !== '' && !/\s/.test(t))
+}
+
 export function requireSha(value: unknown, what: string): string {
   if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) {
     throw new PermanentJobError(

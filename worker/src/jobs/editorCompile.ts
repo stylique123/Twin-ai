@@ -121,6 +121,13 @@ export interface EditPolicyV1 {
      *  likely two unrelated words in the same position, and re-spelling would
      *  put a word on screen the creator never said. */
     scriptSpellingMinSimilarityMilli: number
+    /** The floor a substitution clears when the SCRIPT word is a glossary term
+     *  (§6). Lower than the above on purpose — the creator typed this word as
+     *  one they expect to be got wrong, which is evidence the ordinary floor
+     *  does not have. A value at or above the ordinary floor is treated as NO
+     *  GLOSSARY rather than as a stricter rule: it would otherwise remove
+     *  re-spellings for exactly the words that were flagged as important. */
+    glossaryMinSimilarityMilli?: number
     presets: Record<string, CaptionPresetPolicy>
   }
   zooms: {
@@ -545,6 +552,11 @@ export interface CompileInput {
    *  bound the alignment consumer lives under, for the same reason: every
    *  project in flight has no overlay, and none of them may change. */
   review?: CompileReviewEdits
+  /** The creator's permanent glossary (§6), as PINNED in the boot manifest.
+   *  Absent or empty is the ordinary case and changes nothing. Terms only ever
+   *  lower the similarity floor for a pairing the aligner already made — see
+   *  `GlossaryFloor`. */
+  glossaryTerms?: readonly string[]
   /** Whether this render carries the free-tier TwinAI mark.
    *
    *  ABSENT MEANS NO WATERMARK, deliberately. A caller that has not resolved
@@ -1197,9 +1209,19 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   // Built once per render, before the cues. An absent map is the ordinary case
   // (upload, no captured script, or a project pinned before alignment existed)
   // and yields captions byte-identical to those produced before this consumer.
+  // The glossary comes from the PINNED boot manifest, never live, for the same
+  // reason the brand snapshot does: a creator adding a hard word mid-project
+  // must not retro-alter — or fail — an edit that is already running. An absent
+  // glossary is the ordinary case and produces byte-identical captions.
   const spelling = buildScriptSpellingMap(
     evidence.scriptWordTimings, policy.captions.scriptSpellingMinSimilarityMilli,
-    policy.captions.scriptSpellingEnabled)
+    policy.captions.scriptSpellingEnabled,
+    input.glossaryTerms && input.glossaryTerms.length > 0
+      ? {
+        keys: new Set(input.glossaryTerms.map(foldGlossaryKey)),
+        minSimilarityMilli: policy.captions.glossaryMinSimilarityMilli ?? Number.NaN,
+      }
+      : undefined)
   // THE CREATOR'S SPELLING BEATS THE SCRIPT'S, which beats the ASR's. All three
   // are corrections of the same word's LETTERS and none of them can add, drop,
   // reorder or retime a caption word — so the precedence is simply which source
@@ -1505,12 +1527,58 @@ export interface ScriptSpellingMap {
    *  rather than assumed: the floor is a chosen number, and it gets corrected
    *  from what real videos do, not from an estimate with no expiry date. */
   applied: number
+  /** Re-spellings admitted ONLY because the script word was a glossary term —
+   *  i.e. that would have been refused by the ordinary floor.
+   *
+   *  This is the number that says whether the glossary is doing anything, and
+   *  the one that would expose it doing too much. Both floors are chosen rather
+   *  than measured, so the pair (glossaryAdmitted, belowFloor) is what corrects
+   *  them from real videos instead of from an argument. */
+  glossaryAdmitted: number
+}
+
+/**
+ * THE GLOSSARY LOWERS THE FLOOR FOR ONE WORD — §6's "any hard words?".
+ *
+ * The floor exists because a substitution is the ALIGNER'S GUESS that two words
+ * are the same word; set it low and an unrelated pair is accepted, putting a
+ * word on screen the creator never said. A glossary term is evidence that
+ * reduces exactly that risk for exactly one word: the creator typed it,
+ * deliberately, as a word they expect to be got wrong.
+ *
+ * SO THE GLOSSARY ADJUSTS A PAIRING, IT NEVER MAKES ONE. It cannot match
+ * against the transcript on its own, which is what keeps every existing caption
+ * property intact — nothing added, dropped, reordered or retimed, and a take
+ * with no alignment completely unaffected.
+ *
+ * The cost of that bound, stated rather than hidden: an UPLOAD with no captured
+ * script gets nothing from the glossary, because there is no pairing to adjust.
+ * Matching terms against ASR words directly would cover that case and would be
+ * a bag of words matched by similarity against a transcript, which is how
+ * "kubernetes" becomes "cucumbers" on screen. That is a change to make against
+ * a real recording of a real ASR mangling, not against reasoning.
+ */
+export interface GlossaryFloor {
+  /** Folded keys of the pinned terms (`glossaryKey`, shared). Empty = no glossary. */
+  keys: ReadonlySet<string>
+  /** The floor a substitution clears when its SCRIPT word is a known term.
+   *  Chosen, not measured — like the ordinary floor it replaces — so the count
+   *  of applications rides out on the result and corrects it from real videos. */
+  minSimilarityMilli: number
+}
+
+/** The same folding the shared module does, reimplemented here for one reason:
+ *  the worker does not depend on @twinai/shared, and a term folded two ways is
+ *  a term the two halves disagree about. A test compares them directly. */
+export function foldGlossaryKey(term: string): string {
+  return term.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
 }
 
 export function buildScriptSpellingMap(
   timings: readonly CompileScriptWordTiming[] | undefined,
   minSimilarityMilli: number,
   enabled = true,
+  glossary?: GlossaryFloor,
 ): ScriptSpellingMap {
   const byTime = new Map<string, string>()
   const seen = new Set<string>()
@@ -1518,15 +1586,25 @@ export function buildScriptSpellingMap(
   // read exactly as they did before this feature existed — not "mostly", and
   // not "unless some other branch below applies". One early return is the only
   // shape that cannot be partially true.
-  if (enabled !== true) return { byTime, belowFloor: 0, ambiguous: 0, applied: 0 }
+  if (enabled !== true) return { byTime, belowFloor: 0, ambiguous: 0, applied: 0, glossaryAdmitted: 0 }
   // FAIL CLOSED ON A MISSING FLOOR. `(similarityMilli ?? 0) < undefined` is
   // false, so an absent threshold would silently accept EVERY substitution —
   // the fail-open direction, on the one decision here that can put a word on
   // screen the creator never said. A threshold that is not a real number means
   // no re-spelling at all.
-  if (!Number.isFinite(minSimilarityMilli)) return { byTime, belowFloor: 0, ambiguous: 0, applied: 0 }
+  if (!Number.isFinite(minSimilarityMilli)) return { byTime, belowFloor: 0, ambiguous: 0, applied: 0, glossaryAdmitted: 0 }
   let belowFloor = 0
   let ambiguous = 0
+  let glossaryAdmitted = 0
+  // A glossary floor is honoured only when it is a real number AND lower than
+  // the ordinary one. A higher "floor" would REMOVE re-spellings for exactly
+  // the words the creator flagged as important, which is the opposite of what
+  // typing them meant — so a misconfiguration reads as "no glossary", never as
+  // a stricter one.
+  const glossaryFloor = glossary && Number.isFinite(glossary.minSimilarityMilli)
+      && glossary.minSimilarityMilli < minSimilarityMilli && glossary.keys.size > 0
+    ? glossary.minSimilarityMilli
+    : null
   for (const t of timings ?? []) {
     if (t?.via !== 'substitution') continue
     if (!Number.isInteger(t.startMs) || !Number.isInteger(t.endMs)) continue
@@ -1535,10 +1613,17 @@ export function buildScriptSpellingMap(
     const key = `${t.startMs}:${t.endMs}`
     if (seen.has(key)) { byTime.delete(key); ambiguous++; continue }
     seen.add(key)
-    if ((t.similarityMilli ?? 0) < minSimilarityMilli) { belowFloor++; continue }
+    // THE SCRIPT SIDE, not the spoken side. The term the creator typed is the
+    // word they meant to say; matching the ASR's mangling against the glossary
+    // would be asking whether the microphone knows the term.
+    const known = glossaryFloor !== null && glossary!.keys.has(foldGlossaryKey(text))
+    const floor = known ? glossaryFloor : minSimilarityMilli
+    const similarity = t.similarityMilli ?? 0
+    if (similarity < floor) { belowFloor++; continue }
+    if (known && similarity < minSimilarityMilli) glossaryAdmitted++
     byTime.set(key, text)
   }
-  return { byTime, belowFloor, ambiguous, applied: 0 }
+  return { byTime, belowFloor, ambiguous, applied: 0, glossaryAdmitted }
 }
 
 // Greedy line fill: words are never split, truncated or reordered. A word longer

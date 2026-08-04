@@ -258,6 +258,12 @@ export async function buildBootManifest(opts: {
   brandSnapshot: Record<string, unknown>
   brandSnapshotSha: string
   captureManifestSha: string | null
+  // The owner's permanent glossary (§6), frozen here for the same reason the
+  // brand snapshot is: a hard word added mid-project must not retro-alter the
+  // running edit, and one deleted must not fail it. Optional so the identity-
+  // only manifest built to verify a stored pin needs no glossary read.
+  glossary?: readonly string[]
+  glossarySha?: string
 }): Promise<BuiltManifest> {
   const { rules, boundsSha256 } = loadAnalysisRules()
   const speech = speechModelIdentity()
@@ -303,6 +309,11 @@ export async function buildBootManifest(opts: {
     // capture-manifest SHA (null only for a true legacy source), and frozen features.
     brandSnapshot: opts.brandSnapshot,
     brandSnapshotSha: opts.brandSnapshotSha,
+    // An EMPTY LIST, not an absent field: "this creator has no hard words" and
+    // "nobody read a glossary" are different facts, and only one of them means
+    // the captions could have been better.
+    glossary: opts.glossary ?? [],
+    glossarySha: opts.glossarySha ?? sha256Hex(canonicalJson([])),
     captureManifestSha: opts.captureManifestSha,
     features: { autoFillerRemoval: false },
   }
