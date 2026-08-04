@@ -61,6 +61,48 @@ export const RESPONSE_SCHEMA = {
 export interface DirectorProviderResult {
   raw: unknown
   responseText: string
+  /** What the call COST, as the provider reported it. Null where it did not. */
+  usage: DirectorUsage
+}
+
+/**
+ * The provider's own token accounting.
+ *
+ * WHY NULL AND ZERO MUST NOT BE CONFUSED. `null` means the provider did not
+ * report a count; `0` would mean it reported none were used. Summing spend
+ * across projects treats a missing count as zero if they share a
+ * representation, which understates cost silently and gets more wrong as more
+ * calls fail to report — the shape of error that looks like good news.
+ */
+export interface DirectorUsage {
+  promptTokens: number | null
+  responseTokens: number | null
+  totalTokens: number | null
+}
+
+export const NO_USAGE: DirectorUsage = { promptTokens: null, responseTokens: null, totalTokens: null }
+
+/**
+ * UNTRUSTED INPUT, LIKE EVERY OTHER FIELD OF A MODEL RESPONSE. A count is taken
+ * only when it is a non-negative safe integer; anything else — a float, a
+ * string, a negative, a value past 2^53, a missing key — becomes null.
+ *
+ * IT MUST NEVER THROW, and that is a deliberate asymmetry with the rest of the
+ * response parsing. `responseText` is load-bearing: without it there is no
+ * decision, so an unparseable body correctly fails the call. Token counts are
+ * TELEMETRY. Failing a render that the model actually answered, because a cost
+ * metric was malformed, would trade the product for the accounting.
+ */
+export function parseUsage(data: unknown): DirectorUsage {
+  const u = (data as { usageMetadata?: Record<string, unknown> } | null)?.usageMetadata
+  if (!u || typeof u !== 'object') return NO_USAGE
+  const count = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 ? v : null
+  return {
+    promptTokens: count(u.promptTokenCount),
+    responseTokens: count(u.candidatesTokenCount),
+    totalTokens: count(u.totalTokenCount),
+  }
 }
 
 // One call. Returns the parsed JSON body + the exact response text (for the
@@ -113,7 +155,9 @@ export async function callDirectorOnce(
     if (!responseText) throw new DirectorProviderError('empty director response', 'director_response_unparseable')
     let raw: unknown
     try { raw = JSON.parse(responseText) } catch { throw new DirectorProviderError('unparseable director response', 'director_response_unparseable') }
-    return { raw, responseText }
+    // Read AFTER responseText is known good, so a malformed usage block cannot
+    // influence whether the call is treated as answered.
+    return { raw, responseText, usage: parseUsage(data) }
   } catch (e) {
     if (e instanceof DirectorProviderError) throw e
     // Cancellation wins over timeout: charge/delivery is uncertain.

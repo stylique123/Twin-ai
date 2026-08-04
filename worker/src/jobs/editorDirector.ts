@@ -37,7 +37,7 @@ import {
   validateDirectorDecision, validateDirectorEnvelope,
   type DirectorEnvelope, type EnvVisualWaste, type SpeechBoundaryLike, type SpeechCandidateLike, type SpeechWordLike,
 } from './directorContract.js'
-import { callDirectorOnce, DirectorProviderError, type DirectorProviderResult } from './directorProvider.js'
+import { callDirectorOnce, DirectorProviderError, type DirectorProviderResult, type DirectorUsage } from './directorProvider.js'
 import { scriptStartSpokenIndex } from './scriptAlignment.js'
 
 export interface DirectorOutcome {
@@ -241,7 +241,7 @@ function buildEnvelope(
 export type DirectorDirective = 'started' | 'already_succeeded' | 'indeterminate' | 'failed'
 export interface DirectorLedger {
   begin(): Promise<DirectorDirective>
-  receive(responseSha256: string): Promise<void>
+  receive(responseSha256: string, usage: DirectorUsage): Promise<void>
   succeed(decisionJson: unknown, decisionSha256: string, responseSha256: string): Promise<void>
   fail(code: string): Promise<void>
   markUnknown(reason: string): Promise<void>
@@ -288,7 +288,7 @@ export async function driveDirectorCall(ctx: DriveCtx): Promise<DirectorOutcome>
   }
 
   const responseSha256 = sha256Hex(result.responseText)
-  await ctx.ledger.receive(responseSha256)
+  await ctx.ledger.receive(responseSha256, result.usage)
   await ctx.ledger.event('director_received', { response_sha256: responseSha256 })
 
   // (c) after response, before persist: charge KNOWN, no decision yet -> unknown.
@@ -333,8 +333,16 @@ function dbLedger(job: Job, projectId: string, sourceAssetId: string, envelopeSh
       if (error) throw classifyDirectorDbError(error.message)
       return data as DirectorDirective
     },
-    async receive(responseSha256) {
-      const { error } = await db.rpc('editor_director_receive', { ...base, p_response_sha256: responseSha256 })
+    async receive(responseSha256, usage) {
+      // Token counts ride along with the response digest because that is the
+      // moment the charge is known and the decision is not yet parsed. A call
+      // that is received and then yields no valid decision still cost this
+      // much, and those are the calls most worth costing.
+      const { error } = await db.rpc('editor_director_receive', {
+        ...base, p_response_sha256: responseSha256,
+        p_prompt_tokens: usage.promptTokens, p_response_tokens: usage.responseTokens,
+        p_total_tokens: usage.totalTokens,
+      })
       if (error) throw classifyDirectorDbError(error.message)
     },
     async succeed(decisionJson, decisionSha256, responseSha256) {
