@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import LazyVideo from '../components/LazyVideo'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { motion, AnimatePresence, useInView, useMotionValue, useSpring, useTransform } from 'framer-motion'
@@ -21,7 +22,11 @@ import { cn } from '../lib/cn'
 // Self-hosted in apps/web/public/media so the footage always loads — the old
 // external CDN links expired (403) and left the phones empty. The hero bg + phone
 // share ONE light clip (loads once, cached); the heavier creator clip only loads
-// when the playbook scrolls into view.
+// when the playbook scrolls into view — which is now TRUE. It was not before:
+// the <video src> sat in the DOM from first render, so both files (14.3 MB)
+// were fetched before the page settled. LazyVideo mounts the element only when
+// it nears the viewport, which is the only reliable way not to fetch a video
+// (preload="none" and autoPlay contradict each other; autoplay wins).
 const HERO_PHONE_VIDEO = '/media/hero-talkinghead.mp4'    // behind the hero teleprompter, 9:16
 const REEL = {
   founder: '/media/hero-talkinghead.mp4',
@@ -772,7 +777,11 @@ function GalleryShowcase() {
               {SHOWCASE_CARDS.map((c) => (
                 <div key={c.title} className="group overflow-hidden rounded-card border border-white/8 bg-ink2/60 transition-all duration-300 hover:-translate-y-1 hover:border-white/16 hover:shadow-glass">
                   <div className={cn('relative grid aspect-[4/5] place-items-center overflow-hidden bg-gradient-to-br to-ink', c.tint)}>
-                    <video autoPlay muted loop playsInline className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" src={c.video} />
+                    <LazyVideo
+                      src={c.video}
+                      className="absolute inset-0 h-full w-full transition-transform duration-500 group-hover:scale-105"
+                      placeholder={<div className="absolute inset-0 h-full w-full bg-ink2" />}
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-transparent to-ink/20" />
                     <span className="relative grid h-10 w-10 place-items-center rounded-full bg-ink/55 ring-1 ring-white/25 backdrop-blur-sm"><Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" /></span>
                     <span className={cn('absolute right-2 top-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-bold', c.hot ? 'border-coral/50 bg-coral/20 text-coral' : 'border-amber/50 bg-amber/20 text-amber')}>

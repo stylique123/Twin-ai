@@ -17,6 +17,17 @@ jobs:
       - run: npm ci
       - name: Typecheck all workspaces
         run: npm run typecheck
+      # apps/web had test FILES and no test SCRIPT, so `authRouting.test.ts` had
+      # never once been executed — by CI or by anyone. A test nothing runs is
+      # the same defect as a gate that goes green without looking, which this
+      # repo has now found in four places.
+      - name: Test web
+        run: npm test -w @twinai/web
+      # public/ is copied into the build UNPROCESSED — no compression, no
+      # warning — which is how 14.3 MB of video reached the landing page with
+      # nothing objecting.
+      - name: Web asset budget
+        run: node scripts/ci/check_web_asset_budget.mjs
       - name: Build web
         run: npm run web:build
 
