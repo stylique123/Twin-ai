@@ -9,6 +9,9 @@
 // misconfigured, or has no alignment to work with, must produce captions
 // byte-identical to a render from before the glossary existed.
 import { describe, expect, it } from 'vitest'
+
+process.env.SUPABASE_URL ||= 'https://stub.supabase.co'
+process.env.SUPABASE_SERVICE_ROLE_KEY ||= 'stub-service-role-key'
 import {
   buildScriptSpellingMap, compileEditPlan, foldGlossaryKey, loadEditPolicy,
 } from '../jobs/editorCompile.js'
@@ -179,5 +182,62 @@ describe('NO GLOSSARY CHANGES NOTHING — the property that lets this land', () 
       expect(withG.captions.cues[i].lines.join(' ').split(' ').length)
         .toBe(without.captions.cues[i].lines.join(' ').split(' ').length)
     }
+  })
+})
+
+// Top level, after the env stubs: `glossaryResolve` reaches `db.js`, which
+// refuses to load without a Supabase URL and key. It never connects — only the
+// pure result reader is called.
+const { readGlossaryResult, MAX_GLOSSARY_TERM_CHARS: MAXCH } =
+  await import('../jobs/glossaryResolve.js')
+
+describe('THE DEPLOY WINDOW — the pin runs before the migration does', () => {
+  // `resolveGlossary` runs inside `pinManifest`, which EVERY editor project
+  // passes through at its first stage. A push to `main` touching `worker/`
+  // deploys the worker while migrations are applied by hand, so without the
+  // branch under test that window is a total editor outage — every project
+  // failing to pin — rather than a degraded caption.
+  it('an ABSENT TABLE pins an EMPTY glossary — which is entailed, not assumed', () => {
+    // No table means no row means no creator has stored a term, so the
+    // glossary genuinely IS empty at pin time. Freezing an empty one is the
+    // pin doing its job.
+    const out = readGlossaryResult({
+      data: null, error: { code: '42P01', message: 'relation "brand_glossary_terms" does not exist' },
+    })
+    expect(out.terms).toEqual([])
+    expect(out.sha).toMatch(/^[0-9a-f]{64}$/)
+  })
+
+  it('EVERY OTHER database error still throws', () => {
+    // A permission failure or a timeout is a database that MIGHT be holding
+    // terms it will not hand over, and pinning empty from one of those would
+    // silently drop every hard word the creator typed — for the life of the
+    // project, because the pin is frozen.
+    for (const code of ['42501', '57014', '08006', undefined]) {
+      expect(() => readGlossaryResult({ data: null, error: { code, message: 'nope' } }))
+        .toThrow(/glossary read failed/)
+    }
+  })
+
+  it('sorts by folded key and drops what may never become a caption', () => {
+    const out = readGlossaryResult({
+      data: [
+        { term: 'zeta' }, { term: 'TwinAI' }, { term: 'twinai' },
+        { term: 'has space' }, { term: '' }, { term: 'x'.repeat(MAXCH + 1) }, { term: 42 },
+      ],
+      error: null,
+    })
+    // Deduplicated by fold with the first spelling kept, sorted by key, and
+    // every entry that could not legally become caption text removed.
+    expect(out.terms).toEqual(['TwinAI', 'zeta'])
+  })
+
+  it('the pinned digest does not depend on ROW ORDER', () => {
+    // The manifest hashes this list. A digest that moved with row order would
+    // make a resumed project read an unchanged glossary as a changed input.
+    const a = readGlossaryResult({ data: [{ term: 'alpha' }, { term: 'Mu' }], error: null })
+    const b = readGlossaryResult({ data: [{ term: 'Mu' }, { term: 'alpha' }], error: null })
+    expect(a.terms).toEqual(b.terms)
+    expect(a.sha).toBe(b.sha)
   })
 })

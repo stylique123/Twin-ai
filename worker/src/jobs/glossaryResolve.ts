@@ -15,6 +15,7 @@
 import { db } from '../db.js'
 import { canonicalJson, sha256Hex } from './editorManifest.js'
 import { foldGlossaryKey } from './editorCompile.js'
+import { UNDEFINED_TABLE } from './editorCompileStage.js'
 
 /** Mirrors `packages/shared/src/editor/glossary.ts`. A test compares the two
  *  folding functions directly — a term folded two ways is a term the two halves
@@ -40,13 +41,41 @@ export interface PinnedGlossary {
  * predates the glossary" stay distinguishable in the manifest.
  */
 export async function resolveGlossary(ownerId: string): Promise<PinnedGlossary> {
-  const { data, error } = await db
-    .from('brand_glossary_terms').select('term').eq('owner_id', ownerId)
+  return readGlossaryResult(await db
+    .from('brand_glossary_terms').select('term').eq('owner_id', ownerId))
+}
+
+/** The decision the read encodes, split out so it is testable without a
+ *  database — it is the one place a database error means "carry on". */
+export function readGlossaryResult(
+  result: { data: unknown; error: { code?: string; message?: string } | null },
+): PinnedGlossary {
+  const { data, error } = result
   if (error) {
-    // NOT swallowed into an empty glossary. An empty glossary is a real state
-    // that changes captions (no floor is lowered), and reporting a failed read
-    // as that state would silently drop every hard word the creator ever typed
-    // — on the field the plan calls the highest-value one in the product.
+    // ── THE TABLE ITSELF BEING ABSENT IS THE PRE-MIGRATION STATE ──────────
+    //
+    // A push to `main` touching `worker/` DEPLOYS THE WORKER; migrations are
+    // applied separately and by hand. This function runs inside `pinManifest`,
+    // which every editor project passes through at its FIRST stage — so
+    // without this branch, the window between the deploy and `db push` is a
+    // total editor outage, not a degraded caption. Every project would fail to
+    // pin.
+    //
+    // `42P01` is treated as an empty glossary because it is ENTAILED, not
+    // because it is convenient: no table means no row means no creator has
+    // stored a term, so the glossary genuinely IS empty at pin time. Freezing
+    // an empty one is then the pin doing exactly its job — a creator adding a
+    // term after the pin is the case pinning exists to hold out, and a term
+    // added after a pin taken during the window is no different.
+    //
+    // EVERY OTHER ERROR STILL THROWS. A permission failure or a timeout is a
+    // database that MIGHT be holding terms it will not give us, and pinning an
+    // empty glossary from one of those WOULD silently drop every hard word the
+    // creator ever typed — on the field the plan calls the highest-value one in
+    // the product, for the life of that project.
+    if ((error as { code?: string }).code === UNDEFINED_TABLE) {
+      return { terms: [], sha: sha256Hex(canonicalJson([])) }
+    }
     throw new Error(`glossary read failed: ${error.message}`)
   }
   const byKey = new Map<string, string>()
