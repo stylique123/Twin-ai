@@ -72,6 +72,9 @@ export type EditProjectStatus =
   | 'transcribing'
   | 'analyzing'
   | 'directing'
+  // Waiting on the CREATOR, not on a worker (§4.8, migration 0102). Active but
+  // idle: nothing is running, and nothing will until the review is submitted.
+  | 'awaiting_review'
   | 'compiling'
   | 'rendering'
   | 'validating'
@@ -79,9 +82,15 @@ export type EditProjectStatus =
   | 'failed'
   | 'cancelled'
 
+// ACTIVE INCLUDES THE REVIEW PAUSE. The database defines active by EXCLUSION —
+// `edit_projects_active_source_uniq` is partial on
+// `status not in ('completed','failed','cancelled')` — so a project waiting on
+// its creator is already active there. This list mirrors that set by
+// enumeration, and a member missing from it would have the client offer a
+// second edit on a source the database will refuse.
 export const EDIT_PROJECT_ACTIVE_STATUSES: readonly EditProjectStatus[] = [
   'queued', 'inspecting', 'transcribing', 'analyzing', 'directing',
-  'compiling', 'rendering', 'validating',
+  'awaiting_review', 'compiling', 'rendering', 'validating',
 ]
 
 // The client-visible shape of an edit project row (RLS-guarded SELECT).

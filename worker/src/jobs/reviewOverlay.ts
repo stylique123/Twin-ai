@@ -48,6 +48,7 @@
 // test that proves it is the load-bearing one in the suite.
 
 import { DirectorDecisionError, type DirectorDecision } from './directorContract.js'
+import { canonicalJson, sha256Hex } from './editorManifest.js'
 
 /** Bounds. Deliberately small: a review is edits, and a "review" that rewrites everything is a re-record. */
 export const MAX_REMOVE_RANGES = 200
@@ -171,6 +172,23 @@ export function validateReviewOverlay(raw: unknown, spokenWordCount: number): Re
     respellWords,
     dropZoomAnchors: [...dropZoomAnchors].sort((a, b) => a - b),
   }
+}
+
+/**
+ * The overlay's digest — what the plan cites as `identity.reviewOverlaySha256`.
+ *
+ * TAKEN OVER THE VALIDATED FORM, never the raw one. Validation sorts every list
+ * and drops nothing, so two clients that sent the same edits in a different
+ * order produce the same digest and therefore the same plan identity — which is
+ * the property that makes a re-compile provably reproducible rather than
+ * accidentally so. Hashing the raw request would make the identity depend on
+ * the order a UI happened to build an array in.
+ *
+ * `canonicalJson` is the codebase's ONE canonicalization, imported rather than
+ * re-implemented, for the same reason the plan hash imports it.
+ */
+export function reviewOverlaySha256(overlay: ReviewOverlayV1): string {
+  return sha256Hex(canonicalJson(overlay))
 }
 
 /** True when the overlay asks for nothing — the state every project is in until someone edits. */

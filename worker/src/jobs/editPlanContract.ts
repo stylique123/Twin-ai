@@ -28,7 +28,15 @@ import { canonicalJson, sha256Hex } from './editorManifest.js'
 // pinned. A plan pinned under an earlier version lacks these fields and is
 // never reinterpreted as v3 — a project's boot manifest is fixed at pin time,
 // so each bump only affects NEW plans compiled after it.
-export const EDIT_PLAN_SCHEMA_VERSION = 5
+// v6: identity gained `reviewOverlaySha256` and the removal vocabulary gained
+// `review_edit`. Both exist for one reason: once a PERSON can change the cut,
+// the plan must say which person's edits produced it, and each removal must say
+// whether the model or the creator asked for it. A plan that carried the
+// creator's cuts without recording the overlay they came from would make "why
+// is this cut here" unanswerable in exactly the case where the answer matters
+// most — the one where a human, not a model, is accountable for it.
+// `null` is the ordinary value: no overlay exists until someone reviews.
+export const EDIT_PLAN_SCHEMA_VERSION = 6
 export const EDIT_PLAN_VERSION = 'edit-plan-v1'
 export const EDIT_PLAN_MAX_BYTES = 1048576
 
@@ -67,7 +75,14 @@ export const ZOOM_INTENSITIES = ['subtle', 'medium'] as const
 // into speech_candidate because the RECORD has to say why a cut happened, and
 // "the Director selected a silence here" and "this is always waste" are
 // different facts about the same missing seconds.
-export const REMOVAL_ORIGINS = ['speech_candidate', 'visual_waste', 'hook_trim', 'edge_trim'] as const
+// `review_edit` is a span the CREATOR struck on the review screen. It is its
+// own origin for the same reason `edge_trim` is: the record has to name who
+// decided. Folding a creator's strike into `speech_candidate` would attribute
+// their edit to the Director, and the one question a review gate exists to
+// answer is which of the two removed a sentence.
+export const REMOVAL_ORIGINS = [
+  'speech_candidate', 'visual_waste', 'hook_trim', 'edge_trim', 'review_edit',
+] as const
 export const HOOK_TREATMENTS = ['keep', 'open_at_word'] as const
 export const SOURCE_ORIGINS = ['teleprompter', 'upload'] as const
 
@@ -93,6 +108,13 @@ export interface PlanIdentity {
   bootManifestSha: string
   scriptSnapshotSha: string
   decisionSha256: string
+  /** The review overlay this plan was compiled WITH, or null when none exists.
+   *
+   *  Null and "the digest of an empty overlay" are deliberately different
+   *  values. Null says nobody reviewed; a digest says somebody did, and an
+   *  overlay that asks for nothing is still a person having looked and approved
+   *  — which is the fact a regulated reviewer is being asked for. */
+  reviewOverlaySha256: string | null
 }
 export interface PlanWindow { startMs: number; endMs: number }
 export interface PlanSource {
@@ -377,7 +399,8 @@ function arr(v: unknown, max: number, where: string): unknown[] {
 }
 
 const IDENTITY_KEYS = ['planVersion', 'policyVersion', 'compilerVersion', 'projectId', 'generationId',
-  'sourceAssetId', 'sourceChecksum', 'bootManifestSha', 'scriptSnapshotSha', 'decisionSha256'] as const
+  'sourceAssetId', 'sourceChecksum', 'bootManifestSha', 'scriptSnapshotSha', 'decisionSha256',
+  'reviewOverlaySha256'] as const
 const SOURCE_KEYS = ['origin', 'durationMs', 'allowedWindows'] as const
 const OUTPUT_KEYS = ['profileId', 'width', 'height', 'fpsNum', 'fpsDen', 'videoCodec', 'audioCodec',
   'pixelFormat', 'audioSampleRateHz', 'audioChannels', 'faststart', 'durationMs', 'watermark'] as const
@@ -480,6 +503,9 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     generationId: uuid(idn.generationId, 'identity.generationId'),
     sourceAssetId: uuid(idn.sourceAssetId, 'identity.sourceAssetId'),
     sourceChecksum: hex64(idn.sourceChecksum, 'identity.sourceChecksum'),
+    reviewOverlaySha256: idn.reviewOverlaySha256 === null
+      ? null
+      : hex64(idn.reviewOverlaySha256, 'identity.reviewOverlaySha256'),
     bootManifestSha: hex64(idn.bootManifestSha, 'identity.bootManifestSha'),
     scriptSnapshotSha: hex64(idn.scriptSnapshotSha, 'identity.scriptSnapshotSha'),
     decisionSha256: hex64(idn.decisionSha256, 'identity.decisionSha256'),

@@ -37,7 +37,12 @@ import {
 // v2: cues now carry `lineEmphasis` alongside `emphasisWordIndices` (EDIT_PLAN
 // schema v2) — the compiler is the one place that still has the ordered,
 // per-word group data needed to compute it.
-export const EDIT_COMPILER_VERSION = 'edit-compiler-2'
+// v3: the compiler consumes the review overlay's two span fields — struck word
+// ranges become removals with their own origin, and the creator's respellings
+// win over the script's. The version moves even for a project with NO overlay,
+// because every plan's identity now carries `reviewOverlaySha256` and a version
+// that did not move would claim two different documents came from one compiler.
+export const EDIT_COMPILER_VERSION = 'edit-compiler-3'
 
 const WORKER_ROOT = join(import.meta.dirname, '..', '..')
 
@@ -480,6 +485,8 @@ export interface CompileIdentity {
   bootManifestSha: string
   scriptSnapshotSha: string
   decisionSha256: string
+  /** The review overlay this compile consumed, or null when nobody reviewed. */
+  reviewOverlaySha256?: string | null
 }
 export interface CompileSource {
   origin: SourceOrigin
@@ -494,6 +501,35 @@ export interface CompileSource {
   acceptedWindows: Interval[]
 }
 export interface CompileBrandColors { primaryHex: string | null; highlightHex: string | null }
+
+/**
+ * THE CREATOR'S OWN EDITS — the half of the review overlay the decision cannot
+ * carry (reviewOverlay.ts, "NOT applied here").
+ *
+ * `applyReviewOverlay` composes everything the Director's vocabulary has a place
+ * for: a restored selection is a selection dropped, a dismissed zoom is a zoom
+ * dropped. These two have no such place and arrive here instead:
+ *
+ *   removeWordRanges  A struck sentence is an arbitrary span of spoken words.
+ *                     The decision expresses removals as INDICES INTO THE
+ *                     DIRECTOR'S CANDIDATE LIST, and there may be no candidate
+ *                     covering those words at all — so expressing it there would
+ *                     mean inventing a candidate the model never proposed.
+ *   respellWords      Caption LETTERS, which this file already owns: script
+ *                     re-spelling is the same mechanism with the script as the
+ *                     source instead of the person.
+ *
+ * ALREADY VALIDATED when it gets here. `validateReviewOverlay` checked the
+ * indices against the transcript, refused overlaps and duplicates, and refused a
+ * respelling containing whitespace — at the EDGE, where the overlay arrives,
+ * rather than here where it is consumed. The compiler re-derives what it needs
+ * from the word list regardless, because a structure that is only checked at one
+ * entry point is a structure that gets a second entry point.
+ */
+export interface CompileReviewEdits {
+  removeWordRanges: ReadonlyArray<{ startWordIndex: number; endWordIndex: number }>
+  respellWords: ReadonlyArray<{ wordIndex: number; text: string }>
+}
 export interface CompileInput {
   identity: CompileIdentity
   source: CompileSource
@@ -504,6 +540,11 @@ export interface CompileInput {
   // absent is treated exactly like { primaryHex: null, highlightHex: null },
   // never as "colors pending" or any other state.
   brandColors?: CompileBrandColors
+  /** The creator's review edits. ABSENT IS THE ORDINARY CASE and must render
+   *  byte-identically to a compile that predates the review gate — the same
+   *  bound the alignment consumer lives under, for the same reason: every
+   *  project in flight has no overlay, and none of them may change. */
+  review?: CompileReviewEdits
   /** Whether this render carries the free-tier TwinAI mark.
    *
    *  ABSENT MEANS NO WATERMARK, deliberately. A caller that has not resolved
@@ -653,11 +694,39 @@ export function buildProtectedRegions(inp: ProtectionInputs): Interval[] {
 }
 
 // ---- removal resolution -----------------------------------------------------
+type RemovalSource = 'speech_candidate' | 'visual_waste' | 'review_edit'
 interface ResolvedRemoval {
   interval: Interval
-  origin: 'speech_candidate' | 'visual_waste'
+  origin: RemovalSource
   ref: number
   reasonCode: string
+}
+
+/**
+ * A struck sentence, as a source-time span.
+ *
+ * THE SPAN REACHES TO THE SURVIVING NEIGHBOURS, not just to the struck words'
+ * own edges. Striking a sentence out of the middle of a take leaves a pause on
+ * each side of it, and keeping both produces a double-length silence where a
+ * sentence used to be — audibly a glitch, and the creator did not ask for a
+ * hole, they asked for the sentence to be gone. Reaching to the neighbours lets
+ * the ordinary protection pass shave exactly one phoneme handle off each end,
+ * which is the same treatment a silence candidate gets and lands the cut in the
+ * same place a Director-selected silence would.
+ *
+ * At the head or tail of the recording there is no neighbour, so the domain's
+ * own edge is used — the clip to the effective domain happens downstream either
+ * way, so this can never reach outside the accepted material.
+ */
+export function struckRangeInterval(
+  words: readonly CompileWord[], domain: readonly Interval[],
+  startWordIndex: number, endWordIndex: number,
+): Interval {
+  const prev = words[startWordIndex - 1]
+  const next = words[endWordIndex + 1]
+  const startMs = prev ? prev.endMs : domain[0].startMs
+  const endMs = next ? next.startMs : domain[domain.length - 1].endMs
+  return { startMs, endMs }
 }
 
 function resolveRemovals(
@@ -729,7 +798,32 @@ function resolveRemovals(
       origin: 'visual_waste', ref: idx, reasonCode: 'visual_dead_air',
     })
   }
-  void domain
+
+  // ---- the creator's strikes ------------------------------------------------
+  // Last, and deliberately with NO selection-enabled, confidence or
+  // safe-to-consider test in front of them. Those three gates exist to stop the
+  // MODEL cutting on evidence the analyzer declined to vouch for. A person who
+  // read the sentence and struck it is not proposing a candidate — they are the
+  // authority the gates defer to. What they are still subject to is everything
+  // structural: the allowed domain, the protections, the minimum kept segment
+  // and the plan's own maxima, none of which are about who decided.
+  const struckRanges = input.review?.removeWordRanges ?? []
+  for (const [i, r] of struckRanges.entries()) {
+    if (!Number.isInteger(r.startWordIndex) || !Number.isInteger(r.endWordIndex)
+        || r.startWordIndex < 0 || r.endWordIndex < r.startWordIndex
+        || r.endWordIndex >= evidence.words.length) {
+      // Re-derived here rather than trusted: `validateReviewOverlay` already
+      // refuses this at the edge, so reaching it means the overlay and the
+      // transcript disagree about how many words were spoken — which would put
+      // the cut on the wrong sentence, not merely fail a bound.
+      bad(`removal: review range ${i} does not exist in the transcript`, 'edit_plan_divergent')
+    }
+    for (let w = r.startWordIndex; w <= r.endWordIndex; w++) covered.add(w)
+    requested.push({
+      interval: struckRangeInterval(evidence.words, domain, r.startWordIndex, r.endWordIndex),
+      origin: 'review_edit', ref: i, reasonCode: 'review_struck',
+    })
+  }
   void policy
   return { requested, coveredWordIndices: covered }
 }
@@ -898,7 +992,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   // protected region subtracted out. What survives is the SAFE part of the cut.
   // Fragments below the minimum removal length are dropped: a 20 ms hole is a
   // glitch, not an edit.
-  interface SafeRemoval { interval: Interval; origin: 'speech_candidate' | 'visual_waste'; ref: number; reasonCode: string }
+  interface SafeRemoval { interval: Interval; origin: RemovalSource; ref: number; reasonCode: string }
   const safe: SafeRemoval[] = []
   for (const r of requested) {
     const clipped = intersectIntervals([r.interval], effectiveDomain)
@@ -929,15 +1023,31 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const maxCuts = Math.max(1, Math.floor((policy.cuts.maxCutsPerMinuteMilli * domainMs) / (1000 * 60000)))
   let accepted = safe
   let droppedForDensity = 0
-  if (accepted.length > maxCuts) {
-    droppedForDensity = accepted.length - maxCuts
-    const ranked = [...accepted].sort((a, b) =>
+  // A CREATOR'S CUT IS NEVER GIVEN BACK FOR DENSITY. The ceiling protects the
+  // viewer from a Director that got carried away; it is not a budget the person
+  // who owns the video has to fit inside. Dropping one here would be the exact
+  // failure `validateReviewOverlay` refuses at the edge — the creator watches
+  // the render, sees the sentence they struck still in it, and learns the
+  // review screen is advisory. So the strikes are held out of the ranking and
+  // the ceiling applies to whatever room is LEFT.
+  const struckCuts = accepted.filter((r) => r.origin === 'review_edit')
+  const modelCuts = accepted.filter((r) => r.origin !== 'review_edit')
+  const roomForModelCuts = Math.max(0, maxCuts - struckCuts.length)
+  if (modelCuts.length > roomForModelCuts) {
+    droppedForDensity = modelCuts.length - roomForModelCuts
+    const ranked = [...modelCuts].sort((a, b) =>
       (b.interval.endMs - b.interval.startMs) - (a.interval.endMs - a.interval.startMs)
       || a.interval.startMs - b.interval.startMs)
-    const dropped = ranked.slice(maxCuts)
+    const dropped = ranked.slice(roomForModelCuts)
     for (const d of dropped) warn.add('removal_dropped_cut_density', `${d.origin}_${d.ref}`)
-    const keep = new Set(ranked.slice(0, maxCuts))
-    accepted = accepted.filter((r) => keep.has(r))
+    const keep = new Set(ranked.slice(0, roomForModelCuts))
+    accepted = accepted.filter((r) => r.origin === 'review_edit' || keep.has(r))
+  }
+  // Strikes alone over the ceiling: honoured anyway, and SAID. The alternative
+  // is refusing a person's own edits to keep a pacing guess intact, and the
+  // guess is the thing this project has already been wrong about three times.
+  if (struckCuts.length > maxCuts) {
+    warn.add('review_cuts_over_density_ceiling', `${struckCuts.length}_of_${maxCuts}`)
   }
   if (accepted.length > policy.cuts.maxRemovals) {
     bad(`too many removals (${accepted.length} > ${policy.cuts.maxRemovals})`, 'edit_plan_too_large')
@@ -950,22 +1060,41 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   // keeping the creator's material.
   accepted.sort((a, b) => a.interval.startMs - b.interval.startMs)
   let appliedRemovals = accepted
+  // Fragments already found to be unrepairable. Before this, the first such
+  // fragment ENDED the pass, so a short segment early in the take suppressed
+  // every repair after it. That was survivable while the only cause was a short
+  // accepted take; a creator striking two sentences either side of one surviving
+  // word creates the case on purpose, and the rest of the timeline still
+  // deserves repairing. Skipping instead of stopping keeps the pass terminating:
+  // every iteration either removes a removal or marks a fragment done.
+  const unrepairable = new Set<number>()
   for (;;) {
     const kept = subtractIntervals(effectiveDomain, appliedRemovals.map((r) => r.interval))
-    const shortIdx = kept.findIndex((iv) => iv.endMs - iv.startMs < policy.cuts.minKeptSegmentMs)
+    const shortIdx = kept.findIndex((iv) =>
+      iv.endMs - iv.startMs < policy.cuts.minKeptSegmentMs && !unrepairable.has(iv.startMs))
     if (shortIdx === -1) break
     const short = kept[shortIdx]
     // Give back the removal adjacent to the offending fragment; prefer the one
     // that follows it, then the one before it.
-    const after = appliedRemovals.findIndex((r) => r.interval.startMs === short.endMs)
-    const before = appliedRemovals.findIndex((r) => r.interval.endMs === short.startMs)
+    //
+    // A REVIEW STRIKE IS NOT A CANDIDATE VICTIM. This pass un-applies removals
+    // to avoid leaving a fragment too short to watch, and un-applying a strike
+    // would put a struck sentence back on screen to fix a pacing artefact. When
+    // the only neighbours are strikes the fragment stays short and says so: a
+    // brief surviving clip between two struck sentences is exactly what the
+    // creator asked for, and the word in it was never struck, so removing it
+    // would be the compiler cutting something nobody chose.
+    const reclaimable = (i: number): boolean => appliedRemovals[i].origin !== 'review_edit'
+    const after = appliedRemovals.findIndex((r, i) => r.interval.startMs === short.endMs && reclaimable(i))
+    const before = appliedRemovals.findIndex((r, i) => r.interval.endMs === short.startMs && reclaimable(i))
     const victim = after !== -1 ? after : before
     if (victim === -1) {
       // Nothing to give back: the fragment is short because the accepted take
       // itself is short. Keeping it is still right — the alternative is deleting
       // media nobody asked to delete.
       warn.add('kept_segment_below_minimum', `at_${short.startMs}`)
-      break
+      unrepairable.add(short.startMs)
+      continue
     }
     const v = appliedRemovals[victim]
     warn.add('removal_reverted_min_segment', `${v.origin}_${v.ref}`)
@@ -1071,11 +1200,33 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   const spelling = buildScriptSpellingMap(
     evidence.scriptWordTimings, policy.captions.scriptSpellingMinSimilarityMilli,
     policy.captions.scriptSpellingEnabled)
+  // THE CREATOR'S SPELLING BEATS THE SCRIPT'S, which beats the ASR's. All three
+  // are corrections of the same word's LETTERS and none of them can add, drop,
+  // reorder or retime a caption word — so the precedence is simply which source
+  // is closest to the person: they typed this one while looking at the caption
+  // that was wrong, having already seen what the script and the ASR produced.
+  const reviewSpelling = new Map<number, string>()
+  for (const r of input.review?.respellWords ?? []) {
+    if (!Number.isInteger(r.wordIndex) || r.wordIndex < 0 || r.wordIndex >= evidence.words.length) {
+      bad(`captions: review respelling targets word ${String(r.wordIndex)} which does not exist`,
+        'edit_plan_divergent')
+    }
+    if (typeof r.text !== 'string' || r.text === '' || /\s/.test(r.text)) {
+      // The whitespace rule is the one door through which a "spelling fix" could
+      // become invented speech — "twinny" -> "Twin AI and also buy my course"
+      // splits one spoken word into six caption words. Refused at the edge by
+      // `validateReviewOverlay` and refused again here, because this is where it
+      // would actually take effect.
+      bad(`captions: review respelling for word ${r.wordIndex} is not a single non-empty token`,
+        'edit_plan_invalid')
+    }
+    reviewSpelling.set(r.wordIndex, r.text)
+  }
   const cues = buildCaptionCues({
     words: evidence.words, timeMap, preset: captionPreset,
     maxLines: policy.captions.maxLinesPerCue, maxCues: policy.captions.maxCues,
     tailGuardMs: policy.captions.tailGuardMs,
-    outputDurationMs, emphasisSet, warn, spelling,
+    outputDurationMs, emphasisSet, warn, spelling, reviewSpelling,
   })
 
   // ---- zooms ----------------------------------------------------------------
@@ -1193,6 +1344,10 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       bootManifestSha: identity.bootManifestSha,
       scriptSnapshotSha: identity.scriptSnapshotSha,
       decisionSha256: identity.decisionSha256,
+      // `?? null` is the honest default and not a papered-over absence: a
+      // caller that did not resolve an overlay is a caller for a project where
+      // nobody reviewed, which is every project until the review screen exists.
+      reviewOverlaySha256: identity.reviewOverlaySha256 ?? null,
     },
     source: {
       origin: input.source.origin,
@@ -1298,6 +1453,12 @@ interface CueBuildInputs {
    *  with no captured script — and captions then read exactly as they always
    *  have. Absence is a normal state, never a degraded one. */
   spelling: ScriptSpellingMap
+  /** Spoken-word index -> the letters the CREATOR typed on the review screen.
+   *  Keyed by INDEX, not by time: the person pointed at a word in the
+   *  transcript, and the transcript's own numbering is what they pointed with.
+   *  (The script's map is keyed by time because it joins two independently
+   *  produced word lists; there is no second list here.) */
+  reviewSpelling?: ReadonlyMap<number, string>
 }
 interface StagedWord { index: number; text: string; outStartMs: number; outEndMs: number }
 
@@ -1553,8 +1714,16 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     // ASR's only where the aligner paired this exact spoken word; everywhere
     // else `w.text` is untouched, so a take with no alignment produces
     // byte-identical captions to before this existed.
-    const respelt = inp.spelling.byTime.get(`${w.startMs}:${w.endMs}`)
-    if (respelt !== undefined && respelt !== w.text) {
+    const byCreator = inp.reviewSpelling?.get(i)
+    const respelt = byCreator ?? inp.spelling.byTime.get(`${w.startMs}:${w.endMs}`)
+    if (byCreator !== undefined && byCreator !== w.text) {
+      // Recorded separately from the script's, because they answer different
+      // questions after the fact: "the script disagreed with the ASR here" is a
+      // pipeline fact, and "a person changed this word" is an accountability
+      // one. The index is a valid token; the letters are not (TOKEN_RE), and
+      // they live in the pinned overlay anyway.
+      inp.warn.add('caption_review_respelling_applied', `word_${i}`)
+    } else if (respelt !== undefined && respelt !== w.text) {
       inp.spelling.applied++
       // RECORDED, not silent. When a wrong word reaches a posted video the
       // question is immediately "which word", and without this the answer means

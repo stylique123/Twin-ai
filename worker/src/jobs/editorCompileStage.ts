@@ -24,12 +24,16 @@ import { loadEligibleSource } from './editorInspect.js'
 import { loadComponentStrict } from './editorSpeech.js'
 import { lookupCached } from './editorAnalyze.js'
 import { compileEditPlan, type CompileCutStats } from './editorCompile.js'
-import { buildCompileInput, assertNoCentisecondLeak } from './editorCompileInput.js'
+import { buildCompileInput, assertNoCentisecondLeak, composeReviewedDecision } from './editorCompileInput.js'
 import { recordEditPlan, type Fence } from './editorComplete.js'
 import { EditPlanError, editPlanSha256, type EditPlanV1 } from './editPlanContract.js'
 import type { DirectorDecision } from './directorContract.js'
 import { watchCancellation } from './editorCancel.js'
 import { env } from '../env.js'
+
+/** Postgres `undefined_table`. Named rather than inlined so the one place that
+ *  treats a database error as a normal state says which error, out loud. */
+export const UNDEFINED_TABLE = '42P01'
 
 export interface CompileOutcome {
   planId: string
@@ -163,6 +167,20 @@ export async function runCompilingStage(
 
     const { decision, decisionSha256 } = await loadDecision(projectId)
 
+    // THE CREATOR'S REVIEW, IF THEY MADE ONE. Absent is the ordinary case and
+    // must compile byte-identically to a project from before the gate existed —
+    // the same rule alignment lives under, and for the same reason: every
+    // project in flight has no overlay.
+    //
+    // Read HERE rather than passed in, like every other pinned input, because a
+    // crash-resume re-enters this stage with no in-process state and must
+    // produce the identical plan. `edit_review_overlays` is written once and
+    // frozen (0102), so "the same overlay" is guaranteed by the table rather
+    // than hoped for.
+    const reviewed = composeReviewedDecision({
+      decision, speech, overlay: await loadReviewOverlay(projectId),
+    })
+
     // The generation is read from the PROJECT, not from the asset.
     // `media_assets.generation_id` is nullable and incidental; the authority is
     // `edit_projects.generation_id`, which 0078 makes NOT NULL and immutable —
@@ -193,7 +211,12 @@ export async function runCompilingStage(
         sourceChecksum: asset.content_sha256,
         bootManifestSha: pinned.manifest.manifestSha,
         scriptSnapshotSha: requireSha(pinned.snapshot.snapshotSha, 'the pinned script snapshot'),
+        // The RAW decision's digest, unchanged by the review. The decision is
+        // immutable evidence of what the MODEL chose; composing an overlay onto
+        // it produces the plan, never a new decision. Two digests, two authors,
+        // and "why is this cut here" names one of them.
         decisionSha256,
+        reviewOverlaySha256: reviewed.overlaySha256,
       },
       source: { origin, durationMs, acceptedWindows },
       speech,
@@ -205,7 +228,14 @@ export async function runCompilingStage(
       // manifest carries no alignment digest (pre-#242 projects), which yields
       // captions identical to those rendered before this consumer.
       alignment,
-      decision,
+      // THE COMPOSED DECISION, not the stored one. A restored selection is
+      // expressed as a selection that is no longer in the list, so the two
+      // differ in LENGTH — and `assertNoCentisecondLeak` pairs the evidence
+      // span at index i with the decision record at index i. Handing it the raw
+      // decision below would compare span i against record i+1 and raise a
+      // units failure that is not there.
+      decision: reviewed.decision,
+      review: reviewed.review,
       // The SAME pinned brandSnapshot the Director's envelope was built from
       // (editorDirector.ts) — read off the boot manifest here rather than
       // re-resolved, so a caption color can never disagree with the brand the
@@ -216,7 +246,7 @@ export async function runCompilingStage(
     // The units tripwire, run on the REAL assembled input rather than only in
     // tests. It costs nothing and it is the one defect class here that produces
     // a plausible video instead of an error.
-    assertNoCentisecondLeak(input, decision)
+    assertNoCentisecondLeak(input, reviewed.decision)
 
     if (watch.cancelled()) throw new CompileCancelledError('before_compile')
     const result = compileEditPlan(input)
@@ -265,6 +295,58 @@ export function requireSha(value: unknown, what: string): string {
     )
   }
   return value
+}
+
+/**
+ * The creator's review overlay, or null when they did not make one.
+ *
+ * NULL IS A NORMAL STATE AND MUST STAY ONE. No project compiled before 0102 has
+ * a row here, no project compiled with the review gate off has one, and every
+ * one of them must produce the plan it always did. So a missing row is silence,
+ * never a failure — the opposite rule from the pinned components, which are
+ * required precisely because decisions depend on them.
+ *
+ * A READ ERROR IS NOT A MISSING ROW. `maybeSingle` returns `{data: null}` for
+ * both "no row" and "the query failed", and treating a failed read as "nobody
+ * reviewed" would render the video WITHOUT the creator's edits and report
+ * success — the exact silent-degradation shape this pipeline keeps producing.
+ *
+ * ── THE ONE ERROR THAT IS NOT A DEGRADATION: THE TABLE ITSELF IS ABSENT ───
+ *
+ * A push to `main` touching `worker/` DEPLOYS THE WORKER; migrations are
+ * applied separately and by hand. So there is a real window in which this code
+ * is running against a database that has never seen 0102, and without the
+ * branch below every compile in that window would fail on
+ * `relation "edit_review_overlays" does not exist`, retry, and burn the project
+ * — for a feature that is switched off.
+ *
+ * `42P01` (undefined_table) is treated as "nobody reviewed" NOT because it is a
+ * convenient default, but because it is ENTAILED: no table means no row, no row
+ * means no overlay was ever submitted, and there is therefore no creator edit
+ * that could be silently dropped. That is a proof, not a hope, and it is the
+ * only error code with that property. Every other failure — a permission
+ * error, a timeout, a broken connection — is a database that MIGHT be holding
+ * an overlay it will not give us, and those still fail loudly.
+ */
+export function readOverlayResult(
+  result: { data: unknown; error: { code?: string; message?: string } | null },
+): unknown | null {
+  const { data, error } = result
+  if (error) {
+    if ((error as { code?: string }).code === UNDEFINED_TABLE) return null
+    throw new Error(`compiling: reading the review overlay failed: ${error.message}`)
+  }
+  const overlay = (data as { overlay?: unknown } | null)?.overlay
+  if (overlay === undefined || overlay === null) return null
+  return overlay
+}
+
+/** The read itself. Split from `readOverlayResult` only so the decision that
+ *  branch encodes is testable without a database — it is the one place a
+ *  database error is allowed to mean "carry on". */
+async function loadReviewOverlay(projectId: string): Promise<unknown | null> {
+  return readOverlayResult(await db.from('edit_review_overlays')
+    .select('overlay').eq('edit_project_id', projectId).maybeSingle())
 }
 
 async function loadProjectGeneration(projectId: string): Promise<string> {

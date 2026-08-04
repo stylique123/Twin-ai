@@ -126,6 +126,17 @@ export const env = {
   // than `=== 'false'`, so a typo, an empty string or an unset variable all
   // fail CLOSED rather than enabling a renderer nobody asked for.
   editorRenderEnabled: (process.env.EDITOR_RENDER_ENABLED ?? '').trim() === 'true',
+
+  // ---- the review gate (Phase 10 item 4) ----
+  // When enabled, a directed project PARKS in `awaiting_review` and waits for
+  // the creator to submit their overlay before compiling. Unset => the pipeline
+  // runs straight through exactly as it does today, and an overlay submitted
+  // out of band is still consumed if one happens to exist.
+  //
+  // FAILS CLOSED IN THE DIRECTION THAT MATTERS. A typo here does not silently
+  // park every project in a state whose only exit is a screen the creator may
+  // not know to visit — it renders the video, which is what they asked for.
+  editorReviewGateEnabled: (process.env.EDITOR_REVIEW_GATE_ENABLED ?? '').trim() === 'true',
   // Bucket the rendered output and cover are uploaded to. The PATH is never
   // configured — it comes from `editor_reserve_output`, which derives it
   // server-side.

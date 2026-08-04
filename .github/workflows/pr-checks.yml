@@ -304,6 +304,15 @@ jobs:
       # required check stays green, and nobody would know until a render failed.
       - name: Gate-F (Phase 8 plan/output SQL, hostile + mutation controls)
         run: bash scripts/db-tests/gate-f/run.sh
+      # Gate-G exists because 0102 was applied by NONE of the gates above, so
+      # nothing in CI executed a line of it — and 0102 does not add an isolated
+      # table, it REPLACES the stage guard every editor project transitions
+      # through and the reconciler that decides which projects are dead. Its
+      # load-bearing assertion is the one about projects NOT having a review:
+      # `directing -> compiling` must stay legal, or the obvious implementation
+      # strands every project already in flight.
+      - name: Gate-G (review gate SQL — the pause, the submit RPC, the reconciler)
+        run: bash scripts/db-tests/gate-g/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no
