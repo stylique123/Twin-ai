@@ -52,6 +52,7 @@ import { runDirectingStage, type DirectorOutcome } from './editorDirector.js'
 import { buildBootManifest, canonicalJson, sha256Hex, type BuiltManifest, type BuiltSnapshot } from './editorManifest.js'
 import { resolveBootScriptSnapshot, type SourceProvenanceState } from './bootScriptPolicy.js'
 import { resolveBrandSnapshot } from './brandResolve.js'
+import { resolveGlossary } from './glossaryResolve.js'
 import { VerifiedSourceSession } from './sourceSession.js'
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -324,9 +325,14 @@ async function pinManifest(
   }
 
   const brand = await pinBrandSnapshot(ownerId)
+  // Read ONCE, here, and frozen into the manifest beside the brand snapshot.
+  // The compiler reads the manifest's copy, so a hard word added or deleted
+  // mid-project can neither retro-alter nor fail a running edit.
+  const glossary = await resolveGlossary(ownerId)
   const manifest = await buildBootManifest({
     inspectorVersion: env.inspectorVersion, speechVersion: env.speechVersion,
     brandSnapshot: brand.snapshot, brandSnapshotSha: brand.sha, captureManifestSha,
+    glossary: glossary.terms, glossarySha: glossary.sha,
   })
   // The recording-script snapshot is SOURCE-BOUND under ONE explicit marker/origin
   // policy (resolveBootScriptSnapshot): teleprompter → the verified persisted binding;

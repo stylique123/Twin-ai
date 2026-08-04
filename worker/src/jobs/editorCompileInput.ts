@@ -345,6 +345,10 @@ export interface AssembleArgs {
   // `composeReviewedDecision` below. Optional, and absent is exactly "nobody
   // reviewed" — the state every project is in until the review screen is used.
   review?: CompileReviewEdits
+  // The PINNED glossary's terms (§6). Optional, and absent is treated exactly
+  // like an empty glossary: every project pinned before the glossary existed
+  // arrives here with nothing and must compile identically to how it did then.
+  glossaryTerms?: readonly string[]
 }
 
 /**
@@ -461,6 +465,8 @@ export function buildCompileInput(args: AssembleArgs): CompileInput {
   return {
     identity: args.identity, source: sourceWithRaster, evidence, decision, brandColors,
     ...(args.review ? { review: args.review } : {}),
+    ...(args.glossaryTerms && args.glossaryTerms.length > 0
+      ? { glossaryTerms: args.glossaryTerms } : {}),
   }
 }
 
