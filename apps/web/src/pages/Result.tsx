@@ -16,6 +16,7 @@ const UPLOAD_URLS: Record<string, string> = {
   instagram: 'https://www.instagram.com/',
 }
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
+import { explainFailure } from '../lib/api'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import type { EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
 
@@ -715,7 +716,39 @@ export default function Result() {
                     ) : editProject.status === 'completed' ? (
                       <p className="px-5 text-center text-xs text-stone">This run finished without producing a video.</p>
                     ) : editProject.status === 'failed' ? (
-                      <p className="px-5 text-center text-xs text-coral">The edit failed{editProject.failure_code ? ` (${editProject.failure_code})` : ''}.</p>
+                      // §9's "failure at 11pm": a batch films Sunday, two renders
+                      // come back broken, the user churns silently without filing
+                      // a ticket. The catalogue answering the four questions they
+                      // actually have — is my footage still there, must I film it
+                      // again, will retry help, is this my fault — has existed
+                      // since Phase 10 item 5 and served nobody. A bare code told
+                      // them none of it.
+                      (() => {
+                        const why = explainFailure(editProject.failure_code)
+                        return (
+                          <div className="px-5 text-center">
+                            <p className="text-xs leading-relaxed text-cream">{why.message}</p>
+                            {why.footageRetained && (
+                              <p className="mt-2 text-[11px] text-stone">Your recording is still saved.</p>
+                            )}
+                            {/* RETRY IS OFFERED ONLY WHERE IT CAN PLAUSIBLY WORK.
+                                Telling someone to retry a failure that can never
+                                clear is exactly how this defect hurts, so the
+                                button is gated on the class rather than shown
+                                always and hoped for. */}
+                            {why.retryCanHelp && (
+                              <button onClick={startEdit} disabled={editStarting} className="btn-gradient mt-3 w-full text-xs">
+                                {editStarting ? 'Starting…' : 'Try again'}
+                              </button>
+                            )}
+                            {/* The code stays, small: it is what a support
+                                conversation needs, and hiding it helps nobody. */}
+                            {editProject.failure_code && (
+                              <p className="mt-3 text-[10px] text-stone/60">{editProject.failure_code}</p>
+                            )}
+                          </div>
+                        )
+                      })()
                     ) : editProject.status === 'cancelled' ? (
                       <p className="px-5 text-center text-xs text-stone">Cancelled.</p>
                     ) : editProject.status === 'awaiting_review' ? (
