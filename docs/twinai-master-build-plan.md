@@ -671,7 +671,7 @@ decided. Phase 9 is COMPLETE (10/10).**
 | Provenance stamping on every DNA field | **done** |
 | Script-anchored forced alignment | **engine built; WIRED (#242) and STORABLE; nothing consumes it yet** |
 | Onboarding questions + confirm screen | not started |
-| Transcript-as-editor review gate | not started |
+| Transcript-as-editor review gate | **contract built** (`reviewOverlay.ts`); the SCREEN is not |
 | Failure path (explain, retain footage, retry without refilming) | not started |
 
 **A CORRECTION WORTH KEEPING.** During the Phase-9 close I reported that the
@@ -844,12 +844,50 @@ before treating it as a defect.
            Director output. So the gate on this is an eval run, not an
            implementation. It is also the change that makes
            `consumedByDirector: true` correct.
+     - **THE EVAL DECISION, TAKEN 2026-08-04: both flag flips stay FROZEN OFF
+       for now.** `scripts/director-eval/` is not a program — `thresholds.json`
+       is a frozen HUMAN protocol: 16 recordings across mutually-exclusive
+       strata (plus 4 reserves), 3 blinded raters each, and a senior adjudicator
+       who is not a rater establishing ground-truth spans BEFORE seeing Director
+       output. It cannot be run by anyone today for a reason that is not about
+       cost: **there are no recordings**, and whether a real phone take survives
+       ingest at all is still unverified. Collecting 16 of them is downstream of
+       that one take, not upstream.
+       Writing a smaller `evaluationVersion` was considered and rejected for
+       now: it carries the same coordination cost for weaker evidence, and the
+       strata exist precisely because Director quality plausibly varies by
+       duration and delivery — a 6-recording sample cannot distinguish "the
+       Director is good" from "the Director is good on short scripted takes".
+       Revisit the moment a real recording lands.
      - Note: none of the three consumers built or described here passes
        alignment into the DIRECTOR, so the component catalog's
        `consumedByDirector: false` remains correct today. The hook item above is
        what flips it, and flipping it is a decision about the model's inputs
        rather than a prerequisite for reading the evidence in the compiler.
-4. Transcript-as-editor review gate
+4. **Transcript-as-editor review gate — the CONTRACT is built, the screen is not.**
+   `worker/src/jobs/reviewOverlay.ts`. A screen could not be the first thing
+   here, because the hard question is not what the creator clicks but WHAT A
+   CLICK IS ALLOWED TO MEAN — which has to hold whether it comes from the review
+   screen, a future API, or a support tool acting on someone's behalf.
+   **It may REMOVE and CORRECT. It may not INVENT.** Strike a sentence, restore
+   a cut, fix a word's letters, drop a zoom. Nothing in the vocabulary can add a
+   word that was never spoken or move one in time — the same bound A18h asserts
+   of captions and script re-spelling already lives under. The one door that
+   could have been left open is closed explicitly: a respelling may not contain
+   whitespace, because "twinny" -> "Twin AI and also buy my course" would
+   otherwise be a spelling fix.
+   **The decision is never edited.** `edit_director_decisions` is append-only
+   and hash-pinned; a record of what the model chose that can be rewritten
+   afterwards is not evidence. The overlay is its own record and composes with
+   the decision, so "why is this cut here" always names either the model or the
+   person.
+   **An empty overlay returns the SAME OBJECT**, and a test asserts identity
+   rather than equality — so this lands ahead of the UI having provably altered
+   no render. 27 tests, mutation-checked.
+   *Still to build:* the screen, persistence of the overlay, and the compile
+   stage consuming `removeWordRanges` and `respellWords` — which cannot live in
+   the decision, because it expresses removals as indices into the Director's
+   CANDIDATE list and a struck sentence may have no candidate at all.
 5. Failure path — explain, retain footage, retry without refilming
 
 ### Phase 11 — the take itself *(REORDERED — this is now the highest-risk area)*
