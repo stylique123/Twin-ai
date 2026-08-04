@@ -20,6 +20,7 @@
 //   META_APP_ID, META_APP_SECRET            (Instagram via the Graph API)
 
 import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { encryptToken, decryptToken } from './tokenCrypto.ts'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -29,6 +30,12 @@ const cors = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...cors, 'Content-Type': 'application/json' } })
 const env = (k: string) => Deno.env.get(k)
+
+// OAuth tokens are encrypted at rest with a key held HERE, not in the database.
+// See tokenCrypto.ts for why: this is the only consumer, so the key never needs
+// to be reachable from SQL — and a key reachable from SQL does not survive the
+// service-role leak §9a.2 names as a threat.
+const TOKEN_KEY = () => env('SOCIAL_TOKEN_KEY') ?? ''
 const fnBase = () => `${env('SUPABASE_URL')}/functions/v1/social`
 const appUrl = () => (env('APP_URL') ?? '').replace(/\/+$/, '')
 
@@ -364,13 +371,27 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
     // Refresh a short-lived (YouTube) token before publishing so a next-day post
     // doesn't 401. Best-effort: on refresh failure we keep the old token and let
     // the publish surface the auth error (which flags the connection expired below).
-    let accessToken = conn.access_token as string
+    // DECRYPT BEFORE USE. A legacy plaintext row returns itself, so a creator
+    // connected before encryption existed keeps posting; a row that fails to
+    // decrypt throws, and failPost below records it rather than attempting a
+    // publish with a token we cannot vouch for.
+    let accessToken = await decryptToken(
+      conn.access_token as string, TOKEN_KEY(), post.owner_id as string, post.platform as string)
     const expired = conn.token_expires_at && new Date(conn.token_expires_at as string) <= new Date()
     if (expired && conn.refresh_token && ad.refresh) {
       try {
-        const fresh = await ad.refresh(conn.refresh_token as string)
+        const storedRefresh = await decryptToken(
+          conn.refresh_token as string, TOKEN_KEY(), post.owner_id as string, post.platform as string)
+        const fresh = await ad.refresh(storedRefresh)
         accessToken = fresh.access_token
-        await admin.from('platform_connections').update({ access_token: fresh.access_token, ...(fresh.expires_at ? { token_expires_at: fresh.expires_at } : {}), status: 'connected' }).eq('id', conn.id)
+        // The refresh is also where a LEGACY PLAINTEXT ROW gets converted: the
+        // new token is written encrypted regardless of how the old one was
+        // stored, so the plaintext population drains without a backfill that
+        // could half-succeed and cost someone their connection.
+        await admin.from('platform_connections').update({
+          access_token: await encryptToken(fresh.access_token, TOKEN_KEY(), post.owner_id as string, post.platform as string),
+          ...(fresh.expires_at ? { token_expires_at: fresh.expires_at } : {}), status: 'connected',
+        }).eq('id', conn.id)
       } catch { /* fall through with the stale token */ }
     }
     const res = await ad.publish({ accessToken, accountId: conn.external_account_id ?? '', videoUrl: signed.signedUrl, title: (post.caption ?? 'New video').slice(0, 90), caption: post.caption ?? '' })
@@ -437,6 +458,11 @@ Deno.serve(async (req: Request) => {
       if (Date.now() - new Date(nonce.created_at).getTime() > NONCE_TTL_MS) return back('connect_error=expired')
       const ad = ADAPTERS[nonce.platform]
       if (!ad || !ad.configured()) return back('connect_error=unconfigured')
+      // FAIL CLOSED ON A MISSING KEY. Without it the only alternatives are
+      // storing the token in plaintext — reintroducing the exact defect — or
+      // pretending the connection succeeded. Refusing to connect is the honest
+      // third option, and it is loud enough to be fixed in minutes.
+      if (!TOKEN_KEY()) return back('connect_error=unconfigured')
       const tok = await ad.exchange(code)
       let acc = { id: '', label: ad.label }
       try { acc = await ad.account(tok.access_token) } catch { /* label is best-effort */ }
@@ -445,8 +471,10 @@ Deno.serve(async (req: Request) => {
         platform: nonce.platform,
         account_label: acc.label,
         external_account_id: acc.id || null,
-        access_token: tok.access_token,
-        refresh_token: tok.refresh_token ?? null,
+        access_token: await encryptToken(tok.access_token, TOKEN_KEY(), nonce.owner_id, nonce.platform),
+        refresh_token: tok.refresh_token
+          ? await encryptToken(tok.refresh_token, TOKEN_KEY(), nonce.owner_id, nonce.platform)
+          : null,
         token_expires_at: tok.expires_in ? new Date(Date.now() + tok.expires_in * 1000).toISOString() : null,
         status: 'connected',
         updated_at: new Date().toISOString(),
