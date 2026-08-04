@@ -1347,12 +1347,30 @@ Three more, each of which **blocks a named later phase**:
   dump or service-role leak buys the ability to post as every connected creator.
   **Blocks §7b analytics scopes**, which would widen a leak from "post a video"
   to "read this creator's whole audience".
-  **It is the last of these three still open**, and the one that needs a
-  decision before code: where the key lives. Encrypting in the database
-  (pgsodium/Vault) keeps the ciphertext and the key in the same system a dump
-  would take; encrypting in the worker means a key in the worker's environment
-  and a migration path for every existing row. That choice is the work, not the
-  SQL.
+  **DECIDED AND BUILT 2026-08-04 — the key lives with the edge function.**
+  Checking who actually reads these tokens decided it: exactly ONE consumer
+  touches them (`supabase/functions/social`), and the worker never does. So the
+  key never needs to be reachable from SQL.
+  **The service-role row is the whole argument.** Against a `pg_dump`, an
+  in-database key (Vault) and an edge-function key both hold. Against a
+  SERVICE-ROLE LEAK — the other threat named above — an in-database key does
+  NOT: decryption is then a SQL call `service_role` can make, so the leak still
+  buys every creator's tokens. Holding the key outside the database is the only
+  option that defends the credential which can read the database, and because
+  the sole consumer already runs outside SQL it costs nothing here. That is not
+  true in general, which is why it is written down rather than assumed.
+  AES-256-GCM via WebCrypto, `v1:<iv>:<ct>`, with the AAD bound to
+  `owner_id|platform` so a ciphertext copied between rows fails to decrypt
+  instead of authorising a post as the wrong creator. Legacy plaintext rows are
+  read as themselves and re-encrypted on their next write, so the population
+  drains without a backfill that could half-succeed and cost someone their
+  connection.
+  **STILL NEEDS A HUMAN, and this one is real:** set `SOCIAL_TOKEN_KEY` (32
+  random bytes, base64) on the project's edge-function secrets before deploying.
+  The connect path refuses to run without it — storing plaintext instead would
+  reintroduce the defect, and pretending the connection succeeded would be
+  worse — so an unset key means "connect fails loudly", not "connect quietly
+  degrades".
 
 Also worth recording, because it is the correct instinct applied unevenly: the
 render half — the EditPlan contract, the argv alphabet, the ASS escaper, the
