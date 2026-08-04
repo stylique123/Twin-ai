@@ -227,29 +227,41 @@ export function buildDiffSql(expected) {
   const tvals = [...expected.tables].map(([t, f]) => `(${quote(t)}, ${quote(f)})`).join(', ')
   const fvals = [...expected.functions.values()]
     .map((v) => `(${quote(v.name)}, ${v.nargs}, ${quote(v.sha256)}, ${quote(v.file)})`).join(', ')
-  return `with want_t(name, file) as (values ${tvals}),
-     want_f(name, nargs, sha, file) as (values ${fvals}),
-     got_f as (
+
+  // AN EMPTY SCOPE IS NOT A CLEAN DATABASE, and this is where that nearly went
+  // wrong. `--sql-diff 0099` selects a range whose migrations create no TABLES,
+  // and the generated SQL was `values )` — a syntax error, which at least fails
+  // loudly. The dangerous version is the one a small fix would have produced:
+  // drop the empty branch and the query runs, returns nothing, and reads
+  // exactly like "in sync". So an empty scope returns a ROW SAYING SO.
+  if (!tvals && !fvals) {
+    return `select 'empty_scope' as kind, 'no tables or functions are in scope' as name, '' as file;`
+  }
+  const branches = []
+  if (tvals) {
+    branches.push(`select 'missing_table' as kind, w.name, w.file
+  from want_t w where to_regclass('public.' || w.name) is null`)
+  }
+  if (fvals) {
+    branches.push(`select case when g.name is null then 'absent_function' else 'stale_function' end,
+       w.name || '/' || w.nargs, w.file
+  from want_f w left join got_f g on g.name = w.name and g.nargs = w.nargs
+  where g.name is null or g.sha is distinct from w.sha`)
+    branches.push(`select 'extra_overload', g.name || '/' || g.nargs, ''
+  from got_f g
+  where g.name in (select name from want_f)
+    and not exists (select 1 from want_f w where w.name = g.name and w.nargs = g.nargs)`)
+  }
+  const ctes = [
+    tvals ? `want_t(name, file) as (values ${tvals})` : '',
+    fvals ? `want_f(name, nargs, sha, file) as (values ${fvals})` : '',
+    fvals ? `got_f as (
        select p.proname as name, p.pronargs as nargs,
               encode(pg_catalog.sha256(convert_to(p.prosrc, 'UTF8')), 'hex') as sha
        from pg_proc p join pg_namespace n on n.oid = p.pronamespace where n.nspname = 'public'
-     )
-select 'missing_table' as kind, w.name, w.file from want_t w where to_regclass('public.' || w.name) is null
-union all
-select case when g.name is null then 'absent_function' else 'stale_function' end,
-       w.name || '/' || w.nargs, w.file
-  from want_f w left join got_f g on g.name = w.name and g.nargs = w.nargs
-  where g.name is null or g.sha is distinct from w.sha
-union all
--- ADDITIVE DRIFT. An overload of a function the migrations own, at an arity no
--- migration in this tree creates, is something a hand-applied change left
--- behind. It cannot make the committed body wrong, but it can shadow it at a
--- call site — which is worth seeing, and is not the same finding as "behind".
-select 'extra_overload', g.name || '/' || g.nargs, ''
-  from got_f g
-  where g.name in (select name from want_f)
-    and not exists (select 1 from want_f w where w.name = g.name and w.nargs = g.nargs)
-order by file, kind, name;`
+     )` : '',
+  ].filter(Boolean)
+  return `with ${ctes.join(',\n     ')}\n${branches.join('\nunion all\n')}\norder by file, kind, name;`
 }
 
 /**
@@ -409,6 +421,25 @@ function selftest() {
   check('the extra overload is still reported', ovlDiag.extraOverloads.includes('f/10'))
   check('the committed arity being wrong is STILL caught alongside an overload',
     !diagnose(ovl, { tables: {}, functions: { 'f/9': sha256('OLD'), 'f/10': sha256('TEN') } }).ok)
+
+  // THE EMPTY-SCOPE CASE, which produced invalid SQL the first time a scope
+  // happened to contain no tables (`--sql-diff 0099`). The syntax error was the
+  // lucky outcome; the tempting small fix — drop the empty branch — would have
+  // returned zero rows, which reads exactly like "in sync".
+  const noTables = buildExpected(MIGRATIONS_DIR, '0099')
+  check('a scope with no TABLES still emits valid SQL', !buildDiffSql(noTables).includes('values )'))
+  check('...and still checks the functions in that scope',
+    buildDiffSql(noTables).includes('stale_function') && buildDiffSql(noTables).includes('extra_overload'))
+  check('...and omits the table branch rather than emitting an empty one',
+    !buildDiffSql(noTables).includes('missing_table'))
+  const emptyScope = { files: [], tables: new Map(), functions: new Map() }
+  check('an ENTIRELY empty scope says so instead of returning nothing',
+    buildDiffSql(emptyScope).includes('empty_scope'))
+  check('a full scope still emits all three branches', (() => {
+    const q = buildDiffSql(buildExpected(MIGRATIONS_DIR, '0094'))
+    return q.includes('missing_table') && q.includes('stale_function') && q.includes('extra_overload')
+      && !q.includes('values )')
+  })())
 
   const real = buildExpected()
   check('a migration that creates no table and no function is reported UNPROBED',
