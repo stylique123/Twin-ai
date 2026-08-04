@@ -1293,17 +1293,33 @@ refuses to run anywhere but staging (checked first, before the body is parsed),
 and the deploy set is explicit and *closed* — an unclassified function fails
 the build, so a new one can neither be silently skipped nor silently shipped.
 
-> **STILL NEEDS A HUMAN WITH CONSOLE ACCESS:** set `CI_BOOTSTRAP_DISABLED=1` on
-> the production project and delete the function from it. The commit stops the
-> next deploy from re-creating it; it cannot remove what is already deployed.
+> ~~**STILL NEEDS A HUMAN WITH CONSOLE ACCESS:** set `CI_BOOTSTRAP_DISABLED=1` on
+> the production project and delete the function from it.~~
+> **CHECKED 2026-08-03 — NOT NEEDED. `ci-bootstrap` was never deployed to
+> production.** The function list on the production project holds 17 functions
+> and `ci-bootstrap` is not among them; it exists only on staging, which is
+> where it belongs. The concern was correct in shape — a copy on production
+> would have handed out production credentials — but the copy does not exist,
+> so there is nothing to delete and no env var to set. Recorded rather than
+> deleted, because "we assumed it was there" and "we looked" are different
+> states and only one of them is evidence.
 
 Three more, each of which **blocks a named later phase**:
 
-- **Nothing in the codebase ever deletes a stored recording.** No
-  `storage.remove`, no object DELETE, anywhere. Account deletion cascades the DB
-  rows; the raw takes — a person's face and voice — survive indefinitely and
-  unreferenced. Retention trims telemetry only. **Blocks Phase 11**, which adds
-  preflight capture and many more discarded retakes.
+- ~~**Nothing in the codebase ever deletes a stored recording.**~~ **CLOSED —
+  `0099` built it, and on 2026-08-03 it was APPLIED to production and staging.**
+  A trigger on `media_assets` queues a `purge_media` job on DELETE and on
+  status→`deleted`, so a generation cascade and an account cascade are both
+  covered without application code; the worker handler treats a 404 as success,
+  so a retry after a partial success cannot dead-letter. Verified in both
+  databases by object, not by ledger: both triggers present, the function body
+  matching the committed one.
+  **The interval is the lesson, not the fix.** `0099` sat on `main`, unapplied
+  and unnoticed, while nothing in this repository could tell anyone that. That
+  is what `scripts/db-tests/migration-presence` now answers.
+  What `0099` still does NOT do: sweep objects that never had a row. That needs
+  an age-based reaper over storage prefixes — a separate change with a different
+  risk profile, since a reaper that is wrong deletes live footage.
 - **`generate-blueprint` has none of the Director's injection discipline.**
   Scraped page text and reference transcripts are concatenated into the prompt
   with no data/instruction boundary, while `editorDirector.ts:64-65` states
@@ -1332,13 +1348,21 @@ audited clean, with no bypass found. The risk is entirely in the perimeter.
   contradicts three module headers that assert "at most ONE download per
   attempt", and `source_downloads` on the durable record is consequently always
   wrong. **Fix is passing one parameter.** At 1,000 videos/day it is ~$540/mo.
-- **`posts` has no join key to a render.** It has `generation_id`; one
-  generation has many `edit_projects`. So even with perfect view counts you
-  cannot say *which render* was posted. §7b calls performance feedback the only
-  real moat and says you cannot recover history you did not record — **this one
-  column is the difference, and every video posted before it exists is
-  permanently unattributable.** One `ALTER TABLE`. It is the highest-value
-  change in this document.
+- ~~**`posts` has no join key to a render.**~~ **CLOSED — `0098` added
+  `posts.edit_project_id` and `posts.output_asset_id`, and on 2026-08-03 they
+  were APPLIED to production.** Both nullable and both `on delete set null`: a
+  row created before the columns existed genuinely does not know its render, and
+  a guess would be worse than the gap, since a wrong attribution is
+  indistinguishable from a right one and poisons the exact analysis the columns
+  exist to enable. Verified by reading `information_schema` on production:
+  both columns present, the partial index present.
+  **This one had the longest fuse in the document** — "every video posted before
+  it exists is permanently unattributable" was true for every day between `0098`
+  being written and being applied, and nothing anywhere reported the gap.
+  `0098` is also the migration `migration-presence` structurally CANNOT see: it
+  creates no table and defines no function, so it is reported as *unprobed*
+  rather than verified. The single highest-value migration landed in the tool's
+  declared blind spot, which is the argument for declaring blind spots.
 - **Render timing is computed and discarded.** `RenderEvidence` carries
   `renderMs`, `realtimeRatioMilli`, `budgetMs`, `graphSha256`; `editorV2`
   consumes the three loudness fields and drops the rest. A render that failed
@@ -1360,14 +1384,30 @@ recorded. That was defensible when the inputs were believed sound. They are not.
 
 **Revised order:**
 
-1. The four silent joints (§9a.1) — three are one-line fixes; #4 is a handful
-2. Stage-boundary contract tests — without these, this recurs elsewhere
-3. `posts.edit_project_id` + the decision/outcome tables — irrecoverable if delayed
+1. ~~The four silent joints (§9a.1)~~ — **done**
+2. ~~Stage-boundary contract tests~~ — **done**; and the class recurred where
+   nobody was looking for it. A stage boundary is not only producer→consumer
+   inside the worker: **repository→deployed database is one too**, and it had no
+   test at all. `0098`, `0099` and `0100` sat on `main` unapplied to production
+   while every gate stayed green, because every gate reads the migration FILES.
+   `scripts/db-tests/migration-presence` is the contract test for that boundary.
+3. ~~`posts.edit_project_id`~~ — **column applied to production 2026-08-03.**
+   The decision/outcome tables remain.
 4. The single-download fix + persist `RenderEvidence` + capture token counts
-5. Media deletion and retention — **before** Phase 11 adds preflight capture
+5. ~~Media deletion~~ — **`0099` applied to production and staging 2026-08-03.**
+   Retention (excluding the performance tables from the nightly trim, with the
+   reason written into the migration that trims) remains, and is still needed
+   **before** Phase 11 adds preflight capture.
 6. The blueprint injection envelope — **before** Phase 12a posting
 7. *Then* the rest of Phase 9 (long-token wrapping, caption band vs platform UI,
-   A/V drift, `pacing`)
+   A/V drift, `pacing`). **Caption band vs platform UI is now MEASURED and the
+   news is bad:** every preset's `maxCharsPerLine` draws 1.45x-1.57x wider than
+   the 680 px box on ordinary text, and `WrapStyle: 2` means libass does not
+   re-wrap — it draws through the rail inset instead. The number is pinned in
+   `worker/src/__tests__/caption-line-width.test.ts` with an honest `fits: false`;
+   which knob closes it (chars per line, font size, words per cue, or a wider box
+   that spends safe-area margin) is a product decision, deliberately not taken
+   inside a test.
 
 §9's item 1 — real footage, one human, one phone — moves ahead of all of it.
 Every defect above was findable in an afternoon that way, and the pre-mortem's
