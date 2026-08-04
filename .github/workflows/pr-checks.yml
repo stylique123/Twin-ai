@@ -313,6 +313,12 @@ jobs:
       # strands every project already in flight.
       - name: Gate-G (review gate SQL — the pause, the submit RPC, the reconciler)
         run: bash scripts/db-tests/gate-g/run.sh
+      # Gate-H proves the capability-flag CHECK, which is what makes "unset is
+      # not false" a property of the DATA rather than of one TypeScript reader.
+      # The column is not the only writer a column ever gets, and a CHECK
+      # nobody executes is a comment.
+      - name: Gate-H (capability flags — the shape CHECK and the column grants)
+        run: bash scripts/db-tests/gate-h/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no

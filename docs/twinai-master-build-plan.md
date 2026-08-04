@@ -169,7 +169,9 @@ Why it is a trap:
 4. **One bucket is a rejection, not an archetype** ("Maker: not servable").
 5. **No escape hatch existed** — one-way routing off a loading-screen tap.
 
-**Build this instead — three booleans already being collected:**
+**Build this instead — three booleans** *(this line used to say "already being
+collected". They were collected NOWHERE — corrected 2026-08-04 when item 9 was
+built. Onboarding asks handle, platform, audience, product, goal and stops.)*:
 
 ```
 can_film_objects     from "Can you show a product?"
@@ -1036,6 +1038,46 @@ before treating it as a defect.
    independently: you cannot currently change a word before reading it into a
    camera 40 times.
 9. **Capability flags** (§2.2) replace archetype routing.
+   **BUILT — the data model and the resolution rule (0103,
+   `packages/shared/src/editor/capabilities.ts`). Nothing consumes them yet,
+   and that is declared rather than incidental.**
+   **Two claims in this document were false against the code, and checking
+   changed the work.** (a) There is NO ARCHETYPE ROUTING to replace — no
+   Explainer/Demonstrator/Brand enum exists anywhere in the repository, and the
+   only occurrences of the word describe a creator's recurring video FORMATS in
+   their scraped DNA, which is a different concept and a legitimate one. So
+   this is a build, not a migration, and nothing had to be un-wired. (b) §2.2
+   calls these "three booleans already being collected"; they were collected
+   NOWHERE — onboarding asks for handle, platform, audience, product and goal
+   and stops. Every consumer §2.2 names is downstream of asking the question
+   for the first time.
+   **UNSET IS A THIRD STATE, and it is the whole design.**
+   `can_film_objects = false` means "never show this creator a footage
+   checklist" — a feature being REMOVED. Defaulting it to false for everyone
+   who has never been asked would silently remove that screen from every
+   existing account: this project's most-repeated defect (a missing value read
+   as a real one) landing where it costs most. So a flag is `true`, `false` or
+   UNANSWERED; `isExplicitlyFalse` and `isExplicitlyTrue` are separate
+   questions; and there is deliberately no backfill, because there is no answer
+   to backfill.
+   **The video wins over the brand default, including when it says false.**
+   "Flags change per video" is the sentence that separates this from the
+   archetype trap — a default acting as a floor would make the per-video answer
+   advisory, which is a setting that sorts the person and cannot be escaped for
+   one video. The resolution records WHICH scope answered, so "why was I not
+   asked to film anything?" names the video or the brand rather than a rule
+   nobody can see.
+   **The refusal is in the DATABASE, not only in the reader.** A CHECK
+   constraint refuses `"true"`, `1`, `"yes"` and any fourth key — the last of
+   which is how an enum grows back. Proven by Gate-H against a real Postgres
+   with a mutation control, because the TypeScript reader is not the only
+   writer a column ever gets.
+   *Still to build:* the three consumers §2.2 names, each blocked on something
+   real — the footage checklist does not exist (Phase 12 item 12), the
+   screen-recording clip type does not exist (Phase 12 item 13), and the
+   approval lock is a regulated-tier surface on top of the review screen rather
+   than a flag read. And the QUESTIONS: Phase 10 item 2 is what asks them, and
+   it is now unblocked.
 10. Reference validation *(reject unusable links before they poison a script)*
 11. Scene-by-scene recording — **with continuity preserved.** Camera stopping
     between scenes breaks a gym/kitchen workflow where scene 3 must physically
@@ -1577,3 +1619,4 @@ cheapest thing left to check.
 | 2026-08-03 | **Phase 9 COMPLETE (10/10).** Its last item is closed by measurement, and the measurement overturned the item's premise: the caption collision is the platform ACTION RAIL, which is horizontal, not the bottom caption block. Fixed by width (`captions.maxWidthPx` 680, `railInsetPx` 200, `marginHorizontalPx` 140→200) with `marginVerticalPx` deliberately unchanged at 600; pinned by a contract test that reads the frozen policy in both directions. Also written down two requirements that existed only in conversation and were therefore unbuildable: §2.4 per-task model routing, and Phase 11 item 7a teleprompter-by-content-type. Both are recorded as named gaps with their open questions, not as invented designs — each is blocked on a human decision. |
 | 2026-08-04 | **Phase 10 item 4's backend is complete end to end.** The compiler consumes the overlay's two span fields (`removeWordRanges` → removals with a `review_edit` origin, `respellWords` → caption letters that beat the script's, which beat the ASR's); 0102 adds the `awaiting_review` pause, the write-once overlay table and `editor_submit_review`. The design work was in what a creator's edit is EXEMPT from and what it is not: exempt from the three gates that stop the model cutting on evidence the analyzer would not vouch for, exempt from nothing structural, and never given back by the density ceiling or the min-segment repair — both of which would otherwise reintroduce, in the compiler, the exact silent drop the overlay validator refuses at the edge. Plan schema 5→6 adds `identity.reviewOverlaySha256`, where null (nobody reviewed) and a digest (somebody looked and approved) are deliberately different values. The pause needed three separate places to learn that resting is not dying — the reconciler, the empty-stage-list fallthrough to `completed`, and the stage guard's strict +1 walk. The SCREEN exists and no human has used it; §4.8's claim is that editing the words reads as editing the video, and nothing in this repository tests that. |
 | 2026-08-04 | Item 2 (onboarding questions + confirm screen) recorded as BLOCKED behind capability flags rather than left as "not started". §6 specifies the brief per archetype and §2.2 retired archetypes; building the questions first would store the discarded model in the one place it is hardest to undo — the answers a creator gives on day one. |
+| 2026-08-04 | **Phase 11 item 9 (capability flags) BUILT — data model, resolution rule, and the refusal in SQL (0103).** Checking first changed the work twice over: there is no archetype routing to replace (no Explainer/Demonstrator/Brand enum exists anywhere; the word only appears describing a creator's recurring FORMATS in their DNA), and the "three booleans already being collected" were collected nowhere. So the item was a build, not a migration. The design is one distinction: UNSET IS NOT FALSE. `can_film_objects = false` removes a screen, so defaulting it for accounts that were never asked would silently remove that screen from all of them — a missing value read as a real one, in the place it costs most. Three states, two separate questions (`isExplicitlyFalse` / `isExplicitlyTrue`), no backfill. The video's answer beats the brand default including when it says false, because a default acting as a floor is a setting that sorts the person and cannot be escaped for one video — the archetype trap in the other costume. The CHECK refuses `"true"`, `1` and any fourth key in the database rather than only in the reader, proven by Gate-H with a mutation control. Nothing consumes the flags yet and that is DECLARED, following the alignment component's precedent. Phase 10 item 2 is now unblocked. |
