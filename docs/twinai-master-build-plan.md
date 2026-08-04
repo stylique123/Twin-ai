@@ -1213,6 +1213,32 @@ Never general advice dressed as personal insight.
 PERFORM.** The moment it predicts a number it has not measured, it becomes the
 thing §1.2 exists to prevent.
 
+**THE CRAFT CHECKS ARE BUILT** — `packages/shared/src/editor/craftChecks.ts`.
+Six of the seven rules are measurable from what a render already produces (the
+plan's timings, cut rate, frame and caption geometry, plus the DELIVERED
+loudness `loudness.ts` measures from the encoded file). The design decisions
+are all about the honesty line:
+- **Three statuses, and `fail` is not one of them.** `pass` / `attention` /
+  `not_checked`. A craft rule is a general observation about short-form video,
+  not a law about this creator's video — a six-second hook is unusual and may
+  be exactly right. `attention` invites disagreement, which §7c's own example
+  sentence is careful to do.
+- **`not_checked` is the most important status.** "Ends on a reason to act" is
+  a claim about MEANING and nothing here measures meaning, so it is reported
+  as unmeasurable rather than omitted: a silently shorter report would let a
+  clean result imply the whole list was checked. The same rule covers any
+  render missing a measurement — absence is never reported as a pass.
+- **All seven always return, in a stable order**, so two videos are comparable
+  and a missing check is visible.
+- **The summary counts, it never scores.** "6 of 7 things checked, and all of
+  them look right" is arithmetic about what was examined; "quality: 71%" is a
+  number nobody measured.
+- A test asserts no reason text matches
+  `will | perform | viral | views | score | engagement | boost | guarantee`,
+  across every status on both a good and a bad render.
+*Still to build:* the surface that shows them. The facts interface is
+deliberately plain so the plan, the render evidence or an API can supply it.
+
 ### After
 Brand lock · approval workflow · Spanish + Portuguese *(Latin script — nearly
 free; the STT and fonts already exist)* · agency capture links · lower-thirds
@@ -1670,3 +1696,4 @@ cheapest thing left to check.
 | 2026-08-04 | **The permanent glossary (§6) BUILT — table (0104), pinned into the boot manifest, consumed by the caption re-speller.** The design is one sentence: a glossary term LOWERS THE SIMILARITY FLOOR for a pairing the aligner already made, and never matches against the transcript on its own. The ordinary floor (700) exists because a substitution is the aligner's GUESS that two words are the same word; a term is evidence that reduces that risk for exactly one word, because the creator typed it deliberately as a word they expect to be got wrong. So every existing caption property survives — nothing added, dropped, reordered or retimed — and `glossaryAdmitted` counts the re-spellings admitted ONLY by the lower floor, which is simultaneously the evidence the feature works and the evidence it went too far. Both floors are chosen, not measured, exactly like the 700. **The cost of the bound is stated rather than hidden: an UPLOAD with no captured script gets nothing**, because there is no pairing to adjust; matching terms against ASR words directly would cover that case and is how "kubernetes" becomes "cucumbers" on screen — a change to make against a real recording, not against reasoning. The glossary is PINNED at manifest time beside the brand snapshot, so a hard word added mid-project can neither retro-alter nor fail a running edit. A term is ONE WORD in the database as well as the client, because a row can be written by anything holding the owner's credentials. The pin also survives the window where the worker deploys ahead of its migration: `42P01` reads as an empty glossary, which is ENTAILED (no table means no row means no term was ever stored, so the glossary genuinely is empty at pin time) — and without it that window would be a TOTAL EDITOR OUTAGE rather than a degraded caption, because the read sits inside `pinManifest`, which every project passes through at its first stage. |
 | 2026-08-04 | **§7b's log BUILT (0105) — "start logging now", with the absolute rule as a CONSTRAINT.** `post_outcome_observations` is append-only and one row per (post, metric, observed_at, source): `posts.views/likes/comments` are scalars, and updating one destroys the previous value — views at 24h and views at 30d are different facts and the difference between them is most of the signal. The metric list is closed, because free text is how "engagement" appears and stops being comparable to anything. `dna_claims` encodes the five types with their DIFFERENT evidence requirements in SQL: a correlation with no sample size or n=1 CANNOT BE INSERTED, a hypothesis may not carry a sample size, a business outcome may not exist without attribution. That rule never ships broken as a decision — it ships as an absent check — so it is a CHECK, proven by Gate-I with mutation controls. The floor of 2 is the only number asserted, because §7b deliberately does not fix N and inventing one would be the confident-number-from-nothing the section exists to prevent. Nothing writes to the log yet (a platform read needs the OAuth connections) and nothing consumes it — declared, not implied. |
 | 2026-08-04 | **Phase 11 item 10 (reference validation) BUILT.** §5's four cases — twelve minutes, no speech, a slideshow, a song — are all measurable from what the transcriber already produces, so the check is a pure function over (duration, word count) and needs no new infrastructure. It follows `assessProbe`'s rule exactly: a missing measurement gets its OWN verdict and never borrows a real one, so `duration_unknown` is not `too_short`, and an unknown reference stays USABLE because refusing on no evidence discards the creator's choice. Withholding the transcript id is the entire mechanism — `generate-blueprint` already falls back to pattern mode — so this adds a reason, and the reason is SHOWN. A test asserts no reason text contains "bad", "poor" or "perform", because §7c's honesty line applies to references too: say what was checked, never what will perform. Found on the way: `IngestJob.result.duration_sec` was declared by the client and never emitted by the worker, so no reader could tell an unmeasured reference from a missing field. |
+| 2026-08-04 | **§7c's craft rules BUILT as checks.** Six of seven are measurable from what a render already produces; the seventh — "ends on a reason to act" — is a claim about MEANING and is reported as `not_checked` with its reason rather than omitted, because a silently shorter report would let a clean result imply the whole list was checked. There is no `fail` status: a craft rule is a general observation, not a law about this creator's video, and `attention` states BOTH numbers so it stays arguable exactly as §7c's example sentence does. The summary counts rather than scores. The honesty line is enforced by a test, not by care: no reason text may match `will/perform/viral/views/score/engagement/boost/guarantee`, asserted across every status on a good render and a bad one. Every bound is chosen rather than measured and is a parameter, and they are deliberately loose — a check that fires on a good video teaches the creator to ignore checks. |
