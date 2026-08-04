@@ -669,9 +669,9 @@ decided. Phase 9 is COMPLETE (10/10).**
 | item | state |
 |---|---|
 | Provenance stamping on every DNA field | **done** |
-| Script-anchored forced alignment | **engine built; WIRED (#242) and STORABLE; nothing consumes it yet** |
-| Onboarding questions + confirm screen | not started |
-| Transcript-as-editor review gate | **contract built** (`reviewOverlay.ts`); the SCREEN is not |
+| Script-anchored forced alignment | **engine built; WIRED (#242); three consumers built** |
+| Onboarding questions + confirm screen | not started — and BLOCKED behind capability flags (Phase 11 item 9), see the note in item 2 |
+| Transcript-as-editor review gate | **the backend is complete end to end**: contract (`reviewOverlay.ts`), compiler consumption, persistence + the pause (0102), and a screen that is BUILT BUT UNSEEN — no human has used it |
 | Failure path (explain, retain footage, retry without refilming) | **explain built** (`failureExplain.ts`); retain + retry were ALREADY TRUE — see item 5 |
 
 **A CORRECTION WORTH KEEPING.** During the Phase-9 close I reported that the
@@ -699,6 +699,14 @@ before treating it as a defect.
 
 1. Provenance stamping on every DNA field
 2. Onboarding questions during the scan + confirm screen
+   **NOT STARTED, AND DELIBERATELY NOT STARTED FIRST.** §6 specifies the
+   pre-script brief PER ARCHETYPE (Explainer / Demonstrator / Brand) and §2.2
+   retired archetypes — *they sort the person; the variable is the video*. Item
+   9 replaces them with capability flags, which do not exist yet. Building the
+   questions before the flags would reintroduce the discarded model in the worst
+   possible place: the answers a creator gives on day one, stored and depended
+   on forever. Capability flags (Phase 11 item 9) are the prerequisite, and
+   this item is what they unlock.
 3. **Script-anchored forced alignment** *(largest single accuracy win — fixes
    captions, cuts, emphasis, zooms, hooks, and every language at once)*
    - [x] **The alignment engine** — `worker/src/jobs/scriptAlignment.ts`, pure
@@ -884,10 +892,47 @@ before treating it as a defect.
    **An empty overlay returns the SAME OBJECT**, and a test asserts identity
    rather than equality — so this lands ahead of the UI having provably altered
    no render. 27 tests, mutation-checked.
-   *Still to build:* the screen, persistence of the overlay, and the compile
-   stage consuming `removeWordRanges` and `respellWords` — which cannot live in
-   the decision, because it expresses removals as indices into the Director's
-   CANDIDATE list and a struck sentence may have no candidate at all.
+   **THE COMPILER NOW CONSUMES THE TWO FIELDS THE DECISION CANNOT CARRY.**
+   `removeWordRanges` becomes removals with their own origin (`review_edit`) and
+   `respellWords` becomes caption letters, in `editorCompile.ts`. They could not
+   live in the decision: it expresses removals as indices into the Director's
+   CANDIDATE list, and a struck sentence may have no candidate at all.
+   A strike is exempt from the three gates that exist to stop the MODEL cutting
+   on evidence the analyzer declined to vouch for — a person who read the
+   sentence and struck it is the authority those gates defer to — and exempt
+   from nothing structural: the allowed domain, the protections, the plan
+   maxima and the minimum kept segment all still apply, none of which is about
+   who decided.
+   **The two places a creator's edit could vanish are closed and
+   mutation-checked.** The cut-density ceiling ranks and drops only DIRECTOR
+   cuts; the min-segment repair never picks a strike as its victim. Either one
+   would produce the failure `validateReviewOverlay` refuses at the edge: the
+   creator watches the render, finds the sentence they struck still in it, and
+   learns the review screen is advisory. Plan schema 5→6 —
+   `identity.reviewOverlaySha256` (null = nobody reviewed; a digest = somebody
+   looked and approved, which are different facts) — and a compile with no
+   overlay is byte-identical to one from before this existed.
+   **THE PAUSE (0102).** `awaiting_review` is the first status on
+   `edit_projects` that names work a PERSON is doing. That distinction is
+   load-bearing in three places, each destructive if missed: the lost-project
+   reconciler fails any non-terminal project whose job is gone (here it is gone
+   on purpose); an empty stage list falls through to
+   `finishProject('completed')`, so a duplicate claim would complete a project
+   with no plan; and the stage guard is a strict +1 walk, so putting the status
+   INSIDE the pipeline array would make `directing -> compiling` illegal and
+   strand every project in flight the moment the gate is switched off. The
+   array is therefore unchanged and the two review transitions sit beside it.
+   `editor_submit_review` stores the overlay, releases the project and queues
+   the resume job in ONE transaction — any two without the third leaves a
+   project rendering an edit nobody recorded, or resting on an edit nothing
+   will read. The overlay is written once and frozen, because the plan cites
+   its digest. Env-gated and OFF; a typo renders the video rather than parking
+   every project in a state whose only exit is a screen nobody was told about.
+   *Still to build:* nothing in the backend. The SCREEN exists
+   (`apps/web/src/pages/v2/V2EditReview.tsx`) and **no human has used it** —
+   the overlay building and the sentence grouping are unit-tested, but §4.8's
+   actual claim is that editing the words reads AS editing the video, and no
+   test in this repository establishes that.
 5. **Failure path — the EXPLAIN half is built; the other two were already true.**
    `worker/src/jobs/failureExplain.ts`.
    **Checking first changed the work.** "Retain footage" and "retry without
@@ -1530,3 +1575,5 @@ cheapest thing left to check.
 | 2026-08-03 | Two blocked items given RECOMMENDED DECISIONS rather than left as named gaps: §2.4 routes per TASK CLASS from one frozen catalog (not per call site, which rebuilds the twelve-allowlist defect, and not per job type, which is too coarse), with provenance preserved and no silent model fallback; Phase 11 item 7a differentiates the teleprompter on the SCRIPT'S OWN per-scene structure (`scene_type`/`purpose`/`show_in_teleprompter`), never a content-type enum, which would be the retired archetype trap at a per-video granularity that is still wrong. Both recorded with reasoning so they can be rejected on the merits. Also measured why the two remaining alignment consumers are not "just a read": false starts need an `alignment-2` schema bump (the component records `insertionCount` only, and a count cannot distinguish a restart from an ad-lib), and the exact hook boundary needs a director-eval run rather than plumbing (the envelope change is a few lines; changing what the model sees is the risk). |
 | 2026-08-03 | Phase 10 status corrected against the code: forced alignment is now WIRED and STORABLE (#242), not "NOT wired into the pipeline". Nothing consumes it, and that is a declared state rather than an omission — `analysis_components.json` records `consumedByDirector: false` and CI fails if any site disagrees. Consuming it is the next step and is now a read, not a rebuild. |
 | 2026-08-03 | **Phase 9 COMPLETE (10/10).** Its last item is closed by measurement, and the measurement overturned the item's premise: the caption collision is the platform ACTION RAIL, which is horizontal, not the bottom caption block. Fixed by width (`captions.maxWidthPx` 680, `railInsetPx` 200, `marginHorizontalPx` 140→200) with `marginVerticalPx` deliberately unchanged at 600; pinned by a contract test that reads the frozen policy in both directions. Also written down two requirements that existed only in conversation and were therefore unbuildable: §2.4 per-task model routing, and Phase 11 item 7a teleprompter-by-content-type. Both are recorded as named gaps with their open questions, not as invented designs — each is blocked on a human decision. |
+| 2026-08-04 | **Phase 10 item 4's backend is complete end to end.** The compiler consumes the overlay's two span fields (`removeWordRanges` → removals with a `review_edit` origin, `respellWords` → caption letters that beat the script's, which beat the ASR's); 0102 adds the `awaiting_review` pause, the write-once overlay table and `editor_submit_review`. The design work was in what a creator's edit is EXEMPT from and what it is not: exempt from the three gates that stop the model cutting on evidence the analyzer would not vouch for, exempt from nothing structural, and never given back by the density ceiling or the min-segment repair — both of which would otherwise reintroduce, in the compiler, the exact silent drop the overlay validator refuses at the edge. Plan schema 5→6 adds `identity.reviewOverlaySha256`, where null (nobody reviewed) and a digest (somebody looked and approved) are deliberately different values. The pause needed three separate places to learn that resting is not dying — the reconciler, the empty-stage-list fallthrough to `completed`, and the stage guard's strict +1 walk. The SCREEN exists and no human has used it; §4.8's claim is that editing the words reads as editing the video, and nothing in this repository tests that. |
+| 2026-08-04 | Item 2 (onboarding questions + confirm screen) recorded as BLOCKED behind capability flags rather than left as "not started". §6 specifies the brief per archetype and §2.2 retired archetypes; building the questions first would store the discarded model in the one place it is hardest to undo — the answers a creator gives on day one. |

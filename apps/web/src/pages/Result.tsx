@@ -27,6 +27,10 @@ const EDIT_STATUS_LABEL: Record<EditProjectStatus, string> = {
   transcribing: 'Transcribing…',
   analyzing: 'Analyzing the footage…',
   directing: 'Directing the cut…',
+  // The one status that is NOT progress. Nothing is running and nothing will
+  // until the creator submits their review, so the label is an instruction
+  // rather than a participle — a "…" here would promise a wait that never ends.
+  awaiting_review: 'Ready for your review',
   compiling: 'Compiling the edit…',
   rendering: 'Rendering your video…',
   validating: 'Finishing up…',
@@ -714,6 +718,20 @@ export default function Result() {
                       <p className="px-5 text-center text-xs text-coral">The edit failed{editProject.failure_code ? ` (${editProject.failure_code})` : ''}.</p>
                     ) : editProject.status === 'cancelled' ? (
                       <p className="px-5 text-center text-xs text-stone">Cancelled.</p>
+                    ) : editProject.status === 'awaiting_review' ? (
+                      // NOT a spinner. Nothing is running: the pipeline is
+                      // waiting on this person, and a spinner would tell them to
+                      // wait for a step that only they can take.
+                      <div className="px-5 text-center">
+                        <p className="text-xs text-cream">{EDIT_STATUS_LABEL[editProject.status]}</p>
+                        <p className="mt-1 text-[11px] text-stone">Edit the words, then we make the video.</p>
+                        <Link
+                          to={`/edit/${editProject.id}/review`}
+                          className="btn-gradient mt-3 block w-full text-center text-xs"
+                        >
+                          Review the transcript
+                        </Link>
+                      </div>
                     ) : (
                       <div className="text-center">
                         <Loader2 className="mx-auto h-6 w-6 animate-spin text-white/40" />

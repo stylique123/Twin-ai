@@ -32,6 +32,10 @@ const JoinWorkspace = lazy(() => import('./pages/JoinWorkspace'))
 const V2Create = lazy(() => import('./pages/v2/V2Create'))
 const V2Building = lazy(() => import('./pages/v2/V2Building'))
 const V2Capture = lazy(() => import('./pages/v2/V2Capture'))
+// §4.8's review gate: the transcript IS the editor. Keyed by EDIT PROJECT id,
+// not generation id — the legacy /v2/review/:id link means a generation and
+// still redirects to Result.
+const V2EditReview = lazy(() => import('./pages/v2/V2EditReview'))
 
 function Protected({ children }: { children: JSX.Element }) {
   const { id } = useParams()
@@ -230,6 +234,12 @@ export default function App() {
           <Route path="/v2/plan/:id" element={<RedirectWithId to="result" />} />
           <Route path="/v2/capture/:id" element={<RedirectWithId to="record" />} />
           <Route path="/v2/review/:id" element={<RedirectWithId to="result" />} />
+          {/* The review gate. Full app chrome: the creator can leave and come back —
+              the project rests in `awaiting_review` until they submit. */}
+          <Route
+            path="/edit/:projectId/review"
+            element={<Protected><AppShell><Page><V2EditReview /></Page></AppShell></Protected>}
+          />
           <Route
             path="/result/:id"
             element={<Protected><AppShell><Page><Result /></Page></AppShell></Protected>}
