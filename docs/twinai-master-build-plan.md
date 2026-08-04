@@ -963,7 +963,23 @@ before treating it as a defect.
    **Fails safe:** an unclassified code is `unknown`, never a guess, and
    specifically never claims a retry will help — telling someone to retry a
    failure that can never clear is exactly how this defect hurts.
-   *Still to build:* surfacing it (the API/UI), and the retry button itself.
+   **SURFACED (and the retry button with it).** The classification is a pure
+   function of `edit_projects.failure_code`, which the owner can already read,
+   so the client needed the MAP rather than an API. Result.tsx now shows the
+   creator's sentence, says whether their footage is still saved, and offers
+   **Try again only where `retryCanHelp`** — telling someone to retry a failure
+   that can never clear is exactly how this defect hurts, so the button is gated
+   on the class rather than shown always and hoped for. The code stays, small,
+   because that is what a support conversation needs.
+   **The catalogue exists twice, and a CI guard is what stops it drifting.** The
+   worker remains the AUTHORITY (its coverage guard reads every
+   `new PermanentJobError` in the tree from source, so the catalogue provably
+   has no holes); shared mirrors it because the worker deliberately does not
+   depend on that package. `scripts/ci/check_failure_catalogue.mjs` compares the
+   two code→class maps and fails on any disagreement in either direction — a
+   code reclassified in one file only would have the product telling half its
+   surfaces to press retry on a failure that can never clear. Selftested, and
+   mutation-checked by reclassifying one code and watching it fail.
 
 ### Phase 11 — the take itself *(REORDERED — this is now the highest-risk area)*
 6. **Preflight check before recording** — room echo, backlight, orientation,
@@ -1697,3 +1713,4 @@ cheapest thing left to check.
 | 2026-08-04 | **§7b's log BUILT (0105) — "start logging now", with the absolute rule as a CONSTRAINT.** `post_outcome_observations` is append-only and one row per (post, metric, observed_at, source): `posts.views/likes/comments` are scalars, and updating one destroys the previous value — views at 24h and views at 30d are different facts and the difference between them is most of the signal. The metric list is closed, because free text is how "engagement" appears and stops being comparable to anything. `dna_claims` encodes the five types with their DIFFERENT evidence requirements in SQL: a correlation with no sample size or n=1 CANNOT BE INSERTED, a hypothesis may not carry a sample size, a business outcome may not exist without attribution. That rule never ships broken as a decision — it ships as an absent check — so it is a CHECK, proven by Gate-I with mutation controls. The floor of 2 is the only number asserted, because §7b deliberately does not fix N and inventing one would be the confident-number-from-nothing the section exists to prevent. Nothing writes to the log yet (a platform read needs the OAuth connections) and nothing consumes it — declared, not implied. |
 | 2026-08-04 | **Phase 11 item 10 (reference validation) BUILT.** §5's four cases — twelve minutes, no speech, a slideshow, a song — are all measurable from what the transcriber already produces, so the check is a pure function over (duration, word count) and needs no new infrastructure. It follows `assessProbe`'s rule exactly: a missing measurement gets its OWN verdict and never borrows a real one, so `duration_unknown` is not `too_short`, and an unknown reference stays USABLE because refusing on no evidence discards the creator's choice. Withholding the transcript id is the entire mechanism — `generate-blueprint` already falls back to pattern mode — so this adds a reason, and the reason is SHOWN. A test asserts no reason text contains "bad", "poor" or "perform", because §7c's honesty line applies to references too: say what was checked, never what will perform. Found on the way: `IngestJob.result.duration_sec` was declared by the client and never emitted by the worker, so no reader could tell an unmeasured reference from a missing field. |
 | 2026-08-04 | **§7c's craft rules BUILT as checks.** Six of seven are measurable from what a render already produces; the seventh — "ends on a reason to act" — is a claim about MEANING and is reported as `not_checked` with its reason rather than omitted, because a silently shorter report would let a clean result imply the whole list was checked. There is no `fail` status: a craft rule is a general observation, not a law about this creator's video, and `attention` states BOTH numbers so it stays arguable exactly as §7c's example sentence does. The summary counts rather than scores. The honesty line is enforced by a test, not by care: no reason text may match `will/perform/viral/views/score/engagement/boost/guarantee`, asserted across every status on a good render and a bad one. Every bound is chosen rather than measured and is a parameter, and they are deliberately loose — a check that fires on a good video teaches the creator to ignore checks. |
+| 2026-08-04 | **Phase 10 item 5's remaining half done: the failure explanation is SURFACED and the retry button exists.** The classification is a pure function of `failure_code`, which the owner can already read, so the client needed the map rather than an API. Retry is offered ONLY where the class says it can plausibly work — telling someone to retry a failure that can never clear is exactly how this defect hurts. The catalogue now exists twice (the worker is the authority; shared mirrors it, because the worker deliberately does not depend on that package), so `check_failure_catalogue.mjs` compares the two code→class maps and fails on any disagreement — mutation-checked by reclassifying one code and watching it fail. That guard exists because the drift would be silent and cruel: half the product's surfaces telling a creator to press retry on something that can never clear. |

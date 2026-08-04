@@ -140,6 +140,17 @@ jobs:
             exit 1
           fi
           echo "clean: worker registry has no autoedit handler"
+      # The failure catalogue exists TWICE — the worker owns it (its coverage
+      # guard reads every `new PermanentJobError` from source) and shared
+      # mirrors it for the client, because the worker cannot export to a package
+      # it deliberately does not depend on. A code reclassified in one file only
+      # means the product tells half its surfaces to press retry on a failure
+      # that can never clear — the precise defect Phase 10 item 5 exists to
+      # prevent, reintroduced by a copy-paste.
+      - name: Failure catalogue — the worker and the client mirror agree
+        run: |
+          node scripts/ci/check_failure_catalogue.mjs --selftest
+          node scripts/ci/check_failure_catalogue.mjs
       - name: Single deployment path (no second Fly/PaaS manifest; no retired job-type override)
         run: |
           node scripts/ci/check_single_deploy_path.mjs --selftest
