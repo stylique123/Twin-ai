@@ -36,7 +36,31 @@ import { canonicalJson, sha256Hex } from './editorManifest.js'
 // is this cut here" unanswerable in exactly the case where the answer matters
 // most — the one where a human, not a model, is accountable for it.
 // `null` is the ordinary value: no overlay exists until someone reviews.
-export const EDIT_PLAN_SCHEMA_VERSION = 6
+// v7: the plan can name a SECOND SOURCE, and say how it composes.
+//
+// Until now `source` was singular in the strongest sense: one origin, one
+// duration, one allowed domain, and a filter graph that hard-coded `0:v`/`0:a`.
+// A screen recording is not a second take of that source — it is different
+// footage, shot at a different time, shown DURING the take (0106: "a clip is not
+// a source"). There was nowhere in the document to say it existed, so Phase 12
+// item 13 could not be built no matter how the capture UI was written.
+//
+// `composition` is that place, and it is deliberately NOT a second timeline:
+//
+//  * THE TAKE REMAINS THE SPINE. `source`, `timeline`, `output.durationMs` and
+//    the time map are untouched. An overlay names an output window that already
+//    exists and replaces the PICTURE inside it. Nothing an overlay says can
+//    change how long the video is or where a cut falls, so the one retiming
+//    recurrence in this codebase stays the only one.
+//  * A CLIP IS ONLY EVER PICTURE. Its audio is discarded, always. Two audio
+//    sources need ducking, a second loudness measurement and a decision about
+//    which voice wins — none of which exists — and silently mixing a screen
+//    capture's system audio under a creator's voice is the kind of thing nobody
+//    notices until it ships.
+//  * A CLIP PLAYS AT 1x. `sourceEnd - sourceStart` must equal
+//    `outputEnd - outputStart`, checked below. A different pair of numbers would
+//    be a speed change, which is a second time map wearing a disguise.
+export const EDIT_PLAN_SCHEMA_VERSION = 7
 export const EDIT_PLAN_VERSION = 'edit-plan-v1'
 export const EDIT_PLAN_MAX_BYTES = 1048576
 
@@ -86,6 +110,27 @@ export const REMOVAL_ORIGINS = [
 export const HOOK_TREATMENTS = ['keep', 'open_at_word'] as const
 export const SOURCE_ORIGINS = ['teleprompter', 'upload'] as const
 
+// Where a COMPOSED source came from. A separate vocabulary from SOURCE_ORIGINS
+// on purpose: `teleprompter` and `upload` describe how the one take was
+// recorded, and a clip is not a take. Widening SOURCE_ORIGINS instead would let
+// `source.origin` become `screen_capture`, i.e. a project whose spine is a
+// screen recording with no voice — a state 0091's source validator, the capture
+// manifest and the script binding all assume cannot happen.
+export const COMPOSITION_ORIGINS = ['screen_capture'] as const
+
+// How a clip occupies the frame. ONE MEMBER, and that is the whole posture of
+// this file applied to a new axis: picture-in-picture is the obvious second
+// member and is deliberately absent, because it needs a placement that respects
+// the plan's own safe area, a corner the creator chose, and an answer for what
+// happens when a caption lands under it. Emitting a `pip` the renderer would
+// approximate as a full-frame cut is exactly the substitution ffmpegGraph
+// refuses to make. A second member is a compile-and-fail away, which is the
+// point of naming the set at all.
+export const COMPOSITION_FITS = ['full_frame'] as const
+
+export const MAX_COMPOSITION_SOURCES = 8
+export const MAX_OVERLAYS = 40
+
 export type AudioPresetId = (typeof AUDIO_PRESET_IDS)[number]
 export type CaptionPresetId = (typeof CAPTION_PRESET_IDS)[number]
 export type TransitionPolicy = (typeof TRANSITION_POLICIES)[number]
@@ -95,6 +140,8 @@ export type ZoomIntensity = (typeof ZOOM_INTENSITIES)[number]
 export type RemovalOrigin = (typeof REMOVAL_ORIGINS)[number]
 export type HookTreatment = (typeof HOOK_TREATMENTS)[number]
 export type SourceOrigin = (typeof SOURCE_ORIGINS)[number]
+export type CompositionOrigin = (typeof COMPOSITION_ORIGINS)[number]
+export type CompositionFit = (typeof COMPOSITION_FITS)[number]
 
 // ---- the document -----------------------------------------------------------
 export interface PlanIdentity {
@@ -281,6 +328,55 @@ export interface PlanHook {
    *  that is said. It is never a placeholder for "not computed yet". */
   title: PlanHookTitle | null
 }
+/**
+ * One clip the plan may cut to. NOT the take — see COMPOSITION_ORIGINS.
+ *
+ * `assetId` and `checksum` are here rather than left to the caller for the same
+ * reason `identity.sourceChecksum` exists: the plan hash has to cover WHICH
+ * BYTES were composed. Without the checksum, re-recording a clip under the same
+ * label would leave the plan, its hash and the render manifest all identical
+ * while the finished video showed something else entirely.
+ */
+export interface PlanCompositionSource {
+  index: number
+  origin: CompositionOrigin
+  assetId: string
+  checksum: string
+  durationMs: number
+}
+
+/**
+ * A window of the finished video whose PICTURE comes from a clip instead of the
+ * take. The take's audio continues underneath, always.
+ *
+ * `clipLabelSha256` is a digest and not the label, because the label is
+ * creator-written free text (`[SHOW: the settings page]`) and this document
+ * carries no unbounded free text except caption lines. The digest still answers
+ * the question the record exists for — "which declared slot did this fill?" —
+ * against a label anyone can re-hash, and it cannot carry a filter
+ * metacharacter into the render path. `null` is a real value: a clip placed
+ * without a declared slot to fill is a legitimate edit, not a missing label.
+ */
+export interface PlanOverlay {
+  index: number
+  sourceIndex: number
+  fit: CompositionFit
+  sourceStartMs: number
+  sourceEndMs: number
+  outputStartMs: number
+  outputEndMs: number
+  clipLabelSha256: string | null
+  reasonCode: string
+}
+
+/** Both empty is the ORDINARY state and a complete one — most videos are one
+ *  person talking, and a plan that composes nothing says so explicitly rather
+ *  than by omitting a section. */
+export interface PlanComposition {
+  sources: PlanCompositionSource[]
+  overlays: PlanOverlay[]
+}
+
 export interface PlanCover {
   sourceTimeMs: number
   outputTimeMs: number
@@ -294,6 +390,7 @@ export interface PlanComplexity {
   cueCount: number
   zoomCount: number
   transitionCount: number
+  overlayCount: number
 }
 export interface EditPlanV1 {
   schemaVersion: number
@@ -304,6 +401,7 @@ export interface EditPlanV1 {
   captions: PlanCaptions
   video: PlanVideo
   audio: PlanAudio
+  composition: PlanComposition
   hook: PlanHook
   cover: PlanCover
   warnings: PlanWarning[]
@@ -425,12 +523,16 @@ const HOOK_KEYS = ['treatment', 'startWordIndex', 'sourceTrimStartMs', 'sourceTr
 const HOOK_TITLE_KEYS = ['text', 'wordCount', 'outputStartMs', 'outputEndMs'] as const
 export const MAX_TITLE_CHARS = 60
 export const MAX_TITLE_WORDS = 8
+const COMPOSITION_SOURCE_KEYS = ['index', 'origin', 'assetId', 'checksum', 'durationMs'] as const
+const OVERLAY_KEYS = ['index', 'sourceIndex', 'fit', 'sourceStartMs', 'sourceEndMs',
+  'outputStartMs', 'outputEndMs', 'clipLabelSha256', 'reasonCode'] as const
+const COMPOSITION_KEYS = ['sources', 'overlays'] as const
 const COVER_KEYS = ['sourceTimeMs', 'outputTimeMs'] as const
 const WARNING_KEYS = ['code', 'detail'] as const
 const COMPLEXITY_KEYS = ['wordCount', 'candidateCount', 'segmentCount', 'removalCount', 'cueCount',
-  'zoomCount', 'transitionCount'] as const
+  'zoomCount', 'transitionCount', 'overlayCount'] as const
 const TOP_KEYS = ['schemaVersion', 'identity', 'source', 'output', 'timeline', 'captions', 'video',
-  'audio', 'hook', 'cover', 'warnings', 'complexity'] as const
+  'audio', 'composition', 'hook', 'cover', 'warnings', 'complexity'] as const
 
 const MAX_MS = 900000
 
@@ -463,6 +565,11 @@ export function assertNoExpressionStrings(plan: EditPlanV1): void {
   walk(plan.timeline, 'timeline')
   walk(plan.video, 'video')
   walk(plan.audio, 'audio')
+  // composition: every field, with no exemption. Nothing here is
+  // transcript-sourced free text — the one field that WOULD have been, the
+  // declared slot's label, is carried as a digest precisely so this scan can
+  // cover the section whole.
+  walk(plan.composition, 'composition')
   // hook: everything EXCEPT the title text, for the same reason cue lines are
   // exempt below — it is transcript-sourced free text, so it legitimately
   // carries apostrophes and commas that this scan rejects everywhere else. It
@@ -802,6 +909,92 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     music: null,
   }
 
+  // -- composition
+  const comp = strictKeys(o.composition, COMPOSITION_KEYS, 'composition')
+  const rawSources = arr(comp.sources, MAX_COMPOSITION_SOURCES, 'composition.sources')
+  const seenAssetIds = new Set<string>()
+  const compositionSources: PlanCompositionSource[] = rawSources.map((s, i) => {
+    const ss = strictKeys(s, COMPOSITION_SOURCE_KEYS, `composition.sources[${i}]`)
+    const cs: PlanCompositionSource = {
+      index: int(ss.index, 0, MAX_COMPOSITION_SOURCES - 1, `composition.sources[${i}].index`),
+      origin: oneOf(ss.origin, COMPOSITION_ORIGINS, `composition.sources[${i}].origin`),
+      assetId: uuid(ss.assetId, `composition.sources[${i}].assetId`),
+      checksum: hex64(ss.checksum, `composition.sources[${i}].checksum`),
+      durationMs: int(ss.durationMs, 1, MAX_MS, `composition.sources[${i}].durationMs`),
+    }
+    if (cs.index !== i) fail(`composition.sources[${i}]: index must equal position`)
+    // A CLIP IS NOT THE TAKE. Listing the take here would give the renderer two
+    // ffmpeg inputs reading the same file and two contradictory accounts of what
+    // the spine is — and `identity.sourceAssetId` is the one that means it.
+    if (cs.assetId === identity.sourceAssetId) {
+      fail(`composition.sources[${i}]: the take is not a composed source`, 'edit_plan_divergent')
+    }
+    // The same clip twice is two inputs decoding one file, and two indices a
+    // later reader has to know are the same thing. One entry, many overlays.
+    if (seenAssetIds.has(cs.assetId)) fail(`composition.sources[${i}]: duplicate assetId`)
+    seenAssetIds.add(cs.assetId)
+    return cs
+  })
+
+  const rawOverlays = arr(comp.overlays, MAX_OVERLAYS, 'composition.overlays')
+  let prevOverlayEnd = -1
+  const usedSources = new Set<number>()
+  const overlays: PlanOverlay[] = rawOverlays.map((ov, i) => {
+    const oo = strictKeys(ov, OVERLAY_KEYS, `composition.overlays[${i}]`)
+    const index = int(oo.index, 0, MAX_OVERLAYS - 1, `composition.overlays[${i}].index`)
+    if (index !== i) fail(`composition.overlays[${i}]: index must equal position`)
+    // Bounded by how many sources were actually declared, so an overlay can
+    // never name an input the render stage would have to invent.
+    if (compositionSources.length === 0) {
+      fail(`composition.overlays[${i}]: an overlay with no composed source`, 'edit_plan_divergent')
+    }
+    const sourceIndex = int(oo.sourceIndex, 0, compositionSources.length - 1, `composition.overlays[${i}].sourceIndex`)
+    const clip = compositionSources[sourceIndex]
+    const sourceStartMs = int(oo.sourceStartMs, 0, clip.durationMs, `composition.overlays[${i}].sourceStartMs`)
+    const sourceEndMs = int(oo.sourceEndMs, 0, clip.durationMs, `composition.overlays[${i}].sourceEndMs`)
+    if (sourceEndMs <= sourceStartMs) fail(`composition.overlays[${i}]: non-positive source length`)
+    const outputStartMs = int(oo.outputStartMs, 0, MAX_MS, `composition.overlays[${i}].outputStartMs`)
+    const outputEndMs = int(oo.outputEndMs, 0, MAX_MS, `composition.overlays[${i}].outputEndMs`)
+    if (outputEndMs <= outputStartMs) fail(`composition.overlays[${i}]: non-positive output length`)
+    if (outputEndMs > output.durationMs) fail(`composition.overlays[${i}]: extends past the output duration`)
+    // 1x, ENFORCED. Unequal spans are a speed change, and a speed change is a
+    // second time map — the thing this contract has one of and intends to keep
+    // having one of. Refused rather than resampled to fit.
+    if (sourceEndMs - sourceStartMs !== outputEndMs - outputStartMs) {
+      fail(`composition.overlays[${i}]: source and output spans differ, which would retime the clip`,
+        'edit_plan_divergent')
+    }
+    // Two clips claiming one instant of the finished video is not a layering
+    // instruction — `full_frame` has no layering — it is two answers to "what is
+    // on screen here", and the renderer would silently keep whichever it built
+    // last.
+    if (outputStartMs < prevOverlayEnd) fail(`composition.overlays[${i}]: overlaps or unsorted`)
+    prevOverlayEnd = outputEndMs
+    usedSources.add(sourceIndex)
+    return {
+      index,
+      sourceIndex,
+      fit: oneOf(oo.fit, COMPOSITION_FITS, `composition.overlays[${i}].fit`),
+      sourceStartMs,
+      sourceEndMs,
+      outputStartMs,
+      outputEndMs,
+      clipLabelSha256: oo.clipLabelSha256 === null
+        ? null
+        : hex64(oo.clipLabelSha256, `composition.overlays[${i}].clipLabelSha256`),
+      reasonCode: token(oo.reasonCode, `composition.overlays[${i}].reasonCode`),
+    }
+  })
+  // A declared source nothing shows is an ffmpeg input that decodes a file and
+  // contributes no frame — and, worse, a plan whose record says a clip was used
+  // in a video it never appears in.
+  for (const cs of compositionSources) {
+    if (!usedSources.has(cs.index)) {
+      fail(`composition.sources[${cs.index}]: declared but no overlay shows it`, 'edit_plan_divergent')
+    }
+  }
+  const composition: PlanComposition = { sources: compositionSources, overlays }
+
   // -- hook
   const hk = strictKeys(o.hook, HOOK_KEYS, 'hook')
   const treatment = oneOf(hk.treatment, HOOK_TREATMENTS, 'hook.treatment')
@@ -869,17 +1062,19 @@ export function validateEditPlan(input: unknown): EditPlanV1 {
     cueCount: int(cx.cueCount, 0, MAX_CUES, 'complexity.cueCount'),
     zoomCount: int(cx.zoomCount, 0, MAX_ZOOMS, 'complexity.zoomCount'),
     transitionCount: int(cx.transitionCount, 0, MAX_TRANSITIONS, 'complexity.transitionCount'),
+    overlayCount: int(cx.overlayCount, 0, MAX_OVERLAYS, 'complexity.overlayCount'),
   }
   if (complexity.segmentCount !== segments.length) fail('complexity.segmentCount disagrees with the timeline')
   if (complexity.removalCount !== removals.length) fail('complexity.removalCount disagrees with the timeline')
   if (complexity.cueCount !== cues.length) fail('complexity.cueCount disagrees with the captions')
   if (complexity.zoomCount !== zooms.length) fail('complexity.zoomCount disagrees with the video')
   if (complexity.transitionCount !== transitions.length) fail('complexity.transitionCount disagrees with the video')
+  if (complexity.overlayCount !== overlays.length) fail('complexity.overlayCount disagrees with the composition')
 
   const plan: EditPlanV1 = {
     schemaVersion: EDIT_PLAN_SCHEMA_VERSION,
     identity, source: { origin, durationMs: sourceDurationMs, allowedWindows },
-    output, timeline, captions, video, audio, hook, cover, warnings, complexity,
+    output, timeline, captions, video, audio, composition, hook, cover, warnings, complexity,
   }
   assertNoExpressionStrings(plan)
   const bytes = Buffer.byteLength(canonicalEditPlan(plan), 'utf8')

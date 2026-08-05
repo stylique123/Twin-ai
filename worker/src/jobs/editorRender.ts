@@ -526,6 +526,24 @@ export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realD
     }
   }
 
+  // COMPOSED CLIPS ARE NOT FETCHED HERE YET, AND THIS SAYS SO RATHER THAN
+  // LETTING THE GRAPH SAY IT.
+  //
+  // v7 lets a plan name screen-capture clips and where to show them, and
+  // ffmpegGraph builds them from paths this stage would have to supply — which
+  // means downloading each clip beside the source, checksumming it against
+  // `composition.sources[i].checksum`, and refusing on a mismatch, none of which
+  // exists. The graph would refuse anyway (it is handed no paths), but it would
+  // refuse with "0 clip paths were supplied", which reads as a caller bug rather
+  // than as the unbuilt half it actually is. Nothing produces such a plan today:
+  // `editorCompile` emits an empty composition on purpose.
+  if (req.plan.composition.sources.length > 0) {
+    bad(
+      `plan composes ${req.plan.composition.sources.length} clip(s); the render stage does not fetch them yet`,
+      'render_graph_invalid',
+    )
+  }
+
   mkdirSync(req.workDir, { recursive: true })
   const outputPath = join(req.workDir, 'output.mp4')
   // A previous attempt's file must never be mistaken for this attempt's. ffmpeg

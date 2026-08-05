@@ -18,7 +18,7 @@
 //    model or a browser has no channel into this file's output.
 import { sha256Hex, canonicalJson } from './editorManifest.js'
 import {
-  EditPlanError, type EditPlanV1, type PlanSegment, type PlanZoom,
+  EditPlanError, type EditPlanV1, type PlanOverlay, type PlanSegment, type PlanZoom,
 } from './editPlanContract.js'
 
 export const FFMPEG_GRAPH_VERSION = 'ffmpeg-graph-1'
@@ -106,6 +106,12 @@ function checkValue(v: string | number): string {
 // ---- plan -> graph ----------------------------------------------------------
 export interface GraphAssets {
   sourcePath: string
+  /** One caller-verified local path per `plan.composition.sources`, INDEX
+   *  ALIGNED with it. Absent is the ordinary case (a plan that composes
+   *  nothing); a plan that composes something and is handed no paths fails,
+   *  because the alternative is rendering the take where the creator asked for
+   *  their screen and nothing anywhere saying so. */
+  clipPaths?: string[]
   assPath: string | null
   fontsDir: string | null
   outputPath: string
@@ -613,6 +619,187 @@ function joinSegments(
   return { v: vAcc, a: aAcc }
 }
 
+// ---- composition: cutting to a clip ----------------------------------------
+//
+// A `full_frame` overlay REPLACES the picture for its output window. It is built
+// with exactly the structure the zoom windows use, and for exactly the same
+// reason: the alternative is a time-gated filter, `enable=between(t,a,b)`, whose
+// comma `VALUE_RE` refuses on purpose. So the finished video's timeline is cut
+// into windows that alternate between "the take" and "a clip", each window is
+// produced independently, and they are `concat`-ed back in order.
+//
+// AUDIO NEVER ENTERS THIS FUNCTION. A clip contributes picture and nothing else
+// — see the v7 note in editPlanContract. The `0:a` chain that was built before
+// the join is what reaches the output, unchanged, whether or not anything is
+// composed over it. That is the property that makes a cutaway safe to add to an
+// already-proven audio path: it cannot touch it.
+//
+// EVERY WINDOW IS CONFORMED THE SAME WAY. A clip arrives at whatever raster,
+// frame rate, pixel format and sample aspect the creator's screen happened to
+// be, and `concat` refuses inputs that disagree on any of them ("Input link
+// parameters ... do not match"). Both branches therefore end in the same
+// fps/settb/setsar/format quartet rather than trusting the clip to match.
+interface CompositionWindow {
+  startMs: number
+  endMs: number
+  /** null = this stretch is the take's own picture. */
+  overlay: PlanOverlay | null
+}
+
+function compositionWindows(plan: EditPlanV1): CompositionWindow[] {
+  const windows: CompositionWindow[] = []
+  let cursor = 0
+  for (const ov of plan.composition.overlays) {
+    if (ov.outputStartMs > cursor) windows.push({ startMs: cursor, endMs: ov.outputStartMs, overlay: null })
+    windows.push({ startMs: ov.outputStartMs, endMs: ov.outputEndMs, overlay: ov })
+    cursor = ov.outputEndMs
+  }
+  if (cursor < plan.output.durationMs) {
+    windows.push({ startMs: cursor, endMs: plan.output.durationMs, overlay: null })
+  }
+  // Re-derived rather than assumed, exactly as `allWindows` and `joinSegments`
+  // do: a fold that covers the wrong number of milliseconds is a defect here,
+  // not a video that is quietly the wrong length.
+  const coveredMs = windows.reduce((n, w) => n + (w.endMs - w.startMs), 0)
+  if (coveredMs !== plan.output.durationMs) {
+    invalid(`composition windows cover ${coveredMs}ms but the plan declares ${plan.output.durationMs}ms`)
+  }
+  return windows
+}
+
+/** The conformance every window ends with, so `concat` can join them. */
+function conformWindow(plan: EditPlanV1, vIn: string, nodes: FilterNode[], tag: string): string {
+  nodes.push({
+    id: `cxfps${tag}`, filter: 'fps',
+    args: [{ key: 'fps', value: `${plan.output.fpsNum}/${plan.output.fpsDen}` }],
+    inputs: [vIn], outputs: [`cxf${tag}`],
+  })
+  nodes.push({
+    id: `cxtb${tag}`, filter: 'settb',
+    args: [{ key: 'expr', value: 'AVTB' }],
+    inputs: [`cxf${tag}`], outputs: [`cxtb${tag}`],
+  })
+  nodes.push({
+    id: `cxsar${tag}`, filter: 'setsar',
+    args: [{ key: 'sar', value: '1' }], inputs: [`cxtb${tag}`], outputs: [`cxsar${tag}`],
+  })
+  nodes.push({
+    id: `cxfmt${tag}`, filter: 'format',
+    args: [{ key: 'pix_fmts', value: plan.output.pixelFormat }],
+    inputs: [`cxsar${tag}`], outputs: [`cxo${tag}`],
+  })
+  return `cxo${tag}`
+}
+
+function clipWindowChain(
+  plan: EditPlanV1, ov: PlanOverlay, inputIndex: number, nodes: FilterNode[], idx: number,
+): string {
+  const tag = `c${idx}`
+  nodes.push({
+    id: `cxctrim${idx}`, filter: 'trim',
+    args: [
+      { key: 'start', value: msToSecondsLiteral(ov.sourceStartMs) },
+      { key: 'end', value: msToSecondsLiteral(ov.sourceEndMs) },
+    ],
+    inputs: [`${inputIndex}:v`], outputs: [`cxct${idx}`],
+  })
+  nodes.push({
+    id: `cxcpts${idx}`, filter: 'setpts', args: [{ key: '', value: 'PTS-STARTPTS' }],
+    inputs: [`cxct${idx}`], outputs: [`cxcp${idx}`],
+  })
+  // Fill the frame and crop the excess — the SAME treatment `segmentChain` gives
+  // the take, so a 16:9 screen capture in a 9:16 video is centre-cropped rather
+  // than letterboxed into bars nobody asked for. Losing the sides of a screen
+  // recording is a real cost; it is the cost the creator chose when they asked
+  // for their screen in a vertical video, and it is at least visible to them.
+  nodes.push({
+    id: `cxcscale${idx}`, filter: 'scale',
+    args: [
+      { key: 'w', value: plan.output.width },
+      { key: 'h', value: plan.output.height },
+      { key: 'force_original_aspect_ratio', value: 'increase' },
+    ],
+    inputs: [`cxcp${idx}`], outputs: [`cxcs${idx}`],
+  })
+  nodes.push({
+    id: `cxccrop${idx}`, filter: 'crop',
+    args: [{ key: 'w', value: plan.output.width }, { key: 'h', value: plan.output.height }],
+    inputs: [`cxcs${idx}`], outputs: [`cxcc${idx}`],
+  })
+  return conformWindow(plan, `cxcc${idx}`, nodes, tag)
+}
+
+function applyComposition(
+  plan: EditPlanV1, vBase: string, nodes: FilterNode[], clipInputIndex: readonly number[],
+): string {
+  const overlays = plan.composition.overlays
+  if (overlays.length === 0) return vBase
+
+  for (const ov of overlays) {
+    // Same posture as the transition-kind check: a single-member union today,
+    // and a compile-and-fail rather than a silent approximation the day it
+    // grows. A `pip` rendered as a full-frame cut is a different video.
+    if (ov.fit !== 'full_frame') invalid(`composition fit ${JSON.stringify(ov.fit)} is not supported`)
+  }
+
+  const windows = compositionWindows(plan)
+  const baseWindows = windows.filter((w) => w.overlay === null)
+
+  // A filtergraph label is a single-consumer pad, so the base stream is split
+  // once into one copy per base window. When a clip covers the WHOLE video
+  // (a voiceover over a screen recording — legitimate, and the take's picture
+  // never appears) there is no consumer at all, and an unconsumed pad makes
+  // ffmpeg refuse the graph outright. It is sunk explicitly rather than left
+  // dangling: the take's audio is still what plays.
+  const baseLabels: string[] = []
+  if (baseWindows.length === 0) {
+    nodes.push({ id: 'cxbasesink', filter: 'nullsink', args: [], inputs: [vBase], outputs: [] })
+  } else if (baseWindows.length === 1) {
+    baseLabels.push(vBase)
+  } else {
+    const labels = baseWindows.map((_w, i) => `cxbsplit${i}`)
+    nodes.push({
+      id: 'cxbasesplit', filter: 'split',
+      args: [{ key: 'outputs', value: baseWindows.length }],
+      inputs: [vBase], outputs: labels,
+    })
+    baseLabels.push(...labels)
+  }
+
+  let baseSeen = 0
+  const labels = windows.map((w, idx) => {
+    if (w.overlay === null) {
+      const from = baseLabels[baseSeen++]
+      nodes.push({
+        id: `cxbtrim${idx}`, filter: 'trim',
+        args: [
+          { key: 'start', value: msToSecondsLiteral(w.startMs) },
+          { key: 'end', value: msToSecondsLiteral(w.endMs) },
+        ],
+        inputs: [from], outputs: [`cxbt${idx}`],
+      })
+      nodes.push({
+        id: `cxbpts${idx}`, filter: 'setpts', args: [{ key: '', value: 'PTS-STARTPTS' }],
+        inputs: [`cxbt${idx}`], outputs: [`cxbp${idx}`],
+      })
+      return conformWindow(plan, `cxbp${idx}`, nodes, `b${idx}`)
+    }
+    const inputIndex = clipInputIndex[w.overlay.sourceIndex]
+    if (inputIndex === undefined) {
+      invalid(`composition overlay ${w.overlay.index} names source ${w.overlay.sourceIndex}, which has no input`)
+    }
+    return clipWindowChain(plan, w.overlay, inputIndex, nodes, idx)
+  })
+
+  if (labels.length === 1) return labels[0]
+  nodes.push({
+    id: 'cxconcat', filter: 'concat',
+    args: [{ key: 'n', value: labels.length }, { key: 'v', value: 1 }, { key: 'a', value: 0 }],
+    inputs: labels, outputs: ['vcx'],
+  })
+  return 'vcx'
+}
+
 export function buildFfmpegGraph(
   plan: EditPlanV1, assets: GraphAssets, bounds?: CrossfadeBounds,
 ): FfmpegGraph {
@@ -620,6 +807,30 @@ export function buildFfmpegGraph(
   const inputs: FfmpegInput[] = [{ path: checkPath(assets.sourcePath, 'source'), preOptions: [] }]
 
   if (plan.timeline.segments.length === 0) invalid('plan has no segments')
+
+  // THE CLIP INPUTS, DECLARED BEFORE ANY FILTER REFERS TO ONE.
+  //
+  // ffmpeg numbers inputs by the order they appear in argv, so `1:v` means
+  // whatever the second `-i` turned out to be. Resolving the mapping once, here,
+  // is what stops "the second clip" and "input 2" from being two facts that can
+  // drift — the watermark already reads `inputs.length` for the same reason.
+  //
+  // Nothing is inferred from the paths: the plan says how many sources it
+  // composes, and a caller that supplied a different number is refused rather
+  // than truncated to the shorter of the two, which would render the take where
+  // the creator asked for their screen and report success.
+  const clipPaths = assets.clipPaths ?? []
+  const composedSources = plan.composition.sources
+  if (clipPaths.length !== composedSources.length) {
+    invalid(
+      `plan composes ${composedSources.length} source(s) but ${clipPaths.length} clip path(s) were supplied`,
+    )
+  }
+  const clipInputIndex: number[] = composedSources.map((cs, i) => {
+    const index = inputs.length
+    inputs.push({ path: checkPath(clipPaths[i], `clip ${cs.index}`), preOptions: [] })
+    return index
+  })
 
   const vLabels: string[] = []
   const aLabels: string[] = []
@@ -641,6 +852,20 @@ export function buildFfmpegGraph(
     if (zoom.scaleMilli <= 1000) invalid(`zoom ${zoom.index} has a non-magnifying scale`)
   }
   let vCur = applyTimeGatedZooms(plan, vJoined, nodes)
+
+  // CUTAWAYS, AFTER THE ZOOMS AND BEFORE THE CAPTIONS.
+  //
+  // After the zooms because a `full_frame` clip replaces the picture outright:
+  // a zoom is a framing decision about the creator's own face, and applying it
+  // to a screen recording would punch into a corner of an interface for a reason
+  // that made sense about a different image.
+  //
+  // Before the captions because the captions are the creator's spoken words and
+  // the creator keeps speaking over the clip. Burning them first would let the
+  // cutaway paint over the line being said underneath it — a caption that
+  // disappears exactly when the screen appears, which reads as a rendering bug
+  // and is one.
+  vCur = applyComposition(plan, vCur, nodes, clipInputIndex)
 
   // Captions: burned in from the plan's ASS document. The subtitles filter takes
   // a FILE, never inline text, so caption text never enters an argument at all.

@@ -1421,6 +1421,20 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       reasonCode: hookReason,
       title: buildHookTitle(cues, policy, outputDurationMs),
     },
+    // COMPOSITION: EMPTY, AND SAID RATHER THAN OMITTED.
+    //
+    // v7 gives the plan somewhere to name a screen recording and where to show
+    // it (see editPlanContract's v7 note). This compiler does not place one, and
+    // that is the honest state rather than an oversight: an overlay needs a CLIP
+    // to point at, and the capture surface that produces one is Phase 12 item 13.
+    // Compiling a placement against clips that do not exist would be the
+    // renderer inventing footage.
+    //
+    // Declared here the way `analysis_components.json` and CAPABILITY_CONSUMERS_BUILT
+    // declare their own unbuilt consumers: a capability that is expressible but
+    // unemitted is a complete state, and saying so is what stops the next reader
+    // assuming the compiler already cuts to a clip.
+    composition: { sources: [], overlays: [] },
     cover: { sourceTimeMs: coverSourceTimeMs, outputTimeMs: coverOutputTimeMs },
     warnings: warn.list,
     complexity: {
@@ -1431,6 +1445,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       cueCount: cues.length,
       zoomCount: zooms.length,
       transitionCount: transitions.length,
+      overlayCount: 0,
     },
   }
 

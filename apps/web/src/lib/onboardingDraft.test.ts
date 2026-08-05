@@ -25,6 +25,7 @@ const draft = (userId = 'user-a'): OnboardingDraft => ({
   workKind: null,
   forbiddenClaims: null,
   offerFromCreator: false,
+  canRecordScreen: null,
   profile: null,
   audience: '',
   product: '',
@@ -64,9 +65,32 @@ describe('user-scoped onboarding draft', () => {
       audience: '',
       product: '',
       goal: '',
+      canRecordScreen: null,
     })
     expect(storage.getItem('twinai_onboarding_voice_id')).toBeNull()
     expect(storage.getItem('twinai_onboarding_draft_v1')).toBeNull()
+  })
+
+  // `can_record_screen` has three states and the draft is the first place they
+  // can be lost. A draft written before the question existed, and one carrying
+  // anything that is not a real boolean, are both UNANSWERED — never `false`,
+  // which is the value that would permanently hide the capture surface.
+  it('keeps an unanswered screen-recording question unanswered', () => {
+    const storage = new MemoryStorage()
+    const { canRecordScreen: _omitted, ...withoutTheAnswer } = draft()
+    storage.setItem(onboardingDraftKey('user-a'), JSON.stringify(withoutTheAnswer))
+    expect(readOnboardingDraft(storage, 'user-a')?.canRecordScreen).toBeNull()
+
+    storage.setItem(onboardingDraftKey('user-a'), JSON.stringify({ ...draft(), canRecordScreen: 'yes' }))
+    expect(readOnboardingDraft(storage, 'user-a')?.canRecordScreen).toBeNull()
+  })
+
+  it('round-trips both real answers', () => {
+    const storage = new MemoryStorage()
+    for (const answer of [true, false] as const) {
+      writeOnboardingDraft(storage, { ...draft(), canRecordScreen: answer })
+      expect(readOnboardingDraft(storage, 'user-a')?.canRecordScreen).toBe(answer)
+    }
   })
 
   it('clears only the completing account draft', () => {

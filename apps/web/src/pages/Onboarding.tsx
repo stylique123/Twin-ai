@@ -3,7 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { pollDna, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
+import { pollDna, saveCapabilityDefaults, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
 import { asksForbiddenClaims, BRIEF_WORK_KINDS, type BriefWorkKind } from '../lib/api'
 import { Aurora } from '../components/Aurora'
@@ -82,6 +82,8 @@ export default function Onboarding() {
       // The scan pre-fills the offer, so it starts as NOT the creator's answer.
       // Only their edit flips it.
       offerFromCreator: false,
+      // Unanswered until the creator answers. Never seeded, in either direction.
+      canRecordScreen: null,
       audience: profile?.audience ?? '',
       product: profile?.offer ?? '',
       goal: '',
@@ -94,8 +96,8 @@ export default function Onboarding() {
     audience: string,
     product: string,
     goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator'>
-      = { workKind: null, forbiddenClaims: null, offerFromCreator: false },
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator' | 'canRecordScreen'>
+      = { workKind: null, forbiddenClaims: null, offerFromCreator: false, canRecordScreen: null },
   ) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
@@ -466,7 +468,7 @@ function ConfirmStep({
   draft: OnboardingDraft
   onDraftChange: (
     profile: VoiceProfile, audience: string, product: string, goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator'>,
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator' | 'canRecordScreen'>,
   ) => void
   onDone: () => Promise<void>
 }) {
@@ -488,6 +490,9 @@ function ConfirmStep({
   // "they told us" from "the model guessed and nobody corrected it", and only
   // the first may decide a call to action.
   const [offerTouched, setOfferTouched] = useState(draft.offerFromCreator)
+  // §2.2's `can_record_screen`, the first capability flag anything ever asks for.
+  // null is a real value here and stays null unless the creator picks a side.
+  const [canRecordScreen, setCanRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -497,9 +502,10 @@ function ConfirmStep({
     if (vp) {
       onDraftChange(vp, audience, product, goal, {
         workKind, forbiddenClaims: forbiddenClaims.trim() || null, offerFromCreator: offerTouched,
+        canRecordScreen,
       })
     }
-  }, [vp, audience, product, goal, workKind, forbiddenClaims, offerTouched, onDraftChange])
+  }, [vp, audience, product, goal, workKind, forbiddenClaims, offerTouched, canRecordScreen, onDraftChange])
 
   if (!vp) {
     return (
@@ -518,6 +524,15 @@ function ConfirmStep({
     setBusy(true)
     try {
       await saveVoiceProfile(draft.voiceId, vp)
+      // The capability answer, stored as this brand's DEFAULT. Written only when
+      // there IS one: an unanswered question leaves the column exactly as it was,
+      // because `can_record_screen = false` permanently hides a surface and
+      // "they never said" must not become "they said no". Its own call rather
+      // than a field on saveVoiceProfile — the profile is what the scan read, and
+      // this is what the creator told us about their setup.
+      if (canRecordScreen !== null) {
+        await saveCapabilityDefaults(draft.voiceId, { can_record_screen: canRecordScreen })
+      }
       // ALSO seed the Creator DNA (profile.dna) from the scan + these answers, so
       // the scanned signup isn't left with a half-empty DNA (the "audience/product/
       // goal Not set" bug). This is the durable onboarding boundary: do not enter
@@ -625,6 +640,38 @@ function ConfirmStep({
             </p>
           </Labeled>
         )}
+        {/* §2.2's `can_record_screen` — the first capability flag anything asks.
+            IT NEEDS NO CAMERA AND NO PERMISSION PROMPT to answer, which is why
+            it belongs on this form rather than behind a device check: the answer
+            is about the creator's setup, not about what this browser can do
+            right now, and asking a share-picker to find out would be asking the
+            operating system a question only the person can answer.
+            SKIPPING IS A REAL ANSWER, and it is not "no". Tapping the chosen
+            chip again clears it back to unanswered — the third state the column,
+            the reader and the draft all keep. */}
+        <Labeled label="Can you record your screen?">
+          <div className="flex flex-wrap gap-2">
+            {([true, false] as const).map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                aria-pressed={canRecordScreen === v}
+                onClick={() => setCanRecordScreen(canRecordScreen === v ? null : v)}
+                className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                  canRecordScreen === v
+                    ? 'border-coral bg-coral/15 text-cream'
+                    : 'border-white/15 text-sand hover:bg-white/5'
+                }`}
+              >
+                {v ? 'Yes' : 'No'}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-stone">
+            Say yes and Twin can ask you to capture what is on your screen for the moments your
+            script says to show something. Skip it and nothing changes — we just won’t offer it yet.
+          </p>
+        </Labeled>
         <Labeled label="Your goal">
           <input className="field" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. grow to 50k, drive signups, build trust" />
         </Labeled>

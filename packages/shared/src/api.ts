@@ -1,5 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { planFor } from './brand'
+import {
+  readCapabilityFlags, sanitizeCapabilityFlagsForWrite, type CapabilityFlags,
+} from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 
 // ---- Client injection ------------------------------------------------------
@@ -791,6 +794,43 @@ export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promi
     .single()
   if (error) throw error
   if (!data) throw new Error('Your brand voice was not saved. Please try again.')
+}
+
+/**
+ * Record capability answers as this brand's DEFAULTS (0103's
+ * `brand_voices.default_capability_flags`).
+ *
+ * MERGED, NEVER REPLACED. The three flags are asked in different places at
+ * different times — onboarding asks about the screen, a per-video surface may
+ * later ask about objects — and a whole-column write would silently unset every
+ * answer the current caller did not happen to hold. That is the same
+ * missing-value-read-as-real defect the column's own migration was written
+ * against, arriving through the writer instead of the reader.
+ *
+ * `sanitizeCapabilityFlagsForWrite` is what decides what may be stored: only the
+ * three known names, only real booleans, with `null` preserved as a deliberate
+ * "withdraw this answer" and an omitted key left exactly as it was. An
+ * ANSWERLESS call writes nothing at all rather than writing `{}` — a creator who
+ * skipped the question must stay unanswered, not acquire an empty answer.
+ */
+export async function saveCapabilityDefaults(
+  brandVoiceId: string,
+  flags: CapabilityFlags,
+): Promise<void> {
+  const incoming = sanitizeCapabilityFlagsForWrite(flags)
+  if (Object.keys(incoming).length === 0) return
+  const { data, error } = await supabase
+    .from('brand_voices')
+    .select('default_capability_flags')
+    .eq('id', brandVoiceId)
+    .single()
+  if (error) throw error
+  const merged = { ...readCapabilityFlags(data?.default_capability_flags), ...incoming }
+  const { error: writeError } = await supabase
+    .from('brand_voices')
+    .update({ default_capability_flags: merged })
+    .eq('id', brandVoiceId)
+  if (writeError) throw writeError
 }
 
 // Upload a brand-kit logo (data URL) via the service-role edge fn; returns the
