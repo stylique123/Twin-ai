@@ -92,6 +92,14 @@ const CLASSES: Record<string, { c: FailureClass, m?: string }> = {
   manifest_mismatch: { c: 'retry_wont_help' },
   director_component_missing: { c: 'retry_wont_help' },
   edit_plan_invalid: { c: 'retry_wont_help' },
+  // The plan describes a render this build cannot construct — an unsupported
+  // instruction, or a composed clip that is not what the plan says it is (wrong
+  // owner, wrong kind, never measured). Deterministic on this plan: the same
+  // plan builds the same refusal every time, so a retry is a second identical
+  // failure. It reaches a creator for the first time now that a plan can name a
+  // SCREEN CAPTURE, and the honest thing to say is that the recording is fine
+  // and the edit is not — because the clip they made is genuinely still there.
+  render_graph_invalid: { c: 'retry_wont_help' },
   edit_plan_identity_mismatch: { c: 'retry_wont_help' },
   output_completion_conflict: { c: 'retry_wont_help' },
   output_duration_mismatch: { c: 'retry_wont_help' },
