@@ -5,7 +5,20 @@ import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } fr
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
+import { asksForbiddenClaims, BRIEF_WORK_KINDS, type BriefWorkKind } from '../lib/api'
 import { Aurora } from '../components/Aurora'
+
+/** The chooser's words. Kept beside the screen rather than in the contract: the
+ *  ids are the contract, and how they are phrased to a person is not. */
+const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
+  creator: 'Creator',
+  professional: 'Licensed professional',
+  ecommerce: 'Ecommerce',
+  brand: 'Brand / in-house',
+  saas: 'Software',
+  local_service: 'Local service',
+  other: 'Something else',
+}
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
 import {
@@ -64,6 +77,11 @@ export default function Onboarding() {
       voiceId,
       platform,
       profile,
+      workKind: null,
+      forbiddenClaims: null,
+      // The scan pre-fills the offer, so it starts as NOT the creator's answer.
+      // Only their edit flips it.
+      offerFromCreator: false,
       audience: profile?.audience ?? '',
       product: profile?.offer ?? '',
       goal: '',
@@ -76,10 +94,12 @@ export default function Onboarding() {
     audience: string,
     product: string,
     goal: string,
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator'>
+      = { workKind: null, forbiddenClaims: null, offerFromCreator: false },
   ) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
-      const next = { ...current, profile, audience, product, goal }
+      const next = { ...current, profile, audience, product, goal, ...brief }
       safeWriteDraft(next)
       return next
     })
@@ -444,7 +464,10 @@ function ConfirmStep({
   onDone,
 }: {
   draft: OnboardingDraft
-  onDraftChange: (profile: VoiceProfile, audience: string, product: string, goal: string) => void
+  onDraftChange: (
+    profile: VoiceProfile, audience: string, product: string, goal: string,
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator'>,
+  ) => void
   onDone: () => Promise<void>
 }) {
   const [vp, setVp] = useState<VoiceProfile | null>(draft.profile)
@@ -456,14 +479,27 @@ function ConfirmStep({
   const [audience, setAudience] = useState(draft.audience)
   const [product, setProduct] = useState(draft.product)
   const [goal, setGoal] = useState(draft.goal)
+  // §8a.1's brief. `workKind` decides whether the claims question appears at
+  // all; `forbiddenClaims` is the answer no model can infer.
+  const [workKind, setWorkKind] = useState<BriefWorkKind | null>(draft.workKind)
+  const [forbiddenClaims, setForbiddenClaims] = useState(draft.forbiddenClaims ?? '')
+  // The offer arrives PRE-FILLED FROM THE SCAN — which is the defect §8a names,
+  // not a feature. Tracking whether the creator changed it is what separates
+  // "they told us" from "the model guessed and nobody corrected it", and only
+  // the first may decide a call to action.
+  const [offerTouched, setOfferTouched] = useState(draft.offerFromCreator)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
   // Preserve every edit within this browser tab until the server has verified
   // onboarding completion. A refresh or retry must never erase Brand DNA.
   useEffect(() => {
-    if (vp) onDraftChange(vp, audience, product, goal)
-  }, [vp, audience, product, goal, onDraftChange])
+    if (vp) {
+      onDraftChange(vp, audience, product, goal, {
+        workKind, forbiddenClaims: forbiddenClaims.trim() || null, offerFromCreator: offerTouched,
+      })
+    }
+  }, [vp, audience, product, goal, workKind, forbiddenClaims, offerTouched, onDraftChange])
 
   if (!vp) {
     return (
@@ -535,10 +571,60 @@ function ConfirmStep({
           <Labeled label="Who you're talking to">
             <input className="field" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. busy founders, 25-40" />
           </Labeled>
-          <Labeled label="What you sell / build">
-            <input className="field" value={product} onChange={(e) => setProduct(e.target.value)} placeholder="e.g. a coaching program, an app" />
+          {/* Q3b — §8a calls this the highest-value field on the form. It is
+              otherwise INFERRED, and voice.ts's prompt forbids a blank, so the
+              model must produce something: a guessed offer is a wrong call to
+              action on every video shipped. */}
+          <Labeled label="What is your offer called, and what does it do?">
+            <input
+              className="field"
+              value={product}
+              onChange={(e) => { setProduct(e.target.value); setOfferTouched(true) }}
+              placeholder="e.g. Twin — it edits your videos for you"
+            />
+            {!offerTouched && product && (
+              <p className="mt-1 text-[11px] text-amber">
+                We guessed this from your posts — worth a look, it becomes the call to action on every video.
+              </p>
+            )}
           </Labeled>
         </div>
+        {/* Q3 — decides where business truth comes from, and whether the claims
+            question below is asked at all. */}
+        <Labeled label="What do you do?">
+          <div className="flex flex-wrap gap-2">
+            {BRIEF_WORK_KINDS.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setWorkKind(workKind === k ? null : k)}
+                className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                  workKind === k
+                    ? 'border-coral bg-coral/15 text-cream'
+                    : 'border-white/15 text-sand hover:bg-white/5'
+                }`}
+              >
+                {WORK_KIND_LABEL[k]}
+              </button>
+            ))}
+          </div>
+        </Labeled>
+        {/* THE CONDITIONAL. Unguessable, and unforgivable to get wrong for a
+            doctor, lawyer, financial adviser or supplement brand — there is no
+            model that can infer what a regulator will not let someone say. */}
+        {asksForbiddenClaims(workKind) && (
+          <Labeled label="Is there anything you are not allowed to claim?">
+            <input
+              className="field"
+              value={forbiddenClaims}
+              onChange={(e) => setForbiddenClaims(e.target.value)}
+              placeholder="e.g. no guaranteed outcomes, never the word “cure”"
+            />
+            <p className="mt-1 text-[11px] text-stone">
+              We will keep these out of every script. Write “none” if there are no restrictions.
+            </p>
+          </Labeled>
+        )}
         <Labeled label="Your goal">
           <input className="field" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. grow to 50k, drive signups, build trust" />
         </Labeled>

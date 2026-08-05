@@ -1,3 +1,4 @@
+import type { BriefWorkKind } from './api'
 import type { Platform, VoiceProfile } from './types'
 
 export const ONBOARDING_DRAFT_VERSION = 2
@@ -15,6 +16,19 @@ export interface OnboardingDraft {
   audience: string
   product: string
   goal: string
+  // §8a.1's brief. `workKind` decides whether the claims question is asked at
+  // all, and `forbiddenClaims` is the one answer no model can infer — see
+  // packages/shared/src/preScriptBrief.ts.
+  workKind: BriefWorkKind | null
+  forbiddenClaims: string | null
+  // WHETHER THE CREATOR TYPED THE OFFER, or left the scan's guess standing.
+  //
+  // §8a calls `offer` the highest-value field on the form BECAUSE it is
+  // currently inferred: voice.ts's prompt forbids a blank, so the model must
+  // produce something, and a guessed offer is a wrong call to action on every
+  // video shipped. The value alone cannot tell those apart — this can, and
+  // `dnaProvenance` needs it to decide whether the field may DECIDE anything.
+  offerFromCreator: boolean
 }
 
 export function onboardingDraftKey(userId: string): string {
@@ -41,6 +55,12 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       audience: value.audience ?? value.profile?.audience ?? '',
       product: value.product ?? value.profile?.offer ?? '',
       goal: value.goal ?? '',
+      workKind: value.workKind ?? null,
+      forbiddenClaims: value.forbiddenClaims ?? null,
+      // Absent in a v2 draft written before the brief existed. FALSE is the
+      // honest default: a draft that never recorded the distinction cannot
+      // claim the creator typed it.
+      offerFromCreator: value.offerFromCreator === true,
     }
   } catch {
     return null
@@ -70,6 +90,9 @@ export function readOnboardingDraft(storage: Storage, userId: string): Onboardin
     profile: null,
     audience: '',
     product: '',
+    workKind: null,
+    forbiddenClaims: null,
+    offerFromCreator: false,
     goal: '',
   }
   writeOnboardingDraft(storage, migrated)
