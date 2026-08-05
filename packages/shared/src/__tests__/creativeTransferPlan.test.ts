@@ -423,6 +423,9 @@ describe('§6 — confidence below the predefined threshold cannot transfer', ()
     d.action = 'brand_default'
     d.primaryReferenceId = null
     d.evidenceIds = []
+    // Cleared alongside the rest: a decision that used no reference observed
+    // nothing it can report. See the traits rule below.
+    d.observedTraits = []
     d.adaptedInstruction = ''
     d.confidenceMilli = CONFIDENCE_THRESHOLD_MILLI - 1
     expect(() => validateCreativeTransferPlan(finalizeTransferPlan(p, sha256), CTX)).not.toThrow()
@@ -523,5 +526,42 @@ describe('lineage', () => {
     const p = draftPlan()
     const ctx: ValidationContext = { ...CTX, evidence: { [REF]: CTX.evidence[REF] } }
     expect(() => validateCreativeTransferPlan(finalizeTransferPlan(p, sha256), ctx)).toThrow(/no normalized evidence/)
+  })
+})
+
+describe('§1.1 — a row with nothing behind it is a fabricated row', () => {
+  it('a brand_default may not report observed traits', () => {
+    // The hole this closes: `evidenceIds` was checked on unused actions and
+    // `observedTraits` was not — and the traits are what a trust screen renders.
+    // "reference used heavy punch-ins", on a rejected zoom_style decision, with
+    // nothing behind it, is exactly §1.1's fabricated row.
+    const p = draftPlan()
+    const d = dec(p, 'hook_mechanic')
+    d.action = 'brand_default'
+    d.primaryReferenceId = null
+    d.evidenceIds = []
+    d.adaptedInstruction = ''
+    d.observedTraits = ['reference used physical comedy']
+    expect(() => validateCreativeTransferPlan(finalizeTransferPlan(p, sha256), CTX))
+      .toThrow(/may not report observed traits/)
+  })
+
+  it('and neither may a reject', () => {
+    const p = draftPlan()
+    const d = dec(p, 'hook_mechanic')
+    d.action = 'reject'
+    d.primaryReferenceId = null
+    d.evidenceIds = []
+    d.adaptedInstruction = ''
+    d.observedTraits = ['heavy punch-ins throughout']
+    expect(() => validateCreativeTransferPlan(finalizeTransferPlan(p, sha256), CTX))
+      .toThrow(/may not report observed traits/)
+  })
+
+  it('CONTROL: a transfer that CITES evidence still may', () => {
+    // The rule is about traits with nothing behind them, not about traits.
+    const p = draftPlan()
+    expect(dec(p, 'hook_mechanic').observedTraits.length).toBeGreaterThan(0)
+    expect(() => validateCreativeTransferPlan(finalizeTransferPlan(p, sha256), CTX)).not.toThrow()
   })
 })
