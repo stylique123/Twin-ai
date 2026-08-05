@@ -336,6 +336,16 @@ jobs:
       # executes is a comment.
       - name: Gate-I (outcome log — the n=1 refusal and the append-only measurement)
         run: bash scripts/db-tests/gate-i/run.sh
+      # Gate-J: 0106 adds a `clip` kind to media_assets and the reference's half
+      # of §7a's production-mode match. Both have a SILENT failure mode. The old
+      # kind CHECK was declared inline, so a migration that guessed its name
+      # would drop nothing, add a second check beside the surviving restrictive
+      # one, and report success — leaving `clip` refused. And the requirements
+      # pair is an equivalence, not an implication: written the easy way, a
+      # source with no assessment slips through. Both directions, both mutation
+      # controls.
+      - name: Gate-J (the clip kind, and an assessment that must name its source)
+        run: bash scripts/db-tests/gate-j/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no
