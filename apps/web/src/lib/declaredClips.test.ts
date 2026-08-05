@@ -51,7 +51,9 @@ describe('the medium is read from the marker, never from the words', () => {
     }
   })
 
-  it('routes the scene type from the medium', () => {
+  it('routes an ORPHAN clip\'s scene type from its medium', () => {
+    // A clip with no line after it keeps its own beat, and only then does the
+    // medium decide the scene type.
     const typeOf = (line: string) =>
       scriptFrom([line]).scenes.find((s) => s.clip_label)?.scene_type
     expect(typeOf('[SHOW SCREEN: the dashboard]')).toBe('screen_recording')
@@ -61,10 +63,13 @@ describe('the medium is read from the marker, never from the words', () => {
     expect(typeOf('[SHOW: the thing]')).toBe('b_roll')
   })
 
-  it('a camera clip is still not something the creator reads aloud', () => {
-    const scene = scriptFrom(['[SHOW ON CAMERA: the box]']).scenes.find((s) => s.clip_label)
-    expect(scene!.show_in_teleprompter).toBe(false)
-    expect(scene!.dialogue).toBeNull()
+  it('carries the medium onto the spoken line it attaches to', () => {
+    const script = scriptFrom(['[SHOW ON CAMERA: the box]', 'And that is how it works.'])
+    const scene = script.scenes.find((s) => s.clip_label)
+    expect(scene!.clip_medium).toBe('camera')
+    // The creator KEEPS TALKING under it — that is what a cutaway is.
+    expect(scene!.show_in_teleprompter).toBe(true)
+    expect(scene!.dialogue).toBe('And that is how it works.')
   })
 })
 
@@ -106,17 +111,31 @@ describe('declaredSlots', () => {
 })
 
 describe('a declared clip is never something the creator reads aloud', () => {
-  it('a whole-line marker becomes a SILENT scene, never dialogue', () => {
-    // The defect this pins: the marker reached the teleprompter as an ordinary
-    // talking scene, so the creator was prompted to say "show: the settings
-    // page" into the camera.
+  it('a whole-line marker attaches to the NEXT spoken line', () => {
+    // Placement needs to know which words the clip plays over, and the marker's
+    // position is that answer. A cutaway runs while the creator keeps talking,
+    // so the line that FOLLOWS the marker is the one it belongs under.
+    const script = scriptFrom(['[SHOW SCREEN: the settings page]', 'And it takes one tap.'])
+    const scene = script.scenes.find((s) => s.clip_label)
+    expect(scene!.dialogue).toBe('And it takes one tap.')
+    expect(scene!.show_in_teleprompter).toBe(true)
+    expect(scene!.clip_label).toBe('the settings page')
+  })
+
+  it('a clip with no line after it keeps its own silent beat', () => {
+    // Declared, shown, captured — just with nothing to play under. Dropping it
+    // silently would be worse than showing it late.
     const script = scriptFrom(['Here is the fix.', '[SHOW SCREEN: the settings page]'])
     const scene = script.scenes.find((s) => s.clip_label)
-    expect(scene).toBeDefined()
     expect(scene!.dialogue).toBeNull()
     expect(scene!.show_in_teleprompter).toBe(false)
     expect(scene!.clip_label).toBe('the settings page')
-    expect(scene!.scene_type).toBe('screen_recording')
+  })
+
+  it('TWO markers before one line do not collide — neither is lost', () => {
+    // A single pending slot would have let the second overwrite the first.
+    const script = scriptFrom(['[SHOW: one]', '[SHOW: two]', 'And there you go.'])
+    expect(declaredSlots(script).map((s) => s.label).sort()).toEqual(['one', 'two'])
   })
 
   it('no spoken line anywhere in the script still contains a marker', () => {
@@ -139,13 +158,14 @@ describe('a declared clip is never something the creator reads aloud', () => {
     expect(declaredSlots(script).map((s) => s.label)).toEqual(['the settings page'])
   })
 
-  it('every declared slot is a scene the teleprompter skips', () => {
+  it('every declared slot points at a real scene, and none carries the marker', () => {
     const script = scriptFrom(['talking', '[SHOW: the dashboard]', 'more talking'])
     const slots = declaredSlots(script)
     expect(slots).toHaveLength(1)
     for (const slot of slots) {
       const scene = script.scenes.find((s) => s.scene_number === slot.sceneNumber)
-      expect(scene!.show_in_teleprompter).toBe(false)
+      expect(scene).toBeDefined()
+      expect(scene!.dialogue ?? '').not.toMatch(/\[\s*show/i)
     }
   })
 })
