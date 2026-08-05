@@ -20,7 +20,6 @@ import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
 import { CreativeTransfer } from '../components/CreativeTransfer'
-import { ScreenClips } from '../components/ScreenClips'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
 import { CoverButton } from '../components/CoverDialog'
@@ -910,10 +909,6 @@ export default function Result() {
               />
             </div>
 
-            {/* The b-roll shots below ARE the screen clips for a creator who
-                records their screen. Placed beside the shot list it reads from,
-                and hidden entirely for everyone else. */}
-            <ScreenClips generationId={gen.id} blueprint={b} hook={chosenHook} capabilityFlags={gen.capability_flags} />
             {/* Shot List */}
             <div className="space-y-4">
               <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
@@ -1246,7 +1241,6 @@ export default function Result() {
                 />
               </div>
 
-              <ScreenClips generationId={gen.id} blueprint={b} hook={chosenHook} capabilityFlags={gen.capability_flags} />
               {/* Shot List */}
               <div className="space-y-4">
                 <h2 className="font-heading text-xs font-semibold tracking-wide uppercase text-stone flex items-center gap-2">
