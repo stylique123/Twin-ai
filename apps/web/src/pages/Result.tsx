@@ -20,6 +20,8 @@ import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
 import { CreativeTransfer } from '../components/CreativeTransfer'
+import { isWhollyPlaceholder } from '../lib/api'
+import { UnfilledContainers } from '../components/UnfilledContainers'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
 
@@ -553,19 +555,15 @@ export default function Result() {
   // real dialogue. Server-side normalization now prevents new ones; this repairs
   // any already stored: swap the opening hook beat for the chosen/best hook, and
   // blank any stray placeholder elsewhere rather than showing the raw token.
-  const isPlaceholder = (l: string) => {
-    const t = l.trim()
-    return t === '' || /^\[[^\]]*\]$/.test(t) || /\b(hook option\s*\d*|selected hook|insert (the )?hook|your hook (above|here)|hook from above)\b/i.test(t)
-  }
   const hookText = chosenHook || b.hook_options[0] || ''
   const updatedScript = b.script.map((s, i) => {
     if (i === 0 && hookText) {
-      if (isPlaceholder(s.line)) return { ...s, line: hookText }
+      if (isWhollyPlaceholder(s.line)) return { ...s, line: hookText }
       const sentences = s.line.split(/(?<=[.!?])\s+/)
       if (sentences.length > 1) return { ...s, line: `${hookText.trim()} ${sentences.slice(1).join(' ')}` }
       return { ...s, line: hookText }
     }
-    if (isPlaceholder(s.line)) return { ...s, line: hookText || s.line }
+    if (isWhollyPlaceholder(s.line)) return { ...s, line: hookText || s.line }
     return s
   })
 
@@ -935,6 +933,7 @@ export default function Result() {
                 <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
               
+              <UnfilledContainers blueprint={b} hook={chosenHook} />
               <ScriptEditor
                 generationId={gen.id}
                 blueprint={b}
@@ -1266,6 +1265,7 @@ export default function Result() {
                   <span className="text-xs text-stone">{updatedScript.length} scenes</span>
                 </div>
                 
+                <UnfilledContainers blueprint={b} hook={chosenHook} />
                 <ScriptEditor
                   generationId={gen.id}
                   blueprint={b}
