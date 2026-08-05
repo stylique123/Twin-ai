@@ -5,7 +5,7 @@ import {
   ArrowLeft, Copy, Check, Quote, FileText, Clapperboard,
   Wand2, Send, Loader2, Video, ExternalLink,
   SlidersHorizontal, BadgeCheck, Link2, MessageSquare, Users,
-  TrendingUp, User, Download,
+  TrendingUp, User, Download, CalendarClock,
 } from 'lucide-react'
 
 // Phase-0 guided publishing: deep-link straight into each platform's uploader.
@@ -23,6 +23,7 @@ import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
 import { CoverButton } from '../components/CoverDialog'
+import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
 
@@ -1499,6 +1500,8 @@ function PublishRow({
   const [postErr, setPostErr] = useState(false)
   const [opened, setOpened] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [scheduling, setScheduling] = useState(false)
+  const [scheduled, setScheduled] = useState(false)
 
   // WHAT was copied, so two buttons can report separately. `null` = nothing
   // copied just now; a shared boolean would tick both buttons at once and tell
@@ -1571,6 +1574,13 @@ function PublishRow({
               : <><Copy className="h-3.5 w-3.5" /> Copy hashtags</>}
           </button>
         )}
+        {/* `best time` was dead text until now: a suggestion with nothing to
+            act on, beside a button that only worked after the fact. */}
+        <button onClick={() => setScheduling(true)} className={cn('chip', scheduled && 'border-teal/50 text-teal')}>
+          {scheduled
+            ? <><Check className="h-3.5 w-3.5" /> Scheduled</>
+            : <><CalendarClock className="h-3.5 w-3.5" /> Schedule</>}
+        </button>
         <button onClick={logPosted} disabled={busy || posted} className={cn('chip', posted && 'border-teal/50 text-teal')}>
           {posted ? <><Check className="h-3.5 w-3.5" /> Posted</> : busy ? 'Saving…' : <><Send className="h-3.5 w-3.5" /> Mark as posted</>}
         </button>
@@ -1584,6 +1594,24 @@ function PublishRow({
       {/* Guide them back: opening the uploader is a dead-end without this. */}
       {opened && !posted && (
         <p className="mt-2 text-[11px] text-amber">Posted it on {platform}? Hit “Mark as posted” so your streak and library stay in sync.</p>
+      )}
+      {scheduling && (
+        <SchedulePostDialog
+          generationId={generationId}
+          platform={platform}
+          caption={full}
+          bestTime={bestTime}
+          onClose={() => setScheduling(false)}
+          onScheduled={() => {
+            setScheduling(false); setScheduled(true)
+            void logEvent('post_scheduled', { platform, generation_id: generationId })
+          }}
+        />
+      )}
+      {scheduled && (
+        <p className="mt-2 text-[11px] text-teal">
+          On your calendar. <Link to="/calendar" className="font-semibold underline-offset-2 hover:underline">See it →</Link>
+        </p>
       )}
       {/* Close the loop — the highest-intent moment to start the next video. */}
       {posted && (
