@@ -346,6 +346,15 @@ jobs:
       # controls.
       - name: Gate-J (the clip kind, and an assessment that must name its source)
         run: bash scripts/db-tests/gate-j/run.sh
+      # Gate-K: 0107's clip RPCs. The rule worth executing is CONVERGENCE — a
+      # screen capture is retried more than anything else in this product, and
+      # the same attempt must return the same asset rather than leaving three
+      # half-uploaded rows. It also caught a real bug in the RPC on its first
+      # run: `status` in a WHERE clause resolving to the RETURNS TABLE output
+      # rather than the column, which is a runtime ambiguity error, not a
+      # create-time one.
+      - name: Gate-K (clip create/finalize — convergence, ownership, idempotence)
+        run: bash scripts/db-tests/gate-k/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no

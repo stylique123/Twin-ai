@@ -180,6 +180,9 @@ export interface Generation {
   transcript_id?: string | null
   // Creator's choices that drive the back half of the loop.
   selected_hook?: string | null // which of the 5 hooks to shoot (teleprompter + cover)
+  // 0103's per-video answer. Beats the brand default, INCLUDING when it says
+  // false — `resolveCapabilities` owns that precedence. Three-state inside.
+  capability_flags?: Record<string, boolean | null> | null
   edit_style?: string | null // LEGACY (old editor) — kept so stored rows still parse
   // The finished video MP4 + its cover JPEG (storage paths in the private `edits`
   // bucket; sign to display/play). Written by the old editor historically; the
