@@ -7,6 +7,7 @@
 // moments from the shot list become silent insert scenes, and a final CTA scene
 // closes it. No module ever re-derives boundaries after this.
 
+import { isWhollyPlaceholder } from './containerResolution.js'
 import type { Blueprint } from './types'
 import {
   type RecordingScene,
@@ -98,8 +99,11 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   // A bracket-only token ("[Hook Option 1]", "[Insert selected hook…]") is a
   // broken placeholder, never real dialogue — drop it so it can't reach the
   // teleprompter or the worker's caption pass.
-  const isPlaceholder = (l: string) =>
-    /^\[[^\]]*\]$/.test(l) || /\b(hook option\s*\d*|selected hook|insert (the )?hook|your hook (above|here)|hook from above)\b/i.test(l)
+  //
+  // `isWhollyPlaceholder` is now the ONE authority for that judgement. The copy
+  // that lived here did not trim, so a line with a leading space was a
+  // placeholder on the plan screen and real dialogue in the recorder — and it
+  // treated `[SHOW: …]` as a placeholder, which would drop a declared clip.
   // The model is instructed to write a CTA beat in the script, pointing at the
   // creator's real offer, and explicitly NOT to write "follow for more". So the
   // spoken CTA already exists in `script` — it must be held aside here rather
@@ -115,7 +119,7 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   const usable = (blueprint.script ?? []).filter((s) => {
     const l = (s.line || '').trim()
     if (!l) return false
-    if (isPlaceholder(l)) return false
+    if (isWhollyPlaceholder(l)) return false
     if (/hook|opener/i.test(s.section || '')) return false
     return !looksLikeHook(l)
   })
