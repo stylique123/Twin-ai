@@ -187,4 +187,14 @@ export function sanitizeCapabilityFlagsForWrite(raw: unknown): CapabilityFlags {
  * A test pins this list against the codebase, so the day something starts
  * reading a flag, this comment cannot stay wrong.
  */
-export const CAPABILITY_CONSUMERS_BUILT: readonly CapabilityFlagName[] = []
+export const CAPABILITY_CONSUMERS_BUILT: readonly CapabilityFlagName[] = [
+  // §7a's production-mode match, in `galleryRank.ts`. The gallery reads both
+  // capability flags against 0106's per-reference requirements and reports a
+  // MISMATCH only where both halves are explicitly known — a card assessed as
+  // needing objects, and a creator who has said they cannot film them.
+  //
+  // `needs_approval` is still unread: the approval lock is a regulated-tier
+  // surface built on the review screen, not a flag read.
+  'can_film_objects',
+  'can_record_screen',
+]

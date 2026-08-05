@@ -89,6 +89,10 @@ export interface BrandVoice {
   stats?: { followers: number; videos: number; avg_views: number; avg_likes: number } | null
   status: 'building' | 'ready' | 'failed'
   is_default: boolean
+  // 0103's per-brand defaults. Optional AND three-state inside: absent means the
+  // column was not selected, `{}` means nothing was ever answered, and a key set
+  // to null means that one question was skipped. None of them is `false`.
+  default_capability_flags?: Record<string, boolean | null> | null
   error: string | null
   created_at: string
   updated_at: string
