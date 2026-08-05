@@ -37,11 +37,11 @@
 // a privacy cost with no benefit, and one the browser would have shown them a
 // checkbox for.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, MonitorPlay, Square, Check, TriangleAlert } from 'lucide-react'
+import { Loader2, MonitorPlay, Square, Check, TriangleAlert, Play, X } from 'lucide-react'
 import { declaredSlots } from '../lib/declaredClips'
 import {
   listGenerationClips, uploadClipRecording, newRecordingAttemptId,
-  loadCapabilities, loadRecordingScript, isExplicitlyTrue, pickClipMime, baseClipMime,
+  loadCapabilities, loadRecordingScript, signTakeUrl, isExplicitlyTrue, pickClipMime, baseClipMime,
   type MediaAsset, type RecordingScript, type ResolvedCapabilities,
 } from '../lib/api'
 
@@ -64,6 +64,10 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
   const [clips, setClips] = useState<MediaAsset[]>([])
   const [active, setActive] = useState<string | null>(null)
   const [state, setState] = useState<SlotState>({ kind: 'idle' })
+  // The clip currently being watched back, if any. Signed ON DEMAND rather than
+  // on load: signing every clip every time this screen renders is work nobody
+  // asked for, and a 24-hour URL minted for something the creator never opens.
+  const [preview, setPreview] = useState<{ label: string; url: string } | null>(null)
   const recorder = useRef<MediaRecorder | null>(null)
   // The attempt id is kept PER LABEL and reused across retries of the same
   // capture, which is the whole idempotency story: a failed upload retried
@@ -104,6 +108,11 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
 
   const capture = async (label: string) => {
     setState({ kind: 'idle' })
+    // CLOSE ANY PREVIEW OF THE CLIP BEING REPLACED. Re-recording mints a new
+    // asset at a new path, so a preview left open would keep playing the
+    // capture that is being thrown away — and "Record again" followed by the
+    // OLD footage still on screen reads as the re-record having failed.
+    if (preview?.label.toLowerCase() === label.toLowerCase()) setPreview(null)
     let stream: MediaStream
     try {
       // Video only. See the header: the clip's audio is discarded downstream, so
@@ -188,6 +197,31 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
     }
   }
 
+  /**
+   * Watch back what was actually captured.
+   *
+   * THE MOST LIKELY MISTAKE IN A SCREEN CAPTURE IS SHARING THE WRONG THING —
+   * the other window, the whole desktop, a tab that had already navigated away.
+   * Nothing about the upload can detect that: the bytes are valid, the duration
+   * is real, the probe passes, and the creator finds out when they watch the
+   * finished video. One tap to check is the only thing that catches it.
+   *
+   * Offered while the clip is still being measured too, deliberately. The bytes
+   * are already uploaded and the question "did I share the right window?" is
+   * answerable immediately — waiting for a probe that cannot answer it would
+   * just delay the discovery.
+   */
+  const watch = async (label: string) => {
+    const clip = clipFor(label)
+    if (!clip) return
+    const url = await signTakeUrl(clip.storage_path)
+    if (!url) {
+      setState({ kind: 'error', message: 'Could not open that capture — try again in a moment.' })
+      return
+    }
+    setPreview({ label, url })
+  }
+
   if (slots.length === 0) return null
   // SILENCE HIDES THIS, and so does an explicit no. `isExplicitlyTrue` is the
   // whole gate: `capabilities.ts` names this feature as its example of one that
@@ -223,6 +257,15 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
                         </span>
                       )}
                     </span>
+                    {existing && !(active === slot.label && state.kind === 'recording') && (
+                      <button
+                        type="button"
+                        className="btn-ghost !py-1 !text-[11px]"
+                        onClick={() => { void watch(slot.label) }}
+                      >
+                        <Play className="h-3 w-3" /> Check it
+                      </button>
+                    )}
                     {active === slot.label && state.kind === 'recording' ? (
                       <button type="button" className="btn-ghost !py-1 !text-[11px]" onClick={stop}>
                         <Square className="h-3 w-3" /> Stop
@@ -243,6 +286,35 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
                 )
               })}
           </ul>
+
+          {preview && (
+            <div className="mt-3 rounded-card border border-white/10 bg-black/40 p-2">
+              <div className="flex items-center justify-between gap-2 px-1 pb-2">
+                <p className="min-w-0 truncate text-[11px] text-sand">“{preview.label}”</p>
+                <button
+                  type="button"
+                  className="shrink-0 text-stone transition-colors hover:text-cream"
+                  onClick={() => setPreview(null)}
+                  aria-label="Close the preview"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              {/* `key` on the URL so switching clips REPLACES the element rather
+                  than reusing it — a reused <video> keeps the previous source
+                  buffered and can show the wrong clip for a moment, which is
+                  precisely the confusion this preview exists to remove. */}
+              <video
+                key={preview.url}
+                src={preview.url}
+                controls
+                className="max-h-64 w-full rounded"
+              />
+              <p className="mt-2 px-1 text-[11px] leading-relaxed text-stone">
+                Not the right window? Record it again — the new capture replaces this one.
+              </p>
+            </div>
+          )}
 
           {state.kind === 'error' && (
             <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-coral">
