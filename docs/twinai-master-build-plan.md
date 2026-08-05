@@ -1081,6 +1081,39 @@ before treating it as a defect.
 8. **Edit the script BEFORE filming.** Three of four panellists hit this
    independently: you cannot currently change a word before reading it into a
    camera 40 times.
+   **BUILT** — `packages/shared/src/scriptEdit.ts` + `ScriptEditor.tsx`, on the
+   plan screen.
+   **WHICH SCRIPT was the whole question, and the obvious answer is wrong.**
+   The plan screen rendered `blueprint.script[]` — the model's beats. The
+   teleprompter records against `scene_timeline`, and `buildRecordingScript`
+   maps one onto the other LOSSILY: hook-lookalike lines are dropped, the CTA
+   beat is pulled out of the body and moved to the end, silent b-roll scenes are
+   inserted from the shot list. `script[i]` and `scenes[i]` are different lines,
+   so an edit box on the old cards would have edited **a line nobody films**.
+   The editor therefore renders the recording script itself; the blueprint cards
+   remain as the read-only fallback for when one cannot be produced.
+   **THE PACING MOVES WITH THE WORDS.** `duration_sec` drives the teleprompter
+   scroll *and* `sceneTimeCapSec`, which hard-stops the recorder. A rewritten
+   line against the old estimate means the camera cuts off mid-sentence — this
+   item's own failure, reintroduced by the fix for it — so every edit
+   re-estimates at the script's own WPM.
+   **The hook lives in two places and both are hashed** (`RecordingScript.hook`
+   and scene 1's dialogue), so editing it writes both — except where the creator
+   has already rewritten scene 1 by hand, which is them saying that line is no
+   longer the hook.
+   **Emptying a line is refused**: deletion changes the scene numbering, the
+   teleprompter walk and the snapshot, and doing it by backspacing would make it
+   an accident. Edits are normalized exactly as the snapshot normalizes (NFC,
+   collapsed whitespace, trimmed) so what is displayed is what is hashed.
+   **The save is STRICT, not best-effort.** `saveRecordingScript` is documented
+   as a convenience cache; an edit is not a cache — if it does not land the
+   creator films the old words. So it goes through the same
+   persist → re-read → prove-canonical seam recording uses, and failure is shown
+   with the creator's text still in the box.
+   *Editing after a take is allowed*, because the take carries its own immutable
+   capture-time snapshot and Boot cross-checks that rather than the live
+   generation. The creator is told, once, and only when the change touches what
+   the snapshot carries — a changed framing note never raises it.
 9. **Capability flags** (§2.2) replace archetype routing.
    **BUILT — the data model and the resolution rule (0103,
    `packages/shared/src/editor/capabilities.ts`). Nothing consumes them yet,
@@ -1192,6 +1225,48 @@ Rank every reference by:
 **Production-mode match is the one nobody builds and it is the most valuable:**
 it is what stops the gallery recommending a multi-clip montage to someone who
 answered "no" to filming objects. The flags already carry it.
+
+**BUILT AS FAR AS THE DATA ALLOWS — `packages/shared/src/galleryRank.ts`, wired
+into `/gallery`. SIX OF THE SEVEN CANNOT BE COMPUTED**, and finding out why was
+the work.
+
+A gallery card carries a niche, a platform, a creator, a marketing sentence and
+two engagement figures. It does not carry what the video is STRUCTURED like,
+what it takes to SHOOT, or whether its format is still working. Each of those
+would have to be inferred from prose written to sell the card — a guess about a
+video nobody watched, in the section that exists to stop exactly that.
+
+**The correction: "the flags already carry it" is half true.** The capability
+flags carry the CREATOR'S half — can they film objects, record a screen. Nothing
+carries the REFERENCE'S half: no field says this video is a multi-clip montage,
+a screen capture, or one continuous piece to camera. The signal is blocked on a
+missing measurement, not on missing wiring, so `CAPABILITY_CONSUMERS_BUILT`
+stays empty and the gallery is not yet a consumer. Recording that is the useful
+output: the work is now one named field away rather than an open design.
+
+**What each blocked signal needs is written down in the code**, not just here,
+so it is readable where it would be built. Freshness explicitly refuses the
+tempting substitute: `gallery_items.created_at` is when WE read the card, and
+using it would put a confident freshness claim on a scrape date.
+
+**All seven are always returned**, in a stable order — the rule `craftChecks.ts`
+runs on. A ranking that quietly dropped the six would let one niche comparison
+look like a seven-signal judgement.
+
+**It replaced a weighted 0–100 score.** The gallery shipped an "Opportunity
+Engine" producing `Math.round(42 + raw * 57)` from engagement rate, reach and
+niche fit, with the floor chosen so *"even the floor reads as usable"*. Stated
+precisely, because the difference matters: **it never reached the screen** — it
+only ordered the feed, and its `tier` and `why` were computed and rendered
+nowhere — so this was not §1.2's "Attention Score 9.6" in front of a creator.
+It was still a confident weighted number nobody had measured, deciding what got
+seen first. The ranking is now a COMPARISON (niche relation first, the
+reference's own measured reach only as a tiebreak, because a video with thirty
+million views is not thereby a better fit for this creator), and the card shows
+the reason instead of nothing.
+
+*Still to build:* the six, each behind the field named in the code — and above
+all the reference-requirements field, which unblocks two of them at once.
 
 ## 7b. PERFORMANCE FEEDBACK — ITS OWN CONTRACT
 
@@ -1791,3 +1866,5 @@ cheapest thing left to check.
 | 2026-08-04 | **Phase 10 item 5's remaining half done: the failure explanation is SURFACED and the retry button exists.** The classification is a pure function of `failure_code`, which the owner can already read, so the client needed the map rather than an API. Retry is offered ONLY where the class says it can plausibly work — telling someone to retry a failure that can never clear is exactly how this defect hurts. The catalogue now exists twice (the worker is the authority; shared mirrors it, because the worker deliberately does not depend on that package), so `check_failure_catalogue.mjs` compares the two code→class maps and fails on any disagreement — mutation-checked by reclassifying one code and watching it fail. That guard exists because the drift would be silent and cruel: half the product's surfaces telling a creator to press retry on something that can never clear. |
 | 2026-08-04 | **Phase 10 item 2 STARTED (capability flags unblocked it).** §8a.1's question set is a contract with the split it exists to enforce — intent during the scan, observables pre-filled on confirm — and each question records WHY it sits where it does, because a question on the wrong side has either nothing to pre-fill from or asks for an answer we are about to read anyway. §8a.2 turned out to be ALREADY BUILT (`dnaProvenance.ts`: discrete sources, evidence counts rather than float confidence, conflicted fields side by side, `DECIDING_FIELDS`) and was nearly rebuilt — checking first caught it. Wired: the OFFER, asked rather than inferred (it was pre-filled from the scan, and voice.ts forbids a blank, so a guess becomes a wrong CTA on every video — the screen now flags the guess and the draft records whether the creator typed it), and the CLAIMS conditional, which has three states rather than two, because reading an empty box as permission decides a doctor may say anything. The full five-question redesign remains: a product-design pass, not a contract gap. |
 | 2026-08-05 | **The two built-but-invisible surfaces now show: §7c's craft checks, and §7b's log.** The craft-checks adapter (`craftFacts.ts`) fills in only what the pinned plan and the durable event trail genuinely contain, so a missing measurement reaches the checker AS MISSING — a plan with no caption cues supplies neither the first-word nor the hook timing, because a silent video is not a video whose hook lands at zero milliseconds. Two things fell out of building it: the DELIVERED loudness is client-readable after all (Phase 9's `audio_measured` carries `integratedLufsMilli` and `edit_events` is owner-readable), so that check runs on the encoded file rather than on the plan's intentions — reading the LAST measurement, because a re-render replaces the file; and the safe-area check is BOTTOM-ONLY on purpose, since Phase 9 measured the collision as the horizontal action rail and a vertical-only check would re-assert what that measurement disproved. **The log's writer is the sharper finding: the dashboard's views input was the only performance data the product owns, and every save overwrote `posts.views` with no trace of the previous number — the history was being destroyed by the UI that gathered it.** `recordPostStats` keeps the column as the cache the top-performer badge sorts on and APPENDS the reading; the old cache-only writer is deleted rather than deprecated, because a function that destroys unrecoverable history, left in reach with a reasonable name, gets called again. Three states stay distinct at the screen — recording with readings, recording with none yet, and NOT RECORDING (0105 unapplied, `42P01`) — because collapsing the third into the second tells a creator their log is empty while their numbers are being overwritten. And the Dashboard's "what's working for you" panel turned out to be an unqualified correlation: it computed a sample size, dropped it at render, and ended on "Make more like it". It now goes through `validateClaim` (so the n≥2 floor is a refusal, not a convention) and prints `claimQualifier` — *"across 3 videos — a pattern, not a cause"* — with the wording owned by the contract so the same claim cannot read differently anywhere else. |
+| 2026-08-05 | **Phase 11 item 8 BUILT — the script can be changed before it is read into a camera forty times.** The design question was WHICH SCRIPT, and the obvious answer was wrong: the plan screen rendered `blueprint.script[]`, the teleprompter records against `scene_timeline`, and `buildRecordingScript` maps one onto the other lossily — hook-lookalikes dropped, the CTA beat moved to the end, silent b-roll inserted — so `script[i]` and `scenes[i]` are different lines and an edit box on the old cards would have edited a line nobody films. The editor renders the recording script itself; the blueprint cards stay as the read-only fallback. **The pacing moves with the words**, because `duration_sec` drives both the teleprompter scroll and `sceneTimeCapSec`, which hard-stops the recorder — a rewritten line against the old estimate cuts the camera off mid-sentence, which is this item's own failure reintroduced by the fix for it. The hook is written in both places it lives and is hashed in both, except over a creator's own rewrite of scene 1, which is them saying that line is no longer the hook. Emptying a line is refused: deletion changes the scene numbering, the teleprompter walk and the snapshot, and backspacing to it would make that an accident. Edits normalize exactly as the snapshot does, so what is displayed is what is hashed rather than surfacing later as a SHA mismatch. **The save is strict rather than best-effort** — `saveRecordingScript` is documented as a convenience cache the worker can do without, but an edit is not a cache: if it does not land the creator films the old words, so it goes through the same persist → re-read → prove-canonical seam recording uses and failure is shown with their text still in the box. Editing after a take is allowed, because the take carries its own immutable capture-time snapshot and Boot cross-checks that rather than the live generation; the creator is told once, and only when the change touches what the snapshot carries. |
+| 2026-08-05 | **§7a's gallery ranking BUILT as far as the data allows, and the finding is that SIX OF THE SEVEN SIGNALS CANNOT BE COMPUTED.** A gallery card carries a niche, a platform, a creator, a marketing sentence and two engagement figures; it does not carry what the video is structured like, what it takes to shoot, or whether its format still works. Inferring any of those from prose written to sell the card would be a guess about a video nobody watched. **The correction to this section: "the flags already carry it" is half true** — the capability flags carry the CREATOR'S half, and nothing carries the REFERENCE'S half, so production-mode match is blocked on a missing measurement rather than on missing wiring, `CAPABILITY_CONSUMERS_BUILT` stays empty, and the work is now one named field away instead of an open design. What each blocked signal needs is written in the code rather than only in this document, and freshness explicitly refuses the tempting substitute: the scrape date is when we read the card, not whether the format is exhausted. All seven are always returned in a stable order, following `craftChecks.ts` — dropping the six would let one niche comparison look like a seven-signal judgement. This replaced a weighted 0-100 "Opportunity Engine" score (`42 + raw * 57`, floor chosen so "even the floor reads as usable"); stated precisely because the difference matters, that score NEVER REACHED THE SCREEN — it only ordered the feed and its tier/why were rendered nowhere — so it was not §1.2's "Attention Score 9.6" in front of a creator, but it was still a confident weighted number nobody had measured deciding what got seen first. Ranking is now a comparison: niche relation first, the reference's own measured reach only as a tiebreak, because thirty million views does not make a video a better fit for this creator. An absent reach figure sorts as unmeasured rather than as zero. |

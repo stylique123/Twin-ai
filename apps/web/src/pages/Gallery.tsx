@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Wand2, Eye, Heart, Play, Search, ChevronRight, X, ExternalLink } from 'lucide-react'
+import { cardReasons, compareByFit, rankSignals, type GalleryFacts, type NicheRelation } from '../lib/api'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
@@ -187,26 +188,22 @@ function reachNum(s: string): number {
   return n * mult
 }
 
-// --- Opportunity Engine ----------------------------------------------------
-// A personalized 0-100 score per reference: how likely THIS format is to win for
-// THIS creator. Content-based (engagement rate + proven reach + niche fit) so it
-// works on day one with zero interaction data. Once we log remix clicks it
-// graduates to collaborative filtering. `fit` is 0..1 (sub-niche=1 → unrelated≈0.3).
-interface Opp { score: number; tier: 'hot' | 'strong' | 'solid'; why: string; er: number }
-function opportunity(reach: number, loves: number, fit: number): Opp {
-  const er = reach > 0 ? loves / reach : 0
-  const erScore = Math.min(1, er / 0.1) // a 10% like-rate maxes this factor
-  const reachScore = reach > 0 ? Math.min(1, Math.log10(reach) / 7.5) : 0 // ~31M views ≈ max
-  const raw = 0.4 * fit + 0.35 * erScore + 0.25 * reachScore
-  const score = Math.round(42 + raw * 57) // 42..99 — even the floor reads as usable
-  const tier: Opp['tier'] = score >= 85 ? 'hot' : score >= 70 ? 'strong' : 'solid'
-  const reasons = [
-    { k: fit, t: fit >= 0.95 ? 'dead-on for your niche' : fit >= 0.8 ? 'right in your niche' : fit >= 0.5 ? 'adjacent to your niche' : 'cross-niche idea' },
-    { k: erScore, t: `${(er * 100).toFixed(1)}% like-rate` },
-    { k: reachScore, t: 'proven at scale' },
-  ].sort((a, b) => b.k - a.k)
-  return { score, tier, why: `${reasons[0].t} · ${reasons[1].t}`, er }
-}
+// --- §7a's ranking ---------------------------------------------------------
+// This replaced an "Opportunity Engine" that produced a personalized 0-100
+// score from engagement rate, reach and niche fit, with a floor set so "even
+// the floor reads as usable". It never reached the screen — it only ORDERED the
+// feed, and its `tier` and `why` were computed and rendered nowhere — so it was
+// not §1.2's "Attention Score 9.6" in front of a creator. It was still a
+// confident weighted number nobody had measured, deciding what got seen first.
+//
+// `galleryRank.ts` replaces it with §7a's seven signals as checks, of which
+// exactly ONE is computable from what a gallery card carries. That is a worse
+// ranking by the standard of looking clever and a better one by the standard of
+// being arguable — and the six it cannot compute now say what they need.
+/** A card whose facts could not be derived. Not a mismatch — unknown, which the
+ *  comparator sorts above a known cross-niche card. */
+const UNKNOWN_FACTS: GalleryFacts = { nicheRelation: 'unknown', reach: null, likes: null }
+
 const ACCENT_GLOW: Record<string, string> = {
   'text-amber': 'hover:border-amber/40 hover:shadow-[0_0_24px_rgba(255,179,71,0.15)]',
   'text-teal':  'hover:border-teal/40 hover:shadow-[0_0_24px_rgba(101,229,216,0.15)]',
@@ -306,13 +303,37 @@ export default function Gallery() {
   // them out of `shown` (which otherwise re-derives them on every keystroke/sort).
   const related = useMemo(() => relatedNiches(myNiche, knownNiches), [myNiche, knownNiches])
 
-  // Opportunity score per card — what's most likely to win for THIS creator.
-  const scores = useMemo(() => {
-    const fitOf = (c: Card) => (c.niche === mySubNiche ? 1 : c.niche === myNiche ? 0.82 : related.includes(c.niche) ? 0.55 : 0.3)
-    const m = new Map<string, Opp>()
-    for (const c of all) m.set(c.id, opportunity(reachNum(c.reach), reachNum(c.loves), fitOf(c)))
+  // §7a's facts per card. The niche comparison is DISCRETE — the alternative is
+  // a similarity float nobody can argue with — and reach is kept as a fact about
+  // the reference, never as a signal about the fit.
+  const factsById = useMemo(() => {
+    const relationOf = (c: Card): NicheRelation =>
+      !myNiche && !mySubNiche ? 'unknown'
+      : c.niche === mySubNiche ? 'same_sub_niche'
+      : c.niche === myNiche ? 'same_niche'
+      : related.includes(c.niche) ? 'related'
+      : 'unrelated'
+    const m = new Map<string, GalleryFacts>()
+    for (const c of all) {
+      const reach = reachNum(c.reach)
+      const likes = reachNum(c.loves)
+      // reachNum returns 0 for an unparseable figure. 0 views and "we could not
+      // read this card's reach" are different facts, and the comparator treats
+      // an absent number as absent rather than as the smallest one.
+      m.set(c.id, {
+        nicheRelation: relationOf(c),
+        reach: reach > 0 ? reach : null,
+        likes: likes > 0 ? likes : null,
+      })
+    }
     return m
   }, [all, myNiche, mySubNiche, related])
+
+  const signalsById = useMemo(() => {
+    const m = new Map<string, ReturnType<typeof rankSignals>>()
+    for (const [id, f] of factsById) m.set(id, rankSignals(f))
+    return m
+  }, [factsById])
 
   const shown = useMemo(() => {
     let out = all
@@ -328,14 +349,17 @@ export default function Gallery() {
       const relevant = out.filter((c) => rank(c) < 3)
       out = relevant.length >= 6 ? relevant : out
     }
-    // Relevance score: your-niche fit first (in the "for you" view), then the
-    // Opportunity score (engagement × reach × fit). The diversity re-rank then
-    // interleaves creators/platforms so the top of the feed isn't three clips from
-    // the same person — without letting a low-relevance card jump the queue.
+    // Order: the "for you" niche tier first, then §7a's comparator. `diversify`
+    // wants a number, so the comparator's position in the sorted list becomes
+    // one — the ranking itself stays a comparison rather than a score, and no
+    // number derived here is ever shown.
+    const byFit = [...out].sort((a, b) =>
+      compareByFit(factsById.get(a.id) ?? UNKNOWN_FACTS, factsById.get(b.id) ?? UNKNOWN_FACTS))
+    const place = new Map(byFit.map((c, i) => [c.id, byFit.length - i]))
     const relevanceOf = (c: Card) =>
-      (isForYou ? (3 - rank(c)) * 1_000_000 : 0) + (scores.get(c.id)?.score ?? 0)
+      (isForYou ? (3 - rank(c)) * 1_000_000 : 0) + (place.get(c.id) ?? 0)
     return diversify(out, relevanceOf)
-  }, [all, myNiche, mySubNiche, niche, q, searchBlobs, related, scores])
+  }, [all, myNiche, mySubNiche, niche, q, searchBlobs, related, factsById])
 
   // Only the cards actually on screen need a thumbnail. YouTube thumbnails derive
   // straight from the video id; TikTok needs an oembed round-trip; Instagram keeps
@@ -380,7 +404,12 @@ export default function Gallery() {
   const remix = (c: Card) => {
     // The remix-click is the core interaction signal — logging it builds the data
     // set that lets discovery graduate from content-based to collaborative filtering.
-    void logEvent('gallery_remix', { url: c.url, niche: c.niche, creator: c.creator, score: scores.get(c.id)?.score })
+    // The niche RELATION is logged rather than a score: it is the comparison
+    // the ranking actually made, and it stays readable a year from now.
+    void logEvent('gallery_remix', {
+      url: c.url, niche: c.niche, creator: c.creator,
+      niche_relation: factsById.get(c.id)?.nicheRelation ?? 'unknown',
+    })
     navigate(`/app?ref=${encodeURIComponent(c.url)}`)
   }
 
@@ -466,6 +495,15 @@ export default function Gallery() {
                         <span className={cn('truncate text-[10px] font-bold uppercase tracking-wider', c.accent)}>{c.label}</span>
                         <p className="font-heading text-sm leading-snug text-cream line-clamp-2">{c.hook}</p>
                         <p className="text-[11px]"><span className={cn('font-semibold', c.accent)}>@{c.creator}</span></p>
+                        {/* §1.2: show the reason, not the score. Only signals
+                            that were actually established appear — a card with
+                            nothing established shows nothing rather than
+                            filler, and there is no number to read as a rating. */}
+                        {(cardReasons(signalsById.get(c.id) ?? []) [0]) && (
+                          <p className="text-[10px] leading-snug text-stone">
+                            {cardReasons(signalsById.get(c.id) ?? [])[0]}
+                          </p>
+                        )}
                         <button onClick={(e) => { e.stopPropagation(); remix(c) }} className="btn-gradient mt-0.5 flex w-full items-center justify-center gap-1.5 !py-2 text-xs">
                           <Wand2 className="h-3.5 w-3.5 shrink-0" /> Remix in my voice
                         </button>
