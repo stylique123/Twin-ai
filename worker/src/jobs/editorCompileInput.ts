@@ -48,7 +48,7 @@ import type {
   CompileInput, CompileWord, CompileCandidate, CompileVisualWaste,
   CompileAudioFacts, CompileEvidence, CompileDecision, CompileIdentity, CompileSource,
   CompileScriptWordTiming,
-  CompileFaceSample, CompileReviewEdits,
+  CompileFaceSample, CompileReviewEdits, CompileClip,
   SpeechCandidateKind, CandidateConfidence,
 } from './editorCompile.js'
 import { applyReviewOverlay, reviewOverlaySha256, validateReviewOverlay } from './reviewOverlay.js'
@@ -349,6 +349,11 @@ export interface AssembleArgs {
   // like an empty glossary: every project pinned before the glossary existed
   // arrives here with nothing and must compile identically to how it did then.
   glossaryTerms?: readonly string[]
+  // The clips captured for this generation's declared slots, already stored and
+  // probed. Optional, and absent is exactly "nothing was captured" — the state
+  // every project is in until the capture surface is used, and one that must
+  // compile to the byte-identical plan it always did.
+  clips?: readonly CompileClip[]
 }
 
 /**
@@ -467,6 +472,7 @@ export function buildCompileInput(args: AssembleArgs): CompileInput {
     ...(args.review ? { review: args.review } : {}),
     ...(args.glossaryTerms && args.glossaryTerms.length > 0
       ? { glossaryTerms: args.glossaryTerms } : {}),
+    ...(args.clips && args.clips.length > 0 ? { clips: args.clips } : {}),
   }
 }
 

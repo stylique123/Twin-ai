@@ -145,11 +145,26 @@ export interface ClipUploadIntent {
   signedUrl: string | null
 }
 
+/**
+ * WHICH DECLARED SLOT this capture fills — the label the creator reads and the
+ * scene it sits on, as ONE value.
+ *
+ * They travel together or not at all, which is why this is a pair rather than
+ * two nullable arguments. The label is what the capture surface matches a stored
+ * clip on; the scene number is the only thing the compiler can place the clip
+ * with (`sceneOutputWindow`). A label with no scene produces a clip that can be
+ * recorded, stored, watched back — and never appears in the video.
+ *
+ * `null` is a real state: a creator may record something before deciding where
+ * it goes, and 0108 stores that as a clip with neither.
+ */
+export interface ClipSlot { label: string; sceneNumber: number }
+
 export async function createClipUpload(
   generationId: string,
   attemptId: string,
   file: { contentType: string; sizeBytes: number },
-  clipLabel: string | null,
+  slot: ClipSlot | null,
 ): Promise<ClipUploadIntent> {
   const { data, error } = await getClient().functions.invoke('clip-asset', {
     body: {
@@ -158,7 +173,8 @@ export async function createClipUpload(
       recording_attempt_id: attemptId,
       content_type: file.contentType,
       size_bytes: file.sizeBytes,
-      clip_label: clipLabel,
+      clip_label: slot?.label ?? null,
+      scene_number: slot?.sceneNumber ?? null,
     },
   })
   if (error) throw new Error(await invokeError(error))
@@ -185,13 +201,13 @@ export async function uploadClipRecording(
   generationId: string,
   attemptId: string,
   file: TakeFile & { sizeBytes: number },
-  clipLabel: string | null,
+  slot: ClipSlot | null,
   onProgress?: (fraction: number) => void,
 ): Promise<ClipUploadIntent> {
   const intent = await createClipUpload(generationId, attemptId, {
     contentType: file.contentType,
     sizeBytes: file.sizeBytes,
-  }, clipLabel)
+  }, slot)
   // Already past `uploading` (finalized from another tab) → the bytes are there.
   if (intent.status !== 'uploading' || !intent.token || !intent.signedUrl) {
     onProgress?.(1)

@@ -23,12 +23,14 @@
 //
 // Where the frozen contract is silent the compiler always resolves toward
 // KEEPING the creator's content and recording a warning. A cut is never forced.
+import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   EDIT_PLAN_SCHEMA_VERSION, EDIT_PLAN_VERSION, EditPlanError, validateEditPlan, editPlanSha256, canonicalEditPlan,
   type PlanHookTitle,
-  MAX_WARNINGS, MAX_CUE_EMPHASIS,
+  MAX_WARNINGS, MAX_CUE_EMPHASIS, MAX_OVERLAYS, MAX_COMPOSITION_SOURCES,
+  type PlanComposition, type PlanCompositionSource, type PlanOverlay,
   type EditPlanV1, type PlanSegment, type PlanRemoval, type PlanCue, type PlanWarning,
   type PlanZoom, type PlanTransition, type AudioPresetId, type CaptionPresetId,
   type TransitionPolicy, type ZoomIntensity, type ZoomReasonCode, type SourceOrigin,
@@ -42,7 +44,12 @@ import {
 // win over the script's. The version moves even for a project with NO overlay,
 // because every plan's identity now carries `reviewOverlaySha256` and a version
 // that did not move would claim two different documents came from one compiler.
-export const EDIT_COMPILER_VERSION = 'edit-compiler-3'
+// v4: the compiler PLACES declared clips. `composition` stopped being a section
+// that says "empty, deliberately" and became one this file can fill, so a plan
+// stamped `edit-compiler-3` from a build that can cut to a clip would claim two
+// different compilers are the same one. The version moves even for a project
+// with no clips at all, for the reason v3 moved for a project with no overlay.
+export const EDIT_COMPILER_VERSION = 'edit-compiler-4'
 
 const WORKER_ROOT = join(import.meta.dirname, '..', '..')
 
@@ -516,6 +523,30 @@ export interface CompileSource {
 export interface CompileBrandColors { primaryHex: string | null; highlightHex: string | null }
 
 /**
+ * ONE CAPTURED CLIP, already stored, measured and verified.
+ *
+ * The compiler does not fetch, probe or trust anything about it: `durationMs`
+ * came from the validate-clip probe and `checksum` from the bytes that were
+ * uploaded. Both are carried into the plan so the plan HASH covers which
+ * footage was composed — re-recording a clip under the same label must not
+ * leave the plan identical while the finished video shows something else.
+ *
+ * `sceneNumber` is the whole of the association. The creator wrote the marker
+ * into a line; the script gave that line a scene number; the capture manifest
+ * says where that scene was recorded. Nothing here re-decides any of it.
+ */
+export interface CompileClip {
+  assetId: string
+  checksum: string
+  durationMs: number
+  /** The declared slot's label, verbatim. Hashed into the plan, never carried
+   *  as free text — see `PlanOverlay.clipLabelSha256`. */
+  label: string
+  /** The scene the marker was written into. */
+  sceneNumber: number
+}
+
+/**
  * THE CREATOR'S OWN EDITS — the half of the review overlay the decision cannot
  * carry (reviewOverlay.ts, "NOT applied here").
  *
@@ -570,6 +601,12 @@ export interface CompileInput {
    *  video; the failure direction that matters is "we watermarked someone who
    *  paid not to be", so the default is the one that cannot do that. */
   watermark?: boolean
+  /** The clips the creator captured for this generation's declared slots.
+   *
+   *  ABSENT AND EMPTY ARE THE SAME THING and both are the ordinary case: most
+   *  videos are one person talking, and a project that captured nothing must
+   *  compile exactly as it did before this compiler could place anything. */
+  clips?: readonly CompileClip[]
 }
 /**
  * What the pacing choice ACTUALLY produced on this render.
@@ -673,6 +710,112 @@ export function sceneOutputWindow(
     return { startMs: outStart, endMs: outStart + (endMs - startMs) }
   }
   return null
+}
+
+/**
+ * EVERY CAPTURED CLIP, PLACED — the last step between a recorded clip and a
+ * finished video that shows it.
+ *
+ * Still arithmetic. `sceneOutputWindow` says WHERE a clip's scene landed;
+ * everything here is what to do when the clip and that window are not the same
+ * length, or when two clips want the same stretch of video.
+ *
+ * THE THREE RULES, and each is a refusal rather than a repair:
+ *
+ *   TOO LONG  — the clip is TRIMMED to the window, from its start. It is never
+ *               sped up and the window is never extended: retiming would make
+ *               the plan's 1× guarantee false, and extending would put picture
+ *               over words the creator did not record it for.
+ *   TOO SHORT — it plays in full and the take comes back. A short clip is not
+ *               stretched to fill a window, because a still frame held for two
+ *               seconds is worse than a cut back to a person talking.
+ *   COLLIDING — the LATER clip is dropped, with a warning naming it. Two clips
+ *               over one stretch of video means one of them cannot be seen, and
+ *               choosing silently which is a decision nobody asked for. This
+ *               happens when two markers land in one scene that survived as a
+ *               single continuous window.
+ *
+ * An unplaceable clip is DROPPED AND SAID. It is never moved somewhere it would
+ * fit — a cutaway over the wrong sentence is worse than no cutaway.
+ */
+export function placeClips(
+  clips: readonly CompileClip[],
+  source: CompileSource,
+  timeMap: TimeMap,
+  sourceAssetId: string,
+  warn: { add: (code: string, detail: string) => void },
+): PlanComposition {
+  const placed: Array<{ clip: CompileClip; startMs: number; lengthMs: number }> = []
+  const seenAssets = new Set<string>()
+  for (const clip of clips) {
+    if (clip.assetId === sourceAssetId) {
+      // The take composited over itself. The contract refuses it outright, so
+      // reaching the validator with one would fail the whole compile.
+      warn.add('clip_unplaced', `${clip.assetId}.is_the_take`)
+      continue
+    }
+    if (seenAssets.has(clip.assetId)) {
+      warn.add('clip_unplaced', `${clip.assetId}.duplicate`)
+      continue
+    }
+    const window = sceneOutputWindow(clip.sceneNumber, source.acceptedWindows, timeMap.pieces)
+    if (!window) {
+      // The scene was never recorded, or the creator's words there were cut.
+      warn.add('clip_unplaced', `${clip.assetId}.no_window`)
+      continue
+    }
+    const lengthMs = Math.min(clip.durationMs, window.endMs - window.startMs)
+    if (lengthMs <= 0) {
+      warn.add('clip_unplaced', `${clip.assetId}.window_too_short`)
+      continue
+    }
+    seenAssets.add(clip.assetId)
+    placed.push({ clip, startMs: window.startMs, lengthMs })
+  }
+  // Output order, because the plan's overlays are required to be sorted and
+  // non-overlapping — and because a reader of the plan should be able to read it
+  // as the video plays.
+  placed.sort((a, b) => a.startMs - b.startMs || a.clip.sceneNumber - b.clip.sceneNumber)
+
+  const sources: PlanCompositionSource[] = []
+  const overlays: PlanOverlay[] = []
+  const sourceIndexOf = new Map<string, number>()
+  let cursorMs = 0
+  for (const p of placed) {
+    if (p.startMs < cursorMs) {
+      warn.add('clip_unplaced', `${p.clip.assetId}.overlaps_earlier_clip`)
+      continue
+    }
+    if (overlays.length >= MAX_OVERLAYS || sources.length >= MAX_COMPOSITION_SOURCES) {
+      warn.add('clip_unplaced', `${p.clip.assetId}.limit_reached`)
+      continue
+    }
+    let sourceIndex = sourceIndexOf.get(p.clip.assetId)
+    if (sourceIndex === undefined) {
+      sourceIndex = sources.length
+      sourceIndexOf.set(p.clip.assetId, sourceIndex)
+      sources.push({
+        index: sourceIndex, origin: 'screen_capture',
+        assetId: p.clip.assetId, checksum: p.clip.checksum, durationMs: p.clip.durationMs,
+      })
+    }
+    overlays.push({
+      index: overlays.length,
+      sourceIndex,
+      fit: 'full_frame',
+      // FROM THE CLIP'S START. The creator recorded it for this line; the part
+      // they filmed first is the part they meant, and choosing any other offset
+      // would be the compiler deciding which seconds of their capture matter.
+      sourceStartMs: 0,
+      sourceEndMs: p.lengthMs,
+      outputStartMs: p.startMs,
+      outputEndMs: p.startMs + p.lengthMs,
+      clipLabelSha256: createHash('sha256').update(p.clip.label, 'utf8').digest('hex'),
+      reasonCode: 'declared_slot',
+    })
+    cursorMs = p.startMs + p.lengthMs
+  }
+  return { sources, overlays }
 }
 
 export function resolveAllowedDomain(source: CompileSource): Interval[] {
@@ -1394,6 +1537,11 @@ export function compileEditPlan(input: CompileInput): CompileResult {
   // ---- cover ----------------------------------------------------------------
   // Chosen through the same time map, inside the first kept piece and clear of
   // any transition overlap, so its inverse is unique by construction.
+  // ---- composition ----------------------------------------------------------
+  const composition = placeClips(
+    input.clips ?? [], input.source, timeMap, input.identity.sourceAssetId, warn,
+  )
+
   const first = timeMap.pieces[0]
   const coverMaxOutput = Math.min(first.outputEndMs - 1, outputDurationMs - 1)
   const coverOutputTimeMs = Math.max(0, Math.min(policy.cover.preferredOffsetMs, coverMaxOutput))
@@ -1467,20 +1615,11 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       reasonCode: hookReason,
       title: buildHookTitle(cues, policy, outputDurationMs),
     },
-    // COMPOSITION: EMPTY, AND SAID RATHER THAN OMITTED.
-    //
-    // v7 gives the plan somewhere to name a screen recording and where to show
-    // it (see editPlanContract's v7 note). This compiler does not place one, and
-    // that is the honest state rather than an oversight: an overlay needs a CLIP
-    // to point at, and the capture surface that produces one is Phase 12 item 13.
-    // Compiling a placement against clips that do not exist would be the
-    // renderer inventing footage.
-    //
-    // Declared here the way `analysis_components.json` and CAPABILITY_CONSUMERS_BUILT
-    // declare their own unbuilt consumers: a capability that is expressible but
-    // unemitted is a complete state, and saying so is what stops the next reader
-    // assuming the compiler already cuts to a clip.
-    composition: { sources: [], overlays: [] },
+    // The clips the creator captured, over the scenes they were declared on.
+    // EMPTY IS STILL THE ORDINARY STATE — most videos are one person talking —
+    // and a project with no clips produces exactly the empty section it always
+    // did, byte for byte.
+    composition,
     cover: { sourceTimeMs: coverSourceTimeMs, outputTimeMs: coverOutputTimeMs },
     warnings: warn.list,
     complexity: {
@@ -1491,7 +1630,7 @@ export function compileEditPlan(input: CompileInput): CompileResult {
       cueCount: cues.length,
       zoomCount: zooms.length,
       transitionCount: transitions.length,
-      overlayCount: 0,
+      overlayCount: composition.overlays.length,
     },
   }
 

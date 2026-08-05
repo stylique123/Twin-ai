@@ -55,7 +55,7 @@ import {
   listGenerationClips, uploadClipRecording, newRecordingAttemptId,
   loadCapabilities, loadRecordingScript, signTakeUrl,
   isExplicitlyTrue, isExplicitlyFalse, pickClipMime, baseClipMime,
-  type MediaAsset, type RecordingScript, type ResolvedCapabilities,
+  type MediaAsset, type RecordingScript, type ResolvedCapabilities, type ClipSlot,
 } from '../lib/api'
 
 type SlotState =
@@ -124,6 +124,11 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
     recorder.current?.stream.getTracks().forEach((t) => { t.stop() })
     recorder.current = null
   }, [])
+
+  const slotOf = useCallback((label: string): ClipSlot | null => {
+    const slot = slots.find((s) => s.label.toLowerCase() === label.toLowerCase())
+    return slot ? { label: slot.label, sceneNumber: slot.sceneNumber } : null
+  }, [slots])
 
   const clipFor = useCallback((label: string): MediaAsset | undefined => (
     clips.find((c) => (c.clip_label ?? '').toLowerCase() === label.toLowerCase())
@@ -212,7 +217,12 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
         // what the create RPC's CHECK would refuse — the codec is the encoder's
         // property, not the file's kind.
         { contentType: baseClipMime(blob.type), blob, sizeBytes: blob.size },
-        label,
+        // THE SLOT, not just its name. The scene number is what lets the
+        // compiler put this clip over the line it was recorded for; a capture
+        // stored with only a label can be watched back and never appears in the
+        // video. `null` when the script no longer declares this slot — the clip
+        // is still worth keeping, it just has nowhere to go.
+        slotOf(label),
         (fraction) => { setState({ kind: 'uploading', fraction }) },
       )
       // A NEW capture of this slot is a new attempt. Clearing it here — after

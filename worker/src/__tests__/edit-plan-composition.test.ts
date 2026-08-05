@@ -12,7 +12,7 @@ import {
 } from '../jobs/editPlanContract.js'
 import { buildFfmpegGraph, buildFfmpegArgs, serializeFilterGraph } from '../jobs/ffmpegGraph.js'
 import { compileEditPlan } from '../jobs/editorCompile.js'
-import { baseInput, policy, shippedEncoder, SOURCE_ASSET_ID } from './fixtures/editPlanFixture.js'
+import { baseInput, policy, shippedEncoder, SOURCE_ASSET_ID, WINDOW_A, WINDOW_B } from './fixtures/editPlanFixture.js'
 
 function codeOf(fn: () => unknown): string {
   try { fn() } catch (e) { return (e as EditPlanError).code }
@@ -318,5 +318,65 @@ describe('the graph renders exactly what the composition says', () => {
       expect(codeOf(() => buildFfmpegGraph(withComposition(), { ...ASSETS, clipPaths: [bad] })))
         .toBe('render_graph_invalid')
     }
+  })
+})
+
+// ---------------------------------------------------------------------------
+// THE WHOLE PATH, in one test: a captured clip goes in as compiler input and
+// comes out as picture in the argv. Every test above this point mutates a
+// compiled plan to reach a shape; these two prove the COMPILER reaches it, which
+// is the difference between a contract that can express a cutaway and a product
+// that shows one.
+describe('a captured clip compiles into a plan the renderer can build', () => {
+  // The fixture's scene 2 was recorded 25s-50s of the take (WINDOW_B).
+  const CLIP = {
+    assetId: CLIP_ASSET_ID, checksum: CLIP_SHA, durationMs: 3000,
+    label: 'the settings page', sceneNumber: 2,
+  }
+
+  function compiledWithClip() {
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    input.source.acceptedWindows = [
+      { ...WINDOW_A, sceneNumber: 1 }, { ...WINDOW_B, sceneNumber: 2 },
+    ]
+    return compileEditPlan({ ...input, policy: policy(), clips: [CLIP] })
+  }
+
+  it('passes its own strict validator, with the clip in it', () => {
+    // The compiler's output is not trusted because it is local — it goes
+    // through the same validateEditPlan any other producer would face.
+    const { plan } = compiledWithClip()
+    expect(plan.composition.sources).toEqual([{
+      index: 0, origin: 'screen_capture', assetId: CLIP_ASSET_ID,
+      checksum: CLIP_SHA, durationMs: 3000,
+    }])
+    expect(plan.composition.overlays).toHaveLength(1)
+    const ov = plan.composition.overlays[0]
+    expect(ov.reasonCode).toBe('declared_slot')
+    expect(ov.sourceEndMs - ov.sourceStartMs).toBe(ov.outputEndMs - ov.outputStartMs)
+    expect(ov.outputEndMs).toBeLessThanOrEqual(plan.output.durationMs)
+    expect(plan.complexity.overlayCount).toBe(1)
+  })
+
+  it('builds an argv that reads the clip file', () => {
+    const { plan } = compiledWithClip()
+    const args = buildFfmpegArgs(buildFfmpegGraph(plan, { ...ASSETS, clipPaths: [CLIP_PATH] }))
+    expect(args).toContain(CLIP_PATH)
+    // The clip's own input stream is trimmed and concatenated into the picture.
+    const chain = serializeFilterGraph(buildFfmpegGraph(plan, { ...ASSETS, clipPaths: [CLIP_PATH] }))
+    expect(chain).toContain('[1:v]trim=start=0.000:end=3.000')
+    expect(chain).toContain('[vcx]')
+  })
+
+  it('a project with no clips compiles to the byte-identical plan it always did', () => {
+    // The bound every already-shipped project lives under: absent and empty are
+    // the same thing, and neither may change a single byte of the output.
+    const input = baseInput()
+    input.decision.transitionPolicy = 'hard_cuts_only'
+    const without = compileEditPlan({ ...input, policy: policy() })
+    const empty = compileEditPlan({ ...baseInput(), decision: { ...baseInput().decision, transitionPolicy: 'hard_cuts_only' }, policy: policy(), clips: [] })
+    expect(empty.canonical).toEqual(without.canonical)
+    expect(empty.planSha256).toBe(without.planSha256)
   })
 })

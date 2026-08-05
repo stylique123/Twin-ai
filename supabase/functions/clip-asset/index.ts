@@ -44,7 +44,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 // Unknown keys FAIL rather than being ignored, the same posture the source
 // create takes: a request is either exactly the shape we accept or it is
 // refused, never sanitized into one.
-const CREATE_BODY_KEYS = new Set(['action', 'generation_id', 'recording_attempt_id', 'content_type', 'size_bytes', 'clip_label'])
+const CREATE_BODY_KEYS = new Set(['action', 'generation_id', 'recording_attempt_id', 'content_type', 'size_bytes', 'clip_label', 'scene_number'])
 const FINALIZE_BODY_KEYS = new Set(['action', 'asset_id'])
 
 function normalizeMime(contentType: string | null | undefined): { baseMime: string } | null {
@@ -69,6 +69,9 @@ interface CreateRpcArgs {
   p_bucket: string
   p_mime: string
   p_size_bytes: number
+  /** The scene the declared slot sits on. Null for a clip with no slot — see
+   *  0108. It is what lets the compiler find the window the clip plays over. */
+  p_scene_number: number | null
 }
 
 export function buildClipCreatePlan(raw: unknown): { error: PlanError } | { rpcArgs: CreateRpcArgs } {
@@ -101,6 +104,22 @@ export function buildClipCreatePlan(raw: unknown): { error: PlanError } | { rpcA
     label = trimmed === '' ? null : trimmed
   }
 
+  // THE SCENE, alongside the label rather than instead of it. The label is what
+  // the creator reads and what the capture surface matches on; the number is the
+  // only thing the compiler can place a clip with. Sending one without the other
+  // is refused by the RPC, so both travel together or neither does.
+  let sceneNumber: number | null = null
+  if (body.scene_number !== undefined && body.scene_number !== null) {
+    const n = body.scene_number
+    if (typeof n !== 'number' || !Number.isSafeInteger(n) || n <= 0) {
+      return { error: { status: 400, message: 'scene_number must be a positive integer' } }
+    }
+    if (label === null) {
+      return { error: { status: 400, message: 'scene_number needs the slot it belongs to' } }
+    }
+    sceneNumber = n
+  }
+
   return {
     rpcArgs: {
       p_generation: generationId,
@@ -109,6 +128,7 @@ export function buildClipCreatePlan(raw: unknown): { error: PlanError } | { rpcA
       p_bucket: BUCKET,
       p_mime: norm.baseMime,
       p_size_bytes: sizeBytes,
+      p_scene_number: sceneNumber,
     },
   }
 }
@@ -132,6 +152,7 @@ export function mapClipError(msg: string): string {
   if (msg.includes('clip_policy_mime')) return 'Unsupported video type for a screen capture.'
   if (msg.includes('clip_policy_size')) return 'That capture is empty or too large — try recording it again.'
   if (msg.includes('clip_policy_label')) return 'That slot name is too long.'
+  if (msg.includes('clip_policy_scene')) return 'That capture is not attached to a line of the script.'
   if (msg.includes('clip_policy_bucket')) return 'Upload target not allowed.'
   return 'Could not start the upload — try again.'
 }

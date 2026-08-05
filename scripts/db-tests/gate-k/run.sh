@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Gate-K — ephemeral-Postgres verification of 0107 (the clip capture RPCs).
+# Gate-K — ephemeral-Postgres verification of 0107 + 0108 (the clip capture RPCs).
 #
 # 0106 made a clip STORABLE. 0107 is the only way in, and each of its three
 # functions has a way of being wrong that looks exactly like working:
@@ -12,7 +12,11 @@
 #      refuse a SOURCE. Without that, a take could be settled through a path that
 #      writes no capture manifest and no script binding — a ready source that
 #      never got the checks a take must pass, and no error anywhere.
-#   3. READY MEANS PROBED. `EditPlanV1.composition` (schema v7) requires a real
+#   3. WHERE THE CLIP PLAYS (0108). A clip carrying only a label can be
+#      recorded, uploaded, probed and watched back — and never appear in the
+#      video, because the compiler places it by its SCENE. That failure is
+#      completely silent from the creator's side: every step said yes.
+#   4. READY MEANS PROBED. `EditPlanV1.composition` (schema v7) requires a real
 #      duration and a real checksum for anything it composes. A clip that could
 #      reach `ready` without a measurement is a clip the compiler could cut to
 #      using a duration nothing measured.
@@ -26,7 +30,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 MIG106="$REPO/supabase/migrations/0106_clips_and_reference_requirements.sql"
 MIG107="$REPO/supabase/migrations/0107_clip_capture.sql"
-for f in "$MIG106" "$MIG107"; do [ -f "$f" ] || { echo "FATAL: $f not found"; exit 1; }; done
+MIG108="$REPO/supabase/migrations/0108_clip_scene_number.sql"
+for f in "$MIG106" "$MIG107" "$MIG108"; do [ -f "$f" ] || { echo "FATAL: $f not found"; exit 1; }; done
 
 if [ -z "${PGBIN:-}" ]; then
   for d in /usr/lib/postgresql/*/bin /opt/homebrew/opt/postgresql@16/bin /usr/local/opt/postgresql@16/bin; do
@@ -146,15 +151,28 @@ echo "  pre-state: none of the clip functions exist before the migration"
 psql -q -v ON_ERROR_STOP=1 -f "$MIG107" >/dev/null
 echo "0107 applied"
 
+# 0108 replaces the create function with one that also records WHICH SCENE the
+# clip plays over. Applied here so every case below runs against the shape that
+# actually ships — a gate that tested the superseded function would prove
+# nothing about the deployed one.
+psql -q -v ON_ERROR_STOP=1 -f "$MIG108" >/dev/null
+echo "0108 applied (the scene number)"
+eq0108=$( { psql -tAc "select count(*) from pg_proc where proname='editor_create_clip_asset'" 2>/dev/null || true; } | tr -d '[:space:]' )
+if [ "$eq0108" != "1" ]; then
+  echo "GATE-K FAIL: 0108 left $eq0108 copies of editor_create_clip_asset — an overload the caller cannot resolve"
+  exit 1
+fi
+echo "  ok: 0108 REPLACED the create function rather than overloading it"
+
 run(){ psql -q -v ON_ERROR_STOP=1 -c "$1" >/dev/null 2>&1; }
 ok(){ if run "$1"; then echo "  ok: $2"; else echo "GATE-K FAIL: legitimate statement REJECTED ($2)"; psql -c "$1" 2>&1 | tail -3; exit 1; fi; }
 no(){ if run "$1"; then echo "GATE-K FAIL: forbidden statement ACCEPTED ($2)"; exit 1; else echo "  rejected: $2"; fi; }
 eq(){ local got; got="$(psql -tAc "$1" | tr -d '[:space:]')"; if [ "$got" != "$2" ]; then
   echo "GATE-K FAIL: $3 — expected '$2', got '$got'"; exit 1; else echo "  ok: $3"; fi; }
-create(){ echo "select * from public.editor_create_clip_asset('$1','$2','$3',$4,'takes','video/webm',$5)"; }
+create(){ echo "select * from public.editor_create_clip_asset('$1','$2','$3',$4,'takes','video/webm',$5,$6)"; }
 
 echo "== 1. create mints exactly one clip, and says so"
-ok "$(create "$O_ID" "$G_ID" "$T1" "'the settings page'" 4096)" "a first capture"
+ok "$(create "$O_ID" "$G_ID" "$T1" "'the settings page'" 4096 2)" "a first capture"
 eq "select count(*) from public.media_assets where kind='clip'" "1" "one clip row exists"
 eq "select clip_label from public.media_assets where recording_attempt_id='$T1'" "thesettingspage" \
    "the declared slot's label is stored on it"
@@ -163,33 +181,60 @@ eq "select storage_path from public.media_assets where recording_attempt_id='$T1
    "the path is server-derived from owner/generation/asset — the browser never chooses it"
 
 echo "== 2. ONE ATTEMPT IS ONE ASSET (the silent-duplication case)"
-ok "$(create "$O_ID" "$G_ID" "$T1" "'the settings page'" 4096)" "the same attempt again — a retry"
+ok "$(create "$O_ID" "$G_ID" "$T1" "'the settings page'" 4096 2)" "the same attempt again — a retry"
 eq "select count(*) from public.media_assets where kind='clip'" "1" \
    "a retried attempt CONVERGES rather than minting a second half-uploaded row"
-eq "select created from public.editor_create_clip_asset('$O_ID','$G_ID','$T1','the settings page','takes','video/webm',4096)" "f" \
+eq "select created from public.editor_create_clip_asset('$O_ID','$G_ID','$T1','the settings page','takes','video/webm',4096,2)" "f" \
    "and the retry reports created=false, so the caller can tell"
-ok "$(create "$O_ID" "$G_ID" "$T2" "'the billing screen'" 4096)" "a genuinely new attempt"
+ok "$(create "$O_ID" "$G_ID" "$T2" "'the billing screen'" 4096 5)" "a genuinely new attempt"
 eq "select count(*) from public.media_assets where kind='clip'" "2" "which DOES mint a second clip"
 
 echo "== 3. a divergent retry fails closed rather than rewriting the first"
-no "$(create "$O_ID" "$G_ID" "$T1" "'the settings page'" 9999)" "the same attempt with a different size"
-no "$(create "$O_ID" "$G_ID" "$T1" "'a different slot'" 4096)" "the same attempt filling a DIFFERENT declared slot"
+no "$(create "$O_ID" "$G_ID" "$T1" "'the settings page'" 9999 2)" "the same attempt with a different size"
+no "$(create "$O_ID" "$G_ID" "$T1" "'a different slot'" 4096 2)" "the same attempt filling a DIFFERENT declared slot"
 eq "select size_bytes from public.media_assets where recording_attempt_id='$T1'" "4096" \
    "and the original row is untouched by either"
 
 echo "== 4. an unattached clip is a real state, not a clip that fills every slot"
-ok "$(create "$O_ID" "$G_ID" "$T3" "null" 4096)" "a capture with no declared slot"
+ok "$(create "$O_ID" "$G_ID" "$T3" "null" 4096 null)" "a capture with no declared slot"
 eq "select coalesce((select clip_label from public.media_assets where recording_attempt_id='$T3'), 'NULL')" "NULL" \
    "stored as NULL, never as an empty string the label matcher would compare against"
 
+echo "== 4b. THE SCENE NUMBER — where the clip plays, stored with it"
+# Without this the clip can be recorded, uploaded, probed and watched back, and
+# still never appear in the video: the compiler places a clip by intersecting its
+# SCENE with the capture manifest's accepted windows, and a clip carrying only a
+# label has nothing to intersect.
+eq "select clip_scene_number from public.media_assets where recording_attempt_id='$T1'" "2" \
+   "the scene the declared slot sits on is stored on the clip"
+eq "select coalesce((select clip_scene_number::text from public.media_assets where recording_attempt_id='$T3'), 'NULL')" "NULL" \
+   "and an unattached capture has none — null is a real state, not a zero"
+no "$(create "$O_ID" "$G_ID" 'dddddddd-0000-0000-0000-000000000001' "'a slot'" 4096 0)" \
+   "scene 0, which is not a scene"
+no "$(create "$O_ID" "$G_ID" 'dddddddd-0000-0000-0000-000000000002' "'a slot'" 4096 -3)" \
+   "a negative scene number"
+no "$(create "$O_ID" "$G_ID" 'dddddddd-0000-0000-0000-000000000003' "null" 4096 4)" \
+   "a scene with no slot — a placement with nothing to place"
+# A DIVERGENT RETRY on the scene alone. The same attempt filling the same-named
+# slot on a DIFFERENT line is a different intent, exactly as a different label
+# is, and silently accepting it would move a clip the creator already recorded.
+no "$(create "$O_ID" "$G_ID" "$T1" "'the settings page'" 4096 7)" \
+   "the same attempt pointing at a different line"
+eq "select clip_scene_number from public.media_assets where recording_attempt_id='$T1'" "2" \
+   "and the original row is untouched"
+# MUTATION CONTROL: the column refuses a scene number on a non-clip.
+no "insert into public.media_assets (owner_id, generation_id, kind, recording_attempt_id, bucket, storage_path, status, clip_scene_number)
+    values ('$O_ID','$G_ID','source','dddddddd-0000-0000-0000-00000000000f','takes','$O_ID/$G_ID/x.webm','uploading',3)" \
+   "a SOURCE carrying a scene number — a take is not 'for' one scene"
+
 echo "== 5. ownership and policy"
-no "$(create "$OTHER_ID" "$G_ID" 'bbbbbbbb-0000-0000-0000-000000000001' "null" 4096)" \
+no "$(create "$OTHER_ID" "$G_ID" 'bbbbbbbb-0000-0000-0000-000000000001' "null" 4096 null)" \
    "a capture for a generation the caller does not own"
-no "$(create "$O_ID" "$G_ID" 'bbbbbbbb-0000-0000-0000-000000000002' "null" 0)" "an empty file"
-no "$(create "$O_ID" "$G_ID" 'bbbbbbbb-0000-0000-0000-000000000003' "null" 999999999)" "a file past the bucket cap"
-no "select * from public.editor_create_clip_asset('$O_ID','$G_ID','bbbbbbbb-0000-0000-0000-000000000004',null,'edits','video/webm',4096)" \
+no "$(create "$O_ID" "$G_ID" 'bbbbbbbb-0000-0000-0000-000000000002' "null" 0 null)" "an empty file"
+no "$(create "$O_ID" "$G_ID" 'bbbbbbbb-0000-0000-0000-000000000003' "null" 999999999 null)" "a file past the bucket cap"
+no "select * from public.editor_create_clip_asset('$O_ID','$G_ID','bbbbbbbb-0000-0000-0000-000000000004',null,'edits','video/webm',4096,null)" \
    "an upload aimed at a bucket that is not takes"
-no "select * from public.editor_create_clip_asset('$O_ID','$G_ID','bbbbbbbb-0000-0000-0000-000000000005',null,'takes','image/png',4096)" \
+no "select * from public.editor_create_clip_asset('$O_ID','$G_ID','bbbbbbbb-0000-0000-0000-000000000005',null,'takes','image/png',4096,null)" \
    "a content type that is not video"
 
 echo "== 5b. the per-generation ceiling"
@@ -203,7 +248,7 @@ echo "== 5b. the per-generation ceiling"
 # Three clips already exist (sections 1, 2 and 4), so nine more reach the cap.
 for i in $(seq 1 9); do
   att="cccccccc-0000-0000-0000-0000000000$(printf '%02d' "$i")"
-  psql -q -v ON_ERROR_STOP=1 -c "$(create "$O_ID" "$G_ID" "$att" "null" 4096)" >/dev/null
+  psql -q -v ON_ERROR_STOP=1 -c "$(create "$O_ID" "$G_ID" "$att" "null" 4096 null)" >/dev/null
   psql -q -v ON_ERROR_STOP=1 -c "update public.media_assets set status='validating'
     where recording_attempt_id='$att'" >/dev/null
   psql -q -v ON_ERROR_STOP=1 -c "update public.media_assets set status='ready'
@@ -211,13 +256,13 @@ for i in $(seq 1 9); do
 done
 eq "select count(*) from public.media_assets where kind='clip' and generation_id='$G_ID'" "12" \
    "twelve clips is the ceiling, and twelve are accepted"
-no "$(create "$O_ID" "$G_ID" 'cccccccc-0000-0000-0000-0000000000ff' "null" 4096)" \
+no "$(create "$O_ID" "$G_ID" 'cccccccc-0000-0000-0000-0000000000ff' "null" 4096 null)" \
    "the thirteenth clip on one video"
 # MUTATION CONTROL: a clip that has been DELETED must not still occupy a slot,
 # or a creator who cleaned up could never record again.
 psql -q -v ON_ERROR_STOP=1 -c "update public.media_assets set status='deleted'
   where kind='clip' and generation_id='$G_ID' and recording_attempt_id='cccccccc-0000-0000-0000-000000000001'" >/dev/null
-ok "$(create "$O_ID" "$G_ID" 'cccccccc-0000-0000-0000-0000000000ff' "null" 4096)" \
+ok "$(create "$O_ID" "$G_ID" 'cccccccc-0000-0000-0000-0000000000ff' "null" 4096 null)" \
    "and deleting one frees its slot"
 psql -q -v ON_ERROR_STOP=1 -c "delete from public.media_assets
   where kind='clip' and recording_attempt_id::text like 'cccccccc-%'" >/dev/null
@@ -237,7 +282,7 @@ ok "insert into public.media_assets (owner_id, generation_id, kind, recording_at
 SRC="$(psql -tAc "select id from public.media_assets where recording_attempt_id='$SRC_ATTEMPT'" | tr -d '[:space:]')"
 no "select public.editor_finalize_clip('$SRC', 5000, 'etag-x')" "finalizing a SOURCE through the clip path"
 eq "select status from public.media_assets where id='$SRC'" "uploading" "and the source is left exactly as it was"
-no "$(create "$O_ID" "$G_ID" "$SRC_ATTEMPT" "null" 4096)" \
+no "$(create "$O_ID" "$G_ID" "$SRC_ATTEMPT" "null" 4096 null)" \
    "a clip create converging on a SOURCE's attempt id — it would hand back the take's upload target"
 
 echo "== 8. READY MEANS PROBED"

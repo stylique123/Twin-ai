@@ -23,7 +23,7 @@ import { db, type Job } from '../db.js'
 import { loadEligibleSource } from './editorInspect.js'
 import { loadComponentStrict } from './editorSpeech.js'
 import { lookupCached } from './editorAnalyze.js'
-import { compileEditPlan, type CompileCutStats } from './editorCompile.js'
+import { compileEditPlan, type CompileCutStats, type CompileClip } from './editorCompile.js'
 import { buildCompileInput, assertNoCentisecondLeak, composeReviewedDecision } from './editorCompileInput.js'
 import { recordEditPlan, type Fence } from './editorComplete.js'
 import { EditPlanError, editPlanSha256, type EditPlanV1 } from './editPlanContract.js'
@@ -246,6 +246,11 @@ export async function runCompilingStage(
       // deleted must not fail it. Absent for every project pinned before the
       // glossary existed, which compiles exactly as it did then.
       glossaryTerms: readPinnedGlossary(pinned.manifest.manifest),
+      // The clips the creator captured for this generation's declared slots.
+      // Read HERE, like every other input, so a crash-resume re-enters the stage
+      // with no in-process state and reaches the same plan. Empty for every
+      // project that captured nothing, which is most of them.
+      clips: await loadReadyClips(generationId),
     })
 
     // The units tripwire, run on the REAL assembled input rather than only in
@@ -378,6 +383,70 @@ async function loadProjectGeneration(projectId: string): Promise<string> {
     throw new PermanentJobError('compiling: the project has no generation to pin', 'edit_plan_identity_mismatch')
   }
   return g
+}
+
+/**
+ * THE CLIPS THIS GENERATION CAPTURED, ready and measured.
+ *
+ * `ready` ONLY, and that is the whole filter. A clip in `uploading` or
+ * `validating` has no probed duration and no checksum, and the plan hash has to
+ * cover the bytes it composed — so composing one would either fail the contract
+ * or, worse, cite a duration nothing measured. A clip that arrives late simply
+ * is not in this compile, which is honest: the creator can recompile.
+ *
+ * A CLIP WITH NO SCENE IS SKIPPED HERE rather than passed on to be dropped
+ * later. Both produce the same video, but the compiler's warning names an
+ * unplaceable clip that it saw, and a clip with no scene number was never
+ * placeable at all — 0108 stores it that way for a capture recorded without a
+ * declared slot.
+ *
+ * ── THE COLUMN MAY NOT EXIST YET ──────────────────────────────────────────
+ *
+ * A push to `main` touching `worker/` DEPLOYS THE WORKER; migrations are applied
+ * separately and by hand. So there is a window in which this runs against a
+ * database that has never seen 0108, and the read must degrade to "no clips"
+ * rather than failing every compile in that window. The same treatment
+ * `loadReviewOverlay` gives a missing `edit_review_overlays`, for the same
+ * reason — and safe for the same reason too: before 0108 there were no clips
+ * with a scene to place.
+ */
+async function loadReadyClips(generationId: string): Promise<CompileClip[]> {
+  const { data, error } = await db.from('media_assets')
+    .select('id, content_sha256, duration_ms, clip_label, clip_scene_number')
+    .eq('generation_id', generationId)
+    .eq('kind', 'clip')
+    .eq('status', 'ready')
+    .order('created_at', { ascending: true })
+  if (error) {
+    if (/clip_scene_number|column .* does not exist/i.test(error.message)) return []
+    throw new Error(`compiling: reading the generation's clips failed: ${error.message}`)
+  }
+  const rows = (data ?? []) as Array<{
+    id: string
+    content_sha256: string | null
+    duration_ms: number | null
+    clip_label: string | null
+    clip_scene_number: number | null
+  }>
+  const clips: CompileClip[] = []
+  for (const r of rows) {
+    // Every field is required by the plan contract, and a row missing one is a
+    // clip that reached `ready` without being measured — which `editor_complete_clip`
+    // makes impossible. Skipping rather than throwing keeps one malformed row
+    // from costing the creator the whole video.
+    if (typeof r.content_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(r.content_sha256)) continue
+    if (!Number.isInteger(r.duration_ms) || (r.duration_ms as number) <= 0) continue
+    if (typeof r.clip_label !== 'string' || r.clip_label === '') continue
+    if (!Number.isInteger(r.clip_scene_number) || (r.clip_scene_number as number) <= 0) continue
+    clips.push({
+      assetId: r.id,
+      checksum: r.content_sha256,
+      durationMs: r.duration_ms as number,
+      label: r.clip_label,
+      sceneNumber: r.clip_scene_number as number,
+    })
+  }
+  return clips
 }
 
 export interface CaptureManifestRow {

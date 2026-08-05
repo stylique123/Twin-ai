@@ -36,6 +36,12 @@ export interface MediaAsset {
    *  where it goes, and that is a real state rather than a clip that fills every
    *  slot. Enforced by 0106's `media_assets_clip_label_only_on_clips`. */
   clip_label?: string | null
+  /** WHICH SCENE that slot sits on (0108). Null on every non-clip and on an
+   *  unattached clip. It travels with the label because the label is what the
+   *  creator reads and this is the only thing the compiler can place the clip
+   *  with — a clip stored with one and not the other can be watched back and
+   *  never appears in the video. */
+  clip_scene_number?: number | null
   status: MediaAssetStatus
   created_at: string
   validated_at: string | null
