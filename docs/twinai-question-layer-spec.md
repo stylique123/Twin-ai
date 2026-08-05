@@ -157,10 +157,21 @@ times. **Nothing in this spec ships without naming its reader.**
 | `can_record_screen` | Capture UI | ❌ **Track B** |
 | `needs_approval` | Approval lock on the review screen | ❌ not built |
 | **`promotes`** | **§8a.3 container rule** — what fills "three products I stopped using" | ❌ not built; **this is the highest-value new consumer** |
-| `promotes` + `offer` | `generate-blueprint`'s CTA beat | ⚠️ partly — reads offer, ignores promotes |
+| `promotes` + `offer` | `generate-blueprint`'s CTA beat | ⚠️ offer IS consumed; `promotes` is absent from the brief |
 | `workKind` | claims conditional | ✅ built |
-| `goal` | blueprint prompt | ⚠️ verify it actually reaches the prompt |
-| `audience` | blueprint prompt vocabulary level | ⚠️ verify |
+| `goal` | blueprint prompt | ✅ **VERIFIED** — `index.ts:674`, `- Goal: ${goal}` |
+| `audience` | blueprint prompt | ✅ **VERIFIED** — `index.ts:670`, `- Audience: ${audienceResolved}` |
+
+**Verified 2026-08-05 by reading the function.** `goal`, `audience` and `offer`
+are interpolated into the creator brief at `generate-blueprint/index.ts:670-674`,
+with fallback chains (`vp?.audience ?? dna.audience ?? 'unspecified'`) and a
+derived `"people into {niche}"` when audience is unspecified, so the model never
+receives the literal word "unspecified".
+
+**Consequence: better answers to those three produce better scripts with no code
+change.** The only prompt work needed is `promotes` — the brief currently says
+*"Product or offer the CTA should point at: {offer}"* with no idea whether that
+offer belongs to the creator or is an affiliate link.
 
 **Two are already built and starved.** Answering Q6 and Q7 switches on §7a's
 production-mode match with no further code. That is the cheapest win in the
@@ -217,9 +228,11 @@ container rule becomes buildable.
 **Step 3 — move the confirm screen onto the contract.** Same function,
 `'on_confirm'`. Add the audience question with its inferred label.
 
-**Step 4 — verify the blueprint prompt actually consumes goal / audience /
-offer / promotes.** Marked ⚠️ above because I did not confirm it. Read
-`generate-blueprint/index.ts` before assuming.
+**Step 4 — teach the brief about `promotes`.** No verification needed: goal,
+audience and offer are confirmed consumed at `index.ts:670-674`. `promotes` is
+absent, so add one line to the creator brief and one instruction telling the
+model what an affiliate CTA may and may not claim (it points at someone else's
+product — the creator cannot vouch for it the way they can for their own).
 
 **Step 5 — the §8a.3 container rule.** Route what fills a container on
 `promotes`: affiliate → researched products; brand → confirmed own products
@@ -261,3 +274,70 @@ everyone. They are not symmetric and cannot be written as one helper.
   failure the gap audit found seven times.
 - **Do not touch `EditPlan`, `ffmpegGraph`, or the capture UI.** Track B owns
   them.
+
+---
+
+## 9. THE HANDOFF — copy this to the next session
+
+> **Read `docs/twinai-question-layer-spec.md` first. You own Track A: the
+> question layer. Another session owns Track B (the editor's second video
+> source, `EditPlan`, `ffmpegGraph`, the screen-capture UI). Do not touch
+> Track B's files. Track B has been told to drop the `can_record_screen`
+> onboarding question — it is yours.**
+>
+> Build in this order. Each step names its consumer; if a step has no consumer,
+> stop and say so rather than shipping it.
+>
+> **1. Wire the scan-time step.** `Onboarding.tsx` currently imports nothing
+> from `preScriptBrief.ts`. Use `questionsFor('during_scan', answers)`. Eight
+> questions, asked while the scrape runs. The contract, the conditional and the
+> three-state helpers already exist and are tested — this is wiring, not design.
+>
+> **2. Add `promotes`.** own product · affiliate · nothing to sell. Add it to
+> `BRIEF_QUESTIONS` at `during_scan`. Store in `brand_voices.profile` if the
+> jsonb allows it — check before writing a migration.
+>
+> **3. Move the confirm screen onto the contract.** Same function,
+> `'on_confirm'`. Add the audience question pre-filled and LABELLED INFERRED,
+> and "anything else you want to make".
+>
+> **4. Teach the blueprint brief about `promotes`.** `goal`, `audience` and
+> `offer` are already consumed (`generate-blueprint/index.ts:670-674` — verified,
+> do not re-verify). Only `promotes` is missing. The brief says *"Product or
+> offer the CTA should point at: {offer}"* with no idea whose product it is.
+>
+> **5. The §8a.3 container rule.** Route container filling on `promotes`:
+> affiliate → researched products; own product → confirmed catalogue only;
+> nothing to sell → ideas or mistakes, never a forced product.
+>
+> **6. The footage checklist**, gated `can_film_objects === false` HIDES it.
+> Silence shows it.
+>
+> **7. The approval lock**, gated `needs_approval === true` SHOWS it. Silence
+> hides it.
+>
+> **Do not:** put questions before the scan · default a capability flag to false
+> · pre-tick a capability from the scrape without marking it a suggestion · add
+> a "what kind of video is this?" enum · ship a question without naming its
+> consumer in the PR.
+>
+> **After step 1 alone**, §7a's production-mode match stops answering "we don't
+> know" for every user. That is the cheapest win available and it needs no other
+> step.
+
+## 10. TURNING ON THE AI EDITOR — independent of all of the above
+
+Not blocked by Track A or Track B. One server env var:
+
+```
+EDITOR_V2_START_ENABLED=true
+```
+
+Prerequisites, in order, and all needing one person with a phone:
+
+1. one real take through `validateSource`
+2. one full pipeline run producing a playable file
+3. one human through the review screen — §4.8's claim is untested by anything
+
+Enable for one test account first. The flag is global and server-side; if a
+per-owner allowlist is wanted, that is a small change to `start-editor-v2`.
