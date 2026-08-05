@@ -41,7 +41,7 @@ import { Loader2, MonitorPlay, Square, Check, TriangleAlert } from 'lucide-react
 import { declaredSlots } from '../lib/declaredClips'
 import {
   listGenerationClips, uploadClipRecording, newRecordingAttemptId,
-  loadCapabilities, loadRecordingScript, isExplicitlyTrue,
+  loadCapabilities, loadRecordingScript, isExplicitlyTrue, pickClipMime, baseClipMime,
   type MediaAsset, type RecordingScript, type ResolvedCapabilities,
 } from '../lib/api'
 
@@ -117,16 +117,23 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
       return
     }
     const chunks: Blob[] = []
-    // WebM is what every browser that implements getDisplayMedia records, and it
-    // is one of the three MIME types the clip create RPC accepts. No fallback
-    // guess: if MediaRecorder refuses it, the capture fails visibly rather than
-    // uploading bytes under a content type the server was not told about.
+    // ASK THE BROWSER WHAT IT CAN RECORD rather than assuming webm. Safari
+    // produces mp4 and nothing else, so a hardcoded type is a recorder that
+    // throws after the creator has already chosen a window to share — and a
+    // recorder started on an unsupported type produces an EMPTY blob, which the
+    // server refuses as a size violation once the whole recording is done.
+    const mimeType = pickClipMime(MediaRecorder)
+    if (!mimeType) {
+      stream.getTracks().forEach((t) => { t.stop() })
+      setState({ kind: 'error', message: 'This browser cannot record the screen. Try Chrome, Edge or Safari on a desktop.' })
+      return
+    }
     let rec: MediaRecorder
     try {
-      rec = new MediaRecorder(stream, { mimeType: 'video/webm' })
+      rec = new MediaRecorder(stream, { mimeType })
     } catch {
       stream.getTracks().forEach((t) => { t.stop() })
-      setState({ kind: 'error', message: 'This browser cannot record the screen. Try Chrome or Edge on a desktop.' })
+      setState({ kind: 'error', message: 'This browser cannot record the screen. Try Chrome, Edge or Safari on a desktop.' })
       return
     }
     recorder.current = rec
@@ -137,7 +144,7 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
     rec.onstop = () => {
       stream.getTracks().forEach((t) => { t.stop() })
       recorder.current = null
-      const blob = new Blob(chunks, { type: 'video/webm' })
+      const blob = new Blob(chunks, { type: mimeType })
       void send(label, blob)
     }
     // Ending the share from the BROWSER's own bar is a stop, not a crash. Without
@@ -160,7 +167,10 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
     try {
       await uploadClipRecording(
         generationId, attemptId,
-        { contentType: 'video/webm', blob, sizeBytes: blob.size },
+        // The BARE type. `video/webm;codecs=vp9` is what the Blob carries and
+        // what the create RPC's CHECK would refuse — the codec is the encoder's
+        // property, not the file's kind.
+        { contentType: baseClipMime(blob.type), blob, sizeBytes: blob.size },
         label,
         (fraction) => { setState({ kind: 'uploading', fraction }) },
       )

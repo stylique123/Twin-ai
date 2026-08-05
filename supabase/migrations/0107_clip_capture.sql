@@ -62,7 +62,8 @@ security definer
 set search_path = pg_catalog, public
 as $$
 declare
-  max_open constant int := 10;
+  max_open constant int := 10;   -- in flight, per owner
+  max_clips constant int := 12;  -- total, per generation
   quota constant bigint := 21474836480; -- 20 GB per owner, the source quota
   gen_owner uuid;
   a public.media_assets;
@@ -71,6 +72,7 @@ declare
   new_id uuid;
   new_path text;
   open_count int;
+  clip_count int;
   used_bytes bigint;
 begin
   if p_bucket is distinct from 'takes' then raise exception 'clip_policy_bucket'; end if;
@@ -133,6 +135,20 @@ begin
   select count(*) into open_count from public.media_assets m
    where m.owner_id = p_owner and m.kind in ('source','clip') and m.status in ('uploading','validating');
   if open_count >= max_open then raise exception 'clip_too_many_open'; end if;
+
+  -- A PER-GENERATION CEILING, which the open-count above does not give.
+  -- That one bounds work IN FLIGHT and drains as captures settle; this bounds
+  -- how many a single video can accumulate over its whole life. A screen
+  -- recorder in a retry loop settles each clip successfully and then records
+  -- another — every one of them `ready`, none of them in flight — and the only
+  -- thing that notices is the storage bill. `MAX_OVERLAYS` in the plan contract
+  -- is 40, so 12 is well inside what a video could actually show.
+  select count(*) into clip_count from public.media_assets m
+   where m.owner_id = p_owner and m.generation_id = p_generation
+     and m.kind = 'clip' and m.status <> 'deleted';
+  if clip_count >= max_clips then
+    raise exception 'clip_limit_reached: % clips already on this video', clip_count;
+  end if;
 
   select coalesce(sum(m.size_bytes), 0) into used_bytes from public.media_assets m
    where m.owner_id = p_owner and m.status <> 'deleted';

@@ -117,6 +117,7 @@ export function clipErrorStatus(msg: string): number {
   if (msg.includes('clip_generation_not_owned')) return 404
   if (msg.includes('clip_too_many_open')) return 429
   if (msg.includes('clip_quota_exceeded')) return 413
+  if (msg.includes('clip_limit_reached')) return 409
   if (msg.includes('clip_asset_rejected') || msg.includes('clip_attempt_conflict')) return 409
   if (msg.includes('clip_policy_')) return 400
   return 500
@@ -124,6 +125,7 @@ export function clipErrorStatus(msg: string): number {
 export function mapClipError(msg: string): string {
   if (msg.includes('clip_generation_not_owned')) return 'Video not found'
   if (msg.includes('clip_too_many_open')) return 'Too many recordings are still processing — give them a moment.'
+  if (msg.includes('clip_limit_reached')) return 'That is as many clips as one video can hold.'
   if (msg.includes('clip_quota_exceeded')) return 'Your storage is full — delete some older videos first.'
   if (msg.includes('clip_asset_rejected')) return 'That capture was rejected — record it again.'
   if (msg.includes('clip_attempt_conflict')) return 'This capture attempt already exists with different details.'

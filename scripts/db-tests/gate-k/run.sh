@@ -192,6 +192,36 @@ no "select * from public.editor_create_clip_asset('$O_ID','$G_ID','bbbbbbbb-0000
 no "select * from public.editor_create_clip_asset('$O_ID','$G_ID','bbbbbbbb-0000-0000-0000-000000000005',null,'takes','image/png',4096)" \
    "a content type that is not video"
 
+echo "== 5b. the per-generation ceiling"
+# The open-count cap bounds work IN FLIGHT and drains as captures settle. This
+# one bounds the whole life of a video, which is the case a retry loop actually
+# produces: every clip succeeds, none stays in flight, and only the storage bill
+# notices. Fill to the cap and prove the next one is refused.
+# Each capture is SETTLED before the next, which is what actually happens: a
+# clip finalizes and is probed within seconds. Leaving them all in flight would
+# hit the per-owner in-flight cap (10) first and prove nothing about this one.
+# Three clips already exist (sections 1, 2 and 4), so nine more reach the cap.
+for i in $(seq 1 9); do
+  att="cccccccc-0000-0000-0000-0000000000$(printf '%02d' "$i")"
+  psql -q -v ON_ERROR_STOP=1 -c "$(create "$O_ID" "$G_ID" "$att" "null" 4096)" >/dev/null
+  psql -q -v ON_ERROR_STOP=1 -c "update public.media_assets set status='validating'
+    where recording_attempt_id='$att'" >/dev/null
+  psql -q -v ON_ERROR_STOP=1 -c "update public.media_assets set status='ready'
+    where recording_attempt_id='$att'" >/dev/null
+done
+eq "select count(*) from public.media_assets where kind='clip' and generation_id='$G_ID'" "12" \
+   "twelve clips is the ceiling, and twelve are accepted"
+no "$(create "$O_ID" "$G_ID" 'cccccccc-0000-0000-0000-0000000000ff' "null" 4096)" \
+   "the thirteenth clip on one video"
+# MUTATION CONTROL: a clip that has been DELETED must not still occupy a slot,
+# or a creator who cleaned up could never record again.
+psql -q -v ON_ERROR_STOP=1 -c "update public.media_assets set status='deleted'
+  where kind='clip' and generation_id='$G_ID' and recording_attempt_id='cccccccc-0000-0000-0000-000000000001'" >/dev/null
+ok "$(create "$O_ID" "$G_ID" 'cccccccc-0000-0000-0000-0000000000ff' "null" 4096)" \
+   "and deleting one frees its slot"
+psql -q -v ON_ERROR_STOP=1 -c "delete from public.media_assets
+  where kind='clip' and recording_attempt_id::text like 'cccccccc-%'" >/dev/null
+
 echo "== 6. finalize: uploading -> validating, with EXACTLY ONE probe job"
 CLIP1="$(psql -tAc "select id from public.media_assets where recording_attempt_id='$T1'" | tr -d '[:space:]')"
 eq "select public.editor_finalize_clip('$CLIP1', 5000, 'etag-1')" "validating" "the first finalize moves it to validating"

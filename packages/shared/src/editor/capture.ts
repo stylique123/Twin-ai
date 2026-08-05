@@ -43,6 +43,50 @@ export function normalizeSourceMime(contentType: string | null | undefined): { b
   return null
 }
 
+// What a SCREEN CAPTURE can be recorded as, best first. Every Chromium and
+// Firefox build records webm; Safari produces mp4 and nothing else, so a
+// hardcoded `video/webm` is a recorder that throws on Safari after the creator
+// has already picked a window to share.
+const CLIP_MIME_CANDIDATES = [
+  'video/webm;codecs=vp9',
+  'video/webm;codecs=vp8',
+  'video/webm',
+  'video/mp4',
+] as const
+
+/** Just enough of `MediaRecorder` to ask. Injected rather than read off the
+ *  global so this is testable in Node. */
+export interface RecorderTypeSupport {
+  isTypeSupported(type: string): boolean
+}
+
+/**
+ * The best type this browser can actually record, or NULL.
+ *
+ * NULL IS A REAL ANSWER and the reason this returns one: a `MediaRecorder`
+ * started on an unsupported type produces an empty blob, which the server then
+ * refuses as a size-policy violation — AFTER the creator has performed the whole
+ * recording. Saying so before the picker opens costs them nothing.
+ */
+export function pickClipMime(recorder: RecorderTypeSupport): string | null {
+  for (const m of CLIP_MIME_CANDIDATES) {
+    if (recorder.isTypeSupported(m)) return m
+  }
+  return null
+}
+
+/**
+ * The bare type the server stores, without the codec parameter.
+ *
+ * `video/webm;codecs=vp9` is what a recorder reports and what a Blob carries;
+ * the create RPC's CHECK is on `video/webm`. Sending the full string would fail
+ * a perfectly good recording as a policy violation — a codec is a property of
+ * the encoder, not of the file's kind.
+ */
+export function baseClipMime(mime: string): string {
+  return (mime.split(';')[0] ?? '').trim().toLowerCase()
+}
+
 export type CaptureOrigin = 'teleprompter' | 'upload'
 export type RecorderClock = 'mediarecorder-active-time-ms' | 'none'
 
