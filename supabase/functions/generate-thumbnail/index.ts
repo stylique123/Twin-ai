@@ -35,12 +35,9 @@ Deno.serve(async (req: Request) => {
   const { data: { user } } = await userClient.auth.getUser()
   if (!user) return json({ error: 'Not authenticated' }, 401)
 
-  // Bound the paid image calls: a burst guard + a generous daily cap per user.
-  const { data: burstOk } = await admin.rpc('check_rate_limit', { p_user: user.id, p_action: 'thumbnail', p_max: 6, p_window_secs: 60 })
-  if (burstOk === false) return json({ error: 'Easy there — give it a few seconds between thumbnails.' }, 429)
-  const { data: dailyOk } = await admin.rpc('check_rate_limit', { p_user: user.id, p_action: 'thumbnail_daily', p_max: Number(Deno.env.get('THUMBNAIL_DAILY_CAP') ?? '30'), p_window_secs: 86400 })
-  if (dailyOk === false) return json({ error: "You've generated a lot of thumbnails today. Try again in a few hours." }, 429)
-
+  // Parse the target first: the generate-once short-circuit below must run
+  // BEFORE the rate limiter, or re-opening a cover that already exists could be
+  // refused for "generating a lot of thumbnails today" while generating nothing.
   let body: { generation_id?: string }
   try { body = await req.json() } catch { return json({ error: 'Invalid JSON body' }, 400) }
   const generationId = (body.generation_id ?? '').trim()
@@ -49,11 +46,43 @@ Deno.serve(async (req: Request) => {
   // Load the generation (owner-checked) + its packaging brief.
   const { data: gen } = await admin
     .from('generations')
-    .select('id, user_id, brand_voice_id, blueprint')
+    .select('id, user_id, brand_voice_id, blueprint, ai_thumb_path')
     .eq('id', generationId)
     .eq('user_id', user.id)
     .maybeSingle()
   if (!gen) return json({ error: 'Generation not found' }, 404)
+
+  // ── GENERATE ONCE. THIS IS A SERVER GUARANTEE, NOT A UI CONVENTION. ──────
+  //
+  // A cover that already exists is RE-SIGNED and returned. The model is not
+  // called and no new object is written.
+  //
+  // Until now the only thing preventing a second paid image call was a
+  // client-side `!gen.ai_thumb_path` conditional deciding whether to render the
+  // button. That fails in every ordinary way: a second tab, a stale local
+  // cache, a direct invoke, or the moment before the generation has loaded. And
+  // each miss both burned a paid call and wrote a NEW `Date.now()`-suffixed
+  // object, so the creator's cover silently changed under them.
+  //
+  // There is deliberately no `force` parameter. "It does not re-render" is the
+  // requested behaviour, and an escape hatch is how it stops being true.
+  if (typeof gen.ai_thumb_path === 'string' && gen.ai_thumb_path !== '') {
+    const { data: existing } = await admin.storage.from('edits')
+      .createSignedUrl(gen.ai_thumb_path, 60 * 60 * 24 * 30)
+    if (existing?.signedUrl) {
+      return json({ path: gen.ai_thumb_path, url: existing.signedUrl, reused: true })
+    }
+    // Signing failed — the row points at an object that is not there. Fall
+    // through and make one, because a stored path that cannot be signed is not
+    // a cover the creator has.
+    console.error('generate-thumbnail: stored path could not be signed, regenerating', gen.ai_thumb_path)
+  }
+
+  // Bound the paid image calls: a burst guard + a generous daily cap per user.
+  const { data: burstOk } = await admin.rpc('check_rate_limit', { p_user: user.id, p_action: 'thumbnail', p_max: 6, p_window_secs: 60 })
+  if (burstOk === false) return json({ error: 'Easy there — give it a few seconds between thumbnails.' }, 429)
+  const { data: dailyOk } = await admin.rpc('check_rate_limit', { p_user: user.id, p_action: 'thumbnail_daily', p_max: Number(Deno.env.get('THUMBNAIL_DAILY_CAP') ?? '30'), p_window_secs: 86400 })
+  if (dailyOk === false) return json({ error: "You've generated a lot of thumbnails today. Try again in a few hours." }, 429)
 
   const thumb = ((gen.blueprint as { packaging?: { thumbnail?: Thumb } } | null)?.packaging?.thumbnail ?? null) as Thumb | null
   if (!thumb || !(thumb.concept || thumb.text_overlay || thumb.composition)) {
