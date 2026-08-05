@@ -346,6 +346,15 @@ jobs:
       # controls.
       - name: Gate-J (the clip kind, and an assessment that must name its source)
         run: bash scripts/db-tests/gate-j/run.sh
+      # Gate-K: 0107 is the only way a clip ever gets INTO the table 0106 made
+      # room for, and each of its three functions fails in a way that looks like
+      # working. A broken create leaves three half-uploaded rows per capture and
+      # nothing errors. A missing kind guard lets a TAKE be settled through a
+      # path that writes no capture manifest and no script binding. And a clip
+      # that could reach `ready` without a probe is one the composition model
+      # would cut to using a duration nothing measured.
+      - name: Gate-K (the clip capture RPCs — one attempt one asset, and ready means probed)
+        run: bash scripts/db-tests/gate-k/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no

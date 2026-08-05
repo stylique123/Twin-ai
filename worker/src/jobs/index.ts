@@ -3,6 +3,7 @@ import { handleTranscribe } from './transcribe.js'
 import { handleBuildVoice } from './voice.js'
 import { handleScrapeDna } from './scrapeDna.js'
 import { handleValidateSource } from './validateSource.js'
+import { handleValidateClip } from './validateClip.js'
 import { handleEditorV2 } from './editorV2.js'
 import { handlePurgeMedia } from './purgeMedia.js'
 
@@ -12,6 +13,10 @@ export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 // (`transcribe` was retired — nothing enqueues it; ingest-reference enqueues `ingest`.
 // `autoedit` was removed with the old AI editor and is blocked at the database.
 // `validate_source` VALIDATES an uploaded recording — it is not an editor job.
+// `validate_clip` MEASURES a screen capture (Phase 12 item 13). It is a
+// deliberately separate handler, not a mode of validate_source: a clip carries
+// no capture manifest and no script binding, and — the part worth being
+// paranoid about — it must never write generations.source_asset_id.
 // `editor_v2` is the rebuilt editor's orchestration loop — Phase 3 registers
 // it with SIMULATED stage handlers; real stages land in later phases.)
 export const handlers: Record<string, JobHandler> = {
@@ -19,6 +24,7 @@ export const handlers: Record<string, JobHandler> = {
   build_voice: handleBuildVoice,
   scrape_dna: handleScrapeDna,
   validate_source: handleValidateSource,
+  validate_clip: handleValidateClip,
   editor_v2: handleEditorV2,
   // Deletes the BYTES behind a removed media_asset. Enqueued by a database
   // trigger, not by application code, so every route to deletion is covered.

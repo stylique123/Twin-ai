@@ -175,9 +175,15 @@ export function sanitizeCapabilityFlagsForWrite(raw: unknown): CapabilityFlags {
  *   can_film_objects  -> the footage checklist. Phase 12 item 12 (what fills
  *                        the container) owns the checklist itself; there is no
  *                        checklist to skip yet.
- *   can_record_screen -> the screen-recording clip type, Phase 12 item 13.
- *                        Offering a clip type the pipeline cannot ingest would
- *                        be worse than not offering it.
+ *   can_record_screen -> BUILT. `DeclaredClips.tsx` gates the screen-capture
+ *                        surface on `isExplicitlyTrue`, and the pipeline can now
+ *                        ingest what it produces (0107's clip RPCs +
+ *                        `validate_clip`). The surface treats UNSET as a door to
+ *                        open rather than a closed one: it asks the question
+ *                        in place, because every account older than the question
+ *                        is unset and hiding the feature from all of them would
+ *                        be exactly the unset-read-as-false failure this file
+ *                        exists to prevent.
  *   needs_approval    -> the review screen's lock, comments, and record of who
  *                        approved. The review screen now EXISTS (§4.8), so this
  *                        is the first consumer that becomes buildable — and it

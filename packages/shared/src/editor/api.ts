@@ -15,7 +15,7 @@
 // and retries the SAME attempt (same asset, same path); it never silently
 // switches persistence systems.
 import { getClient, uploadToSignedTarget, type TakeFile } from '../api'
-import type { EditEvent, EditorOutput, EditProject, EditProjectStatus, MediaAsset, SourceUploadIntent } from './contracts'
+import type { EditEvent, EditorOutput, EditProject, EditProjectStatus, MediaAsset, MediaAssetStatus, SourceUploadIntent } from './contracts'
 
 // ---- Upload-once coordinator -------------------------------------------------
 // Autosave, confirmation and navigation must share ONE upload. Concurrent (and
@@ -127,6 +127,99 @@ export async function uploadSourceRecording(
   )
   await finalizeSourceUpload(intent.assetId)
   return intent
+}
+
+// ---- Declared clips (Phase 12 item 13) --------------------------------------
+//
+// The same three-step shape as a source upload — create, PUT, finalize — against
+// its own edge function and its own RPCs (0107), because a clip promises less
+// than a take and the difference is the point: no capture intent, no script
+// binding, no generation pointer. See supabase/functions/clip-asset for why the
+// door is a second function rather than a third action on the first one.
+export interface ClipUploadIntent {
+  assetId: string
+  bucket: string
+  path: string
+  status: MediaAssetStatus
+  token: string | null
+  signedUrl: string | null
+}
+
+export async function createClipUpload(
+  generationId: string,
+  attemptId: string,
+  file: { contentType: string; sizeBytes: number },
+  clipLabel: string | null,
+): Promise<ClipUploadIntent> {
+  const { data, error } = await getClient().functions.invoke('clip-asset', {
+    body: {
+      action: 'create',
+      generation_id: generationId,
+      recording_attempt_id: attemptId,
+      content_type: file.contentType,
+      size_bytes: file.sizeBytes,
+      clip_label: clipLabel,
+    },
+  })
+  if (error) throw new Error(await invokeError(error))
+  return data as ClipUploadIntent
+}
+
+export async function finalizeClipUpload(assetId: string): Promise<void> {
+  const { error } = await getClient().functions.invoke('clip-asset', {
+    body: { action: 'finalize', asset_id: assetId },
+  })
+  if (error) throw new Error(await invokeError(error))
+}
+
+/**
+ * Intent → signed PUT → finalize, for one screen capture.
+ *
+ * `attemptId` is the whole idempotency story and it is the CALLER's to keep: a
+ * cancelled share-picker, a wrong window, a refreshed tab are the ordinary way
+ * a screen capture goes, and reusing the attempt id is what makes three tries
+ * one asset instead of three half-uploaded rows the creator has to choose
+ * between. A genuinely NEW capture mints a new id.
+ */
+export async function uploadClipRecording(
+  generationId: string,
+  attemptId: string,
+  file: TakeFile & { sizeBytes: number },
+  clipLabel: string | null,
+  onProgress?: (fraction: number) => void,
+): Promise<ClipUploadIntent> {
+  const intent = await createClipUpload(generationId, attemptId, {
+    contentType: file.contentType,
+    sizeBytes: file.sizeBytes,
+  }, clipLabel)
+  // Already past `uploading` (finalized from another tab) → the bytes are there.
+  if (intent.status !== 'uploading' || !intent.token || !intent.signedUrl) {
+    onProgress?.(1)
+    return intent
+  }
+  await uploadToSignedTarget(
+    { bucket: intent.bucket, path: intent.path, token: intent.token, signedUrl: intent.signedUrl, contentType: file.contentType },
+    file,
+    onProgress,
+  )
+  await finalizeClipUpload(intent.assetId)
+  return intent
+}
+
+/** Every clip recorded for this generation, newest first — the query 0106's
+ *  partial index exists for. Rejected and deleted clips are excluded: a capture
+ *  that failed measurement is not something to offer a creator as filling a
+ *  slot, and the way to replace it is to record again. */
+export async function listGenerationClips(generationId: string): Promise<MediaAsset[]> {
+  const { data, error } = await getClient()
+    .from('media_assets')
+    .select('*')
+    .eq('generation_id', generationId)
+    .eq('kind', 'clip')
+    .in('status', ['uploading', 'validating', 'ready'])
+    .order('created_at', { ascending: false })
+  if (error) return []
+  return (data ?? []) as MediaAsset[]
 }
 
 // Read one asset (RLS: owner + workspace peers).

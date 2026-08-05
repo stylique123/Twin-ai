@@ -1,7 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { planFor } from './brand'
 import {
-  readCapabilityFlags, sanitizeCapabilityFlagsForWrite, type CapabilityFlags,
+  readCapabilityFlags, resolveCapabilities, sanitizeCapabilityFlagsForWrite,
+  type CapabilityFlags, type ResolvedCapabilities,
 } from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 
@@ -831,6 +832,34 @@ export async function saveCapabilityDefaults(
     .update({ default_capability_flags: merged })
     .eq('id', brandVoiceId)
   if (writeError) throw writeError
+}
+
+/**
+ * The capability answers in force for one video, and WHO answered each.
+ *
+ * Both halves are read because both exist and neither is derived from the
+ * other: `generations.capability_flags` is what is true of THIS video and wins
+ * whenever it is present, including when it says false, and
+ * `brand_voices.default_capability_flags` is what is usually true of the setup.
+ * `resolveCapabilities` records which one answered, so a surface that did not
+ * appear can be traced to the video or the brand rather than to a rule nobody
+ * can see.
+ *
+ * A read failure resolves to UNSET rather than to false. Silence from the
+ * database is not a creator saying no, and treating it as one would hide a
+ * surface on a transient error with nothing anywhere reporting it.
+ */
+export async function loadCapabilities(generationId: string): Promise<ResolvedCapabilities> {
+  const [gen, voices] = await Promise.all([
+    supabase.from('generations').select('capability_flags').eq('id', generationId).maybeSingle(),
+    supabase.from('brand_voices').select('default_capability_flags, is_default')
+      .order('is_default', { ascending: false }).limit(1),
+  ])
+  const account = (voices.data ?? [])[0] as { default_capability_flags?: unknown } | undefined
+  return resolveCapabilities(
+    (gen.data as { capability_flags?: unknown } | null)?.capability_flags,
+    account?.default_capability_flags,
+  )
 }
 
 // Upload a brand-kit logo (data URL) via the service-role edge fn; returns the

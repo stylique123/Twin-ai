@@ -22,6 +22,7 @@ import { ScriptEditor } from '../components/ScriptEditor'
 import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
+import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
@@ -907,6 +908,9 @@ export default function Result() {
                 hasTake={serverSourceAssetId != null}
                 fallback={<BlueprintScriptCards script={updatedScript} />}
               />
+              {/* See the other call site: the script owns the list, so the
+                  editor that changes it stays above this. */}
+              <DeclaredClips generationId={gen.id} blueprint={b} hook={chosenHook} />
             </div>
 
             {/* Shot List */}
@@ -1239,6 +1243,10 @@ export default function Result() {
                   hasTake={serverSourceAssetId != null}
                   fallback={<BlueprintScriptCards script={updatedScript} />}
                 />
+                {/* BELOW the editor on purpose: the slots come FROM the script,
+                    so the thing that changes them sits above the thing that
+                    fills them. */}
+                <DeclaredClips generationId={gen.id} blueprint={b} hook={chosenHook} />
               </div>
 
               {/* Shot List */}

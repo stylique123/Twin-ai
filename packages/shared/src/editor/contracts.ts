@@ -7,7 +7,10 @@
 //    in asset IDs; the server resolves paths after verifying ownership.
 //  * This module must not import recording-timeline or any legacy editor code.
 
-export type MediaAssetKind = 'source' | 'music' | 'output' | 'thumbnail'
+// 0106's fifth kind. A CLIP IS NOT A SOURCE: the source is the one take the
+// editor cuts, pinned by a capture SHA to the script the creator read, and there
+// is exactly one per project by design. A clip is footage shown DURING it.
+export type MediaAssetKind = 'source' | 'music' | 'output' | 'thumbnail' | 'clip'
 
 export type MediaAssetStatus = 'uploading' | 'validating' | 'ready' | 'rejected' | 'deleted'
 
@@ -28,6 +31,11 @@ export interface MediaAsset {
   height: number | null
   rotation: number | null
   has_audio: boolean | null
+  /** Which declared `[SHOW: …]` slot this clip fills. NULL on every non-clip,
+   *  and on an unattached clip — a creator can record something before deciding
+   *  where it goes, and that is a real state rather than a clip that fills every
+   *  slot. Enforced by 0106's `media_assets_clip_label_only_on_clips`. */
+  clip_label?: string | null
   status: MediaAssetStatus
   created_at: string
   validated_at: string | null

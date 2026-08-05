@@ -18,8 +18,12 @@ describe('worker job registry has no old editor', () => {
     // purge_media (0099) deletes the BYTES behind a removed media_asset; it is
     // enqueued by a database trigger rather than by application code, so this
     // list is the only place a reader can see that it exists at all.
+    // validate_clip (Phase 12 item 13) MEASURES a screen capture. It is enqueued
+    // by editor_finalize_clip, and an unregistered handler would dead-letter
+    // every capture while the migration, the edge and the UI all looked correct
+    // — the same quiet failure purge_media is listed here to prevent.
     expect(types).toEqual([
-      'build_voice', 'editor_v2', 'ingest', 'purge_media', 'scrape_dna', 'validate_source',
+      'build_voice', 'editor_v2', 'ingest', 'purge_media', 'scrape_dna', 'validate_clip', 'validate_source',
     ])
     expect(handlers).not.toHaveProperty('autoedit')
     expect(handlers).not.toHaveProperty('transcribe')
