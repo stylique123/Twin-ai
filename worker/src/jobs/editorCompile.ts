@@ -505,7 +505,13 @@ export interface CompileSource {
   displayHeightPx?: number
   // Teleprompter ONLY: the pinned capture manifest's accepted windows. Anything
   // outside them was rejected by the creator and is unavailable forever.
-  acceptedWindows: Interval[]
+  //
+  // `sceneNumber` is carried because a DECLARED CLIP names the scene it plays
+  // over and nothing else can say where that lands. The manifest has always had
+  // it, and it was dropped on the way in — so a clip could be captured, stored,
+  // measured, fetched and verified, and still have no window to occupy.
+  // Optional because an upload source has no scenes at all.
+  acceptedWindows: Array<Interval & { sceneNumber?: number }>
 }
 export interface CompileBrandColors { primaryHex: string | null; highlightHex: string | null }
 
@@ -629,6 +635,46 @@ class WarningSink {
 // ---- allowed domain ---------------------------------------------------------
 // Teleprompter: exactly the pinned accepted windows. Upload: the whole file.
 // There is deliberately no third branch and no script input.
+/**
+ * Where a SCENE lands in the finished video.
+ *
+ * The whole of placement, and it is arithmetic rather than judgement: the
+ * capture manifest says which source span a scene was recorded in, the time map
+ * says where a source span lands in the output, and a clip declared on that
+ * scene plays over exactly that window. Nothing here decides anything about
+ * quality, which is why it needs no eval — the creator decided when they wrote
+ * the marker into that line.
+ *
+ * Returns null rather than guessing when the scene has no recorded span (an
+ * upload source, a scene the creator rejected, a clip attached to words that
+ * were cut). A clip with nowhere to go is not placed; it is not placed
+ * SOMEWHERE ELSE.
+ *
+ * The span is intersected with what SURVIVED the cut: a scene is recorded once
+ * but the Director may remove silences inside it, so the kept pieces of one
+ * scene can be several separate output windows. The FIRST is returned, because
+ * a cutaway is one continuous window and starting it at the scene's first
+ * surviving word is where the creator's line begins.
+ */
+export function sceneOutputWindow(
+  sceneNumber: number,
+  acceptedWindows: Array<Interval & { sceneNumber?: number }>,
+  pieces: ReadonlyArray<{ sourceStartMs: number; sourceEndMs: number; outputStartMs: number }>,
+): { startMs: number; endMs: number } | null {
+  const scene = acceptedWindows.find((w) => w.sceneNumber === sceneNumber)
+  if (!scene) return null
+  for (const piece of pieces) {
+    // The overlap between the scene's recorded span and this kept piece.
+    const startMs = Math.max(scene.startMs, piece.sourceStartMs)
+    const endMs = Math.min(scene.endMs, piece.sourceEndMs)
+    if (endMs <= startMs) continue
+    // Through the time map: an offset inside a kept piece keeps its offset.
+    const outStart = piece.outputStartMs + (startMs - piece.sourceStartMs)
+    return { startMs: outStart, endMs: outStart + (endMs - startMs) }
+  }
+  return null
+}
+
 export function resolveAllowedDomain(source: CompileSource): Interval[] {
   if (!Number.isInteger(source.durationMs) || source.durationMs <= 0) {
     bad('source: durationMs must be a positive integer millisecond value')

@@ -413,7 +413,7 @@ async function loadCaptureManifest(sourceAssetId: string): Promise<CaptureManife
  */
 export function sourceAcceptedWindows(
   origin: 'teleprompter' | 'upload', capture: CaptureManifestRow | null,
-): Array<{ startMs: number; endMs: number }> {
+): Array<{ startMs: number; endMs: number; sceneNumber?: number }> {
   return origin === 'teleprompter' ? readAcceptedWindows(capture) : []
 }
 
@@ -425,7 +425,7 @@ export function sourceAcceptedWindows(
  * integer check below rather than silently producing a zero-length window —
  * which is why the check is on the values rather than on their presence.
  */
-function readAcceptedWindows(capture: CaptureManifestRow | null): Array<{ startMs: number; endMs: number }> {
+function readAcceptedWindows(capture: CaptureManifestRow | null): Array<{ startMs: number; endMs: number; sceneNumber?: number }> {
   const raw = capture?.manifest?.acceptedSegments
   if (!Array.isArray(raw) || raw.length === 0) {
     // A teleprompter source with no accepted windows has no usable material.
@@ -443,7 +443,15 @@ function readAcceptedWindows(capture: CaptureManifestRow | null): Array<{ startM
       || !Number.isInteger(startMs) || !Number.isInteger(endMs) || endMs <= startMs) {
       throw new PermanentJobError(`compiling: accepted window ${i} is not a valid ms span`, 'edit_plan_invalid')
     }
-    return { startMs, endMs }
+    // THE SCENE NUMBER, carried rather than dropped. It is what lets a declared
+    // clip find the window it plays over — see `sceneOutputWindow`. Kept only
+    // when it is a real integer: a manifest without it is older than declared
+    // clips, and a clip on such a script simply cannot be placed, which is the
+    // honest outcome rather than a guessed window.
+    const sceneNumber = s.sceneNumber
+    return typeof sceneNumber === 'number' && Number.isInteger(sceneNumber)
+      ? { startMs, endMs, sceneNumber }
+      : { startMs, endMs }
   })
 }
 
