@@ -19,6 +19,7 @@ import { getGeneration, markPosted, updateGenerationChoice, setGenerationApprove
 import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
+import { CreativeTransfer } from '../components/CreativeTransfer'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
 
@@ -1115,6 +1116,11 @@ export default function Result() {
                 </motion.div>
               )}
 
+              {activeTab === 'strategy' && (
+                <div className="mt-6">
+                  <CreativeTransfer generationId={gen.id} blueprint={b} />
+                </div>
+              )}
               {activeTab === 'spec' && (
                 <motion.div
                   key="spec"
@@ -1398,6 +1404,11 @@ export default function Result() {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+          {mobileTab === 'strategy' && (
+            <div className="mt-6">
+              <CreativeTransfer generationId={gen.id} blueprint={b} />
             </div>
           )}
 

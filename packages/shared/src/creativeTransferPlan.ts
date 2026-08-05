@@ -518,6 +518,26 @@ export function validateCreativeTransferPlan(
       fail(`${where}: action ${d.action} must not cite evidence it did not use`, 'plan_evidence_on_unused')
     }
 
+    // §1.1: EVERY ROW CARRIES ITS EVIDENCE — including a row that decided
+    // against the reference.
+    //
+    // `evidenceIds` was constrained above and `observedTraits` was not, so a
+    // `brand_default` or `reject` decision could carry any traits at all with
+    // nothing behind them. That is not a theoretical hole: those traits are
+    // exactly what a Creative Transfer screen renders, and a `reject` on
+    // `zoom_style` reading "reference used heavy punch-ins" is §1.1's fabricated
+    // row — arriving through the one action nobody thought to check, because
+    // rejecting felt like the safe direction.
+    //
+    // A decision that used nothing observed nothing it can show.
+    if (!uses && d.observedTraits.length > 0) {
+      fail(
+        `${where}: action ${d.action} cites no evidence, so it may not report observed traits — `
+        + 'a trait with nothing behind it is a fabricated row',
+        'plan_traits_on_unused',
+      )
+    }
+
     // §6: below the PREDEFINED threshold, a decision becomes brand_default or
     // reject. A low-confidence transfer is the shape this rule exists to stop.
     if (uses && d.confidenceMilli < CONFIDENCE_THRESHOLD_MILLI) {
