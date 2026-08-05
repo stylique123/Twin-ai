@@ -54,10 +54,25 @@ export interface ScriptSlot {
   index: number
 }
 
-/** `[SHOW: …]`, the declared-clip marker. Case-insensitive because the model
- *  writes it both ways, and a marker that only counts in capitals is a marker
- *  that silently becomes a gap. */
-const DECLARED_CLIP = /^show\s*:/i
+/**
+ * HOW a declared clip is captured.
+ *
+ * `unknown` is a REAL value and the most important one here. A marker that does
+ * not say how to shoot it is not a screen recording — it was read that way
+ * once, which meant a jeweller asking to show a product box was offered a
+ * share-your-screen picker. And it cannot be inferred from the words: deciding
+ * "settings page" is a screen and "product box" is a camera by reading the
+ * label is the guess this file exists to refuse. Unknown is ASKED.
+ */
+export type ClipMedium = 'screen' | 'camera' | 'unknown'
+
+/** `[SHOW: …]`, the declared-clip marker, optionally carrying its medium.
+ *
+ *  Case-insensitive because the model writes it both ways, and a marker that
+ *  only counts in capitals is a marker that silently becomes a gap. The medium
+ *  words are optional so every script written before this parses unchanged —
+ *  as `unknown`, which is the honest reading of a marker that never said. */
+const DECLARED_CLIP = /^show(?:\s+(screen|on\s+camera|camera))?\s*:/i
 
 /** The hook family, as both prior repairers had it. Kept verbatim so this
  *  module strictly supersedes them rather than changing behaviour on the way. */
@@ -192,8 +207,28 @@ export function resolveScript(lines: readonly string[], hook: string | null): Sc
   return { blocking, declaredClips }
 }
 
+/** A declared clip: what to show, and how it is captured. */
+export interface DeclaredClip {
+  label: string
+  medium: ClipMedium
+}
+
+/** The medium a marker's prefix declared. `[SHOW: …]` declares none. */
+function mediumOf(inner: string): ClipMedium {
+  const m = DECLARED_CLIP.exec(inner.trim())
+  const word = (m?.[1] ?? '').toLowerCase().replace(/\s+/g, ' ')
+  if (word === 'screen') return 'screen'
+  if (word === 'camera' || word === 'on camera') return 'camera'
+  return 'unknown'
+}
+
+/** The text after the marker's prefix, whatever form the prefix took. */
+function labelOf(inner: string): string {
+  return inner.trim().replace(DECLARED_CLIP, '').trim()
+}
+
 /**
- * The label of a line that is WHOLLY a declared clip, or null.
+ * The declared clip of a line that is WHOLLY one, or null.
  *
  * `[SHOW: the settings page]` on its own line is a capture instruction, not
  * words. It had been reaching the teleprompter as dialogue — `isWhollyPlaceholder`
@@ -202,19 +237,19 @@ export function resolveScript(lines: readonly string[], hook: string | null): Sc
  * talking scene and the creator was prompted to read "show: the settings page"
  * into the camera. This is what the adapter uses to stop that.
  */
-export function declaredClipLabel(line: string): string | null {
+export function declaredClipOf(line: string): DeclaredClip | null {
   const t = line.trim()
   if (t === '') return null
   const slots = findSlots(t)
   if (slots.length !== 1) return null
   const only = slots[0]
   if (only.kind !== 'declared_clip' || only.raw !== t) return null
-  const label = only.inner.replace(/^show\s*:/i, '').trim()
-  return label === '' ? null : label
+  const label = labelOf(only.inner)
+  return label === '' ? null : { label, medium: mediumOf(only.inner) }
 }
 
 /**
- * Spoken text with any EMBEDDED declared-clip markers removed, plus the labels
+ * Spoken text with any EMBEDDED declared-clip markers removed, plus the clips
  * that were removed.
  *
  * A marker inside a sentence — "here's the fix [SHOW: the settings page] and
@@ -224,20 +259,20 @@ export function declaredClipLabel(line: string): string | null {
  * surface to offer; it is separating what is SAID from what is SHOWN, which is
  * the distinction the marker exists to draw.
  */
-export function stripDeclaredClips(line: string): { text: string; labels: string[] } {
-  const labels: string[] = []
+export function stripDeclaredClips(line: string): { text: string; clips: DeclaredClip[] } {
+  const clips: DeclaredClip[] = []
   const slots = findSlots(line).filter((s) => s.kind === 'declared_clip')
-  if (slots.length === 0) return { text: line, labels }
+  if (slots.length === 0) return { text: line, clips }
   let out = line
   // Backwards, so removing one span does not move the next one's index.
   for (let i = slots.length - 1; i >= 0; i--) {
     const s = slots[i]
-    const label = s.inner.replace(/^show\s*:/i, '').trim()
-    if (label !== '') labels.unshift(label)
+    const label = labelOf(s.inner)
+    if (label !== '') clips.unshift({ label, medium: mediumOf(s.inner) })
     out = out.slice(0, s.index) + out.slice(s.index + s.raw.length)
   }
   // Collapse the double space a removal leaves mid-sentence, and tidy the ends.
-  return { text: out.replace(/\s{2,}/g, ' ').trim(), labels }
+  return { text: out.replace(/\s{2,}/g, ' ').trim(), clips }
 }
 
 /**

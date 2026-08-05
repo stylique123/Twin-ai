@@ -7,7 +7,9 @@
 // moments from the shot list become silent insert scenes, and a final CTA scene
 // closes it. No module ever re-derives boundaries after this.
 
-import { declaredClipLabel, isWhollyPlaceholder, stripDeclaredClips } from './containerResolution.js'
+import {
+  declaredClipOf, isWhollyPlaceholder, stripDeclaredClips, type ClipMedium,
+} from './containerResolution.js'
 import type { Blueprint } from './types'
 import {
   type RecordingScene,
@@ -116,6 +118,31 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   const isCtaSection = (section: string): boolean =>
     /\b(cta|call[ -]?to[ -]?action|outro|closing|sign[ -]?off)\b/i.test(section)
 
+  // ONE builder for every declared clip, so the medium decides the scene type
+  // in exactly one place. `screen_recording` and `product_demo` are the two
+  // existing types that mean "captured a different way"; `b_roll` is the
+  // neutral one an UNANSWERED marker gets, because calling it either of the
+  // others would be the assumption this whole change removes.
+  const clipScene = (label: string, medium: ClipMedium, n: number): RecordingScene => ({
+    scene_number: n,
+    scene_type: medium === 'screen' ? 'screen_recording' : medium === 'camera' ? 'product_demo' : 'b_roll',
+    purpose: `Show: ${label}`,
+    dialogue: null,
+    duration_sec: estimateDurationSec(null, wpm),
+    camera_framing: medium === 'screen' ? 'Screen capture' : medium === 'camera' ? 'Hold it up to the camera' : 'To be decided',
+    background: '',
+    movement: '',
+    caption_text: pushCaption(captionFromLine(label), n),
+    pause_after: false,
+    // NEVER a teleprompter scene: a declared clip is an instruction, and the
+    // creator reading "show: the settings page" aloud is the defect this began
+    // as. A CAMERA clip is still filmed by the creator, but as a shot rather
+    // than as words.
+    show_in_teleprompter: false,
+    clip_label: label,
+    clip_medium: medium,
+  })
+
   const usable = (blueprint.script ?? []).filter((s) => {
     const l = (s.line || '').trim()
     if (!l) return false
@@ -149,23 +176,9 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     // not in the teleprompter, carrying the label the capture surface matches a
     // stored clip against. The instruction is preserved and the words are not
     // spoken, which is the whole point of the marker.
-    const wholeLabel = declaredClipLabel(raw)
-    if (wholeLabel) {
-      const n = scenes.length + 1
-      scenes.push({
-        scene_number: n,
-        scene_type: 'screen_recording',
-        purpose: `Show: ${wholeLabel}`,
-        dialogue: null,
-        duration_sec: estimateDurationSec(null, wpm),
-        camera_framing: 'Screen capture',
-        background: '',
-        movement: '',
-        caption_text: pushCaption(captionFromLine(wholeLabel), n),
-        pause_after: false,
-        show_in_teleprompter: false,
-        clip_label: wholeLabel,
-      })
+    const whole = declaredClipOf(raw)
+    if (whole) {
+      scenes.push(clipScene(whole.label, whole.medium, scenes.length + 1))
       return
     }
 
@@ -173,7 +186,7 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     // reads it out mid-sentence. The spoken words lose the marker and the slot
     // it named becomes its own silent scene, so nothing is discarded and
     // nothing is spoken that was never meant to be.
-    const { text: line, labels } = stripDeclaredClips(raw)
+    const { text: line, clips } = stripDeclaredClips(raw)
     // Stripping can empty a line that was only a marker plus punctuation; an
     // empty dialogue is not a scene the teleprompter can show.
     if (line !== '') {
@@ -191,22 +204,8 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
         show_in_teleprompter: true,
       })
     }
-    for (const label of labels) {
-      const n = scenes.length + 1
-      scenes.push({
-        scene_number: n,
-        scene_type: 'screen_recording',
-        purpose: `Show: ${label}`,
-        dialogue: null,
-        duration_sec: estimateDurationSec(null, wpm),
-        camera_framing: 'Screen capture',
-        background: '',
-        movement: '',
-        caption_text: pushCaption(captionFromLine(label), n),
-        pause_after: false,
-        show_in_teleprompter: false,
-        clip_label: label,
-      })
+    for (const clip of clips) {
+      scenes.push(clipScene(clip.label, clip.medium, scenes.length + 1))
     }
   })
 

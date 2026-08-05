@@ -53,6 +53,13 @@ export interface RecordingScene {
   // what identify the script that was READ; a label names what is shown beside
   // it and must not change a take's binding to its script.
   clip_label?: string | null
+  // HOW this slot is captured — `screen`, `camera`, or `unknown` when the
+  // marker did not say. Unknown is the honest reading of every script written
+  // before markers carried a medium, and it is ASKED rather than assumed: the
+  // capture surface routes a screen slot to the share picker and a camera slot
+  // to a shot you film, and getting that wrong offered a jeweller a
+  // share-your-screen dialog for a product box.
+  clip_medium?: 'screen' | 'camera' | 'unknown' | null
 }
 
 export interface RecordingScript {

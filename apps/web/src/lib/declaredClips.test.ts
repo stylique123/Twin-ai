@@ -24,6 +24,50 @@ function scriptFrom(lines: string[]): RecordingScript {
   })
 }
 
+describe('the medium is read from the marker, never from the words', () => {
+  it('reads screen and camera when the marker says', () => {
+    expect(declaredSlots(scriptFrom(['[SHOW SCREEN: the settings page]']))[0])
+      .toMatchObject({ label: 'the settings page', medium: 'screen' })
+    expect(declaredSlots(scriptFrom(['[SHOW ON CAMERA: the box]']))[0])
+      .toMatchObject({ label: 'the box', medium: 'camera' })
+    expect(declaredSlots(scriptFrom(['[SHOW CAMERA: the box]']))[0])
+      .toMatchObject({ label: 'the box', medium: 'camera' })
+  })
+
+  it('an untyped marker is UNKNOWN, not screen', () => {
+    // THE BUG THIS PINS. Every declared clip used to become a screen recording
+    // by definition, so a jeweller asking to show a product box was offered a
+    // share-your-screen picker. Unknown is asked, never assumed.
+    expect(declaredSlots(scriptFrom(['[SHOW: the product box]']))[0])
+      .toMatchObject({ label: 'the product box', medium: 'unknown' })
+  })
+
+  it('never infers the medium from what the label SAYS', () => {
+    // "settings page" reads like a screen and "necklace" reads like an object.
+    // Deciding from the words is the guess containerResolution exists to refuse
+    // — the creator knows what they are pointing at and the model can say so.
+    for (const label of ['the settings page', 'the dashboard', 'my necklace']) {
+      expect(declaredSlots(scriptFrom([`[SHOW: ${label}]`]))[0].medium).toBe('unknown')
+    }
+  })
+
+  it('routes the scene type from the medium', () => {
+    const typeOf = (line: string) =>
+      scriptFrom([line]).scenes.find((s) => s.clip_label)?.scene_type
+    expect(typeOf('[SHOW SCREEN: the dashboard]')).toBe('screen_recording')
+    expect(typeOf('[SHOW ON CAMERA: the box]')).toBe('product_demo')
+    // Neither of the two committed types — calling an unanswered marker either
+    // one would be the assumption this removes.
+    expect(typeOf('[SHOW: the thing]')).toBe('b_roll')
+  })
+
+  it('a camera clip is still not something the creator reads aloud', () => {
+    const scene = scriptFrom(['[SHOW ON CAMERA: the box]']).scenes.find((s) => s.clip_label)
+    expect(scene!.show_in_teleprompter).toBe(false)
+    expect(scene!.dialogue).toBeNull()
+  })
+})
+
 describe('declaredSlots', () => {
   it('lists what the script declared, in scene order', () => {
     expect(declaredSlots(scriptFrom([
@@ -62,16 +106,17 @@ describe('declaredSlots', () => {
 })
 
 describe('a declared clip is never something the creator reads aloud', () => {
-  it('a whole-line marker becomes a SILENT screen-recording scene', () => {
+  it('a whole-line marker becomes a SILENT scene, never dialogue', () => {
     // The defect this pins: the marker reached the teleprompter as an ordinary
     // talking scene, so the creator was prompted to say "show: the settings
     // page" into the camera.
-    const script = scriptFrom(['Here is the fix.', '[SHOW: the settings page]'])
-    const scene = script.scenes.find((s) => s.scene_type === 'screen_recording')
+    const script = scriptFrom(['Here is the fix.', '[SHOW SCREEN: the settings page]'])
+    const scene = script.scenes.find((s) => s.clip_label)
     expect(scene).toBeDefined()
     expect(scene!.dialogue).toBeNull()
     expect(scene!.show_in_teleprompter).toBe(false)
     expect(scene!.clip_label).toBe('the settings page')
+    expect(scene!.scene_type).toBe('screen_recording')
   })
 
   it('no spoken line anywhere in the script still contains a marker', () => {

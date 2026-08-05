@@ -15,12 +15,24 @@
 // surface with its own idea of what to record would be a second source of truth
 // about the video, competing with the one the creator is about to film.
 //
-// ── THE GATE READS THE FLAG; IT DOES NOT ASK FOR IT ──────────────────────
+// ── TWO MEDIA, TWO FLAGS, AND THEY GATE IN OPPOSITE DIRECTIONS ───────────
 //
-// §2.2's `can_record_screen` decides whether this appears, through
-// `isExplicitlyTrue` — `capabilities.ts` names this exact feature as its example
-// of something that must not show up until it is asked for, so silence hides it
-// and only an explicit yes reveals it.
+// A slot says HOW it is captured, and getting that wrong is not cosmetic: every
+// declared clip used to be a screen recording by definition, so a jeweller
+// asking to show a product box was handed a share-your-screen picker.
+//
+//   screen  → `can_record_screen`, `isExplicitlyTrue`. Silence HIDES it —
+//             `capabilities.ts` names this exact feature as its example of one
+//             that must not appear until asked for.
+//   camera  → `can_film_objects`, `isExplicitlyFalse`. Silence SHOWS it, and
+//             that inversion is deliberate: an unnecessary shot on a list is
+//             friction, a missing one is a video the creator cannot make, and
+//             those costs are not symmetric.
+//   unknown → shown, and ASKED. The marker did not say and the words cannot be
+//             read to find out, so the creator answers in one tap.
+//
+// Routing every slot through one flag gets both halves backwards, which is why
+// the medium is resolved before the gate rather than after.
 //
 // ASKING is deliberately NOT this component's job. The question layer owns every
 // question and every capability write; a second surface asking the same question
@@ -37,11 +49,12 @@
 // a privacy cost with no benefit, and one the browser would have shown them a
 // checkbox for.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, MonitorPlay, Square, Check, TriangleAlert, Play, X } from 'lucide-react'
+import { Loader2, MonitorPlay, Square, Check, TriangleAlert, Play, X, Camera } from 'lucide-react'
 import { declaredSlots } from '../lib/declaredClips'
 import {
   listGenerationClips, uploadClipRecording, newRecordingAttemptId,
-  loadCapabilities, loadRecordingScript, signTakeUrl, isExplicitlyTrue, pickClipMime, baseClipMime,
+  loadCapabilities, loadRecordingScript, signTakeUrl,
+  isExplicitlyTrue, isExplicitlyFalse, pickClipMime, baseClipMime,
   type MediaAsset, type RecordingScript, type ResolvedCapabilities,
 } from '../lib/api'
 
@@ -68,7 +81,17 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
   // on load: signing every clip every time this screen renders is work nobody
   // asked for, and a 24-hour URL minted for something the creator never opens.
   const [preview, setPreview] = useState<{ label: string; url: string } | null>(null)
+  // A creator's answer for a slot whose marker did not say how to shoot it.
+  // Held for this screen only: the durable home for it is the script itself
+  // (`clip_medium` on the scene), and writing it there is a script edit — which
+  // belongs beside the script editor rather than inside a capture button.
+  const [answered, setAnswered] = useState<Map<string, 'screen' | 'camera'>>(new Map())
   const recorder = useRef<MediaRecorder | null>(null)
+  // One shared file input for every camera slot; `pendingUpload` says which slot
+  // opened it. One input per slot would be a DOM node per row for a control the
+  // creator uses once.
+  const fileInput = useRef<HTMLInputElement | null>(null)
+  const pendingUpload = useRef<string | null>(null)
   // The attempt id is kept PER LABEL and reused across retries of the same
   // capture, which is the whole idempotency story: a failed upload retried
   // converges on the one asset the first attempt created instead of leaving a
@@ -165,6 +188,15 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
     rec.start()
   }
 
+  const chooseFootage = async (file: File) => {
+    const label = pendingUpload.current
+    pendingUpload.current = null
+    if (!label) return
+    if (preview?.label.toLowerCase() === label.toLowerCase()) setPreview(null)
+    setActive(label)
+    await send(label, file)
+  }
+
   const stop = () => {
     if (recorder.current && recorder.current.state !== 'inactive') recorder.current.stop()
   }
@@ -222,27 +254,56 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
     setPreview({ label, url })
   }
 
-  if (slots.length === 0) return null
-  // SILENCE HIDES THIS, and so does an explicit no. `isExplicitlyTrue` is the
-  // whole gate: `capabilities.ts` names this feature as its example of one that
-  // must not appear until asked for, and an unanswered flag is not a request.
-  // Asking belongs to the question layer, not here — see the header.
-  if (!caps || !isExplicitlyTrue(caps.can_record_screen)) return null
+  /** The medium in force for a slot: the creator's answer if they gave one,
+   *  otherwise whatever the marker declared. */
+  const mediumFor = (slot: { label: string; medium: string }): string =>
+    answered.get(slot.label.toLowerCase()) ?? slot.medium
+
+  // PER-SLOT GATING, because the two flags point in opposite directions. A
+  // single component-level gate on `can_record_screen` — which is what this
+  // was — hid every CAMERA slot behind a question about screens.
+  const visible = caps
+    ? slots.filter((slot) => {
+        const m = mediumFor(slot)
+        if (m === 'screen') return isExplicitlyTrue(caps.can_record_screen)
+        // Silence SHOWS a camera shot. Only an explicit "I cannot film objects"
+        // removes it, because a missing shot costs a video and a surplus one
+        // costs a glance.
+        if (m === 'camera') return !isExplicitlyFalse(caps.can_film_objects)
+        return true
+      })
+    : []
+  if (visible.length === 0) return null
 
   return (
     <div className="rounded-card border border-white/8 bg-white/[0.02] p-4">
+      <input
+        ref={fileInput}
+        type="file"
+        accept="video/mp4,video/quicktime,video/webm"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          // Cleared so choosing the SAME file twice still fires a change event —
+          // otherwise a creator who picks the wrong clip, then re-picks the
+          // right one, gets nothing.
+          e.target.value = ''
+          if (file) void chooseFootage(file)
+        }}
+      />
       <div className="flex items-start gap-2">
         <MonitorPlay className="mt-0.5 h-3.5 w-3.5 shrink-0 text-sand" />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold text-cream">
-            {slots.length === 1
+            {visible.length === 1
               ? 'Your script asks you to show one thing'
-              : `Your script asks you to show ${slots.length} things`}
+              : `Your script asks you to show ${visible.length} things`}
           </p>
 
             <ul className="mt-2 space-y-2">
-              {slots.map((slot) => {
+              {visible.map((slot) => {
                 const existing = clipFor(slot.label)
+                const medium = mediumFor(slot)
                 const busy = active === slot.label && state.kind !== 'idle' && state.kind !== 'error'
                 return (
                   <li key={slot.label} className="flex flex-wrap items-center gap-2">
@@ -266,7 +327,47 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
                         <Play className="h-3 w-3" /> Check it
                       </button>
                     )}
-                    {active === slot.label && state.kind === 'recording' ? (
+                    {/* UNKNOWN IS ASKED, NOT GUESSED. The marker did not say how
+                        to shoot this, and the label's words cannot be read to
+                        find out — "the settings page" looks like a screen and
+                        "my necklace" looks like an object, but reading them that
+                        way is the inference this whole path refuses. One tap
+                        from the person who knows what they are pointing at. */}
+                    {medium === 'unknown' ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="text-[11px] text-stone">Show it</span>
+                        <button
+                          type="button"
+                          className="btn-ghost !py-1 !text-[11px]"
+                          onClick={() => setAnswered((m) => new Map(m).set(slot.label.toLowerCase(), 'screen'))}
+                        >
+                          <MonitorPlay className="h-3 w-3" /> on my screen
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-ghost !py-1 !text-[11px]"
+                          onClick={() => setAnswered((m) => new Map(m).set(slot.label.toLowerCase(), 'camera'))}
+                        >
+                          <Camera className="h-3 w-3" /> on camera
+                        </button>
+                      </span>
+                    ) : medium === 'camera' ? (
+                      // A CAMERA SLOT IS NOT A BROWSER CAPTURE. It is a shot the
+                      // creator films on the device that can actually see the
+                      // thing — usually the phone in their hand, not the tab
+                      // they are reading this in. So the offer is to bring the
+                      // footage, and the same clip pipeline stores it.
+                      <button
+                        type="button"
+                        className="btn-ghost !py-1 !text-[11px]"
+                        onClick={() => { pendingUpload.current = slot.label; fileInput.current?.click() }}
+                        disabled={busy || (state.kind !== 'idle' && state.kind !== 'error')}
+                      >
+                        {busy && state.kind === 'uploading'
+                          ? <><Loader2 className="h-3 w-3 animate-spin" /> Saving…</>
+                          : <><Camera className="h-3 w-3" /> {existing ? 'Replace footage' : 'Add footage'}</>}
+                      </button>
+                    ) : active === slot.label && state.kind === 'recording' ? (
                       <button type="button" className="btn-ghost !py-1 !text-[11px]" onClick={stop}>
                         <Square className="h-3 w-3" /> Stop
                       </button>
