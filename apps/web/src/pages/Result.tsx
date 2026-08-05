@@ -910,7 +910,7 @@ export default function Result() {
               />
               {/* See the other call site: the script owns the list, so the
                   editor that changes it stays above this. */}
-              <DeclaredClips generationId={gen.id} blueprint={b} hook={chosenHook} />
+              <DeclaredClips generationId={gen.id} />
             </div>
 
             {/* Shot List */}
@@ -1246,7 +1246,7 @@ export default function Result() {
                 {/* BELOW the editor on purpose: the slots come FROM the script,
                     so the thing that changes them sits above the thing that
                     fills them. */}
-                <DeclaredClips generationId={gen.id} blueprint={b} hook={chosenHook} />
+                <DeclaredClips generationId={gen.id} />
               </div>
 
               {/* Shot List */}

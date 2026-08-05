@@ -193,6 +193,54 @@ export function resolveScript(lines: readonly string[], hook: string | null): Sc
 }
 
 /**
+ * The label of a line that is WHOLLY a declared clip, or null.
+ *
+ * `[SHOW: the settings page]` on its own line is a capture instruction, not
+ * words. It had been reaching the teleprompter as dialogue — `isWhollyPlaceholder`
+ * deliberately returns false for it (so the hook repairer cannot delete it), and
+ * nothing downstream then reclassified it, so it fell through to an ordinary
+ * talking scene and the creator was prompted to read "show: the settings page"
+ * into the camera. This is what the adapter uses to stop that.
+ */
+export function declaredClipLabel(line: string): string | null {
+  const t = line.trim()
+  if (t === '') return null
+  const slots = findSlots(t)
+  if (slots.length !== 1) return null
+  const only = slots[0]
+  if (only.kind !== 'declared_clip' || only.raw !== t) return null
+  const label = only.inner.replace(/^show\s*:/i, '').trim()
+  return label === '' ? null : label
+}
+
+/**
+ * Spoken text with any EMBEDDED declared-clip markers removed, plus the labels
+ * that were removed.
+ *
+ * A marker inside a sentence — "here's the fix [SHOW: the settings page] and
+ * it takes one tap" — is the same failure in a smaller place: the creator reads
+ * the marker out mid-sentence. Removing it from the spoken words is not
+ * discarding the instruction, because the labels come back for the capture
+ * surface to offer; it is separating what is SAID from what is SHOWN, which is
+ * the distinction the marker exists to draw.
+ */
+export function stripDeclaredClips(line: string): { text: string; labels: string[] } {
+  const labels: string[] = []
+  const slots = findSlots(line).filter((s) => s.kind === 'declared_clip')
+  if (slots.length === 0) return { text: line, labels }
+  let out = line
+  // Backwards, so removing one span does not move the next one's index.
+  for (let i = slots.length - 1; i >= 0; i--) {
+    const s = slots[i]
+    const label = s.inner.replace(/^show\s*:/i, '').trim()
+    if (label !== '') labels.unshift(label)
+    out = out.slice(0, s.index) + out.slice(s.index + s.raw.length)
+  }
+  // Collapse the double space a removal leaves mid-sentence, and tidy the ends.
+  return { text: out.replace(/\s{2,}/g, ' ').trim(), labels }
+}
+
+/**
  * How an unfilled container reads to the creator.
  *
  * Names the slot rather than describing the problem in the abstract: "[product

@@ -7,7 +7,7 @@
 // moments from the shot list become silent insert scenes, and a final CTA scene
 // closes it. No module ever re-derives boundaries after this.
 
-import { isWhollyPlaceholder } from './containerResolution.js'
+import { declaredClipLabel, isWhollyPlaceholder, stripDeclaredClips } from './containerResolution.js'
 import type { Blueprint } from './types'
 import {
   type RecordingScene,
@@ -133,20 +133,81 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   const body = ctaIdx >= 0 ? usable.filter((_, i) => i !== ctaIdx) : usable
 
   body.forEach((seg, i) => {
-    const n = scenes.length + 1
-    const line = (seg.line || '').trim()
-    const isBroll = BROLL_HINT.test(seg.direction || '') || BROLL_HINT.test(seg.section || '')
-    scenes.push({
-      scene_number: n,
-      scene_type: isBroll ? 'product_demo' : 'talking_head',
-      purpose: seg.section?.trim() || 'Deliver the next point',
-      dialogue: line,
-      duration_sec: estimateDurationSec(line, wpm),
-      ...framingFor(i + 1, blueprint, seg),
-      caption_text: pushCaption(captionFromLine(line), n),
-      pause_after: true,
-      show_in_teleprompter: true,
-    })
+    const raw = (seg.line || '').trim()
+
+    // A DECLARED CLIP IS NOT DIALOGUE, AND THIS IS WHERE IT STOPPED BEING
+    // TREATED AS ONE.
+    //
+    // `[SHOW: the settings page]` reached here as an ordinary line and became a
+    // `talking_head` scene with `show_in_teleprompter: true` — so the
+    // teleprompter scrolled "show: the settings page" and the creator read the
+    // instruction into the camera. `isWhollyPlaceholder` deliberately refuses to
+    // call it a placeholder (that is what stops the hook repairer deleting it),
+    // and nothing else reclassified it, so it fell straight through.
+    //
+    // It becomes a SILENT capture slot instead: `screen_recording`, no dialogue,
+    // not in the teleprompter, carrying the label the capture surface matches a
+    // stored clip against. The instruction is preserved and the words are not
+    // spoken, which is the whole point of the marker.
+    const wholeLabel = declaredClipLabel(raw)
+    if (wholeLabel) {
+      const n = scenes.length + 1
+      scenes.push({
+        scene_number: n,
+        scene_type: 'screen_recording',
+        purpose: `Show: ${wholeLabel}`,
+        dialogue: null,
+        duration_sec: estimateDurationSec(null, wpm),
+        camera_framing: 'Screen capture',
+        background: '',
+        movement: '',
+        caption_text: pushCaption(captionFromLine(wholeLabel), n),
+        pause_after: false,
+        show_in_teleprompter: false,
+        clip_label: wholeLabel,
+      })
+      return
+    }
+
+    // An EMBEDDED marker is the same failure in a smaller place: the creator
+    // reads it out mid-sentence. The spoken words lose the marker and the slot
+    // it named becomes its own silent scene, so nothing is discarded and
+    // nothing is spoken that was never meant to be.
+    const { text: line, labels } = stripDeclaredClips(raw)
+    // Stripping can empty a line that was only a marker plus punctuation; an
+    // empty dialogue is not a scene the teleprompter can show.
+    if (line !== '') {
+      const n = scenes.length + 1
+      const isBroll = BROLL_HINT.test(seg.direction || '') || BROLL_HINT.test(seg.section || '')
+      scenes.push({
+        scene_number: n,
+        scene_type: isBroll ? 'product_demo' : 'talking_head',
+        purpose: seg.section?.trim() || 'Deliver the next point',
+        dialogue: line,
+        duration_sec: estimateDurationSec(line, wpm),
+        ...framingFor(i + 1, blueprint, seg),
+        caption_text: pushCaption(captionFromLine(line), n),
+        pause_after: true,
+        show_in_teleprompter: true,
+      })
+    }
+    for (const label of labels) {
+      const n = scenes.length + 1
+      scenes.push({
+        scene_number: n,
+        scene_type: 'screen_recording',
+        purpose: `Show: ${label}`,
+        dialogue: null,
+        duration_sec: estimateDurationSec(null, wpm),
+        camera_framing: 'Screen capture',
+        background: '',
+        movement: '',
+        caption_text: pushCaption(captionFromLine(label), n),
+        pause_after: false,
+        show_in_teleprompter: false,
+        clip_label: label,
+      })
+    }
   })
 
   // Pure b-roll inserts from shot_list entries flagged as cutaways (silent).

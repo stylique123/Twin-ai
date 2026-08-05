@@ -16,6 +16,14 @@ verify_jwt = true
 [functions.source-asset]
 verify_jwt = true
 
+# Phase 12 item 13: create/finalize for a SCREEN CAPTURE (owner-authenticated).
+# A separate function from source-asset rather than a mode on it: that function's
+# core is parity-tested against the DB's capture contract — the script snapshot,
+# its SHA, the intent row — and a clip has none of that, so a clip branch inside
+# it would thread a second path through assertions written about takes.
+[functions.clip-asset]
+verify_jwt = true
+
 # Editor v2: the ONLY way an edit begins (owner-authenticated; Phase 2).
 [functions.start-editor-v2]
 verify_jwt = true

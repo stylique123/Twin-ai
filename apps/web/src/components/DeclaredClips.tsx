@@ -5,30 +5,29 @@
 // a gap — it survives the resolver on purpose. Until now nothing read the other
 // end of that: the markers were parsed, kept, and shown to nobody.
 //
-// ── THE LIST IS THE SCRIPT'S, NOT THIS COMPONENT'S ───────────────────────
+// ── THE LIST IS THE FILMED SCRIPT'S, NOT THIS COMPONENT'S ────────────────
 //
-// Every slot here comes from `resolveScript(...).declaredClips`. There is no
-// second parser, no "common things creators capture", no suggested list. If the
-// script does not declare a slot, no slot appears — which means the way to add
-// one is to edit the script, in the editor sitting directly above this on the
-// same screen, and the marker the model wrote is the same marker the capture
-// fills. A capture surface with its own idea of what to record would be a
-// second source of truth about the video, competing with the script the creator
-// is about to read aloud.
+// Every slot comes from the canonical RecordingScript — the same script the
+// editor above edits and the teleprompter scrolls — via `declaredSlots`. There
+// is no second parser, no "common things creators capture", no suggested list.
+// If the script does not declare a slot, no slot appears, so the way to add one
+// is to edit the script directly above this on the same screen. A capture
+// surface with its own idea of what to record would be a second source of truth
+// about the video, competing with the one the creator is about to film.
 //
-// ── THE GATE, AND WHY UNSET IS NOT A CLOSED DOOR ─────────────────────────
+// ── THE GATE READS THE FLAG; IT DOES NOT ASK FOR IT ──────────────────────
 //
 // §2.2's `can_record_screen` decides whether this appears, through
-// `isExplicitlyTrue` — a feature that must not show up until it is asked for.
-// But UNSET is not `false`, and treating it as one would hide this from every
-// account that predates the question (which is every existing account). So:
+// `isExplicitlyTrue` — `capabilities.ts` names this exact feature as its example
+// of something that must not show up until it is asked for, so silence hides it
+// and only an explicit yes reveals it.
 //
-//   true   → the capture surface.
-//   unset  → the QUESTION, right here, answering into the same brand default
-//            onboarding writes. That is what makes the gate openable rather
-//            than permanently shut for everyone who signed up before it existed.
-//   false  → nothing. They said no; asking again on every plan screen is nagging
-//            a creator with the answer they already gave.
+// ASKING is deliberately NOT this component's job. The question layer owns every
+// question and every capability write; a second surface asking the same question
+// would mean two implementations of the three-state logic, done differently, and
+// the flag would be written from two places with no agreement about which is
+// authoritative. This is a CONSUMER: it reads the resolved flag and shows
+// nothing when the answer has not arrived.
 //
 // ── AND THE CLIP CARRIES NO AUDIO ────────────────────────────────────────
 //
@@ -42,9 +41,8 @@ import { Loader2, MonitorPlay, Square, Check, TriangleAlert } from 'lucide-react
 import { declaredSlots } from '../lib/declaredClips'
 import {
   listGenerationClips, uploadClipRecording, newRecordingAttemptId,
-  loadCapabilities, saveCapabilityDefaults, listBrandVoices,
-  isExplicitlyTrue, isExplicitlyFalse,
-  type Blueprint, type MediaAsset, type ResolvedCapabilities,
+  loadCapabilities, loadRecordingScript, isExplicitlyTrue,
+  type MediaAsset, type RecordingScript, type ResolvedCapabilities,
 } from '../lib/api'
 
 type SlotState =
@@ -53,17 +51,19 @@ type SlotState =
   | { kind: 'uploading'; fraction: number }
   | { kind: 'error'; message: string }
 
-export function DeclaredClips({ generationId, blueprint, hook }: {
-  generationId: string
-  blueprint: Blueprint
-  hook: string | null
-}) {
-  const slots = useMemo(() => declaredSlots(blueprint, hook), [blueprint, hook])
+export function DeclaredClips({ generationId }: { generationId: string }) {
+  // LOADED THROUGH THE CANONICAL LOADER, the same one the script editor uses.
+  // `loadRecordingScript` validates the persisted `scene_timeline` against this
+  // generation and returns null for anything malformed or foreign, so this
+  // surface can never derive slots from a script belonging to something else.
+  // Null — still loading, or no script — yields no slots, which is the honest
+  // answer rather than a fallback to the model's plan.
+  const [script, setScript] = useState<RecordingScript | null>(null)
+  const slots = useMemo(() => declaredSlots(script), [script])
   const [caps, setCaps] = useState<ResolvedCapabilities | null>(null)
   const [clips, setClips] = useState<MediaAsset[]>([])
   const [active, setActive] = useState<string | null>(null)
   const [state, setState] = useState<SlotState>({ kind: 'idle' })
-  const [answering, setAnswering] = useState(false)
   const recorder = useRef<MediaRecorder | null>(null)
   // The attempt id is kept PER LABEL and reused across retries of the same
   // capture, which is the whole idempotency story: a failed upload retried
@@ -76,15 +76,19 @@ export function DeclaredClips({ generationId, blueprint, hook }: {
   }, [generationId])
 
   useEffect(() => {
-    if (slots.length === 0) return
     let stopped = false
     void (async () => {
-      const resolved = await loadCapabilities(generationId)
-      if (!stopped) setCaps(resolved)
+      const [loaded, resolved] = await Promise.all([
+        loadRecordingScript(generationId).catch(() => null),
+        loadCapabilities(generationId),
+      ])
+      if (stopped) return
+      setScript(loaded)
+      setCaps(resolved)
+      if (loaded && declaredSlots(loaded).length > 0) void refreshClips()
     })()
-    void refreshClips()
     return () => { stopped = true }
-  }, [generationId, refreshClips, slots.length])
+  }, [generationId, refreshClips])
 
   // Stop any live capture if this screen goes away. A share indicator left
   // running after the creator navigated on is the kind of thing that makes
@@ -97,22 +101,6 @@ export function DeclaredClips({ generationId, blueprint, hook }: {
   const clipFor = useCallback((label: string): MediaAsset | undefined => (
     clips.find((c) => (c.clip_label ?? '').toLowerCase() === label.toLowerCase())
   ), [clips])
-
-  const answerYes = async () => {
-    setAnswering(true)
-    try {
-      // The brand the answer belongs to — the same default `loadCapabilities`
-      // reads back, so a yes here is a yes the gate can see.
-      const voices = await listBrandVoices()
-      const voiceId = (voices.find((v) => v.is_default) ?? voices[0])?.id
-      if (voiceId) await saveCapabilityDefaults(voiceId, { can_record_screen: true })
-      setCaps(await loadCapabilities(generationId))
-    } catch {
-      setState({ kind: 'error', message: 'Could not save that — try again.' })
-    } finally {
-      setAnswering(false)
-    }
-  }
 
   const capture = async (label: string) => {
     setState({ kind: 'idle' })
@@ -191,9 +179,11 @@ export function DeclaredClips({ generationId, blueprint, hook }: {
   }
 
   if (slots.length === 0) return null
-  if (caps && isExplicitlyFalse(caps.can_record_screen)) return null
-
-  const unanswered = caps !== null && !isExplicitlyTrue(caps.can_record_screen)
+  // SILENCE HIDES THIS, and so does an explicit no. `isExplicitlyTrue` is the
+  // whole gate: `capabilities.ts` names this feature as its example of one that
+  // must not appear until asked for, and an unanswered flag is not a request.
+  // Asking belongs to the question layer, not here — see the header.
+  if (!caps || !isExplicitlyTrue(caps.can_record_screen)) return null
 
   return (
     <div className="rounded-card border border-white/8 bg-white/[0.02] p-4">
@@ -206,28 +196,6 @@ export function DeclaredClips({ generationId, blueprint, hook }: {
               : `Your script asks you to show ${slots.length} things`}
           </p>
 
-          {unanswered ? (
-            // The gate, openable. See the header: unset is not a closed door, and
-            // for every account older than the question it is the only state.
-            <div className="mt-2">
-              <p className="text-[11px] leading-relaxed text-sand">
-                Twin can capture these from your screen. Can you record your screen?
-              </p>
-              <button
-                type="button"
-                className="btn-ghost mt-2 !py-1.5 !text-[11px]"
-                onClick={() => { void answerYes() }}
-                disabled={answering}
-              >
-                {answering ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                Yes, I can record my screen
-              </button>
-              <p className="mt-2 text-[11px] leading-relaxed text-stone">
-                If you cannot, leave this — the slots stay in your script as notes for whatever
-                you film instead. We have not assumed either way.
-              </p>
-            </div>
-          ) : (
             <ul className="mt-2 space-y-2">
               {slots.map((slot) => {
                 const existing = clipFor(slot.label)
@@ -264,8 +232,7 @@ export function DeclaredClips({ generationId, blueprint, hook }: {
                   </li>
                 )
               })}
-            </ul>
-          )}
+          </ul>
 
           {state.kind === 'error' && (
             <p className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-coral">
@@ -278,13 +245,11 @@ export function DeclaredClips({ generationId, blueprint, hook }: {
               way to tell whether they did something wrong. They did not: the
               editor does not place clips yet, and the plan's composition section
               (schema v7) is where that will be recorded when it does. */}
-          {!unanswered && (
-            <p className="mt-3 text-[11px] leading-relaxed text-stone">
-              Captures are saved to this video and checked. Twin does not cut them into
-              the edit yet — for now they are yours to use, and the slots stay marked
-              in your script.
-            </p>
-          )}
+          <p className="mt-3 text-[11px] leading-relaxed text-stone">
+            Captures are saved to this video and checked. Twin does not cut them into
+            the edit yet — for now they are yours to use, and the slots stay marked
+            in your script.
+          </p>
         </div>
       </div>
     </div>
