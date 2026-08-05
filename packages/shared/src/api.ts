@@ -5,6 +5,7 @@ import {
   type CapabilityFlags, type ResolvedCapabilities,
 } from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
+import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 
 // ---- Client injection ------------------------------------------------------
 // The web app is the single client surface. It wires its Supabase client, an
@@ -814,6 +815,58 @@ export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promi
  * ANSWERLESS call writes nothing at all rather than writing `{}` — a creator who
  * skipped the question must stay unanswered, not acquire an empty answer.
  */
+/**
+ * Record the pre-script brief as this brand's answers (0109's
+ * `brand_voices.pre_script_brief`).
+ *
+ * THE ANSWER THAT WAS BEING THROWN AWAY. Before this, `workKind` and
+ * `forbiddenClaims` were collected by the onboarding scan, written into a
+ * `localStorage` draft, and never persisted anywhere else — a doctor telling us
+ * what they may never claim, kept in one browser until it was cleared.
+ *
+ * MERGED, NEVER REPLACED, for the reason `saveCapabilityDefaults` is: the brief
+ * is filled in across two screens, so a whole-object write from the first would
+ * erase the second's answers. And an ANSWERLESS call writes nothing rather than
+ * writing `{}` — a creator who skipped every question must stay unanswered.
+ *
+ * A FAILED WRITE THROWS. `saveRecordingScript` deliberately swallows its error
+ * because the script survives in memory and the screen still works; nothing here
+ * survives, and a compliance answer that silently failed to save is exactly the
+ * state this function exists to end.
+ */
+export async function savePreScriptBrief(
+  brandVoiceId: string,
+  answers: BriefAnswers,
+): Promise<void> {
+  const incoming = sanitizeBriefForWrite(answers)
+  if (Object.keys(incoming).length === 0) return
+  const { data, error } = await supabase
+    .from('brand_voices')
+    .select('pre_script_brief')
+    .eq('id', brandVoiceId)
+    .single()
+  if (error) throw error
+  const merged = { ...sanitizeBriefForWrite(readStoredBrief(data?.pre_script_brief)), ...incoming }
+  const { error: writeError } = await supabase
+    .from('brand_voices')
+    .update({ pre_script_brief: merged })
+    .eq('id', brandVoiceId)
+  if (writeError) throw writeError
+}
+
+/** This brand's stored brief, or an empty one. Unknown and malformed values are
+ *  dropped by `readStoredBrief` rather than surfaced — a stored `goal` outside
+ *  the enum would otherwise reach a prompt as if the creator had chosen it. */
+export async function loadPreScriptBrief(brandVoiceId: string): Promise<BriefAnswers> {
+  const { data, error } = await supabase
+    .from('brand_voices')
+    .select('pre_script_brief')
+    .eq('id', brandVoiceId)
+    .maybeSingle()
+  if (error) throw error
+  return readStoredBrief(data?.pre_script_brief)
+}
+
 export async function saveCapabilityDefaults(
   brandVoiceId: string,
   flags: CapabilityFlags,

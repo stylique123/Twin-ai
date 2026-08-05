@@ -3,7 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { pollDna, saveCapabilityDefaults, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
+import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
 import { asksForbiddenClaims, BRIEF_WORK_KINDS, type BriefWorkKind } from '../lib/api'
 import { Aurora } from '../components/Aurora'
@@ -592,6 +592,37 @@ function ConfirmStep({
       if (canRecordScreen !== null) {
         await saveCapabilityDefaults(draft.voiceId, { can_record_screen: canRecordScreen })
       }
+      // §8a.1's BRIEF, persisted — the answers that used to end here.
+      //
+      // `workKind` and `forbiddenClaims` were collected above, written into the
+      // onboarding draft, and the draft is localStorage. Nothing carried them
+      // further: there was no column, and no consumer. So a doctor typed what
+      // they may never claim into a box we put in front of them, and it lived in
+      // one browser until that browser was cleared.
+      //
+      // Asking and discarding is worse than not asking. An unasked question
+      // leaves a creator knowing the system does not know; a dropped one leaves
+      // them believing it does, which is the reason they stop checking the
+      // output for the claim they told us never to make.
+      //
+      // `audience` rides along because the brief is where the CREATOR'S OWN
+      // answers live — `saveDNA` below stores the same field, but as part of the
+      // scan's reading, and generate-blueprint has to know which is which to
+      // prefer the one the person actually typed.
+      //
+      // `goal` deliberately does NOT: this screen's goal box is free text, and
+      // §8a.1's `goal` is a CHOOSER whose values decide format, hook strategy and
+      // CTA strength. Writing a sentence into an enum field would store an
+      // answer no reader can act on — `readStoredBrief` would drop it anyway,
+      // silently. The chooser is the other track's to add.
+      await savePreScriptBrief(draft.voiceId, {
+        workKind, forbiddenClaims, audience,
+        // The offer, but ONLY if the creator typed it. `offerTouched` is exactly
+        // that fact, and without it we would store the scan's guess as though
+        // they had confirmed it — which is the inference this question exists to
+        // replace.
+        offer: offerTouched ? product : null,
+      })
       // ALSO seed the Creator DNA (profile.dna) from the scan + these answers, so
       // the scanned signup isn't left with a half-empty DNA (the "audience/product/
       // goal Not set" bug). This is the durable onboarding boundary: do not enter

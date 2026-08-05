@@ -525,13 +525,20 @@ Deno.serve(async (req: Request) => {
   // and let the profile-content check below decide if it's usable.
   const { data: voice } = await admin
     .from('brand_voices')
-    .select('id, handle, platform, profile, brand_kit')
+    .select('id, handle, platform, profile, brand_kit, pre_script_brief')
     .eq('owner_id', ownerId)
     .eq('is_default', true)
     .maybeSingle()
 
   const dna = profile?.dna ?? {}
   const vp = voice?.profile ?? null
+  // §8a.1's BRIEF — what the creator TYPED, as opposed to what the scan read.
+  //
+  // Read here rather than through @twinai/shared because Deno cannot import the
+  // shared package at deploy time (the same constraint source-asset lives
+  // under). The shape is 0109's CHECK, which refuses an empty string, so a
+  // present key is a real answer and no trimming or truthiness test is needed.
+  const brief = (voice?.pre_script_brief ?? {}) as Record<string, string | undefined>
   // The creator's real brand palette (hex), if set — used to steer scene
   // backgrounds, props and wardrobe so the shoot looks on-brand.
   const pal = (voice?.brand_kit as { palette?: { primary?: string; secondary?: string; highlight?: string } } | null)?.palette ?? null
@@ -585,9 +592,18 @@ Deno.serve(async (req: Request) => {
     // voice first, onboarding quiz as fallback) for EVERY field. Previously the
     // brand-voice path dropped audience, offer, goal and editing style, so
     // handle-based creators got a thinner prompt than quiz creators.
+    // THE CREATOR'S OWN ANSWER WINS OVER ANYTHING WE INFERRED, which is the
+    // whole point of having asked. `vp` is the scan's reading of their public
+    // content and `dna` is the onboarding quiz; both are inferences about the
+    // business, and §8a calls `offer` "the highest-value field on the form"
+    // precisely BECAUSE it was inferred — voice.ts's prompt forbids a blank, so
+    // the model must produce something, and a guessed offer is a wrong call to
+    // action on every video shipped. The brief is only ever written from what
+    // the creator typed (Onboarding.tsx stores `offer` only when they touched
+    // it), so preferring it is not preferring a newer guess.
     const niche = vp?.niche ?? dna.niche ?? 'unspecified'
-    const audience = vp?.audience ?? dna.audience ?? 'unspecified'
-    const offer = vp?.offer ?? dna.product ?? 'unspecified'
+    const audience = brief.audience ?? vp?.audience ?? dna.audience ?? 'unspecified'
+    const offer = brief.offer ?? vp?.offer ?? dna.product ?? 'unspecified'
     const pain = vp?.audience_pain ?? dna.pain ?? ''
     const dream = vp?.dream_outcome ?? dna.dream ?? ''
     const goal = vp?.goal ?? dna.goal ?? 'turn attention into trust'
@@ -716,10 +732,34 @@ ${fenced("creator's note", reference_note || '(none provided)')}
     // was synthesized from captions we scraped — so it is exactly as
     // attacker-influenceable as the transcript, and one step further from
     // scrutiny because it arrives pre-formatted as a briefing.
+    // THE ONE CONSTRAINT NO MODEL CAN INFER, and the reason §8a.1 asks it.
+    //
+    // Placed as the LAST thing before the task, after the reference block, on
+    // purpose. The reference is untrusted third-party text the fencing above
+    // treats as data; this is the creator telling us what their regulator will
+    // not let them say, and the final line before the instruction is the one a
+    // model is least likely to lose.
+    //
+    // AN UNANSWERED BRIEF EMITS NOTHING. A section reading "restrictions: none"
+    // would be this system telling the model there are none when nobody asked —
+    // the unanswered-read-as-answered failure the three-state rule exists to
+    // stop, arriving through the prompt instead of the database. A creator who
+    // explicitly answered "none" gets no block either: their answer means there
+    // is nothing to forbid, so there is nothing to say.
+    //
+    // Fenced like every other creator-supplied string, because it is one.
+    const forbidden = typeof brief.forbiddenClaims === 'string' ? brief.forbiddenClaims.trim() : ''
+    const declaresNone = /^(none|n\/a|no|nothing)\.?$/i.test(forbidden)
+    const claimsBlock = forbidden === '' || declaresNone
+      ? ''
+      : `
+COMPLIANCE — THE CREATOR'S OWN RESTRICTIONS. These are not style preferences and they are not negotiable against anything the reference does. Every hook, every script line, every caption and the CTA must obey them. If the reference's winning mechanism depends on a claim listed here, adapt the mechanism; never reproduce the claim.
+${fenced('claims this creator may NOT make', forbidden)}
+`
     const userPrompt = `${fenced('creator DNA (synthesized from scraped posts)', creatorDna)}
 
 ${referenceBlock}
-
+${claimsBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
 - concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
 - packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, FOLLOWING the creator's title style and thumbnail style from CREATOR DNA and using their brand colors. Every hook and script beat must pay off that exact promise.

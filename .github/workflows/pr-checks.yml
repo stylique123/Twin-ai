@@ -355,6 +355,14 @@ jobs:
       # would cut to using a duration nothing measured.
       - name: Gate-K (the clip capture RPCs — one attempt one asset, and ready means probed)
         run: bash scripts/db-tests/gate-k/run.sh
+      # Gate-L: 0109 stores §8a.1's brief, which was being asked and discarded —
+      # a doctor's "never say cure" lived in a localStorage draft and nothing
+      # else. Both ways of getting it wrong look like working: an empty string
+      # stored beside an absent key is a state that reads as unanswered and
+      # counts as answered, and a column without its own UPDATE grant fails with
+      # a bare 42501 that names nothing (twice already in this tree).
+      - name: Gate-L (the pre-script brief — only real answers, and a writable column)
+        run: bash scripts/db-tests/gate-l/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no

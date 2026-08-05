@@ -287,3 +287,84 @@ export function otherWithoutText(answers: BriefAnswers): boolean {
     && (answers.workKindOther === null || answers.workKindOther === undefined
       || answers.workKindOther.trim() === '')
 }
+
+// ---------------------------------------------------------------------------
+// STORING IT — the one shape that goes to the database
+// ---------------------------------------------------------------------------
+
+/** Every key `brand_voices.pre_script_brief` accepts, and the only ones.
+ *
+ *  Mirrors 0109's CHECK deliberately. Two lists that must agree is the shape of
+ *  a drift bug, so a test pins this against the migration file: the day a tenth
+ *  question is added to one, the other cannot stay silent. */
+export const BRIEF_STORED_KEYS = [
+  'goal', 'audience', 'workKind', 'workKindOther', 'offer',
+  'forbiddenClaims', 'promotes', 'alsoWantsToMake', 'productEvidence',
+] as const
+
+/**
+ * What is safe to WRITE — and the whole of the three-state discipline at the
+ * one point where it can be lost.
+ *
+ * A key is present only when there is a real answer behind it. That is not
+ * tidiness: `{forbiddenClaims: ''}` and `{}` are the same fact to every reader
+ * and different rows in the table, so the empty one is a state that means
+ * "unanswered" while counting as "answered" to anyone who checks for the key.
+ *
+ * MERGING IS THE CALLER'S JOB, and it must merge rather than replace — the
+ * brief is filled in over two screens (during the scan, then on confirm) and a
+ * whole-object write from the first screen would erase the second's answers.
+ * `savePreScriptBrief` does that read-merge-write, exactly as
+ * `saveCapabilityDefaults` does for the flags.
+ *
+ * `'declined'` survives, because "there is nothing to show" is an answer the
+ * container rule may act on. Absent is not, and reading absent as declined
+ * would let a demo script conclude it needs no footage.
+ */
+export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const text = (k: 'audience' | 'workKindOther' | 'offer' | 'forbiddenClaims'
+    | 'promotes' | 'alsoWantsToMake'): void => {
+    const v = answers[k]
+    if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim()
+  }
+  if (answers.goal) out.goal = answers.goal
+  if (answers.workKind) out.workKind = answers.workKind
+  text('audience'); text('workKindOther'); text('offer'); text('forbiddenClaims')
+  text('promotes'); text('alsoWantsToMake')
+  const pe = answers.productEvidence
+  if (pe === 'declined') out.productEvidence = 'declined'
+  // An evidence record with no sections is the log of an attempt, not an
+  // answer — `productEvidenceState` says so, and storing it would make a failed
+  // capture look like a supplied product.
+  else if (pe && typeof pe === 'object' && pe.sections.length > 0) out.productEvidence = pe
+  return out
+}
+
+/** Read a stored brief back. Unknown keys are DROPPED rather than carried: the
+ *  CHECK cannot admit them, so anything else in there arrived before the
+ *  constraint existed and is not something this vocabulary can interpret. */
+export function readStoredBrief(raw: unknown): BriefAnswers {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const src = raw as Record<string, unknown>
+  const out: BriefAnswers = {}
+  for (const k of BRIEF_STORED_KEYS) {
+    if (!(k in src)) continue
+    const v = src[k]
+    if (k === 'productEvidence') {
+      if (v === 'declined') out.productEvidence = 'declined'
+      else if (v && typeof v === 'object') out.productEvidence = v as BriefAnswers['productEvidence']
+      continue
+    }
+    if (typeof v === 'string' && v.trim() !== '') {
+      // The two enums are validated rather than cast: a stored `goal` that is
+      // not a BRIEF_GOAL would otherwise flow into a prompt as if the creator
+      // had chosen it.
+      if (k === 'goal') { if ((BRIEF_GOALS as readonly string[]).includes(v)) out.goal = v as BriefGoal }
+      else if (k === 'workKind') {
+        if ((BRIEF_WORK_KINDS as readonly string[]).includes(v)) out.workKind = v as BriefWorkKind
+      } else out[k] = v as never
+    }
+  }
+  return out
+}
