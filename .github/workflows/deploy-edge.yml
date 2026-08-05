@@ -73,6 +73,56 @@ jobs:
           echo "PROD_FUNCTIONS=$(echo $PROD | tr -s ' ')" >> "$GITHUB_ENV"
           echo "classified OK; deploying: $PROD"
 
+      # ── WHAT IS DEPLOYED, NOT ONLY WHAT IS COMMITTED ──────────────────────
+      #
+      # The classification above closes one direction: a repo directory that is
+      # in neither list fails the build. It cannot see the other direction, and
+      # production is currently carrying an example of it.
+      #
+      # `enqueue-autoedit` is ACTIVE on the production project, version 37, with
+      # an entrypoint under /tmp — hand-deployed, never from CI. There is no such
+      # directory in this repository and no commit has ever touched one. It is
+      # unreviewable (nobody can read its source), unversioned (nothing pins what
+      # it runs), and it drives the retired legacy editor. The only reason it is
+      # currently harmless is that `reject_new_autoedit_job` refuses the jobs it
+      # enqueues at the database — defence in depth held, which is not the same
+      # as the endpoint being fine.
+      #
+      # So this step reads what the PROJECT has and compares it to what this file
+      # classifies. A deployed function nobody committed is reported by name.
+      #
+      # RETIRED lists the ones already known and awaiting a deliberate delete —
+      # they warn rather than fail, because failing here would block every
+      # deploy on a cleanup that needs a human to authorise. Anything NOT in that
+      # list and not in PROD fails: a new one appearing is exactly the event this
+      # step exists to catch, and it must not be able to arrive quietly.
+      - name: Deployed functions match what this file classifies
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          RETIRED="enqueue-autoedit"
+          deployed="$(supabase functions list --project-ref jmdecibuytznsonrasxw -o json \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).map(f=>f.slug).join(" "))}catch{process.exit(0)}})')"
+          if [ -z "$deployed" ]; then
+            echo "::warning::could not read the deployed function list — skipping the deployed-vs-classified check"
+            exit 0
+          fi
+          unknown=""; retired_live=""
+          for name in $deployed; do
+            case " $PROD_FUNCTIONS " in *" $name "*) continue ;; esac
+            case " $RETIRED " in *" $name "*) retired_live="$retired_live $name"; continue ;; esac
+            unknown="$unknown $name"
+          done
+          for r in $retired_live; do
+            echo "::warning::$r is deployed to production and exists in no commit. It is retired and awaiting deletion: supabase functions delete $r --project-ref jmdecibuytznsonrasxw"
+          done
+          if [ -n "$unknown" ]; then
+            echo "::error::Deployed but not classified:$unknown. Either it belongs in PROD in this file, or it was hand-deployed and must be deleted. Refusing to leave a production endpoint whose source nobody can read."
+            exit 1
+          fi
+          echo "deployed set matches (retired, pending delete:${retired_live:- none})"
+
       - name: Deploy production edge functions
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
