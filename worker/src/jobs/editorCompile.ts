@@ -1984,6 +1984,9 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
   // and the pieces together (O(words + pieces), no pairwise search).
   const staged: Array<StagedWord & { pieceIndex: number }> = []
   let p = 0
+  // The last staged word's output END, so a transition's overlap cannot make the
+  // caption timeline run backwards. See the note at the clamp below.
+  let prevOutEnd = -1
   for (let i = 0; i < words.length; i++) {
     const w = words[i]
     while (p < timeMap.pieces.length && timeMap.pieces[p].sourceEndMs <= w.startMs) p++
@@ -1995,6 +1998,39 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     const outStartMs = piece.outputStartMs + (w.startMs - piece.sourceStartMs)
     const outEndMs = piece.outputStartMs + (w.endMs - piece.sourceStartMs)
     if (outEndMs <= outStartMs) continue
+    // A CROSSFADE MAKES OUTPUT TIME NON-MONOTONIC, AND EVERYTHING BELOW ASSUMES
+    // IT IS NOT.
+    //
+    // `buildTimeMap` places a transition by starting the next piece EARLY:
+    // `outputStart[i] = outputEnd[i-1] - overlap`. That is correct — the two
+    // pieces are genuinely on screen together for those milliseconds — but it
+    // means a word at the START of piece i maps to an earlier output time than a
+    // word at the END of piece i-1, by up to the overlap. The cues built from
+    // them are then out of order, and the plan's own validator refuses the
+    // document with `captions.cues[n]: overlaps or unsorted`.
+    //
+    // Real speech hits this and the fixtures did not, which is why it survived:
+    // removals are SILENCE, so a cut lands flush against the words on either
+    // side of it — exactly the case where the two spans are closest. A synthetic
+    // fixture with a comfortable gap either side of every cut never collides.
+    // The staging matrix's Phase 8 found it on the first real render.
+    //
+    // The incoming caption WAITS rather than the outgoing one being cut short:
+    // both words are audible and both pieces are visible during the fade, so
+    // neither reading is more true — but shortening the outgoing cue would
+    // retract a caption already on screen, and delaying the incoming one by at
+    // most `overlapMs` is imperceptible. No word is ever dropped for this
+    // unless the delay would consume it entirely.
+    let startMs = outStartMs
+    if (startMs < prevOutEnd) startMs = prevOutEnd
+    if (outEndMs <= startMs) {
+      // Only reachable when a word is SHORTER than the overlap it sits inside.
+      // Said out loud rather than dropped quietly: a word the creator spoke and
+      // did not see captioned is the silent degradation this file keeps naming.
+      warn.add('caption_word_inside_transition', `word_${i}`)
+      continue
+    }
+    prevOutEnd = outEndMs
     // THE ONE PLACE CAPTION TEXT IS CHOSEN. The script's spelling replaces the
     // ASR's only where the aligner paired this exact spoken word; everywhere
     // else `w.text` is untouched, so a take with no alignment produces
@@ -2024,7 +2060,9 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
       // similarity score both live in the alignment component already.
       inp.warn.add('caption_script_spelling_applied', `word_${i}`)
     }
-    staged.push({ index: i, text: respelt ?? w.text, outStartMs, outEndMs, pieceIndex: piece.index })
+    // `startMs`, not `outStartMs` — the transition clamp above is the whole
+    // point, and staging the raw value would put it straight back.
+    staged.push({ index: i, text: respelt ?? w.text, outStartMs: startMs, outEndMs, pieceIndex: piece.index })
   }
 
   const cues: PlanCue[] = []
