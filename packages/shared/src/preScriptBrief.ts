@@ -40,6 +40,8 @@
 // adviser or supplement brand." There is no model that can infer what a
 // regulator will not let someone say.
 
+import type { ProductEvidence } from './productEvidence'
+
 export type BriefStage = 'during_scan' | 'on_confirm'
 
 /** Q1. A CHOOSER, not free text: it decides format, hook strategy and CTA
@@ -150,11 +152,14 @@ export interface BriefAnswers {
   /** Q5 — "you mostly do X and Y — anything else you want to make?" The chips
    *  are the SCAN's reading; this captures only the intent it cannot see. */
   alsoWantsToMake?: string | null
-  /** The product itself — a link we can read, or images of the thing. ASKED
-   *  ONCE and reused: understanding a product costs a model call, and paying it
-   *  per video would be paying repeatedly for an answer that does not change.
-   *  Absent means unasked or skipped, never "they have no product". */
-  productEvidence?: string | null
+  /** The product itself — a link we READ, or images of the thing. Never a
+   *  sentence describing it: a description is the guess §2.3's container rule
+   *  exists to refuse. ASKED ONCE and reused, because understanding a product
+   *  costs a model call and the answer does not change per video.
+   *
+   *  `'declined'` is a real answer ("there is nothing to show"). Absent is not —
+   *  see `productEvidenceState`. */
+  productEvidence?: ProductEvidence | 'declined' | null
 }
 
 export interface BriefQuestion {
