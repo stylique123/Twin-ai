@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { ChevronLeft, FlipHorizontal, Gauge, Minus, Plus, SwitchCamera, Sparkles, RotateCcw, UploadCloud, Film, X } from 'lucide-react'
 import BottomSheet, { SheetOption } from '../../components/v2/BottomSheet'
+import { PreflightPanel } from '../../components/PreflightPanel'
 import { loadRecordingScript, setWpm, establishDurableRecordingScriptLive, prepareCaptureMode } from '../../lib/api'
 import { buildRecordingScript } from '../../lib/api'
 import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAttemptId, UploadOnce } from '../../lib/api'
@@ -787,6 +788,17 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
             </div>
             {!recording && scene?.camera_framing && (
               <p className="mx-auto mt-2 max-w-2xl truncate text-center text-[11px] text-white/50">{scene.camera_framing} · ~{estSec}s</p>
+            )}
+            {/* PHASE 11 ITEM 6 — the check that has to happen while the creator
+                can still fix it. Shown only on the FIRST scene and only before
+                rolling: after a take exists, "your phone is sideways" is no
+                longer advice, it is a request to start over, and mid-take it is
+                noise over the one thing they are trying to read. It reports and
+                never blocks the record button — see PreflightPanel's header. */}
+            {!recording && i === 0 && !reviewUrl && (
+              <div className="mt-2">
+                <PreflightPanel streamRef={streamRef} videoRef={videoRef} />
+              </div>
             )}
           </div>
         )}
