@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Wand2, Eye, Heart, Play, Search, ChevronRight, X, ExternalLink } from 'lucide-react'
-import { cardReasons, compareByFit, rankSignals, type GalleryFacts, type NicheRelation } from '../lib/api'
+import { cardReasons, compareByFit, rankSignals, resolveCapabilities, type GalleryFacts, type NicheRelation, type ReferenceRequirements } from '../lib/api'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Tilt } from '../components/Tilt'
@@ -90,6 +90,10 @@ function resolveNiche(userNiche: string, known: string[]): string {
 interface Card {
   id: string; niche: string; platform: string; label: string; creator: string
   hook: string; why: string; reach: string; loves: string; accent: string; poster: string; url: string
+  // 0106's assessment, when a card has one. Undefined for the curated FEATURED
+  // set and null-valued for every scraped row nobody has looked at — the same
+  // state, reached two ways, and neither is "requires nothing".
+  requirements?: ReferenceRequirements | null
 }
 
 const FEATURED: Card[] = [
@@ -138,7 +142,15 @@ function fromDb(it: GalleryItem): Card {
   // A real "why it works" even when the community item shipped without one — so the
   // detail card always teaches the creator something, not just a view count.
   const fallbackWhy = `A proven ${it.niche || 'niche'} format that earned real reach. Tap Remix and TwinAI rebuilds its hook, pacing and structure as an original in your voice — you keep the idea, not the footage.`
-  return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || fallbackWhy, reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url }
+  return { id: it.id, niche: it.niche, platform: it.platform, label: it.title || 'Community pick', creator: it.creator || 'creator', hook: it.title || it.url, why: it.why || fallbackWhy, reach: it.reach || '·', loves: it.likes || '·', accent: skin.accent, poster: skin.poster, url: it.url,
+    // Carried through as-is, INCLUDING the nulls. `?? null` rather than a
+    // default: undefined and null both mean nobody has assessed this card, and
+    // inventing `false` here would undo 0106's whole point one layer up.
+    requirements: {
+      requiresFilmingObjects: it.requires_filming_objects ?? null,
+      requiresScreenRecording: it.requires_screen_recording ?? null,
+    },
+  }
 }
 
 
@@ -233,6 +245,11 @@ export default function Gallery() {
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({})
   const [showAll, setShowAll] = useState(false)
   const [detail, setDetail] = useState<Card | null>(null)
+  // The account's capability defaults, or null while we have not read a voice.
+  // NULL HERE MEANS "NOT LOADED", which `rankSignals` reports as not_checked —
+  // distinct from a loaded voice that answered nothing, which it also reports as
+  // not_checked but for a stated reason. Neither ever reads as "cannot".
+  const [voiceFlags, setVoiceFlags] = useState<Record<string, boolean | null> | null>(null)
   const touched = useRef(false)
 
   useEffect(() => {
@@ -249,6 +266,10 @@ export default function Gallery() {
         const def = vs.find((v) => v.is_default && v.status === 'ready') ?? vs.find((v) => v.status === 'ready')
         const niche = def?.profile?.niche ?? ''
         const sub = def?.profile?.sub_niche ?? ''
+        // `?? {}` and not `?? null`: a voice that loaded and answered nothing is
+        // a DIFFERENT state from no voice at all, and only the first is "we
+        // asked and they have not said".
+        if (def) setVoiceFlags(def.default_capability_flags ?? {})
         VOICE_CACHE = { niche, sub }
         if (niche) setVoiceNiche(niche)
         if (sub) setVoiceSubNiche(sub)
@@ -306,6 +327,19 @@ export default function Gallery() {
   // §7a's facts per card. The niche comparison is DISCRETE — the alternative is
   // a similarity float nobody can argue with — and reach is kept as a fact about
   // the reference, never as a signal about the fit.
+  // The CREATOR's half of production-mode match. Resolved from the account
+  // default only: the gallery is choosing a reference BEFORE a video exists, so
+  // there is no per-video answer to prefer. `resolveCapabilities` still reports
+  // three states, and `unset` stays unset.
+  const creatorCapability = useMemo(() => {
+    if (voiceFlags === null) return null
+    const r = resolveCapabilities(null, voiceFlags)
+    return {
+      canFilmObjects: r.can_film_objects.value,
+      canRecordScreen: r.can_record_screen.value,
+    }
+  }, [voiceFlags])
+
   const factsById = useMemo(() => {
     const relationOf = (c: Card): NicheRelation =>
       !myNiche && !mySubNiche ? 'unknown'
@@ -322,12 +356,14 @@ export default function Gallery() {
       // an absent number as absent rather than as the smallest one.
       m.set(c.id, {
         nicheRelation: relationOf(c),
+        creator: creatorCapability,
+        requirements: c.requirements ?? null,
         reach: reach > 0 ? reach : null,
         likes: likes > 0 ? likes : null,
       })
     }
     return m
-  }, [all, myNiche, mySubNiche, related])
+  }, [all, myNiche, mySubNiche, related, creatorCapability])
 
   const signalsById = useMemo(() => {
     const m = new Map<string, ReturnType<typeof rankSignals>>()

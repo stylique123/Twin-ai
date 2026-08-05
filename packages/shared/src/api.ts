@@ -865,6 +865,13 @@ export interface GalleryItem {
   likes: string | null
   visibility: 'public' | 'private'
   created_at: string
+  // 0106. Three-state, ALWAYS: true, false, and nobody-has-assessed-this-card.
+  // Every scraped row is null until something looks, and null read as false
+  // would tell a creator who cannot film objects that the whole gallery suits
+  // them — which is §7a's most expensive mistake.
+  requires_filming_objects?: boolean | null
+  requires_screen_recording?: boolean | null
+  requirements_source?: 'human' | 'model' | null
 }
 
 // RLS returns public items + the caller's own (incl. their private ones).

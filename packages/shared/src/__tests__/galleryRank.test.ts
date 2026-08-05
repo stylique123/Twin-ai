@@ -32,12 +32,13 @@ describe('all seven, always, in order', () => {
     for (const b of blocked) expect(b.needs!.length).toBeGreaterThan(20)
   })
 
-  it('production-mode match names the REFERENCE half as the missing one', () => {
-    // §7a says "the flags already carry it". They carry the creator's half.
+  it('production-mode match is unanswered until the card is assessed', () => {
+    // 0106 gave it somewhere to store an answer. Every one of the 6,608 cards
+    // is NULL until something looks, so this stays the ordinary case.
     const s = rankSignals(facts())
     const pm = s.find((x) => x.id === 'production_mode_match')!
     expect(pm.status).toBe('not_checked')
-    expect(pm.needs).toMatch(/reference/i)
+    expect(pm.needs).toMatch(/assessment of this card/i)
   })
 
   it('freshness refuses the scrape date as a substitute', () => {
@@ -115,5 +116,91 @@ describe('ordering', () => {
     const unknown = facts({ nicheRelation: 'unknown', reach: 1 })
     const unrelated = facts({ nicheRelation: 'unrelated', reach: 1_000_000 })
     expect(order([unrelated, unknown])[0]).toBe(unknown)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// §7a's most valuable signal, now that 0106 gives it a place to read from.
+// ---------------------------------------------------------------------------
+const CAN_NOTHING = { canFilmObjects: false, canRecordScreen: false }
+const CAN_BOTH = { canFilmObjects: true, canRecordScreen: true }
+const NEEDS_OBJECTS = { requiresFilmingObjects: true, requiresScreenRecording: false }
+const NEEDS_NOTHING = { requiresFilmingObjects: false, requiresScreenRecording: false }
+const pm = (over: Partial<GalleryFacts>) =>
+  rankSignals(facts(over)).find((s) => s.id === 'production_mode_match')!
+
+describe('production-mode match: both halves, or nothing', () => {
+  it('a real mismatch needs BOTH sides explicit', () => {
+    const s = pm({ requirements: NEEDS_OBJECTS, creator: CAN_NOTHING })
+    expect(s.status).toBe('mismatch')
+    expect(s.reason).toMatch(/needs objects on camera/i)
+    // Arguable, per §7c: it says what they told us, so a changed answer is a
+    // thing they can change rather than a verdict they cannot argue with.
+    expect(s.reason).toMatch(/you said/i)
+  })
+
+  it('and a real match does too', () => {
+    expect(pm({ requirements: NEEDS_NOTHING, creator: CAN_NOTHING }).status).toBe('match')
+    expect(pm({ requirements: NEEDS_OBJECTS, creator: CAN_BOTH }).status).toBe('match')
+  })
+
+  it('UNSET IS NEVER FALSE on the creator side', () => {
+    // Someone who skipped the question has not said they cannot film. Reading
+    // that as "cannot" would hide most of the gallery from them.
+    const s = pm({
+      requirements: NEEDS_OBJECTS,
+      creator: { canFilmObjects: null, canRecordScreen: null },
+    })
+    expect(s.status).not.toBe('mismatch')
+  })
+
+  it('and never on the REFERENCE side either', () => {
+    // 6,608 unassessed cards. If NULL read as "requires objects", every one of
+    // them would be refused to a creator who cannot film.
+    const s = pm({
+      requirements: { requiresFilmingObjects: null, requiresScreenRecording: null },
+      creator: CAN_NOTHING,
+    })
+    expect(s.status).toBe('not_checked')
+  })
+
+  it('an unassessed card says so, not "you cannot shoot this"', () => {
+    expect(pm({ creator: CAN_NOTHING }).status).toBe('not_checked')
+    expect(pm({ creator: CAN_NOTHING }).reason).toMatch(/nobody has checked/i)
+  })
+
+  it('an unasked creator says THAT instead — a different sentence', () => {
+    const s = pm({ requirements: NEEDS_OBJECTS })
+    expect(s.status).toBe('not_checked')
+    expect(s.reason).toMatch(/have not asked what you can film/i)
+  })
+
+  it('assessed for one thing, asked about the other, answers neither', () => {
+    // The card was assessed only for screen recording; the creator was asked
+    // only about objects. Nothing lines up, so nothing is claimed.
+    const s = pm({
+      requirements: { requiresFilmingObjects: null, requiresScreenRecording: true },
+      creator: { canFilmObjects: false, canRecordScreen: null },
+    })
+    expect(s.status).toBe('not_checked')
+    expect(s.needs).toMatch(/both sides/i)
+  })
+
+  it('a screen-recording blocker reads as one', () => {
+    const s = pm({
+      requirements: { requiresFilmingObjects: false, requiresScreenRecording: true },
+      creator: { canFilmObjects: true, canRecordScreen: false },
+    })
+    expect(s.status).toBe('mismatch')
+    expect(s.reason).toMatch(/screen recording/i)
+  })
+
+  it('and it still never reads as a rating', () => {
+    const bad = /\d+\s*%|\bscore\b/i
+    for (const f of [
+      { requirements: NEEDS_OBJECTS, creator: CAN_NOTHING },
+      { requirements: NEEDS_NOTHING, creator: CAN_BOTH },
+      {},
+    ]) expect(pm(f).reason).not.toMatch(bad)
   })
 })

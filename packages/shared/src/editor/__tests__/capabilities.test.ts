@@ -148,6 +148,10 @@ describe('nothing consumes these yet, and that is DECLARED', () => {
     // is what stops the next reader assuming a flag they set changes something.
     // The day a consumer lands, this test fails and the header must be updated
     // with it.
-    expect([...CAPABILITY_CONSUMERS_BUILT]).toEqual([])
+    // The day a consumer landed, this test failed and was updated with the
+    // header — which is exactly what it was for. §7a's production-mode match
+    // now reads both filming flags (galleryRank.ts, against 0106's per-reference
+    // requirements). `needs_approval` is still unread.
+    expect([...CAPABILITY_CONSUMERS_BUILT]).toEqual(['can_film_objects', 'can_record_screen'])
   })
 })

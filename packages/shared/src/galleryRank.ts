@@ -1,26 +1,33 @@
 // §7a — RANKING THE GALLERY: which reference should THIS creator use?
 //
 // §7a names seven signals. Building it turned up the thing that matters more
-// than any weighting: SIX OF THE SEVEN CANNOT BE COMPUTED, because nothing
-// records the reference's half of the comparison.
+// than any weighting: FIVE OF THE SEVEN STILL CANNOT BE COMPUTED, because
+// nothing records the reference's half of those comparisons.
 //
 // A gallery card carries a niche, a platform, a creator, a marketing sentence
 // and two engagement numbers. It does not carry what the video is STRUCTURED
-// like, what it takes to SHOOT, or whether its format is still working. Every
-// one of those would have to be inferred from prose written to sell the card —
-// which is guessing, in the section of this document that exists to stop it.
+// like or whether its format is still working. Either would have to be inferred
+// from prose written to sell the card — which is guessing, in the section of
+// this document that exists to stop it.
 //
-// ── THE CORRECTION TO §7a ────────────────────────────────────────────────
+// The sixth, production-mode match, was in that list until 0106 gave it a place
+// to store an answer. It is computable now, and unanswered for every card that
+// has not been assessed — which is all of them today.
+//
+// ── THE CORRECTION TO §7a, AND WHAT CLOSED IT ────────────────────────────
 //
 // §7a says production-mode match is "the one nobody builds and it is the most
-// valuable", and that "the flags already carry it". The flags carry the
-// CREATOR'S half — can they film objects, record a screen. Nothing carries the
-// REFERENCE'S half: no field says this video is a multi-clip montage, or a
-// screen capture, or one continuous piece to camera.
+// valuable", and that "the flags already carry it". The flags carried the
+// CREATOR'S half — can they film objects, record a screen. Nothing carried the
+// REFERENCE'S half, so the signal was blocked on a missing measurement rather
+// than on wiring. 0106 adds that measurement, and this now reads it.
 //
-// So the signal is blocked on a missing measurement, not on missing wiring, and
-// `CAPABILITY_CONSUMERS_BUILT` stays empty. Recording that is the useful output
-// here: the work is now one named field away rather than an open design.
+// IT IS STILL UNANSWERED FOR ALMOST EVERYTHING, AND SAYS SO. Every card in the
+// gallery is `NULL` until something assesses it, and NULL is not false: a card
+// nobody has looked at must not read as "nothing to film here", or a creator who
+// cannot film objects is told the whole gallery suits them. Unassessed is
+// `not_checked`, exactly as before — the difference is that an ASSESSED card can
+// now be answered.
 //
 // ── WHY EVERY SIGNAL IS RETURNED, INCLUDING THE UNCHECKABLE ONES ─────────
 //
@@ -68,8 +75,26 @@ export interface GallerySignal {
  *  the alternative is a similarity float nobody can argue with. */
 export type NicheRelation = 'same_sub_niche' | 'same_niche' | 'related' | 'unrelated' | 'unknown'
 
+/** What the CREATOR can do, resolved from 0103's capability flags. Each is
+ *  three-state: true, false, and nobody-has-said. */
+export interface CreatorCapability {
+  canFilmObjects: boolean | null
+  canRecordScreen: boolean | null
+}
+
+/** What the REFERENCE requires, from 0106. Same three states, and for the same
+ *  reason: 6,608 scraped cards carry NULL and none of them has been looked at. */
+export interface ReferenceRequirements {
+  requiresFilmingObjects: boolean | null
+  requiresScreenRecording: boolean | null
+}
+
 export interface GalleryFacts {
   nicheRelation: NicheRelation
+  /** Absent when the creator has never been asked. */
+  creator?: CreatorCapability | null
+  /** Absent when nobody has assessed this card. */
+  requirements?: ReferenceRequirements | null
   /** The reference's own measured reach, when the card carries one. NOT a fit
    *  signal — it is a fact about the reference, not about this creator — so it
    *  only ever breaks a tie between two references that matched equally. */
@@ -90,8 +115,9 @@ const NICHE_REASON: Record<NicheRelation, { status: GallerySignalStatus; reason:
 /**
  * The seven signals for one reference. Always seven, always in order.
  *
- * Only `dna_match` is computed, and only from the niche comparison the gallery
- * already had. The other six name the field they are missing.
+ * Two are computable: `dna_match` from the niche comparison, and
+ * `production_mode_match` where both halves have been answered. The other five
+ * name the field they are missing.
  */
 export function rankSignals(facts: GalleryFacts): GallerySignal[] {
   const niche = NICHE_REASON[facts.nicheRelation] ?? NICHE_REASON.unknown
@@ -103,13 +129,7 @@ export function rankSignals(facts: GalleryFacts): GallerySignal[] {
       reason: 'We have not checked whether this structure serves your goal.',
       needs: "the reference's structure, classified — nothing reads a gallery card's shape, and inferring it from the blurb would be a guess about a video we never watched",
     },
-    {
-      id: 'production_mode_match',
-      status: 'not_checked',
-      reason: 'We have not checked whether you can shoot this.',
-      // The correction §7a needs: the creator's half exists, the reference's does not.
-      needs: 'what the reference REQUIRES to shoot, as a field on the card. The capability flags carry the creator\'s half already; nothing carries the video\'s',
-    },
+    productionModeMatch(facts),
     {
       id: 'recreate_feasibility',
       status: 'not_checked',
@@ -138,6 +158,84 @@ export function rankSignals(facts: GalleryFacts): GallerySignal[] {
       needs: 'performance for this FORMAT over time. The scrape date is not it — when we found a video says nothing about whether its format is exhausted',
     },
   ]
+}
+
+/**
+ * Can this creator physically shoot this reference?
+ *
+ * §7a's most valuable signal, and the whole design is in what it REFUSES to
+ * conclude. It answers only where BOTH halves are explicitly known:
+ *
+ *   - the reference must have been assessed (0106's columns are NULL until
+ *     something looks, and 6,608 cards are NULL today)
+ *   - the creator must have been ASKED (0103's flags are three-state)
+ *
+ * A mismatch therefore means "you told us you cannot film objects, and somebody
+ * established that this video needs them" — a sentence with two pieces of
+ * evidence behind it. Anything less is `not_checked`, because the alternative is
+ * telling a creator they cannot make a video on the strength of two absences.
+ *
+ * AND UNSET IS NEVER FALSE, on either side. That rule cost nothing while nothing
+ * consumed the flags; here it is the difference between a filter that helps and
+ * a filter that quietly hides most of the gallery from anyone who skipped a
+ * question.
+ */
+function productionModeMatch(facts: GalleryFacts): GallerySignal {
+  const req = facts.requirements
+  const cap = facts.creator
+  if (!req || (req.requiresFilmingObjects === null && req.requiresScreenRecording === null)) {
+    return {
+      id: 'production_mode_match',
+      status: 'not_checked',
+      reason: 'Nobody has checked what this one takes to film.',
+      needs: 'an assessment of this card (0106 stores it; the discovery scraper is what will write it)',
+    }
+  }
+  if (!cap) {
+    return {
+      id: 'production_mode_match',
+      status: 'not_checked',
+      reason: 'We have not asked what you can film yet.',
+      needs: "the creator's capability flags — asked during onboarding, and unset until they are",
+    }
+  }
+
+  // A blocker needs BOTH sides explicit: the reference requires it, and the
+  // creator has said they cannot. `null` on either side answers nothing.
+  const blockers: string[] = []
+  if (req.requiresFilmingObjects === true && cap.canFilmObjects === false) {
+    blockers.push('it needs objects on camera')
+  }
+  if (req.requiresScreenRecording === true && cap.canRecordScreen === false) {
+    blockers.push('it needs a screen recording')
+  }
+  if (blockers.length > 0) {
+    return {
+      id: 'production_mode_match',
+      status: 'mismatch',
+      // Says what it needs and what they told us — arguable, per §7c. A creator
+      // whose answer has changed can change it, rather than wondering why a
+      // reference looks wrong.
+      reason: `Hard to shoot as things stand — ${blockers.join(' and ')}, and you said that is not something you can do.`,
+    }
+  }
+
+  // Only claim a match where something was actually established on both sides.
+  const answered = (req.requiresFilmingObjects !== null && cap.canFilmObjects !== null)
+    || (req.requiresScreenRecording !== null && cap.canRecordScreen !== null)
+  if (!answered) {
+    return {
+      id: 'production_mode_match',
+      status: 'not_checked',
+      reason: 'We cannot tell whether you can shoot this from what we know.',
+      needs: 'an answer on both sides — this card was assessed for one thing and you were asked about another',
+    }
+  }
+  return {
+    id: 'production_mode_match',
+    status: 'match',
+    reason: 'You can shoot this with what you told us you have.',
+  }
 }
 
 /**
