@@ -15,13 +15,14 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
 import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
+import { CoverButton } from '../components/CoverDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import type { Blueprint, EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
 
@@ -241,8 +242,6 @@ export default function Result() {
   const [activeTab, setActiveTab] = useState<'strategy' | 'spec' | 'publish'>('strategy')
   // On-demand AI thumbnail (parity with the V2 plan): signed URL + busy/error.
   const [thumbUrl, setThumbUrl] = useState<string | null>(null)
-  const [thumbBusy, setThumbBusy] = useState(false)
-  const [thumbErr, setThumbErr] = useState<string | null>(null)
   useEffect(() => {
     // Prefer the on-demand AI cover; otherwise fall back to the frame+hook cover the
     // worker BURNS on every edit (thumb_path). That means the poster is never blank
@@ -365,21 +364,6 @@ export default function Result() {
     } finally {
       setEditStarting(false)
     }
-  }
-  const genThumb = async () => {
-    if (!gen) return
-    setThumbErr(null); setThumbBusy(true)
-    try {
-      const r = await generateThumbnail(gen.id)
-      setThumbUrl(r.url)
-      // Persist the new path into local gen AND the module cache so the cover
-      // survives an in-app navigation away and back (the cache is what a remount
-      // reads first) — not just the next server refetch.
-      setGen((prev) => (prev ? { ...prev, ai_thumb_path: r.path } : prev))
-      if (id) GEN_CACHE[id] = { ...(GEN_CACHE[id] ?? gen), ai_thumb_path: r.path }
-    }
-    catch (e) { setThumbErr(e instanceof Error ? e.message : 'Could not generate the thumbnail.') }
-    finally { setThumbBusy(false) }
   }
   // Agency approval workflow: agencies mark a blueprint client-approved before it's
   // recorded/posted. Soft status (no hard block) so solo creators are unaffected.
@@ -788,48 +772,29 @@ export default function Result() {
                 <div id="your-video" className="w-full max-w-[280px] scroll-mt-24 rounded-card border border-teal/25 bg-ink2/70 p-3 backdrop-blur-sm">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2 text-sm font-semibold text-cream"><span className="h-2 w-2 rounded-full bg-teal" /> Your video</div>
-                    {videoUrl && <button onClick={downloadVideo} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10"><Download className="h-3.5 w-3.5" /> Download</button>}
+                    <div className="flex items-center gap-2">
+                      {/* The cover lives behind this button now, not in a
+                          permanent card. It is wanted twice — once to look at,
+                          once to download on the way to posting — and it used
+                          to occupy a screen the creator reads while filming. */}
+                      <CoverButton
+                        generationId={gen.id}
+                        hasCover={!!gen?.ai_thumb_path}
+                        coverPath={gen?.ai_thumb_path ?? null}
+                        initialUrl={thumbUrl}
+                        onCreated={(path) => {
+                          setGen((prev) => (prev ? { ...prev, ai_thumb_path: path } : prev))
+                          if (id) GEN_CACHE[id] = { ...(GEN_CACHE[id] ?? gen), ai_thumb_path: path }
+                        }}
+                      />
+                      {videoUrl && <button onClick={downloadVideo} className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10"><Download className="h-3.5 w-3.5" /> Download</button>}
+                    </div>
                   </div>
                   <div className="flex aspect-[9/16] w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
                     {videoUrl
                       ? <video src={videoUrl} controls playsInline className="h-full w-full object-contain" poster={thumbUrl ?? undefined} />
                       : <Loader2 className="h-6 w-6 animate-spin text-white/40" />}
                   </div>
-                </div>
-              )}
-              {b.packaging?.thumbnail && (
-                <div className="w-full max-w-[280px] rounded-card border border-amber/25 bg-ink2/70 p-3 backdrop-blur-sm">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-cream"><span className="h-2 w-2 rounded-full bg-amber" /> Cover image</div>
-                    {thumbUrl && (
-                      <a href={thumbUrl + (thumbUrl.includes('?') ? '&' : '?') + 'download=twinai-thumbnail.png'}
-                        className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-cream hover:bg-white/10"><Download className="h-3.5 w-3.5" /> Download</a>
-                    )}
-                  </div>
-                  {/* Same 9:16 frame as the video so the two cards read as one set. */}
-                  <div className="aspect-[9/16] w-full overflow-hidden rounded-2xl border border-white/10 bg-black">
-                    {thumbUrl ? (
-                      <img src={thumbUrl} alt="Video cover" className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="grid h-full w-full place-items-center bg-ink3/40 px-5 text-center">
-                        <div>
-                          <Quote className="mx-auto h-6 w-6 text-stone/60" />
-                          <p className="mt-2 text-xs text-stone">A ready-to-post cover image for this video.</p>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {/* No Regenerate: once a cover exists it stays. The button only
-                      appears to make the FIRST AI cover. */}
-                  {!gen?.ai_thumb_path && (
-                    <>
-                      <button onClick={genThumb} disabled={thumbBusy}
-                        className="mt-2 w-full rounded-xl border border-white/15 bg-white/10 py-2.5 text-sm font-semibold text-cream transition hover:bg-white/20 disabled:opacity-60">
-                        {thumbBusy ? 'Making your cover…' : 'Generate AI cover'}
-                      </button>
-                      {thumbErr && <p className="mt-1 text-xs text-coral">{thumbErr}. The image engine is occasionally busy — tap again.</p>}
-                    </>
-                  )}
                 </div>
               )}
             </div>
@@ -1481,7 +1446,39 @@ export default function Result() {
   )
 }
 
-// Per-platform publish row: copy the full caption, then log when you post it.
+// Each platform's own published caption limit. A FACT about the platform, not a
+// recommendation about the caption — so it is stated and never turned into
+// advice about what length performs, which is a claim nobody here can back
+// (§7c's honesty line, applied to the caption box).
+//
+// A platform not in this map shows nothing rather than a guessed number: a wrong
+// limit is worse than no limit, because it would have the creator trimming a
+// caption that fits.
+const CAPTION_LIMIT: Record<string, number> = {
+  instagram: 2200,
+  tiktok: 2200,
+  youtube: 5000,
+  shorts: 5000,
+  reels: 2200,
+  linkedin: 3000,
+  x: 280,
+  twitter: 280,
+}
+
+function CaptionLength({ platform, length }: { platform: string; length: number }) {
+  const limit = CAPTION_LIMIT[platform.toLowerCase()]
+  if (limit === undefined) return null
+  const over = length > limit
+  return (
+    <p className={cn('mt-1.5 text-[11px]', over ? 'text-amber' : 'text-stone')}>
+      {length.toLocaleString()} / {limit.toLocaleString()} characters
+      {over && ' — the end will be cut off on this platform.'}
+    </p>
+  )
+}
+
+// Per-platform publish row: copy the caption and hashtags separately, then log
+// when you post it.
 function PublishRow({
   generationId,
   platform,
@@ -1496,18 +1493,21 @@ function PublishRow({
   bestTime: string
 }) {
   const full = `${caption}\n\n${hashtags.join(' ')}`.trim()
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<'all' | 'caption' | 'tags' | null>(null)
   const [copyFailed, setCopyFailed] = useState(false)
   const [posted, setPosted] = useState(false)
   const [postErr, setPostErr] = useState(false)
   const [opened, setOpened] = useState(false)
   const [busy, setBusy] = useState(false)
 
-  const copy = async () => {
+  // WHAT was copied, so two buttons can report separately. `null` = nothing
+  // copied just now; a shared boolean would tick both buttons at once and tell
+  // the creator their hashtags are on the clipboard when the caption is.
+  const copy = async (text: string, which: 'all' | 'caption' | 'tags' = 'all') => {
     try {
-      await navigator.clipboard.writeText(full)
-      setCopied(true); setCopyFailed(false)
-      setTimeout(() => setCopied(false), 1500)
+      await navigator.clipboard.writeText(text)
+      setCopied(which); setCopyFailed(false)
+      setTimeout(() => setCopied(null), 1500)
     } catch {
       // Clipboard is commonly blocked (incognito / Safari / permissions off).
       // Never fail silently — tell the user to copy manually.
@@ -1534,7 +1534,7 @@ function PublishRow({
   const copyAndOpen = () => {
     if (uploadUrl) window.open(uploadUrl, '_blank', 'noopener,noreferrer')
     setOpened(true)
-    void copy()
+    void copy(full, 'all')
   }
 
   return (
@@ -1545,15 +1545,32 @@ function PublishRow({
       </div>
       <div className="mt-1 text-cream">{caption}</div>
       <div className="mt-1 text-xs text-stone">{hashtags.join(' ')}</div>
+      {/* The platform's own published limit, and the length of what is about to
+          be pasted into it. A CHECKABLE fact about this caption, not a rating of
+          it — over the limit means the end gets cut off, which is worth knowing
+          before rather than after posting. */}
+      <CaptionLength platform={platform} length={full.length} />
       <div className="mt-3 flex flex-wrap items-center gap-2">
         {uploadUrl && (
           <button onClick={copyAndOpen} className="btn-gradient py-2 text-sm capitalize">
             <ExternalLink className="h-4 w-4" /> Open {platform} &amp; copy
           </button>
         )}
-        <button onClick={copy} className="chip">
-          {copied ? <><Check className="h-3.5 w-3.5 text-teal" /> Copied</> : <><Copy className="h-3.5 w-3.5" /> Copy caption</>}
+        {/* Two buttons, because the platforms take two fields: Instagram
+            creators routinely put tags in the first comment, and a combined
+            copy makes them hand-delete the tags every time. */}
+        <button onClick={() => copy(caption, 'caption')} className="chip">
+          {copied === 'caption'
+            ? <><Check className="h-3.5 w-3.5 text-teal" /> Copied</>
+            : <><Copy className="h-3.5 w-3.5" /> Copy caption</>}
         </button>
+        {hashtags.length > 0 && (
+          <button onClick={() => copy(hashtags.join(' '), 'tags')} className="chip">
+            {copied === 'tags'
+              ? <><Check className="h-3.5 w-3.5 text-teal" /> Copied</>
+              : <><Copy className="h-3.5 w-3.5" /> Copy hashtags</>}
+          </button>
+        )}
         <button onClick={logPosted} disabled={busy || posted} className={cn('chip', posted && 'border-teal/50 text-teal')}>
           {posted ? <><Check className="h-3.5 w-3.5" /> Posted</> : busy ? 'Saving…' : <><Send className="h-3.5 w-3.5" /> Mark as posted</>}
         </button>

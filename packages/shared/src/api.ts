@@ -466,10 +466,20 @@ export async function signTakeUrl(path: string): Promise<string | null> {
 // Server-side (paid image model), rate-limited, and only ever called on a tap —
 // so it costs nothing unless the creator asks. Returns a signed URL to display
 // plus the stored path (persisted on the generation so it re-shows for free).
-export async function generateThumbnail(generationId: string): Promise<{ url: string; path: string }> {
+// GENERATE ONCE, then re-sign. The edge function short-circuits when
+// `ai_thumb_path` is already set: it re-signs the stored object, does not call
+// the paid image model, and does not write a new one — so calling this twice is
+// safe and returns the SAME cover. `reused` says which happened, which is the
+// difference between "we made you a cover" and "here is your cover".
+//
+// That guarantee used to live only in a client-side conditional deciding
+// whether to render the button, which a second tab or a stale cache defeated.
+export async function generateThumbnail(
+  generationId: string,
+): Promise<{ url: string; path: string; reused?: boolean }> {
   const { data, error } = await supabase.functions.invoke('generate-thumbnail', { body: { generation_id: generationId } })
   if (error) throw new Error(await readInvokeError(error))
-  return data as { url: string; path: string }
+  return data as { url: string; path: string; reused?: boolean }
 }
 
 // ---- Dashboard (Phase 7: real stats from data we already own) ------------
