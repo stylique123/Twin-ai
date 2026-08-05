@@ -102,8 +102,13 @@ jobs:
         run: |
           set -euo pipefail
           RETIRED="enqueue-autoedit"
-          deployed="$(supabase functions list --project-ref jmdecibuytznsonrasxw -o json \
-            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).map(f=>f.slug).join(" "))}catch{process.exit(0)}})')"
+          # `|| true` on BOTH halves is load-bearing. Under `set -euo pipefail` a
+          # CLI that errored — an expired token, a rate limit, a flag that moved
+          # in a new release — would fail this step and block every deploy on a
+          # check that is advisory by design. This step exists to NAME a
+          # deployed orphan, not to become a new way for shipping to stop.
+          deployed="$( { supabase functions list --project-ref jmdecibuytznsonrasxw -o json 2>/dev/null || true; } \
+            | { node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{process.stdout.write(JSON.parse(s).map(f=>f.slug).join(" "))}catch{}})' || true; } )"
           if [ -z "$deployed" ]; then
             echo "::warning::could not read the deployed function list — skipping the deployed-vs-classified check"
             exit 0
