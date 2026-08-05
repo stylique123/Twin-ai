@@ -1232,8 +1232,33 @@ furniture), and a `business_outcome` may not exist without attribution. The
 floor of 2 is the ONLY number asserted: it is where the word "correlation"
 becomes definitionally wrong, and §7b deliberately does not fix N because the
 honest N depends on the effect being claimed. Proven by Gate-I with two mutation
-controls. *Still to build:* the writers (nothing populates the log yet — a
-platform read needs the OAuth connections) and any consumer.
+controls.
+
+**WIRED (`outcomeLog.ts`).** The log now has a writer and a reader, and the
+writer is the interesting one: the dashboard's views input had been the only
+source of performance data the product owns, and every save called
+`updatePostStats`, which overwrote `posts.views` and left no trace of the
+previous number. The history was not merely unrecorded — **it was being
+destroyed by the UI that gathered it.** `recordPostStats` keeps the column as
+the cache the top-performer badge sorts on and appends the reading;
+`updatePostStats` is deleted rather than deprecated, because a function that
+destroys unrecoverable history, left in reach with a reasonable name, gets
+called again. Three states are kept distinct at the screen: recording with
+readings, recording with none yet, and NOT RECORDING (0105 unapplied → `42P01`).
+Collapsing the third into the second would tell a creator their log is empty
+while their numbers are being overwritten.
+
+**The Dashboard's "what's working for you" panel was an unqualified
+correlation.** It computed a sample size, dropped it at render, and ended on
+"Make more like it" — a causal instruction from a pattern, which is the failure
+§7b spends a paragraph on. It now builds the claim through `validateClaim` (so
+the n≥2 floor is a refusal, not a convention) and prints `claimQualifier`:
+*"across 3 videos — a pattern, not a cause"*. The wording comes from the
+contract so the same claim cannot read differently in the gallery or an export.
+
+*Still to build:* a platform-API writer (needs the OAuth connections), and any
+producer of `dna_claims` rows — the table is read but nothing writes to it, so
+the only claim shown today is the dashboard's, computed client-side.
 
 ## 7c. WHAT MAKES A HIGH-PERFORMING VIDEO
 
@@ -1277,8 +1302,33 @@ are all about the honesty line:
 - A test asserts no reason text matches
   `will | perform | viral | views | score | engagement | boost | guarantee`,
   across every status on both a good and a bad render.
-*Still to build:* the surface that shows them. The facts interface is
-deliberately plain so the plan, the render evidence or an API can supply it.
+**THE SURFACE IS BUILT** — `craftFacts.ts` + `CraftChecks.tsx`, on the finished
+video in `Result.tsx`. The adapter reads the pinned plan and the durable event
+trail and **fills in only what those two genuinely contain**: every field is
+optional so a missing measurement reaches the checker AS MISSING, and no value
+is ever substituted, defaulted, or derived from a nearby number. A plan with no
+caption cues supplies neither the first-word nor the hook timing — a silent
+video is not a video whose hook lands at zero milliseconds.
+
+Two findings from building it:
+- **The delivered loudness is client-readable after all.** Phase 9's
+  `audio_measured` event carries `integratedLufsMilli` and `edit_events` is
+  owner-readable per 0078, so `audio_loudness` runs on a measurement of the
+  ENCODED FILE rather than reporting `not_checked`. The LAST measurement is
+  read, because a re-render replaces the file and the first one describes bytes
+  that no longer exist.
+- **The safe-area check is BOTTOM-ONLY, on purpose.** Phase 9 measured the
+  caption collision and it was the horizontal ACTION RAIL; the fix was made by
+  width. A vertical-only check would re-assert what that measurement disproved,
+  and the horizontal case needs rendered line widths the plan does not carry —
+  so it is absent rather than approximated.
+
+The `not_checked` lines are RENDERED, and styled as the quietest of the three:
+they are not problems to fix, and a warning-shaped icon would invite a creator
+to try to "fix" the one that says nothing here measures meaning.
+
+*Still to build:* nothing for these seven. An eighth check would need a
+measurement that does not exist yet.
 
 ### After
 Brand lock · approval workflow · Spanish + Portuguese *(Latin script — nearly
@@ -1740,3 +1790,4 @@ cheapest thing left to check.
 | 2026-08-04 | **§7c's craft rules BUILT as checks.** Six of seven are measurable from what a render already produces; the seventh — "ends on a reason to act" — is a claim about MEANING and is reported as `not_checked` with its reason rather than omitted, because a silently shorter report would let a clean result imply the whole list was checked. There is no `fail` status: a craft rule is a general observation, not a law about this creator's video, and `attention` states BOTH numbers so it stays arguable exactly as §7c's example sentence does. The summary counts rather than scores. The honesty line is enforced by a test, not by care: no reason text may match `will/perform/viral/views/score/engagement/boost/guarantee`, asserted across every status on a good render and a bad one. Every bound is chosen rather than measured and is a parameter, and they are deliberately loose — a check that fires on a good video teaches the creator to ignore checks. |
 | 2026-08-04 | **Phase 10 item 5's remaining half done: the failure explanation is SURFACED and the retry button exists.** The classification is a pure function of `failure_code`, which the owner can already read, so the client needed the map rather than an API. Retry is offered ONLY where the class says it can plausibly work — telling someone to retry a failure that can never clear is exactly how this defect hurts. The catalogue now exists twice (the worker is the authority; shared mirrors it, because the worker deliberately does not depend on that package), so `check_failure_catalogue.mjs` compares the two code→class maps and fails on any disagreement — mutation-checked by reclassifying one code and watching it fail. That guard exists because the drift would be silent and cruel: half the product's surfaces telling a creator to press retry on something that can never clear. |
 | 2026-08-04 | **Phase 10 item 2 STARTED (capability flags unblocked it).** §8a.1's question set is a contract with the split it exists to enforce — intent during the scan, observables pre-filled on confirm — and each question records WHY it sits where it does, because a question on the wrong side has either nothing to pre-fill from or asks for an answer we are about to read anyway. §8a.2 turned out to be ALREADY BUILT (`dnaProvenance.ts`: discrete sources, evidence counts rather than float confidence, conflicted fields side by side, `DECIDING_FIELDS`) and was nearly rebuilt — checking first caught it. Wired: the OFFER, asked rather than inferred (it was pre-filled from the scan, and voice.ts forbids a blank, so a guess becomes a wrong CTA on every video — the screen now flags the guess and the draft records whether the creator typed it), and the CLAIMS conditional, which has three states rather than two, because reading an empty box as permission decides a doctor may say anything. The full five-question redesign remains: a product-design pass, not a contract gap. |
+| 2026-08-05 | **The two built-but-invisible surfaces now show: §7c's craft checks, and §7b's log.** The craft-checks adapter (`craftFacts.ts`) fills in only what the pinned plan and the durable event trail genuinely contain, so a missing measurement reaches the checker AS MISSING — a plan with no caption cues supplies neither the first-word nor the hook timing, because a silent video is not a video whose hook lands at zero milliseconds. Two things fell out of building it: the DELIVERED loudness is client-readable after all (Phase 9's `audio_measured` carries `integratedLufsMilli` and `edit_events` is owner-readable), so that check runs on the encoded file rather than on the plan's intentions — reading the LAST measurement, because a re-render replaces the file; and the safe-area check is BOTTOM-ONLY on purpose, since Phase 9 measured the collision as the horizontal action rail and a vertical-only check would re-assert what that measurement disproved. **The log's writer is the sharper finding: the dashboard's views input was the only performance data the product owns, and every save overwrote `posts.views` with no trace of the previous number — the history was being destroyed by the UI that gathered it.** `recordPostStats` keeps the column as the cache the top-performer badge sorts on and APPENDS the reading; the old cache-only writer is deleted rather than deprecated, because a function that destroys unrecoverable history, left in reach with a reasonable name, gets called again. Three states stay distinct at the screen — recording with readings, recording with none yet, and NOT RECORDING (0105 unapplied, `42P01`) — because collapsing the third into the second tells a creator their log is empty while their numbers are being overwritten. And the Dashboard's "what's working for you" panel turned out to be an unqualified correlation: it computed a sample size, dropped it at render, and ended on "Make more like it". It now goes through `validateClaim` (so the n≥2 floor is a refusal, not a convention) and prints `claimQualifier` — *"across 3 videos — a pattern, not a cause"* — with the wording owned by the contract so the same claim cannot read differently anywhere else. |

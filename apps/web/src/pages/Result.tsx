@@ -17,6 +17,7 @@ const UPLOAD_URLS: Record<string, string> = {
 }
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
 import { explainFailure } from '../lib/api'
+import { CraftChecks } from '../components/CraftChecks'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
 import type { EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
 
@@ -772,6 +773,15 @@ export default function Result() {
                       </div>
                     )}
                   </div>
+                  {/* §7c's craft checks, on the finished video only. Shown after
+                      the render because every one of them is a statement about
+                      what the render DID — showing them beforehand would be
+                      predicting, which is the line §7c forbids crossing. */}
+                  {editProject.status === 'completed' && (
+                    <div className="mt-3">
+                      <CraftChecks projectId={editProject.id} />
+                    </div>
+                  )}
                 </div>
               )}
               {gen.edit_path && (

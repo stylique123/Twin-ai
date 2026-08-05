@@ -3,12 +3,13 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Wand2, LayoutGrid, Clapperboard, Send, Sparkles, ArrowUpRight, FileText, Loader2, TrendingUp, Zap,
-  Gift, Copy, Check, Clock, Eye, Trophy,
+  Gift, Copy, Check, Clock, Eye, Trophy, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, updatePostStats, type BrandStats, type DashboardStats, type Post } from '../lib/api'
+import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, recordPostStats, validateClaim, type BrandStats, type DashboardStats, type OutcomeClaim, type Post } from '../lib/api'
 import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
+import { OutcomeHistory } from '../components/OutcomeHistory'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
 import { Counter } from '../components/Counter'
 import { cn } from '../lib/cn'
@@ -200,8 +201,13 @@ export default function Dashboard() {
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-teal">What's working for you</p>
                   <p className="mt-1 text-sm text-cream">
-                    Your <span className="font-semibold">{formatInsight.format}</span> videos average <span className="font-semibold">{formatInsight.avg.toLocaleString()}</span> views — <span className="font-semibold text-teal">{formatInsight.multiple}×</span> your other formats. Make more like it.
+                    Your <span className="font-semibold">{formatInsight.format}</span> videos average <span className="font-semibold">{formatInsight.avg.toLocaleString()}</span> views — <span className="font-semibold text-teal">{formatInsight.multiple}×</span> your other formats.
                   </p>
+                  {/* The qualification comes from the contract, not from this
+                      screen, so the same claim reads the same wherever it is
+                      shown. It carries the N because a pattern across three
+                      videos and one across thirty are different things. */}
+                  <p className="mt-1 text-xs text-stone">{claimQualifier(formatInsight.claim)}</p>
                 </div>
               </div>
               <Link to="/gallery" className="btn-gradient shrink-0 self-start text-sm sm:self-auto"><Wand2 className="h-4 w-4" /> Make another</Link>
@@ -250,8 +256,8 @@ export default function Dashboard() {
               </div>
               {posts.length === 0 ? <EmptyPublishing /> : (
                 <div className="relative mt-5 space-y-2">
-                  {posts.slice(0, 6).map((p) => (
-                    <PostRow key={p.id} p={p} isTop={p.id === topId} />
+                  {posts.slice(0, 6).map((p, i) => (
+                    <PostRow key={p.id} p={p} isTop={p.id === topId} seq={i + 1} />
                   ))}
                 </div>
               )}
@@ -336,32 +342,57 @@ function EmptyBlueprints() {
 // A logged post with self-reported performance. The creator enters how it did
 // (views) until real platform numbers are pulled in via OAuth later; the top
 // performer is badged so they can see which format actually won.
-function PostRow({ p, isTop }: { p: Post; isTop: boolean }) {
+//
+// EVERY SAVE IS APPENDED, not just written. This input has been collecting the
+// only performance data the product has, and each save overwrote the last one —
+// so "views at 24h" and "views at 30d", which is most of the signal, were being
+// destroyed by the UI that gathered them. `recordPostStats` keeps the column as
+// the cache the dashboard sorts on and adds the reading to §7b's log; the
+// history below is that log, read back.
+function PostRow({ p, isTop, seq }: { p: Post; isTop: boolean; seq: number }) {
   const [views, setViews] = useState(p.views != null ? String(p.views) : '')
   const [saved, setSaved] = useState(false)
+  const [open, setOpen] = useState(false)
+  // Bumped on each save so the history re-reads and the creator sees the
+  // reading they just entered take its place in the series.
+  const [rev, setRev] = useState(0)
   const save = async () => {
     const n = parseInt(views.replace(/[^0-9]/g, ''), 10)
     if (!Number.isFinite(n)) return
-    await updatePostStats(p.id, n)
+    await recordPostStats(p.id, n)
+    setRev((r) => r + 1)
     setSaved(true); setTimeout(() => setSaved(false), 1200)
   }
   return (
-    <div className={cn('flex items-center gap-3 rounded-xl border bg-white/[0.025] p-3 transition-colors', isTop ? 'border-amber/40' : 'border-white/[0.06] hover:border-white/[0.12]')}>
-      <span className="w-14 shrink-0 font-heading text-xs capitalize text-teal">{p.platform}</span>
-      <span className="min-w-0 flex-1 truncate text-sm text-cream">{isTop && <Trophy className="mr-1 inline h-3.5 w-3.5 text-amber" />}{p.caption || 'Posted'}</span>
-      <div className="flex shrink-0 items-center gap-1">
-        <Eye className="h-3 w-3 text-stone" />
-        <input
-          value={views}
-          onChange={(e) => setViews(e.target.value)}
-          onBlur={save}
-          onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-          inputMode="numeric"
-          placeholder="views"
-          className="w-16 border-b border-white/10 bg-transparent text-right text-xs text-cream outline-none transition-colors placeholder:text-stone/50 focus:border-teal"
-        />
-        {saved && <Check className="h-3 w-3 text-teal" />}
+    <div className={cn('rounded-xl border bg-white/[0.025] transition-colors', isTop ? 'border-amber/40' : 'border-white/[0.06] hover:border-white/[0.12]')}>
+      <div className="flex items-center gap-3 p-3">
+        <span className="w-14 shrink-0 font-heading text-xs capitalize text-teal">{p.platform}</span>
+        <span className="min-w-0 flex-1 truncate text-sm text-cream">{isTop && <Trophy className="mr-1 inline h-3.5 w-3.5 text-amber" />}{p.caption || 'Posted'}</span>
+        <div className="flex shrink-0 items-center gap-1">
+          <Eye className="h-3 w-3 text-stone" />
+          <input
+            value={views}
+            onChange={(e) => setViews(e.target.value)}
+            onBlur={save}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+            inputMode="numeric"
+            placeholder="views"
+            aria-label={`Views for post ${seq}`}
+            className="w-16 border-b border-white/10 bg-transparent text-right text-xs text-cream outline-none transition-colors placeholder:text-stone/50 focus:border-teal"
+          />
+          {saved && <Check className="h-3 w-3 text-teal" />}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-label={open ? 'Hide reading history' : 'Show reading history'}
+            className="ml-1 rounded p-0.5 text-stone transition-colors hover:text-cream"
+          >
+            <ChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
+          </button>
+        </div>
       </div>
+      {open && <OutcomeHistory key={rev} postId={p.id} />}
     </div>
   )
 }
@@ -373,7 +404,18 @@ function PostRow({ p, isTop }: { p: Post; isTop: boolean }) {
 // and return the format that's outperforming — the "lean into X" learning signal.
 // Returns null until there's real signal (≥2 formats, the winner has ≥2 posts, and
 // it's meaningfully ahead) so it never shows noise.
-interface FormatInsight { format: string; avg: number; multiple: number; n: number }
+//
+// IT IS A CORRELATION, AND IT NOW SAYS SO. §7b's absolute rule is "never
+// conclude 'this hook caused performance' from one successful video", and this
+// panel shipped as a causal instruction — "Make more like it" — with the sample
+// size computed and then dropped at render. A creator reading it had no way to
+// tell three videos from thirty.
+//
+// So the claim is built through `validateClaim` rather than described as one:
+// the n≥2 floor becomes a refusal instead of a convention, and
+// `claimQualifier` supplies the wording, so this panel cannot drift from the
+// gallery or an export that shows the same claim.
+interface FormatInsight { format: string; avg: number; multiple: number; n: number; claim: OutcomeClaim }
 function computeFormatInsight(posts: Post[], gens: Generation[]): FormatInsight | null {
   const fmtOf = new Map<string, string>()
   for (const g of gens) {
@@ -397,7 +439,17 @@ function computeFormatInsight(posts: Post[], gens: Generation[]): FormatInsight 
   const restAvg = stats.slice(1).reduce((a, s) => a + s.avg, 0) / (stats.length - 1)
   const multiple = restAvg > 0 ? top.avg / restAvg : 0
   if (multiple < 1.2) return null
-  return { format: top.f, avg: Math.round(top.avg), multiple: Math.round(multiple * 10) / 10, n: top.n }
+  const rounded = Math.round(multiple * 10) / 10
+  const claim = validateClaim({
+    type: 'correlation',
+    statement: `${top.f} videos average ${rounded}× the views of your other formats`,
+    sampleSize: top.n,
+  })
+  // n=1 is refused by the contract, not by the `top.n < 2` check above alone.
+  // If that check is ever loosened, this returns null rather than rendering a
+  // correlation drawn from one video.
+  if ('rejected' in claim) return null
+  return { format: top.f, avg: Math.round(top.avg), multiple: rounded, n: top.n, claim }
 }
 
 const fmtNum = (n: number) =>

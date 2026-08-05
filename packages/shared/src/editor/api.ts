@@ -234,6 +234,26 @@ export async function cancelEditProject(
   return data as 'cancelled' | 'cancel_requested' | EditProjectStatus
 }
 
+/**
+ * The PINNED PLAN for a project, for §7c's craft checks.
+ *
+ * `edit_plans` is owner-readable (0078) and holds one row per project at
+ * version 1. Returns null rather than throwing when there is none: a project
+ * that has not compiled has no plan, which is an ordinary state and not a
+ * failure — and the checks report `not_checked` from an absent plan, which is
+ * the honest answer to "how is this video doing?" before it exists.
+ */
+export async function getEditPlanDocument(projectId: string): Promise<Record<string, unknown> | null> {
+  const { data, error } = await getClient()
+    .from('edit_plans')
+    .select('plan')
+    .eq('edit_project_id', projectId)
+    .maybeSingle()
+  if (error || !data) return null
+  const plan = (data as { plan?: unknown }).plan
+  return plan && typeof plan === 'object' ? plan as Record<string, unknown> : null
+}
+
 // Durable progress observation: the append-only event history for a project
 // (RLS: owner + workspace peers), in deterministic seq order.
 export async function getEditEvents(projectId: string, afterSeq = 0): Promise<EditEvent[]> {

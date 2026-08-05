@@ -531,13 +531,13 @@ export async function listPosts(): Promise<Post[]> {
   return (data ?? []) as Post[]
 }
 
-// Self-reported performance: the creator logs how their posted video did. Real
-// auto-pulled numbers land later via platform OAuth; this fills the same columns.
-export async function updatePostStats(postId: string, views: number, likes?: number): Promise<void> {
-  const patch: Record<string, unknown> = { views }
-  if (likes !== undefined) patch.likes = likes
-  try { await supabase.from('posts').update(patch).eq('id', postId) } catch { /* best-effort */ }
-}
+// Self-reported performance now lives in `outcomeLog.ts` as `recordPostStats`,
+// which writes these columns AND appends the reading to §7b's log.
+//
+// The cache-only writer that used to sit here is deliberately gone rather than
+// deprecated. It overwrote `posts.views` with no trace of the previous number,
+// so every call destroyed history that cannot be reconstructed — and a function
+// that does that, left in reach with a reasonable name, gets called again.
 
 export async function markPosted(input: {
   generationId: string
