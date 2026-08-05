@@ -18,8 +18,9 @@ const UPLOAD_URLS: Record<string, string> = {
 import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, generateThumbnail, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
+import { ScriptEditor } from '../components/ScriptEditor'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
-import type { EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
+import type { Blueprint, EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -933,58 +934,13 @@ export default function Result() {
                 <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
               
-              <div className="space-y-6">
-                {updatedScript.map((s, i) => {
-                  const isHook = s.section?.toLowerCase().includes('hook')
-                  const isRehook = s.section?.toLowerCase().includes('re-hook') || s.section?.toLowerCase().includes('rehook')
-                  const isCta = s.section?.toLowerCase().includes('cta')
-                  const tagColor = isHook ? 'border-amber/20 bg-amber/5 text-amber'
-                                 : isRehook ? 'border-coral/20 bg-coral/5 text-coral'
-                                 : isCta ? 'border-teal/20 bg-teal/5 text-teal'
-                                 : 'border-white/5 bg-ink2/40 text-sand'
-
-                  return (
-                    <div key={i} className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-5 shadow-glass backdrop-blur-md">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={cn('rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide', tagColor)}>
-                          {plainSection(s.section, i)}
-                        </span>
-                        <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
-                      </div>
-
-                      {/* Dialogue line — the hero of the card */}
-                      <p className="font-display text-lg leading-relaxed text-cream">
-                        “{s.line}”
-                      </p>
-
-                      {/* Scene guidance — quiet, aligned inset */}
-                      <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
-                        <div className="flex items-start gap-3">
-                          <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />
-                          <div className="min-w-0">
-                            <span className="mb-0.5 block text-[11px] font-medium text-stone">Where to film</span>
-                            <span className="text-sm leading-relaxed text-sand">{s.background || 'Visual context matching scene.'}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <User className="h-4 w-4 text-coral shrink-0 mt-0.5" />
-                          <div className="min-w-0">
-                            <span className="mb-0.5 block text-[11px] font-medium text-stone">How to stand & move</span>
-                            <span className="text-sm leading-relaxed text-sand">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-start gap-3">
-                          <SlidersHorizontal className="h-4 w-4 text-teal shrink-0 mt-0.5" />
-                          <div className="min-w-0">
-                            <span className="mb-0.5 block text-[11px] font-medium text-stone">Camera moves & cuts</span>
-                            <span className="text-sm leading-relaxed text-sand">{s.cuts_info || 'Cut pacing instructions.'}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+              <ScriptEditor
+                generationId={gen.id}
+                blueprint={b}
+                selectedHook={chosenHook}
+                hasTake={serverSourceAssetId != null}
+                fallback={<BlueprintScriptCards script={updatedScript} />}
+              />
             </div>
 
             {/* Shot List */}
@@ -1304,58 +1260,13 @@ export default function Result() {
                   <span className="text-xs text-stone">{updatedScript.length} scenes</span>
                 </div>
                 
-                <div className="space-y-4">
-                  {updatedScript.map((s, i) => {
-                    const isHook = s.section?.toLowerCase().includes('hook')
-                    const isRehook = s.section?.toLowerCase().includes('re-hook') || s.section?.toLowerCase().includes('rehook')
-                    const isCta = s.section?.toLowerCase().includes('cta')
-                    const tagColor = isHook ? 'border-amber/20 bg-amber/5 text-amber'
-                                   : isRehook ? 'border-coral/20 bg-coral/5 text-coral'
-                                   : isCta ? 'border-teal/20 bg-teal/5 text-teal'
-                                   : 'border-white/5 bg-ink2/40 text-sand'
-
-                    return (
-                      <div key={i} className="rounded-card border border-white/5 bg-ink2/85 p-5 space-y-4 shadow-glass backdrop-blur-md">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className={cn('rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide', tagColor)}>
-                            {plainSection(s.section, i)}
-                          </span>
-                          <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
-                        </div>
-
-                        {/* Dialogue line — the hero of the card */}
-                        <p className="font-display text-lg leading-relaxed text-cream">
-                          “{s.line}”
-                        </p>
-
-                        {/* Scene guidance — quiet, aligned inset */}
-                        <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
-                          <div className="flex items-start gap-3">
-                            <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />
-                            <div className="min-w-0">
-                              <span className="mb-0.5 block text-[11px] font-medium text-stone">Where to film</span>
-                              <span className="text-sm leading-relaxed text-sand">{s.background || 'Visual context matching scene.'}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-start gap-3">
-                            <User className="h-4 w-4 text-coral shrink-0 mt-0.5" />
-                            <div className="min-w-0">
-                              <span className="mb-0.5 block text-[11px] font-medium text-stone">How to stand & move</span>
-                              <span className="text-sm leading-relaxed text-sand">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-start gap-3">
-                            <SlidersHorizontal className="h-4 w-4 text-teal shrink-0 mt-0.5" />
-                            <div className="min-w-0">
-                              <span className="mb-0.5 block text-[11px] font-medium text-stone">Camera moves & cuts</span>
-                              <span className="text-sm leading-relaxed text-sand">{s.cuts_info || 'Cut pacing instructions.'}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+                <ScriptEditor
+                  generationId={gen.id}
+                  blueprint={b}
+                  selectedHook={chosenHook}
+                  hasTake={serverSourceAssetId != null}
+                  fallback={<BlueprintScriptCards script={updatedScript} />}
+                />
               </div>
 
               {/* Shot List */}
@@ -1657,6 +1568,65 @@ function PublishRow({
           We copy your caption to the clipboard and open the {platform} uploader — paste it there, post, then mark it here.
         </p>
       )}
+    </div>
+  )
+}
+
+// The model's script beats, read-only — the FALLBACK for when the recording
+// script cannot be produced (an unreadable timeline, a malformed blueprint).
+//
+// It is the fallback rather than the main view because these are NOT the lines
+// that get filmed: `buildRecordingScript` drops hook-lookalikes, moves the CTA
+// beat to the end and inserts silent b-roll scenes, so `script[i]` and the
+// teleprompter's scene i are different lines. Editing here would edit something
+// nobody records — so this shows what the model wrote and offers no edit, and
+// `ScriptEditor` owns the version that can be changed.
+function BlueprintScriptCards({ script }: { script: Blueprint['script'] }) {
+  return (
+    <div className="space-y-6">
+      {script.map((s, i) => {
+        const isHook = s.section?.toLowerCase().includes('hook')
+        const isRehook = s.section?.toLowerCase().includes('re-hook') || s.section?.toLowerCase().includes('rehook')
+        const isCta = s.section?.toLowerCase().includes('cta')
+        const tagColor = isHook ? 'border-amber/20 bg-amber/5 text-amber'
+                       : isRehook ? 'border-coral/20 bg-coral/5 text-coral'
+                       : isCta ? 'border-teal/20 bg-teal/5 text-teal'
+                       : 'border-white/5 bg-ink2/40 text-sand'
+        return (
+          <div key={i} className="rounded-card border border-white/5 bg-ink2/85 p-6 space-y-5 shadow-glass backdrop-blur-md">
+            <div className="flex items-center justify-between gap-2">
+              <span className={cn('rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide', tagColor)}>
+                {plainSection(s.section, i)}
+              </span>
+              <span className="text-[11px] font-medium text-stone">Scene {i + 1}</span>
+            </div>
+            <p className="font-display text-lg leading-relaxed text-cream">“{s.line}”</p>
+            <div className="space-y-3.5 rounded-2xl border border-white/[0.04] bg-ink/40 p-4">
+              <div className="flex items-start gap-3">
+                <Video className="h-4 w-4 text-amber shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <span className="mb-0.5 block text-[11px] font-medium text-stone">Where to film</span>
+                  <span className="text-sm leading-relaxed text-sand">{s.background || 'Visual context matching scene.'}</span>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <User className="h-4 w-4 text-coral shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <span className="mb-0.5 block text-[11px] font-medium text-stone">How to stand &amp; move</span>
+                  <span className="text-sm leading-relaxed text-sand">{s.action_posing || s.direction || 'Camera-facing presence.'}</span>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <SlidersHorizontal className="h-4 w-4 text-teal shrink-0 mt-0.5" />
+                <div className="min-w-0">
+                  <span className="mb-0.5 block text-[11px] font-medium text-stone">Camera moves &amp; cuts</span>
+                  <span className="text-sm leading-relaxed text-sand">{s.cuts_info || 'Cut pacing instructions.'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
