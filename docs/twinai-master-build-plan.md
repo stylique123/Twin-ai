@@ -675,7 +675,7 @@ decided. Phase 9 is COMPLETE (10/10).**
 |---|---|
 | Provenance stamping on every DNA field | **done** |
 | Script-anchored forced alignment | **engine built; WIRED (#242); three consumers built** |
-| Onboarding questions + confirm screen | not started — and BLOCKED behind capability flags (Phase 11 item 9), see the note in item 2 |
+| Onboarding questions + confirm screen | **STARTED** — §8a.1's question set is built as a contract (`preScriptBrief.ts`) and the two answers whose absence does real damage are wired: the OFFER (asked rather than inferred, with the guess flagged) and the CLAIMS conditional. The full five-question redesign is a product-design pass that has not been made |
 | Transcript-as-editor review gate | **the backend is complete end to end**: contract (`reviewOverlay.ts`), compiler consumption, persistence + the pause (0102), and a screen that is BUILT BUT UNSEEN — no human has used it |
 | Failure path (explain, retain footage, retry without refilming) | **COMPLETE** — explain built (`failureExplain.ts`), SURFACED on Result with a class-gated retry button, and a CI guard keeps the worker's catalogue and the client mirror in agreement. Retain + retry were ALREADY TRUE — see item 5 |
 
@@ -704,7 +704,32 @@ before treating it as a defect.
 
 1. Provenance stamping on every DNA field
 2. Onboarding questions during the scan + confirm screen
-   **NOT STARTED, AND DELIBERATELY NOT STARTED FIRST.** §6 specifies the
+   **UNBLOCKED (capability flags landed) AND STARTED.** §8a.1's question set is
+   a contract now — `packages/shared/src/preScriptBrief.ts` — with the split it
+   exists to enforce: INTENT during the scan (the scan cannot know it),
+   OBSERVABLES pre-filled on confirm (asking someone to describe content we are
+   actively reading is wasted effort and less accurate). A question on the wrong
+   side is not a style choice, so each one records WHY it sits where it does.
+   **§8a.2 was already built and nearly rebuilt by mistake.** `dnaProvenance.ts`
+   implements the whole of it — discrete sources, evidence COUNTS rather than
+   float confidence, conflicted fields kept side by side rather than merged, and
+   `DECIDING_FIELDS`. Checking first is what caught it.
+   **The two answers whose absence does real damage are wired.** The OFFER
+   (Q3b) is asked rather than inferred: it was pre-filled from the scan, and
+   voice.ts's prompt forbids a blank, so the model MUST produce something — a
+   guessed offer is a wrong call to action on every video shipped. The screen
+   now says so when the value is still the guess, and the draft records whether
+   the creator typed it, because only that version may DECIDE a CTA. The CLAIMS
+   conditional is asked for professional/ecommerce/brand and has THREE states,
+   never two: "we never asked", "they left it blank" and "they said there are no
+   restrictions" are different facts, and reading an empty box as permission
+   decides that a doctor may say anything.
+   *Still to build:* the full five-question redesign — Q1 as a chooser in the
+   scan flow rather than free text on confirm, Q2's audience multi-select, and
+   Q4/Q5 pre-filled from what the scan read. That is a product-design pass, not
+   a contract gap, and the contract above is what makes it buildable without
+   guessing.
+   **The original note, kept because it is what set the order:** §6 specifies the
    pre-script brief PER ARCHETYPE (Explainer / Demonstrator / Brand) and §2.2
    retired archetypes — *they sort the person; the variable is the video*. Item
    9 replaces them with capability flags, which do not exist yet. Building the
@@ -1714,3 +1739,4 @@ cheapest thing left to check.
 | 2026-08-04 | **Phase 11 item 10 (reference validation) BUILT.** §5's four cases — twelve minutes, no speech, a slideshow, a song — are all measurable from what the transcriber already produces, so the check is a pure function over (duration, word count) and needs no new infrastructure. It follows `assessProbe`'s rule exactly: a missing measurement gets its OWN verdict and never borrows a real one, so `duration_unknown` is not `too_short`, and an unknown reference stays USABLE because refusing on no evidence discards the creator's choice. Withholding the transcript id is the entire mechanism — `generate-blueprint` already falls back to pattern mode — so this adds a reason, and the reason is SHOWN. A test asserts no reason text contains "bad", "poor" or "perform", because §7c's honesty line applies to references too: say what was checked, never what will perform. Found on the way: `IngestJob.result.duration_sec` was declared by the client and never emitted by the worker, so no reader could tell an unmeasured reference from a missing field. |
 | 2026-08-04 | **§7c's craft rules BUILT as checks.** Six of seven are measurable from what a render already produces; the seventh — "ends on a reason to act" — is a claim about MEANING and is reported as `not_checked` with its reason rather than omitted, because a silently shorter report would let a clean result imply the whole list was checked. There is no `fail` status: a craft rule is a general observation, not a law about this creator's video, and `attention` states BOTH numbers so it stays arguable exactly as §7c's example sentence does. The summary counts rather than scores. The honesty line is enforced by a test, not by care: no reason text may match `will/perform/viral/views/score/engagement/boost/guarantee`, asserted across every status on a good render and a bad one. Every bound is chosen rather than measured and is a parameter, and they are deliberately loose — a check that fires on a good video teaches the creator to ignore checks. |
 | 2026-08-04 | **Phase 10 item 5's remaining half done: the failure explanation is SURFACED and the retry button exists.** The classification is a pure function of `failure_code`, which the owner can already read, so the client needed the map rather than an API. Retry is offered ONLY where the class says it can plausibly work — telling someone to retry a failure that can never clear is exactly how this defect hurts. The catalogue now exists twice (the worker is the authority; shared mirrors it, because the worker deliberately does not depend on that package), so `check_failure_catalogue.mjs` compares the two code→class maps and fails on any disagreement — mutation-checked by reclassifying one code and watching it fail. That guard exists because the drift would be silent and cruel: half the product's surfaces telling a creator to press retry on something that can never clear. |
+| 2026-08-04 | **Phase 10 item 2 STARTED (capability flags unblocked it).** §8a.1's question set is a contract with the split it exists to enforce — intent during the scan, observables pre-filled on confirm — and each question records WHY it sits where it does, because a question on the wrong side has either nothing to pre-fill from or asks for an answer we are about to read anyway. §8a.2 turned out to be ALREADY BUILT (`dnaProvenance.ts`: discrete sources, evidence counts rather than float confidence, conflicted fields side by side, `DECIDING_FIELDS`) and was nearly rebuilt — checking first caught it. Wired: the OFFER, asked rather than inferred (it was pre-filled from the scan, and voice.ts forbids a blank, so a guess becomes a wrong CTA on every video — the screen now flags the guess and the draft records whether the creator typed it), and the CLAIMS conditional, which has three states rather than two, because reading an empty box as permission decides a doctor may say anything. The full five-question redesign remains: a product-design pass, not a contract gap. |
