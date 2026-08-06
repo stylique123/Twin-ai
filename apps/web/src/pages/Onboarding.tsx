@@ -122,29 +122,10 @@ export default function Onboarding() {
   // profile and there is none yet during the scan — which is exactly why the
   // question fits there: it costs the creator nothing that the scan was not
   // already spending.
-  // Q6, the second half of the same wasted minute. Its own setter rather than a
-  // generic one: the two flags gate in DIFFERENT DIRECTIONS — `can_record_screen`
-  // false hides a capture surface, `can_film_objects` false withholds footage
-  // SUGGESTIONS — so a shared helper would have to carry the difference as a
-  // parameter and the next flag added would inherit whichever direction was
-  // written first.
-  const setCanFilmObjects = useCallback((value: boolean | null) => {
-    setDraft((current) => {
-      if (!current || current.userId !== userId) return current
-      const next = { ...current, canFilmObjects: value }
-      safeWriteDraft(next)
-      return next
-    })
-  }, [userId])
-
-  const setCanRecordScreen = useCallback((value: boolean | null) => {
-    setDraft((current) => {
-      if (!current || current.userId !== userId) return current
-      const next = { ...current, canRecordScreen: value }
-      safeWriteDraft(next)
-      return next
-    })
-  }, [userId])
+  // The per-flag draft setters that lived here are gone with the questions.
+  // The confirm screen owns both inputs now and persists them through the same
+  // onDraftChange path as every other answer — one writer, one route, rather
+  // than two screens able to set the same flag.
 
   const complete = useCallback(async () => {
     await finish(refreshProfile, navigate)
@@ -188,8 +169,6 @@ export default function Onboarding() {
                   draft={draft}
                   onReady={handleReady}
                   onBack={() => setMode('handle')}
-                  onCanRecordScreen={setCanRecordScreen}
-                  onCanFilmObjects={setCanFilmObjects}
                 />
               )}
               {mode === 'confirm' && draft && (
@@ -361,14 +340,10 @@ function BuildingStep({
   draft,
   onReady,
   onBack,
-  onCanRecordScreen,
-  onCanFilmObjects,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile) => void
   onBack: () => void
-  onCanRecordScreen: (value: boolean | null) => void
-  onCanFilmObjects: (value: boolean | null) => void
 }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
@@ -474,71 +449,10 @@ function BuildingStep({
           It needs no camera and no permission prompt — the answer is about the
           creator's setup, not about what this browser can do this second, and
           opening a share-picker to find out would be asking the operating
-          system a question only the person can answer.
-          SKIPPING IS A REAL ANSWER AND IT IS NOT "NO". Tapping the chosen chip
-          again clears it back to unanswered, and nothing is written for an
-          unanswered question — `can_record_screen = false` permanently hides a
-          surface, so "they never said" must never become "they said no". */}
-      <div className="mt-7 rounded-card border border-white/8 bg-white/[0.02] p-4">
-        <p className="text-xs font-semibold text-cream">While that runs — can you record your screen?</p>
-        <div className="mt-2.5 flex flex-wrap gap-2">
-          {([true, false] as const).map((v) => (
-            <button
-              key={String(v)}
-              type="button"
-              aria-pressed={draft.canRecordScreen === v}
-              onClick={() => onCanRecordScreen(draft.canRecordScreen === v ? null : v)}
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-xs transition',
-                draft.canRecordScreen === v
-                  ? 'border-coral bg-coral/15 text-cream'
-                  : 'border-white/15 text-sand hover:bg-white/5',
-              )}
-            >
-              {v ? 'Yes' : 'No'}
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-stone">
-          Say yes and Twin can ask you to capture what is on your screen for the moments your
-          script says to show something. Skip it and nothing changes — we just won’t offer it yet.
-        </p>
-
-        {/* Q6, in the same wasted minute and for the same reason: no scan can
-            read a creator's setup. Two capability answers here switch on §7a's
-            production-mode match, which reads BOTH today and answers "don't
-            know" for everyone because nothing has ever written them.
-
-            THE DIRECTION IS OPPOSITE to the question above, which is why the
-            copy differs rather than being templated. `can_record_screen = false`
-            HIDES a capture surface; `can_film_objects = false` withholds footage
-            SUGGESTIONS. Saying no here removes advice, not ability — so the
-            sentence has to promise the right thing. */}
-        <p className="mt-4 text-xs font-semibold text-cream">And can you put a product or object in front of the camera?</p>
-        <div className="mt-2.5 flex flex-wrap gap-2">
-          {([true, false] as const).map((v) => (
-            <button
-              key={String(v)}
-              type="button"
-              aria-pressed={draft.canFilmObjects === v}
-              onClick={() => onCanFilmObjects(draft.canFilmObjects === v ? null : v)}
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-xs transition',
-                draft.canFilmObjects === v
-                  ? 'border-coral bg-coral/15 text-cream'
-                  : 'border-white/15 text-sand hover:bg-white/5',
-              )}
-            >
-              {v ? 'Yes' : 'No'}
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-stone">
-          Say no and we stop suggesting shots you cannot film. Skip it and we keep showing the
-          full checklist — a suggestion you ignore costs nothing, a missing one costs a video.
-        </p>
-      </div>
-
+          system a question only the person can answer. They are asked on the
+          CONFIRM screen now, after what the creator does and what they sell,
+          because how someone films is the last thing that matters and was the
+          first thing we asked. */}
       {err && (
         <div className="mt-6 space-y-2">
           <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
@@ -615,8 +529,13 @@ function ConfirmStep({
   // carried here so the durable save still writes it. Read from the draft rather
   // than re-asked: two screens asking one question is two places that can
   // disagree about what a skipped answer means.
-  const canRecordScreen = draft.canRecordScreen
-  const canFilmObjects = draft.canFilmObjects
+  // MOVED HERE FROM THE SCAN SCREEN. These were the ONLY two questions asked
+  // while the scan ran, which put the least important answers first: they are
+  // about how someone FILMS, and the scan screen is where we are still working
+  // out who they are. Understanding the creator comes first, then whether there
+  // is a product, and only then how they can shoot it.
+  const [canRecordScreen, setCanRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
+  const [canFilmObjects, setCanFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -815,6 +734,73 @@ function ConfirmStep({
           </div>
           <p className="mt-1 text-[11px] text-stone">
             It changes what a script may promise. You can only speak for a product you own.
+          </p>
+        </Labeled>
+        {/* HOW THEY CAN SHOOT IT — last, and that ordering is the point.
+            These two used to be the ONLY questions asked while the scan ran,
+            so the first thing Twin wanted to know was someone's filming setup,
+            before it had established what they do or whether they sell
+            anything. They belong after both.
+
+            SKIPPING IS A REAL ANSWER AND IT IS NOT "NO". Tapping the chosen
+            chip again clears it back to unanswered, and nothing is written for
+            an unanswered question — `can_record_screen = false` permanently
+            hides a surface, so "they never said" must never become "they said
+            no".
+
+            THE TWO GATES RUN IN OPPOSITE DIRECTIONS, which is why the copy is
+            written twice rather than templated. `can_record_screen = false`
+            HIDES a capture surface; `can_film_objects = false` withholds
+            footage SUGGESTIONS. Saying no to the second removes advice, not
+            ability, so the sentence has to promise the right thing. */}
+        <Labeled label="How can you film?">
+          <p className="text-xs text-sand">Can you record your screen?</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {([true, false] as const).map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                aria-pressed={canRecordScreen === v}
+                onClick={() => setCanRecordScreen(canRecordScreen === v ? null : v)}
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-xs transition',
+                  canRecordScreen === v
+                    ? 'border-coral bg-coral/15 text-cream'
+                    : 'border-white/15 text-sand hover:bg-white/5',
+                )}
+              >
+                {v ? 'Yes' : 'No'}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
+            Say yes and Twin can ask you to capture your screen for the moments your script says
+            to show something. Skip it and nothing changes, we just will not offer it yet.
+          </p>
+
+          <p className="mt-4 text-xs text-sand">Can you put a product or object in front of the camera?</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {([true, false] as const).map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                aria-pressed={canFilmObjects === v}
+                onClick={() => setCanFilmObjects(canFilmObjects === v ? null : v)}
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-xs transition',
+                  canFilmObjects === v
+                    ? 'border-coral bg-coral/15 text-cream'
+                    : 'border-white/15 text-sand hover:bg-white/5',
+                )}
+              >
+                {v ? 'Yes' : 'No'}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
+            Say no and we stop suggesting shots you cannot film. Skip it and we keep showing the
+            full checklist, because a suggestion you ignore costs nothing and a missing one costs
+            a video.
           </p>
         </Labeled>
         {/* THE CONDITIONAL. Unguessable, and unforgivable to get wrong for a
