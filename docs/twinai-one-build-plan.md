@@ -488,6 +488,64 @@ that decides whether Twin produces videos people want to make.**
 
 ---
 
+**C-a · The gallery is already two thirds of the evidence base.**
+
+The gallery is a contributed feed of references — `gallery_items`, ~6,600 rows
+in production. `galleryRank.ts` already computes the "why it's here" column:
+seven signals, each `match` / `mismatch` / **`not_checked`**, reported as
+"3 of 7 signals" rather than "43% match", because arithmetic about what was
+examined is honest and a percentage is a claim. Apify already runs for the DNA
+scan, so refreshing a gallery row reuses an existing path rather than adding a
+dependency.
+
+What blocks it is that the facts underneath the ranking are prose:
+
+```sql
+reach text,
+likes text,
+```
+
+"2.3M", "2300000", "over 2 million" are all valid today. **Numbers that arrived
+as prose cannot be compared**, so "your teardown format outperformed by 1.4×" is
+unstatable. There is also no record of WHEN a row was checked, which makes
+"live in your niche this week" unprovable — and an unprovable recency claim is
+the confidently-wrong recommendation this plan exists to prevent.
+
+Four steps, the first three small:
+
+1. **Numeric metrics with provenance** — `views_count`, `likes_count`,
+   `metrics_fetched_at`, `metrics_source`. Never coerce prose into a number;
+   leave it NULL. Six thousand rows of prose is exactly where null-is-not-zero
+   earns its keep.
+2. **Existence and freshness** — confirm the URL still resolves and carries a
+   date. A row that fails becomes `unavailable`, neither deleted nor silently
+   kept.
+3. **`source`: `contributed` vs `scraped`**, shown on the card. A human
+   recommendation and a scrape are different claims and must not rank as one.
+4. **The falsifiable prediction** — what result would confirm or reject this
+   idea, graded later by the outcome log. **This is the step that makes it a
+   recommendation rather than a ranked list**, and it is the real design work.
+
+**Cost is what decides feature-or-bill.** ~6,600 rows refreshed daily is ~6,600
+Apify calls daily. Refresh what is SHOWN — on read, when a row is about to
+surface and its `metrics_fetched_at` is stale — plus a small daily budget for
+the top slice. A row no creator's niche matches is never refreshed and costs
+nothing.
+
+**Ranking cannot be precomputed.** The gallery is global; a recommendation is
+per-creator. `rankSignals` already takes this creator's capabilities and niche,
+so it is a read-time computation per viewer. That is already how it is written.
+
+**C-b · A description beside the product evidence, never instead of it.**
+
+`productEvidence.ts` accepts a link or images and deliberately refuses a
+sentence, because a description of a product IS the guess the container rule
+exists to refuse. That is right for the primary answer and wrong as a total
+ban: "this is for solo founders, not teams" is context no product page carries.
+
+Add it as an ANNOTATION, tagged as the creator's claim, ranked below captured
+evidence, and never promoted into a fact the model may state as product truth.
+
 ### TRACK D — The render, and the editor
 
 **D1 · Director-selected clip placement.** The inputs and the composition are
@@ -496,7 +554,28 @@ than the compiler applying a rule.
 *What changes:* the clip lands where it earns attention instead of where a
 default put it.
 
-**D2 · The overlay window.** A Director decision, not effort.
+**D2 · Picture-in-picture, and whether it should exist.** `COMPOSITION_FITS`
+has exactly one value, `full_frame`, and the renderer refuses anything else
+rather than approximating it. That is right as a first implementation: joining
+windows requires exact agreement on raster, frame rate, pixel format and aspect,
+and `full_frame` conforms both branches identically, while `full_frame` has no
+layering so there is no z-order to get wrong.
+
+But for a SaaS founder, losing their face for fifteen seconds costs the human
+presence that makes the video work. **PiP is plausibly the better treatment
+there**, and the honest framing is not "split screen was rejected" — it is that
+one fit is implemented. Adding one needs the Director to decide when it applies,
+and needs a real recording to judge against.
+
+**D2b · A clip longer than its line is silently truncated.** `placeClips` sets
+`sourceEndMs` to `min(clip.durationMs, window length)` and emits nothing. Every
+other outcome in that function warns — `is_the_take`, `duplicate`, `no_window`,
+`window_too_short`, `overlaps_earlier_clip`, `limit_reached` — six named
+refusals, and the one case that silently changes what the viewer sees is quiet.
+A 20-second walkthrough under a 12-second line loses its last 8 seconds, so
+"and then you hit Save" can play over a screen that never reaches Save. **The
+picture and the voice disagree and nothing says so.** Fix: warn on truncation
+and surface it, so the creator can re-record or lengthen the line.
 
 **D3 · Turn the editor on.** Verify each prerequisite against the deployed
 environment, not the file describing it. Then one real recording, from one real
