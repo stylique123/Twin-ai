@@ -6,6 +6,7 @@ import {
 } from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
+import { generationLifecycle, resolveFinishedOutputs } from './editor/finishedOutput'
 
 // ---- Client injection ------------------------------------------------------
 // The web app is the single client surface. It wires its Supabase client, an
@@ -509,11 +510,19 @@ export async function getDashboardStats(creditsLeft: number): Promise<DashboardS
     supabase.from('posts').select('generation_id').eq('status', 'posted'),
   ])
   const publishedIds = new Set(((posts ?? []) as { generation_id: string | null }[]).map((p) => p.generation_id).filter(Boolean))
+  const rows = (gens ?? []) as { id: string; edit_path: string | null }[]
+  // OUTPUT-1. This counted `edit_path` alone, so an editor-v2 render that
+  // succeeded — bytes in storage, validated, reviewed — was counted as a DRAFT.
+  // The creator's dashboard told them the video they had just watched was not
+  // finished.
+  const finished = await resolveFinishedOutputs(rows)
   let drafts = 0, ready = 0, published = 0
-  for (const g of (gens ?? []) as { id: string; edit_path: string | null }[]) {
-    if (publishedIds.has(g.id)) published++
-    else if (g.edit_path) ready++
-    else drafts++
+  for (const g of rows) {
+    switch (generationLifecycle(g.id, finished, publishedIds)) {
+      case 'published': published++; break
+      case 'ready': ready++; break
+      default: drafts++
+    }
   }
   return { drafts, ready, published, recreationsLeft: Math.floor(creditsLeft / 10) }
 }

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Wand2, Clapperboard, Loader2, Play, Video, Plus, Eye, CalendarDays } from 'lucide-react'
-import { listGenerations, signEditUrls, listPosts } from '../lib/api'
+import { listGenerations, signEditUrls, listPosts, resolveFinishedOutputs, generationLifecycle } from '../lib/api'
+import type { FinishedOutput } from '../lib/types'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal, Stagger, RevealItem } from '../components/motion'
@@ -26,6 +27,8 @@ const STATUS_SKIN: Record<Status, { label: string; cls: string }> = {
 let GENERATIONS_CACHE: Generation[] | null = null
 let URLS_CACHE: Record<string, string> = {}
 let PUBLISHED_CACHE: Set<string> | null = null
+// OUTPUT-1: which generations have a finished video, by EITHER authority.
+let FINISHED_CACHE: Map<string, FinishedOutput> = new Map()
 
 function dayLabel(iso: string): string {
   const d = new Date(iso)
@@ -43,6 +46,7 @@ export default function History() {
   const [error, setError] = useState(false)
   const [urls, setUrls] = useState<Record<string, string>>(URLS_CACHE)
   const [published, setPublished] = useState<Set<string>>(PUBLISHED_CACHE ?? new Set())
+  const [finished, setFinished] = useState<Map<string, FinishedOutput>>(FINISHED_CACHE)
   const [filter, setFilter] = useState<Filter>('all')
 
   // Pulled out so the error state can offer a real retry. A failed fetch must NOT
@@ -55,6 +59,10 @@ export default function History() {
       .then(async (gens) => {
         GENERATIONS_CACHE = gens
         setItems(gens)
+        // OUTPUT-1: readiness is asked of BOTH authorities, once, for the
+        // whole page. Before this, an editor-v2 render filtered as `draft`.
+        FINISHED_CACHE = await resolveFinishedOutputs(gens).catch(() => new Map())
+        setFinished(FINISHED_CACHE)
         const paths = gens.flatMap((g) => [g.thumb_path, g.ai_thumb_path, g.edit_path].filter(Boolean) as string[])
         if (paths.length) {
           const signed = await signEditUrls(paths).catch(() => ({}))
@@ -76,7 +84,7 @@ export default function History() {
   useEffect(() => { load() }, [])
 
   const statusOf = (g: Generation): Status =>
-    published.has(g.id) ? 'published' : g.edit_path ? 'ready' : 'draft'
+    generationLifecycle(g.id, finished, published)
 
   const counts = useMemo(() => {
     const c = { all: items.length, draft: 0, ready: 0, published: 0 }

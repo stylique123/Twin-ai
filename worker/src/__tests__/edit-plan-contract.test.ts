@@ -450,8 +450,20 @@ import { compileEditPlan } from ${JSON.stringify(join(here, '..', 'jobs', 'edito
 import { baseInput, policy } from ${JSON.stringify(join(here, 'fixtures', 'editPlanFixture.ts'))}
 ${scriptBody}
 `)
+    // NODE VERSION PORTABILITY, not a preference.
+    //
+    // `--experimental-transform-types` was needed to run a `.mts` child on Node
+    // 22. Type stripping became the DEFAULT in Node 23.6, and the flag was
+    // REMOVED in Node 26 — so passing it unconditionally makes the process
+    // refuse to start on a modern runtime, and three tests fail for a reason
+    // that has nothing to do with what they assert. CI pins a supported version
+    // and stayed green throughout, which is exactly why this rotted: the only
+    // people who saw it were developers on a newer local Node, and a test that
+    // fails only off-CI gets learned-around rather than fixed.
+    const major = Number(process.versions.node.split('.')[0])
+    const args = major < 23 ? ['--experimental-transform-types'] : []
     return execFileSync(process.execPath, [
-      '--experimental-transform-types', '--no-warnings',
+      ...args, '--no-warnings',
       '--import', join(dir, 'register.mjs'), script,
     ], { encoding: 'utf8', timeout: 60000 })
   }

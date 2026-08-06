@@ -351,5 +351,12 @@ Neither gap is large. The bulk — the 33 `stylique-os` images — is in scope.
 **Whisper model identity is UNPROVEN.** The deployed check is `test -d` on the
 model directory — a path check, not an identity check. `verify_dir` and
 `manifest_sha256` exist in `worker/scripts/fetch_model.py` but run only at build
-time. This gates the Render deploy and has nothing to do with this cleanup; a
+time. This gates the WORKER deploy and has nothing to do with this cleanup; a
 healthy transcription is not proof of model convergence.
+
+> Corrected 2026-08-06: this paragraph said "the Render deploy". There is no
+> Render deploy. The worker is a Docker container (`twinai-worker`) on the VPS
+> this document is about, deployed by `.github/workflows/deploy-worker.yml`, with
+> its environment in `/opt/twinai-worker.env` and applied by
+> `docker restart twinai-worker`. The stale word cost real time: it sent an
+> operator to `dashboard.render.com` looking for a service that was never there.
