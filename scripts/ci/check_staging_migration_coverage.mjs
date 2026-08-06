@@ -70,6 +70,11 @@ export const EXCLUDED = {
     + "`to_regclass('public.posts')` is null there). Staging is an editor test bed "
     + 'and never publishes, so it cannot exercise the rule and cannot even host it — '
     + 'the migration would fail outright rather than pass vacuously.',
+  '0113_post_attribution':
+    'Creates a table referencing `public.posts` and adds columns to '
+    + '`post_outcome_observations` and `dna_claims` — none of which staging has. '
+    + 'Same reason as 0112: staging is an editor test bed that never publishes, so '
+    + 'the migration would fail outright rather than pass vacuously.',
   '0109_pre_script_brief':
     'Adds a column to `brand_voices`, which on staging is a fixture rather than the '
     + 'real table. The editor reads the brief through the blueprint, not directly.',

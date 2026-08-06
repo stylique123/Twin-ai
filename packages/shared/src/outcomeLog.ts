@@ -28,6 +28,10 @@ import {
   validateClaim, validateObservation,
   type OutcomeClaim, type OutcomeObservation, type OutcomeSource,
 } from './editor/outcomes'
+import {
+  validateAttribution,
+  type AttributionKind, type PostAttribution,
+} from './editor/attribution'
 
 /** Postgres `undefined_table`. The table is absent because the migration has
  *  not been applied — never because the query was wrong. */
@@ -102,7 +106,15 @@ export type AppendOutcome =
  * thrown error nor a silent catch.
  */
 export async function appendObservation(
-  postId: string, raw: { metric: string; value: number; observedAt: string; source: OutcomeSource },
+  postId: string,
+  raw: { metric: string; value: number; observedAt: string; source: OutcomeSource },
+  /**
+   * LEARNING-1 lineage: WHAT attributed this reading — a `post_attributions`
+   * id. Optional, and absent is the normal case rather than an oversight: a
+   * platform view count is attributed by nothing, and requiring one everywhere
+   * would make the field meaningless by making it universal.
+   */
+  attributionId?: string,
 ): Promise<AppendOutcome> {
   const obs = validateObservation(raw)
   if ('rejected' in obs) return { ok: false, reason: 'invalid' }
@@ -116,6 +128,12 @@ export async function appendObservation(
     value: obs.value,
     observed_at: obs.observedAt,
     source: obs.source,
+    // Omitted entirely rather than sent as null when absent, so this insert is
+    // byte-identical to the pre-0113 one on a database where the column does
+    // not exist yet. Naming a column PostgREST has never heard of fails the
+    // whole write, which would stop a creator recording views because a
+    // migration has not been applied.
+    ...(attributionId ? { attribution_id: attributionId } : {}),
   })
   if (!error) return { ok: true }
   if ((error as { code?: string }).code === UNDEFINED_TABLE) {
@@ -233,4 +251,91 @@ export async function listDnaClaims(limit = 20): Promise<ClaimsRead> {
     if (!('rejected' in claim)) claims.push(claim)
   }
   return { known: true, claims }
+}
+
+// ---- Attribution (LEARNING-1 lineage) --------------------------------------
+// 0113's rows, read and written. See `editor/attribution.ts` for why they exist
+// and why they are immutable.
+
+export interface AttributionsRead {
+  /** False when the table is absent or the read failed — the same distinction
+   *  the log and the claims make, for the same reason. An empty list would say
+   *  "this post is measured by nothing", which is a claim this call did not
+   *  earn the right to make. */
+  known: boolean
+  attributions: PostAttribution[]
+}
+
+const NO_ATTRIBUTIONS: AttributionsRead = { known: false, attributions: [] }
+
+/** Every identifier that can explain an outcome on this post. */
+export async function listPostAttributions(postId: string): Promise<AttributionsRead> {
+  const { data, error } = await getClient()
+    .from('post_attributions')
+    .select('id, post_id, kind, value')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true })
+    .limit(100)
+  if (error) return NO_ATTRIBUTIONS
+  const attributions: PostAttribution[] = []
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    const v = validateAttribution({ kind: String(row.kind), value: String(row.value) })
+    // Validated on the way OUT as well as in, like `listDnaClaims`: this is the
+    // value a business claim will eventually rest on, so a row we cannot
+    // verify is dropped rather than shown as evidence.
+    if ('rejected' in v) continue
+    attributions.push({
+      id: String(row.id), postId: String(row.post_id), kind: v.kind, value: v.value,
+    })
+  }
+  return { known: true, attributions }
+}
+
+export type MintAttribution =
+  | { ok: true; attribution: PostAttribution }
+  | { ok: false; reason: 'invalid' }
+  /** 0113 is not applied yet. Not the creator's fault and not reported as
+   *  success — the same three-state handling `appendObservation` uses. */
+  | { ok: false; reason: 'not_recording' }
+  /** This creator already uses this code. Two posts sharing one code cannot
+   *  attribute anything: every outcome it explains would belong to both. */
+  | { ok: false; reason: 'duplicate' }
+  | { ok: false; reason: 'rejected' }
+
+/**
+ * Mint an identifier for a post, BEFORE the outcomes it will explain.
+ *
+ * There is no update counterpart, and that is deliberate rather than
+ * unfinished: repointing a code at another post would retroactively transfer
+ * every outcome recorded through it, silently and with no record. 0113 refuses
+ * the UPDATE at the database as well, so this is not the only thing standing
+ * between a creator and that.
+ */
+export async function mintPostAttribution(
+  postId: string, raw: { kind: AttributionKind | string; value: string },
+): Promise<MintAttribution> {
+  const v = validateAttribution({ kind: String(raw.kind), value: raw.value })
+  if ('rejected' in v) return { ok: false, reason: 'invalid' }
+  const client = getClient()
+  const { data: auth } = await client.auth.getUser()
+  if (!auth.user) return { ok: false, reason: 'rejected' }
+  const { data, error } = await client
+    .from('post_attributions')
+    .insert({ owner_id: auth.user.id, post_id: postId, kind: v.kind, value: v.value })
+    .select('id, post_id, kind, value')
+    .single()
+  if (!error && data) {
+    const row = data as Record<string, unknown>
+    return {
+      ok: true,
+      attribution: { id: String(row.id), postId: String(row.post_id), kind: v.kind, value: v.value },
+    }
+  }
+  const code = (error as { code?: string } | null)?.code
+  if (code === UNDEFINED_TABLE) return { ok: false, reason: 'not_recording' }
+  // 23505 = unique_violation, which here can only be the (owner, kind,
+  // value_norm) index. Named rather than lumped into `rejected` because it is
+  // the one failure with an obvious next step for the creator: pick another code.
+  if (code === '23505') return { ok: false, reason: 'duplicate' }
+  return { ok: false, reason: 'rejected' }
 }
