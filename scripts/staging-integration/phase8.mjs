@@ -360,7 +360,13 @@ async function main() {
     // the original -- three of seven were written against `startMs`/`endMs`
     // when a cue actually carries `outputStartMs`/`outputEndMs`. That would
     // have failed the matrix and cost a full ~40-minute run to discover.
-    const policy = JSON.parse(await readFile(new URL('../../worker/edit_policy_v1.json', import.meta.url), 'utf8'))
+    // `join(REPO_ROOT, …)` and NOT `new URL(…, import.meta.url)`, because line 46
+    // of this file does `const URL = need('STAGING_URL')` — a module-scope const
+    // that shadows the global URL constructor for the whole module. `new URL` here
+    // is `new` applied to a string, which throws "URL is not a constructor" and
+    // took a full matrix run to find. REPO_ROOT is the idiom this file already
+    // uses and cannot be shadowed by an environment variable.
+    const policy = JSON.parse(await readFile(join(REPO_ROOT, 'worker', 'edit_policy_v1.json'), 'utf8'))
     for (const c of captionChecks(plans[0]?.plan ?? {}, policy, durMs)) {
       check(c.name, c.ok, c.detail)
     }

@@ -224,6 +224,13 @@ jobs:
         run: |
           node scripts/ci/check_docs_no_stale_claims.mjs --selftest
           node scripts/ci/check_docs_no_stale_claims.mjs
+      # Cheap, and it pays for a ~50-minute matrix run. #223 passed the entire
+      # real render and then died on `new URL(…)` in a module whose line 46 is
+      # `const URL = need('STAGING_URL')`.
+      - name: Shadowed globals (a module that shadows a constructor must not construct it)
+        run: |
+          node scripts/ci/check_shadowed_globals.mjs --selftest
+          node scripts/ci/check_shadowed_globals.mjs
       - name: Probe-residue classifier (partial/complete cleanup cannot silently pass)
         run: node scripts/prod-smoke/probe_residue_report.mjs --selftest
       - name: Takes storage-policy inventory (no client DELETE-capable policy; migration-derived)
