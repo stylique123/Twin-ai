@@ -203,6 +203,9 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       // DECIDED, not derived — the plan's target when there is one, and the
       // words-over-speaking-rate estimate when there is not.
       duration_sec: beatDurationSec(beatPlan, i, estimateDurationSec(line, wpm)),
+      // Kept beside it, so an edit that stretches the line cannot erase what the
+      // beat was planned to be.
+      ...(beatPlan?.[i]?.targetSec != null ? { target_sec: beatPlan[i].targetSec } : {}),
       ...framingFor(i + 1, blueprint, seg),
       caption_text: pushCaption(captionFromLine(line), n),
       pause_after: true,

@@ -111,3 +111,18 @@ describe('beatOverrunSec', () => {
     expect(beatOverrunSec(partial, 1, 14)).toBeNull()
   })
 })
+
+describe('the decided length survives an edit', () => {
+  it('keeps target_sec separate from the live duration', () => {
+    // The regression this guards: if the target only lived in duration_sec, the
+    // first re-estimate after an edit would erase the decision, and the drift
+    // would become invisible exactly when it starts to matter.
+    const plan = readBeatPlan([beat('6')], 1)
+    const planned = beatDurationSec(plan, 0, 3)     // what the scene starts at
+    const afterEdit = 14.2                          // what re-estimation produces
+    expect(planned).toBe(6)
+    expect(beatOverrunSec(plan, 0, afterEdit)).toBe(8.2)
+    // And the comparison stays honest when nothing was planned.
+    expect(beatOverrunSec(null, 0, afterEdit)).toBeNull()
+  })
+})
