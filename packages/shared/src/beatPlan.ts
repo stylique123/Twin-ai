@@ -150,19 +150,34 @@ export function beatDurationSec(
 }
 
 /**
- * How far the written words drift from the planned length.
+ * How far a scene's words have drifted from the length that was planned for it.
  *
- * `ScriptEditor` already re-estimates duration as a creator edits; with a target
- * it can say "this is now 14s against a 6s beat" instead of only "14s". Returns
- * null when there is no target to compare against — an unanswerable comparison
- * must not render as agreement.
+ * Reads the SCENE rather than the plan, because that is where the question is
+ * actually asked. `applyDialogueEdit` re-estimates `duration_sec` the moment a
+ * creator edits, so by the time drift exists the plan object is long gone — the
+ * scene is the only thing that still holds both numbers.
+ *
+ * Returns null when the scene carries no target. An unanswerable comparison
+ * must not render as agreement: "no drift" and "nothing to compare" are
+ * different facts, and only one of them means the line is the right length.
  */
-export function beatOverrunSec(
-  plan: PlannedBeat[] | null,
-  index: number,
-  estimatedSec: number,
+export function sceneOverrunSec(
+  scene: { duration_sec?: number | null; target_sec?: number | null },
 ): number | null {
-  const target = plan?.[index]?.targetSec
-  if (typeof target !== 'number') return null
-  return Math.round((estimatedSec - target) * 10) / 10
+  const target = scene.target_sec
+  const live = scene.duration_sec
+  if (typeof target !== 'number' || typeof live !== 'number') return null
+  return Math.round((live - target) * 10) / 10
+}
+
+/** Drift small enough to ignore. A beat planned for 6 seconds that estimates at
+ *  6.4 is not a problem a creator should be asked to solve, and flagging it
+ *  would train them to ignore the indicator that matters. */
+export const OVERRUN_TOLERANCE_SEC = 1.5
+
+/** Worth telling the creator about. Deliberately one-sided: running LONG is what
+ *  costs a viewer, and a beat that comes in short usually just means they were
+ *  concise. */
+export function overrunWorthShowing(overrunSec: number | null): boolean {
+  return typeof overrunSec === 'number' && overrunSec > OVERRUN_TOLERANCE_SEC
 }
