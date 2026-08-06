@@ -362,10 +362,17 @@ function BuildingStep({
 
   // Advance the visual stage on a gentle clock so the wait feels alive even
   // though the backend reports only building/ready/failed.
+  //
+  // AND STOP THE MOMENT IT FAILS. This ran on empty deps, so polling halted on
+  // an error and the animation did not: the screen showed a live spinner on
+  // "Synthesizing your voice" directly above the words "We couldn't read
+  // @handle". Still working and already failed, at the same time, and no way
+  // for a creator to tell which one was true.
   useEffect(() => {
+    if (err) return
     const t = setInterval(() => setStage((s) => Math.min(s + 1, SCAN_STAGES.length - 1)), 9000)
     return () => clearInterval(t)
-  }, [])
+  }, [err])
 
   useEffect(() => {
     let stopped = false
@@ -419,7 +426,12 @@ function BuildingStep({
 
       <div className="mt-7 space-y-3">
         {SCAN_STAGES.map((s, i) => {
-          const state = i < stage ? 'done' : i === stage ? 'active' : 'todo'
+          // A STOPPED STAGE IS NOT AN ACTIVE ONE. On failure the stage the scan
+          // died on renders as halted rather than in progress — the spinner is
+          // a promise that something is still happening.
+          const state = err
+            ? (i < stage ? 'done' : 'todo')
+            : i < stage ? 'done' : i === stage ? 'active' : 'todo'
           return (
             <div
               key={s}
