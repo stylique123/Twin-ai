@@ -716,9 +716,20 @@ export default function Result() {
                     {editProducedVideo(editProject) ? (
                       editOutput?.videoUrl ? (
                         <video src={editOutput.videoUrl} controls playsInline className="h-full w-full object-contain" poster={editOutput.coverUrl ?? undefined} />
-                      ) : editOutputStalled ? (
+                      ) : bundle?.state === 'unavailable' || editOutputStalled ? (
+                        // TOLD, rather than guessed after eight seconds.
+                        //
+                        // The spinner-then-timeout path stays as a backstop for
+                        // a bundle that has not arrived at all, but when the
+                        // bundle says `unavailable` the server has already
+                        // answered: the row names an output and it could not be
+                        // served. Waiting out a timer to say so is time the
+                        // creator spends believing it is still loading.
                         <div className="text-center">
                           <p className="px-4 text-xs text-coral">Couldn’t load the video.</p>
+                          <p className="mt-1 px-5 text-[11px] leading-relaxed text-stone">
+                            The video is there — we just couldn’t reach it this time.
+                          </p>
                           <button onClick={() => setEditOutputAttempt((n) => n + 1)} className="mt-2 text-xs text-stone underline hover:text-cream">Retry</button>
                         </div>
                       ) : (

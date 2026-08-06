@@ -71,6 +71,19 @@ export type OutputBundleState =
   | 'failed'
   | 'cancelled'
   | 'empty'     // completed, and produced no video. Real, and not an error.
+  /**
+   * The row says there IS a video and we could not get at it.
+   *
+   * Distinct from `empty` on purpose, and this distinction was got wrong once
+   * already. The first version of this module folded a failed signing call into
+   * `empty`, arguing the creator's experience of "no video here" was identical.
+   * It is not: `empty` is a settled fact with nothing to retry, and this is a
+   * transient failure that a retry usually clears. Collapsing them recreated the
+   * product's own "an error looks like an empty state" defect INSIDE the
+   * authority built to remove it — a creator told their render produced nothing
+   * has no reason to press anything, and no reason to tell us.
+   */
+  | 'unavailable'
   | 'ready'
 
 interface Base { projectId: string }
@@ -84,6 +97,16 @@ export type OutputBundle =
   | (Base & { state: 'failed'; project: EditProject; failure: FailureExplanation })
   | (Base & { state: 'cancelled'; project: EditProject })
   | (Base & { state: 'empty'; project: EditProject })
+  | (Base & {
+      state: 'unavailable'
+      project: EditProject
+      /**
+       * The output the row PROMISES, so a caller can say what is missing and a
+       * log can name it. Carrying it is what separates this from `empty`: there
+       * is a specific asset that should have been reachable.
+       */
+      outputAssetId: string
+    })
   | (Base & {
       state: 'ready'
       project: EditProject
@@ -137,13 +160,21 @@ export async function getOutputBundle(projectId: string): Promise<OutputBundle> 
   }
 
   // `ready` by the row. The output still has to be SIGNABLE: `getEditorOutput`
-  // collapses every server-side refusal to null, and a row that says there is a
-  // video while the endpoint will not serve one is not something to render a
-  // player for. It reports as `empty` — the creator's experience of "no video
-  // here" is identical, and inventing a seventh state for it would make every
-  // consumer handle a case it cannot act on differently.
+  // collapses every server-side refusal to null — auth, network, a 5xx, a
+  // storage-signing failure — and a row that says there is a video while the
+  // endpoint will not serve one is not something to render a player for.
+  //
+  // It reports `unavailable`, NOT `empty`. See the union above: the row names an
+  // output asset, so something specific is missing and a retry is the right
+  // offer. Saying "this run produced no video" here would be telling the creator
+  // a settled falsehood about a file that exists.
   const output = await getEditorOutput(projectId)
-  if (!output) return { projectId, state: 'empty', project }
+  if (!output) {
+    return {
+      projectId, state: 'unavailable', project,
+      outputAssetId: project.output_asset_id as string,
+    }
+  }
 
   const [plan, events] = await Promise.all([
     getEditPlanDocument(projectId).catch(() => null),

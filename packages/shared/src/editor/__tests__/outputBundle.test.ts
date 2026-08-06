@@ -126,14 +126,33 @@ describe('only the ready bundle carries a video', () => {
     expect((b as Record<string, unknown>).craft).toBeUndefined()
   })
 
-  it('a row that says ready but cannot be SIGNED reports empty, not ready', async () => {
-    // `getEditorOutput` collapses every server refusal to null. Rendering a
-    // player against a URL the server would not issue is worse than saying
-    // there is no video, and the creator's experience of the two is identical.
+  it('a row that says ready but cannot be SIGNED is UNAVAILABLE, not empty', async () => {
+    // The correction. `getEditorOutput` collapses every server refusal to null
+    // — auth, network, 5xx, a storage-signing failure — and the first version of
+    // this module called all of them `empty`, arguing the creator's experience
+    // of "no video here" was identical.
+    //
+    // It is not. `empty` is a settled fact with nothing to retry; this is a
+    // transient failure a retry usually clears. Folding them together
+    // recreated the "an error looks like an empty state" defect inside the
+    // authority built to remove it.
     outputResponse = null
     const b = await getOutputBundle(PROJECT)
-    expect(b.state).toBe('empty')
+    expect(b.state).toBe('unavailable')
     expect((b as Record<string, unknown>).output).toBeUndefined()
+    // It names WHAT is missing, which is what makes a retry and a log possible
+    // and is precisely what `empty` cannot carry.
+    if (b.state !== 'unavailable') throw new Error('unreachable')
+    expect(b.outputAssetId).toBe(ASSET)
+  })
+
+  it('and `empty` still means the truthful no-output case ONLY', async () => {
+    // The other half of the distinction: a scaffold completion has no asset at
+    // all, nothing to retry, and must not offer one.
+    projectRow = proj('completed', null)
+    const b = await getOutputBundle(PROJECT)
+    expect(b.state).toBe('empty')
+    expect((b as Record<string, unknown>).outputAssetId).toBeUndefined()
   })
 
   it('craft checks are NOT_CHECKED when the plan is unreadable — never passes', async () => {
