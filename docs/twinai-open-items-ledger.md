@@ -62,12 +62,20 @@ on Supabase edge, and `EDITOR_RENDER_ENABLED` in `/opt/twinai-worker.env`
 
 ## C. Not built — ordered by what they unblock
 
-### C1. OutputBundle — the largest single unlock
-What a finished edit *is* to a consumer is currently assembled at each call
-site: status, output asset, signed URLs, craft facts, captions, cover. Every
-consumer reassembles it and each one can disagree. Until this exists, every new
-surface that shows a finished video is a new place for the readiness bug in A8
-to reappear in a different spelling.
+### C1. OutputBundle — BUILT
+`packages/shared/src/editor/outputBundle.ts`, pinned by `outputBundle.test.ts`
+(14 cases). A discriminated union where only `state: 'ready'` carries `output`
+and `craft`, so rendering a player for a project that produced no video is not
+a bug that can be written — the field does not exist in the other variants.
+
+`Result.tsx` is migrated to it and `CraftChecks` is now presentational, which
+removes the third independent readiness judgement (the one that was wrong). The
+remaining consumers named in the original entry — captions and cover surfaces —
+are not yet migrated; they are additive, and each one that moves deletes another
+hand-rolled derivation.
+
+Worth keeping as the reason this mattered: naming the predicate
+(`editProducedVideo`, A8) stopped the *mistake*; the union stops the *shape*.
 
 ### C2. Approval → posts binding
 `posts.edit_project_id` exists (0098 adds it, with a comment calling it "THE
