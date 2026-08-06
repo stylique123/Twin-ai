@@ -1109,7 +1109,7 @@ export default function Result() {
 
               {activeTab === 'strategy' && (
                 <div className="mt-6">
-                  <CreativeTransfer generationId={gen.id} blueprint={b} />
+                  <CreativeTransfer generationId={gen.id} blueprint={b} referenceAnalysis={gen.reference_analysis} />
                 </div>
               )}
               {activeTab === 'spec' && (
@@ -1404,7 +1404,7 @@ export default function Result() {
           )}
           {mobileTab === 'strategy' && (
             <div className="mt-6">
-              <CreativeTransfer generationId={gen.id} blueprint={b} />
+              <CreativeTransfer generationId={gen.id} blueprint={b} referenceAnalysis={gen.reference_analysis} />
             </div>
           )}
 

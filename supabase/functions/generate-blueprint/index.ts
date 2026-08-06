@@ -572,6 +572,32 @@ Deno.serve(async (req: Request) => {
     ref = t as typeof ref
   }
 
+  // REFERENCE-1 (0110). WHICH BRANCH RAN, recorded as a fact rather than left
+  // for a reader to guess from the shape of the output.
+  //
+  // Computed from `ref` — the same value the prompt branch below tests — so the
+  // record cannot disagree with what the model was actually given. It is written
+  // on the row, NOT into `blueprint`: the blueprint is the model's output, so a
+  // provenance field there would be the model's claim about its own evidence.
+  //
+  // The distinction the creator cannot otherwise make: both branches return a
+  // confident `reference_read`, and the fallback is reached silently by ingest
+  // failure, an unsupported host, a private post or a timeout.
+  const referenceAnalysis: { mode: 'real' | 'pattern' | 'none'; reason?: string } =
+    !reference_url
+      ? { mode: 'none' }
+      : ref && (ref.structure || ref.text)
+        ? { mode: 'real' }
+        : {
+            mode: 'pattern',
+            // Named causes only. "Something went wrong" would put the creator
+            // back where they started — unable to tell whether to retry, fix the
+            // link, or accept the pattern read.
+            reason: !transcript_id
+              ? 'We could not read this video, so the script follows the format instead.'
+              : 'The analysis came back empty, so the script follows the format instead.',
+          }
+
   // Spend credits atomically BEFORE the model call. Refund on failure.
   const { error: spendErr } = await admin.rpc('spend_credits', {
     p_user: ownerId,
@@ -819,6 +845,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         reference_note,
         fidelity,
         blueprint,
+        reference_analysis: referenceAnalysis,
         brand_voice_id: voice?.id ?? null,
         transcript_id: transcript_id || null,
         credits_spent: BLUEPRINT_COST,

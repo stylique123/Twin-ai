@@ -185,6 +185,10 @@ export interface Generation {
   // bucket; sign to display/play). Written by the old editor historically; the
   // rebuilt editor re-populates the same seam.
   edit_path?: string | null
+  /** REFERENCE-1 (0110). Server-owned: did the blueprint read the actual video,
+   *  or reason from the format pattern? NULL on generations predating the
+   *  column — unknown, never "pattern". Read via `readReferenceAnalysis`. */
+  reference_analysis?: unknown
   thumb_path?: string | null
   // On-demand AI cover image rendered from the packaging brief (private `edits`
   // bucket path; sign to display). Only set when the creator taps "Generate
