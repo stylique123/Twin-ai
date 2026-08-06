@@ -25,6 +25,7 @@ const draft = (userId = 'user-a'): OnboardingDraft => ({
   workKind: null,
   forbiddenClaims: null,
   promotes: null,
+  canFilmObjects: null,
   offerFromCreator: false,
   canRecordScreen: null,
   profile: null,

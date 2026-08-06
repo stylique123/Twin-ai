@@ -94,6 +94,7 @@ export default function Onboarding() {
       offerFromCreator: false,
       // Unanswered until the creator answers. Never seeded, in either direction.
       canRecordScreen: null,
+      canFilmObjects: null,
       audience: profile?.audience ?? '',
       product: profile?.offer ?? '',
       goal: '',
@@ -106,8 +107,8 @@ export default function Onboarding() {
     audience: string,
     product: string,
     goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen'>
-      = { workKind: null, forbiddenClaims: null, promotes: null, offerFromCreator: false, canRecordScreen: null },
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>
+      = { workKind: null, forbiddenClaims: null, promotes: null, offerFromCreator: false, canRecordScreen: null, canFilmObjects: null },
   ) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
@@ -121,6 +122,21 @@ export default function Onboarding() {
   // profile and there is none yet during the scan — which is exactly why the
   // question fits there: it costs the creator nothing that the scan was not
   // already spending.
+  // Q6, the second half of the same wasted minute. Its own setter rather than a
+  // generic one: the two flags gate in DIFFERENT DIRECTIONS — `can_record_screen`
+  // false hides a capture surface, `can_film_objects` false withholds footage
+  // SUGGESTIONS — so a shared helper would have to carry the difference as a
+  // parameter and the next flag added would inherit whichever direction was
+  // written first.
+  const setCanFilmObjects = useCallback((value: boolean | null) => {
+    setDraft((current) => {
+      if (!current || current.userId !== userId) return current
+      const next = { ...current, canFilmObjects: value }
+      safeWriteDraft(next)
+      return next
+    })
+  }, [userId])
+
   const setCanRecordScreen = useCallback((value: boolean | null) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
@@ -173,6 +189,7 @@ export default function Onboarding() {
                   onReady={handleReady}
                   onBack={() => setMode('handle')}
                   onCanRecordScreen={setCanRecordScreen}
+                  onCanFilmObjects={setCanFilmObjects}
                 />
               )}
               {mode === 'confirm' && draft && (
@@ -345,11 +362,13 @@ function BuildingStep({
   onReady,
   onBack,
   onCanRecordScreen,
+  onCanFilmObjects,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile) => void
   onBack: () => void
   onCanRecordScreen: (value: boolean | null) => void
+  onCanFilmObjects: (value: boolean | null) => void
 }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
@@ -484,6 +503,40 @@ function BuildingStep({
           Say yes and Twin can ask you to capture what is on your screen for the moments your
           script says to show something. Skip it and nothing changes — we just won’t offer it yet.
         </p>
+
+        {/* Q6, in the same wasted minute and for the same reason: no scan can
+            read a creator's setup. Two capability answers here switch on §7a's
+            production-mode match, which reads BOTH today and answers "don't
+            know" for everyone because nothing has ever written them.
+
+            THE DIRECTION IS OPPOSITE to the question above, which is why the
+            copy differs rather than being templated. `can_record_screen = false`
+            HIDES a capture surface; `can_film_objects = false` withholds footage
+            SUGGESTIONS. Saying no here removes advice, not ability — so the
+            sentence has to promise the right thing. */}
+        <p className="mt-4 text-xs font-semibold text-cream">And can you put a product or object in front of the camera?</p>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {([true, false] as const).map((v) => (
+            <button
+              key={String(v)}
+              type="button"
+              aria-pressed={draft.canFilmObjects === v}
+              onClick={() => onCanFilmObjects(draft.canFilmObjects === v ? null : v)}
+              className={cn(
+                'rounded-full border px-3 py-1.5 text-xs transition',
+                draft.canFilmObjects === v
+                  ? 'border-coral bg-coral/15 text-cream'
+                  : 'border-white/15 text-sand hover:bg-white/5',
+              )}
+            >
+              {v ? 'Yes' : 'No'}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-stone">
+          Say no and we stop suggesting shots you cannot film. Skip it and we keep showing the
+          full checklist — a suggestion you ignore costs nothing, a missing one costs a video.
+        </p>
       </div>
 
       {err && (
@@ -535,7 +588,7 @@ function ConfirmStep({
   draft: OnboardingDraft
   onDraftChange: (
     profile: VoiceProfile, audience: string, product: string, goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen'>,
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>,
   ) => void
   onDone: () => Promise<void>
 }) {
@@ -563,6 +616,7 @@ function ConfirmStep({
   // than re-asked: two screens asking one question is two places that can
   // disagree about what a skipped answer means.
   const canRecordScreen = draft.canRecordScreen
+  const canFilmObjects = draft.canFilmObjects
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -572,10 +626,10 @@ function ConfirmStep({
     if (vp) {
       onDraftChange(vp, audience, product, goal, {
         workKind, forbiddenClaims: forbiddenClaims.trim() || null, promotes, offerFromCreator: offerTouched,
-        canRecordScreen,
+        canRecordScreen, canFilmObjects,
       })
     }
-  }, [vp, audience, product, goal, workKind, forbiddenClaims, promotes, offerTouched, canRecordScreen, onDraftChange])
+  }, [vp, audience, product, goal, workKind, forbiddenClaims, promotes, offerTouched, canRecordScreen, canFilmObjects, onDraftChange])
 
   if (!vp) {
     return (
@@ -600,8 +654,16 @@ function ConfirmStep({
       // "they never said" must not become "they said no". Its own call rather
       // than a field on saveVoiceProfile — the profile is what the scan read, and
       // this is what the creator told us about their setup.
-      if (canRecordScreen !== null) {
-        await saveCapabilityDefaults(draft.voiceId, { can_record_screen: canRecordScreen })
+      // ONE CALL, both answers, and only the ones actually given.
+      // `saveCapabilityDefaults` merges, so an unanswered flag is simply absent
+      // from the object and the column keeps whatever it held — which is what
+      // makes "they never said" survive as its own state rather than collapsing
+      // to false.
+      const caps: Record<string, boolean> = {}
+      if (canRecordScreen !== null) caps.can_record_screen = canRecordScreen
+      if (canFilmObjects !== null) caps.can_film_objects = canFilmObjects
+      if (Object.keys(caps).length > 0) {
+        await saveCapabilityDefaults(draft.voiceId, caps)
       }
       // §8a.1's BRIEF, persisted — the answers that used to end here.
       //

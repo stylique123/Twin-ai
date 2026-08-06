@@ -24,6 +24,11 @@ export interface OnboardingDraft {
   // §8a.3 Q4 — whose product the CTA points at. A CHOOSER: §2.3's three
   // container routes branch on it, and null is a real state meaning unanswered.
   promotes: BriefPromotes | null
+  // §8a.3 Q6 — can the creator put a product or object in front of the camera?
+  // THREE-STATE, and the third state is load-bearing: `can_film_objects = false`
+  // permanently withholds footage suggestions, so "they never said" must never
+  // become "they said no".
+  canFilmObjects: boolean | null
   // WHETHER THE CREATOR TYPED THE OFFER, or left the scan's guess standing.
   //
   // §8a calls `offer` the highest-value field on the form BECAUSE it is
@@ -76,6 +81,10 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       promotes: (BRIEF_PROMOTES as readonly string[]).includes(value.promotes as string)
         ? (value.promotes as BriefPromotes)
         : null,
+      // A REAL boolean or nothing — the same rule `canRecordScreen` follows one
+      // line down. A draft written before the question existed has no opinion,
+      // and `?? false` would manufacture one.
+      canFilmObjects: typeof value.canFilmObjects === 'boolean' ? value.canFilmObjects : null,
       // Absent in a v2 draft written before the brief existed. FALSE is the
       // honest default: a draft that never recorded the distinction cannot
       // claim the creator typed it.
@@ -116,6 +125,7 @@ export function readOnboardingDraft(storage: Storage, userId: string): Onboardin
     workKind: null,
     forbiddenClaims: null,
     promotes: null,
+    canFilmObjects: null,
     offerFromCreator: false,
     canRecordScreen: null,
     goal: '',
