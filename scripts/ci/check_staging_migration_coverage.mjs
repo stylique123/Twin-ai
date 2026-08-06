@@ -65,6 +65,11 @@ export const EXCLUDED = {
     'Clip capture RPCs. Staging exercises the source path only; no clip is ever captured.',
   '0108_clip_scene_number':
     'Same as 0107 — no clip exists on staging to carry a scene number.',
+  '0112_post_output_binding_coherent':
+    'A trigger ON `public.posts`, which staging does not have (verified: '
+    + "`to_regclass('public.posts')` is null there). Staging is an editor test bed "
+    + 'and never publishes, so it cannot exercise the rule and cannot even host it — '
+    + 'the migration would fail outright rather than pass vacuously.',
   '0109_pre_script_brief':
     'Adds a column to `brand_voices`, which on staging is a fixture rather than the '
     + 'real table. The editor reads the brief through the blueprint, not directly.',

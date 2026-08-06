@@ -342,7 +342,7 @@ type Db = any
 // Publish ONE post via its owner's connection. Shared by the interactive
 // `publish` action and the cron `publish_due` scan. Signs the render, calls the
 // platform adapter, and records posted/external_url or the failure reason.
-async function publishOne(admin: Db, post: { id: string; owner_id: string; platform: string; generation_id: string; caption?: string | null }): Promise<{ ok: boolean; error?: string; external_url?: string; skipped?: boolean }> {
+async function publishOne(admin: Db, post: { id: string; owner_id: string; platform: string; generation_id: string; caption?: string | null; edit_project_id?: string | null; output_asset_id?: string | null }): Promise<{ ok: boolean; error?: string; external_url?: string; skipped?: boolean }> {
   const ad = ADAPTERS[post.platform]
   if (!ad) return { ok: false, error: 'Unknown platform' }
   // ATOMIC CLAIM — flip scheduled → posting and only proceed if THIS call won the
@@ -377,7 +377,19 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
     .eq('id', post.generation_id).eq('user_id', post.owner_id).maybeSingle()
   if (!gen) return await failPost('No finished video to publish yet')
 
-  const current = await currentOutput(admin, post.generation_id)
+  // WHAT THIS POST IS ABOUT, decided when it was scheduled — not now.
+  //
+  // `schedulePost` records the render the creator was looking at. If they
+  // re-edited between then and now, `currentOutput` resolves to the NEW render,
+  // and publishing that would quietly change what the scheduled post is about.
+  // Nobody decided that; it is the passage of time doing it for them.
+  //
+  // So a BOUND post publishes what it was bound to. A post scheduled before
+  // this existed carries NULL, which means "we did not record which" and NOT
+  // "there is no video" — those resolve now, exactly as they always did.
+  const current = post.output_asset_id && post.edit_project_id
+    ? { editProjectId: post.edit_project_id, outputAssetId: post.output_asset_id }
+    : await currentOutput(admin, post.generation_id)
 
   // THE APPROVAL GATE, and it fails CLOSED on an explicit requirement only.
   //
@@ -414,7 +426,16 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
         ? (await admin.storage.from('edits').createSignedUrl(gen.edit_path, 3600)).data?.signedUrl ?? null
         : null)
   if (!current && !gen.edit_path) return await failPost('No finished video to publish yet')
-  if (!signedUrl) return await failPost('Could not read the video file')
+  // A BOUND POST THAT CANNOT BE SIGNED FAILS. It does NOT fall back to the
+  // generation's current render, which is the tempting repair and the wrong one:
+  // silently substituting a different file is precisely what binding exists to
+  // prevent, and a creator would learn about the substitution from their own
+  // published feed. Failing is recoverable; publishing the wrong video is not.
+  if (!signedUrl) {
+    return await failPost(post.output_asset_id
+      ? 'The video this post was scheduled from is no longer readable — re-schedule it from the current version'
+      : 'Could not read the video file')
+  }
   const signed = { signedUrl }
   try {
     // Refresh a short-lived (YouTube) token before publishing so a next-day post
@@ -537,7 +558,7 @@ Deno.serve(async (req: Request) => {
     if (!secret || cronHeader !== secret) return json({ error: 'Forbidden' }, 403)
     const { data: due } = await admin
       .from('posts')
-      .select('id, owner_id, platform, generation_id, caption')
+      .select('id, owner_id, platform, generation_id, caption, edit_project_id, output_asset_id')
       .eq('status', 'scheduled')
       .lte('scheduled_for', new Date().toISOString())
       .limit(25)
@@ -629,7 +650,7 @@ Deno.serve(async (req: Request) => {
     if (!postId) return json({ error: 'Missing post_id' }, 400)
     // Ownership: the post row must be the caller's (publishOne re-verifies the
     // generation belongs to post.owner_id before signing its render).
-    const { data: post } = await admin.from('posts').select('id, owner_id, platform, generation_id, caption').eq('id', postId).eq('owner_id', user.id).maybeSingle()
+    const { data: post } = await admin.from('posts').select('id, owner_id, platform, generation_id, caption, edit_project_id, output_asset_id').eq('id', postId).eq('owner_id', user.id).maybeSingle()
     if (!post) return json({ error: 'Post not found' }, 404)
     const r = await publishOne(admin, post)
     if (!r.ok) return json({ error: r.error ?? 'Publish failed.' }, 502)

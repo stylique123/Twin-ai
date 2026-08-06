@@ -54,6 +54,22 @@ from the apply result:
   refused, `"declined"` and an evidence object storable, a product *description*
   refused. `authenticated` holds column-level UPDATE, so the column is writable.
 
+Migrations **0110, 0111, 0112** are also applied to production, and each was
+exercised rather than watched:
+
+- **0110** — `generations.reference_analysis` is server-owned, the
+  `is_reference_analysis()` guard accepts `real`/`pattern`/`none` and refuses
+  anything else. `unknown` is not `pattern`: a reference we never analysed and a
+  reference we analysed and found nothing in are different facts.
+- **0111** — applying it cleanly proved nothing. *Calling* it found a real bug:
+  the function declared `proj record` and filled it only on the approve branch,
+  so the UNAPPROVE path raised `record "proj" is not assigned yet` — the path
+  `review/index.ts` uses for "request changes", which would have 500'd for every
+  client who asked for a change. Fixed to scalars, which initialise to NULL, and
+  both branches re-tested.
+- **0112** — the seven cases listed under C2, run against production with a
+  synthetic fixture that was deleted in the same statement.
+
 The remaining launch gate is the flag, not the schema: `EDITOR_V2_START_ENABLED`
 on Supabase edge, and `EDITOR_RENDER_ENABLED` in `/opt/twinai-worker.env`
 (applied by `docker restart twinai-worker`).
@@ -77,16 +93,48 @@ hand-rolled derivation.
 Worth keeping as the reason this mattered: naming the predicate
 (`editProducedVideo`, A8) stopped the *mistake*; the union stops the *shape*.
 
-### C2. Approval → posts binding
-`posts.edit_project_id` exists (0098 adds it, with a comment calling it "THE
-join key") and **nothing writes it** — verified 2026-08-06: every
-`edit_project_id` reference in the tree is against `edit_outputs`, not `posts`.
-So the column that was added to connect a render to the post of it has connected
-nothing since the day it shipped.
+### C2. Approval → posts binding — BUILT
 
-Beyond the column, nothing binds an *approval* to the thing approved. A creator
-approving a video and a video being posted are two facts with no enforced
-relationship.
+Was: `posts.edit_project_id` exists (0098 adds it, with a comment calling it
+"THE join key") and **nothing writes it**; and nothing binds an *approval* to
+the thing approved, so a creator approving a video and a video being posted were
+two facts with no enforced relationship.
+
+Now, in three parts:
+
+- **The approval names its subject.** 0111 adds
+  `generations.approved_output_asset_id` / `approved_edit_project_id` /
+  `approved_at`, a CHECK forbidding a binding on an unapproved row, and
+  `set_generation_approval()` — one statement, so the approval and what it
+  approved cannot be written apart. NULL means *approved before we recorded
+  what*, not unapproved.
+- **Publishing writes what went out**, from the same resolution used to sign the
+  URL, so the record cannot describe a different file from the one the platform
+  received. The publish path also refuses a *superseded* approval — but only
+  when the brand set `needs_approval` explicitly, because unset is not consent
+  and is not refusal.
+- **The post names its render at SCHEDULE time**, not only at publish time
+  (`schedulePost` → `bindCurrentOutput`). Without that, a creator who
+  re-edits between scheduling and the cron tick has their scheduled post quietly
+  become about a different video, with no moment at which anyone decided that.
+  A bound post publishes what it was bound to; if that file is no longer
+  readable it FAILS rather than substituting the current render.
+
+0112 is the part that only became necessary because of the third. Making those
+columns client-writable opened a cross-tenant read: `posts` is owner-scoped by
+`owner_id` and nothing else, so a client could insert a post it owns naming
+*another user's* edit project, and the publish path would sign and post that
+video to the attacker's own account. A `before insert or update` trigger now
+requires the bound project to belong to the post's own generation, and the asset
+to be the one that project produced. Both columns null stays legal — every
+pre-existing post is in that state.
+
+Verified against production by exercising it, not by reading it: unbound insert
+allowed, correct binding allowed, foreign generation refused, half a binding
+refused, mismatched asset refused. And both cascade cases pass — the `on delete
+set null` FKs arrive as an UPDATE nulling one side, so a trigger that merely
+raised would have made this constraint reach backwards and forbid deleting an
+edit project at all.
 
 ### C3. BrandTruthSnapshot producer
 **The readers exist and the writer does not.** This is the sharpest instance of

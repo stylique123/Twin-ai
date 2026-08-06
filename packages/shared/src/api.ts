@@ -563,6 +563,62 @@ export async function listPosts(): Promise<Post[]> {
 // so every call destroyed history that cannot be reconstructed — and a function
 // that does that, left in reach with a reasonable name, gets called again.
 
+/**
+ * The video a post is ABOUT, recorded when the post is created rather than when
+ * it goes out.
+ *
+ * PUBLISH-1's second half. 0098 added `posts.edit_project_id` and
+ * `posts.output_asset_id`, and `social/index.ts` now writes them at the moment a
+ * publish SUCCEEDS. That is enough to answer "what did we post" afterwards and
+ * not enough to answer the question a creator actually has, which is asked
+ * BEFORE the fact:
+ *
+ *   A creator schedules Tuesday's video on Sunday. On Monday they re-edit it —
+ *   a different hook, a caption fix, a take swapped out. On Tuesday the cron
+ *   publishes whatever `currentOutput` resolves to, which is now the Monday
+ *   render. Nothing lied and nothing failed; the post simply became about a
+ *   different video than the one that was scheduled, with no moment at which
+ *   anyone decided that.
+ *
+ * This is the same defect 0111 closes for approvals, one surface along:
+ * scheduling, like approving, is a judgement about a SPECIFIC render, and a
+ * judgement that does not name its subject cannot be superseded — it can only
+ * be silently reassigned.
+ *
+ * ── NULL IS "SCHEDULED BEFORE WE RECORDED WHICH", NOT "NO VIDEO" ──────────
+ *
+ * Returns an EMPTY OBJECT, not explicit nulls, so an insert that spreads it is
+ * indistinguishable from the pre-binding one. Every scheduled post that already
+ * exists carries NULL here, and the publish path must keep treating that as
+ * "resolve it at publish time" — the three-state rule, at the place where
+ * collapsing it would refuse to publish a real creator's real scheduled post.
+ *
+ * ── A LEGACY GENERATION BINDS TO NOTHING, HONESTLY ────────────────────────
+ *
+ * Both columns are v2 identities. A legacy `edit_path` has no project and no
+ * asset to name, so there is nothing to record and this returns empty — the
+ * publish path falls through to `edit_path` exactly as before. Inventing an id
+ * to make the row look complete would be worse than the gap.
+ *
+ * ── AND IT NEVER BLOCKS THE SCHEDULE ──────────────────────────────────────
+ *
+ * A failed resolve degrades to "unbound". Refusing to schedule a post because
+ * we could not work out which render it was for would trade a lineage gap for a
+ * creator who cannot use their calendar.
+ */
+async function bindCurrentOutput(
+  generationId: string,
+): Promise<{ edit_project_id?: string; output_asset_id?: string }> {
+  try {
+    const resolved = await resolveFinishedOutputs([{ id: generationId }])
+    const out = resolved.get(generationId)
+    if (!out || out.authority !== 'editor_v2' || !out.editProjectId || !out.outputAssetId) return {}
+    return { edit_project_id: out.editProjectId, output_asset_id: out.outputAssetId }
+  } catch {
+    return {}
+  }
+}
+
 export async function markPosted(input: {
   generationId: string
   platform: string
@@ -581,6 +637,10 @@ export async function markPosted(input: {
       status: 'posted',
       posted_at: new Date().toISOString(),
       external_url: input.externalUrl ?? null,
+      // The creator posted this themselves, somewhere we do not publish to. The
+      // render is still the thing the outcome will be attributed to, so it is
+      // recorded here for the same reason the publish path records it.
+      ...(await bindCurrentOutput(input.generationId)),
     })
     .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
     .single()
@@ -601,6 +661,7 @@ export async function schedulePost(input: {
 }): Promise<Post> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
+  const bound = await bindCurrentOutput(input.generationId)
   const { data, error } = await supabase
     .from('posts')
     .insert({
@@ -610,6 +671,7 @@ export async function schedulePost(input: {
       caption: input.caption ?? null,
       status: 'scheduled',
       scheduled_for: input.scheduledFor,
+      ...bound,
     })
     .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
     .single()
