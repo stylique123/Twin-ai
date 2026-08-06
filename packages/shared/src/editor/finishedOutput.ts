@@ -85,12 +85,33 @@ export async function resolveFinishedOutputs(
   }
 
   const ids = generations.map((g) => g.id)
+  // DETERMINISTIC ORDER, because a generation can legitimately have MORE THAN
+  // ONE completed project.
+  //
+  // 0078's uniqueness index is PARTIAL — `where status not in ('completed',
+  // 'failed','cancelled')` — so it constrains only projects still in flight. A
+  // creator who re-edits a take produces a second completed project on purpose,
+  // and both rows carry a real `output_asset_id`.
+  //
+  // Without an ORDER BY, the loop below took whichever row the database
+  // happened to return last. That is not a tie-break, it is an accident: the
+  // same generation could resolve to a different video between two page loads,
+  // and the id it hands downstream is what an approval would eventually be
+  // bound to. An arbitrary last row cannot be an authority.
+  //
+  // NEWEST COMPLETION WINS. A re-edit supersedes what it re-edited — that is
+  // what the creator asked for by re-editing. `completed_at` is set by
+  // `editor_complete_output` in the same statement that sets the status, so it
+  // is exactly the moment being ordered on. `id` breaks a same-millisecond tie
+  // so the answer is stable rather than merely usually-stable.
   const { data, error } = await getClient()
     .from('edit_projects')
-    .select('id, generation_id, status, output_asset_id')
+    .select('id, generation_id, status, output_asset_id, completed_at')
     .in('generation_id', ids)
     .eq('status', 'completed')
     .not('output_asset_id', 'is', null)
+    .order('completed_at', { ascending: true })
+    .order('id', { ascending: true })
   // A FAILED LOOKUP MUST NOT DOWNGRADE A GENERATION TO "not ready". Returning
   // the legacy answers already collected is the safe direction: the worst case
   // is a v2 video shown as legacy-ready, which is a wrong label on a real
@@ -99,12 +120,29 @@ export async function resolveFinishedOutputs(
   if (error) return out
 
   const rows = (data ?? []) as Array<{
-    id: string; generation_id: string; status: EditProjectStatus; output_asset_id: string | null
+    id: string; generation_id: string; status: EditProjectStatus
+    output_asset_id: string | null; completed_at: string | null
   }>
+  // AND THE CLIENT PICKS DETERMINISTICALLY TOO, rather than trusting arrival
+  // order. The ORDER BY above is the right thing to ask the database for, but a
+  // resolver whose answer is only correct WHEN the transport preserved that
+  // order is still an accident — it just has a longer chain. Comparing here
+  // makes the answer identical no matter how the rows arrive, which is what
+  // "authority" has to mean for an id an approval will later bind to.
+  const chosen = new Map<string, { completedAt: string; id: string }>()
   for (const r of rows) {
     // The query already filters, but this is the same predicate the rest of the
     // product uses and it costs nothing to re-state where the row is consumed.
     if (r.status !== 'completed' || !r.output_asset_id) continue
+    // A null `completed_at` sorts oldest: it cannot beat a row that recorded
+    // when it finished, and two of them fall through to the id tie-break.
+    const key = { completedAt: r.completed_at ?? '', id: r.id }
+    const held = chosen.get(r.generation_id)
+    const wins = !held
+      || key.completedAt > held.completedAt
+      || (key.completedAt === held.completedAt && key.id > held.id)
+    if (!wins) continue
+    chosen.set(r.generation_id, key)
     out.set(r.generation_id, {
       generationId: r.generation_id, authority: 'editor_v2',
       editProjectId: r.id, outputAssetId: r.output_asset_id, legacyPath: null,

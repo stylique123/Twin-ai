@@ -23,11 +23,15 @@ const ASSET = '44444444-4444-4444-4444-444444444444'
 
 let projectRows: Array<Record<string, unknown>>
 let projectError: { message: string } | null
+const ordered: string[] = []
 
 function chain() {
   const c: Record<string, unknown> = {
     select: () => c, in: () => c, eq: () => c,
-    not: () => Promise.resolve({ data: projectRows, error: projectError }),
+    not: () => c,
+    order: (col: string) => { ordered.push(col); return c },
+    then: (res: (v: unknown) => unknown) =>
+      Promise.resolve({ data: projectRows, error: projectError }).then(res),
   }
   return c
 }
@@ -35,6 +39,7 @@ function chain() {
 beforeEach(() => {
   projectRows = []
   projectError = null
+  ordered.length = 0
   initApi({
     client: { from: () => chain() } as never,
     uploadTake: (() => Promise.resolve('')) as never,
@@ -140,5 +145,46 @@ describe('one lifecycle, so three surfaces cannot disagree', () => {
 
   it('everything else is a draft', () => {
     expect(generationLifecycle(G3, finished, new Set())).toBe('draft')
+  })
+})
+
+
+describe('more than one completed project is a REAL state, and the winner is not an accident', () => {
+  // 0078's uniqueness index is PARTIAL — `where status not in
+  // ('completed','failed','cancelled')` — so it constrains only projects still
+  // in flight. A creator who re-edits produces a second completed project on
+  // purpose, and both rows carry a real output asset.
+  const older = {
+    id: 'p-old', generation_id: G1, status: 'completed',
+    output_asset_id: 'asset-old', completed_at: '2026-08-01T00:00:00Z',
+  }
+  const newer = {
+    id: 'p-new', generation_id: G1, status: 'completed',
+    output_asset_id: 'asset-new', completed_at: '2026-08-05T00:00:00Z',
+  }
+
+  it('asks the DATABASE to order, rather than trusting row order', async () => {
+    // The defect was not "picked the wrong one" — it was "picked whichever came
+    // back last". Without an ORDER BY the same generation can resolve to a
+    // different video between two page loads, and that id is what an approval
+    // would eventually bind to.
+    projectRows = [older, newer]
+    await resolveFinishedOutputs([{ id: G1 }])
+    expect(ordered).toContain('completed_at')
+    expect(ordered).toContain('id')
+  })
+
+  it('the NEWEST completion wins — a re-edit supersedes what it re-edited', async () => {
+    projectRows = [older, newer]
+    const m = await resolveFinishedOutputs([{ id: G1 }])
+    expect(m.get(G1)!.editProjectId).toBe('p-new')
+    expect(m.get(G1)!.outputAssetId).toBe('asset-new')
+  })
+
+  it('and the answer does not depend on the order rows arrive in', async () => {
+    // Same two rows, reversed. A stable authority must give the same answer.
+    projectRows = [newer, older]
+    const m = await resolveFinishedOutputs([{ id: G1 }])
+    expect(m.get(G1)!.editProjectId).toBe('p-new')
   })
 })

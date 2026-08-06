@@ -47,9 +47,26 @@ interface Props {
   /** Rendered when the recording script cannot be produced at all, so the plan
    *  screen shows the model's beats read-only rather than nothing. */
   fallback: React.ReactNode
+  /**
+   * THE SCRIPT THIS COMPONENT IS SHOWING, lifted to whoever renders it.
+   *
+   * P1-6, second half. `UnfilledContainers` warns about unresolved `[slots]`,
+   * and it is a SIBLING of this component with no shared state — so it was
+   * synthesizing its own copy from the blueprint while the creator edited a
+   * different, persisted one here. Removing `[product name]` left the warning
+   * standing; adding a bracket produced none. A warning you cannot clear is how
+   * a safety banner becomes furniture, and this banner is the only thing between
+   * a placeholder and a teleprompter reading it aloud.
+   *
+   * Reporting up rather than moving the state up: this component OWNS loading,
+   * editing and durable persistence of the script, and splitting that ownership
+   * across the page would put the write path further from the thing that knows
+   * whether a write succeeded.
+   */
+  onScriptChange?: (script: RecordingScript | null) => void
 }
 
-export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, fallback }: Props) {
+export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, fallback, onScriptChange }: Props) {
   const [script, setScript] = useState<RecordingScript | null>(null)
   const [loading, setLoading] = useState(true)
   // The script as it was when this screen opened. Compared against the current
@@ -57,6 +74,11 @@ export function ScriptEditor({ generationId, blueprint, selectedHook, hasTake, f
   // different words — and compared on the SNAPSHOT's fields only, so a
   // guidance-only change never raises it.
   const original = useRef<RecordingScript | null>(null)
+
+  // One effect rather than a call beside every setScript: there are four of
+  // them (load, synthesize, establish-durable, edit) and the one that gets
+  // forgotten is the one that reintroduces the bug.
+  useEffect(() => { onScriptChange?.(script) }, [script, onScriptChange])
 
   useEffect(() => {
     let alive = true

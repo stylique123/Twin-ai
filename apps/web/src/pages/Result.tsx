@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -26,7 +26,7 @@ import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
-import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, OutputBundle } from '../lib/types'
+import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, OutputBundle, RecordingScript } from '../lib/types'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -307,6 +307,13 @@ export default function Result() {
   // events — and each re-derived whether there was a video to talk about. The
   // bundle answers all of it once, and only its `ready` variant carries either
   // the output or the craft checks, so the two can no longer disagree.
+  // P1-6: the script the creator is actually editing, reported up by
+  // ScriptEditor so UnfilledContainers warns about THAT rather than about a
+  // copy it synthesized from the blueprint. `useCallback` because ScriptEditor
+  // reports through an effect keyed on this identity — an inline arrow would
+  // fire it on every render of this page.
+  const [liveScript, setLiveScript] = useState<RecordingScript | null>(null)
+  const onScriptChange = useCallback((s: RecordingScript | null) => setLiveScript(s), [])
   const [bundle, setBundle] = useState<OutputBundle | null>(null)
   const [editOutputAttempt, setEditOutputAttempt] = useState(0)
   // The three fields the fetch actually depends on, lifted out of the row.
@@ -922,8 +929,9 @@ export default function Result() {
                 <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
               
-              <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} />
+              <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <ScriptEditor
+                onScriptChange={onScriptChange}
                 generationId={gen.id}
                 blueprint={b}
                 selectedHook={chosenHook}
@@ -1257,8 +1265,9 @@ export default function Result() {
                   <span className="text-xs text-stone">{updatedScript.length} scenes</span>
                 </div>
                 
-                <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} />
+                <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
                 <ScriptEditor
+                  onScriptChange={onScriptChange}
                   generationId={gen.id}
                   blueprint={b}
                   selectedHook={chosenHook}
