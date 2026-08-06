@@ -42,6 +42,24 @@ export interface RecordingScene {
                        // line label in the recorder.
   pause_after: boolean // teleprompter pauses after this scene
   show_in_teleprompter: boolean // true for spoken scenes; false for silent b-roll
+  // WHICH declared slot this scene is. Set only on `screen_recording` scenes
+  // built from a `[SHOW: …]` marker, and it is the exact text the capture
+  // surface matches a stored clip's `media_assets.clip_label` against.
+  //
+  // Optional because every script written before declared clips existed lacks
+  // it, and absent means "not a declared slot" rather than an empty one. It is
+  // deliberately NOT part of the capture SHA — `buildRecordingScriptSnapshot`
+  // hashes scene number, type, dialogue and the teleprompter flag, which are
+  // what identify the script that was READ; a label names what is shown beside
+  // it and must not change a take's binding to its script.
+  clip_label?: string | null
+  // HOW this slot is captured — `screen`, `camera`, or `unknown` when the
+  // marker did not say. Unknown is the honest reading of every script written
+  // before markers carried a medium, and it is ASKED rather than assumed: the
+  // capture surface routes a screen slot to the share picker and a camera slot
+  // to a shot you film, and getting that wrong offered a jeweller a
+  // share-your-screen dialog for a product box.
+  clip_medium?: 'screen' | 'camera' | 'unknown' | null
 }
 
 export interface RecordingScript {

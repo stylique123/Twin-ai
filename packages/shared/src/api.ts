@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { planFor } from './brand'
+import {
+  readCapabilityFlags, resolveCapabilities, sanitizeCapabilityFlagsForWrite,
+  type CapabilityFlags, type ResolvedCapabilities,
+} from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
+import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 
 // ---- Client injection ------------------------------------------------------
 // The web app is the single client surface. It wires its Supabase client, an
@@ -791,6 +796,123 @@ export async function saveVoiceProfile(id: string, profile: VoiceProfile): Promi
     .single()
   if (error) throw error
   if (!data) throw new Error('Your brand voice was not saved. Please try again.')
+}
+
+/**
+ * Record capability answers as this brand's DEFAULTS (0103's
+ * `brand_voices.default_capability_flags`).
+ *
+ * MERGED, NEVER REPLACED. The three flags are asked in different places at
+ * different times — onboarding asks about the screen, a per-video surface may
+ * later ask about objects — and a whole-column write would silently unset every
+ * answer the current caller did not happen to hold. That is the same
+ * missing-value-read-as-real defect the column's own migration was written
+ * against, arriving through the writer instead of the reader.
+ *
+ * `sanitizeCapabilityFlagsForWrite` is what decides what may be stored: only the
+ * three known names, only real booleans, with `null` preserved as a deliberate
+ * "withdraw this answer" and an omitted key left exactly as it was. An
+ * ANSWERLESS call writes nothing at all rather than writing `{}` — a creator who
+ * skipped the question must stay unanswered, not acquire an empty answer.
+ */
+/**
+ * Record the pre-script brief as this brand's answers (0109's
+ * `brand_voices.pre_script_brief`).
+ *
+ * THE ANSWER THAT WAS BEING THROWN AWAY. Before this, `workKind` and
+ * `forbiddenClaims` were collected by the onboarding scan, written into a
+ * `localStorage` draft, and never persisted anywhere else — a doctor telling us
+ * what they may never claim, kept in one browser until it was cleared.
+ *
+ * MERGED, NEVER REPLACED, for the reason `saveCapabilityDefaults` is: the brief
+ * is filled in across two screens, so a whole-object write from the first would
+ * erase the second's answers. And an ANSWERLESS call writes nothing rather than
+ * writing `{}` — a creator who skipped every question must stay unanswered.
+ *
+ * A FAILED WRITE THROWS. `saveRecordingScript` deliberately swallows its error
+ * because the script survives in memory and the screen still works; nothing here
+ * survives, and a compliance answer that silently failed to save is exactly the
+ * state this function exists to end.
+ */
+export async function savePreScriptBrief(
+  brandVoiceId: string,
+  answers: BriefAnswers,
+): Promise<void> {
+  const incoming = sanitizeBriefForWrite(answers)
+  if (Object.keys(incoming).length === 0) return
+  const { data, error } = await supabase
+    .from('brand_voices')
+    .select('pre_script_brief')
+    .eq('id', brandVoiceId)
+    .single()
+  if (error) throw error
+  const merged = { ...sanitizeBriefForWrite(readStoredBrief(data?.pre_script_brief)), ...incoming }
+  const { error: writeError } = await supabase
+    .from('brand_voices')
+    .update({ pre_script_brief: merged })
+    .eq('id', brandVoiceId)
+  if (writeError) throw writeError
+}
+
+/** This brand's stored brief, or an empty one. Unknown and malformed values are
+ *  dropped by `readStoredBrief` rather than surfaced — a stored `goal` outside
+ *  the enum would otherwise reach a prompt as if the creator had chosen it. */
+export async function loadPreScriptBrief(brandVoiceId: string): Promise<BriefAnswers> {
+  const { data, error } = await supabase
+    .from('brand_voices')
+    .select('pre_script_brief')
+    .eq('id', brandVoiceId)
+    .maybeSingle()
+  if (error) throw error
+  return readStoredBrief(data?.pre_script_brief)
+}
+
+export async function saveCapabilityDefaults(
+  brandVoiceId: string,
+  flags: CapabilityFlags,
+): Promise<void> {
+  const incoming = sanitizeCapabilityFlagsForWrite(flags)
+  if (Object.keys(incoming).length === 0) return
+  const { data, error } = await supabase
+    .from('brand_voices')
+    .select('default_capability_flags')
+    .eq('id', brandVoiceId)
+    .single()
+  if (error) throw error
+  const merged = { ...readCapabilityFlags(data?.default_capability_flags), ...incoming }
+  const { error: writeError } = await supabase
+    .from('brand_voices')
+    .update({ default_capability_flags: merged })
+    .eq('id', brandVoiceId)
+  if (writeError) throw writeError
+}
+
+/**
+ * The capability answers in force for one video, and WHO answered each.
+ *
+ * Both halves are read because both exist and neither is derived from the
+ * other: `generations.capability_flags` is what is true of THIS video and wins
+ * whenever it is present, including when it says false, and
+ * `brand_voices.default_capability_flags` is what is usually true of the setup.
+ * `resolveCapabilities` records which one answered, so a surface that did not
+ * appear can be traced to the video or the brand rather than to a rule nobody
+ * can see.
+ *
+ * A read failure resolves to UNSET rather than to false. Silence from the
+ * database is not a creator saying no, and treating it as one would hide a
+ * surface on a transient error with nothing anywhere reporting it.
+ */
+export async function loadCapabilities(generationId: string): Promise<ResolvedCapabilities> {
+  const [gen, voices] = await Promise.all([
+    supabase.from('generations').select('capability_flags').eq('id', generationId).maybeSingle(),
+    supabase.from('brand_voices').select('default_capability_flags, is_default')
+      .order('is_default', { ascending: false }).limit(1),
+  ])
+  const account = (voices.data ?? [])[0] as { default_capability_flags?: unknown } | undefined
+  return resolveCapabilities(
+    (gen.data as { capability_flags?: unknown } | null)?.capability_flags,
+    account?.default_capability_flags,
+  )
 }
 
 // Upload a brand-kit logo (data URL) via the service-role edge fn; returns the

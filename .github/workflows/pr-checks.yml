@@ -224,6 +224,13 @@ jobs:
         run: |
           node scripts/ci/check_docs_no_stale_claims.mjs --selftest
           node scripts/ci/check_docs_no_stale_claims.mjs
+      # Cheap, and it pays for a ~50-minute matrix run. #223 passed the entire
+      # real render and then died on `new URL(…)` in a module whose line 46 is
+      # `const URL = need('STAGING_URL')`.
+      - name: Shadowed globals (a module that shadows a constructor must not construct it)
+        run: |
+          node scripts/ci/check_shadowed_globals.mjs --selftest
+          node scripts/ci/check_shadowed_globals.mjs
       - name: Probe-residue classifier (partial/complete cleanup cannot silently pass)
         run: node scripts/prod-smoke/probe_residue_report.mjs --selftest
       - name: Takes storage-policy inventory (no client DELETE-capable policy; migration-derived)
@@ -346,6 +353,23 @@ jobs:
       # controls.
       - name: Gate-J (the clip kind, and an assessment that must name its source)
         run: bash scripts/db-tests/gate-j/run.sh
+      # Gate-K: 0107 is the only way a clip ever gets INTO the table 0106 made
+      # room for, and each of its three functions fails in a way that looks like
+      # working. A broken create leaves three half-uploaded rows per capture and
+      # nothing errors. A missing kind guard lets a TAKE be settled through a
+      # path that writes no capture manifest and no script binding. And a clip
+      # that could reach `ready` without a probe is one the composition model
+      # would cut to using a duration nothing measured.
+      - name: Gate-K (the clip capture RPCs — one attempt one asset, and ready means probed)
+        run: bash scripts/db-tests/gate-k/run.sh
+      # Gate-L: 0109 stores §8a.1's brief, which was being asked and discarded —
+      # a doctor's "never say cure" lived in a localStorage draft and nothing
+      # else. Both ways of getting it wrong look like working: an empty string
+      # stored beside an absent key is a state that reads as unanswered and
+      # counts as answered, and a column without its own UPDATE grant fails with
+      # a bare 42501 that names nothing (twice already in this tree).
+      - name: Gate-L (the pre-script brief — only real answers, and a writable column)
+        run: bash scripts/db-tests/gate-l/run.sh
       # The migration-reconcile guard's LOCAL half: build the expected state for
       # 0090-0093 in a disposable database and run the full hostile suite (24
       # divergences + positive control + 3 mutation controls). No secrets, no

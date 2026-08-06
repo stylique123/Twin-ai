@@ -7,7 +7,9 @@
 // moments from the shot list become silent insert scenes, and a final CTA scene
 // closes it. No module ever re-derives boundaries after this.
 
-import { isWhollyPlaceholder } from './containerResolution.js'
+import {
+  declaredClipOf, isWhollyPlaceholder, stripDeclaredClips, type ClipMedium,
+} from './containerResolution.js'
 import type { Blueprint } from './types'
 import {
   type RecordingScene,
@@ -132,9 +134,54 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   const ctaBeat = ctaIdx >= 0 ? usable[ctaIdx] : null
   const body = ctaIdx >= 0 ? usable.filter((_, i) => i !== ctaIdx) : usable
 
+  // A CLIP BELONGS TO THE LINE IT WAS WRITTEN INTO.
+  //
+  // The first pass made every declared clip its OWN silent scene. That stopped
+  // the marker being read aloud — the defect it was written for — but it threw
+  // away the one thing placement needs: which spoken words the clip plays over.
+  // A clip scene is never filmed, so it has no recorded span, so nothing could
+  // map it onto the finished timeline. The association WAS the answer, and
+  // splitting the clip off destroyed it.
+  //
+  // So a clip rides on the SPOKEN scene instead. An embedded marker attaches to
+  // the line it sits inside; a marker on its own line attaches to the NEXT
+  // spoken line, because a cutaway plays while the creator keeps talking and
+  // the words that follow are the ones it belongs under.
+  //
+  // A QUEUE, not a single slot, because two markers can arrive before the next
+  // line and one overwriting the other loses a clip the creator was shown. One
+  // clip per scene keeps `clip_label` singular and the matching unambiguous;
+  // anything still queued at the end becomes its own silent beat rather than
+  // being dropped, which is the honest outcome for a clip with no line to play
+  // under.
+  const pending: Array<{ label: string; medium: ClipMedium }> = []
+
   body.forEach((seg, i) => {
+    const raw = (seg.line || '').trim()
+
+    // A whole-line marker declares a clip and no words. Queued, not emitted.
+    const whole = declaredClipOf(raw)
+    if (whole) {
+      pending.push({ label: whole.label, medium: whole.medium })
+      return
+    }
+
+    // An embedded marker leaves the spoken words and declares its slot on them.
+    const { text: line, clips } = stripDeclaredClips(raw)
+    // Stripping can empty a line that was only a marker plus punctuation; an
+    // empty dialogue is not a scene the teleprompter can show.
+    if (line === '') {
+      pending.push(...clips)
+      return
+    }
+
+    // An embedded clip wins this line, because it names the words it sits
+    // inside. Anything else it declared, and anything already queued, waits for
+    // a line of its own.
+    const attached = clips.length > 0 ? clips[0] : pending.shift()
+    if (clips.length > 1) pending.push(...clips.slice(1))
+
     const n = scenes.length + 1
-    const line = (seg.line || '').trim()
     const isBroll = BROLL_HINT.test(seg.direction || '') || BROLL_HINT.test(seg.section || '')
     scenes.push({
       scene_number: n,
@@ -145,9 +192,37 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       ...framingFor(i + 1, blueprint, seg),
       caption_text: pushCaption(captionFromLine(line), n),
       pause_after: true,
+      // STILL SPOKEN. The clip plays OVER these words rather than replacing
+      // them — that is what a cutaway is, and the first pass got it backwards
+      // by producing a silent beat where the creator should have kept talking.
       show_in_teleprompter: true,
+      ...(attached ? { clip_label: attached.label, clip_medium: attached.medium } : {}),
     })
   })
+
+  // Whatever is still queued had no line after it. It becomes its own silent
+  // beat: declared, visible to the creator, and captured — just with nothing to
+  // play under. Losing it silently would be worse than showing it late.
+  for (const clip of pending) {
+    const n = scenes.length + 1
+    scenes.push({
+      scene_number: n,
+      scene_type: clip.medium === 'screen' ? 'screen_recording'
+        : clip.medium === 'camera' ? 'product_demo' : 'b_roll',
+      purpose: `Show: ${clip.label}`,
+      dialogue: null,
+      duration_sec: estimateDurationSec(null, wpm),
+      camera_framing: clip.medium === 'screen' ? 'Screen capture'
+        : clip.medium === 'camera' ? 'Hold it up to the camera' : 'To be decided',
+      background: '',
+      movement: '',
+      caption_text: pushCaption(captionFromLine(clip.label), n),
+      pause_after: false,
+      show_in_teleprompter: false,
+      clip_label: clip.label,
+      clip_medium: clip.medium,
+    })
+  }
 
   // Pure b-roll inserts from shot_list entries flagged as cutaways (silent).
   const brollShots = (blueprint.shot_list ?? []).filter(

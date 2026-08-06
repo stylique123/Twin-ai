@@ -106,8 +106,21 @@ export interface PreflightSignals {
   /**
    * `reverbRatioMilli` — late (reflected) energy over direct energy. Higher is
    * a boomier room. `peakMilli` is the loudest sample observed while sampling.
+   *
+   * EACH HALF IS INDEPENDENTLY OPTIONAL, and that is a correction rather than a
+   * convenience. They were one required pair, which forced a measurer that could
+   * observe one and not the other to choose between two wrong answers: send a
+   * fabricated number for the half it did not measure, or send nothing and have
+   * BOTH checks report `unmeasured` while one of them was genuinely measured.
+   *
+   * The browser hits exactly that. A peak level is a few lines of AnalyserNode;
+   * a reverb ratio is late energy over direct energy, which needs a decay
+   * measurement against a known excitation and cannot be had from ambient noise
+   * without producing a room score that moves when a truck passes. Coupling the
+   * two would have meant shipping `reverbRatioMilli: 0` — comfortably under the
+   * ceiling, drawn as a green "room sounds fine" tick for a room nobody heard.
    */
-  audio?: { peakMilli: number; reverbRatioMilli: number } | null
+  audio?: { peakMilli?: number | null; reverbRatioMilli?: number | null } | null
   /** Absent/false → the stream carries no audio track at all. */
   hasAudioTrack?: boolean
 }
@@ -269,7 +282,9 @@ function checkLighting(s: PreflightSignals, p: PreflightPolicy): PreflightCheck 
 
 function checkRoom(s: PreflightSignals, p: PreflightPolicy): PreflightCheck {
   const a = s.audio
-  if (!a) return unmeasured('room')
+  // Absent signal and a present signal carrying no reverb are the same fact:
+  // nothing measured the room.
+  if (!a || typeof a.reverbRatioMilli !== 'number') return unmeasured('room')
   if (a.reverbRatioMilli > p.room.maxReverbRatioMilli) {
     return bad('room', 'warn', 'room_echo', a.reverbRatioMilli, p.room.maxReverbRatioMilli)
   }
@@ -282,7 +297,7 @@ function checkMic(s: PreflightSignals, p: PreflightPolicy): PreflightCheck {
   // downstream of speech.
   if (s.hasAudioTrack === false) return { id: 'mic', state: 'fail', reason: 'no_audio_track' }
   const a = s.audio
-  if (!a) return unmeasured('mic')
+  if (!a || typeof a.peakMilli !== 'number') return unmeasured('mic')
   if (a.peakMilli >= p.mic.clippingPeakMilli) {
     return bad('mic', 'warn', 'mic_clipping', a.peakMilli, p.mic.clippingPeakMilli)
   }

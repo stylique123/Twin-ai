@@ -33,6 +33,7 @@ import { db, type Job } from '../db.js'
 import { env } from '../env.js'
 import { uploadObject } from '../storage.js'
 import { loadEligibleSource } from './editorInspect.js'
+import { fetchComposedClips } from './clipSession.js'
 import { VerifiedSourceSession, stageDownloadOpts } from './sourceSession.js'
 import { watchCancellation, type CancelWatch } from './editorCancel.js'
 import {
@@ -193,7 +194,7 @@ function writeAssDocument(
 export async function runRenderingStage(
   job: Job, projectId: string, dir: string, session: VerifiedSourceSession,
 ): Promise<RenderStageOutcome> {
-  const { proj } = await loadEligibleSource(projectId, 'render')
+  const { proj, asset } = await loadEligibleSource(projectId, 'render')
   const watch: CancelWatch = watchCancellation(projectId)
   const workDir = join(dir, 'render')
   try {
@@ -212,11 +213,21 @@ export async function runRenderingStage(
     if (watch.cancelled()) throw new RenderStageCancelledError('after_download')
 
     mkdirSync(workDir, { recursive: true })
+
+    // THE COMPOSED CLIPS, fetched beside the source and verified against the
+    // checksums THE PLAN PINNED. Zero reads when the plan composes nothing,
+    // which is every plan the compiler currently emits — so the ordinary render
+    // path does not gain a database round trip for a feature it is not using.
+    const clipPaths = await fetchComposedClips(
+      plan, asset.owner_id, workDir, { signal: watch.signal },
+    )
+    if (watch.cancelled()) throw new RenderStageCancelledError('after_clip_download')
+
     const { path: assPath, colourRejections } = writeAssDocument(plan, workDir)
     const fontsDir = assPath ? env.editorFontsDir : null
 
     const { outputPath, evidence } = await renderEditPlan({
-      plan, sourcePath, assPath, fontsDir, workDir, watch,
+      plan, sourcePath, clipPaths, assPath, fontsDir, workDir, watch,
       strictFontIntegrity: env.editorStrictFontIntegrity,
       assetsDir: env.editorAssetsDir,
     })

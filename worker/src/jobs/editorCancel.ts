@@ -10,6 +10,42 @@ export interface CancelWatch {
   stop: () => void
 }
 
+/**
+ * THE JOB'S OWN DEADLINE, as a signal every cancellation watch links to.
+ *
+ * The worker loop applies a hard per-job timeout so a hung handler cannot hold
+ * the lease forever. It did that with `Promise.race`, which settles the JOB and
+ * leaves the HANDLER running: the ffmpeg the handler spawned keeps encoding,
+ * keeps its CPU and its disk, and finishes into a project that has already been
+ * marked failed. On a single-worker box that is the next job's capacity, spent.
+ *
+ * `runMediaProcess` already knows how to stop — detached process group,
+ * SIGTERM, then SIGKILL after a grace period — and it takes its instruction
+ * from a `CancelWatch`. So the timeout does not need new teardown machinery; it
+ * needs to reach the machinery that exists. This is the wire.
+ *
+ * A MODULE-LEVEL VALUE IS CORRECT HERE, and only because the loop is serial:
+ * `main()` awaits one `tick()` at a time, so exactly one job is in flight and
+ * "the current job's signal" is never ambiguous. If the worker ever claims
+ * concurrently, this must become a parameter threaded through the stages — and
+ * the assertion in `beginJobScope` is what will fail loudly on the day someone
+ * tries, rather than silently cancelling one job's render from another's clock.
+ */
+let currentJobSignal: AbortSignal | null = null
+
+export function beginJobScope(signal: AbortSignal): () => void {
+  if (currentJobSignal && !currentJobSignal.aborted) {
+    throw new Error('editorCancel: a job scope is already open — the worker loop is no longer serial')
+  }
+  currentJobSignal = signal
+  return () => { currentJobSignal = null }
+}
+
+/** Exposed for tests and for `watchCancellation`; never set directly. */
+export function jobScopeSignal(): AbortSignal | null {
+  return currentJobSignal
+}
+
 export function watchCancellation(projectId: string, pollMs = 750): CancelWatch {
   const ctrl = new AbortController()
   let flagged = false
@@ -19,7 +55,22 @@ export function watchCancellation(projectId: string, pollMs = 750): CancelWatch 
         if (data?.cancel_requested_at) { flagged = true; ctrl.abort() }
       }, () => { /* transient read failure — next tick retries */ })
   }, pollMs)
-  return { signal: ctrl.signal, cancelled: () => flagged || ctrl.signal.aborted, stop: () => clearInterval(t) }
+  // THE JOB DEADLINE TEARS DOWN THE SAME WAY A CREATOR'S CANCEL DOES. Both mean
+  // "stop the work", and the work only knows one way to be stopped.
+  const job = currentJobSignal
+  const onJobAbort = () => { flagged = true; ctrl.abort() }
+  if (job) {
+    if (job.aborted) onJobAbort()
+    else job.addEventListener('abort', onJobAbort, { once: true })
+  }
+  return {
+    signal: ctrl.signal,
+    cancelled: () => flagged || ctrl.signal.aborted,
+    stop: () => {
+      clearInterval(t)
+      job?.removeEventListener('abort', onJobAbort)
+    },
+  }
 }
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))

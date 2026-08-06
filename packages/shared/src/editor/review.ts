@@ -92,6 +92,23 @@ export interface ReviewZoomMarker {
 
 export interface ReviewBundle {
   projectId: string
+  /**
+   * THE GENERATION THIS PROJECT BELONGS TO — carried because the screen has to
+   * NAVIGATE when the review is submitted, and `/result/:id` loads a
+   * GENERATION.
+   *
+   * Without it the screen had only a project id and used it anyway:
+   * `nav(\`/result/${bundle.projectId}\`)`. Result then called
+   * `getGeneration(projectId)`, found nothing, and a creator who had just
+   * finished reviewing their video landed on a missing plan. The submit had
+   * SUCCEEDED — which is what made it hard to see: nothing failed, the person
+   * was simply put somewhere that does not exist.
+   *
+   * Read from `edit_projects.generation_id`, which 0078 declares NOT NULL and a
+   * trigger keeps immutable, so this is the project's own answer rather than a
+   * lookup that could pick a different generation later.
+   */
+  generationId: string
   status: string
   words: ReviewWord[]
   sentences: ReviewSentence[]
@@ -267,7 +284,7 @@ function readWords(result: unknown): ReviewWord[] {
 export async function getReviewBundle(projectId: string): Promise<ReviewBundle | null> {
   const client = getClient()
   const { data: project, error: projectError } = await client
-    .from('edit_projects').select('id, status, source_asset_id').eq('id', projectId).maybeSingle()
+    .from('edit_projects').select('id, status, source_asset_id, generation_id').eq('id', projectId).maybeSingle()
   if (projectError) throw new Error(projectError.message)
   if (!project) return null
 
@@ -320,8 +337,19 @@ export async function getReviewBundle(projectId: string): Promise<ReviewBundle |
     }]
   })
 
+  // A project with no generation cannot be navigated away from, and 0078
+  // forbids one existing. Refusing here rather than returning a bundle whose
+  // navigation is broken keeps the failure at the boundary that can name it —
+  // the alternative is a screen that works until the moment the creator
+  // finishes, which is the worst place to discover it.
+  const generationId = (project as { generation_id?: unknown }).generation_id
+  if (typeof generationId !== 'string' || generationId === '') {
+    throw new Error('review bundle: the edit project carries no generation id')
+  }
+
   return {
     projectId,
+    generationId,
     status: String((project as { status: string }).status),
     words,
     sentences: groupIntoSentences(words),

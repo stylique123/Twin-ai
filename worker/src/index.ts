@@ -7,6 +7,7 @@
 import { writeFileSync } from 'node:fs'
 import { db, claimJob, completeJob, deadLetterJob, failJob, heartbeat } from './db.js'
 import { handlers } from './jobs/index.js'
+import { beginJobScope } from './jobs/editorCancel.js'
 import { env } from './env.js'
 import { isLeaseLost, isPermanent } from './errors.js'
 import { redact } from './sanitizeError.js'
@@ -42,10 +43,33 @@ async function tick(): Promise<boolean> {
 
   // Hard per-job timeout backstop: if a handler hangs (child process never returns),
   // give up before the lease expires so this worker frees up instead of wedging.
+  //
+  // THE RACE SETTLES THE JOB; IT DOES NOT STOP THE WORK. That was the defect.
+  // `Promise.race` resolves this function, marks the job failed and moves on
+  // while the handler keeps going — the ffmpeg it spawned keeps encoding, holds
+  // its CPU and disk, and finishes into a project that is already failed. On a
+  // single-worker box that is the next job's capacity, spent on a result nobody
+  // will read. Worse, the render can still write its output after the failure
+  // was recorded.
+  //
+  // So the deadline now ABORTS as well as rejects. `runMediaProcess` already
+  // tears a child process group down properly (SIGTERM, then SIGKILL after a
+  // grace period) when its CancelWatch aborts; `beginJobScope` links every watch
+  // opened during this job to the controller below, so the deadline reaches that
+  // machinery instead of duplicating it.
+  //
+  // Abort BEFORE reject, deliberately: rejecting first would let this function
+  // return and the next tick claim a job while the previous handler's children
+  // are still alive.
+  const deadline = new AbortController()
   let timer: ReturnType<typeof setTimeout> | undefined
   const guard = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`Job exceeded hard timeout (${env.maxJobMs}ms)`)), env.maxJobMs)
+    timer = setTimeout(() => {
+      deadline.abort()
+      reject(new Error(`Job exceeded hard timeout (${env.maxJobMs}ms)`))
+    }, env.maxJobMs)
   })
+  const endScope = beginJobScope(deadline.signal)
   try {
     const result = await Promise.race([handler(job), guard])
     await completeJob(job.id, result, job.attempts)
@@ -96,6 +120,9 @@ async function tick(): Promise<boolean> {
     }
   } finally {
     if (timer) clearTimeout(timer)
+    // Close the scope whatever happened, so the next job opens a clean one and
+    // `beginJobScope`'s serial-worker assertion stays meaningful.
+    endScope()
   }
   return true
 }

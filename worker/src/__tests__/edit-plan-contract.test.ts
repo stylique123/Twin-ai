@@ -38,7 +38,7 @@ describe('strict object discipline', () => {
   })
 
   it('rejects an unknown key in every section', () => {
-    for (const section of ['identity', 'source', 'output', 'timeline', 'captions', 'video', 'audio', 'hook', 'cover', 'complexity']) {
+    for (const section of ['identity', 'source', 'output', 'timeline', 'captions', 'video', 'audio', 'composition', 'hook', 'cover', 'complexity']) {
       expect(codeOf(() => validateEditPlan(mutate((p) => {
         (p[section] as Record<string, unknown>).sneaky = 1
       })))).toBe('edit_plan_invalid')
@@ -280,7 +280,7 @@ describe('canonical serialization and hash', () => {
     // Top-level keys appear in sorted order.
     const topKeys = [...canonical.matchAll(/^\{"([a-z]+)"/g)].map((m) => m[1])
     expect(topKeys[0]).toBe('audio')
-    const sectionOrder = ['audio', 'captions', 'complexity', 'cover', 'hook', 'identity', 'output', 'source', 'timeline', 'video', 'warnings']
+    const sectionOrder = ['audio', 'captions', 'complexity', 'composition', 'cover', 'hook', 'identity', 'output', 'source', 'timeline', 'video', 'warnings']
     let cursor = -1
     for (const key of sectionOrder) {
       const at = canonical.indexOf(`"${key}":`)
@@ -295,7 +295,8 @@ describe('canonical serialization and hash', () => {
     const plan = goodPlan()
     const shuffled = JSON.parse(JSON.stringify({
       complexity: plan.complexity, warnings: plan.warnings, cover: plan.cover, hook: plan.hook,
-      audio: plan.audio, video: plan.video, captions: plan.captions, timeline: plan.timeline,
+      audio: plan.audio, composition: plan.composition, video: plan.video,
+      captions: plan.captions, timeline: plan.timeline,
       output: plan.output, source: plan.source, identity: plan.identity, schemaVersion: plan.schemaVersion,
     })) as unknown
     const revalidated = validateEditPlan(shuffled)

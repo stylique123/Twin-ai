@@ -11,6 +11,7 @@ import {
   BRIEF_GOALS, BRIEF_QUESTIONS, BRIEF_WORK_KINDS, CLAIMS_QUESTION_KINDS,
   asksForbiddenClaims, forbiddenClaimsAnswered, otherWithoutText,
   questionsFor, unansweredDecidingQuestions, type BriefAnswers,
+  PRODUCT_EVIDENCE_FORM, asksProductEvidence,
 } from '../preScriptBrief'
 
 const answers = (over: BriefAnswers = {}): BriefAnswers => ({
@@ -150,5 +151,55 @@ describe('every "Other" carries free text, or it trades a real answer for a null
       if (kind === 'other') continue
       expect(otherWithoutText(answers({ workKind: kind }))).toBe(false)
     }
+  })
+})
+
+describe('the product question is conditional, and asked once', () => {
+  it('is not asked before the creator has said what they do', () => {
+    // A wall of questions is answered badly or skipped. This one has no meaning
+    // until `workKind` is known, so it does not appear beside it — it appears
+    // BECAUSE of it.
+    const ids = questionsFor('during_scan', {}).map((q) => q.id)
+    expect(ids).not.toContain('productEvidence')
+  })
+
+  it('is asked once the kind implies a product', () => {
+    for (const kind of ['saas', 'ecommerce', 'brand', 'professional', 'local_service'] as const) {
+      expect(questionsFor('during_scan', { workKind: kind }).map((q) => q.id))
+        .toContain('productEvidence')
+    }
+  })
+
+  it('is NOT asked of a plain creator', () => {
+    // The one kind where a product is the exception. Interrogating someone
+    // about a thing they do not have is how they learn to click past the
+    // questions that matter — the same reasoning that keeps `saas` out of the
+    // claims question.
+    expect(questionsFor('during_scan', { workKind: 'creator' }).map((q) => q.id))
+      .not.toContain('productEvidence')
+  })
+
+  it('leads with a link for software and with images for a physical product', () => {
+    // A product PAGE is marketing copy; a physical product is an object that
+    // has to be filmed. Which is offered first follows from that.
+    expect(PRODUCT_EVIDENCE_FORM.saas).toBe('link')
+    expect(PRODUCT_EVIDENCE_FORM.ecommerce).toBe('images')
+  })
+
+  it('never restricts to one form — every kind can supply either', () => {
+    // A SaaS founder with a screenshot and a jeweller with a shop page are both
+    // ordinary. The map decides what leads, not what is allowed.
+    for (const form of Object.values(PRODUCT_EVIDENCE_FORM)) {
+      expect(['link', 'images', 'either']).toContain(form)
+    }
+  })
+
+  it('an unanswered product question is not "they have no product"', () => {
+    // The same three-state discipline the claims question has: absent means
+    // unasked or skipped, and reading it as "nothing to show" would let the
+    // container rule quietly conclude a demo needs nothing.
+    expect(asksProductEvidence(null)).toBe(false)
+    expect(asksProductEvidence(undefined)).toBe(false)
+    expect(asksProductEvidence('saas')).toBe(true)
   })
 })

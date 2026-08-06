@@ -3,7 +3,7 @@ import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { pollDna, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
+import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
 import { asksForbiddenClaims, BRIEF_WORK_KINDS, type BriefWorkKind } from '../lib/api'
 import { Aurora } from '../components/Aurora'
@@ -82,6 +82,8 @@ export default function Onboarding() {
       // The scan pre-fills the offer, so it starts as NOT the creator's answer.
       // Only their edit flips it.
       offerFromCreator: false,
+      // Unanswered until the creator answers. Never seeded, in either direction.
+      canRecordScreen: null,
       audience: profile?.audience ?? '',
       product: profile?.offer ?? '',
       goal: '',
@@ -94,12 +96,25 @@ export default function Onboarding() {
     audience: string,
     product: string,
     goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator'>
-      = { workKind: null, forbiddenClaims: null, offerFromCreator: false },
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator' | 'canRecordScreen'>
+      = { workKind: null, forbiddenClaims: null, offerFromCreator: false, canRecordScreen: null },
   ) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
       const next = { ...current, profile, audience, product, goal, ...brief }
+      safeWriteDraft(next)
+      return next
+    })
+  }, [userId])
+
+  // The scan-step answer, persisted on its own. `updateAnswers` needs a
+  // profile and there is none yet during the scan — which is exactly why the
+  // question fits there: it costs the creator nothing that the scan was not
+  // already spending.
+  const setCanRecordScreen = useCallback((value: boolean | null) => {
+    setDraft((current) => {
+      if (!current || current.userId !== userId) return current
+      const next = { ...current, canRecordScreen: value }
       safeWriteDraft(next)
       return next
     })
@@ -147,6 +162,7 @@ export default function Onboarding() {
                   draft={draft}
                   onReady={handleReady}
                   onBack={() => setMode('handle')}
+                  onCanRecordScreen={setCanRecordScreen}
                 />
               )}
               {mode === 'confirm' && draft && (
@@ -318,10 +334,12 @@ function BuildingStep({
   draft,
   onReady,
   onBack,
+  onCanRecordScreen,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile) => void
   onBack: () => void
+  onCanRecordScreen: (value: boolean | null) => void
 }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
@@ -417,6 +435,47 @@ function BuildingStep({
         })}
       </div>
 
+      {/* ASKED DURING THE SCAN, not on the confirm screen.
+          The scan already costs the creator ~50 seconds of waiting, and this is
+          a question no scan could ever answer: reading someone's captions tells
+          you what they HAVE posted, never what their setup can do (§8a.2's
+          observed-is-not-stated rule). Putting it here spends time that was
+          already being spent, and keeps the confirm screen to what the scan
+          drafted and the creator is correcting.
+          It needs no camera and no permission prompt — the answer is about the
+          creator's setup, not about what this browser can do this second, and
+          opening a share-picker to find out would be asking the operating
+          system a question only the person can answer.
+          SKIPPING IS A REAL ANSWER AND IT IS NOT "NO". Tapping the chosen chip
+          again clears it back to unanswered, and nothing is written for an
+          unanswered question — `can_record_screen = false` permanently hides a
+          surface, so "they never said" must never become "they said no". */}
+      <div className="mt-7 rounded-card border border-white/8 bg-white/[0.02] p-4">
+        <p className="text-xs font-semibold text-cream">While that runs — can you record your screen?</p>
+        <div className="mt-2.5 flex flex-wrap gap-2">
+          {([true, false] as const).map((v) => (
+            <button
+              key={String(v)}
+              type="button"
+              aria-pressed={draft.canRecordScreen === v}
+              onClick={() => onCanRecordScreen(draft.canRecordScreen === v ? null : v)}
+              className={cn(
+                'rounded-full border px-3 py-1.5 text-xs transition',
+                draft.canRecordScreen === v
+                  ? 'border-coral bg-coral/15 text-cream'
+                  : 'border-white/15 text-sand hover:bg-white/5',
+              )}
+            >
+              {v ? 'Yes' : 'No'}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-stone">
+          Say yes and Twin can ask you to capture what is on your screen for the moments your
+          script says to show something. Skip it and nothing changes — we just won’t offer it yet.
+        </p>
+      </div>
+
       {err && (
         <div className="mt-6 space-y-2">
           <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
@@ -466,7 +525,7 @@ function ConfirmStep({
   draft: OnboardingDraft
   onDraftChange: (
     profile: VoiceProfile, audience: string, product: string, goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator'>,
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator' | 'canRecordScreen'>,
   ) => void
   onDone: () => Promise<void>
 }) {
@@ -488,6 +547,11 @@ function ConfirmStep({
   // "they told us" from "the model guessed and nobody corrected it", and only
   // the first may decide a call to action.
   const [offerTouched, setOfferTouched] = useState(draft.offerFromCreator)
+  // §2.2's `can_record_screen`, ANSWERED DURING THE SCAN (see BuildingStep) and
+  // carried here so the durable save still writes it. Read from the draft rather
+  // than re-asked: two screens asking one question is two places that can
+  // disagree about what a skipped answer means.
+  const canRecordScreen = draft.canRecordScreen
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -497,9 +561,10 @@ function ConfirmStep({
     if (vp) {
       onDraftChange(vp, audience, product, goal, {
         workKind, forbiddenClaims: forbiddenClaims.trim() || null, offerFromCreator: offerTouched,
+        canRecordScreen,
       })
     }
-  }, [vp, audience, product, goal, workKind, forbiddenClaims, offerTouched, onDraftChange])
+  }, [vp, audience, product, goal, workKind, forbiddenClaims, offerTouched, canRecordScreen, onDraftChange])
 
   if (!vp) {
     return (
@@ -518,6 +583,46 @@ function ConfirmStep({
     setBusy(true)
     try {
       await saveVoiceProfile(draft.voiceId, vp)
+      // The capability answer, stored as this brand's DEFAULT. Written only when
+      // there IS one: an unanswered question leaves the column exactly as it was,
+      // because `can_record_screen = false` permanently hides a surface and
+      // "they never said" must not become "they said no". Its own call rather
+      // than a field on saveVoiceProfile — the profile is what the scan read, and
+      // this is what the creator told us about their setup.
+      if (canRecordScreen !== null) {
+        await saveCapabilityDefaults(draft.voiceId, { can_record_screen: canRecordScreen })
+      }
+      // §8a.1's BRIEF, persisted — the answers that used to end here.
+      //
+      // `workKind` and `forbiddenClaims` were collected above, written into the
+      // onboarding draft, and the draft is localStorage. Nothing carried them
+      // further: there was no column, and no consumer. So a doctor typed what
+      // they may never claim into a box we put in front of them, and it lived in
+      // one browser until that browser was cleared.
+      //
+      // Asking and discarding is worse than not asking. An unasked question
+      // leaves a creator knowing the system does not know; a dropped one leaves
+      // them believing it does, which is the reason they stop checking the
+      // output for the claim they told us never to make.
+      //
+      // `audience` rides along because the brief is where the CREATOR'S OWN
+      // answers live — `saveDNA` below stores the same field, but as part of the
+      // scan's reading, and generate-blueprint has to know which is which to
+      // prefer the one the person actually typed.
+      //
+      // `goal` deliberately does NOT: this screen's goal box is free text, and
+      // §8a.1's `goal` is a CHOOSER whose values decide format, hook strategy and
+      // CTA strength. Writing a sentence into an enum field would store an
+      // answer no reader can act on — `readStoredBrief` would drop it anyway,
+      // silently. The chooser is the other track's to add.
+      await savePreScriptBrief(draft.voiceId, {
+        workKind, forbiddenClaims, audience,
+        // The offer, but ONLY if the creator typed it. `offerTouched` is exactly
+        // that fact, and without it we would store the scan's guess as though
+        // they had confirmed it — which is the inference this question exists to
+        // replace.
+        offer: offerTouched ? product : null,
+      })
       // ALSO seed the Creator DNA (profile.dna) from the scan + these answers, so
       // the scanned signup isn't left with a half-empty DNA (the "audience/product/
       // goal Not set" bug). This is the durable onboarding boundary: do not enter

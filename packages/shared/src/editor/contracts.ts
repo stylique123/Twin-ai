@@ -7,7 +7,10 @@
 //    in asset IDs; the server resolves paths after verifying ownership.
 //  * This module must not import recording-timeline or any legacy editor code.
 
-export type MediaAssetKind = 'source' | 'music' | 'output' | 'thumbnail'
+// 0106's fifth kind. A CLIP IS NOT A SOURCE: the source is the one take the
+// editor cuts, pinned by a capture SHA to the script the creator read, and there
+// is exactly one per project by design. A clip is footage shown DURING it.
+export type MediaAssetKind = 'source' | 'music' | 'output' | 'thumbnail' | 'clip'
 
 export type MediaAssetStatus = 'uploading' | 'validating' | 'ready' | 'rejected' | 'deleted'
 
@@ -28,6 +31,17 @@ export interface MediaAsset {
   height: number | null
   rotation: number | null
   has_audio: boolean | null
+  /** Which declared `[SHOW: …]` slot this clip fills. NULL on every non-clip,
+   *  and on an unattached clip — a creator can record something before deciding
+   *  where it goes, and that is a real state rather than a clip that fills every
+   *  slot. Enforced by 0106's `media_assets_clip_label_only_on_clips`. */
+  clip_label?: string | null
+  /** WHICH SCENE that slot sits on (0108). Null on every non-clip and on an
+   *  unattached clip. It travels with the label because the label is what the
+   *  creator reads and this is the only thing the compiler can place the clip
+   *  with — a clip stored with one and not the other can be watched back and
+   *  never appears in the video. */
+  clip_scene_number?: number | null
   status: MediaAssetStatus
   created_at: string
   validated_at: string | null
@@ -105,6 +119,46 @@ export interface EditProject {
   created_at: string
   started_at: string | null
   completed_at: string | null
+}
+
+// DID THIS RUN ACTUALLY PRODUCE A VIDEO?
+//
+// `completed` is not the answer, and the comment forty lines up already says why:
+// "`completed` with output_asset_id NULL is never a product success". The
+// scaffold path reaches `completed` with no output on purpose, and 0096's
+// completion trigger permits it — so `status === 'completed'` is a statement
+// about the PIPELINE having stopped, not about there being something to watch.
+//
+// Every readiness question in the product is the second one. Asking it as a
+// status comparison is the defect that keeps recurring: it reads correctly, it
+// passes review, and it is wrong exactly on the runs that finished empty —
+// which is the population nobody has fixtures for. Each site that spells the
+// conjunction out by hand is one refactor away from dropping the second half,
+// and dropping it is silent: a player with no source, craft checks about a
+// render that did not happen, a "done" badge on nothing.
+//
+// So the conjunction lives here once, with a name that IS the question. A caller
+// cannot express the wrong check without deliberately going around it.
+//
+// This is deliberately NOT a claim that the file is fetchable. `edit_outputs`
+// carries a `ready` state that only `editor_mark_output_ready` sets, after the
+// bytes are probed, and `editor-output` checks it before signing a URL. That is
+// a server fact and stays server-side; this is the client-side fact the row can
+// answer on its own.
+export function editProducedVideo(
+  project: Pick<EditProject, 'status' | 'output_asset_id'> | null | undefined,
+): boolean {
+  return !!project && project.status === 'completed' && !!project.output_asset_id
+}
+
+// The other half of the same fact, named so a caller does not have to write the
+// negation and get it wrong. `completed` and empty is a REAL, reportable state —
+// the run is over, nothing is coming, and the creator is owed that sentence
+// rather than a spinner that never resolves.
+export function editFinishedWithoutVideo(
+  project: Pick<EditProject, 'status' | 'output_asset_id'> | null | undefined,
+): boolean {
+  return !!project && project.status === 'completed' && !project.output_asset_id
 }
 
 // Stable rejection codes start-editor-v2 returns BEFORE any project/job exists.

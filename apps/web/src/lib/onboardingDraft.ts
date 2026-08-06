@@ -29,6 +29,14 @@ export interface OnboardingDraft {
   // video shipped. The value alone cannot tell those apart — this can, and
   // `dnaProvenance` needs it to decide whether the field may DECIDE anything.
   offerFromCreator: boolean
+  // §2.2's `can_record_screen`, asked for the first time. THREE STATES, and the
+  // draft has to carry all three: `true`, `false`, and `null` = not answered.
+  //
+  // A boolean here would make "skipped the question" indistinguishable from
+  // "said no", and `can_record_screen = false` is what permanently hides a
+  // capture surface from a creator who never said anything. See
+  // packages/shared/src/editor/capabilities.ts — unset is not false.
+  canRecordScreen: boolean | null
 }
 
 export function onboardingDraftKey(userId: string): string {
@@ -61,6 +69,10 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       // honest default: a draft that never recorded the distinction cannot
       // claim the creator typed it.
       offerFromCreator: value.offerFromCreator === true,
+      // A REAL boolean or nothing. A draft written before the question existed
+      // has no answer, and neither does one carrying `"yes"` from a hand-edited
+      // sessionStorage entry — both are unanswered, never `false`.
+      canRecordScreen: value.canRecordScreen === true ? true : value.canRecordScreen === false ? false : null,
     }
   } catch {
     return null
@@ -93,6 +105,7 @@ export function readOnboardingDraft(storage: Storage, userId: string): Onboardin
     workKind: null,
     forbiddenClaims: null,
     offerFromCreator: false,
+    canRecordScreen: null,
     goal: '',
   }
   writeOnboardingDraft(storage, migrated)

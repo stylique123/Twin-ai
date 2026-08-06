@@ -52,7 +52,7 @@ export const env = {
   // exactly where they were — with the migration, the trigger and the handler
   // all looking correct. A job type nobody drains is a feature that does
   // nothing, quietly.
-  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source,editor_v2,purge_media').split(',').map((s) => s.trim()),
+  jobTypes: (process.env.WORKER_JOB_TYPES ?? 'ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media').split(',').map((s) => s.trim()),
   // Poll cadence + claim concurrency.
   pollMs: Number(process.env.WORKER_POLL_MS ?? '3000'),
   // Lease must EXCEED the longest job, or a slow render gets reclaimed mid-flight

@@ -17,10 +17,10 @@
 //      `WORKER_JOB_TYPES=ingest` — silently narrows/drifts the running set.
 //   3. The canonical registry in worker/src/env.ts is not EXACTLY the allowed
 //      job types (order-insensitive, no extras, no duplicates):
-//      ingest, build_voice, scrape_dna, validate_source, editor_v2,
-//      purge_media. Strict set-equality catches bypass names like `render_v2`
-//      / `edit_plan`. Future EditPlan/renderer stages live INSIDE editor_v2,
-//      not as competing top-level job types.
+//      ingest, build_voice, scrape_dna, validate_source, validate_clip,
+//      editor_v2, purge_media. Strict set-equality catches bypass names like
+//      `render_v2` / `edit_plan`. Future EditPlan/renderer stages live INSIDE
+//      editor_v2, not as competing top-level job types.
 //
 //      WHY purge_media IS ON THIS LIST. The list is not "the five" as an
 //      end in itself — it exists so a second RENDERING path cannot appear
@@ -33,6 +33,21 @@
 //      and every deleted recording's bytes survive with nothing anywhere
 //      looking wrong — so `missing` is pinned by a selftest case too.
 //
+//      WHY validate_clip IS ON THIS LIST, on the same terms. It RENDERS
+//      NOTHING: it downloads a screen capture, checksums it and ffprobes it,
+//      writing measured facts onto a `clip` media_asset (0107) — the same
+//      shape as validate_source, whose presence here has never been in
+//      question. It composes nothing and encodes nothing; the cutaway it
+//      makes possible is built inside editor_v2's render stage from
+//      EditPlanV1.composition, which is where a second rendering path would
+//      actually try to appear. Both directions are load-bearing again. As an
+//      EXTRA it would fail the build, which is what caught this addition and
+//      sent someone to read this comment. As a MISSING entry,
+//      editor_finalize_clip keeps enqueueing the type, no worker claims it,
+//      and every screen capture sits in `validating` forever — the creator
+//      watches "checking it" spin while the migration, the edge function and
+//      the UI all look correct. So `missing` is pinned by a selftest case too.
+//
 //   node scripts/ci/check_single_deploy_path.mjs            # PR guard
 //   node scripts/ci/check_single_deploy_path.mjs --selftest # unit-test the logic
 import { execSync } from 'node:child_process'
@@ -40,7 +55,9 @@ import { readFileSync } from 'node:fs'
 
 const SELF = 'scripts/ci/check_single_deploy_path.mjs'
 const ENV = 'worker/src/env.ts'
-const ALLOWED_REGISTRY = ['ingest', 'build_voice', 'scrape_dna', 'validate_source', 'editor_v2', 'purge_media']
+const ALLOWED_REGISTRY = [
+  'ingest', 'build_voice', 'scrape_dna', 'validate_source', 'validate_clip', 'editor_v2', 'purge_media',
+]
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.
 const FORBIDDEN_MANIFEST = [
@@ -121,7 +138,7 @@ function selftest() {
   const R = [...ALLOWED_REGISTRY]
   const base = { tracked: ['worker/Dockerfile', 'package.json'], overrides: [], registry: R }
   const cases = [
-    ['clean: exact five, no manifest/override', base, true],
+    ['clean: exactly the allowed set, no manifest/override', base, true],
     ['worker/fly.toml', { ...base, tracked: ['worker/fly.toml'] }, false],
     ['root fly.toml', { ...base, tracked: ['fly.toml'] }, false],
     ['infra/worker/fly.toml (worker-named anywhere)', { ...base, tracked: ['infra/worker/fly.toml'] }, false],
@@ -141,9 +158,16 @@ function selftest() {
     // Dropping purge_media is the quiet failure: a trigger keeps enqueueing
     // the type, no worker claims it, and deleted recordings' bytes survive.
     ['registry missing purge_media', { ...base, registry: R.filter((t) => t !== 'purge_media') }, false],
-    // The teeth that matter — widening the list for a storage job must not
-    // have made room for a second RENDERING path beside editor_v2.
+    // Same quiet failure, one job over: editor_finalize_clip keeps enqueueing
+    // validate_clip, nothing claims it, and every screen capture sits in
+    // `validating` forever while nothing anywhere looks wrong.
+    ['registry missing validate_clip', { ...base, registry: R.filter((t) => t !== 'validate_clip') }, false],
+    // The teeth that matter — widening the list for a storage job, and again
+    // for a measurement job, must not have made room for a second RENDERING
+    // path beside editor_v2.
     ['registry extra render_v3 (list widened, teeth intact)', { ...base, registry: [...R, 'render_v3'] }, false],
+    ['registry extra compose_clip (a measurement job is not a licence to compose)',
+      { ...base, registry: [...R, 'compose_clip'] }, false],
   ]
   let failed = 0
   for (const [name, state, exp] of cases) {

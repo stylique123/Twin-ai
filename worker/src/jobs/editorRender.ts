@@ -421,6 +421,11 @@ export interface RenderRequest {
   plan: EditPlanV1
   /** Local, already-downloaded source. */
   sourcePath: string
+  /** Local, already-downloaded and CHECKSUM-VERIFIED clips, index-aligned with
+   *  `plan.composition.sources`. Absent/empty is the ordinary case. The
+   *  alignment is positional so the graph builder resolves nothing — see
+   *  `fetchComposedClips`, which is what produces it. */
+  clipPaths?: string[]
   /** Local ASS document produced from plan.captions, or null when there are no cues. */
   assPath: string | null
   /** Directory holding the catalog's fonts, or null when there are no cues. */
@@ -526,6 +531,24 @@ export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realD
     }
   }
 
+  // THE CLIPS MUST ARRIVE VERIFIED, OR NOT AT ALL.
+  //
+  // `fetchComposedClips` downloads each one beside the source and checks its
+  // bytes against the checksum THE PLAN PINNED — not the asset row's, which
+  // diverges the moment a clip is re-recorded under the same label. Handing this
+  // stage unverified paths would let a render composite footage the plan never
+  // described, with the plan hash and the manifest both still correct.
+  //
+  // A caller that composed clips and supplied no paths is refused here rather
+  // than deeper in the builder, where "0 clip paths were supplied" reads as an
+  // argument bug instead of a missing fetch.
+  if (req.plan.composition.sources.length > 0 && (req.clipPaths ?? []).length === 0) {
+    bad(
+      `plan composes ${req.plan.composition.sources.length} clip(s) but none were fetched`,
+      'render_graph_invalid',
+    )
+  }
+
   mkdirSync(req.workDir, { recursive: true })
   const outputPath = join(req.workDir, 'output.mp4')
   // A previous attempt's file must never be mistaken for this attempt's. ffmpeg
@@ -536,7 +559,7 @@ export async function renderEditPlan(req: RenderRequest, deps: SpawnDeps = realD
   const graph = buildFfmpegGraph(
     req.plan,
     {
-      sourcePath: req.sourcePath, assPath: req.assPath, fontsDir: req.fontsDir, outputPath,
+      sourcePath: req.sourcePath, clipPaths: req.clipPaths, assPath: req.assPath, fontsDir: req.fontsDir, outputPath,
       // Straight from the profile the plan already had to match field for
       // field (assertOutputProfile). The graph opens no catalogs, so the
       // encoder settings are handed down here like the crossfade bounds and

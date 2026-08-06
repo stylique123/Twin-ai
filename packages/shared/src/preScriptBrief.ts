@@ -40,6 +40,8 @@
 // adviser or supplement brand." There is no model that can infer what a
 // regulator will not let someone say.
 
+import type { ProductEvidence } from './productEvidence'
+
 export type BriefStage = 'during_scan' | 'on_confirm'
 
 /** Q1. A CHOOSER, not free text: it decides format, hook strategy and CTA
@@ -71,6 +73,65 @@ export function asksForbiddenClaims(kind: BriefWorkKind | null | undefined): boo
   return !!kind && (CLAIMS_QUESTION_KINDS as readonly string[]).includes(kind)
 }
 
+/**
+ * HOW a creator can hand us the thing their videos are about.
+ *
+ * `link` is a page we can read. `images` are the object itself. `either` is for
+ * the kinds where both are normal and neither is obviously right.
+ *
+ * This exists because §2.3's container rule has no input: a script that says
+ * `[SHOW: the product]` is an instruction only if something has confirmed what
+ * the product IS, and otherwise it is a gap wearing a marker's costume. The
+ * creator is the only one who can close that, and they should have to do it
+ * ONCE — not per video, and not by typing a description of something they can
+ * simply show us.
+ */
+export type ProductEvidenceForm = 'link' | 'images' | 'either'
+
+/**
+ * The form to ASK FOR first, by what the creator does.
+ *
+ * A suggestion about which upload button leads, never a restriction: a SaaS
+ * founder with a screenshot and a jeweller with a shop page are both ordinary,
+ * so every kind accepts both and this only decides what is offered first.
+ *
+ * `saas` and the service kinds lead with a link because their product is
+ * already a page that describes itself. `ecommerce` leads with images because a
+ * product PAGE is marketing copy and the product is a physical object — and it
+ * is the object that has to be filmed.
+ */
+export const PRODUCT_EVIDENCE_FORM: Record<BriefWorkKind, ProductEvidenceForm> = {
+  saas: 'link',
+  professional: 'link',
+  local_service: 'link',
+  brand: 'link',
+  ecommerce: 'images',
+  creator: 'either',
+  other: 'either',
+}
+
+/**
+ * Is there a product to understand at all?
+ *
+ * CONDITIONAL, and that is the point: a wall of questions is answered badly or
+ * skipped, so this appears only once the creator has said what they do. It is
+ * not asked before `workKind`, and a `creator` with nothing to sell is not
+ * interrogated about a product they do not have — asking someone about a thing
+ * that does not exist is how they learn to click past the questions that matter.
+ *
+ * FURTHER NARROWING BELONGS TO `promotes`. "Nothing to sell" should skip this
+ * entirely, and "an affiliate product" should ask for the product's page rather
+ * than the creator's own. That field exists on `BriefAnswers` and its values are
+ * not pinned yet, so this conditions on what is actually decided today and says
+ * so rather than guessing an enum it does not own.
+ */
+export function asksProductEvidence(kind: BriefWorkKind | null | undefined): boolean {
+  // `creator` is excluded deliberately: it is the one kind where a product is
+  // the exception rather than the rule, and the offer question already catches
+  // the ones who have one.
+  return !!kind && kind !== 'creator'
+}
+
 export interface BriefAnswers {
   /** Q1 */
   goal?: BriefGoal | null
@@ -91,6 +152,14 @@ export interface BriefAnswers {
   /** Q5 — "you mostly do X and Y — anything else you want to make?" The chips
    *  are the SCAN's reading; this captures only the intent it cannot see. */
   alsoWantsToMake?: string | null
+  /** The product itself — a link we READ, or images of the thing. Never a
+   *  sentence describing it: a description is the guess §2.3's container rule
+   *  exists to refuse. ASKED ONCE and reused, because understanding a product
+   *  costs a model call and the answer does not change per video.
+   *
+   *  `'declined'` is a real answer ("there is nothing to show"). Absent is not —
+   *  see `productEvidenceState`. */
+  productEvidence?: ProductEvidence | 'declined' | null
 }
 
 export interface BriefQuestion {
@@ -136,6 +205,12 @@ export const BRIEF_QUESTIONS: readonly BriefQuestion[] = [
     because: 'Unguessable, and unforgivable to get wrong for a doctor, lawyer, financial adviser or supplement brand. No model can infer what a regulator forbids.',
   },
   {
+    id: 'productEvidence', stage: 'during_scan',
+    prompt: 'Show us what you sell — paste a link, or add a few photos.',
+    prefilled: false,
+    because: "§2.3's container rule has no input without it: `[SHOW: the product]` is only an instruction if something confirmed what the product is. Asked once, because understanding a product costs a model call and it does not change per video.",
+  },
+  {
     id: 'promotes', stage: 'on_confirm', prompt: 'What do your videos promote?',
     prefilled: true,
     because: 'Partly observable from captions and CTAs, so it arrives pre-filled and is corrected rather than composed.',
@@ -158,6 +233,7 @@ export function questionsFor(stage: BriefStage, answers: BriefAnswers): BriefQue
   return BRIEF_QUESTIONS.filter((q) => {
     if (q.stage !== stage) return false
     if (q.id === 'forbiddenClaims') return asksForbiddenClaims(answers.workKind)
+    if (q.id === 'productEvidence') return asksProductEvidence(answers.workKind)
     return true
   })
 }
@@ -210,4 +286,85 @@ export function otherWithoutText(answers: BriefAnswers): boolean {
   return answers.workKind === 'other'
     && (answers.workKindOther === null || answers.workKindOther === undefined
       || answers.workKindOther.trim() === '')
+}
+
+// ---------------------------------------------------------------------------
+// STORING IT — the one shape that goes to the database
+// ---------------------------------------------------------------------------
+
+/** Every key `brand_voices.pre_script_brief` accepts, and the only ones.
+ *
+ *  Mirrors 0109's CHECK deliberately. Two lists that must agree is the shape of
+ *  a drift bug, so a test pins this against the migration file: the day a tenth
+ *  question is added to one, the other cannot stay silent. */
+export const BRIEF_STORED_KEYS = [
+  'goal', 'audience', 'workKind', 'workKindOther', 'offer',
+  'forbiddenClaims', 'promotes', 'alsoWantsToMake', 'productEvidence',
+] as const
+
+/**
+ * What is safe to WRITE — and the whole of the three-state discipline at the
+ * one point where it can be lost.
+ *
+ * A key is present only when there is a real answer behind it. That is not
+ * tidiness: `{forbiddenClaims: ''}` and `{}` are the same fact to every reader
+ * and different rows in the table, so the empty one is a state that means
+ * "unanswered" while counting as "answered" to anyone who checks for the key.
+ *
+ * MERGING IS THE CALLER'S JOB, and it must merge rather than replace — the
+ * brief is filled in over two screens (during the scan, then on confirm) and a
+ * whole-object write from the first screen would erase the second's answers.
+ * `savePreScriptBrief` does that read-merge-write, exactly as
+ * `saveCapabilityDefaults` does for the flags.
+ *
+ * `'declined'` survives, because "there is nothing to show" is an answer the
+ * container rule may act on. Absent is not, and reading absent as declined
+ * would let a demo script conclude it needs no footage.
+ */
+export function sanitizeBriefForWrite(answers: BriefAnswers): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  const text = (k: 'audience' | 'workKindOther' | 'offer' | 'forbiddenClaims'
+    | 'promotes' | 'alsoWantsToMake'): void => {
+    const v = answers[k]
+    if (typeof v === 'string' && v.trim() !== '') out[k] = v.trim()
+  }
+  if (answers.goal) out.goal = answers.goal
+  if (answers.workKind) out.workKind = answers.workKind
+  text('audience'); text('workKindOther'); text('offer'); text('forbiddenClaims')
+  text('promotes'); text('alsoWantsToMake')
+  const pe = answers.productEvidence
+  if (pe === 'declined') out.productEvidence = 'declined'
+  // An evidence record with no sections is the log of an attempt, not an
+  // answer — `productEvidenceState` says so, and storing it would make a failed
+  // capture look like a supplied product.
+  else if (pe && typeof pe === 'object' && pe.sections.length > 0) out.productEvidence = pe
+  return out
+}
+
+/** Read a stored brief back. Unknown keys are DROPPED rather than carried: the
+ *  CHECK cannot admit them, so anything else in there arrived before the
+ *  constraint existed and is not something this vocabulary can interpret. */
+export function readStoredBrief(raw: unknown): BriefAnswers {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const src = raw as Record<string, unknown>
+  const out: BriefAnswers = {}
+  for (const k of BRIEF_STORED_KEYS) {
+    if (!(k in src)) continue
+    const v = src[k]
+    if (k === 'productEvidence') {
+      if (v === 'declined') out.productEvidence = 'declined'
+      else if (v && typeof v === 'object') out.productEvidence = v as BriefAnswers['productEvidence']
+      continue
+    }
+    if (typeof v === 'string' && v.trim() !== '') {
+      // The two enums are validated rather than cast: a stored `goal` that is
+      // not a BRIEF_GOAL would otherwise flow into a prompt as if the creator
+      // had chosen it.
+      if (k === 'goal') { if ((BRIEF_GOALS as readonly string[]).includes(v)) out.goal = v as BriefGoal }
+      else if (k === 'workKind') {
+        if ((BRIEF_WORK_KINDS as readonly string[]).includes(v)) out.workKind = v as BriefWorkKind
+      } else out[k] = v as never
+    }
+  }
+  return out
 }

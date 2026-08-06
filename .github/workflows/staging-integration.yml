@@ -295,7 +295,24 @@ jobs:
           # times, before the harness timed out with the project stuck in
           # `analyzing`. A textbook instance of the warning above: the symptom
           # looked nothing like a missing migration.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component; do
+          # 0104 registers the permanent glossary. It MUST be here, and its
+          # absence is the exact failure the warning above describes: the
+          # glossary reader landed on main on 2026-08-04, the day AFTER the last
+          # green matrix, and the next run (220) died with
+          #   glossary read failed: Could not find the table
+          #   'public.brand_glossary_terms' in the schema cache
+          # on EVERY editor_v2 attempt, so Phase 3's happy path timed out with
+          # the project still `queued`. The symptom — a harness timeout — again
+          # looked nothing like a missing migration, and it was not caused by
+          # the PR that surfaced it. Same shape as 0100 above.
+          #
+          # 0102 (the review gate) is added for a different reason: the compile
+          # stage TOLERATES a missing `edit_review_overlays` on purpose, because
+          # the worker deploys on a push to main while migrations are applied by
+          # hand. Without the table, staging exercises that fallback rather than
+          # the real read — so the one environment meant to prove the real path
+          # was proving the degraded one instead.
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done

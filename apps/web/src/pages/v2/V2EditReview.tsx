@@ -148,7 +148,11 @@ export default function V2EditReview() {
     setSubmitError(null)
     try {
       await submitEditReview(bundle.projectId, overlay, bundle.spokenWordCount)
-      nav(`/result/${bundle.projectId}`, { replace: true })
+      // THE GENERATION, not the project. `/result/:id` loads a generation and
+      // then finds its latest edit project; handing it a project id sent the
+      // creator to a plan that does not exist, immediately after a submit that
+      // had succeeded.
+      nav(`/result/${bundle.generationId}`, { replace: true })
     } catch (e) {
       // NAMED, never a raw database string. The codes are stable and each one
       // has a different thing for the creator to do next.
@@ -187,7 +191,7 @@ export default function V2EditReview() {
           <p className="text-sm text-sand/80">
             This video is no longer waiting for a review — it is <b>{bundle.status}</b>.
           </p>
-          <button onClick={() => nav(`/result/${bundle.projectId}`)} className="btn-ghost mt-4 w-full">
+          <button onClick={() => nav(`/result/${bundle.generationId}`)} className="btn-ghost mt-4 w-full">
             Go to the video
           </button>
         </div>
