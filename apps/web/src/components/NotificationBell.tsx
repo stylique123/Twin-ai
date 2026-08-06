@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, Check, Clapperboard, MessageSquare, BadgeCheck } from 'lucide-react'
-import { listNotifications, markNotificationsRead, type AppNotification } from '../lib/api'
+import { listNotifications, markNotificationsRead, inAppPath, type AppNotification } from '../lib/api'
 import { cn } from '../lib/cn'
 
 const ICON: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -67,7 +67,15 @@ export function NotificationBell() {
 
   const openItem = (n: AppNotification) => {
     setOpen(false)
-    if (n.link) navigate(n.link)
+    // A STRING FROM THE DATABASE IS NOT A ROUTE. `notifications.link` is
+    // server-written today (0047 gives the client no INSERT, 0052 narrows its
+    // UPDATE to `read`), so nothing a user controls reaches here — but that is
+    // a fact about the current writers, not about this call, and the next edge
+    // function to build a link from a handle or a campaign name will not
+    // connect itself to react-router's open-redirect advisory. Checked where
+    // the value is USED, so the rule survives whichever writer arrives.
+    const to = inAppPath(n.link)
+    if (to) navigate(to)
   }
 
   return (
