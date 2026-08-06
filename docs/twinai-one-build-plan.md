@@ -1005,3 +1005,75 @@ comparison, for a human to run:
 
 **Two beginners is the right number to start.** The first tells you what is
 broken; the second tells you whether it was them or the plan.
+
+---
+
+## PART 13 — HOW THE BEAT PLAN CONNECTS TO EVERY COMPONENT
+
+A new planning layer that does not name its consumers is the failure this whole
+document exists to end. So: **every component of Twin, and what it does with the
+beat plan.** If a row cannot be filled, that part of the plan does not get
+built.
+
+### The producer
+
+`generate-blueprint` gains two cheap calls before the writing call:
+
+```
+brief + DNA  →  Composer   →  position (one paragraph)
+position     →  Director   →  beatPlan (the shape)
+beatPlan     →  Writer     →  blueprint (the words)
+```
+
+**Stored on the generation, pinned like the brand snapshot**, so a re-read months
+later shows the plan the video was actually written to — not a plan regenerated
+from facts that have since changed.
+
+### The consumers, one per component
+
+| component | what it reads | what changes |
+|---|---|---|
+| **`recordingScriptAdapter`** | `beats[].targetSec`, `sceneType` | **The fix for scene length.** `duration_sec` becomes the beat's target instead of words ÷ wpm. One scene per BEAT, not per `script[]` entry — so the model can no longer decide take length by how much it typed. |
+| **Teleprompter** | `beats[].targetSec`, `purpose` | Shows the beat's intent and its intended length, so a creator knows a beat is meant to be 6 seconds before they ramble for 30. `show_in_teleprompter` still routes on scene structure — **no content-type enum.** |
+| **Scene cards / shoot plan** | `visualHook`, `background`, `action_posing`, `proof` | Where to stand, what must not be in frame, phone position, what to hold. `background` and `action_posing` already exist and already reach `setup` — they get *specific* rather than new. |
+| **`containerResolution`** | `beats[].proof` when it is `screen` or `object` | A beat whose proof is a screen IS a declared slot. Today the slot comes from a `[SHOW: …]` marker in prose; from the beat plan it is structural, so a promised proof cannot go missing silently. |
+| **`ScriptEditor`** | the beat plan alongside the words | Editing a line shows which beat it belongs to and what that beat is for. `applyDialogueEdit` already re-estimates `duration_sec`; with a target it can say **"this is now 14s against a 6s beat."** |
+| **Capability flags** | `beats[].sceneType` | A beat planned as `screen_recording` for someone whose `can_record_screen` is not explicitly true must be re-planned, not silently dropped. |
+| **Editor Director** | `beats[].purpose` and `targetSec` | The Director currently picks cuts from candidates with no idea what the video is doing. Given the beat plan it can cut *toward* an intended shape — the narrowness identified in 10.4, fixed by giving it intent rather than more machinery. |
+| **`craftFacts` / CraftChecks** | `beats[].targetSec` vs measured | A new checkable fact: **did the finished video match its plan?** Craft checks already refuse to report what they cannot measure, so a beat with no measurement stays `not_checked`. |
+| **`galleryRank`** | `beats[]` shape | An eighth signal becomes possible: does this reference's shape match what this creator can execute? Only if measurable — `not_checked` otherwise, per the existing rule. |
+| **`outcomeLog`** | beat plan ↔ outcome | **This is what makes learning real.** Which beat shapes held attention for THIS creator. Bounded: adequate sample size, one viral post changes nothing, brand truth never mutates. |
+| **`brandSnapshot`** | — | Unchanged, and deliberately. Brand visual identity is pinned separately and stays that way; the beat plan is about shape, not colour. |
+| **Review / approval / publish** | — | Untouched. That chain is the other session's and the beat plan must not reach into it. |
+
+### The rules this obeys
+
+**Unanswered emits nothing.** A beat plan the Composer could not produce means
+the writer gets today's prompt, not an invented plan. Degrading to the current
+behaviour is correct; inventing a shape is not.
+
+**Pinned, never re-derived.** Every consumer reads the stored plan. No stage
+re-plans from live DNA — that is the "no downstream stage rereads live mutable
+DNA" rule from the audit.
+
+**One writer.** `generate-blueprint` produces it. Nothing else writes a beat
+plan, ever.
+
+**It must pass the consumer guard.** If the beat plan is stored and no component
+reads it, CI fails — the same check that caught `goal` being read from three
+authorities and none of them the creator's answer.
+
+### Build order, so nothing is stranded
+
+1. **Composer only.** Position into the existing prompt. No new storage, no new
+   consumers, immediately better output. *Reversible in one line.*
+2. **Beat plan produced and stored, read by ONE consumer** —
+   `recordingScriptAdapter`, because scene length is the loudest defect.
+3. **Then teleprompter and scene cards** — the creator-facing half.
+4. **Then the editor Director** — it needs a plan to exist before it can cut
+   toward one.
+5. **Then craft checks and outcomes** — measurement last, because it measures
+   the four above.
+
+**Each step ships with its consumer.** Step 2 does not merge as "the plan is
+stored, readers coming."
