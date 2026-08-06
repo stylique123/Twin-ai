@@ -691,6 +691,46 @@ Deno.serve(async (req: Request) => {
           ? '\n- WHOSE product that is: THERE IS NOTHING TO SELL. Do not write a purchase or signup CTA at all. The call to action is engagement — follow, save, comment — or nothing.'
           : ''
 
+    // WHAT THE CREATOR DOES FOR A LIVING.
+    //
+    // Asked at `during_scan`, validated against BRIEF_WORK_KINDS, stored — and
+    // until now read by nothing, so a doctor and a hobbyist received the same
+    // script. It is the answer that decides where subject matter and business
+    // truth come from, which is the one thing a scan of their captions cannot
+    // tell us.
+    //
+    // A SHORT INSTRUCTION PER KIND, not a label. `- What they do: saas` invites
+    // the model to invent what that implies; naming the consequence is what
+    // changes the writing. Each line says what the script must respect, and
+    // deliberately stops there — none of them prescribes a format, because the
+    // teleprompter already routes on the script's own structure and a
+    // content-type enum is the retired archetype trap.
+    //
+    // UNANSWERED EMITS NOTHING, exactly as `promotes` and the claims block do.
+    // A default would be this system telling the model what someone does for a
+    // living because nobody asked.
+    const WORK_KIND_LINES: Record<string, string> = {
+      saas: 'runs a SOFTWARE product. Their proof is the product working — a screen, not a claim. Their constraints are competitive, not regulatory.',
+      professional: 'is a CREDENTIALED PROFESSIONAL whose advice carries real-world consequences. Prefer "in my experience" and "for many people" over universal promises, and never imply an outcome is guaranteed.',
+      ecommerce: 'sells a PHYSICAL PRODUCT. The object itself is the proof — write beats that hold it, use it and show the result, rather than describing it.',
+      brand: 'speaks for a BRAND or company account, not as a private individual. Write in the brand\'s voice; avoid first-person claims that only a named person could make.',
+      local_service: 'runs a LOCAL SERVICE business. Their buyer is nearby and the action is booking or calling, not buying online. Completed work is the proof.',
+      creator: 'is a CREATOR whose product is the content itself. Do not manufacture a commercial angle where none exists.',
+    }
+    // `other` carries the creator's own sentence, and it is the highest-signal
+    // answer in the set precisely because they typed it rather than picked it.
+    // Bounded, and inside the DNA fence with every other creator-supplied
+    // string. An `other` with no text emits NOTHING: the bare word "other"
+    // describes nobody, and a line saying so would spend prompt on an absence.
+    const workKindOther = typeof brief.workKindOther === 'string'
+      ? brief.workKindOther.trim().slice(0, 240)
+      : ''
+    const workKindLine = brief.workKind === 'other'
+      ? (workKindOther ? `\n- What they do, in their own words: ${workKindOther}` : '')
+      : (brief.workKind && WORK_KIND_LINES[brief.workKind]
+        ? `\n- What they do: this creator ${WORK_KIND_LINES[brief.workKind]}`
+        : '')
+
     const povLine = povList.length
       ? povList.join(' | ')
       : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
@@ -741,7 +781,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${workKindLine}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
