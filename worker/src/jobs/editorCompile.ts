@@ -1984,9 +1984,6 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
   // and the pieces together (O(words + pieces), no pairwise search).
   const staged: Array<StagedWord & { pieceIndex: number }> = []
   let p = 0
-  // The last staged word's output END, so a transition's overlap cannot make the
-  // caption timeline run backwards. See the note at the clamp below.
-  let prevOutEnd = -1
   for (let i = 0; i < words.length; i++) {
     const w = words[i]
     while (p < timeMap.pieces.length && timeMap.pieces[p].sourceEndMs <= w.startMs) p++
@@ -1998,39 +1995,6 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     const outStartMs = piece.outputStartMs + (w.startMs - piece.sourceStartMs)
     const outEndMs = piece.outputStartMs + (w.endMs - piece.sourceStartMs)
     if (outEndMs <= outStartMs) continue
-    // A CROSSFADE MAKES OUTPUT TIME NON-MONOTONIC, AND EVERYTHING BELOW ASSUMES
-    // IT IS NOT.
-    //
-    // `buildTimeMap` places a transition by starting the next piece EARLY:
-    // `outputStart[i] = outputEnd[i-1] - overlap`. That is correct — the two
-    // pieces are genuinely on screen together for those milliseconds — but it
-    // means a word at the START of piece i maps to an earlier output time than a
-    // word at the END of piece i-1, by up to the overlap. The cues built from
-    // them are then out of order, and the plan's own validator refuses the
-    // document with `captions.cues[n]: overlaps or unsorted`.
-    //
-    // Real speech hits this and the fixtures did not, which is why it survived:
-    // removals are SILENCE, so a cut lands flush against the words on either
-    // side of it — exactly the case where the two spans are closest. A synthetic
-    // fixture with a comfortable gap either side of every cut never collides.
-    // The staging matrix's Phase 8 found it on the first real render.
-    //
-    // The incoming caption WAITS rather than the outgoing one being cut short:
-    // both words are audible and both pieces are visible during the fade, so
-    // neither reading is more true — but shortening the outgoing cue would
-    // retract a caption already on screen, and delaying the incoming one by at
-    // most `overlapMs` is imperceptible. No word is ever dropped for this
-    // unless the delay would consume it entirely.
-    let startMs = outStartMs
-    if (startMs < prevOutEnd) startMs = prevOutEnd
-    if (outEndMs <= startMs) {
-      // Only reachable when a word is SHORTER than the overlap it sits inside.
-      // Said out loud rather than dropped quietly: a word the creator spoke and
-      // did not see captioned is the silent degradation this file keeps naming.
-      warn.add('caption_word_inside_transition', `word_${i}`)
-      continue
-    }
-    prevOutEnd = outEndMs
     // THE ONE PLACE CAPTION TEXT IS CHOSEN. The script's spelling replaces the
     // ASR's only where the aligner paired this exact spoken word; everywhere
     // else `w.text` is untouched, so a take with no alignment produces
@@ -2060,9 +2024,7 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
       // similarity score both live in the alignment component already.
       inp.warn.add('caption_script_spelling_applied', `word_${i}`)
     }
-    // `startMs`, not `outStartMs` — the transition clamp above is the whole
-    // point, and staging the raw value would put it straight back.
-    staged.push({ index: i, text: respelt ?? w.text, outStartMs: startMs, outEndMs, pieceIndex: piece.index })
+    staged.push({ index: i, text: respelt ?? w.text, outStartMs, outEndMs, pieceIndex: piece.index })
   }
 
   const cues: PlanCue[] = []
@@ -2164,17 +2126,40 @@ function buildCaptionCues(inp: CueBuildInputs): PlanCue[] {
     return timeMap.pieces[last.pieceIndex].outputEndMs
   }
 
+  // PEEK, THEN TAKE — and the order of those two is the whole of a defect that
+  // produced no video at all.
+  //
+  // `flush()` can hand the tail of an over-long cue BACK to `pending`
+  // (`pending.unshift(tail)`) so words it could not lay out start the next cue
+  // instead of being dropped. That part is right. But this loop used to
+  // `shift()` the next word off `pending` BEFORE calling `flush()`, so the word
+  // it was already holding jumped the queue: the re-queued tail came out AFTER a
+  // word that is LATER in the take. The cues then ran backwards —
+  //
+  //   [0]  0-940     "Stop scrolling"
+  //   [1]  3160-3540 "I"             <- the word held in `w`
+  //   [2]  1760-2420 "everything."   <- the re-queued tail, from earlier
+  //
+  // — and the plan's own validator refused the whole document with
+  // `captions.cues[2]: overlaps or unsorted`. The project failed permanently,
+  // no output asset, nothing on screen to explain it. It also LOST captions
+  // outright: "this change and" and "today." never reached the plan at all.
+  //
+  // Peeking leaves the word in the queue while `flush()` runs, so a re-queued
+  // tail is simply the next thing taken. The loop still terminates: every
+  // iteration either takes a word or flushes, and a flush always empties the
+  // group, so at most one extra iteration follows each flush.
   while (pending.length > 0) {
-    const w = pending.shift()
-    if (!w) break
+    const w = pending[0]
     if (group.length > 0) {
       const samePiece = group[0].pieceIndex === w.pieceIndex
       const wouldExceedWords = group.length >= preset.maxWordsPerCue
       const wouldExceedTime = w.outEndMs - group[0].outStartMs > preset.maxCueDurationMs
       // A cue never spans a cut: crossing a piece boundary would give it an
       // output span containing time that no longer exists.
-      if (!samePiece || wouldExceedWords || wouldExceedTime) flush()
+      if (!samePiece || wouldExceedWords || wouldExceedTime) { flush(); continue }
     }
+    pending.shift()
     group.push(w)
   }
   flush()
