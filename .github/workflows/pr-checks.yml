@@ -265,6 +265,16 @@ jobs:
         run: |
           node scripts/ci/check_analysis_consistency.mjs --selftest
           node scripts/ci/check_analysis_consistency.mjs
+      # Nine questions are asked of every creator, validated, sanitized and
+      # stored — and five are read by nothing, so a doctor and a hobbyist get
+      # the same script. Every PR that added one was correct in isolation; the
+      # defect lives BETWEEN them, which is the kind nobody is assigned to
+      # notice. Unwired keys are declared rather than tolerated, and the
+      # declaration self-expires: excusing a key that HAS a reader fails too.
+      - name: Brief answers have readers (every question we ask changes something)
+        run: |
+          node scripts/ci/check_brief_consumers.mjs --selftest
+          node scripts/ci/check_brief_consumers.mjs
       # Registering ONE analysis component used to mean editing twelve places
       # that each privately encoded the component namespace, none referencing
       # any other. Nothing compared them, so every disagreement surfaced ~40
