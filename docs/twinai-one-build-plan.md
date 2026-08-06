@@ -95,10 +95,20 @@ against the colours actually chosen. **Copy this shape.**
 ### Chain 4 — FOOTAGE → EDIT
 `Recording` (+ screen clips) → `EditPlan` → `ffmpegGraph` → the render.
 
-**Broken by design, not by bug.** `ffmpegGraph.ts` references only `0:v` and
-`0:a`. `EditPlan.identity.sourceAssetId` is singular. A second source cannot
-composite until both change. Everything about screen recording upstream of this
-works and dead-ends here.
+**Working.** CORRECTED 2026-08-06: an earlier revision of this document said
+`ffmpegGraph.ts` referenced only `0:v`/`0:a` and that a second source could not
+composite. **That was wrong, and it was wrong the way this document warns
+about** — a grep of the top of the file, where the per-segment chain does read
+`0:v`, and no one opened the rest. Line 813 onward declares a real `-i` per
+composed clip and resolves the input mapping once, precisely so that "the second
+clip" and "input 2" cannot drift. `editorCompile.ts`'s `placeClips` chooses the
+placement, and a clip-count mismatch is REFUSED rather than truncated — the
+comment says why: truncating "would render the take where the creator asked for
+their screen and report success."
+
+What remains open here is placement *policy* — which moment cuts to the clip is
+a rule today rather than an explicit Director selection — and proof in a real
+production render.
 
 ### Chain 5 — POST → LEARNING
 `Published post` → outcome log → gallery rank → what we suggest next time.
@@ -125,7 +135,8 @@ available.
 | What a product answer *is* (pixels + section map) | `productEvidence.ts` | working, unread |
 | Container slot detection | `containerResolution.ts` | working, partly consumed |
 | Capability flag three-state logic | `capabilities.ts` | working, unfed |
-| Screen clip capture + storage | `clip-asset`, `ScreenClipRecorder.tsx` | working, dead-ends at render |
+| Screen clip capture + storage | `clip-asset`, `ScreenClipRecorder.tsx` | working |
+| Screen clips composited into the render | `ffmpegGraph.ts:813+`, `placeClips` | working — multi-input, count mismatch refused |
 | Craft checks, outcome log, gallery rank | `craftFacts.ts`, `outcomeLog.ts`, `galleryRank.ts` | working, displayed |
 
 ### Two design rules already proven here — obey them everywhere
@@ -147,12 +158,13 @@ on gets pinned the same way.
 Distinguish these from the wiring in PART 4. These need decisions, not just
 work.
 
-### 3a. The second video source
-Screen clips are captured and thrown away at render. Fixing it means
-`EditPlan.identity` takes a list of sources and `ffmpegGraph` builds a graph
-with `1:v` in it — overlay or split-screen placement, plus the Director
-deciding *when* to cut to the clip. **This is the largest single piece of
-unbuilt work and it is not a wiring job.**
+### 3a. ~~The second video source~~ — BUILT. Placement policy is what is open.
+**Corrected.** Multi-input composition exists and is guarded. What is genuinely
+open is narrower and worth stating accurately: the Director does not yet
+*select* the moment to cut to a clip — placement is policy in the compiler — and
+no production render has proven it on real footage. That is a smaller and
+better-defined problem than "the renderer cannot take a second input", which is
+what this section used to claim.
 
 ### 3b. Research — what to put in the container for someone with nothing to sell
 A tech creator who wants followers has no product beat. §2.3's rule says the
@@ -478,10 +490,11 @@ that decides whether Twin produces videos people want to make.**
 
 ### TRACK D — The render, and the editor
 
-**D1 · A second video source.** `EditPlan.identity` takes a list;
-`ffmpegGraph` builds `1:v` into the graph; the Director decides when to cut.
-*What changes:* screen recordings stop being captured and discarded — the whole
-screen-clip feature becomes real.
+**D1 · Director-selected clip placement.** The inputs and the composition are
+built; what is missing is the Director explicitly choosing the moment rather
+than the compiler applying a rule.
+*What changes:* the clip lands where it earns attention instead of where a
+default put it.
 
 **D2 · The overlay window.** A Director decision, not effort.
 
