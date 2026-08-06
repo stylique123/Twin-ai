@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
@@ -26,7 +26,7 @@ import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
-import type { Blueprint, EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
+import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, OutputBundle, RecordingScript } from '../lib/types'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -302,14 +302,38 @@ export default function Result() {
   // The finished file — fetched ONLY once the project says `completed` with a
   // real output asset. A completed project with no asset is the scaffold
   // state (render flag off); there is deliberately nothing to fetch for it.
-  const [editOutput, setEditOutput] = useState<EditorOutput | null>(null)
+  // ONE FETCH, ONE ANSWER. This screen used to ask three separate questions —
+  // the project row, the signed URLs, and (inside CraftChecks) the plan and
+  // events — and each re-derived whether there was a video to talk about. The
+  // bundle answers all of it once, and only its `ready` variant carries either
+  // the output or the craft checks, so the two can no longer disagree.
+  // P1-6: the script the creator is actually editing, reported up by
+  // ScriptEditor so UnfilledContainers warns about THAT rather than about a
+  // copy it synthesized from the blueprint. `useCallback` because ScriptEditor
+  // reports through an effect keyed on this identity — an inline arrow would
+  // fire it on every render of this page.
+  const [liveScript, setLiveScript] = useState<RecordingScript | null>(null)
+  const onScriptChange = useCallback((s: RecordingScript | null) => setLiveScript(s), [])
+  const [bundle, setBundle] = useState<OutputBundle | null>(null)
   const [editOutputAttempt, setEditOutputAttempt] = useState(0)
+  // The three fields the fetch actually depends on, lifted out of the row.
+  // Depending on `editProject` itself would refetch on EVERY poll tick — the
+  // row is a new object each time even when nothing changed — and re-signing
+  // URLs every four seconds for a video already on screen is exactly the cost
+  // this bundle exists to remove. Naming the fields satisfies the exhaustive-
+  // deps rule honestly instead of silencing it, which matters because the
+  // suppression comment is what would hide a genuinely missing dependency later.
+  const projectId = editProject?.id ?? null
+  const projectStatus = editProject?.status ?? null
+  const projectOutputAssetId = editProject?.output_asset_id ?? null
+  const hasVideo = editProducedVideo(editProject)
   useEffect(() => {
-    if (!editProject || !editProducedVideo(editProject)) { setEditOutput(null); return }
+    if (!projectId || !hasVideo) { setBundle(null); return }
     let live = true
-    getEditorOutput(editProject.id).then((o) => { if (live) setEditOutput(o) }).catch(() => {})
+    getOutputBundle(projectId).then((b) => { if (live) setBundle(b) }).catch(() => {})
     return () => { live = false }
-  }, [editProject?.status, editProject?.output_asset_id, editProject?.id, editOutputAttempt])
+  }, [projectId, projectStatus, projectOutputAssetId, hasVideo, editOutputAttempt])
+  const editOutput: EditorOutput | null = bundle?.state === 'ready' ? bundle.output : null
   // getEditorOutput collapses every rejection (not-ready, no-video, sign-failed)
   // into null — the UI's question is just "can I play this yet". Here the
   // project is ALREADY `completed` with an asset, so a null that never
@@ -317,13 +341,13 @@ export default function Result() {
   // pending. Surface a retry after a few seconds instead of spinning forever.
   const [editOutputStalled, setEditOutputStalled] = useState(false)
   useEffect(() => {
-    if (editProducedVideo(editProject) && !editOutput) {
+    if (hasVideo && !editOutput) {
       const t = setTimeout(() => setEditOutputStalled(true), 8000)
       return () => clearTimeout(t)
     }
     setEditOutputStalled(false)
     return undefined
-  }, [editProject?.status, editProject?.output_asset_id, editOutput])
+  }, [hasVideo, editOutput])
 
   const downloadEditVideo = () => {
     if (!editOutput?.videoUrl) return
@@ -386,7 +410,7 @@ export default function Result() {
     // Demo mock is a DEV-only convenience — production users always get real data
     // (or a real error), never a fabricated blueprint.
     if (import.meta.env.DEV && id === 'demo') {
-      setGen(MOCK_GENERATION as any)
+      setGen(MOCK_GENERATION as unknown as Generation)
       setApproved(false)
       setChosenHook(MOCK_GENERATION.selected_hook)
       setLoading(false)
@@ -692,9 +716,20 @@ export default function Result() {
                     {editProducedVideo(editProject) ? (
                       editOutput?.videoUrl ? (
                         <video src={editOutput.videoUrl} controls playsInline className="h-full w-full object-contain" poster={editOutput.coverUrl ?? undefined} />
-                      ) : editOutputStalled ? (
+                      ) : bundle?.state === 'unavailable' || editOutputStalled ? (
+                        // TOLD, rather than guessed after eight seconds.
+                        //
+                        // The spinner-then-timeout path stays as a backstop for
+                        // a bundle that has not arrived at all, but when the
+                        // bundle says `unavailable` the server has already
+                        // answered: the row names an output and it could not be
+                        // served. Waiting out a timer to say so is time the
+                        // creator spends believing it is still loading.
                         <div className="text-center">
                           <p className="px-4 text-xs text-coral">Couldn’t load the video.</p>
+                          <p className="mt-1 px-5 text-[11px] leading-relaxed text-stone">
+                            The video is there — we just couldn’t reach it this time.
+                          </p>
                           <button onClick={() => setEditOutputAttempt((n) => n + 1)} className="mt-2 text-xs text-stone underline hover:text-cream">Retry</button>
                         </div>
                       ) : (
@@ -770,7 +805,7 @@ export default function Result() {
                       would be reporting on a video that does not exist. */}
                   {editProducedVideo(editProject) && (
                     <div className="mt-3">
-                      <CraftChecks projectId={editProject.id} />
+                      <CraftChecks checks={bundle?.state === 'ready' ? bundle.craft : null} />
                     </div>
                   )}
                 </div>
@@ -905,8 +940,9 @@ export default function Result() {
                 <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
               
-              <UnfilledContainers blueprint={b} hook={chosenHook} />
+              <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
               <ScriptEditor
+                onScriptChange={onScriptChange}
                 generationId={gen.id}
                 blueprint={b}
                 selectedHook={chosenHook}
@@ -1092,7 +1128,7 @@ export default function Result() {
 
               {activeTab === 'strategy' && (
                 <div className="mt-6">
-                  <CreativeTransfer generationId={gen.id} blueprint={b} />
+                  <CreativeTransfer generationId={gen.id} blueprint={b} referenceAnalysis={gen.reference_analysis} />
                 </div>
               )}
               {activeTab === 'spec' && (
@@ -1240,8 +1276,9 @@ export default function Result() {
                   <span className="text-xs text-stone">{updatedScript.length} scenes</span>
                 </div>
                 
-                <UnfilledContainers blueprint={b} hook={chosenHook} />
+                <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
                 <ScriptEditor
+                  onScriptChange={onScriptChange}
                   generationId={gen.id}
                   blueprint={b}
                   selectedHook={chosenHook}
@@ -1387,7 +1424,7 @@ export default function Result() {
           )}
           {mobileTab === 'strategy' && (
             <div className="mt-6">
-              <CreativeTransfer generationId={gen.id} blueprint={b} />
+              <CreativeTransfer generationId={gen.id} blueprint={b} referenceAnalysis={gen.reference_analysis} />
             </div>
           )}
 

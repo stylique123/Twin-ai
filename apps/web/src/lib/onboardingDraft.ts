@@ -1,4 +1,4 @@
-import type { BriefWorkKind } from './api'
+import { BRIEF_PROMOTES, type BriefPromotes, type BriefWorkKind } from './api'
 import type { Platform, VoiceProfile } from './types'
 
 export const ONBOARDING_DRAFT_VERSION = 2
@@ -21,6 +21,14 @@ export interface OnboardingDraft {
   // packages/shared/src/preScriptBrief.ts.
   workKind: BriefWorkKind | null
   forbiddenClaims: string | null
+  // §8a.3 Q4 — whose product the CTA points at. A CHOOSER: §2.3's three
+  // container routes branch on it, and null is a real state meaning unanswered.
+  promotes: BriefPromotes | null
+  // §8a.3 Q6 — can the creator put a product or object in front of the camera?
+  // THREE-STATE, and the third state is load-bearing: `can_film_objects = false`
+  // permanently withholds footage suggestions, so "they never said" must never
+  // become "they said no".
+  canFilmObjects: boolean | null
   // WHETHER THE CREATOR TYPED THE OFFER, or left the scan's guess standing.
   //
   // §8a calls `offer` the highest-value field on the form BECAUSE it is
@@ -65,6 +73,18 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       goal: value.goal ?? '',
       workKind: value.workKind ?? null,
       forbiddenClaims: value.forbiddenClaims ?? null,
+      // VALIDATED, not cast. A draft is localStorage — a value outside the
+      // vocabulary reaches the confirm screen as a selected chip and then the
+      // brief, so an old or hand-edited draft could pick a container route the
+      // creator never chose. `readStoredBrief` refuses it on the way back out
+      // too; this refuses it before it can render as an answer.
+      promotes: (BRIEF_PROMOTES as readonly string[]).includes(value.promotes as string)
+        ? (value.promotes as BriefPromotes)
+        : null,
+      // A REAL boolean or nothing — the same rule `canRecordScreen` follows one
+      // line down. A draft written before the question existed has no opinion,
+      // and `?? false` would manufacture one.
+      canFilmObjects: typeof value.canFilmObjects === 'boolean' ? value.canFilmObjects : null,
       // Absent in a v2 draft written before the brief existed. FALSE is the
       // honest default: a draft that never recorded the distinction cannot
       // claim the creator typed it.
@@ -104,6 +124,8 @@ export function readOnboardingDraft(storage: Storage, userId: string): Onboardin
     product: '',
     workKind: null,
     forbiddenClaims: null,
+    promotes: null,
+    canFilmObjects: null,
     offerFromCreator: false,
     canRecordScreen: null,
     goal: '',

@@ -310,6 +310,11 @@ export default function Auth() {
                 <input
                   className="field mt-1.5"
                   type="email"
+                  // Without this a password manager cannot reliably offer the
+                  // saved account, so a returning creator retypes an address
+                  // they may not remember which of two they used. `username` is
+                  // the value the spec defines for an email identifier.
+                  autoComplete="username"
                   placeholder="you@brand.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -323,6 +328,12 @@ export default function Auth() {
                 <input
                   className="field mt-1.5"
                   type="password"
+                  // MODE-DEPENDENT, and it matters: on sign-in a manager should
+                  // FILL the saved password, while on sign-up or reset it should
+                  // OFFER a new one. Marking both `current-password` makes a
+                  // manager overwrite a new password with the old one, which is
+                  // a sign-in loop the creator cannot diagnose.
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                   placeholder="Min 6 characters"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

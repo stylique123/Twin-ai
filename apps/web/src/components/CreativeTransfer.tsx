@@ -28,8 +28,7 @@ import { useMemo } from 'react'
 import { Check, CircleDashed, Ruler, ScanLine } from 'lucide-react'
 import {
   KIND_LABEL, normalizeReferenceEvidence, transferRows, transferSummary,
-  type EvidenceKind, type TransferRow,
-} from '../lib/api'
+  type EvidenceKind, type TransferRow, readReferenceAnalysis, referenceDisclosure } from '../lib/api'
 import type { Blueprint } from '../lib/types'
 
 const KIND_STYLE: Record<EvidenceKind, { icon: typeof Check; tone: string; text: string }> = {
@@ -45,10 +44,29 @@ const KIND_STYLE: Record<EvidenceKind, { icon: typeof Check; tone: string; text:
   unknown: { icon: CircleDashed, tone: 'text-stone/50', text: 'text-stone/70' },
 }
 
-export function CreativeTransfer({ generationId, blueprint }: {
+export function CreativeTransfer({ generationId, blueprint, referenceAnalysis }: {
   generationId: string
   blueprint: Blueprint
+  /** REFERENCE-1: the raw `generations.reference_analysis`, read here rather
+   *  than by the caller so every surface showing this card discloses the same
+   *  thing. */
+  referenceAnalysis?: unknown
 }) {
+  // WHETHER WE READ THE VIDEO AT ALL, said before anything we claim to have
+  // taken from it.
+  //
+  // Both branches of `generate-blueprint` return a confident `reference_read`,
+  // and the fallback is reached silently — ingest failure, an unsupported host,
+  // a private post, a timeout. The creator sees an identical screen either way
+  // and extends the trust earned by the real path to the inferred one.
+  //
+  // Only the fallback is disclosed. Badging the real case would turn the normal
+  // outcome into a claim, and a screen covered in reassurance reads as one with
+  // something to reassure about. `unknown` (pre-0110 rows) says nothing at all,
+  // because "we do not know which path ran" is not a sentence a creator can use
+  // and inventing "pattern" for it would slander a generation that was read
+  // properly.
+  const disclosure = referenceDisclosure(readReferenceAnalysis(referenceAnalysis))
   const rows = useMemo(() => {
     const rr = blueprint.reference_read
     const evidence = normalizeReferenceEvidence({
@@ -71,6 +89,12 @@ export function CreativeTransfer({ generationId, blueprint }: {
       <h2 className="font-heading text-xs font-semibold uppercase tracking-wide text-stone">
         What we took from the reference
       </h2>
+      {disclosure && (
+        <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-amber/20 bg-amber/[0.06] px-2.5 py-2 text-[11px] leading-relaxed text-sand">
+          <ScanLine className="mt-0.5 h-3 w-3 shrink-0 text-amber" />
+          {disclosure}
+        </p>
+      )}
       <p className="mt-2 text-xs leading-relaxed text-stone">{transferSummary(rows)}</p>
       <ul className="mt-4 space-y-3">
         {rows.map((r) => <Row key={r.type} row={r} />)}

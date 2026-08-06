@@ -14,9 +14,23 @@ personalized, **shootable** blueprint in the creator's own voice — hook,
 scene-by-scene script, captions, a recorded take, and a publish schedule. It
 copies **structure, never content**.
 
-> **AI editor status:** the original auto-edit pipeline has been **removed** and a
-> new one-click editor is being rebuilt — see `docs/ai-editor-rebuild-status.md`.
-> Recording, upload and finished-video playback still work; nothing edits a take yet.
+> **AI editor status:** the original auto-edit pipeline was removed; **editor v2
+> renders.** Matrix run #224 took a real take through the whole pipeline and
+> produced a verified video — h264 + aac, 1080×1920 yuv420p, length within the
+> frozen ±250 ms of the plan, bytes present in storage. The sentence that stood
+> here until 2026-08-06 — *"nothing edits a take yet"* — was true when written and
+> is now false.
+>
+> Two honest qualifications, because the flags are what decide whether any of it
+> runs: `EDITOR_V2_START_ENABLED` (Supabase edge) gates starting an edit, and
+> `EDITOR_RENDER_ENABLED` (`/opt/twinai-worker.env`) gates the real render. Both
+> fail CLOSED — unset means off, and with the render flag off a project still
+> reaches `completed` with a NULL `output_asset_id`, which is a scaffold and never
+> a product success. And editor v2 has not yet completed a run in **production**;
+> the proof above is staging.
+>
+> For how the pieces connect — who writes each fact, what turns it on, and where
+> it breaks — see **`docs/system-connections.md`**.
 
 The product is one loop:
 
@@ -101,7 +115,7 @@ The `jobs` table is the seam between them.
   `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`. See `.env.production`.
 
 ### 4.2 Data plane — Supabase (Postgres + Auth + RLS)
-- **Schema:** migrations in `supabase/migrations/` (`0001_init.sql` → `0065_create_storage_buckets.sql`).
+- **Schema:** migrations in `supabase/migrations/` (`0001_init.sql` → `0109_pre_script_brief.sql`).
   Core objects:
   - `profiles` — creator identity, `plan`, `credits`, `dna`, `onboarded`. Column
     lockdown: clients may only update `dna`/`display_name`/`onboarded`; `credits`/
@@ -274,7 +288,7 @@ Full step-by-step runbook + smoke test: **`DEPLOY.md`**.
 ```
 src/            frontend (Vercel)  — pages/, components/, lib/, context/
 supabase/
-  migrations/   schema, RLS, RPCs, buckets (0001 → 0065)
+  migrations/   schema, RLS, RPCs, buckets (0001 → 0109)
   functions/    edge functions (the secure synchronous API)
 worker/         VPS job-queue worker (Node/TS + Python + ffmpeg)
 discovery/      daily viral-reference discovery cron

@@ -433,15 +433,28 @@ export function DeclaredClips({ generationId }: { generationId: string }) {
             </p>
           )}
 
-          {/* SAID RATHER THAN IMPLIED. A creator who captures three clips and
-              then watches a finished video with none of them in it would have no
-              way to tell whether they did something wrong. They did not: the
-              editor does not place clips yet, and the plan's composition section
-              (schema v7) is where that will be recorded when it does. */}
+          {/* SAID RATHER THAN IMPLIED, AND NOW SAYING THE OPPOSITE.
+              This paragraph read "Twin does not cut them into the edit yet"
+              until 2026-08-06. That was true when written and became false when
+              the compiler gained `placeClips` — the clips have been cut in since
+              then, and the copy kept telling creators they were not. A stale
+              promise is worse than no promise: someone who was told their
+              capture would not appear has no reason to check that it appeared in
+              the right place.
+
+              What is stated is what `placeClips` actually does, and no more. The
+              unplaced cases are named because a creator who captures three clips
+              and sees two has to be able to tell which rule caught the third. */}
           <p className="mt-3 text-[11px] leading-relaxed text-stone">
-            Captures are saved to this video and checked. Twin does not cut them into
-            the edit yet — for now they are yours to use, and the slots stay marked
-            in your script.
+            Captures are saved, checked, and cut into your video over the line you
+            recorded them for. They play as picture only — your voice keeps running
+            underneath. A capture longer than that line is trimmed to fit; a shorter
+            one ends and returns to you.
+          </p>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
+            If the line it belongs to gets cut from the edit, the capture has nowhere
+            to sit and is left out. Two captures on the same line means only the first
+            plays.
           </p>
         </div>
       </div>

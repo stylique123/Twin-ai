@@ -6,11 +6,11 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
-  listPosts, listGenerations, schedulePost, markScheduledPosted, deletePost,
+  listPosts, listGenerations, schedulePost, markScheduledPosted, deletePost, resolveFinishedOutputs,
   listConnections, startConnect, disconnectPlatform, publishPost,
   type Post, type PlatformConnection,
 } from '../lib/api'
-import type { Generation, Platform } from '../lib/types'
+import type { Generation, Platform, FinishedOutput } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { Reveal } from '../components/motion'
 import { POSTING_LIVE } from '../lib/brand'
@@ -39,6 +39,9 @@ export default function Calendar() {
   const { profile } = useAuth()
   const [posts, setPosts] = useState<Post[]>(POSTS_CACHE ?? [])
   const [gens, setGens] = useState<Generation[]>(GENS_CACHE ?? [])
+  // OUTPUT-1: the finished/unfinished icon read `edit_path`, so a card for an
+  // editor-v2 render showed the "still to film" clapperboard.
+  const [finished, setFinished] = useState<Map<string, FinishedOutput>>(new Map())
   const [loading, setLoading] = useState(POSTS_CACHE === null)
   const [cursor, setCursor] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [composeFor, setComposeFor] = useState<Date | null>(null)
@@ -57,7 +60,10 @@ export default function Calendar() {
     if (POSTS_CACHE === null) setLoading(true)
     setLoadError(false)
     Promise.all([listPosts(), listGenerations().catch(() => [])])
-      .then(([p, g]) => { POSTS_CACHE = p; GENS_CACHE = g; setPosts(p); setGens(g) })
+      .then(([p, g]) => {
+        POSTS_CACHE = p; GENS_CACHE = g; setPosts(p); setGens(g)
+        resolveFinishedOutputs(g).then(setFinished).catch(() => {})
+      })
       // A failed listPosts previously escaped as an unhandled rejection and the
       // month rendered as convincingly "empty" — surface it as an error instead.
       .catch(() => setLoadError(true))
@@ -214,9 +220,9 @@ export default function Calendar() {
             <div className="flex items-center justify-between">
               <h2 className="font-heading text-lg text-cream">{monthLabel}</h2>
               <div className="flex items-center gap-1">
-                <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-stone hover:text-cream"><ChevronLeft className="h-4 w-4" /></button>
+                <button aria-label="Previous month" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-stone hover:text-cream"><ChevronLeft className="h-4 w-4" /></button>
                 <button onClick={() => { const d = new Date(); setCursor(new Date(d.getFullYear(), d.getMonth(), 1)) }} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-sand hover:text-cream">Today</button>
-                <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-stone hover:text-cream"><ChevronRight className="h-4 w-4" /></button>
+                <button aria-label="Next month" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-stone hover:text-cream"><ChevronRight className="h-4 w-4" /></button>
               </div>
             </div>
             <div className="mt-4 grid grid-cols-7 gap-1.5">
@@ -281,7 +287,7 @@ export default function Calendar() {
                   return (
                     <div key={p.id} className="glass flex items-center gap-3 p-3.5">
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/5">
-                        {g?.edit_path ? <Video className="h-5 w-5 text-teal" /> : <Clapperboard className="h-5 w-5 text-amber" />}
+                        {g && finished.has(g.id) ? <Video className="h-5 w-5 text-teal" /> : <Clapperboard className="h-5 w-5 text-amber" />}
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-cream">{g ? genTitle(g) : (p.caption ?? 'Scheduled post')}</div>
@@ -340,6 +346,7 @@ export default function Calendar() {
 
       {composeFor && (
         <ScheduleModal
+          finished={finished}
           day={composeFor}
           gens={gens}
           platforms={platforms}
@@ -353,9 +360,12 @@ export default function Calendar() {
 
 /* ─── Schedule modal ─────────────────────────────────────────────────── */
 
-function ScheduleModal({ day, gens, platforms, onClose, onScheduled }: {
+function ScheduleModal({ day, gens, finished, platforms, onClose, onScheduled }: {
   day: Date
   gens: Generation[]
+  /** OUTPUT-1: passed in rather than re-derived, so the picker's finished/
+   *  unfinished icon cannot disagree with the month grid's. */
+  finished: ReadonlyMap<string, FinishedOutput>
   platforms: Platform[]
   onClose: () => void
   onScheduled: () => void
@@ -387,7 +397,7 @@ function ScheduleModal({ day, gens, platforms, onClose, onScheduled }: {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="glass relative max-h-[88vh] w-full max-w-lg overflow-y-auto p-6 sm:p-7" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
+        <button aria-label="Close" onClick={onClose} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
         <h2 className="font-display text-2xl tracking-tight">Schedule a post</h2>
         <p className="mt-1 text-sm text-stone">Pick a finished video, a platform and a time.</p>
 
@@ -408,7 +418,7 @@ function ScheduleModal({ day, gens, platforms, onClose, onScheduled }: {
                     className={cn('flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors', g.id === genId ? 'bg-white/[0.07]' : 'hover:bg-white/[0.03]')}
                   >
                     <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/5 text-[11px] font-bold text-stone">{i + 1}</span>
-                    {g.edit_path ? <Video className="h-4 w-4 shrink-0 text-teal" /> : <Clapperboard className="h-4 w-4 shrink-0 text-amber" />}
+                    {finished.has(g.id) ? <Video className="h-4 w-4 shrink-0 text-teal" /> : <Clapperboard className="h-4 w-4 shrink-0 text-amber" />}
                     <span className="min-w-0 flex-1 truncate text-sm text-cream">{genTitle(g)}</span>
                     {g.id === genId && <Check className="h-4 w-4 shrink-0 text-teal" />}
                   </button>

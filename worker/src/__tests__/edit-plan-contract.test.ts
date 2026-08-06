@@ -3,7 +3,7 @@
 // PROCESSES (Gate-0 §3.1, §8).
 import { describe, it, expect } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { writeFileSync, mkdtempSync } from 'node:fs'
+import { writeFileSync, mkdtempSync, mkdirSync, copyFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -425,35 +425,63 @@ describe('canonical serialization and hash', () => {
 })
 
 describe('byte identity across two separate processes', () => {
-  // Runs the REAL compiler in a genuinely separate `node` process. Node's own
-  // type transform is used rather than a bundler, so the child needs no
-  // installed toolchain and the test stays offline and fast. A resolve hook maps
-  // the `.js` import specifiers onto their `.ts` sources.
+  // Runs the REAL compiler in a genuinely separate `node` process.
+  //
+  // THE CHILD RUNS COMPILED JAVASCRIPT, and it has to. The previous version
+  // asked Node to execute TypeScript directly:
+  //
+  //   * Node 22 needed `--experimental-transform-types`.
+  //   * Node 23.6 made type stripping the default.
+  //   * Node 26 REMOVED the flag, so passing it stopped the process starting.
+  //
+  // Making the flag conditional on the version fixed the crash and not the
+  // problem, which is why the first attempt at this was wrong. Node's built-in
+  // support is STRIP-ONLY: it deletes type syntax and never generates code. But
+  // `worker/src/errors.ts` declares `constructor(message: string, readonly code
+  // = 'permanent_failure')` — a PARAMETER PROPERTY, which requires emitting an
+  // assignment that stripping cannot produce. So `PermanentJobError` is
+  // constructed with `code` undefined, or the parse is refused outright, on
+  // every runtime that only strips. No combination of flags reaches it.
+  //
+  // esbuild is what the repo already uses for exactly this (`gate-d`'s parity
+  // driver bundles a TS entry the same way), it is a devDependency of both
+  // workspaces, and bundling also removes the `.js`→`.ts` resolve hook the old
+  // harness needed. The child then runs plain JS on any Node.
   function runInChildProcess(scriptBody: string): string {
     const dir = mkdtempSync(join(tmpdir(), 'editplan-'))
     const here = import.meta.dirname
-    writeFileSync(join(dir, 'hook.mjs'), `
-export async function resolve(spec, ctx, next) {
-  if ((spec.startsWith('./') || spec.startsWith('../')) && spec.endsWith('.js')) {
-    try { return await next(spec.slice(0, -3) + '.ts', ctx) } catch { /* fall through */ }
-  }
-  return next(spec, ctx)
-}
-`)
-    writeFileSync(join(dir, 'register.mjs'), `
-import { register } from 'node:module'
-register(new URL('./hook.mjs', import.meta.url))
-`)
-    const script = join(dir, 'child.mts')
-    writeFileSync(script, `
+    const workerRoot = join(here, '..', '..')
+
+    // THE BUNDLE NEEDS THE DEPTH THE SOURCE HAD, and its data beside it.
+    // `editorCompile.ts` computes `WORKER_ROOT = join(import.meta.dirname,
+    // '..', '..')` and reads `edit_policy_v1.json` from there. In a bundle that
+    // is the OUTPUT's location, so a flat temp dir made WORKER_ROOT resolve to
+    // `/` and the child died on `ENOENT: /edit_policy_v1.json`.
+    //
+    // Two levels of nesting restore the arithmetic, and the worker-root JSON is
+    // copied to where the code will look. Everything stays under the OS temp
+    // dir — writing a scratch bundle into the repository would leave residue on
+    // a failed run and put generated output where a guard scans for source.
+    const nested = join(dir, 'src', 'jobs')
+    mkdirSync(nested, { recursive: true })
+    for (const f of readdirSync(workerRoot)) {
+      if (f.endsWith('.json')) copyFileSync(join(workerRoot, f), join(dir, f))
+    }
+
+    const entry = join(dir, 'child.ts')
+    writeFileSync(entry, `
 import { compileEditPlan } from ${JSON.stringify(join(here, '..', 'jobs', 'editorCompile.ts'))}
 import { baseInput, policy } from ${JSON.stringify(join(here, 'fixtures', 'editPlanFixture.ts'))}
 ${scriptBody}
 `)
-    return execFileSync(process.execPath, [
-      '--experimental-transform-types', '--no-warnings',
-      '--import', join(dir, 'register.mjs'), script,
+    const bundled = join(nested, 'child.mjs')
+    const esbuild = join(workerRoot, 'node_modules', '.bin', 'esbuild')
+    execFileSync(esbuild, [
+      entry, '--bundle', '--platform=node', '--format=esm', `--outfile=${bundled}`,
     ], { encoding: 'utf8', timeout: 60000 })
+    return execFileSync(process.execPath, ['--no-warnings', bundled], {
+      encoding: 'utf8', timeout: 60000,
+    })
   }
 
   it('a fresh node process produces the same canonical bytes and hash', () => {

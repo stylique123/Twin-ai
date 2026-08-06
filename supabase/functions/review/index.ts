@@ -35,6 +35,47 @@ async function sign(db: ReturnType<typeof admin>, path: string | null, seconds =
   return data?.signedUrl ?? null
 }
 
+/**
+ * A signed URL for the generation's CURRENT editor-v2 output, or null when it
+ * has none.
+ *
+ * Deliberately its own lookup rather than a join: the reviewer's page must
+ * degrade to the legacy file if anything here is unavailable, and a failed join
+ * would take the whole page down instead of one field.
+ *
+ * Newest completion wins, matching `resolveFinishedOutputs` and
+ * `set_generation_approval`. Three places now order this the same way, and they
+ * have to: the video a reviewer WATCHES, the asset an approval BINDS to, and
+ * the readiness a list shows must all mean the same render.
+ */
+async function signCurrentOutput(
+  db: ReturnType<typeof createClient>, generationId: string,
+): Promise<string | null> {
+  const { data: proj } = await db
+    .from('edit_projects')
+    .select('id, output_asset_id')
+    .eq('generation_id', generationId)
+    .eq('status', 'completed')
+    .not('output_asset_id', 'is', null)
+    .order('completed_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!proj?.id) return null
+  const { data: out } = await db
+    .from('edit_outputs')
+    .select('storage_bucket, storage_path, state, kind')
+    .eq('edit_project_id', proj.id)
+    .eq('kind', 'video')
+    .maybeSingle()
+  // READY MEANS PROBED. Signing a reserved-but-not-ready row would hand a
+  // reviewer a URL for bytes that may not exist.
+  if (!out || out.state !== 'ready') return null
+  const { data: signed } = await db.storage
+    .from(out.storage_bucket).createSignedUrl(out.storage_path, 3600)
+  return signed?.signedUrl ?? null
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
   const db = admin()
@@ -52,7 +93,7 @@ Deno.serve(async (req: Request) => {
       if (!token) return json({ error: 'missing token' }, 400)
       const { data: g } = await db
         .from('generations')
-        .select('id, blueprint, selected_hook, edit_path, thumb_path, reference_url, review_status, review_note, created_at, brand_voice_id')
+        .select('id, blueprint, selected_hook, edit_path, thumb_path, reference_url, review_status, review_note, created_at, brand_voice_id, approved, approved_output_asset_id')
         .eq('review_token', token)
         .maybeSingle()
       if (!g) return json({ error: 'not_found' }, 404)
@@ -89,7 +130,16 @@ Deno.serve(async (req: Request) => {
         hook,
         script,
         reference_url: g.reference_url ?? null,
-        video_url: await sign(db, g.edit_path),
+        // OUTPUT-1 REACHES THE REVIEWER. This signed `generations.edit_path`
+        // unconditionally, so a client could approve a legacy file while the
+        // editor-v2 render was the thing about to be published — approving one
+        // video and shipping another.
+        //
+        // The v2 output wins when there is one, resolved server-side by the
+        // same rule everything else uses (newest completion). Legacy remains
+        // the fallback for every video made before editor v2, which is most of
+        // them.
+        video_url: (await signCurrentOutput(db, g.id)) ?? await sign(db, g.edit_path),
         thumb_url: await sign(db, g.thumb_path),
         status: g.review_status ?? 'pending',
         note: g.review_note ?? null,
@@ -108,14 +158,27 @@ Deno.serve(async (req: Request) => {
       const { data: g } = await db.from('generations').select('id, user_id').eq('review_token', token).maybeSingle()
       if (!g) return json({ error: 'not_found' }, 404)
 
+      // APPROVAL-1. The decision and WHAT IT APPROVED are written together.
+      //
+      // `set_generation_approval` (0111) resolves the current output inside the
+      // same statement that flips `approved`, so the two cannot disagree and
+      // there is no window where a row claims an approval with no binding —
+      // which is the state 0111's CHECK forbids and a two-step write creates.
+      //
+      // It also resolves the output ITSELF rather than trusting anything this
+      // function passes in. A public, token-authenticated endpoint must not get
+      // to name which video an approval attaches to.
+      const { error: approveErr } = await db.rpc('set_generation_approval', {
+        p_generation: g.id,
+        p_approved: decision === 'approved',
+        p_review_status: decision,
+      })
+      if (approveErr) return json({ error: 'update_failed' }, 500)
+      // The note and timestamp are not part of the approval binding and stay a
+      // plain update — a failure here loses a comment, not the decision.
       const { error } = await db
         .from('generations')
-        .update({
-          review_status: decision,
-          review_note: note,
-          reviewed_at: new Date().toISOString(),
-          approved: decision === 'approved',
-        })
+        .update({ review_note: note, reviewed_at: new Date().toISOString() })
         .eq('id', g.id)
       if (error) return json({ error: 'update_failed' }, 500)
 

@@ -6,7 +6,7 @@ import {
   Gift, Copy, Check, Clock, Eye, Trophy, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, recordPostStats, validateClaim, type BrandStats, type DashboardStats, type OutcomeClaim, type Post } from '../lib/api'
+import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, recordPostStats, validateClaim, resolveFinishedOutputs, type BrandStats, type DashboardStats, type FinishedOutput, type OutcomeClaim, type Post } from '../lib/api'
 import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { OutcomeHistory } from '../components/OutcomeHistory'
@@ -25,6 +25,9 @@ export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(() => DASH_CACHE?.stats ?? null)
   const [recent, setRecent] = useState<Generation[]>(() => DASH_CACHE?.recent ?? [])
   const [gens, setGens] = useState<Generation[]>(() => DASH_CACHE?.gens ?? [])
+  // OUTPUT-1: the week deltas below counted `edit_path` only, so an editor-v2
+  // render landed in "Drafts" on the creator's own dashboard.
+  const [finished, setFinished] = useState<Map<string, FinishedOutput>>(new Map())
   const [posts, setPosts] = useState<Post[]>(() => DASH_CACHE?.posts ?? [])
   const [voices, setVoices] = useState<BrandVoice[]>(() => DASH_CACHE?.voices ?? [])
   const [selectedBrand, setSelectedBrand] = useState('') // '' = all brands
@@ -46,6 +49,7 @@ export default function Dashboard() {
         const readyVoices = (vs as BrandVoice[]).filter((v) => v.status === 'ready')
         const recent5 = g.slice(0, 5)
         setStats(s); setRecent(recent5); setGens(g); setPosts(p); setVoices(readyVoices)
+        resolveFinishedOutputs(g).then(setFinished).catch(() => {})
         DASH_CACHE = { stats: s, recent: recent5, gens: g, posts: p, voices: readyVoices }
       })
       .catch(() => { if (!DASH_CACHE) setError(true) })
@@ -99,8 +103,8 @@ export default function Dashboard() {
   const weekAgo = Date.now() - 7 * 24 * 3600 * 1000
   const publishedIds = new Set(posts.filter((p) => p.status === 'posted' && p.generation_id).map((p) => p.generation_id))
   const newThisWeek = gens.filter((g) => +new Date(g.created_at) > weekAgo)
-  const wkDrafts = newThisWeek.filter((g) => !g.edit_path && !publishedIds.has(g.id)).length
-  const wkReady = newThisWeek.filter((g) => g.edit_path && !publishedIds.has(g.id)).length
+  const wkDrafts = newThisWeek.filter((g) => !finished.has(g.id) && !publishedIds.has(g.id)).length
+  const wkReady = newThisWeek.filter((g) => finished.has(g.id) && !publishedIds.has(g.id)).length
   const wkPublished = posts.filter((p) => p.status === 'posted' && p.posted_at && +new Date(p.posted_at) > weekAgo).length
 
   return (

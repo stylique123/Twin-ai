@@ -10,38 +10,24 @@
 // — "ends on a reason to act" — can never be checked, because it is a claim
 // about meaning and nothing in this pipeline measures meaning. It appears every
 // time, saying so.
-import { useEffect, useState } from 'react'
+// PRESENTATIONAL. It was not: this component used to fetch the plan and the
+// event log itself and derive the checks, which made it the THIRD independent
+// judgement about whether there was a video to judge — and it was the one that
+// got it wrong, rendering §7c assessments whenever `status === 'completed'`,
+// including for runs that produced nothing.
+//
+// The checks now arrive from `OutputBundle`, where they hang off the single
+// variant that carries a video. This component can no longer be shown for a
+// project with no render, because the caller has nothing to pass it.
 import { Check, CircleDashed, Loader2, TriangleAlert } from 'lucide-react'
-import {
-  craftFactsFromPlan, getEditEvents, getEditPlanDocument, runCraftChecks,
-  summarizeCraftChecks, type CraftCheck,
-} from '../lib/api'
+import { summarizeCraftChecks, type CraftCheck } from '../lib/api'
 
-export function CraftChecks({ projectId }: { projectId: string }) {
-  const [checks, setChecks] = useState<CraftCheck[] | null>(null)
-  const [failed, setFailed] = useState(false)
-
-  useEffect(() => {
-    let alive = true
-    ;(async () => {
-      try {
-        const [plan, events] = await Promise.all([
-          getEditPlanDocument(projectId),
-          getEditEvents(projectId),
-        ])
-        if (!alive) return
-        // A project with no plan yields seven `not_checked` lines, which is the
-        // honest answer to "how is this video doing?" before it exists — so it
-        // is rendered rather than special-cased into an empty state.
-        setChecks(runCraftChecks(craftFactsFromPlan(plan, events)))
-      } catch {
-        if (alive) setFailed(true)
-      }
-    })()
-    return () => { alive = false }
-  }, [projectId])
-
-  if (failed) return null
+export function CraftChecks({ checks }: { checks: readonly CraftCheck[] | null }) {
+  // Null is "the bundle has not arrived yet", which is a wait. An EMPTY array
+  // is a different fact and must not render as one: it means the checker ran
+  // and produced nothing, so there is no report to show rather than a report
+  // that is still loading.
+  if (checks !== null && checks.length === 0) return null
   if (!checks) {
     return (
       <div className="flex items-center gap-2 text-xs text-stone">

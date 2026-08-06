@@ -22,18 +22,52 @@
 // alternative to a visible `[product name]` is an invented product name — a
 // confidently wrong recommendation, which the plan calls the most expensive
 // failure this product can produce. So this reports and offers no auto-fill.
+//
+// ── AND IT SCANS THE SCRIPT THAT IS FILMED ───────────────────────────────
+//
+// This read `blueprint.script[]` — the model's beats. That is the same defect
+// `declaredClips.ts` was already corrected for (P1-6), and it is wrong in both
+// directions: `buildRecordingScript` maps the blueprint onto `scene_timeline`
+// LOSSILY — hook-lookalike lines are dropped, the CTA beat moves to the end,
+// silent b-roll scenes are inserted — so `script[i]` and `scenes[i]` are not the
+// same line.
+//
+// The consequence was specific and bad: a creator who edited `[product name]`
+// out of the recording script was still warned about it, and a bracket they
+// introduced BY EDITING never appeared here at all. A gap checker that reports
+// gaps in a script nobody films is worse than none — it trains the creator to
+// ignore the warning, and the warning is the only thing standing between a
+// placeholder and a teleprompter.
 import { useMemo } from 'react'
 import { TriangleAlert } from 'lucide-react'
-import { resolveScript, slotMessage, type Blueprint } from '../lib/api'
+import {
+  buildRecordingScript, resolveScript, slotMessage,
+  type Blueprint, type RecordingScript,
+} from '../lib/api'
 
-export function UnfilledContainers({ blueprint, hook }: {
+export function UnfilledContainers({ generationId, blueprint, hook, script }: {
+  generationId: string
   blueprint: Blueprint
   hook: string | null
+  /** The persisted RecordingScript when the caller holds one. Absent means it
+   *  has not been loaded yet, and the blueprint is synthesized the same way
+   *  `ScriptEditor` does — the same lines it renders, so the two cannot
+   *  disagree about what is in the script. */
+  script?: RecordingScript | null
 }) {
-  const blocking = useMemo(
-    () => resolveScript((blueprint.script ?? []).map((s) => s.line ?? ''), hook).blocking,
-    [blueprint, hook],
-  )
+  const blocking = useMemo(() => {
+    let lines: string[]
+    try {
+      const filmed = script ?? buildRecordingScript({ generationId, blueprint, selectedHook: hook })
+      lines = filmed.scenes.map((sc) => sc.dialogue ?? '')
+    } catch {
+      // A malformed blueprint must not take the plan screen down. Reporting
+      // nothing is the safe direction: the ScriptEditor fallback still renders
+      // the text, and a missing warning beats a crashed page.
+      return []
+    }
+    return resolveScript(lines, hook).blocking
+  }, [generationId, blueprint, hook, script])
   if (blocking.length === 0) return null
 
   const count = blocking.reduce((n, b) => n + b.slots.length, 0)
