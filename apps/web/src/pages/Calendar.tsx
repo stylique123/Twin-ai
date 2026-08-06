@@ -220,9 +220,9 @@ export default function Calendar() {
             <div className="flex items-center justify-between">
               <h2 className="font-heading text-lg text-cream">{monthLabel}</h2>
               <div className="flex items-center gap-1">
-                <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-stone hover:text-cream"><ChevronLeft className="h-4 w-4" /></button>
+                <button aria-label="Previous month" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() - 1, 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-stone hover:text-cream"><ChevronLeft className="h-4 w-4" /></button>
                 <button onClick={() => { const d = new Date(); setCursor(new Date(d.getFullYear(), d.getMonth(), 1)) }} className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-sand hover:text-cream">Today</button>
-                <button onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-stone hover:text-cream"><ChevronRight className="h-4 w-4" /></button>
+                <button aria-label="Next month" onClick={() => setCursor(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1))} className="grid h-8 w-8 place-items-center rounded-lg border border-white/10 text-stone hover:text-cream"><ChevronRight className="h-4 w-4" /></button>
               </div>
             </div>
             <div className="mt-4 grid grid-cols-7 gap-1.5">
@@ -397,7 +397,7 @@ function ScheduleModal({ day, gens, finished, platforms, onClose, onScheduled }:
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={onClose}>
       <div className="glass relative max-h-[88vh] w-full max-w-lg overflow-y-auto p-6 sm:p-7" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
+        <button aria-label="Close" onClick={onClose} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
         <h2 className="font-display text-2xl tracking-tight">Schedule a post</h2>
         <p className="mt-1 text-sm text-stone">Pick a finished video, a platform and a time.</p>
 

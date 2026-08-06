@@ -260,7 +260,7 @@ function BrandCard({
           ) : (
             <div className="flex items-center gap-2">
               <h3 className="truncate font-heading text-lg text-cream">{voice.label ?? `@${voice.handle}`}</h3>
-              <button onClick={() => setEditing(true)} className="text-stone transition-colors hover:text-cream">
+              <button aria-label="Edit" onClick={() => setEditing(true)} className="text-stone transition-colors hover:text-cream">
                 <Pencil className="h-3.5 w-3.5" />
               </button>
             </div>
@@ -391,7 +391,7 @@ function AddBrandModal({ onClose, onAdded }: { onClose: () => void; onAdded: () 
         onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-md rounded-panel border border-white/10 bg-ink2 p-7"
       >
-        <button onClick={onClose} className="absolute right-4 top-4 text-stone transition-colors hover:text-cream">
+        <button aria-label="Close" onClick={onClose} className="absolute right-4 top-4 text-stone transition-colors hover:text-cream">
           <X className="h-5 w-5" />
         </button>
 

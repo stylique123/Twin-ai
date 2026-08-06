@@ -524,7 +524,7 @@ export default function Settings() {
       {upgradeOpen && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => setUpgradeOpen(false)}>
           <div className="glass relative max-h-[88vh] w-full max-w-6xl overflow-y-auto p-6 sm:p-8" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setUpgradeOpen(false)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
+            <button aria-label="Close" onClick={() => setUpgradeOpen(false)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
             <h2 className="font-display text-2xl tracking-tight sm:text-3xl">Choose your plan</h2>
             <p className="mt-1 text-sm text-stone">Upgrade, downgrade, or switch any time. You keep credits you've already been granted.</p>
             <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -570,7 +570,7 @@ export default function Settings() {
       {cryptoPay && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-ink/85 p-4 backdrop-blur-sm" onClick={() => setCryptoPay(null)}>
           <div className="glass relative w-full max-w-md p-6 sm:p-7" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => setCryptoPay(null)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
+            <button aria-label="Close" onClick={() => setCryptoPay(null)} className="absolute right-4 top-4 grid h-8 w-8 place-items-center rounded-lg text-stone hover:bg-white/5 hover:text-cream"><X className="h-4 w-4" /></button>
             <h2 className="font-display text-2xl tracking-tight">Pay with crypto</h2>
             <p className="mt-1 text-sm text-stone">Send the exact amount to the address below. Your plan activates once the payment is confirmed (usually within the hour).</p>
             <div className="mt-5 space-y-3">

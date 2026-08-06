@@ -234,6 +234,13 @@ jobs:
         run: |
           node scripts/ci/check_row_type_drift.mjs --selftest
           node scripts/ci/check_row_type_drift.mjs
+      # An icon-only button with no accessible name is announced as "button"
+      # and nothing else. Nine shipped; the tenth arrives by copying a file
+      # written before the rule existed.
+      - name: Icon-button labels (an icon-only button must say what it does)
+        run: |
+          node scripts/ci/check_icon_button_labels.mjs --selftest
+          node scripts/ci/check_icon_button_labels.mjs
       - name: Shadowed globals (a module that shadows a constructor must not construct it)
         run: |
           node scripts/ci/check_shadowed_globals.mjs --selftest
