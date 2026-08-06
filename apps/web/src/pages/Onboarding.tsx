@@ -74,6 +74,20 @@ export default function Onboarding() {
   // creator had to re-enter Brand DNA.
   const [mode, setMode] = useState<Mode>(() => draft?.profile ? 'confirm' : draft?.voiceId ? 'building' : 'handle')
 
+  // A FAILED SCAN MUST NOT OUTLIVE ITSELF. `mode` resumes into 'building'
+  // while the draft carries a voiceId, and `Protected` sends every signed-in
+  // user here until `onboarded` is true — so one failed scan locked the account
+  // into a screen that re-polled the same dead job on every visit. Forgetting
+  // the id is what turns that loop back into a form someone can leave.
+  const forgetDeadScan = useCallback(() => {
+    setDraft((current) => {
+      if (!current || current.userId !== userId) return current
+      const next = { ...current, voiceId: '' }
+      safeWriteDraft(next)
+      return next
+    })
+  }, [userId])
+
   const persistDraft = useCallback((next: OnboardingDraft) => {
     setDraft(next)
     safeWriteDraft(next)
@@ -175,6 +189,7 @@ export default function Onboarding() {
                   draft={draft}
                   onReady={handleReady}
                   onBack={() => setMode('handle')}
+                  onScanDead={forgetDeadScan}
                 />
               )}
               {mode === 'confirm' && draft && (
@@ -351,10 +366,12 @@ function BuildingStep({
   draft,
   onReady,
   onBack,
+  onScanDead,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile) => void
   onBack: () => void
+  onScanDead: () => void
 }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
@@ -387,13 +404,25 @@ function BuildingStep({
         if (res.status === 'ready') {
           if (timer.current) clearInterval(timer.current)
           if (res.profile) onReady(res.profile)
-          else setErr('The scan finished without a voice profile. Try a different handle or describe it yourself.')
+          else {
+            setErr('The scan finished without a voice profile. Try a different handle or describe it yourself.')
+            onScanDead()
+          }
         } else if (res.status === 'failed') {
           if (timer.current) clearInterval(timer.current)
           setErr(res.error ?? 'The scan could not finish.')
+          // AND FORGET THE DEAD SCAN. `mode` resumes into 'building' whenever
+          // the draft still carries a voiceId, so a failed scan used to trap
+          // the account: onboarded stays false, every sign-in redirects here,
+          // and this screen resumes polling the same scan that already failed.
+          // The only exit was noticing the manual link. Dropping the id means a
+          // reload lands on the handle screen, which is where someone whose
+          // scan failed actually needs to be.
+          onScanDead()
         } else if (Date.now() - startedAt > MAX_WAIT_MS) {
           if (timer.current) clearInterval(timer.current)
           setErr('This is taking longer than usual. Head back and try again — a public account reads fastest.')
+          onScanDead()
         }
       } catch (e) {
         // Transient, keep polling; surface only if it persists past the cap.
@@ -401,6 +430,7 @@ function BuildingStep({
         if (Date.now() - startedAt > MAX_WAIT_MS && !stopped) {
           if (timer.current) clearInterval(timer.current)
           setErr('We couldn’t reach the scanner. Head back and try again in a moment.')
+          onScanDead()
         }
       }
     }
