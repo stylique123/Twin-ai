@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
@@ -26,7 +26,7 @@ import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
-import type { Blueprint, EditProject, EditProjectStatus, EditorOutput } from '../lib/types'
+import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, OutputBundle } from '../lib/types'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -302,14 +302,20 @@ export default function Result() {
   // The finished file — fetched ONLY once the project says `completed` with a
   // real output asset. A completed project with no asset is the scaffold
   // state (render flag off); there is deliberately nothing to fetch for it.
-  const [editOutput, setEditOutput] = useState<EditorOutput | null>(null)
+  // ONE FETCH, ONE ANSWER. This screen used to ask three separate questions —
+  // the project row, the signed URLs, and (inside CraftChecks) the plan and
+  // events — and each re-derived whether there was a video to talk about. The
+  // bundle answers all of it once, and only its `ready` variant carries either
+  // the output or the craft checks, so the two can no longer disagree.
+  const [bundle, setBundle] = useState<OutputBundle | null>(null)
   const [editOutputAttempt, setEditOutputAttempt] = useState(0)
   useEffect(() => {
-    if (!editProject || !editProducedVideo(editProject)) { setEditOutput(null); return }
+    if (!editProject || !editProducedVideo(editProject)) { setBundle(null); return }
     let live = true
-    getEditorOutput(editProject.id).then((o) => { if (live) setEditOutput(o) }).catch(() => {})
+    getOutputBundle(editProject.id).then((b) => { if (live) setBundle(b) }).catch(() => {})
     return () => { live = false }
   }, [editProject?.status, editProject?.output_asset_id, editProject?.id, editOutputAttempt])
+  const editOutput: EditorOutput | null = bundle?.state === 'ready' ? bundle.output : null
   // getEditorOutput collapses every rejection (not-ready, no-video, sign-failed)
   // into null — the UI's question is just "can I play this yet". Here the
   // project is ALREADY `completed` with an asset, so a null that never
@@ -770,7 +776,7 @@ export default function Result() {
                       would be reporting on a video that does not exist. */}
                   {editProducedVideo(editProject) && (
                     <div className="mt-3">
-                      <CraftChecks projectId={editProject.id} />
+                      <CraftChecks checks={bundle?.state === 'ready' ? bundle.craft : null} />
                     </div>
                   )}
                 </div>
