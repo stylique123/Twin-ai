@@ -70,9 +70,15 @@ surface that shows a finished video is a new place for the readiness bug in A8
 to reappear in a different spelling.
 
 ### C2. Approval → posts binding
-`posts` can reference an edit project (0098) but nothing binds an *approval* to
-the thing approved. A creator approving a video and a video being posted are two
-facts with no enforced relationship.
+`posts.edit_project_id` exists (0098 adds it, with a comment calling it "THE
+join key") and **nothing writes it** — verified 2026-08-06: every
+`edit_project_id` reference in the tree is against `edit_outputs`, not `posts`.
+So the column that was added to connect a render to the post of it has connected
+nothing since the day it shipped.
+
+Beyond the column, nothing binds an *approval* to the thing approved. A creator
+approving a video and a video being posted are two facts with no enforced
+relationship.
 
 ### C3. BrandTruthSnapshot producer
 **The readers exist and the writer does not.** This is the sharpest instance of
@@ -105,8 +111,8 @@ is a claim about staging.
 | | Finding | Status |
 |---|---|---|
 | D1 | Onboarding asked `workKind`/`forbiddenClaims` and persisted them nowhere | fixed (0109) |
-| D2 | Orphan `enqueue-autoedit` edge function still deployed | flagged by `deploy-edge.yml`, not deleted |
-| D3 | Capability flags written by nothing | open |
+| D2 | Orphan `enqueue-autoedit` edge function still deployed | **not reproducible — already gone.** Checked against production 2026-08-06: 17 functions deployed, every one maps to a repo directory, and `enqueue-autoedit` is not among them. The only repo function absent from production is `ci-bootstrap`, which is staging-only by design. This entry was carried forward from an older audit and was stale when the ledger was written; `deploy-edge.yml`'s classification step still names it in `RETIRED`, which is correct — that is what keeps it from coming back. |
+| D3 | Capability flags written by nothing | **half wrong, corrected.** `brand_voices.default_capability_flags` IS written — `saveCapabilityDefaults` (`api.ts:870`), called from `Onboarding.tsx:593`, read back by `Gallery.tsx:272`. That loop is closed, for exactly one flag: `can_record_screen`. What has no writer is the PER-VIDEO override `generations.capability_flags`, which `api.ts:907` reads and nothing sets — so the per-video answer is always the default, and the precedence rule the code documents ("what is true of THIS video wins") can never actually fire. Another readers-with-no-writer, same family as C3. |
 | D4 | Editor v2 usage is zero | open — C7 |
 | D5 | `docs/vps.md` says Render; the worker is on a VPS at 138.201.119.239 | corrected in `docs/system-connections.md`, `vps.md` itself still wrong |
 | D6 | `staging` cannot host a recorder walkthrough (no `profiles`, behind 0103/0106, 0106 needs `gallery_items`) | open, by design |
