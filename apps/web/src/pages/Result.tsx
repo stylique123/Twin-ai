@@ -406,7 +406,15 @@ export default function Result() {
     const next = !approved
     setApproved(next)
     const ok = await setGenerationApproved(gen.id, next)
-    if (!ok) setApproved(!next) // revert on failure
+    if (!ok) { setApproved(!next); return } // revert on failure
+    // THE ROW MOVED, SO THE ROW WE READ MUST MOVE WITH IT. `approvalState` reads
+    // `gen`, and `gen` is the copy fetched on mount — updating only the separate
+    // `approved` flag left the chip saying "Approved" in un-approved styling and
+    // the post action blocked, because the state it derives from still showed
+    // no binding. Re-reading is the honest refresh: the RPC resolves the binding
+    // server-side, so the client cannot compute what it now holds.
+    const fresh = await getGeneration(gen.id).catch(() => null)
+    if (fresh && alive.current) { GEN_CACHE[gen.id] = fresh; setGen(fresh) }
   }
   // APPROVAL-1 read as three states, not as a boolean. `unbound` — approved
   // before 0111 recorded WHAT — is real and is not "not approved"; it is also

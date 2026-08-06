@@ -64,7 +64,9 @@ export default function History() {
   // the creator has been trained to dismiss.
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
+  // Carries WHICH row failed. See the render below: a bare string would be
+  // shown under every row, because this list renders one error slot per item.
+  const [deleteError, setDeleteError] = useState<{ id: string; message: string } | null>(null)
 
   // Pulled out so the error state can offer a real retry. A failed fetch must NOT
   // fall through to the empty state — a network blip would otherwise look exactly
@@ -136,13 +138,13 @@ export default function History() {
     setDeleting(null)
     setConfirmingDelete(null)
     if (!res.ok) {
-      setDeleteError(res.reason === 'unavailable'
+      setDeleteError({ id, message: res.reason === 'unavailable'
         // Named exactly, because "something went wrong" would invite a retry
         // that cannot succeed.
         ? 'Deleting is not available on this deployment yet. Nothing was removed.'
         : res.reason === 'not_found'
           ? 'That video is already gone.'
-          : 'Could not delete that. Nothing was removed — please try again.')
+          : 'Could not delete that. Nothing was removed — please try again.' })
       // `not_found` still leaves the list stale, so refresh either way.
       if (res.reason === 'not_found') load()
       return
@@ -333,8 +335,13 @@ export default function History() {
                                 </button>
                               )}
                             </div>
-                            {deleteError && confirmingDelete === null && deleting === null && (
-                              <p className="mt-2 text-xs text-coral">{deleteError}</p>
+                            {/* SCOPED TO THE ROW IT IS ABOUT. Rendered inside
+                                the per-row map, an unscoped `deleteError` put
+                                "could not delete that" under EVERY video in the
+                                library — the one that failed and every one that
+                                was never touched. */}
+                            {deleteError?.id === g.id && (
+                              <p className="mt-2 text-xs text-coral">{deleteError.message}</p>
                             )}
                           </div>
                         </div>

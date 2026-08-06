@@ -77,6 +77,13 @@ export function NotificationBell() {
     const to = inAppPath(n.link)
     if (to) navigate(to)
   }
+  // A rejected link must not leave a CLICKABLE row that does nothing. The guard
+  // stops the navigation; without this the notification still looked actionable
+  // and the tap was simply swallowed, which reads as a broken product rather
+  // than as a link we declined to follow. `inAppPath.test.ts` states the
+  // contract — "the caller renders a non-clickable notification instead" — and
+  // this is the half that makes it true.
+  const canOpen = (n: AppNotification) => inAppPath(n.link) !== null
 
   return (
     <div className="relative">
@@ -114,7 +121,15 @@ export function NotificationBell() {
                       <button
                         key={n.id}
                         onClick={() => openItem(n)}
-                        className={cn('flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04]', !n.read && 'bg-white/[0.02]')}
+                        // A notification we cannot follow is still worth READING
+                        // — it carries the title and body — so it stays on the
+                        // list and stops being a button instead of vanishing.
+                        disabled={!canOpen(n)}
+                        className={cn(
+                          'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors',
+                          canOpen(n) ? 'hover:bg-white/[0.04]' : 'cursor-default',
+                          !n.read && 'bg-white/[0.02]',
+                        )}
                       >
                         <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/5">
                           <Icon className="h-4 w-4 text-amber" />

@@ -143,13 +143,33 @@ begin
   delete from public.edit_projects where generation_id = p_generation;
   get diagnostics v_projects = row_count;
 
-  -- 2. THEN THE ASSETS, which is the step that was missing entirely. Each row
+  -- 2. THE GENERATION'S OWN POINTER AT ITS SOURCE, WHICH IS THE SECOND NO-ACTION
+  --    KEY AND WAS MISSED BY THE FIRST VERSION OF THIS FUNCTION.
+  --
+  --    `generations.source_asset_id` references `media_assets(id)` with NO
+  --    ACTION (0076) — the same shape as `edit_projects.source_asset_id`, which
+  --    this function's header does account for. Deleting the assets while the
+  --    generation row still points at one raises 23503, so the delete failed for
+  --    exactly the generations the feature exists for: the ones with a recording.
+  --
+  --    IT DID NOT SHOW UP IN TESTING, and the reason is worth writing down.
+  --    Production currently has ZERO generations with a `source_asset_id` —
+  --    editor v2 has never completed a run — so the fixture that exercised this
+  --    against production was not representative of the case that matters, and
+  --    it passed. The first real recording would have found it instead.
+  --
+  --    Nulling rather than reordering: the row is about to be deleted anyway, and
+  --    an UPDATE here is legible where a reversed delete order would silently
+  --    depend on `media_assets.generation_id` being SET NULL.
+  update public.generations set source_asset_id = null where id = p_generation;
+
+  -- 3. THEN THE ASSETS, which is the step that was missing entirely. Each row
   --    deleted here fires 0099's trigger and queues the byte purge. This is the
   --    only reason the footage leaves storage.
   delete from public.media_assets where generation_id = p_generation;
   get diagnostics v_assets = row_count;
 
-  -- 3. Then the generation. `posts` survives with a null link — see the header.
+  -- 4. Then the generation. `posts` survives with a null link — see the header.
   delete from public.generations where id = p_generation;
 
   return query select v_assets, v_projects;

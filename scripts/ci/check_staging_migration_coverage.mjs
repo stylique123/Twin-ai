@@ -70,6 +70,13 @@ export const EXCLUDED = {
     + "`to_regclass('public.posts')` is null there). Staging is an editor test bed "
     + 'and never publishes, so it cannot exercise the rule and cannot even host it — '
     + 'the migration would fail outright rather than pass vacuously.',
+  '0115_owner_may_set_own_approval':
+    'Replaces `set_generation_approval` and re-grants it. Staging DOES host that '
+    + 'function (0111 is in the matrix list), so this is a candidate for applying — '
+    + 'but the matrix never exercises the OWNER toggle, only the review path, so '
+    + 'applying it there would prove nothing the review path does not already prove. '
+    + 'Applied to production and exercised there instead: approve, un-approve, '
+    + 're-approve, and an unknown id refused.',
   '0113_post_attribution':
     'Creates a table referencing `public.posts` and adds columns to '
     + '`post_outcome_observations` and `dna_claims` — none of which staging has. '

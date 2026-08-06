@@ -88,26 +88,37 @@ Deno.serve(async (req: Request) => {
   // OWNERSHIP IS RE-ESTABLISHED HERE. `admin` bypasses RLS, so a brand voice id
   // is only usable if the row's owner is the caller — otherwise a creator could
   // project, persist and later cite somebody else's brand as their own truth.
+  // `brand_voices` KEYS ON `owner_id`, NOT `user_id`. The first version of this
+  // function used `user_id` — a column that does not exist on that table — and
+  // then DISCARDED the error, so the explicit-id path always 404'd and the
+  // default path silently projected a snapshot with no brand data in it at all.
+  // The wrong column was survivable; swallowing the error is what made it
+  // invisible, so the error is read below rather than dropped.
   let voice: Record<string, unknown> | null = null
   if (requestedVoice) {
-    const { data } = await admin
+    const { data, error } = await admin
       .from('brand_voices')
-      .select('id, user_id, profile, brand_kit')
+      .select('id, owner_id, profile, brand_kit')
       .eq('id', requestedVoice)
-      .eq('user_id', user.id)
+      .eq('owner_id', user.id)
       .maybeSingle()
+    // A FAILED LOOKUP IS NOT AN ABSENT ROW. Reporting a query error as "no such
+    // brand voice" is exactly how the column-name bug hid: the caller sees a
+    // plausible 404 and nothing anywhere says the read never worked.
+    if (error) return json({ error: 'Could not read the brand voice', code: 'brand_voice_read_failed' }, 500)
     // Deliberately the same answer as a nonexistent id: a distinct "not yours"
     // would let anyone probe which brand voices exist.
     if (!data) return json({ error: 'No such brand voice' }, 404)
     voice = data as Record<string, unknown>
   } else {
-    const { data } = await admin
+    const { data, error } = await admin
       .from('brand_voices')
-      .select('id, user_id, profile, brand_kit, is_default')
-      .eq('user_id', user.id)
+      .select('id, owner_id, profile, brand_kit, is_default')
+      .eq('owner_id', user.id)
       .order('is_default', { ascending: false })
       .limit(1)
       .maybeSingle()
+    if (error) return json({ error: 'Could not read the brand voice', code: 'brand_voice_read_failed' }, 500)
     voice = (data as Record<string, unknown> | null) ?? null
   }
 

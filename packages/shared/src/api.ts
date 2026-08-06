@@ -339,13 +339,37 @@ export async function updateGenerationChoice(
   return !error && Array.isArray(data) && data.length > 0
 }
 
-// Agency approval: mark a blueprint client-approved (or back to pending). Owner-only.
+/**
+ * Agency approval: mark a video client-approved, or take it back to pending.
+ *
+ * THROUGH `set_generation_approval`, NOT a bare column write, and the difference
+ * is two live bugs rather than a preference.
+ *
+ * This used to be `update({ approved })`. After 0111 that leaves
+ * `approved_output_asset_id` NULL, which `approvalState` reads as `unbound` —
+ * approved, but we do not know of what. `publishAllowed` deliberately refuses
+ * `unbound` at publish time, so on a brand with `needs_approval: true` the
+ * owner's own approval produced a video that could never be posted and a
+ * "Needs approval" chip that re-approving could never clear.
+ *
+ * The UNAPPROVE direction was worse: on a row already bound by the review link,
+ * setting `approved = false` while the binding columns stayed set violates
+ * 0111's `generations_approval_binding_coherent` CHECK, so the write failed and
+ * the UI silently reverted the toggle.
+ *
+ * The RPC writes the flag and the binding in ONE statement — which is why it
+ * exists — so neither state is reachable.
+ */
 export async function setGenerationApproved(id: string, approved: boolean): Promise<boolean> {
-  // Same shape, higher stakes: this is the agency approval flag. An approval
-  // that did not persist is indistinguishable, to every later reader, from one
-  // that did.
-  const { data, error } = await supabase.from('generations').update({ approved }).eq('id', id).select('id')
-  return !error && Array.isArray(data) && data.length > 0
+  const { error } = await supabase.rpc('set_generation_approval', {
+    p_generation: id,
+    p_approved: approved,
+    // The review_status is the REVIEW's word, not the owner's toggle. Passing
+    // null leaves it untouched (the RPC coalesces), so an owner un-approving
+    // does not silently overwrite what a client said.
+    p_review_status: null,
+  })
+  return !error
 }
 
 export type DeleteGenerationResult =

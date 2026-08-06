@@ -30,11 +30,16 @@ const eq = vi.fn(() => ({ select }))
 const update = vi.fn(() => ({ eq }))
 const from = vi.fn(() => ({ update }))
 
+// `setGenerationApproved` no longer writes the column directly — see its own
+// describe block below for why — so the client also needs `rpc`.
+let rpcResult: { data: unknown; error: { message: string } | null }
+const rpc = vi.fn(async () => rpcResult)
+
 // `supabase` in ../api is a getter over a client installed by initApi(), so it
 // is initialised rather than mocked — the same path the app takes.
 const api = await import('../api')
 const { updateGenerationChoice, setGenerationApproved } = api
-api.initApi({ client: { from } as never })
+api.initApi({ client: { from, rpc } as never })
 
 beforeEach(() => { vi.clearAllMocks() })
 
@@ -66,19 +71,58 @@ describe('updateGenerationChoice: a hook the user could not write is not saved',
   })
 })
 
+// This block used to pin a `.update({ approved }).select('id')` row-count check,
+// for the reason the header gives: a write that matched no row is not a write.
+// The call site MOVED, and the rule moved with it rather than being dropped.
+//
+// It moved because after 0111 a bare column write is wrong in both directions.
+// Approving leaves `approved_output_asset_id` NULL, which `approvalState` reads
+// as `unbound` and `publishAllowed` refuses at publish time — so on a brand
+// requiring approval, the owner's own approval produced a video that could never
+// be posted and a block that re-approving could never clear. Un-approving a row
+// already bound by the review link violates the coherence CHECK outright, so the
+// write failed and the UI silently reverted.
+//
+// `set_generation_approval` writes the flag and the binding in ONE statement, so
+// neither state is reachable. 0115 grants it to `authenticated` and adds the
+// ownership check that grant requires.
+//
+// The row-count check is GONE ON PURPOSE and not replaced by a weaker one: the
+// RPC raises `no_data_found` for a generation that does not exist or is not
+// yours, so "matched no row" arrives as an error rather than as a silent zero.
 describe('setGenerationApproved: an approval that did not persist is not an approval', () => {
-  it('MUTATION: zero rows -> false', async () => {
-    result = { data: [], error: null }
+  it('MUTATION: an RPC error -> false', async () => {
+    rpcResult = { data: null, error: { message: 'no such generation' } }
     expect(await setGenerationApproved('g1', true)).toBe(false)
   })
 
   it('MUTATION: and the same for un-approving — the direction does not change the rule', async () => {
-    result = { data: [], error: null }
+    rpcResult = { data: null, error: { message: 'no such generation' } }
     expect(await setGenerationApproved('g1', false)).toBe(false)
   })
 
-  it('CONTROL: a returned row -> true', async () => {
-    result = { data: [{ id: 'g1' }], error: null }
+  it('CONTROL: a clean call -> true (the refusals are not passing vacuously)', async () => {
+    rpcResult = { data: [{ approved: true }], error: null }
     expect(await setGenerationApproved('g1', true)).toBe(true)
+  })
+
+  it('goes through the RPC, NOT a bare column write', async () => {
+    // The load-bearing assertion. If someone re-introduces
+    // `update({ approved })` here, every other test in this block still passes —
+    // they only check the boolean — and the binding silently stops being written
+    // again. This is the one that would fail.
+    rpcResult = { data: [{ approved: true }], error: null }
+    await setGenerationApproved('g1', true)
+    expect(rpc).toHaveBeenCalledWith('set_generation_approval', {
+      p_generation: 'g1', p_approved: true, p_review_status: null,
+    })
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('does NOT overwrite review_status — that is the review\u2019s word, not the owner\u2019s', async () => {
+    rpcResult = { data: [{ approved: false }], error: null }
+    await setGenerationApproved('g1', false)
+    expect(rpc).toHaveBeenCalledWith('set_generation_approval',
+      expect.objectContaining({ p_review_status: null }))
   })
 })
