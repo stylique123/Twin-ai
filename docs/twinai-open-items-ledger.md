@@ -108,7 +108,7 @@ is a claim about staging.
 | D2 | Orphan `enqueue-autoedit` edge function still deployed | flagged by `deploy-edge.yml`, not deleted |
 | D3 | Capability flags written by nothing | open |
 | D4 | Editor v2 usage is zero | open — C7 |
-| D5 | `docs/vps.md` says Render; the worker is on a VPS at 138.201.119.239 | corrected in `ARCHITECTURE.md`, `vps.md` itself still wrong |
+| D5 | `docs/vps.md` says Render; the worker is on a VPS at 138.201.119.239 | corrected in `docs/system-connections.md`, `vps.md` itself still wrong |
 | D6 | `staging` cannot host a recorder walkthrough (no `profiles`, behind 0103/0106, 0106 needs `gallery_items`) | open, by design |
 
 ---

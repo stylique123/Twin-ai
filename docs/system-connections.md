@@ -1,5 +1,16 @@
 # TwinAI — how the system actually fits together
 
+> **NOT the canonical architecture document.** `ARCHITECTURE.md` at the repo root
+> is, and it wins on any disagreement about system shape. This file was briefly
+> named `docs/ARCHITECTURE.md`, which made two files with one name and no stated
+> precedence — a second authority for one set of facts, resolved by whichever a
+> reader opened first. That is the precise failure this document exists to
+> describe, so it is worth recording that this document caused an instance of it.
+>
+> The division: the root file says WHAT the system is and what each piece does.
+> This one says how the pieces CONNECT — who writes each fact, whether that is
+> the only writer, what turns it on, and what happens when that thing is unset.
+
 This document exists because of a specific complaint, and it is worth quoting
 because it is the acceptance criterion:
 
