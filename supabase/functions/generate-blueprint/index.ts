@@ -662,6 +662,35 @@ Deno.serve(async (req: Request) => {
       ? audience
       : (niche !== 'unspecified' ? `people into ${niche}${subNiche ? `, specifically ${subNiche}` : ''}` : 'unspecified')
     const povList = (vp?.pov ?? []) as string[]
+    // WHOSE PRODUCT THE CTA POINTS AT (§8a.3 Q4).
+    //
+    // The line above has always told the model WHAT to point the CTA at and
+    // never WHOSE it is. Those are different facts and the second one changes
+    // what may be said: a creator can promise what their own product does, and
+    // cannot promise what someone else's does — they do not control its
+    // support, its refunds or its roadmap. A script that says "my product" over
+    // an affiliate link is wrong about the world, and the creator is the one who
+    // reads it aloud.
+    //
+    // `nothing_to_sell` is the case worth stating explicitly rather than by
+    // omission. Given an offer field and no instruction, a model asked for a CTA
+    // will write one — inventing a business, which the plan calls the most
+    // expensive failure this product can produce. Saying it plainly is what
+    // stops that.
+    //
+    // UNANSWERED EMITS NOTHING, the same three-state rule the claims block
+    // follows five lines down: `readStoredBrief` drops any value outside
+    // `BRIEF_PROMOTES`, so this is either a real answer or silence. A default of
+    // "assume it is theirs" would be this system deciding a compliance-adjacent
+    // fact nobody asked about.
+    const promotesLine = brief.promotes === 'own_product'
+      ? '\n- WHOSE product that is: the CREATOR\'S OWN. They may speak to what it does, and are accountable for it.'
+      : brief.promotes === 'affiliate'
+        ? '\n- WHOSE product that is: SOMEONE ELSE\'S — the creator promotes it as an affiliate. Do NOT write "my product", "we built", or any claim of ownership, support, refunds or roadmap. Recommend it as a user, never as its maker.'
+        : brief.promotes === 'nothing_to_sell'
+          ? '\n- WHOSE product that is: THERE IS NOTHING TO SELL. Do not write a purchase or signup CTA at all. The call to action is engagement — follow, save, comment — or nothing.'
+          : ''
+
     const povLine = povList.length
       ? povList.join(' | ')
       : 'NONE STORED. Infer 1-2 stances this creator would plausibly hold from their niche, tone and vocabulary, and carry them through the script. Stay on-brand; do not fabricate specific facts or numbers.'
@@ -712,7 +741,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}
+- Product or offer the CTA should point at: ${offer}${promotesLine}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `

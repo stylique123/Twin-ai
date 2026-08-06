@@ -5,7 +5,7 @@ import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } fr
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
-import { asksForbiddenClaims, BRIEF_WORK_KINDS, type BriefWorkKind } from '../lib/api'
+import { asksForbiddenClaims, BRIEF_PROMOTES, BRIEF_WORK_KINDS, type BriefPromotes, type BriefWorkKind } from '../lib/api'
 import { Aurora } from '../components/Aurora'
 
 /** The chooser's words. Kept beside the screen rather than in the contract: the
@@ -18,6 +18,15 @@ const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
   saas: 'Software',
   local_service: 'Local service',
   other: 'Something else',
+}
+// §8a.3 Q4. The words a creator would use, not the stored enum: "someone
+// else's" is what an affiliate relationship feels like from the inside, and
+// "nothing to sell" has to be an affirmative choice rather than the absence of
+// one, or it reads as the question being skipped.
+const PROMOTES_LABEL: Record<BriefPromotes, string> = {
+  own_product: 'My own product',
+  affiliate: "Someone else's (affiliate)",
+  nothing_to_sell: 'Nothing to sell',
 }
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
@@ -79,6 +88,7 @@ export default function Onboarding() {
       profile,
       workKind: null,
       forbiddenClaims: null,
+      promotes: null,
       // The scan pre-fills the offer, so it starts as NOT the creator's answer.
       // Only their edit flips it.
       offerFromCreator: false,
@@ -96,8 +106,8 @@ export default function Onboarding() {
     audience: string,
     product: string,
     goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator' | 'canRecordScreen'>
-      = { workKind: null, forbiddenClaims: null, offerFromCreator: false, canRecordScreen: null },
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen'>
+      = { workKind: null, forbiddenClaims: null, promotes: null, offerFromCreator: false, canRecordScreen: null },
   ) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
@@ -525,7 +535,7 @@ function ConfirmStep({
   draft: OnboardingDraft
   onDraftChange: (
     profile: VoiceProfile, audience: string, product: string, goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'offerFromCreator' | 'canRecordScreen'>,
+    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen'>,
   ) => void
   onDone: () => Promise<void>
 }) {
@@ -542,6 +552,7 @@ function ConfirmStep({
   // all; `forbiddenClaims` is the answer no model can infer.
   const [workKind, setWorkKind] = useState<BriefWorkKind | null>(draft.workKind)
   const [forbiddenClaims, setForbiddenClaims] = useState(draft.forbiddenClaims ?? '')
+  const [promotes, setPromotes] = useState<BriefPromotes | null>(draft.promotes ?? null)
   // The offer arrives PRE-FILLED FROM THE SCAN — which is the defect §8a names,
   // not a feature. Tracking whether the creator changed it is what separates
   // "they told us" from "the model guessed and nobody corrected it", and only
@@ -560,11 +571,11 @@ function ConfirmStep({
   useEffect(() => {
     if (vp) {
       onDraftChange(vp, audience, product, goal, {
-        workKind, forbiddenClaims: forbiddenClaims.trim() || null, offerFromCreator: offerTouched,
+        workKind, forbiddenClaims: forbiddenClaims.trim() || null, promotes, offerFromCreator: offerTouched,
         canRecordScreen,
       })
     }
-  }, [vp, audience, product, goal, workKind, forbiddenClaims, offerTouched, canRecordScreen, onDraftChange])
+  }, [vp, audience, product, goal, workKind, forbiddenClaims, promotes, offerTouched, canRecordScreen, onDraftChange])
 
   if (!vp) {
     return (
@@ -616,7 +627,7 @@ function ConfirmStep({
       // answer no reader can act on — `readStoredBrief` would drop it anyway,
       // silently. The chooser is the other track's to add.
       await savePreScriptBrief(draft.voiceId, {
-        workKind, forbiddenClaims, audience,
+        workKind, forbiddenClaims, audience, promotes,
         // The offer, but ONLY if the creator typed it. `offerTouched` is exactly
         // that fact, and without it we would store the scan's guess as though
         // they had confirmed it — which is the inference this question exists to
@@ -713,6 +724,36 @@ function ConfirmStep({
               </button>
             ))}
           </div>
+        </Labeled>
+        {/* Q4 — WHOSE product the CTA points at.
+            Placed directly after "what do you do", because it qualifies the
+            offer rather than adding a new subject: the offer box says WHAT, this
+            says WHOSE, and a script needs both to know what it may promise.
+
+            Three chips and no default. Leaving it unset is a real state that
+            emits nothing into the prompt — the same three-state rule the claims
+            question follows. A pre-selected "my own product" would have this
+            screen deciding a liability-adjacent fact nobody asked about. */}
+        <Labeled label="What do your videos promote?">
+          <div className="flex flex-wrap gap-2">
+            {BRIEF_PROMOTES.map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => setPromotes(promotes === k ? null : k)}
+                className={`rounded-full border px-3 py-1.5 text-xs transition ${
+                  promotes === k
+                    ? 'border-coral bg-coral/15 text-cream'
+                    : 'border-white/15 text-sand hover:bg-white/5'
+                }`}
+              >
+                {PROMOTES_LABEL[k]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1 text-[11px] text-stone">
+            It changes what a script may promise. You can only speak for a product you own.
+          </p>
         </Labeled>
         {/* THE CONDITIONAL. Unguessable, and unforgivable to get wrong for a
             doctor, lawyer, financial adviser or supplement brand — there is no

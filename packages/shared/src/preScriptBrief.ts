@@ -59,6 +59,34 @@ export const BRIEF_WORK_KINDS = [
 export type BriefWorkKind = (typeof BRIEF_WORK_KINDS)[number]
 
 /**
+ * Q4. WHOSE PRODUCT THE CTA POINTS AT.
+ *
+ * A CHOOSER, not free text, and the reason is §2.3's container rule: the three
+ * routes that fill a `[SHOW: …]` slot BRANCH on this answer, and a branch cannot
+ * be taken on a sentence nobody parses. "I do affiliate stuff for supplements
+ * mostly" is a fine thing for a human to say and useless to a rule that has to
+ * decide whether the product being shown belongs to the creator.
+ *
+ * The distinction earns its place because getting it wrong is not cosmetic:
+ *
+ *   own_product      the CTA points at something the creator controls. A claim
+ *                    about it is theirs to make, and theirs to be liable for.
+ *   affiliate        the CTA points at someone ELSE's product. The creator
+ *                    cannot promise what it does, cannot speak for its support
+ *                    or refunds, and a script that says "my product" is wrong
+ *                    about the world.
+ *   nothing_to_sell  there is no CTA of this kind at all. A script that invents
+ *                    one is inventing a business — the confidently-wrong failure
+ *                    the plan calls the most expensive this product can produce.
+ *
+ * Stored in `brand_voices.pre_script_brief`, which 0109's CHECK already permits
+ * (`promotes` is in its key set and in `BRIEF_STORED_KEYS`) — so this needs NO
+ * migration. Verified before writing one.
+ */
+export const BRIEF_PROMOTES = ['own_product', 'affiliate', 'nothing_to_sell'] as const
+export type BriefPromotes = (typeof BRIEF_PROMOTES)[number]
+
+/**
  * The kinds for which "what may you NOT claim" is asked.
  *
  * §8a names Professional / Ecommerce / Brand. `saas` is deliberately NOT here:
@@ -147,8 +175,10 @@ export interface BriefAnswers {
   /** The conditional. Free text, because a list of forbidden claims cannot be
    *  enumerated in advance for every profession. */
   forbiddenClaims?: string | null
-  /** Q4 — what your videos promote. Pre-filled on the confirm screen. */
-  promotes?: string | null
+  /** Q4 — whose product the CTA points at. Pre-filled on the confirm screen and
+   *  CORRECTED rather than composed, because captions and CTAs make it partly
+   *  observable. A chooser: §2.3's three container routes branch on it. */
+  promotes?: BriefPromotes | null
   /** Q5 — "you mostly do X and Y — anything else you want to make?" The chips
    *  are the SCAN's reading; this captures only the intent it cannot see. */
   alsoWantsToMake?: string | null
@@ -363,6 +393,13 @@ export function readStoredBrief(raw: unknown): BriefAnswers {
       if (k === 'goal') { if ((BRIEF_GOALS as readonly string[]).includes(v)) out.goal = v as BriefGoal }
       else if (k === 'workKind') {
         if ((BRIEF_WORK_KINDS as readonly string[]).includes(v)) out.workKind = v as BriefWorkKind
+      } else if (k === 'promotes') {
+        // THREE enums now, and the reason is the same for all of them: a stored
+        // value outside the vocabulary would reach the blueprint prompt as
+        // though the creator had chosen it. `promotes` matters most — an
+        // unparseable value here does not degrade the CTA, it sends the
+        // container rule down a route the creator never picked.
+        if ((BRIEF_PROMOTES as readonly string[]).includes(v)) out.promotes = v as BriefPromotes
       } else out[k] = v as never
     }
   }

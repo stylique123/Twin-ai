@@ -24,6 +24,7 @@ const draft = (userId = 'user-a'): OnboardingDraft => ({
   platform: 'instagram',
   workKind: null,
   forbiddenClaims: null,
+  promotes: null,
   offerFromCreator: false,
   canRecordScreen: null,
   profile: null,
