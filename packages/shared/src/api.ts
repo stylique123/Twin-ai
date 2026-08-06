@@ -401,6 +401,55 @@ export async function deleteGeneration(id: string): Promise<DeleteGenerationResu
   return { ok: false, reason: 'failed' }
 }
 
+export type BrandTruthResult =
+  | { ok: true; id: string; sha256: string; reused: boolean }
+  /** The function is not deployed here yet. Reported rather than swallowed:
+   *  a caller that treated this as "no snapshot" would go on to build a plan
+   *  with no lineage, which is the state C3 exists to end. */
+  | { ok: false; reason: 'unavailable' }
+  | { ok: false; reason: 'not_found' }
+  | { ok: false; reason: 'failed' }
+
+/**
+ * Issue (or reuse) the brand-truth snapshot a creative-transfer plan pins.
+ *
+ * C3. `creativeTransferPlan.ts` refuses a plan whose `brandTruthSnapshotId` and
+ * `brandTruthSha256` the SERVER did not issue — and until now nothing issued
+ * one, so those mismatch checks had never been able to fire and the lineage
+ * they enforce was decorative.
+ *
+ * ── WHY THIS IS A THIN CALL AND NOT A PROJECTION ──────────────────────────
+ *
+ * It sends a SELECTOR and nothing else. 0095 grants `brand_truth_snapshots` to
+ * service_role alone and states the reason: "a client that could insert one
+ * could assert its own brand truth, which is authority level 1." A projection
+ * computed here and posted would be that insert wearing a hat, so the edge
+ * function reads `profiles.dna` and the `brand_voices` row itself and projects
+ * from what is actually stored.
+ *
+ * Calling it twice with an unchanged brand returns the SAME id — 0095's unique
+ * index on (owner_id, snapshot_sha256) makes that a property of the data rather
+ * than of the caller's discipline.
+ */
+export async function ensureBrandTruthSnapshot(brandVoiceId?: string): Promise<BrandTruthResult> {
+  const { data, error } = await supabase.functions.invoke('brand-truth', {
+    body: brandVoiceId ? { brand_voice_id: brandVoiceId } : {},
+  })
+  if (!error && data && typeof (data as { id?: string }).id === 'string') {
+    const d = data as { id: string; sha256: string; reused?: boolean }
+    return { ok: true, id: d.id, sha256: d.sha256, reused: d.reused === true }
+  }
+  const status = (error as { context?: Response } | null)?.context?.status
+  // 404 from the function is "no such brand voice", which it answers
+  // identically to "not yours" so nobody can probe which ids exist.
+  if (status === 404) return { ok: false, reason: 'not_found' }
+  // A function that was never deployed answers 404 at the GATEWAY too, which is
+  // indistinguishable here — so `not_found` is the honest report for both, and
+  // `unavailable` is reserved for the transport failing outright.
+  if (error && status === undefined) return { ok: false, reason: 'unavailable' }
+  return { ok: false, reason: 'failed' }
+}
+
 // ---- Team seats / shared workspace -----------------------------------------
 export interface WorkspaceState {
   members: { member_id: string; created_at: string }[] // teammates I host

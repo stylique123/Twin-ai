@@ -148,10 +148,39 @@ set null` FKs arrive as an UPDATE nulling one side, so a trigger that merely
 raised would have made this constraint reach backwards and forbid deleting an
 edit project at all.
 
-### C3. BrandTruthSnapshot producer
-**The readers exist and the writer does not.** This is the sharpest instance of
-the "system that exists but does not connect" complaint: code reads a snapshot
-nothing writes, so it silently takes its fallback path forever.
+### C3. BrandTruthSnapshot producer — BUILT
+
+Was the sharpest instance of "the system exists but does not connect", and
+worse than the entry said. `creativeTransferPlan.ts` refuses a plan whose
+`brandTruthSnapshotId` / `brandTruthSha256` the SERVER did not issue — and
+nothing issued one — so those mismatch checks had **never been able to fire**.
+The lineage they enforce was decorative from the day it landed.
+
+`supabase/functions/brand-truth` is the writer. It projects SERVER-SIDE, which
+is not a style choice: 0095 grants `brand_truth_snapshots` to service_role
+alone and says why — "a client that could insert one could assert its own brand
+truth, which is authority level 1." The request body carries a SELECTOR and
+nothing else; the function reads `profiles.dna` and the `brand_voices` row
+itself, and re-establishes ownership under the service key because `admin`
+bypasses RLS.
+
+Idempotent by digest, which 0095's unique index on
+`(owner_id, snapshot_sha256)` already demanded: an unchanged brand reuses its
+row rather than accumulating duplicates. A concurrent caller that loses the
+race on that index is answered with the row that won, because two honest
+clients racing is not a failure.
+
+That reuse only holds if the projection is deterministic wherever it runs.
+`supabase/functions/_shared/brandTruth.ts` is a BYTE-FOR-BYTE copy — the module
+imports nothing and touches no runtime API, so unlike the hand-retyped worker
+mirrors it can be exact — and `check_brand_truth_parity.mjs` fails the build
+the moment it stops being. A drifted copy would hash one brand two ways,
+silently end the reuse, and leave every plan pinning whichever copy produced
+its digest. Nothing would error; the lineage would just stop meaning one thing.
+
+Still open: nothing CALLS `ensureBrandTruthSnapshot` yet. The producer exists
+and is reachable; wiring it into the blueprint flow touches
+`generate-blueprint`, which the other session owns.
 
 ### C4. Schema drift detection — BUILT, and now covers the main row
 

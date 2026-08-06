@@ -46,8 +46,8 @@ jobs:
           # security decision — say why in the same commit.
           #   ci-bootstrap — vends the project's service-role key to CI.
           STAGING_ONLY="ci-bootstrap"
-          PROD="admin admin-metrics billing billing-webhook brand-logo clip-asset dna-poll \
-                editor-output generate-blueprint generate-thumbnail ingest-reference \
+          PROD="admin admin-metrics billing billing-webhook brand-logo brand-truth clip-asset \
+                dna-poll editor-output generate-blueprint generate-thumbnail ingest-reference \
                 referral review social source-asset start-dna start-editor-v2"
 
           unclassified=""
