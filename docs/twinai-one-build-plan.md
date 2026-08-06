@@ -821,3 +821,187 @@ Editor engineering is at 7.8 and its production readiness is at 4.0. Nothing in
 that gap is a missing feature. It is one real recording, and the chain that
 carries its output — unchanged, and provably the same file — through approval,
 scheduling, publishing and back into what gets recommended next.
+
+---
+
+## PART 10 — THE SCRIPT NEEDS A DIRECTOR TOO
+
+Everything in this part comes from reading the pipeline, not from theory. Three
+findings decide the design.
+
+### 10.1 — WHY THE FACTS FEEL SEPARATE: THEY ARE SEPARATE
+
+`generate-blueprint` composes the creator's facts as **independent lines in one
+prompt**:
+
+```
+- Audience: …
+- Product or offer the CTA should point at: …   (+ whose it is)
+- What they do: …                                (new)
+- Goal: …
+- Tone and voice: …
+```
+
+Each fact is true and each is stated alone. **Nothing composes them into a
+position.** "A SaaS founder, talking to solo developers, who wants demo signups,
+whose product is a debugging tool" is a specific video; five separate lines are
+five constraints a model satisfies one at a time. That is exactly why the output
+reads generically even when every input is right.
+
+**And there is only ONE model call.** It produces concept, packaging, hooks,
+script, shot list, captions, publish plan and sprint in a single shot. There is
+no stage that *decides what this video is* before something writes it.
+
+### 10.2 — SCENE LENGTH IS AN ACCIDENT, AND HERE IS THE EXACT MECHANISM
+
+`recordingScriptAdapter` creates **one scene per `script[]` entry**, and each
+scene's length is `estimateDurationSec(line, wpm)` — words divided by speaking
+rate. So:
+
+- The model decides how much text goes in an entry.
+- The adapter turns every entry into exactly one take.
+- Duration is derived from word count afterwards.
+
+**Nothing reasons about how long a beat should be.** A six-word line and a
+forty-word line each become one scene and one take, which is precisely the
+"sometimes one line, sometimes twice as long" the creator feels. It is not the
+model misbehaving; **no rule exists for it to follow.**
+
+### 10.3 — THERE IS NO VISUAL HOOK, ANYWHERE
+
+The schema has `hook_options` (spoken lines) and a thumbnail concept. It has no
+pattern interrupt, no opening visual, no "what changes on screen in the first
+second". `SceneType` is `talking_head | b_roll | screen_recording |
+product_demo | cta` — five ways to be a shot, none of them a disruption.
+
+**A hook that is only words competes with every other talking head.**
+
+### 10.4 — THE EDITOR IS STRONG; THE DIRECTOR IS NARROW
+
+Worth stating plainly because it decides where effort goes. The editor has real
+depth: word-level speech, candidate cuts, boundaries, pinned brand snapshot,
+caption contrast, safe areas, multi-input composition, validation, cancellation,
+an idempotent ledger.
+
+**The Director's job is small by comparison: `selections: number[]`.** It picks
+which candidate cuts to take, plus pacing, music and a summary. It is a
+*chooser over a list somebody else built*. It never asks whether the video's
+shape is right, whether a beat earns its length, or whether the opening does
+anything visually.
+
+**So the instinct is correct: the editor does not need more machinery. The
+thing giving it instructions needs to think.** And the same is true one stage
+earlier — nothing plans the script either.
+
+---
+
+## PART 11 — WHAT TO BUILD
+
+### 11.1 · The Composer — one position, not five constraints
+*Before any writing happens.*
+
+A cheap first pass whose only output is the **video's position**, composed from
+all the facts together:
+
+> *For a SaaS founder selling a debugging tool to solo developers who wants demo
+> signups: the video is a live failure they will recognise, fixed on screen in
+> under a minute. Proof is the screen. The CTA is a trial, not a follow.*
+
+Then the writer is given the position, not the five lines. **Same facts, one
+subject.** This is the smallest change that makes the facts work side by side,
+and it needs no new question.
+
+*Consumer: the script writer. Effect: the output stops being an average of
+constraints.*
+
+### 11.2 · The Script Director — decide the shape before writing the words
+
+A planning stage that outputs a **beat plan** and nothing else:
+
+| field | what it decides |
+|---|---|
+| `beats[]` | how many, and what each is FOR |
+| `targetSec` per beat | **the length decision, made deliberately** |
+| `sceneType` per beat | talking head, screen, product, b-roll |
+| `visualHook` | what changes on screen in the first second |
+| `rehookAt` | where attention is reset |
+| `proof` per beat | what makes it believable — screen, object, number, story |
+
+Then the writer writes **to that plan**, and `duration_sec` becomes a target the
+words are written to fit rather than a number derived after the fact.
+
+**This directly fixes 10.2.** A beat plan that says *"beat 3: 8 seconds, screen
+recording, show the error"* cannot produce a forty-word talking-head line.
+
+*Rule: the beat count is DECIDED, never defaulted. A 20-second product demo and
+a 90-second teardown do not both get seven beats.*
+
+### 11.3 · The visual hook, as a first-class field
+
+Add to the beat plan and carry it to the shoot plan:
+
+- **what the viewer sees in the first second** — motion, a prop entering, a
+  screen mid-error, a cut mid-gesture
+- **why it interrupts** — one line, so the creator can judge it
+
+Do NOT add a "pattern interrupt type" enum. That is the retired archetype trap
+in new clothing.
+
+### 11.4 · The shoot plan a beginner can actually follow
+
+`background` and `action_posing` **already exist** in the script schema and
+already reach `setup` in the adapter. What is missing is not data — it is that
+the guidance is generic and never says *why*.
+
+Per beat, in plain words:
+
+- **Where to stand** — "kitchen counter, window on your left" beats "clean,
+  well-lit background"
+- **What must NOT be in frame** — the single most useful instruction nobody gives
+- **Phone position** — height, distance, portrait, propped on what
+- **How to say it** — the one word to lean on, where to pause
+- **What to hold or show**, and when
+
+*Every line should be executable by someone who has never filmed anything, with
+no equipment beyond a phone and whatever is already in the room.*
+
+### 11.5 · Learning, bounded — better scripts over time
+
+The lineage exists for the first time: output → post → outcome. The rule that
+keeps it honest:
+
+- A pattern changes future planning **only** at adequate sample size.
+- A single viral post changes **nothing**.
+- Core brand truth **never** mutates automatically.
+- Every learned preference is **inspectable and undoable**.
+
+*What learns:* which beat shapes held attention for THIS creator, which hooks
+earned saves, which proof types converted. *What does not:* who they are, what
+they sell, what they may not claim.
+
+---
+
+## PART 12 — TESTING IT WITH REAL BEGINNERS
+
+**A model cannot judge whether a shoot plan is followable by a beginner.** It
+knows what good instructions look like, which is exactly the wrong instrument —
+the failure mode is instructions that *read* clear and stall someone holding a
+phone.
+
+**So this is not a task an agent can complete, and pretending otherwise would be
+the most expensive false claim in this document.** What can be built is the
+comparison, for a human to run:
+
+1. **Two variants of the same video's plan**, from the same facts — the current
+   output, and the beat-planned one. Same creator, same reference, side by side.
+2. **A script for the session**, five questions, no leading language:
+   - Which one would you pick up and film right now?
+   - Point to the first line you do not understand.
+   - Where would you stand? *(the plan should have answered this)*
+   - What would you do first?
+   - What is missing that you would have to guess?
+3. **Record what they DID, not what they said.** "It's clear" and then not
+   filming is the answer, and it is the opposite of the words.
+
+**Two beginners is the right number to start.** The first tells you what is
+broken; the second tells you whether it was them or the plan.
