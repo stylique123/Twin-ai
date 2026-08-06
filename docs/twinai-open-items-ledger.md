@@ -97,10 +97,25 @@ and `craft`, so rendering a player for a project that produced no video is not
 a bug that can be written — the field does not exist in the other variants.
 
 `Result.tsx` is migrated to it and `CraftChecks` is now presentational, which
-removes the third independent readiness judgement (the one that was wrong). The
-remaining consumers named in the original entry — captions and cover surfaces —
-are not yet migrated; they are additive, and each one that moves deletes another
-hand-rolled derivation.
+removes the third independent readiness judgement (the one that was wrong).
+
+**The "remaining consumers" note was wrong, and is retracted.** It said captions
+and cover surfaces were still to be migrated. Checked 2026-08-06: neither is an
+`OutputBundle` consumer, and migrating either would make the code worse.
+
+- The COVER surface is `CoverDialog`, and `Result.tsx:882` hands it
+  `gen.ai_thumb_path` — the on-demand AI cover, a GENERATION-level object in the
+  `edits` bucket with its own lifecycle and its own paid-generation guard. It is
+  not `EditorOutput.coverUrl`, which is the render's poster frame. Routing it
+  through the bundle would tie a cover that exists without any render to a
+  variant that only exists with one.
+- The CAPTIONS surface is `V2EditReview`, which uses `ReviewBundle` — words,
+  sentences, director cuts and zoom anchors. `OutputBundle` does not carry any
+  of that and should not: it answers "is there a video and can I play it", and
+  the review screen's question is "what was said and where".
+
+So C1 has no outstanding migration. Two authorities that look similar are doing
+different jobs, which is the correct end state rather than an unfinished one.
 
 Worth keeping as the reason this mattered: naming the predicate
 (`editProducedVideo`, A8) stopped the *mistake*; the union stops the *shape*.
@@ -255,7 +270,7 @@ is a claim about staging.
 | D2 | Orphan `enqueue-autoedit` edge function still deployed | **not reproducible — already gone.** Checked against production 2026-08-06: 17 functions deployed, every one maps to a repo directory, and `enqueue-autoedit` is not among them. The only repo function absent from production is `ci-bootstrap`, which is staging-only by design. This entry was carried forward from an older audit and was stale when the ledger was written; `deploy-edge.yml`'s classification step still names it in `RETIRED`, which is correct — that is what keeps it from coming back. |
 | D3 | Capability flags written by nothing | **half wrong, corrected.** `brand_voices.default_capability_flags` IS written — `saveCapabilityDefaults` (`api.ts:870`), called from `Onboarding.tsx:593`, read back by `Gallery.tsx:272`. That loop is closed, for exactly one flag: `can_record_screen`. What has no writer is the PER-VIDEO override `generations.capability_flags`, which `api.ts:907` reads and nothing sets — so the per-video answer is always the default, and the precedence rule the code documents ("what is true of THIS video wins") can never actually fire. Another readers-with-no-writer, same family as C3. |
 | D4 | Editor v2 usage is zero | open — C7 |
-| D5 | `docs/vps.md` says Render; the worker is on a VPS at 138.201.119.239 | corrected in `docs/system-connections.md`, `vps.md` itself still wrong |
+| D5 | `docs/vps.md` says Render; the worker is on a VPS at 138.201.119.239 | **fixed — and this row was itself stale.** Re-checked 2026-08-06: `vps.md:357` already carries the correction inline, naming the container (`twinai-worker`), the workflow (`deploy-worker.yml`), the env file (`/opt/twinai-worker.env`) and the restart. The ledger was reporting an open item that had been closed, which is the same defect the ledger exists to catch, pointed at itself. |
 | D6 | `staging` cannot host a recorder walkthrough (no `profiles`, behind 0103/0106, 0106 needs `gallery_items`) | open, by design |
 
 ---
