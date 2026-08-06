@@ -309,12 +309,23 @@ export default function Result() {
   // the output or the craft checks, so the two can no longer disagree.
   const [bundle, setBundle] = useState<OutputBundle | null>(null)
   const [editOutputAttempt, setEditOutputAttempt] = useState(0)
+  // The three fields the fetch actually depends on, lifted out of the row.
+  // Depending on `editProject` itself would refetch on EVERY poll tick — the
+  // row is a new object each time even when nothing changed — and re-signing
+  // URLs every four seconds for a video already on screen is exactly the cost
+  // this bundle exists to remove. Naming the fields satisfies the exhaustive-
+  // deps rule honestly instead of silencing it, which matters because the
+  // suppression comment is what would hide a genuinely missing dependency later.
+  const projectId = editProject?.id ?? null
+  const projectStatus = editProject?.status ?? null
+  const projectOutputAssetId = editProject?.output_asset_id ?? null
+  const hasVideo = editProducedVideo(editProject)
   useEffect(() => {
-    if (!editProject || !editProducedVideo(editProject)) { setBundle(null); return }
+    if (!projectId || !hasVideo) { setBundle(null); return }
     let live = true
-    getOutputBundle(editProject.id).then((b) => { if (live) setBundle(b) }).catch(() => {})
+    getOutputBundle(projectId).then((b) => { if (live) setBundle(b) }).catch(() => {})
     return () => { live = false }
-  }, [editProject?.status, editProject?.output_asset_id, editProject?.id, editOutputAttempt])
+  }, [projectId, projectStatus, projectOutputAssetId, hasVideo, editOutputAttempt])
   const editOutput: EditorOutput | null = bundle?.state === 'ready' ? bundle.output : null
   // getEditorOutput collapses every rejection (not-ready, no-video, sign-failed)
   // into null — the UI's question is just "can I play this yet". Here the
@@ -323,13 +334,13 @@ export default function Result() {
   // pending. Surface a retry after a few seconds instead of spinning forever.
   const [editOutputStalled, setEditOutputStalled] = useState(false)
   useEffect(() => {
-    if (editProducedVideo(editProject) && !editOutput) {
+    if (hasVideo && !editOutput) {
       const t = setTimeout(() => setEditOutputStalled(true), 8000)
       return () => clearTimeout(t)
     }
     setEditOutputStalled(false)
     return undefined
-  }, [editProject?.status, editProject?.output_asset_id, editOutput])
+  }, [hasVideo, editOutput])
 
   const downloadEditVideo = () => {
     if (!editOutput?.videoUrl) return
@@ -392,7 +403,7 @@ export default function Result() {
     // Demo mock is a DEV-only convenience — production users always get real data
     // (or a real error), never a fabricated blueprint.
     if (import.meta.env.DEV && id === 'demo') {
-      setGen(MOCK_GENERATION as any)
+      setGen(MOCK_GENERATION as unknown as Generation)
       setApproved(false)
       setChosenHook(MOCK_GENERATION.selected_hook)
       setLoading(false)
@@ -911,7 +922,7 @@ export default function Result() {
                 <span className="text-xs text-stone">{updatedScript.length} scenes</span>
               </div>
               
-              <UnfilledContainers blueprint={b} hook={chosenHook} />
+              <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} />
               <ScriptEditor
                 generationId={gen.id}
                 blueprint={b}
@@ -1246,7 +1257,7 @@ export default function Result() {
                   <span className="text-xs text-stone">{updatedScript.length} scenes</span>
                 </div>
                 
-                <UnfilledContainers blueprint={b} hook={chosenHook} />
+                <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} />
                 <ScriptEditor
                   generationId={gen.id}
                   blueprint={b}
