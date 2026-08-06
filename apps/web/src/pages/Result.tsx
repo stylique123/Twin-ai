@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, getEditorOutput, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
@@ -305,7 +305,7 @@ export default function Result() {
   const [editOutput, setEditOutput] = useState<EditorOutput | null>(null)
   const [editOutputAttempt, setEditOutputAttempt] = useState(0)
   useEffect(() => {
-    if (editProject?.status !== 'completed' || !editProject.output_asset_id) { setEditOutput(null); return }
+    if (!editProject || !editProducedVideo(editProject)) { setEditOutput(null); return }
     let live = true
     getEditorOutput(editProject.id).then((o) => { if (live) setEditOutput(o) }).catch(() => {})
     return () => { live = false }
@@ -317,7 +317,7 @@ export default function Result() {
   // pending. Surface a retry after a few seconds instead of spinning forever.
   const [editOutputStalled, setEditOutputStalled] = useState(false)
   useEffect(() => {
-    if (editProject?.status === 'completed' && editProject.output_asset_id && !editOutput) {
+    if (editProducedVideo(editProject) && !editOutput) {
       const t = setTimeout(() => setEditOutputStalled(true), 8000)
       return () => clearTimeout(t)
     }
@@ -689,7 +689,7 @@ export default function Result() {
                     )}
                   </div>
                   <div className="flex aspect-[9/16] w-full items-center justify-center overflow-hidden rounded-2xl bg-black">
-                    {editProject.status === 'completed' && editProject.output_asset_id ? (
+                    {editProducedVideo(editProject) ? (
                       editOutput?.videoUrl ? (
                         <video src={editOutput.videoUrl} controls playsInline className="h-full w-full object-contain" poster={editOutput.coverUrl ?? undefined} />
                       ) : editOutputStalled ? (
@@ -700,7 +700,7 @@ export default function Result() {
                       ) : (
                         <Loader2 className="h-6 w-6 animate-spin text-white/40" />
                       )
-                    ) : editProject.status === 'completed' ? (
+                    ) : editFinishedWithoutVideo(editProject) ? (
                       <p className="px-5 text-center text-xs text-stone">This run finished without producing a video.</p>
                     ) : editProject.status === 'failed' ? (
                       // §9's "failure at 11pm": a batch films Sunday, two renders
@@ -763,7 +763,12 @@ export default function Result() {
                       the render because every one of them is a statement about
                       what the render DID — showing them beforehand would be
                       predicting, which is the line §7c forbids crossing. */}
-                  {editProject.status === 'completed' && (
+                  {/* ON A RUN THAT PRODUCED A VIDEO, not merely one that stopped.
+                      `completed` with a null output is the scaffold state, and
+                      §7c's checks are statements about what the render DID —
+                      there is no render to make a statement about, so the panel
+                      would be reporting on a video that does not exist. */}
+                  {editProducedVideo(editProject) && (
                     <div className="mt-3">
                       <CraftChecks projectId={editProject.id} />
                     </div>
