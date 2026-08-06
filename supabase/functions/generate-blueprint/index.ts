@@ -123,6 +123,30 @@ const blueprintSchema = obj(
       },
       ['original_b_roll_count', 'suggested_b_roll_count']
     ),
+    // DECIDED BEFORE THE WORDS, and required so it cannot be skipped.
+    //
+    // Scene length used to be an accident: the adapter made one scene per script
+    // entry and derived its length from that entry's word count, so a six-word
+    // line and a forty-word line each became one take. Nothing reasoned about
+    // how long a beat SHOULD be. Planning the beats first, in the same call,
+    // makes the length a decision the words are then written to fit.
+    //
+    // ONE BEAT PER SCRIPT ENTRY, exactly. A plan that disagrees with the script
+    // is discarded whole downstream, because mapping five beats onto seven
+    // entries means giving lines a target that belongs to a different beat.
+    beat_plan: arr(
+      obj(
+        { beat: str, target_sec: str, scene_type: str, proof: str },
+        ['beat', 'target_sec', 'scene_type', 'proof'],
+      ),
+    ),
+    // THE FIRST SECOND, which nothing has ever specified. hook_options are
+    // spoken lines; a hook made only of words competes with every other talking
+    // head. This is what CHANGES ON SCREEN, and why that interrupts.
+    visual_hook: obj(
+      { opening_frame: str, why_it_interrupts: str },
+      ['opening_frame', 'why_it_interrupts'],
+    ),
     hook_options: arr(str),
     script: arr(
       obj(
@@ -170,6 +194,8 @@ const blueprintSchema = obj(
     'concept',
     'packaging',
     'b_roll_stats',
+    'beat_plan',
+    'visual_hook',
     'hook_options',
     'script',
     'shot_list',
@@ -969,6 +995,8 @@ This is the video's position. Every field below must serve it. If the reference'
 ${positionBlock}${referenceBlock}
 ${claimsBlock}
 Produce the full shootable blueprint for THIS creator, adapting the reference's proven structure to their voice and niche. Specifically:
+- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each one should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds, not a guess after the fact, and beats should differ in length when their jobs differ. proof says what makes that beat believable: a screen, the object in hand, a number, a story. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
+- visual_hook: what the viewer SEES in the first second, and why it interrupts a scroll. Something that changes on screen, not a description of the spoken line. Achievable with a phone and whatever is already in the creator's room.
 - concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
 - packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, FOLLOWING the creator's title style and thumbnail style from CREATOR DNA and using their brand colors. Every hook and script beat must pay off that exact promise.
 - ${fidelityRule}
@@ -976,6 +1004,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
 - publish_plan: produce ONE entry for EACH platform listed in CREATOR DNA, using only those platforms. Never invent a platform the creator does not use.
+- Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - shot_list: give a distinct shot for each major script beat (aim for 5 or more), and include at least one b-roll or insert shot and the cover frame shot, so the editor is never guessing.`
 
     const raw = await callModel(apiKey, SYSTEM, userPrompt)
