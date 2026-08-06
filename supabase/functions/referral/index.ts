@@ -10,7 +10,7 @@
 // Deploy:  supabase functions deploy referral
 // Secrets: (optional) supabase secrets set REFERRAL_REWARD_CREDITS=20
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',

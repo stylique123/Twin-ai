@@ -9,7 +9,7 @@
 // Secrets: supabase secrets set GEMINI_API_KEY=...
 //          (optional) supabase secrets set GEMINI_MODEL=gemini-3.1-pro
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { buildLinkAllowlist, sanitizeBlueprintLinks } from '../_shared/outputLinks.ts'
 
 // Internal credits per recreation. Adjustable via the RECREATION_COST secret so we

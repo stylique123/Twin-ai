@@ -10,7 +10,7 @@
 //   POST { action: "adjust_credits", user_id, delta, reason? }
 //   POST { action: "set_admin", user_id, on }            -> add/remove an admin
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',

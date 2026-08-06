@@ -7,7 +7,7 @@
 // Deploy:  supabase functions deploy generate-thumbnail
 // Secrets: GEMINI_API_KEY (shared); optional GEMINI_IMAGE_MODEL
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',

@@ -12,7 +12,7 @@
 //   PLAN_CREDITS_ASPIRING / _PROFESSIONAL / _AGENCY  (optional overrides)
 //   BILLING_ADMIN_SECRET  (lets a trusted caller confirm crypto/manual payments)
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
