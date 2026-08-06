@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  parseTargetSec, readBeatPlan, beatDurationSec, beatOverrunSec,
+  parseTargetSec, readBeatPlan, beatDurationSec, sceneOverrunSec, overrunWorthShowing,
   MIN_BEAT_SEC, MAX_BEAT_SEC,
 } from '../beatPlan'
 
@@ -98,17 +98,34 @@ describe('beatDurationSec', () => {
   })
 })
 
-describe('beatOverrunSec', () => {
+describe('sceneOverrunSec', () => {
   it('measures the drift a creator can act on', () => {
-    const plan = readBeatPlan([beat('6')], 1)
-    expect(beatOverrunSec(plan, 0, 14)).toBe(8)
-    expect(beatOverrunSec(plan, 0, 4)).toBe(-2)
+    expect(sceneOverrunSec({ duration_sec: 14, target_sec: 6 })).toBe(8)
+    expect(sceneOverrunSec({ duration_sec: 4, target_sec: 6 })).toBe(-2)
   })
 
   it('returns null rather than reporting agreement it cannot check', () => {
-    expect(beatOverrunSec(null, 0, 14)).toBeNull()
-    const partial = readBeatPlan([beat('6'), beat('prose')], 2)
-    expect(beatOverrunSec(partial, 1, 14)).toBeNull()
+    // "no drift" and "nothing to compare" are different facts.
+    expect(sceneOverrunSec({ duration_sec: 14 })).toBeNull()
+    expect(sceneOverrunSec({ duration_sec: 14, target_sec: null })).toBeNull()
+    expect(sceneOverrunSec({ target_sec: 6 })).toBeNull()
+    expect(sceneOverrunSec({})).toBeNull()
+  })
+})
+
+describe('overrunWorthShowing', () => {
+  it('ignores drift too small to act on', () => {
+    expect(overrunWorthShowing(0.4)).toBe(false)
+    expect(overrunWorthShowing(1.5)).toBe(false)
+    expect(overrunWorthShowing(1.6)).toBe(true)
+  })
+
+  it('is one-sided: coming in short is not a problem', () => {
+    expect(overrunWorthShowing(-8)).toBe(false)
+  })
+
+  it('shows nothing when there is nothing to compare', () => {
+    expect(overrunWorthShowing(null)).toBe(false)
   })
 })
 
@@ -119,10 +136,12 @@ describe('the decided length survives an edit', () => {
     // would become invisible exactly when it starts to matter.
     const plan = readBeatPlan([beat('6')], 1)
     const planned = beatDurationSec(plan, 0, 3)     // what the scene starts at
-    const afterEdit = 14.2                          // what re-estimation produces
     expect(planned).toBe(6)
-    expect(beatOverrunSec(plan, 0, afterEdit)).toBe(8.2)
+    // After an edit, duration_sec is re-estimated and target_sec is not.
+    const edited = { duration_sec: 14.2, target_sec: planned }
+    expect(sceneOverrunSec(edited)).toBe(8.2)
+    expect(overrunWorthShowing(sceneOverrunSec(edited))).toBe(true)
     // And the comparison stays honest when nothing was planned.
-    expect(beatOverrunSec(null, 0, afterEdit)).toBeNull()
+    expect(sceneOverrunSec({ duration_sec: 14.2 })).toBeNull()
   })
 })
