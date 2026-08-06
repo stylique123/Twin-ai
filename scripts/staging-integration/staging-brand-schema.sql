@@ -56,3 +56,32 @@ create index if not exists brand_voices_owner_idx
 alter table public.brand_voices enable row level security;
 revoke all on public.brand_voices from public, anon, authenticated;
 grant select, insert, update, delete on public.brand_voices to service_role;
+
+-- ---------------------------------------------------------------------------
+-- THE REVIEW COLUMNS ON `generations`, without which 0111 fails at RUN TIME.
+-- ---------------------------------------------------------------------------
+-- Staging's `generations` is a stub: 11 columns, enough for the editor to hang a
+-- project off. Production's has the agency-review fields, and 0111's
+-- `set_generation_approval` writes `review_status` in the same statement that
+-- records the approval binding.
+--
+-- THE FAILURE MODE IS THE ONE THIS WORKFLOW KEEPS GETTING BITTEN BY. plpgsql
+-- does not resolve column references when a function is CREATED, so 0111
+-- applies cleanly, the function is created cleanly, and the first CALL dies
+-- with:
+--
+--   ERROR: 42703: column g.review_status does not exist
+--   CONTEXT: PL/pgSQL function set_generation_approval(uuid,boolean,text) line 16
+--
+-- A 42703 from four frames inside a security-definer function, on a staging run,
+-- with nothing in the diff that mentions `review_status`. Exactly the shape of
+-- the 0100 and 0104 incidents recorded in staging-integration.yml — a symptom
+-- that looks nothing like a missing column.
+--
+-- Verified by applying 0111 to staging and calling the function: it failed
+-- precisely as above. These three columns are what production already has
+-- (0035/0056), added here so the fixture can host the real migration rather
+-- than a version of it edited to fit.
+alter table public.generations add column if not exists review_status text;
+alter table public.generations add column if not exists review_note   text;
+alter table public.generations add column if not exists reviewed_at   timestamptz;
