@@ -58,6 +58,42 @@ export interface GenerationLike {
 }
 
 /**
+ * What a resolve produced, INCLUDING whether it managed to look.
+ *
+ * `outputs` alone cannot express the difference between "this generation has no
+ * finished video" and "we could not find out". Both are an absent key, and every
+ * surface reads an absent key as `draft` — so a failed lookup tells a creator
+ * their finished video is unfinished, in the specific words that make them
+ * re-record something they already have.
+ *
+ * `complete: false` is the resolver saying it does not know. Two ways to get
+ * there: the v2 query errored (below), or the caller's `.catch` fired. Both are
+ * partial: the legacy answers gathered before the failure are still returned and
+ * still correct, so a surface can show what it does know and be honest about the
+ * rest.
+ */
+export interface ResolvedOutputs {
+  outputs: Map<string, FinishedOutput>
+  complete: boolean
+}
+
+/**
+ * `resolveFinishedOutputs` plus the answer to "did the lookup actually work".
+ *
+ * The plain map form remains, because most callers genuinely do not care and
+ * threading a flag through them would be noise. This is for the surfaces that
+ * render a LIFECYCLE LABEL, where the difference between "no video" and "we
+ * could not check" is the difference between a true statement and a false one.
+ */
+export async function resolveFinishedOutputsResult(
+  generations: readonly GenerationLike[],
+): Promise<ResolvedOutputs> {
+  const outputs = new Map<string, FinishedOutput>()
+  if (generations.length === 0) return { outputs, complete: true }
+  return await resolveInto(outputs, generations)
+}
+
+/**
  * The finished-video identity for each generation that HAS one. A generation
  * absent from the map has no finished video by either authority — which is the
  * honest answer to "is this ready", and the one `edit_path` alone gets wrong.
@@ -65,13 +101,21 @@ export interface GenerationLike {
  * One query for the whole list. This is called by Dashboard, History and
  * Calendar on every render of a page of rows, so a per-row round trip would be
  * felt immediately.
+ *
+ * Drops the completeness flag. Use `resolveFinishedOutputsResult` on any surface
+ * that renders a lifecycle label, where an absent key must not be presented as
+ * "no video" when it might be "we could not check".
  */
 export async function resolveFinishedOutputs(
   generations: readonly GenerationLike[],
 ): Promise<Map<string, FinishedOutput>> {
-  const out = new Map<string, FinishedOutput>()
-  if (generations.length === 0) return out
+  return (await resolveFinishedOutputsResult(generations)).outputs
+}
 
+async function resolveInto(
+  out: Map<string, FinishedOutput>,
+  generations: readonly GenerationLike[],
+): Promise<ResolvedOutputs> {
   // Legacy first, so a v2 row can overwrite it below. Doing it in this order is
   // the precedence rule, expressed as code rather than as a comment somebody has
   // to honour.
@@ -117,7 +161,12 @@ export async function resolveFinishedOutputs(
   // is a v2 video shown as legacy-ready, which is a wrong label on a real
   // video. The alternative — treating the error as "no output" — would tell a
   // creator their finished video is a draft.
-  if (error) return out
+  //
+  // And it now SAYS SO. Returning the legacy answers was the right data;
+  // returning them as if the lookup had succeeded was the remaining half of the
+  // defect, because a caller could not tell a complete answer from a partial
+  // one and had no choice but to present the gap as fact.
+  if (error) return { outputs: out, complete: false }
 
   const rows = (data ?? []) as Array<{
     id: string; generation_id: string; status: EditProjectStatus
@@ -148,7 +197,7 @@ export async function resolveFinishedOutputs(
       editProjectId: r.id, outputAssetId: r.output_asset_id, legacyPath: null,
     })
   }
-  return out
+  return { outputs: out, complete: true }
 }
 
 /** The list-surface question, asked the same way everywhere. */
@@ -159,19 +208,44 @@ export function hasFinishedVideo(
 }
 
 /**
- * The three states a list surface renders, in one place so Dashboard, History
- * and Calendar cannot disagree about what "ready" means.
+ * The states a list surface renders, in one place so Dashboard, History and
+ * Calendar cannot disagree about what "ready" means.
  *
  * `published` outranks `ready` because a posted video is finished AND out; a
  * surface showing it as merely ready would invite a creator to post it twice.
+ *
+ * `unknown` is the three-state rule arriving at the last place that collapsed
+ * it. An absent key in `resolved` has always meant "no finished video", and
+ * when the resolver FAILED every key was absent — so a network blip labelled a
+ * creator's entire library as drafts. Nothing was broken and nothing said so;
+ * the page rendered a confident, wrong answer, and the obvious response to it
+ * is to re-record work that already exists.
+ *
+ * It is deliberately NOT a fourth thing surfaces may ignore by defaulting: the
+ * union grew, so every `switch` over it that lacks a case is a type error at
+ * the call site rather than a silent fall-through to `draft`.
  */
-export type GenerationLifecycle = 'draft' | 'ready' | 'published'
+export type GenerationLifecycle = 'draft' | 'ready' | 'published' | 'unknown'
 
 export function generationLifecycle(
   generationId: string,
   resolved: ReadonlyMap<string, FinishedOutput>,
   publishedIds: ReadonlySet<string | null>,
+  /**
+   * Whether the resolve that produced `resolved` actually looked. Defaults to
+   * true so every existing call keeps its exact behaviour — this is a new fact
+   * a caller may now supply, not a new obligation.
+   */
+  resolveComplete = true,
 ): GenerationLifecycle {
+  // PUBLISHED SURVIVES A FAILED RESOLVE. It is established by a `posts` row we
+  // already hold, not by the lookup that failed, and it is the strongest claim
+  // on the list — a video that went out is finished by definition. Downgrading
+  // it to `unknown` would throw away a fact we have to express doubt about a
+  // different one.
   if (publishedIds.has(generationId)) return 'published'
-  return resolved.has(generationId) ? 'ready' : 'draft'
+  if (resolved.has(generationId)) return 'ready'
+  // A HIT IS STILL A HIT, and only a MISS is in doubt: the resolver returns
+  // whatever it gathered before failing, so the rows it did answer are answered.
+  return resolveComplete ? 'draft' : 'unknown'
 }

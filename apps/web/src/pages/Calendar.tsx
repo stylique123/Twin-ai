@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   CalendarDays, Plus, Check, Trash2, ChevronLeft, ChevronRight, Loader2, X,
-  Clapperboard, Video, Send, Clock, Link2, AlertTriangle, RefreshCw,
+  Clapperboard, Video, Send, Clock, Link2, AlertTriangle, RefreshCw, HelpCircle,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
-  listPosts, listGenerations, schedulePost, markScheduledPosted, deletePost, resolveFinishedOutputs,
+  listPosts, listGenerations, schedulePost, markScheduledPosted, deletePost, resolveFinishedOutputsResult,
   listConnections, startConnect, disconnectPlatform, publishPost,
   type Post, type PlatformConnection,
 } from '../lib/api'
@@ -23,6 +23,29 @@ const PLATFORM_SKIN: Record<string, string> = {
   linkedin: 'bg-[#0A66C2]/20 text-[#4DA3FF]',
 }
 const ALL_PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'linkedin']
+
+/**
+ * Finished / still-to-film / we-could-not-check, as one component so the month
+ * grid and the schedule picker cannot drift apart on what an absent key means.
+ *
+ * The third state is the point. `finished.has(id)` is false both when a video
+ * has no render and when the lookup that would have found one failed — and the
+ * clapperboard is not a neutral glyph, it is an instruction to go and film
+ * something. Showing it on a finished video is the OUTPUT-1 complaint in its
+ * original words ("the Calendar shows the unfinished icon"), arriving through
+ * the error path instead of through `edit_path`.
+ *
+ * `certain` false draws the neutral question mark and says so on hover, which
+ * is the only honest thing available: we do not know, and the creator can find
+ * out by opening the video.
+ */
+function OutputIcon({ known, certain, className }: { known: boolean; certain: boolean; className?: string }) {
+  if (known) return <Video className={cn(className, 'text-teal')} aria-label="Finished video" />
+  if (!certain) {
+    return <HelpCircle className={cn(className, 'text-stone')} aria-label="Couldn't check whether this is finished" />
+  }
+  return <Clapperboard className={cn(className, 'text-amber')} aria-label="Still to film" />
+}
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 // Module-level stale-while-revalidate cache (matches Gallery/Library) so re-opening
@@ -42,6 +65,10 @@ export default function Calendar() {
   // OUTPUT-1: the finished/unfinished icon read `edit_path`, so a card for an
   // editor-v2 render showed the "still to film" clapperboard.
   const [finished, setFinished] = useState<Map<string, FinishedOutput>>(new Map())
+  // An absent key means "not finished" ONLY if the lookup ran. When it did not,
+  // every card would otherwise show the clapperboard — telling a creator that
+  // the videos they are about to schedule still need filming.
+  const [finishedComplete, setFinishedComplete] = useState(true)
   const [loading, setLoading] = useState(POSTS_CACHE === null)
   const [cursor, setCursor] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1) })
   const [composeFor, setComposeFor] = useState<Date | null>(null)
@@ -62,7 +89,9 @@ export default function Calendar() {
     Promise.all([listPosts(), listGenerations().catch(() => [])])
       .then(([p, g]) => {
         POSTS_CACHE = p; GENS_CACHE = g; setPosts(p); setGens(g)
-        resolveFinishedOutputs(g).then(setFinished).catch(() => {})
+        resolveFinishedOutputsResult(g)
+          .then((r) => { setFinished(r.outputs); setFinishedComplete(r.complete) })
+          .catch(() => setFinishedComplete(false))
       })
       // A failed listPosts previously escaped as an unhandled rejection and the
       // month rendered as convincingly "empty" — surface it as an error instead.
@@ -287,7 +316,7 @@ export default function Calendar() {
                   return (
                     <div key={p.id} className="glass flex items-center gap-3 p-3.5">
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/5">
-                        {g && finished.has(g.id) ? <Video className="h-5 w-5 text-teal" /> : <Clapperboard className="h-5 w-5 text-amber" />}
+                        <OutputIcon known={!!g && finished.has(g.id)} certain={finishedComplete} className="h-5 w-5" />
                       </span>
                       <div className="min-w-0 flex-1">
                         <div className="truncate text-sm font-medium text-cream">{g ? genTitle(g) : (p.caption ?? 'Scheduled post')}</div>
@@ -347,6 +376,7 @@ export default function Calendar() {
       {composeFor && (
         <ScheduleModal
           finished={finished}
+          finishedComplete={finishedComplete}
           day={composeFor}
           gens={gens}
           platforms={platforms}
@@ -360,12 +390,14 @@ export default function Calendar() {
 
 /* ─── Schedule modal ─────────────────────────────────────────────────── */
 
-function ScheduleModal({ day, gens, finished, platforms, onClose, onScheduled }: {
+function ScheduleModal({ day, gens, finished, finishedComplete, platforms, onClose, onScheduled }: {
   day: Date
   gens: Generation[]
   /** OUTPUT-1: passed in rather than re-derived, so the picker's finished/
    *  unfinished icon cannot disagree with the month grid's. */
   finished: ReadonlyMap<string, FinishedOutput>
+  /** Whether that map came from a lookup that actually ran. */
+  finishedComplete: boolean
   platforms: Platform[]
   onClose: () => void
   onScheduled: () => void
@@ -418,7 +450,7 @@ function ScheduleModal({ day, gens, finished, platforms, onClose, onScheduled }:
                     className={cn('flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors', g.id === genId ? 'bg-white/[0.07]' : 'hover:bg-white/[0.03]')}
                   >
                     <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-white/5 text-[11px] font-bold text-stone">{i + 1}</span>
-                    {finished.has(g.id) ? <Video className="h-4 w-4 shrink-0 text-teal" /> : <Clapperboard className="h-4 w-4 shrink-0 text-amber" />}
+                    <OutputIcon known={finished.has(g.id)} certain={finishedComplete} className="h-4 w-4 shrink-0" />
                     <span className="min-w-0 flex-1 truncate text-sm text-cream">{genTitle(g)}</span>
                     {g.id === genId && <Check className="h-4 w-4 shrink-0 text-teal" />}
                   </button>

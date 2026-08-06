@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Wand2, Clapperboard, Loader2, Play, Video, Plus, Eye, CalendarDays } from 'lucide-react'
-import { listGenerations, signEditUrls, listPosts, resolveFinishedOutputs, generationLifecycle } from '../lib/api'
+import { listGenerations, signEditUrls, listPosts, resolveFinishedOutputsResult, generationLifecycle } from '../lib/api'
 import type { FinishedOutput } from '../lib/types'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -14,12 +14,17 @@ import { cn } from '../lib/cn'
 // "Processing" filter because job state isn't stored on the generation row;
 // an in-flight edit shows live progress on its own screen instead.
 type Filter = 'all' | 'draft' | 'ready' | 'published'
-type Status = 'draft' | 'ready' | 'published'
+type Status = 'draft' | 'ready' | 'published' | 'unknown'
 
 const STATUS_SKIN: Record<Status, { label: string; cls: string }> = {
   draft: { label: 'Draft', cls: 'border-white/15 bg-white/[0.06] text-sand' },
   ready: { label: 'Ready', cls: 'border-coral/40 bg-coral/10 text-coral' },
   published: { label: 'Published', cls: 'border-teal/40 bg-teal/10 text-teal' },
+  // NOT a fourth status a creator is meant to reason about — it is us admitting
+  // we could not check. Neutral, and worded as our problem rather than as a
+  // judgement about their video, because the alternative ("Draft") is a
+  // confident lie that invites them to re-record work they already have.
+  unknown: { label: 'Couldn\u2019t check', cls: 'border-white/15 bg-white/[0.06] text-stone' },
 }
 
 // Stale-while-revalidate caches across remounts: re-opening the library paints
@@ -29,6 +34,10 @@ let URLS_CACHE: Record<string, string> = {}
 let PUBLISHED_CACHE: Set<string> | null = null
 // OUTPUT-1: which generations have a finished video, by EITHER authority.
 let FINISHED_CACHE: Map<string, FinishedOutput> = new Map()
+// Whether the last resolve actually looked. A failed lookup leaves every key
+// absent, which is indistinguishable from "none of these are finished" unless
+// this is carried alongside it.
+let FINISHED_COMPLETE = true
 
 function dayLabel(iso: string): string {
   const d = new Date(iso)
@@ -47,6 +56,7 @@ export default function History() {
   const [urls, setUrls] = useState<Record<string, string>>(URLS_CACHE)
   const [published, setPublished] = useState<Set<string>>(PUBLISHED_CACHE ?? new Set())
   const [finished, setFinished] = useState<Map<string, FinishedOutput>>(FINISHED_CACHE)
+  const [finishedComplete, setFinishedComplete] = useState(FINISHED_COMPLETE)
   const [filter, setFilter] = useState<Filter>('all')
 
   // Pulled out so the error state can offer a real retry. A failed fetch must NOT
@@ -61,9 +71,30 @@ export default function History() {
         setItems(gens)
         // OUTPUT-1: readiness is asked of BOTH authorities, once, for the
         // whole page. Before this, an editor-v2 render filtered as `draft`.
-        FINISHED_CACHE = await resolveFinishedOutputs(gens).catch(() => new Map())
+        // A THROWN resolve is the same fact as an errored one — we do not know —
+        // so it lands in the same place rather than in a `catch` that quietly
+        // substitutes an empty map for an answer.
+        const res = await resolveFinishedOutputsResult(gens)
+          .catch(() => ({ outputs: new Map(), complete: false }))
+        FINISHED_CACHE = res.outputs
+        FINISHED_COMPLETE = res.complete
         setFinished(FINISHED_CACHE)
-        const paths = gens.flatMap((g) => [g.thumb_path, g.ai_thumb_path, g.edit_path].filter(Boolean) as string[])
+        setFinishedComplete(res.complete)
+        // COVERS ONLY, and `edit_path` is deliberately not among them.
+        //
+        // It used to be. Nothing on this page ever read the resulting URL — the
+        // only consumer of `urls` is the cover below — so every page load asked
+        // storage to sign one video per legacy generation and threw all of them
+        // away. That is a bill and a latency cost for nothing, but the reason to
+        // remove it rather than leave it is that it MISLEADS: a batch that signs
+        // `edit_path` reads as "History plays the finished video", which invites
+        // the next person to reach for `urls[g.edit_path]` and get a legacy-only
+        // player that shows nothing for an editor-v2 render — the exact OUTPUT-1
+        // defect, reintroduced through a line that looked already-solved.
+        //
+        // Playback belongs to `Result.tsx`, which asks `getOutputBundle` and is
+        // authority-aware. Covers are generation-level and the same either way.
+        const paths = gens.flatMap((g) => [g.thumb_path, g.ai_thumb_path].filter(Boolean) as string[])
         if (paths.length) {
           const signed = await signEditUrls(paths).catch(() => ({}))
           URLS_CACHE = { ...URLS_CACHE, ...signed }
@@ -84,14 +115,14 @@ export default function History() {
   useEffect(() => { load() }, [])
 
   const statusOf = (g: Generation): Status =>
-    generationLifecycle(g.id, finished, published)
+    generationLifecycle(g.id, finished, published, finishedComplete)
 
   const counts = useMemo(() => {
-    const c = { all: items.length, draft: 0, ready: 0, published: 0 }
+    const c = { all: items.length, draft: 0, ready: 0, published: 0, unknown: 0 }
     for (const g of items) c[statusOf(g)]++
     return c
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [items, published])
+  }, [items, published, finished, finishedComplete])
 
   const displayed = items.filter((g) => filter === 'all' || statusOf(g) === filter)
 
@@ -200,7 +231,11 @@ export default function History() {
                             ) : (
                               <div className="absolute inset-0 grid place-items-center"><Clapperboard className="h-6 w-6 text-amber/70" /></div>
                             )}
-                            {status !== 'draft' && (
+                            {/* The play affordance is a CLAIM that there is
+                                something to play. `unknown` is excluded with
+                                `draft` for that reason: offering play on a video
+                                we could not confirm exists produces a dead tap. */}
+                            {(status === 'ready' || status === 'published') && (
                               <span className="absolute inset-0 grid place-items-center">
                                 <span className="grid h-9 w-9 place-items-center rounded-full bg-ink/60 ring-1 ring-white/25 backdrop-blur-sm"><Play className="h-4 w-4 translate-x-0.5 fill-cream text-cream" /></span>
                               </span>

@@ -15,6 +15,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   generationLifecycle, hasFinishedVideo, resolveFinishedOutputs,
+  resolveFinishedOutputsResult,
 } from '../finishedOutput'
 import { initApi } from '../../api'
 
@@ -145,6 +146,66 @@ describe('one lifecycle, so three surfaces cannot disagree', () => {
 
   it('everything else is a draft', () => {
     expect(generationLifecycle(G3, finished, new Set())).toBe('draft')
+  })
+})
+
+// ── "we could not check" is not "you have not finished it" ─────────────────
+//
+// The last place the three-state rule was still collapsed. An absent key meant
+// `draft` unconditionally, so a failed lookup did not degrade the page — it
+// rewrote it, telling a creator with a library of finished videos that none of
+// them were done. That is worse than an error banner: it is a confident,
+// specific, wrong answer, and the action it invites is re-recording work that
+// already exists.
+describe('a failed resolve says so, instead of saying "draft"', () => {
+  const finished = new Map([[G1, {
+    generationId: G1, authority: 'editor_v2' as const,
+    editProjectId: 'p1', outputAssetId: ASSET, legacyPath: null,
+  }]])
+
+  it('a MISS under an incomplete resolve is unknown, not draft', () => {
+    expect(generationLifecycle(G3, finished, new Set(), false)).toBe('unknown')
+  })
+
+  it('a HIT is still a hit — only misses are in doubt', () => {
+    // The resolver returns whatever it gathered before failing, so the rows it
+    // did answer are answered. Downgrading them too would throw away facts we
+    // hold in order to express doubt about ones we do not.
+    expect(generationLifecycle(G1, finished, new Set(), false)).toBe('ready')
+  })
+
+  it('published survives a failed resolve', () => {
+    // Established by a `posts` row we already have, not by the lookup that
+    // failed. A video that went out is finished by definition.
+    expect(generationLifecycle(G1, finished, new Set([G1]), false)).toBe('published')
+    expect(generationLifecycle(G3, finished, new Set([G3]), false)).toBe('published')
+  })
+
+  it('the default is unchanged, so every existing call keeps its behaviour', () => {
+    expect(generationLifecycle(G3, finished, new Set())).toBe('draft')
+  })
+
+  it('the resolver reports an errored lookup as incomplete, and still returns the legacy answers', async () => {
+    projectError = { message: 'network' }
+    const r = await resolveFinishedOutputsResult([{ id: G1, edit_path: 'legacy/a.mp4' }, { id: G3 }])
+    expect(r.complete).toBe(false)
+    // The legacy answer gathered before the failure is correct and is kept.
+    expect(r.outputs.get(G1)?.authority).toBe('legacy')
+    // And G3 is a miss under an incomplete resolve — which is exactly `unknown`.
+    expect(generationLifecycle(G3, r.outputs, new Set(), r.complete)).toBe('unknown')
+  })
+
+  it('a successful lookup is complete, so a genuine miss is still a draft', async () => {
+    projectRows = []
+    projectError = null
+    const r = await resolveFinishedOutputsResult([{ id: G3 }])
+    expect(r.complete).toBe(true)
+    expect(generationLifecycle(G3, r.outputs, new Set(), r.complete)).toBe('draft')
+  })
+
+  it('an empty list is a complete answer, not an unknown one', async () => {
+    const r = await resolveFinishedOutputsResult([])
+    expect(r.complete).toBe(true)
   })
 })
 

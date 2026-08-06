@@ -6,7 +6,7 @@ import {
 } from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
-import { generationLifecycle, resolveFinishedOutputs } from './editor/finishedOutput'
+import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
 
 // ---- Client injection ------------------------------------------------------
 // The web app is the single client surface. It wires its Supabase client, an
@@ -502,6 +502,20 @@ export interface DashboardStats {
   ready: number
   published: number
   recreationsLeft: number
+  /**
+   * Whether the readiness lookup behind `drafts`/`ready` actually ran.
+   *
+   * False means those two numbers are NOT WRONG SO MUCH AS UNKNOWN: a failed
+   * resolve leaves every generation looking unfinished, so `drafts` silently
+   * absorbs the whole library and the dashboard tells a creator none of their
+   * videos are done. `published` is unaffected — it comes from `posts`, which
+   * is a separate query, and a video that went out is finished regardless.
+   *
+   * The caller's job is to render the difference. A number that might be a
+   * fabrication is worse than no number, because nothing on the screen marks it
+   * as one.
+   */
+  outputsComplete: boolean
 }
 
 export async function getDashboardStats(creditsLeft: number): Promise<DashboardStats> {
@@ -515,16 +529,24 @@ export async function getDashboardStats(creditsLeft: number): Promise<DashboardS
   // succeeded — bytes in storage, validated, reviewed — was counted as a DRAFT.
   // The creator's dashboard told them the video they had just watched was not
   // finished.
-  const finished = await resolveFinishedOutputs(rows)
+  const finished = await resolveFinishedOutputsResult(rows)
   let drafts = 0, ready = 0, published = 0
   for (const g of rows) {
-    switch (generationLifecycle(g.id, finished, publishedIds)) {
+    switch (generationLifecycle(g.id, finished.outputs, publishedIds, finished.complete)) {
       case 'published': published++; break
       case 'ready': ready++; break
+      // `unknown` is counted as neither. It used to reach `default` and be
+      // counted as a draft, which is exactly how a lookup failure became the
+      // sentence "you have 14 drafts" on someone's home screen.
+      case 'unknown': break
       default: drafts++
     }
   }
-  return { drafts, ready, published, recreationsLeft: Math.floor(creditsLeft / 10) }
+  return {
+    drafts, ready, published,
+    recreationsLeft: Math.floor(creditsLeft / 10),
+    outputsComplete: finished.complete,
+  }
 }
 
 // ---- Posts (Phase 7: publish tracking) -----------------------------------
