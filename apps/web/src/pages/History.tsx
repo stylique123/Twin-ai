@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Wand2, Clapperboard, Loader2, Play, Video, Plus, Eye, CalendarDays } from 'lucide-react'
-import { listGenerations, signEditUrls, listPosts, resolveFinishedOutputsResult, generationLifecycle } from '../lib/api'
+import { Wand2, Clapperboard, Loader2, Play, Video, Plus, Eye, CalendarDays, Trash2 } from 'lucide-react'
+import { listGenerations, signEditUrls, listPosts, resolveFinishedOutputsResult, generationLifecycle, deleteGeneration } from '../lib/api'
 import type { FinishedOutput } from '../lib/types'
 import type { Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
@@ -58,6 +58,13 @@ export default function History() {
   const [finished, setFinished] = useState<Map<string, FinishedOutput>>(FINISHED_CACHE)
   const [finishedComplete, setFinishedComplete] = useState(FINISHED_COMPLETE)
   const [filter, setFilter] = useState<Filter>('all')
+  // The row awaiting confirmation, and the row being deleted. Two states, not
+  // one: a `window.confirm` would be quicker to write and would put the most
+  // irreversible action in the product behind a dialog the browser styles and
+  // the creator has been trained to dismiss.
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // Pulled out so the error state can offer a real retry. A failed fetch must NOT
   // fall through to the empty state — a network blip would otherwise look exactly
@@ -113,6 +120,36 @@ export default function History() {
   }
 
   useEffect(() => { load() }, [])
+
+  /**
+   * Delete a video, its edit projects, and its recordings.
+   *
+   * The row leaves the list only once the server says it is gone. An optimistic
+   * removal would be the wrong trade here: the failure mode is a creator
+   * believing their footage was deleted when it was not, and there is no later
+   * moment at which they find out.
+   */
+  const onDelete = async (id: string) => {
+    setDeleting(id)
+    setDeleteError(null)
+    const res = await deleteGeneration(id)
+    setDeleting(null)
+    setConfirmingDelete(null)
+    if (!res.ok) {
+      setDeleteError(res.reason === 'unavailable'
+        // Named exactly, because "something went wrong" would invite a retry
+        // that cannot succeed.
+        ? 'Deleting is not available on this deployment yet. Nothing was removed.'
+        : res.reason === 'not_found'
+          ? 'That video is already gone.'
+          : 'Could not delete that. Nothing was removed — please try again.')
+      // `not_found` still leaves the list stale, so refresh either way.
+      if (res.reason === 'not_found') load()
+      return
+    }
+    GENERATIONS_CACHE = (GENERATIONS_CACHE ?? []).filter((g) => g.id !== id)
+    setItems((prev) => prev.filter((g) => g.id !== id))
+  }
 
   const statusOf = (g: Generation): Status =>
     generationLifecycle(g.id, finished, published, finishedComplete)
@@ -267,7 +304,38 @@ export default function History() {
                                   <Eye className="h-3 w-3" /> View
                                 </Link>
                               )}
+                              {/* DELETE, behind an in-place confirm rather than a
+                                  browser dialog — and the confirm says what
+                                  actually goes, because "Delete?" invites a yes
+                                  to a question the creator has not been asked.
+                                  The recording is the part they cannot get back. */}
+                              {confirmingDelete === g.id ? (
+                                <span className="inline-flex items-center gap-2 rounded-xl border border-coral/40 bg-coral/5 px-2.5 py-1.5 text-xs">
+                                  <span className="text-sand">Delete this video and its recording?</span>
+                                  <button
+                                    onClick={() => onDelete(g.id)}
+                                    disabled={deleting === g.id}
+                                    className="font-semibold text-coral hover:underline disabled:opacity-60"
+                                  >
+                                    {deleting === g.id ? 'Deleting…' : 'Delete'}
+                                  </button>
+                                  <button onClick={() => setConfirmingDelete(null)} className="text-stone hover:text-cream">
+                                    Cancel
+                                  </button>
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => { setConfirmingDelete(g.id); setDeleteError(null) }}
+                                  aria-label={`Delete ${title}`}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 px-2.5 py-1.5 text-xs text-stone transition-colors hover:border-coral/40 hover:text-coral"
+                                >
+                                  <Trash2 className="h-3 w-3" /> Delete
+                                </button>
+                              )}
                             </div>
+                            {deleteError && confirmingDelete === null && deleting === null && (
+                              <p className="mt-2 text-xs text-coral">{deleteError}</p>
+                            )}
                           </div>
                         </div>
                       </RevealItem>

@@ -332,7 +332,15 @@ jobs:
           # Calling the function also found a real bug in it — see that fixture's
           # comment and 0111's own header. A migration applying is not a
           # migration working.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output; do
+          #
+          # 0114 IS APPLIED HERE and 0112/0113 ARE NOT, which looks inconsistent
+          # and is not. 0112 and 0113 attach to `public.posts`, which staging
+          # does not have, so they cannot apply at all. 0114's `delete_generation`
+          # touches only `generations`, `edit_projects` and `media_assets` —
+          # every one of which staging has and the matrix exercises — so the one
+          # environment that could catch a deletion-order regression is kept
+          # able to.
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done

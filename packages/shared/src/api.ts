@@ -348,6 +348,59 @@ export async function setGenerationApproved(id: string, approved: boolean): Prom
   return !error && Array.isArray(data) && data.length > 0
 }
 
+export type DeleteGenerationResult =
+  | { ok: true; assetsPurged: number; projectsDeleted: number }
+  /** The row is not there, or is not yours. The RPC answers identically to both
+   *  ON PURPOSE — a distinct "not yours" would let anyone probe which ids
+   *  exist — so this cannot separate them either, and does not pretend to. */
+  | { ok: false; reason: 'not_found' }
+  /** 0114 is not applied here yet. Reported rather than swallowed: a delete
+   *  that silently did nothing is the worst possible outcome for this call. */
+  | { ok: false; reason: 'unavailable' }
+  | { ok: false; reason: 'failed' }
+
+/**
+ * Delete a video and everything that only existed because of it.
+ *
+ * THROUGH THE RPC, not through `.from('generations').delete()`, and the
+ * difference is the whole feature. A plain row delete leaves every
+ * `media_assets` row behind — `media_assets.generation_id` is ON DELETE SET
+ * NULL, verified against the live catalog — so 0099's purge trigger never
+ * fires and the raw take, a recording of the creator's face and voice, stays in
+ * storage forever. `delete_generation` removes the projects, then the assets,
+ * then the row, and it is the asset delete that queues the byte purge.
+ *
+ * The order is load-bearing and lives in SQL rather than here, because a
+ * transaction is the only place it can be guaranteed. Two client statements can
+ * be interrupted between them, and the interruption would leave a generation
+ * deleted with its footage still stored — the exact state this exists to
+ * prevent, reached by the code meant to prevent it.
+ *
+ * POSTS SURVIVE. A post is a fact about the world: something went out, on a
+ * date, to an audience. Deleting our working copy does not unpublish it, and
+ * erasing the record would leave a creator unable to answer "did I post that?"
+ * about a video still on the platform.
+ */
+export async function deleteGeneration(id: string): Promise<DeleteGenerationResult> {
+  const { data, error } = await supabase.rpc('delete_generation', { p_generation: id })
+  if (!error) {
+    const row = (Array.isArray(data) ? data[0] : data) as
+      { assets_purged?: number; projects_deleted?: number } | null
+    return {
+      ok: true,
+      assetsPurged: Number(row?.assets_purged ?? 0),
+      projectsDeleted: Number(row?.projects_deleted ?? 0),
+    }
+  }
+  const code = (error as { code?: string }).code
+  // 42883 = undefined_function. The migration has not been applied here.
+  if (code === '42883' || code === 'PGRST202') return { ok: false, reason: 'unavailable' }
+  // P0002 = no_data_found, which the RPC raises for both "no such row" and
+  // "not yours".
+  if (code === 'P0002') return { ok: false, reason: 'not_found' }
+  return { ok: false, reason: 'failed' }
+}
+
 // ---- Team seats / shared workspace -----------------------------------------
 export interface WorkspaceState {
   members: { member_id: string; created_at: string }[] // teammates I host
