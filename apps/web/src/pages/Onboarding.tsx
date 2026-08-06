@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
@@ -559,6 +559,22 @@ function ConfirmStep({
   // about how someone FILMS, and the scan screen is where we are still working
   // out who they are. Understanding the creator comes first, then whether there
   // is a product, and only then how they can shoot it.
+  // EMPTY MEANS THE SCAN FOUND NOTHING, and that is a different screen from a
+  // scan that worked. Measured from the fields the scan actually populates, so
+  // a creator who typed their own audience does not count as "the scan worked".
+  // Computed once from the initial profile rather than live: a section that
+  // collapses itself the moment someone clears a field would fight them.
+  const voiceIsEmpty = useMemo(() => {
+    const p = draft.profile
+    if (!p) return true
+    const text = [p.niche, p.tone, p.pacing, p.hook_style, p.enemy]
+      .filter((v) => typeof v === 'string' && v.trim() !== '')
+    const lists = [p.vocabulary, p.recurring_ctas, p.dos, p.donts, p.pov, p.hook_patterns, p.formats]
+      .filter((v) => Array.isArray(v) && v.length > 0)
+    return text.length === 0 && lists.length === 0
+  }, [draft.profile])
+  const [showVoice, setShowVoice] = useState(!voiceIsEmpty)
+
   const [canRecordScreen, setCanRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
   const [canFilmObjects, setCanFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
   const [busy, setBusy] = useState(false)
@@ -683,10 +699,22 @@ function ConfirmStep({
         </div>
       )}
 
+      {/* WHAT CHANGES THE SCRIPT, SEPARATED FROM WHAT DESCRIBES THE VOICE.
+          Every field on this screen used to carry identical weight: the four
+          answers that decide what a video says sat between ten scan-derived
+          voice details, indistinguishable. When the scan came back thin that
+          was fifteen empty boxes with no indication which mattered — the worst
+          moment to make someone guess.
+
+          These are the ones no scan can produce. Niche moved down with the
+          voice fields, because a scan CAN read it. */}
       <div className="mt-6 space-y-4">
-        <Labeled label="Niche">
-          <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
-        </Labeled>
+        <div>
+          <p className="eyebrow text-cream">What Twin needs from you</p>
+          <p className="mt-1 text-xs text-stone">
+            No scan can read these, and each one changes what your scripts say.
+          </p>
+        </div>
         {/* Captured here so the DNA is complete from day one (the scan can't read
             these). Optional — empty is fine, the creator can fill them in Settings. */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
@@ -846,6 +874,37 @@ function ConfirmStep({
         )}
         <Labeled label="Your goal">
           <input className="field" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. grow to 50k, drive signups, build trust" />
+        </Labeled>
+      </div>
+
+      {/* THE VOICE DETAILS, AND THEY COLLAPSE WHEN THERE IS NOTHING IN THEM.
+          These are what the scan produced. When it worked they are worth
+          reviewing, so the section opens. When it returned nothing they are ten
+          empty boxes that make the screen look broken and bury the answers
+          above, so it starts closed and says so. Either way nothing is hidden
+          from anyone who wants it. */}
+      <div className="mt-8 border-t border-white/8 pt-6">
+        <button
+          type="button"
+          onClick={() => setShowVoice((v) => !v)}
+          aria-expanded={showVoice}
+          className="flex w-full items-center justify-between gap-3 text-left"
+        >
+          <span>
+            <span className="eyebrow text-cream">Your voice</span>
+            <span className="mt-1 block text-xs text-stone">
+              {voiceIsEmpty
+                ? 'The scan found nothing to fill these in. You can add them now or leave them, and Twin will learn them from how you talk on camera.'
+                : 'What the scan heard. Change anything that sounds wrong.'}
+            </span>
+          </span>
+          <span className="shrink-0 text-xs text-sand">{showVoice ? 'Hide' : 'Show'}</span>
+        </button>
+      </div>
+
+      <div className={cn('mt-6 space-y-4', !showVoice && 'hidden')}>
+        <Labeled label="Niche">
+          <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
         </Labeled>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
           <Labeled label="Tone">
