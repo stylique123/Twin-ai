@@ -75,14 +75,44 @@ export function edgeFunctionFiles(dir) {
 }
 
 /**
- * Where a key is actually mentioned.
+ * Where a key is actually READ OFF THE BRIEF.
  *
- * Word-boundary matched, so `goal` does not match `goalPost` and — the one that
- * matters — `promotes` does not match a comment about promoting a branch.
+ * THE FIRST VERSION OF THIS MATCHED THE BARE WORD, AND IT WAS WRONG — caught by
+ * running it against main rather than by thinking about it. Four of the nine
+ * keys are ordinary English (`goal`, `offer`, `audience`, `promotes`), and
+ * generate-blueprint's prompt is full of ordinary English: `goal: str` in the
+ * response schema, "place ONE clear CTA near the end that fits the goal" in the
+ * instructions, `- Goal: ${goal}` in the brief block. All three matched.
+ *
+ * So the guard certified `goal` as read when line 635 is
+ * `const goal = vp?.goal ?? dna.goal ?? 'turn attention into trust'` — the voice
+ * profile and the DNA, never the brief. A guard that blesses a fact nobody
+ * reads is worse than no guard: it converts an open question into a settled
+ * one, in the exact direction that lets the bug survive.
+ *
+ * A READ IS A PROPERTY ACCESS ON THE BRIEF OBJECT, and nothing else counts:
+ *
+ *   brief.workKind            answers.workKind          storedBrief.workKind
+ *   brief['workKind']         const { workKind } = brief
+ *
+ * `dna.goal` and `vp.goal` deliberately do NOT count. They are different
+ * authorities holding a similarly-named value, which is the audit's "overlapping
+ * authorities" finding showing up as a naming collision — and treating them as
+ * interchangeable is how the brief's answer stays unread while looking read.
  */
 export function filesMentioning(key, files, read) {
-  const re = new RegExp(`\\b${key}\\b`)
-  return files.filter((f) => re.test(read(f)))
+  // `[\w$]*` on BOTH sides, not a required leading character — the commonest
+  // reader in the codebase is the bare identifier `brief`, and a pattern that
+  // demanded a prefix silently matched none of them. Caught by the selftest.
+  const holder = `[\\w$]*(?:[Bb]rief|[Aa]nswers)[\\w$]*`
+  const access = new RegExp(`\\b${holder}\\s*(?:\\.\\s*${key}\\b`
+    + `|\\[\\s*['"\`]${key}['"\`]\\s*\\])`)
+  const destructure = new RegExp(
+    `\\{[^{}]*\\b${key}\\b[^{}]*\\}\\s*=\\s*\\b${holder}\\b`)
+  return files.filter((f) => {
+    const src = read(f)
+    return access.test(src) || destructure.test(src)
+  })
 }
 
 export function check({ storedKeys, registry, files, read }) {
@@ -152,8 +182,12 @@ function selftest() {
   const read = (f) => ({
     'a.ts': 'const g = brief.goal',
     'b.ts': 'const w = brief.workKind',
+    // The case the first version of this guard got wrong: the word is present,
+    // read off a DIFFERENT authority. It must not count as a reader.
+    'prose.ts': 'const goal = vp?.goal ?? dna.goal\nGoal: ${goal}\n{ goal: str }',
+    'destructured.ts': 'const { promotes } = storedBrief',
   })[f] ?? ''
-  const files = ['a.ts', 'b.ts']
+  const files = ['a.ts', 'b.ts', 'prose.ts', 'destructured.ts']
   const fail = []
 
   const expect = (name, errors, shouldPass) => {
@@ -208,6 +242,23 @@ function selftest() {
     storedKeys: null, files, read, registry: { keys: {} },
   }), false)
 
+  // THE REGRESSION. Prose, a schema field and a same-named read off another
+  // authority are all present in prose.ts, and none of them is a brief read.
+  expect('the word present but read off another authority is NOT a reader', check({
+    storedKeys: ['goal'], files, read,
+    registry: { keys: { goal: { readBy: ['prose.ts'] } } },
+  }), false)
+
+  expect('a key excused as unwired stays excused when only prose mentions it', check({
+    storedKeys: ['goal'], files: ['prose.ts'], read,
+    registry: { keys: { goal: { readBy: [], unwiredReason: 'read off dna, not the brief' } } },
+  }), true)
+
+  expect('a destructured read counts', check({
+    storedKeys: ['promotes'], files, read,
+    registry: { keys: { promotes: { readBy: ['destructured.ts'] } } },
+  }), true)
+
   expect('parseStoredKeys reads a real declaration', (() => {
     const keys = parseStoredKeys(
       "export const BRIEF_STORED_KEYS = [\n  'goal', 'audience',\n] as const")
@@ -223,7 +274,7 @@ function selftest() {
     for (const f of fail) console.error('  ' + f)
     process.exit(1)
   }
-  console.log('check_brief_consumers selftest passed (11 cases)')
+  console.log('check_brief_consumers selftest passed (14 cases)')
 }
 
 function main() {
