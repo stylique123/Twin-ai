@@ -547,3 +547,185 @@ with it.
 **Do not split Track A across two sessions.** The whole point is one writer and
 one reader per fact; two sessions in `generate-blueprint`'s prompt block at the
 same time reproduces the problem this plan exists to fix.
+
+---
+
+## PART 7 — THE CONNECTED-VALUE AUDIT, FOLDED IN
+
+An independent audit dated 2026-08-06 scored the product by **connected value**
+rather than code volume, and its findings are absorbed here rather than kept as
+a separate document. Its central number:
+
+> **The minimum subsystem score is 3.5, and it is recommendations — not the
+> editor.** Editor engineering scores 7.8; editor *production readiness* scores
+> 4.0. That gap does not close by adding editor features.
+
+| area | score | why not 8 |
+|---|---:|---|
+| DNA extraction | 7.4 | thin-source inference too aggressive |
+| DNA truth and authority | 5.2 | confirmed / inferred / profile / voice / snapshot are overlapping authorities |
+| Scripting usefulness | 6.7 | no per-video intent, no product evidence, no deterministic claim checks |
+| **Recommendations** | **3.5** | first model output + hard-coded defaults + curated gallery ≠ a decision engine |
+| Editor engineering | 7.8 | strong contracts, pinned inputs, real multi-source composition |
+| Editor production readiness | 4.0 | feature-gated, never completed a production run |
+| End-to-end connected loop | 5.5 | intent → recommendation → script → outcome learning still open |
+
+**The product feeling this explains:** a great deal is built, and the creator
+still supplies the decisive idea. Twin elaborates it. The promise requires Twin
+to *recommend* the next decision, explain why, write it from verified truth
+only, and learn from the result.
+
+### The readiness ladder
+
+Each step is an end-to-end journey closed, never a feature added.
+
+| milestone | readiness |
+|---|---:|
+| current production | 5.4 |
+| #287 merged and corrected | 6.1 |
+| one canonical output everywhere | 6.8–7.0 |
+| approval and publishing bound to that output | 7.5–7.7 |
+| truth, reference and capture gates complete | 7.9–8.1 |
+| live security, operational and real-user proof | 8.2+ |
+
+### The minimum definition of 8/10
+
+One real creator completes all of this without database intervention: sign up
+once · complete DNA once · add an idea · receive an honestly sourced script ·
+edit and save it · record without losing the take · produce a real FFmpeg video
+and cover · see **that same output** in Result, Dashboard, History and Calendar ·
+send **that exact output** for approval · schedule the approved output · pass
+**the same immutable file** to the publisher · record the outcome against the
+same lineage · return later with no duplicated onboarding, stale state or
+contradictory status.
+
+Read it twice: *the same output* appears four times. **That repetition is the
+whole remaining product.**
+
+### New items this audit added to the build
+
+Folded into the tracks above, listed here so none is lost:
+
+- **Brand selection is global, not per generation.** `generate-blueprint` always
+  loads `brand_voices.is_default = true` and the create screen has no selector.
+  An agency running two clients must flip a global default — so two concurrent
+  generations can cross-use the wrong client's voice, offer, palette, logo and
+  constraints. **Not a quality bug; a client-mix incident.** Highest priority in
+  Track A.
+- **DNA carries inferred business truth with no provenance.** The prompt asks
+  the model to prefer a confident inference over a blank, and the result is
+  stored flat beside observed signals. Every field needs `value` / `source` /
+  `confidence` / `confirmedAt` / `evidenceRefs` / `authority`, split four ways:
+  observed style · inferred hypothesis · creator-confirmed business truth ·
+  unknown. **Never promote an inference into "the creator sells/promises".**
+- **`blueprintComplete` validates only concept and packaging.** When both model
+  attempts come back short the code ships the best parseable fragment, and the
+  UI normalizes it into looking whole. Same class as "unavailable shown as
+  empty": a missing thing rendering as a real one.
+- **Onboarding's writes are not atomic** — voice profile, capabilities, brief and
+  profile DNA are separate writes, so a mid-sequence failure leaves partial
+  state. One idempotent transactional commit.
+- **Tone and fidelity can contradict known truth.** The create page defaults tone
+  to "balanced" and calls it *your default* without deriving it from the selected
+  brand; `close` fidelity promises tight reference structure even when reference
+  analysis fell back to a generic pattern. Prefill tone from the brand; disable
+  or rename `close` when reference mode is `pattern`.
+- **`alsoWantsToMake` is never asked**, and the onboarding free-text goal is
+  never written to the actionable goal enum.
+- **`CampaignIntentV1` is a contract nothing writes.** Static DNA cannot carry
+  per-video intent: a founder wants awareness today and demo signups tomorrow.
+  Slow-moving brand DNA **plus** a small per-video brief.
+- **`RecommendationSetV1`** — 3–5 ranked candidates, each naming its evidence
+  source, brand fit, capability fit, repetition risk, claim risk, why it ranks
+  there, and **what result would confirm or reject it**.
+- **Consent and deletion.** `purge_media` works and is trigger-driven, so every
+  deletion route is covered — and no user-facing flow reaches it. Legal weight,
+  currently inert.
+- **Editor economics.** No unit cost across transcription, analysis, director,
+  storage, render, egress; no budget refusal before spend.
+
+### Persona scores — the same nine journeys, measured
+
+| persona | now | what holds it back |
+|---|---:|---|
+| Creator, nothing to sell | 6.3 | no research, novelty planning or feedback learning |
+| Ecommerce seller | 5.7 | no product evidence, launch context, verified benefit layer |
+| SaaS founder | 5.8 | no per-video funnel goal, no product-page evidence |
+| Local service | 4.8 | no location, service area, booking CTA or proof inventory |
+| Professional / regulated | 5.4 | no deterministic compliance or evidence validation |
+| Brand / in-house | 6.0 | no campaign brief, multi-brand selection or asset catalogue |
+| Agency / multi-client | 5.1 | **global default voice is an unacceptable client-mix risk** |
+| Affiliate | 5.0 | no product evidence, disclosure policy or verified basis |
+
+---
+
+## PART 8 — WHO OWNS WHAT, WITH TWO SESSIONS RUNNING
+
+The boundary that holds: **one session owns everything from the creator's
+answers to the finished script. The other owns everything from the finished
+script to the published post.** They meet at the shot list.
+
+### The script-inputs session
+
+Gate 1 · `brand_voice_id` per generation, server-authorized and pinned ·
+BrandTruthSnapshot **producer and consumer in the same hands** · atomic
+onboarding commit · readers off `profiles.dna`
+
+Gate 2 · the question-consumer CI guard · `workKind` + `workKindOther` into the
+prompt · the `workKindOther` text box the contract requires and the UI never
+provides · `productEvidence` into prompt and shot list · capability flags into
+generation · `alsoWantsToMake` · the goal enum · `CampaignIntentV1`
+
+Gate 3 · `RecommendationSetV1`, task-routed models, exploration/exploitation,
+repetition detection
+
+Gate 4 · persist CreativeTransferPlan and ScriptPlan · semantic completeness ·
+**the forbidden-claim validator** · tone from the brand · `close` honest about
+`pattern`
+
+### The output-identity session
+
+The supabase-js pin, alone, after merge · **teach the staging matrix about 0110
+and 0111 first** — the gate protecting the next three items is blind to them,
+so everything after it would merge on a green light that never looked · bind the
+output at schedule time so a later re-edit refuses rather than substitutes ·
+History's media batch · resolver failures as *unknown*, never *draft* ·
+APPROVAL-1 · PUBLISH-1 · Gate 5's production proof · consent and deletion ·
+editor economics · dependency triage · the accessibility pass
+
+### The two that split
+
+**LEARNING-1** — the lineage belongs to whoever built it; the producer that
+proposes a DNA change from outcomes belongs to whoever owns brand truth. **A
+human approves before it takes effect.** An automatic loop that edits a
+creator's brand voice without asking is how a product silently becomes wrong
+about someone.
+
+**Gate 6** — one session imports measurement and attributes through UTMs, codes
+and CRM evidence; the other consumes outcomes into ranking. Bounded: a proven
+pattern changes future ranking at adequate sample size, a single viral result
+does not, core brand truth never mutates automatically, and every learned
+preference stays inspectable and undoable.
+
+### Decisions that belong to neither session
+
+- **What a forbidden-claim validator rejects.** Recommendation: exact-match and
+  stem fence first, across hooks, spoken lines, captions and CTA — provable and
+  demonstrable. Semantic checking is a separate track and must not be claimed
+  until it is verified.
+- **What a render may cost before it is refused.** Recommendation: instrument
+  first, gate second. A threshold invented before there is a cost distribution
+  is a number nobody can defend.
+- **Whether Templates is a product or dead schema.** Neither session should
+  decide whether a feature exists.
+
+---
+
+## PART 9 — THE INSTRUCTION THAT OUTRANKS THE REST
+
+> **Do not begin another broad feature phase before the connections close.**
+
+Editor engineering is at 7.8 and its production readiness is at 4.0. Nothing in
+that gap is a missing feature. It is one real recording, and the chain that
+carries its output — unchanged, and provably the same file — through approval,
+scheduling, publishing and back into what gets recommended next.
