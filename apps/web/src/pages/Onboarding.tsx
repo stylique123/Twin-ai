@@ -150,7 +150,13 @@ export default function Onboarding() {
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.7, ease: EASE }}
-        className="relative w-full max-w-xl"
+        /* THE CONFIRM STEP IS NOT A PHONE FORM. Every step shared one 576px
+           column, which is right for pasting a handle and watching a scan, and
+           wrong for a screen carrying fifteen fields: on a desktop it rendered
+           as a narrow strip with the whole display empty either side and most
+           of the form below the fold. When the scan comes back thin, that strip
+           is fifteen EMPTY boxes, which is the worst version of it. */
+        className={cn('relative w-full', mode === 'confirm' ? 'max-w-4xl' : 'max-w-xl')}
       >
         <div className="glass overflow-hidden rounded-panel p-8 sm:p-9">
           <AnimatePresence mode="wait">
@@ -172,7 +178,12 @@ export default function Onboarding() {
                 />
               )}
               {mode === 'confirm' && draft && (
-                <ConfirmStep draft={draft} onDraftChange={updateAnswers} onDone={complete} />
+                <ConfirmStep
+                  draft={draft}
+                  onDraftChange={updateAnswers}
+                  onDone={complete}
+                  onBack={() => setMode('handle')}
+                />
               )}
             </motion.div>
           </AnimatePresence>
@@ -498,6 +509,7 @@ function ConfirmStep({
   draft,
   onDraftChange,
   onDone,
+  onBack,
 }: {
   draft: OnboardingDraft
   onDraftChange: (
@@ -505,6 +517,7 @@ function ConfirmStep({
     brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>,
   ) => void
   onDone: () => Promise<void>
+  onBack: () => void
 }) {
   const [vp, setVp] = useState<VoiceProfile | null>(draft.profile)
   // Prefill "who you're talking to" and "what you sell" from what the scan ACTUALLY
@@ -664,7 +677,7 @@ function ConfirmStep({
         </Labeled>
         {/* Captured here so the DNA is complete from day one (the scan can't read
             these). Optional — empty is fine, the creator can fill them in Settings. */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
           <Labeled label="Who you're talking to">
             <input className="field" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. busy founders, 25-40" />
           </Labeled>
@@ -822,7 +835,7 @@ function ConfirmStep({
         <Labeled label="Your goal">
           <input className="field" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. grow to 50k, drive signups, build trust" />
         </Labeled>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
           <Labeled label="Tone">
             <input className="field" value={vp.tone} onChange={(e) => setField('tone', e.target.value)} />
           </Labeled>
@@ -850,7 +863,17 @@ function ConfirmStep({
 
       {err && <p className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
-      <div className="mt-8 flex justify-end">
+      {/* A WAY OUT. "Describe your voice myself" landed here with no exit, so
+          choosing it by mistake meant filling in fifteen fields or reloading
+          the page. The scan step has always had a back button; this one never
+          did, and it is the step you are most likely to reach by accident.
+
+          The draft is written to localStorage on every answer, so going back
+          keeps everything typed so far — this is a route out, not a reset. */}
+      <div className="mt-8 flex items-center justify-between gap-3">
+        <button className="btn-ghost" onClick={onBack} disabled={busy}>
+          Back
+        </button>
         <button className="btn-gradient" onClick={confirm} disabled={busy}>
           {busy ? (
             <>
