@@ -15,7 +15,7 @@ const UPLOAD_URLS: Record<string, string> = {
   youtube: 'https://studio.youtube.com/',
   instagram: 'https://www.instagram.com/',
 }
-import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle } from '../lib/api'
+import { getGeneration, markPosted, updateGenerationChoice, setGenerationApproved, createReviewLink, logEvent, signEditUrls, signTakeUrl, listPosts, getReadySourceAsset, getLatestEditProject, cancelEditProject, startEditorV2, newIdempotencyKey, EDIT_PROJECT_ACTIVE_STATUSES, editProducedVideo, editFinishedWithoutVideo, getOutputBundle, resolveFinishedOutputsResult, loadCapabilities, approvalState, approvalBlockReason } from '../lib/api'
 import { explainFailure } from '../lib/api'
 import { CraftChecks } from '../components/CraftChecks'
 import { ScriptEditor } from '../components/ScriptEditor'
@@ -26,7 +26,7 @@ import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
 import { readTakePointer, clearTakePointer, type SavedTake } from '../lib/savedTake'
-import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, OutputBundle, RecordingScript } from '../lib/types'
+import type { Blueprint, EditProject, EditProjectStatus, EditorOutput, FinishedOutput, OutputBundle, RecordingScript } from '../lib/types'
 
 // Human labels for the AI-edit pipeline's stages (Phase 8). Kept next to the
 // contract so a new EditProjectStatus is a compile error here, not a blank card.
@@ -240,6 +240,13 @@ export default function Result() {
   const [resumeTake, setResumeTake] = useState<SavedTake | null>(null)
   const [chosenHook, setChosenHook] = useState('')
   const [approved, setApproved] = useState(false)
+  // OUTPUT-1 + APPROVAL-1 on this page. `finished` answers "is there a video,
+  // by EITHER authority" — the header CTA below asked `gen.edit_path`, so an
+  // editor-v2 render offered "Record Script" for a video that already existed.
+  // `needsApproval` is the brand's requirement, three-state: unset is not a
+  // gate, see `publishAllowed`.
+  const [finished, setFinished] = useState<FinishedOutput | null>(null)
+  const [needsApproval, setNeedsApproval] = useState<boolean | null>(null)
   const [mobileTab, setMobileTab] = useState<'script' | 'strategy' | 'spec' | 'publish'>('script')
   const [activeTab, setActiveTab] = useState<'strategy' | 'spec' | 'publish'>('strategy')
   // On-demand AI thumbnail (parity with the V2 plan): signed URL + busy/error.
@@ -401,6 +408,12 @@ export default function Result() {
     const ok = await setGenerationApproved(gen.id, next)
     if (!ok) setApproved(!next) // revert on failure
   }
+  // APPROVAL-1 read as three states, not as a boolean. `unbound` — approved
+  // before 0111 recorded WHAT — is real and is not "not approved"; it is also
+  // not enough at the moment of publishing, which is the whole distinction.
+  const approval = approvalState(gen, finished)
+  const approvalBlock = approvalBlockReason(needsApproval, approval)
+
   // Guards setState after the user navigates away mid-fetch.
   const alive = useRef(true)
   useEffect(() => () => { alive.current = false }, [])
@@ -432,6 +445,19 @@ export default function Result() {
         GEN_CACHE[id] = g
         setGen(g)
         setApproved(!!g?.approved)
+        // Both best-effort and neither blocks the page. A failed resolve leaves
+        // `finished` null, which the CTA below reads as "no finished video" —
+        // the safe direction here, because it offers recording rather than
+        // offering to post something we could not confirm exists.
+        resolveFinishedOutputsResult([g])
+          .then((r) => { if (alive.current) setFinished(r.outputs.get(g.id) ?? null) })
+          .catch(() => {})
+        // UNSET stays null. A creator never asked whether anyone signs off has
+        // not said that someone does, and a read failure is not an answer
+        // either — both must leave the publish path open.
+        loadCapabilities(g.id)
+          .then((c) => { if (alive.current) setNeedsApproval(c.needs_approval.value) })
+          .catch(() => {})
         // Default the shooting hook to the saved choice, else the recommended (1st).
         const hooks = (g?.blueprint?.hook_options ?? []) as string[]
         const initial = g?.selected_hook ?? hooks[0] ?? ''
@@ -594,10 +620,25 @@ export default function Result() {
               {/* ONE clear action per stage, never mixed:
                   1. finished video → Post now (or the Posted chip). Nothing else.
                   2. otherwise → Record Script / Upload Take. */}
-              {gen.edit_path ? (
+              {/* OUTPUT-1: `finished`, not `gen.edit_path`. This asked the
+                  legacy column, so a creator whose editor-v2 render had
+                  finished was offered "Record Script" for a video they had
+                  just watched further down the same page. */}
+              {finished ? (
                 posted ? (
                   <span className="inline-flex items-center gap-1.5 rounded-full border border-teal/40 bg-teal/10 px-3.5 py-2 text-xs font-semibold text-teal">
                     <Check className="h-3.5 w-3.5" /> Posted
+                  </span>
+                ) : approvalBlock ? (
+                  // APPROVAL-1: the button is DISABLED rather than hidden, and
+                  // the reason is on the page rather than in a tooltip. A
+                  // vanished action reads as a bug; a disabled one with a
+                  // sentence reads as a step they have not taken yet.
+                  <span
+                    className="inline-flex items-center gap-1.5 rounded-full border border-amber/40 bg-amber/10 px-3.5 py-2 text-xs font-semibold text-amber"
+                    title={approvalBlock}
+                  >
+                    <BadgeCheck className="h-3.5 w-3.5" /> Needs approval
                   </span>
                 ) : (
                   <button onClick={goPost} className="btn-gradient py-2 text-xs font-semibold">
@@ -637,12 +678,29 @@ export default function Result() {
                   onClick={toggleApproved}
                   className={cn(
                     'chip text-xs transition-colors',
-                    approved ? 'border-teal/50 bg-teal/5 text-teal' : 'hover:border-white/10 hover:text-cream'
+                    approval === 'current' ? 'border-teal/50 bg-teal/5 text-teal'
+                      : approval === 'none' ? 'hover:border-white/10 hover:text-cream'
+                      // Amber, not teal: a stale or unverifiable approval is
+                      // not a green tick, and colouring it as one is how the
+                      // distinction gets lost at a glance.
+                      : 'border-amber/50 bg-amber/5 text-amber'
                   )}
-                  title="Mark approved"
+                  title={approval === 'superseded'
+                    ? 'This video changed after it was approved'
+                    : approval === 'unbound'
+                      ? 'Approved before we recorded which version'
+                      : 'Mark approved'}
                 >
                   <BadgeCheck className={cn('h-3.5 w-3.5', approved ? 'text-teal' : 'text-stone')} />
-                  {approved ? 'Approved' : 'Mark Approved'}
+                  {/* THE LABEL CARRIES THE STATE. "Approved" over a video that
+                      was re-edited since is the exact sentence APPROVAL-1
+                      exists to stop: everyone believes it was checked, and the
+                      file that would go out has been seen by nobody. */}
+                  {approval === 'superseded'
+                    ? 'Approved · changed since'
+                    : approval === 'unbound'
+                      ? 'Approved · version unknown'
+                      : approved ? 'Approved' : 'Mark Approved'}
                 </button>
               )}
             </div>
