@@ -83,9 +83,27 @@ export function evaluate({ files, webSources, migrations }) {
   for (const [p, sql] of Object.entries(migrations)) {
     if (sql == null) continue
     if (p.endsWith(COMPLETION_CONSTRAINT_OWNER)) continue
-    // Any check tying completed-status to a non-null output is premature until
+    // Any CHECK tying completed-status to a non-null output is premature until
     // rendering is real (every scaffold completion violates it).
-    if (/output_asset_id\s+is\s+not\s+null/i.test(sql) && /completed/i.test(sql)) {
+    //
+    // SCOPED TO TEXT THAT REJECTS A WRITE, not to the whole file.
+    //
+    // The rule's own reason is that such enforcement "reddens the whole pipeline
+    // and protects nothing" while completions are scaffolds. So the line is
+    // REJECTION vs QUERY, and it is not CHECK-vs-trigger: the control case below
+    // is a TRIGGER that raises, and it rejects writes exactly as a CHECK does,
+    // so it must still be caught. A first attempt at this scoping looked only at
+    // `check (…)` and let that control through — the control was right and the
+    // scoping was wrong.
+    //
+    // What is NOT enforcement is a `select … where status = 'completed' and
+    // output_asset_id is not null`. That READS the rows which do have an output,
+    // which is the correct way to ask that question and rejects nothing. 0111's
+    // approval-binding RPC does exactly that and was flagged by the file-wide
+    // test, and the honest fix is to match what the rule is about rather than
+    // add a second name to the exemption the comment above warns against.
+    const constraintText = enforcementText(sql)
+    if (/output_asset_id\s+is\s+not\s+null/i.test(constraintText) && /completed/i.test(constraintText)) {
       reasons.push(`${p}: premature completed=>output_asset_id constraint (belongs in ${COMPLETION_CONSTRAINT_OWNER}, which lands WITH the real renderer)`)
     }
   }
@@ -106,6 +124,42 @@ function* walk(dir) {
     if (statSync(p).isDirectory()) yield* walk(p)
     else if (/\.(ts|tsx|js|jsx)$/.test(name)) yield p
   }
+}
+
+/**
+ * The parts of a migration that REJECT a write: `check ( … )` clauses, and the
+ * conditions of `if … then raise` guards inside trigger/RPC bodies.
+ *
+ * Deliberately excludes `where` clauses. A query that filters on
+ * `output_asset_id is not null` is asking which rows have an output — the
+ * correct question — and cannot fail anyone's insert.
+ */
+function enforcementText(sql) {
+  let out = ''
+  // Balanced `check ( … )`.
+  const re = /\bcheck\s*\(/gi
+  let m
+  while ((m = re.exec(sql)) !== null) {
+    let depth = 0
+    for (let i = m.index + m[0].length - 1; i < sql.length; i++) {
+      if (sql[i] === '(') depth++
+      else if (sql[i] === ')') { depth--; if (depth === 0) { out += sql.slice(m.index, i + 1) + '\n'; break } }
+    }
+  }
+  // `add constraint … ;`
+  for (const c of sql.matchAll(/\badd\s+constraint\b[\s\S]*?;/gi)) out += c[0] + '\n'
+  // `if <condition> then … raise …` — the trigger form of the same rejection.
+  // The WHOLE guard, condition and body: `completed` is frequently the raise
+  // MESSAGE rather than the condition, and dropping the body loses it.
+  //
+  // The alternation terminates at whichever of `raise` / `end if` comes first,
+  // which is what separates a rejection from a plain branch: an `if … then
+  // select … end if` closes without ever reaching a raise, so it is skipped —
+  // that is 0111's approval lookup, and it rejects nothing.
+  for (const g of sql.matchAll(/\bif\b[\s\S]{0,400}?\bthen\b[\s\S]{0,400}?(?:\braise\b[^;]*;|\bend\s+if\b)/gi)) {
+    if (/\braise\b/i.test(g[0])) out += g[0] + '\n'
+  }
+  return out
 }
 
 function selftest() {
