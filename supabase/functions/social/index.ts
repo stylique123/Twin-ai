@@ -363,10 +363,59 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
   }
   const { data: conn } = await admin.from('platform_connections').select('*').eq('owner_id', post.owner_id).eq('platform', post.platform).maybeSingle()
   if (!conn?.access_token) return await failPost(`${ad.label} not connected`)
-  const { data: gen } = await admin.from('generations').select('edit_path').eq('id', post.generation_id).eq('user_id', post.owner_id).maybeSingle()
-  if (!gen?.edit_path) return await failPost('No finished video to publish yet')
-  const { data: signed } = await admin.storage.from('edits').createSignedUrl(gen.edit_path, 3600)
-  if (!signed?.signedUrl) return await failPost('Could not read the video file')
+  // PUBLISH-1 + APPROVAL-1. WHICH FILE GOES OUT, and whether it was cleared to.
+  //
+  // This signed `generations.edit_path` unconditionally. Every consequence
+  // follows from that one line: an editor-v2 render could not be published at
+  // all (no `edit_path`, so "No finished video to publish yet" on a video that
+  // exists), and where a legacy path DID exist alongside a v2 render, the
+  // legacy one was published — a different file from the one the creator
+  // reviewed and a client approved.
+  const { data: gen } = await admin
+    .from('generations')
+    .select('edit_path, approved, approved_output_asset_id, brand_voice_id')
+    .eq('id', post.generation_id).eq('user_id', post.owner_id).maybeSingle()
+  if (!gen) return await failPost('No finished video to publish yet')
+
+  const current = await currentOutput(admin, post.generation_id)
+
+  // THE APPROVAL GATE, and it fails CLOSED on an explicit requirement only.
+  //
+  // `needs_approval` unset is not consent and is not refusal — a creator never
+  // asked whether anyone signs off has not said that someone does, and blocking
+  // their scheduled post on a question we failed to ask would invent a workflow
+  // they never described. So this refuses only when the brand said `true`.
+  //
+  // When it does refuse, it refuses a SUPERSEDED approval too: approving one
+  // render and publishing the next is the exact failure 0111 exists to make
+  // visible, and it is worse than never approving because everyone believes it
+  // was checked.
+  // Via the GENERATION: `posts` carries no brand_voice_id, and the brand that
+  // owns the approval policy is the one the video was made for.
+  const { data: voice } = gen.brand_voice_id
+    ? await admin.from('brand_voices').select('default_capability_flags')
+        .eq('id', gen.brand_voice_id).maybeSingle()
+    : { data: null }
+  const needsApproval = (voice?.default_capability_flags as Record<string, unknown> | null)?.needs_approval
+  if (needsApproval === true) {
+    if (gen.approved !== true) return await failPost('This needs approval before it can be posted')
+    const bound = gen.approved_output_asset_id
+    if (!bound) {
+      return await failPost('Approved before we recorded which version — re-approve it before posting')
+    }
+    if (!current || current.outputAssetId !== bound) {
+      return await failPost('This video changed after it was approved — send it for approval again')
+    }
+  }
+
+  const signedUrl = current
+    ? await signOutput(admin, current.editProjectId)
+    : (gen.edit_path
+        ? (await admin.storage.from('edits').createSignedUrl(gen.edit_path, 3600)).data?.signedUrl ?? null
+        : null)
+  if (!current && !gen.edit_path) return await failPost('No finished video to publish yet')
+  if (!signedUrl) return await failPost('Could not read the video file')
+  const signed = { signedUrl }
   try {
     // Refresh a short-lived (YouTube) token before publishing so a next-day post
     // doesn't 401. Best-effort: on refresh failure we keep the old token and let
@@ -395,7 +444,26 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
       } catch { /* fall through with the stale token */ }
     }
     const res = await ad.publish({ accessToken, accountId: conn.external_account_id ?? '', videoUrl: signed.signedUrl, title: (post.caption ?? 'New video').slice(0, 90), caption: post.caption ?? '' })
-    await admin.from('posts').update({ status: 'posted', posted_at: new Date().toISOString(), external_url: res.external_url }).eq('id', post.id)
+    // PUBLISH-1: RECORD WHAT WENT OUT, not merely that something did.
+    //
+    // `posts.edit_project_id` and `posts.output_asset_id` were added by 0098 —
+    // its column comment calls the first one "THE join key" — and nothing has
+    // ever written either. So a published post could not be traced back to the
+    // render it published, which is what LEARNING-1 needs to attribute an
+    // outcome to a decision, and what a dispute needs to answer "what did you
+    // actually post".
+    //
+    // Written at the moment of success and from the SAME `current` used to sign
+    // the URL, so the record cannot describe a different file from the one the
+    // platform received. Null for a legacy publish, which is honest: those have
+    // no v2 lineage to record.
+    await admin.from('posts').update({
+      status: 'posted',
+      posted_at: new Date().toISOString(),
+      external_url: res.external_url,
+      edit_project_id: current?.editProjectId ?? null,
+      output_asset_id: current?.outputAssetId ?? null,
+    }).eq('id', post.id)
     return { ok: true, external_url: res.external_url }
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Publish failed'
@@ -406,6 +474,48 @@ async function publishOne(admin: Db, post: { id: string; owner_id: string; platf
     }
     return await failPost(msg)
   }
+}
+
+/**
+ * The generation's CURRENT editor-v2 output, by the one rule the whole product
+ * now uses: newest completion wins, id breaking a tie.
+ *
+ * `review/index.ts`, `resolveFinishedOutputs` and `set_generation_approval`
+ * order this identically, and they must: the video a reviewer WATCHES, the
+ * asset an approval BINDS to, and the file that gets PUBLISHED have to be the
+ * same render or the approval means nothing.
+ */
+async function currentOutput(
+  admin: ReturnType<typeof createClient>, generationId: string,
+): Promise<{ editProjectId: string; outputAssetId: string } | null> {
+  const { data } = await admin
+    .from('edit_projects')
+    .select('id, output_asset_id')
+    .eq('generation_id', generationId)
+    .eq('status', 'completed')
+    .not('output_asset_id', 'is', null)
+    .order('completed_at', { ascending: false, nullsFirst: false })
+    .order('id', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (!data?.id || !data.output_asset_id) return null
+  return { editProjectId: data.id, outputAssetId: data.output_asset_id }
+}
+
+/** A signed URL for a completed project's video, or null if it is not READY. */
+async function signOutput(
+  admin: ReturnType<typeof createClient>, editProjectId: string,
+): Promise<string | null> {
+  const { data: out } = await admin
+    .from('edit_outputs')
+    .select('storage_bucket, storage_path, state, kind')
+    .eq('edit_project_id', editProjectId).eq('kind', 'video').maybeSingle()
+  // READY MEANS PROBED. Publishing a reserved-but-not-ready row would push
+  // bytes that may not exist to a platform, where it cannot be taken back.
+  if (!out || out.state !== 'ready') return null
+  const { data: signed } = await admin.storage
+    .from(out.storage_bucket).createSignedUrl(out.storage_path, 3600)
+  return signed?.signedUrl ?? null
 }
 
 Deno.serve(async (req: Request) => {
