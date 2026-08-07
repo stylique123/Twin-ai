@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
@@ -74,6 +74,20 @@ export default function Onboarding() {
   // creator had to re-enter Brand DNA.
   const [mode, setMode] = useState<Mode>(() => draft?.profile ? 'confirm' : draft?.voiceId ? 'building' : 'handle')
 
+  // A FAILED SCAN MUST NOT OUTLIVE ITSELF. `mode` resumes into 'building'
+  // while the draft carries a voiceId, and `Protected` sends every signed-in
+  // user here until `onboarded` is true — so one failed scan locked the account
+  // into a screen that re-polled the same dead job on every visit. Forgetting
+  // the id is what turns that loop back into a form someone can leave.
+  const forgetDeadScan = useCallback(() => {
+    setDraft((current) => {
+      if (!current || current.userId !== userId) return current
+      const next = { ...current, voiceId: '' }
+      safeWriteDraft(next)
+      return next
+    })
+  }, [userId])
+
   const persistDraft = useCallback((next: OnboardingDraft) => {
     setDraft(next)
     safeWriteDraft(next)
@@ -122,29 +136,10 @@ export default function Onboarding() {
   // profile and there is none yet during the scan — which is exactly why the
   // question fits there: it costs the creator nothing that the scan was not
   // already spending.
-  // Q6, the second half of the same wasted minute. Its own setter rather than a
-  // generic one: the two flags gate in DIFFERENT DIRECTIONS — `can_record_screen`
-  // false hides a capture surface, `can_film_objects` false withholds footage
-  // SUGGESTIONS — so a shared helper would have to carry the difference as a
-  // parameter and the next flag added would inherit whichever direction was
-  // written first.
-  const setCanFilmObjects = useCallback((value: boolean | null) => {
-    setDraft((current) => {
-      if (!current || current.userId !== userId) return current
-      const next = { ...current, canFilmObjects: value }
-      safeWriteDraft(next)
-      return next
-    })
-  }, [userId])
-
-  const setCanRecordScreen = useCallback((value: boolean | null) => {
-    setDraft((current) => {
-      if (!current || current.userId !== userId) return current
-      const next = { ...current, canRecordScreen: value }
-      safeWriteDraft(next)
-      return next
-    })
-  }, [userId])
+  // The per-flag draft setters that lived here are gone with the questions.
+  // The confirm screen owns both inputs now and persists them through the same
+  // onDraftChange path as every other answer — one writer, one route, rather
+  // than two screens able to set the same flag.
 
   const complete = useCallback(async () => {
     await finish(refreshProfile, navigate)
@@ -169,7 +164,13 @@ export default function Onboarding() {
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ duration: 0.7, ease: EASE }}
-        className="relative w-full max-w-xl"
+        /* THE CONFIRM STEP IS NOT A PHONE FORM. Every step shared one 576px
+           column, which is right for pasting a handle and watching a scan, and
+           wrong for a screen carrying fifteen fields: on a desktop it rendered
+           as a narrow strip with the whole display empty either side and most
+           of the form below the fold. When the scan comes back thin, that strip
+           is fifteen EMPTY boxes, which is the worst version of it. */
+        className={cn('relative w-full', mode === 'confirm' ? 'max-w-4xl' : 'max-w-xl')}
       >
         <div className="glass overflow-hidden rounded-panel p-8 sm:p-9">
           <AnimatePresence mode="wait">
@@ -188,12 +189,16 @@ export default function Onboarding() {
                   draft={draft}
                   onReady={handleReady}
                   onBack={() => setMode('handle')}
-                  onCanRecordScreen={setCanRecordScreen}
-                  onCanFilmObjects={setCanFilmObjects}
+                  onScanDead={forgetDeadScan}
                 />
               )}
               {mode === 'confirm' && draft && (
-                <ConfirmStep draft={draft} onDraftChange={updateAnswers} onDone={complete} />
+                <ConfirmStep
+                  draft={draft}
+                  onDraftChange={updateAnswers}
+                  onDone={complete}
+                  onBack={() => setMode('handle')}
+                />
               )}
             </motion.div>
           </AnimatePresence>
@@ -361,14 +366,12 @@ function BuildingStep({
   draft,
   onReady,
   onBack,
-  onCanRecordScreen,
-  onCanFilmObjects,
+  onScanDead,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile) => void
   onBack: () => void
-  onCanRecordScreen: (value: boolean | null) => void
-  onCanFilmObjects: (value: boolean | null) => void
+  onScanDead: () => void
 }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
@@ -376,10 +379,17 @@ function BuildingStep({
 
   // Advance the visual stage on a gentle clock so the wait feels alive even
   // though the backend reports only building/ready/failed.
+  //
+  // AND STOP THE MOMENT IT FAILS. This ran on empty deps, so polling halted on
+  // an error and the animation did not: the screen showed a live spinner on
+  // "Synthesizing your voice" directly above the words "We couldn't read
+  // @handle". Still working and already failed, at the same time, and no way
+  // for a creator to tell which one was true.
   useEffect(() => {
+    if (err) return
     const t = setInterval(() => setStage((s) => Math.min(s + 1, SCAN_STAGES.length - 1)), 9000)
     return () => clearInterval(t)
-  }, [])
+  }, [err])
 
   useEffect(() => {
     let stopped = false
@@ -394,13 +404,25 @@ function BuildingStep({
         if (res.status === 'ready') {
           if (timer.current) clearInterval(timer.current)
           if (res.profile) onReady(res.profile)
-          else setErr('The scan finished without a voice profile. Try a different handle or describe it yourself.')
+          else {
+            setErr('The scan finished without a voice profile. Try a different handle or describe it yourself.')
+            onScanDead()
+          }
         } else if (res.status === 'failed') {
           if (timer.current) clearInterval(timer.current)
           setErr(res.error ?? 'The scan could not finish.')
+          // AND FORGET THE DEAD SCAN. `mode` resumes into 'building' whenever
+          // the draft still carries a voiceId, so a failed scan used to trap
+          // the account: onboarded stays false, every sign-in redirects here,
+          // and this screen resumes polling the same scan that already failed.
+          // The only exit was noticing the manual link. Dropping the id means a
+          // reload lands on the handle screen, which is where someone whose
+          // scan failed actually needs to be.
+          onScanDead()
         } else if (Date.now() - startedAt > MAX_WAIT_MS) {
           if (timer.current) clearInterval(timer.current)
           setErr('This is taking longer than usual. Head back and try again — a public account reads fastest.')
+          onScanDead()
         }
       } catch (e) {
         // Transient, keep polling; surface only if it persists past the cap.
@@ -408,6 +430,7 @@ function BuildingStep({
         if (Date.now() - startedAt > MAX_WAIT_MS && !stopped) {
           if (timer.current) clearInterval(timer.current)
           setErr('We couldn’t reach the scanner. Head back and try again in a moment.')
+          onScanDead()
         }
       }
     }
@@ -433,7 +456,12 @@ function BuildingStep({
 
       <div className="mt-7 space-y-3">
         {SCAN_STAGES.map((s, i) => {
-          const state = i < stage ? 'done' : i === stage ? 'active' : 'todo'
+          // A STOPPED STAGE IS NOT AN ACTIVE ONE. On failure the stage the scan
+          // died on renders as halted rather than in progress — the spinner is
+          // a promise that something is still happening.
+          const state = err
+            ? (i < stage ? 'done' : 'todo')
+            : i < stage ? 'done' : i === stage ? 'active' : 'todo'
           return (
             <div
               key={s}
@@ -474,71 +502,10 @@ function BuildingStep({
           It needs no camera and no permission prompt — the answer is about the
           creator's setup, not about what this browser can do this second, and
           opening a share-picker to find out would be asking the operating
-          system a question only the person can answer.
-          SKIPPING IS A REAL ANSWER AND IT IS NOT "NO". Tapping the chosen chip
-          again clears it back to unanswered, and nothing is written for an
-          unanswered question — `can_record_screen = false` permanently hides a
-          surface, so "they never said" must never become "they said no". */}
-      <div className="mt-7 rounded-card border border-white/8 bg-white/[0.02] p-4">
-        <p className="text-xs font-semibold text-cream">While that runs — can you record your screen?</p>
-        <div className="mt-2.5 flex flex-wrap gap-2">
-          {([true, false] as const).map((v) => (
-            <button
-              key={String(v)}
-              type="button"
-              aria-pressed={draft.canRecordScreen === v}
-              onClick={() => onCanRecordScreen(draft.canRecordScreen === v ? null : v)}
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-xs transition',
-                draft.canRecordScreen === v
-                  ? 'border-coral bg-coral/15 text-cream'
-                  : 'border-white/15 text-sand hover:bg-white/5',
-              )}
-            >
-              {v ? 'Yes' : 'No'}
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-stone">
-          Say yes and Twin can ask you to capture what is on your screen for the moments your
-          script says to show something. Skip it and nothing changes — we just won’t offer it yet.
-        </p>
-
-        {/* Q6, in the same wasted minute and for the same reason: no scan can
-            read a creator's setup. Two capability answers here switch on §7a's
-            production-mode match, which reads BOTH today and answers "don't
-            know" for everyone because nothing has ever written them.
-
-            THE DIRECTION IS OPPOSITE to the question above, which is why the
-            copy differs rather than being templated. `can_record_screen = false`
-            HIDES a capture surface; `can_film_objects = false` withholds footage
-            SUGGESTIONS. Saying no here removes advice, not ability — so the
-            sentence has to promise the right thing. */}
-        <p className="mt-4 text-xs font-semibold text-cream">And can you put a product or object in front of the camera?</p>
-        <div className="mt-2.5 flex flex-wrap gap-2">
-          {([true, false] as const).map((v) => (
-            <button
-              key={String(v)}
-              type="button"
-              aria-pressed={draft.canFilmObjects === v}
-              onClick={() => onCanFilmObjects(draft.canFilmObjects === v ? null : v)}
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-xs transition',
-                draft.canFilmObjects === v
-                  ? 'border-coral bg-coral/15 text-cream'
-                  : 'border-white/15 text-sand hover:bg-white/5',
-              )}
-            >
-              {v ? 'Yes' : 'No'}
-            </button>
-          ))}
-        </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-stone">
-          Say no and we stop suggesting shots you cannot film. Skip it and we keep showing the
-          full checklist — a suggestion you ignore costs nothing, a missing one costs a video.
-        </p>
-      </div>
-
+          system a question only the person can answer. They are asked on the
+          CONFIRM screen now, after what the creator does and what they sell,
+          because how someone films is the last thing that matters and was the
+          first thing we asked. */}
       {err && (
         <div className="mt-6 space-y-2">
           <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
@@ -584,6 +551,7 @@ function ConfirmStep({
   draft,
   onDraftChange,
   onDone,
+  onBack,
 }: {
   draft: OnboardingDraft
   onDraftChange: (
@@ -591,6 +559,7 @@ function ConfirmStep({
     brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>,
   ) => void
   onDone: () => Promise<void>
+  onBack: () => void
 }) {
   const [vp, setVp] = useState<VoiceProfile | null>(draft.profile)
   // Prefill "who you're talking to" and "what you sell" from what the scan ACTUALLY
@@ -615,8 +584,29 @@ function ConfirmStep({
   // carried here so the durable save still writes it. Read from the draft rather
   // than re-asked: two screens asking one question is two places that can
   // disagree about what a skipped answer means.
-  const canRecordScreen = draft.canRecordScreen
-  const canFilmObjects = draft.canFilmObjects
+  // MOVED HERE FROM THE SCAN SCREEN. These were the ONLY two questions asked
+  // while the scan ran, which put the least important answers first: they are
+  // about how someone FILMS, and the scan screen is where we are still working
+  // out who they are. Understanding the creator comes first, then whether there
+  // is a product, and only then how they can shoot it.
+  // EMPTY MEANS THE SCAN FOUND NOTHING, and that is a different screen from a
+  // scan that worked. Measured from the fields the scan actually populates, so
+  // a creator who typed their own audience does not count as "the scan worked".
+  // Computed once from the initial profile rather than live: a section that
+  // collapses itself the moment someone clears a field would fight them.
+  const voiceIsEmpty = useMemo(() => {
+    const p = draft.profile
+    if (!p) return true
+    const text = [p.niche, p.tone, p.pacing, p.hook_style, p.enemy]
+      .filter((v) => typeof v === 'string' && v.trim() !== '')
+    const lists = [p.vocabulary, p.recurring_ctas, p.dos, p.donts, p.pov, p.hook_patterns, p.formats]
+      .filter((v) => Array.isArray(v) && v.length > 0)
+    return text.length === 0 && lists.length === 0
+  }, [draft.profile])
+  const [showVoice, setShowVoice] = useState(!voiceIsEmpty)
+
+  const [canRecordScreen, setCanRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
+  const [canFilmObjects, setCanFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -739,13 +729,25 @@ function ConfirmStep({
         </div>
       )}
 
+      {/* WHAT CHANGES THE SCRIPT, SEPARATED FROM WHAT DESCRIBES THE VOICE.
+          Every field on this screen used to carry identical weight: the four
+          answers that decide what a video says sat between ten scan-derived
+          voice details, indistinguishable. When the scan came back thin that
+          was fifteen empty boxes with no indication which mattered — the worst
+          moment to make someone guess.
+
+          These are the ones no scan can produce. Niche moved down with the
+          voice fields, because a scan CAN read it. */}
       <div className="mt-6 space-y-4">
-        <Labeled label="Niche">
-          <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
-        </Labeled>
+        <div>
+          <p className="eyebrow text-cream">What Twin needs from you</p>
+          <p className="mt-1 text-xs text-stone">
+            No scan can read these, and each one changes what your scripts say.
+          </p>
+        </div>
         {/* Captured here so the DNA is complete from day one (the scan can't read
             these). Optional — empty is fine, the creator can fill them in Settings. */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
           <Labeled label="Who you're talking to">
             <input className="field" value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="e.g. busy founders, 25-40" />
           </Labeled>
@@ -817,6 +819,73 @@ function ConfirmStep({
             It changes what a script may promise. You can only speak for a product you own.
           </p>
         </Labeled>
+        {/* HOW THEY CAN SHOOT IT — last, and that ordering is the point.
+            These two used to be the ONLY questions asked while the scan ran,
+            so the first thing Twin wanted to know was someone's filming setup,
+            before it had established what they do or whether they sell
+            anything. They belong after both.
+
+            SKIPPING IS A REAL ANSWER AND IT IS NOT "NO". Tapping the chosen
+            chip again clears it back to unanswered, and nothing is written for
+            an unanswered question — `can_record_screen = false` permanently
+            hides a surface, so "they never said" must never become "they said
+            no".
+
+            THE TWO GATES RUN IN OPPOSITE DIRECTIONS, which is why the copy is
+            written twice rather than templated. `can_record_screen = false`
+            HIDES a capture surface; `can_film_objects = false` withholds
+            footage SUGGESTIONS. Saying no to the second removes advice, not
+            ability, so the sentence has to promise the right thing. */}
+        <Labeled label="How can you film?">
+          <p className="text-xs text-sand">Can you record your screen?</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {([true, false] as const).map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                aria-pressed={canRecordScreen === v}
+                onClick={() => setCanRecordScreen(canRecordScreen === v ? null : v)}
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-xs transition',
+                  canRecordScreen === v
+                    ? 'border-coral bg-coral/15 text-cream'
+                    : 'border-white/15 text-sand hover:bg-white/5',
+                )}
+              >
+                {v ? 'Yes' : 'No'}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
+            Say yes and Twin can ask you to capture your screen for the moments your script says
+            to show something. Skip it and nothing changes, we just will not offer it yet.
+          </p>
+
+          <p className="mt-4 text-xs text-sand">Can you put a product or object in front of the camera?</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {([true, false] as const).map((v) => (
+              <button
+                key={String(v)}
+                type="button"
+                aria-pressed={canFilmObjects === v}
+                onClick={() => setCanFilmObjects(canFilmObjects === v ? null : v)}
+                className={cn(
+                  'rounded-full border px-3 py-1.5 text-xs transition',
+                  canFilmObjects === v
+                    ? 'border-coral bg-coral/15 text-cream'
+                    : 'border-white/15 text-sand hover:bg-white/5',
+                )}
+              >
+                {v ? 'Yes' : 'No'}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] leading-relaxed text-stone">
+            Say no and we stop suggesting shots you cannot film. Skip it and we keep showing the
+            full checklist, because a suggestion you ignore costs nothing and a missing one costs
+            a video.
+          </p>
+        </Labeled>
         {/* THE CONDITIONAL. Unguessable, and unforgivable to get wrong for a
             doctor, lawyer, financial adviser or supplement brand — there is no
             model that can infer what a regulator will not let someone say. */}
@@ -836,7 +905,38 @@ function ConfirmStep({
         <Labeled label="Your goal">
           <input className="field" value={goal} onChange={(e) => setGoal(e.target.value)} placeholder="e.g. grow to 50k, drive signups, build trust" />
         </Labeled>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      </div>
+
+      {/* THE VOICE DETAILS, AND THEY COLLAPSE WHEN THERE IS NOTHING IN THEM.
+          These are what the scan produced. When it worked they are worth
+          reviewing, so the section opens. When it returned nothing they are ten
+          empty boxes that make the screen look broken and bury the answers
+          above, so it starts closed and says so. Either way nothing is hidden
+          from anyone who wants it. */}
+      <div className="mt-8 border-t border-white/8 pt-6">
+        <button
+          type="button"
+          onClick={() => setShowVoice((v) => !v)}
+          aria-expanded={showVoice}
+          className="flex w-full items-center justify-between gap-3 text-left"
+        >
+          <span>
+            <span className="eyebrow text-cream">Your voice</span>
+            <span className="mt-1 block text-xs text-stone">
+              {voiceIsEmpty
+                ? 'The scan found nothing to fill these in. You can add them now or leave them, and Twin will learn them from how you talk on camera.'
+                : 'What the scan heard. Change anything that sounds wrong.'}
+            </span>
+          </span>
+          <span className="shrink-0 text-xs text-sand">{showVoice ? 'Hide' : 'Show'}</span>
+        </button>
+      </div>
+
+      <div className={cn('mt-6 space-y-4', !showVoice && 'hidden')}>
+        <Labeled label="Niche">
+          <input className="field" value={vp.niche} onChange={(e) => setField('niche', e.target.value)} />
+        </Labeled>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-2">
           <Labeled label="Tone">
             <input className="field" value={vp.tone} onChange={(e) => setField('tone', e.target.value)} />
           </Labeled>
@@ -864,7 +964,17 @@ function ConfirmStep({
 
       {err && <p className="mt-3 rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>}
 
-      <div className="mt-8 flex justify-end">
+      {/* A WAY OUT. "Describe your voice myself" landed here with no exit, so
+          choosing it by mistake meant filling in fifteen fields or reloading
+          the page. The scan step has always had a back button; this one never
+          did, and it is the step you are most likely to reach by accident.
+
+          The draft is written to localStorage on every answer, so going back
+          keeps everything typed so far — this is a route out, not a reset. */}
+      <div className="mt-8 flex items-center justify-between gap-3">
+        <button className="btn-ghost" onClick={onBack} disabled={busy}>
+          Back
+        </button>
         <button className="btn-gradient" onClick={confirm} disabled={busy}>
           {busy ? (
             <>

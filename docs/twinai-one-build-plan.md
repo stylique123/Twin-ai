@@ -95,10 +95,20 @@ against the colours actually chosen. **Copy this shape.**
 ### Chain 4 — FOOTAGE → EDIT
 `Recording` (+ screen clips) → `EditPlan` → `ffmpegGraph` → the render.
 
-**Broken by design, not by bug.** `ffmpegGraph.ts` references only `0:v` and
-`0:a`. `EditPlan.identity.sourceAssetId` is singular. A second source cannot
-composite until both change. Everything about screen recording upstream of this
-works and dead-ends here.
+**Working.** CORRECTED 2026-08-06: an earlier revision of this document said
+`ffmpegGraph.ts` referenced only `0:v`/`0:a` and that a second source could not
+composite. **That was wrong, and it was wrong the way this document warns
+about** — a grep of the top of the file, where the per-segment chain does read
+`0:v`, and no one opened the rest. Line 813 onward declares a real `-i` per
+composed clip and resolves the input mapping once, precisely so that "the second
+clip" and "input 2" cannot drift. `editorCompile.ts`'s `placeClips` chooses the
+placement, and a clip-count mismatch is REFUSED rather than truncated — the
+comment says why: truncating "would render the take where the creator asked for
+their screen and report success."
+
+What remains open here is placement *policy* — which moment cuts to the clip is
+a rule today rather than an explicit Director selection — and proof in a real
+production render.
 
 ### Chain 5 — POST → LEARNING
 `Published post` → outcome log → gallery rank → what we suggest next time.
@@ -125,7 +135,8 @@ available.
 | What a product answer *is* (pixels + section map) | `productEvidence.ts` | working, unread |
 | Container slot detection | `containerResolution.ts` | working, partly consumed |
 | Capability flag three-state logic | `capabilities.ts` | working, unfed |
-| Screen clip capture + storage | `clip-asset`, `ScreenClipRecorder.tsx` | working, dead-ends at render |
+| Screen clip capture + storage | `clip-asset`, `ScreenClipRecorder.tsx` | working |
+| Screen clips composited into the render | `ffmpegGraph.ts:813+`, `placeClips` | working — multi-input, count mismatch refused |
 | Craft checks, outcome log, gallery rank | `craftFacts.ts`, `outcomeLog.ts`, `galleryRank.ts` | working, displayed |
 
 ### Two design rules already proven here — obey them everywhere
@@ -147,12 +158,13 @@ on gets pinned the same way.
 Distinguish these from the wiring in PART 4. These need decisions, not just
 work.
 
-### 3a. The second video source
-Screen clips are captured and thrown away at render. Fixing it means
-`EditPlan.identity` takes a list of sources and `ffmpegGraph` builds a graph
-with `1:v` in it — overlay or split-screen placement, plus the Director
-deciding *when* to cut to the clip. **This is the largest single piece of
-unbuilt work and it is not a wiring job.**
+### 3a. ~~The second video source~~ — BUILT. Placement policy is what is open.
+**Corrected.** Multi-input composition exists and is guarded. What is genuinely
+open is narrower and worth stating accurately: the Director does not yet
+*select* the moment to cut to a clip — placement is policy in the compiler — and
+no production render has proven it on real footage. That is a smaller and
+better-defined problem than "the renderer cannot take a second input", which is
+what this section used to claim.
 
 ### 3b. Research — what to put in the container for someone with nothing to sell
 A tech creator who wants followers has no product beat. §2.3's rule says the
@@ -476,14 +488,94 @@ that decides whether Twin produces videos people want to make.**
 
 ---
 
+**C-a · The gallery is already two thirds of the evidence base.**
+
+The gallery is a contributed feed of references — `gallery_items`, ~6,600 rows
+in production. `galleryRank.ts` already computes the "why it's here" column:
+seven signals, each `match` / `mismatch` / **`not_checked`**, reported as
+"3 of 7 signals" rather than "43% match", because arithmetic about what was
+examined is honest and a percentage is a claim. Apify already runs for the DNA
+scan, so refreshing a gallery row reuses an existing path rather than adding a
+dependency.
+
+What blocks it is that the facts underneath the ranking are prose:
+
+```sql
+reach text,
+likes text,
+```
+
+"2.3M", "2300000", "over 2 million" are all valid today. **Numbers that arrived
+as prose cannot be compared**, so "your teardown format outperformed by 1.4×" is
+unstatable. There is also no record of WHEN a row was checked, which makes
+"live in your niche this week" unprovable — and an unprovable recency claim is
+the confidently-wrong recommendation this plan exists to prevent.
+
+Four steps, the first three small:
+
+1. **Numeric metrics with provenance** — `views_count`, `likes_count`,
+   `metrics_fetched_at`, `metrics_source`. Never coerce prose into a number;
+   leave it NULL. Six thousand rows of prose is exactly where null-is-not-zero
+   earns its keep.
+2. **Existence and freshness** — confirm the URL still resolves and carries a
+   date. A row that fails becomes `unavailable`, neither deleted nor silently
+   kept.
+3. **`source`: `contributed` vs `scraped`**, shown on the card. A human
+   recommendation and a scrape are different claims and must not rank as one.
+4. **The falsifiable prediction** — what result would confirm or reject this
+   idea, graded later by the outcome log. **This is the step that makes it a
+   recommendation rather than a ranked list**, and it is the real design work.
+
+**Cost is what decides feature-or-bill.** ~6,600 rows refreshed daily is ~6,600
+Apify calls daily. Refresh what is SHOWN — on read, when a row is about to
+surface and its `metrics_fetched_at` is stale — plus a small daily budget for
+the top slice. A row no creator's niche matches is never refreshed and costs
+nothing.
+
+**Ranking cannot be precomputed.** The gallery is global; a recommendation is
+per-creator. `rankSignals` already takes this creator's capabilities and niche,
+so it is a read-time computation per viewer. That is already how it is written.
+
+**C-b · A description beside the product evidence, never instead of it.**
+
+`productEvidence.ts` accepts a link or images and deliberately refuses a
+sentence, because a description of a product IS the guess the container rule
+exists to refuse. That is right for the primary answer and wrong as a total
+ban: "this is for solo founders, not teams" is context no product page carries.
+
+Add it as an ANNOTATION, tagged as the creator's claim, ranked below captured
+evidence, and never promoted into a fact the model may state as product truth.
+
 ### TRACK D — The render, and the editor
 
-**D1 · A second video source.** `EditPlan.identity` takes a list;
-`ffmpegGraph` builds `1:v` into the graph; the Director decides when to cut.
-*What changes:* screen recordings stop being captured and discarded — the whole
-screen-clip feature becomes real.
+**D1 · Director-selected clip placement.** The inputs and the composition are
+built; what is missing is the Director explicitly choosing the moment rather
+than the compiler applying a rule.
+*What changes:* the clip lands where it earns attention instead of where a
+default put it.
 
-**D2 · The overlay window.** A Director decision, not effort.
+**D2 · Picture-in-picture, and whether it should exist.** `COMPOSITION_FITS`
+has exactly one value, `full_frame`, and the renderer refuses anything else
+rather than approximating it. That is right as a first implementation: joining
+windows requires exact agreement on raster, frame rate, pixel format and aspect,
+and `full_frame` conforms both branches identically, while `full_frame` has no
+layering so there is no z-order to get wrong.
+
+But for a SaaS founder, losing their face for fifteen seconds costs the human
+presence that makes the video work. **PiP is plausibly the better treatment
+there**, and the honest framing is not "split screen was rejected" — it is that
+one fit is implemented. Adding one needs the Director to decide when it applies,
+and needs a real recording to judge against.
+
+**D2b · A clip longer than its line is silently truncated.** `placeClips` sets
+`sourceEndMs` to `min(clip.durationMs, window length)` and emits nothing. Every
+other outcome in that function warns — `is_the_take`, `duplicate`, `no_window`,
+`window_too_short`, `overlaps_earlier_clip`, `limit_reached` — six named
+refusals, and the one case that silently changes what the viewer sees is quiet.
+A 20-second walkthrough under a 12-second line loses its last 8 seconds, so
+"and then you hit Save" can play over a screen that never reaches Save. **The
+picture and the voice disagree and nothing says so.** Fix: warn on truncation
+and surface it, so the creator can re-record or lengthen the line.
 
 **D3 · Turn the editor on.** Verify each prerequisite against the deployed
 environment, not the file describing it. Then one real recording, from one real
@@ -729,3 +821,259 @@ Editor engineering is at 7.8 and its production readiness is at 4.0. Nothing in
 that gap is a missing feature. It is one real recording, and the chain that
 carries its output — unchanged, and provably the same file — through approval,
 scheduling, publishing and back into what gets recommended next.
+
+---
+
+## PART 10 — THE SCRIPT NEEDS A DIRECTOR TOO
+
+Everything in this part comes from reading the pipeline, not from theory. Three
+findings decide the design.
+
+### 10.1 — WHY THE FACTS FEEL SEPARATE: THEY ARE SEPARATE
+
+`generate-blueprint` composes the creator's facts as **independent lines in one
+prompt**:
+
+```
+- Audience: …
+- Product or offer the CTA should point at: …   (+ whose it is)
+- What they do: …                                (new)
+- Goal: …
+- Tone and voice: …
+```
+
+Each fact is true and each is stated alone. **Nothing composes them into a
+position.** "A SaaS founder, talking to solo developers, who wants demo signups,
+whose product is a debugging tool" is a specific video; five separate lines are
+five constraints a model satisfies one at a time. That is exactly why the output
+reads generically even when every input is right.
+
+**And there is only ONE model call.** It produces concept, packaging, hooks,
+script, shot list, captions, publish plan and sprint in a single shot. There is
+no stage that *decides what this video is* before something writes it.
+
+### 10.2 — SCENE LENGTH IS AN ACCIDENT, AND HERE IS THE EXACT MECHANISM
+
+`recordingScriptAdapter` creates **one scene per `script[]` entry**, and each
+scene's length is `estimateDurationSec(line, wpm)` — words divided by speaking
+rate. So:
+
+- The model decides how much text goes in an entry.
+- The adapter turns every entry into exactly one take.
+- Duration is derived from word count afterwards.
+
+**Nothing reasons about how long a beat should be.** A six-word line and a
+forty-word line each become one scene and one take, which is precisely the
+"sometimes one line, sometimes twice as long" the creator feels. It is not the
+model misbehaving; **no rule exists for it to follow.**
+
+### 10.3 — THERE IS NO VISUAL HOOK, ANYWHERE
+
+The schema has `hook_options` (spoken lines) and a thumbnail concept. It has no
+pattern interrupt, no opening visual, no "what changes on screen in the first
+second". `SceneType` is `talking_head | b_roll | screen_recording |
+product_demo | cta` — five ways to be a shot, none of them a disruption.
+
+**A hook that is only words competes with every other talking head.**
+
+### 10.4 — THE EDITOR IS STRONG; THE DIRECTOR IS NARROW
+
+Worth stating plainly because it decides where effort goes. The editor has real
+depth: word-level speech, candidate cuts, boundaries, pinned brand snapshot,
+caption contrast, safe areas, multi-input composition, validation, cancellation,
+an idempotent ledger.
+
+**The Director's job is small by comparison: `selections: number[]`.** It picks
+which candidate cuts to take, plus pacing, music and a summary. It is a
+*chooser over a list somebody else built*. It never asks whether the video's
+shape is right, whether a beat earns its length, or whether the opening does
+anything visually.
+
+**So the instinct is correct: the editor does not need more machinery. The
+thing giving it instructions needs to think.** And the same is true one stage
+earlier — nothing plans the script either.
+
+---
+
+## PART 11 — WHAT TO BUILD
+
+### 11.1 · The Composer — one position, not five constraints
+*Before any writing happens.*
+
+A cheap first pass whose only output is the **video's position**, composed from
+all the facts together:
+
+> *For a SaaS founder selling a debugging tool to solo developers who wants demo
+> signups: the video is a live failure they will recognise, fixed on screen in
+> under a minute. Proof is the screen. The CTA is a trial, not a follow.*
+
+Then the writer is given the position, not the five lines. **Same facts, one
+subject.** This is the smallest change that makes the facts work side by side,
+and it needs no new question.
+
+*Consumer: the script writer. Effect: the output stops being an average of
+constraints.*
+
+### 11.2 · The Script Director — decide the shape before writing the words
+
+A planning stage that outputs a **beat plan** and nothing else:
+
+| field | what it decides |
+|---|---|
+| `beats[]` | how many, and what each is FOR |
+| `targetSec` per beat | **the length decision, made deliberately** |
+| `sceneType` per beat | talking head, screen, product, b-roll |
+| `visualHook` | what changes on screen in the first second |
+| `rehookAt` | where attention is reset |
+| `proof` per beat | what makes it believable — screen, object, number, story |
+
+Then the writer writes **to that plan**, and `duration_sec` becomes a target the
+words are written to fit rather than a number derived after the fact.
+
+**This directly fixes 10.2.** A beat plan that says *"beat 3: 8 seconds, screen
+recording, show the error"* cannot produce a forty-word talking-head line.
+
+*Rule: the beat count is DECIDED, never defaulted. A 20-second product demo and
+a 90-second teardown do not both get seven beats.*
+
+### 11.3 · The visual hook, as a first-class field
+
+Add to the beat plan and carry it to the shoot plan:
+
+- **what the viewer sees in the first second** — motion, a prop entering, a
+  screen mid-error, a cut mid-gesture
+- **why it interrupts** — one line, so the creator can judge it
+
+Do NOT add a "pattern interrupt type" enum. That is the retired archetype trap
+in new clothing.
+
+### 11.4 · The shoot plan a beginner can actually follow
+
+`background` and `action_posing` **already exist** in the script schema and
+already reach `setup` in the adapter. What is missing is not data — it is that
+the guidance is generic and never says *why*.
+
+Per beat, in plain words:
+
+- **Where to stand** — "kitchen counter, window on your left" beats "clean,
+  well-lit background"
+- **What must NOT be in frame** — the single most useful instruction nobody gives
+- **Phone position** — height, distance, portrait, propped on what
+- **How to say it** — the one word to lean on, where to pause
+- **What to hold or show**, and when
+
+*Every line should be executable by someone who has never filmed anything, with
+no equipment beyond a phone and whatever is already in the room.*
+
+### 11.5 · Learning, bounded — better scripts over time
+
+The lineage exists for the first time: output → post → outcome. The rule that
+keeps it honest:
+
+- A pattern changes future planning **only** at adequate sample size.
+- A single viral post changes **nothing**.
+- Core brand truth **never** mutates automatically.
+- Every learned preference is **inspectable and undoable**.
+
+*What learns:* which beat shapes held attention for THIS creator, which hooks
+earned saves, which proof types converted. *What does not:* who they are, what
+they sell, what they may not claim.
+
+---
+
+## PART 12 — TESTING IT WITH REAL BEGINNERS
+
+**A model cannot judge whether a shoot plan is followable by a beginner.** It
+knows what good instructions look like, which is exactly the wrong instrument —
+the failure mode is instructions that *read* clear and stall someone holding a
+phone.
+
+**So this is not a task an agent can complete, and pretending otherwise would be
+the most expensive false claim in this document.** What can be built is the
+comparison, for a human to run:
+
+1. **Two variants of the same video's plan**, from the same facts — the current
+   output, and the beat-planned one. Same creator, same reference, side by side.
+2. **A script for the session**, five questions, no leading language:
+   - Which one would you pick up and film right now?
+   - Point to the first line you do not understand.
+   - Where would you stand? *(the plan should have answered this)*
+   - What would you do first?
+   - What is missing that you would have to guess?
+3. **Record what they DID, not what they said.** "It's clear" and then not
+   filming is the answer, and it is the opposite of the words.
+
+**Two beginners is the right number to start.** The first tells you what is
+broken; the second tells you whether it was them or the plan.
+
+---
+
+## PART 13 — HOW THE BEAT PLAN CONNECTS TO EVERY COMPONENT
+
+A new planning layer that does not name its consumers is the failure this whole
+document exists to end. So: **every component of Twin, and what it does with the
+beat plan.** If a row cannot be filled, that part of the plan does not get
+built.
+
+### The producer
+
+`generate-blueprint` gains two cheap calls before the writing call:
+
+```
+brief + DNA  →  Composer   →  position (one paragraph)
+position     →  Director   →  beatPlan (the shape)
+beatPlan     →  Writer     →  blueprint (the words)
+```
+
+**Stored on the generation, pinned like the brand snapshot**, so a re-read months
+later shows the plan the video was actually written to — not a plan regenerated
+from facts that have since changed.
+
+### The consumers, one per component
+
+| component | what it reads | what changes |
+|---|---|---|
+| **`recordingScriptAdapter`** | `beats[].targetSec`, `sceneType` | **The fix for scene length.** `duration_sec` becomes the beat's target instead of words ÷ wpm. One scene per BEAT, not per `script[]` entry — so the model can no longer decide take length by how much it typed. |
+| **Teleprompter** | `beats[].targetSec`, `purpose` | Shows the beat's intent and its intended length, so a creator knows a beat is meant to be 6 seconds before they ramble for 30. `show_in_teleprompter` still routes on scene structure — **no content-type enum.** |
+| **Scene cards / shoot plan** | `visualHook`, `background`, `action_posing`, `proof` | Where to stand, what must not be in frame, phone position, what to hold. `background` and `action_posing` already exist and already reach `setup` — they get *specific* rather than new. |
+| **`containerResolution`** | `beats[].proof` when it is `screen` or `object` | A beat whose proof is a screen IS a declared slot. Today the slot comes from a `[SHOW: …]` marker in prose; from the beat plan it is structural, so a promised proof cannot go missing silently. |
+| **`ScriptEditor`** | the beat plan alongside the words | Editing a line shows which beat it belongs to and what that beat is for. `applyDialogueEdit` already re-estimates `duration_sec`; with a target it can say **"this is now 14s against a 6s beat."** |
+| **Capability flags** | `beats[].sceneType` | A beat planned as `screen_recording` for someone whose `can_record_screen` is not explicitly true must be re-planned, not silently dropped. |
+| **Editor Director** | `beats[].purpose` and `targetSec` | The Director currently picks cuts from candidates with no idea what the video is doing. Given the beat plan it can cut *toward* an intended shape — the narrowness identified in 10.4, fixed by giving it intent rather than more machinery. |
+| **`craftFacts` / CraftChecks** | `beats[].targetSec` vs measured | A new checkable fact: **did the finished video match its plan?** Craft checks already refuse to report what they cannot measure, so a beat with no measurement stays `not_checked`. |
+| **`galleryRank`** | `beats[]` shape | An eighth signal becomes possible: does this reference's shape match what this creator can execute? Only if measurable — `not_checked` otherwise, per the existing rule. |
+| **`outcomeLog`** | beat plan ↔ outcome | **This is what makes learning real.** Which beat shapes held attention for THIS creator. Bounded: adequate sample size, one viral post changes nothing, brand truth never mutates. |
+| **`brandSnapshot`** | — | Unchanged, and deliberately. Brand visual identity is pinned separately and stays that way; the beat plan is about shape, not colour. |
+| **Review / approval / publish** | — | Untouched. That chain is the other session's and the beat plan must not reach into it. |
+
+### The rules this obeys
+
+**Unanswered emits nothing.** A beat plan the Composer could not produce means
+the writer gets today's prompt, not an invented plan. Degrading to the current
+behaviour is correct; inventing a shape is not.
+
+**Pinned, never re-derived.** Every consumer reads the stored plan. No stage
+re-plans from live DNA — that is the "no downstream stage rereads live mutable
+DNA" rule from the audit.
+
+**One writer.** `generate-blueprint` produces it. Nothing else writes a beat
+plan, ever.
+
+**It must pass the consumer guard.** If the beat plan is stored and no component
+reads it, CI fails — the same check that caught `goal` being read from three
+authorities and none of them the creator's answer.
+
+### Build order, so nothing is stranded
+
+1. **Composer only.** Position into the existing prompt. No new storage, no new
+   consumers, immediately better output. *Reversible in one line.*
+2. **Beat plan produced and stored, read by ONE consumer** —
+   `recordingScriptAdapter`, because scene length is the loudest defect.
+3. **Then teleprompter and scene cards** — the creator-facing half.
+4. **Then the editor Director** — it needs a plan to exist before it can cut
+   toward one.
+5. **Then craft checks and outcomes** — measurement last, because it measures
+   the four above.
+
+**Each step ships with its consumer.** Step 2 does not merge as "the plan is
+stored, readers coming."
