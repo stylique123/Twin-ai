@@ -34,6 +34,18 @@ export interface RecordingScene {
   purpose: string // plain-language why this scene exists
   dialogue: string | null // exact spoken words, or null for silent b-roll
   duration_sec: number // estimated, drives teleprompter pacing
+  // THE LENGTH THAT WAS DECIDED, kept beside the length currently in force.
+  //
+  // `duration_sec` is live: `applyDialogueEdit` re-estimates it every time the
+  // creator edits the words. If the plan's target were only written there, the
+  // first edit would erase the decision and nothing downstream could ever say
+  // "this is now 14s against a 6s beat" — the drift would be invisible at the
+  // exact moment it appears.
+  //
+  // Absent means no beat plan applied to this scene, which is not the same as a
+  // target of zero and not the same as agreement. Consumers compare only when
+  // it is present.
+  target_sec?: number | null
   camera_framing: string // creator language, e.g. "Chest-up shot"
   background: string // setting guidance
   movement: string // expression / motion cue

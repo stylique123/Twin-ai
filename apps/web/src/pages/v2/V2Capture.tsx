@@ -222,10 +222,35 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   const words = useMemo(() => (scene?.dialogue || '').split(/\s+/).filter(Boolean), [scene])
   const wpmVal = WPM_PRESETS[timeline.wpm]
   const readCount = recording ? Math.floor((sceneElapsed / 60) * wpmVal) : -1
-  const estSec = Math.max(1, Math.round(estimateDurationSec(scene?.dialogue ?? null, timeline.wpm)))
-  // Hard per-scene cap (sceneTimeCapSec, @twinai/shared): when a read runs past it
-  // we auto-stop → the Retake/Next card, so a scene can never record forever.
-  const sceneLimit = sceneTimeCapSec(estSec)
+  // THE SCENE'S OWN LENGTH, not a second opinion about it.
+  //
+  // This used to re-derive the estimate from the words right here, ignoring
+  // `scene.duration_sec` entirely — a second estimator for a fact the scene
+  // already carries. The two agreed only by coincidence, and the moment the
+  // adapter's number came from anywhere other than the same words-over-WPM sum
+  // (a beat plan's decided target, an edit, a future planner) the screen the
+  // creator actually films against would have quietly disagreed with the plan
+  // they read. `totalDurationSec` was already summing `duration_sec`, so the
+  // total and the per-scene numbers could not both be right.
+  const plannedSec = Math.max(1, Math.round(
+    typeof scene?.duration_sec === 'number' && scene.duration_sec > 0
+      ? scene.duration_sec
+      : estimateDurationSec(scene?.dialogue ?? null, timeline.wpm),
+  ))
+  const estSec = plannedSec
+
+  // THE CAP IS NOT THE TARGET, and conflating them would cut people off.
+  //
+  // `sceneTimeCapSec` AUTO-STOPS the recording. A beat planned for 6 seconds
+  // whose words actually take 14 would stop the creator mid-sentence, and they
+  // would have no idea why — the plan being optimistic is our problem to absorb,
+  // not theirs to discover while filming.
+  //
+  // So the cap is sized on whichever is LONGER: what was planned, or what the
+  // words on screen genuinely need. The target still guides them; the ceiling
+  // just refuses to punish them for following it.
+  const spokenSec = Math.max(1, Math.round(estimateDurationSec(scene?.dialogue ?? null, timeline.wpm)))
+  const sceneLimit = sceneTimeCapSec(Math.max(plannedSec, spokenSec))
 
   // Tick a per-scene clock only while actively recording THIS scene, and auto-stop
   // the scene the moment it hits its time cap.
@@ -642,7 +667,11 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
       <div className="text-center">
         <div className="text-sm font-semibold text-emerald-400">Scene {i + 1} complete ✓</div>
         <div className="mt-1 font-display text-xl text-white">Next · Scene {i + 2} of {scenes.length}</div>
-        <div className="mt-0.5 text-xs text-white/50">{sceneTypeLabel(next?.scene_type)} · about {Math.round(estimateDurationSec(next?.dialogue ?? null, timeline.wpm))}s</div>
+        <div className="mt-0.5 text-xs text-white/50">{sceneTypeLabel(next?.scene_type)} · about {Math.max(1, Math.round(
+          typeof next?.duration_sec === 'number' && next.duration_sec > 0
+            ? next.duration_sec
+            : estimateDurationSec(next?.dialogue ?? null, timeline.wpm),
+        ))}s</div>
         {/* Reassure the creator the camera did NOT turn off — it's just paused between
             scenes (the recorder pauses, the camera stream stays live). */}
         <div className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-white/70">

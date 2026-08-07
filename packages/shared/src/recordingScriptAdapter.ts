@@ -47,6 +47,8 @@ function framingFor(
   }
 }
 
+import { readBeatPlan, beatDurationSec, type PlannedBeat } from './beatPlan'
+
 export interface BuildRecordingScriptInput {
   generationId: string
   blueprint: Blueprint
@@ -60,6 +62,16 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
   const wpm = input.wpm ?? DEFAULT_WPM
   const hook = (input.selectedHook || blueprint.hook_options?.[0] || blueprint.script?.[0]?.line || '').trim()
   const platform = input.platform || blueprint.reference_read?.platform || 'reels'
+
+  // THE DECIDED LENGTHS, when the model returned a plan that lines up with the
+  // script. Read once against the script's own length: a plan that disagrees is
+  // refused whole rather than mapped by guesswork, so every scene falls back to
+  // the estimator together instead of some scenes silently taking a target that
+  // belongs to a different beat.
+  const beatPlan: PlannedBeat[] | null = readBeatPlan(
+    (blueprint as { beat_plan?: unknown }).beat_plan,
+    Array.isArray(blueprint.script) ? blueprint.script.length : 0,
+  )
 
   const scenes: RecordingScene[] = []
   const usedCaptions = new Set<string>()
@@ -188,7 +200,12 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       scene_type: isBroll ? 'product_demo' : 'talking_head',
       purpose: seg.section?.trim() || 'Deliver the next point',
       dialogue: line,
-      duration_sec: estimateDurationSec(line, wpm),
+      // DECIDED, not derived — the plan's target when there is one, and the
+      // words-over-speaking-rate estimate when there is not.
+      duration_sec: beatDurationSec(beatPlan, i, estimateDurationSec(line, wpm)),
+      // Kept beside it, so an edit that stretches the line cannot erase what the
+      // beat was planned to be.
+      ...(beatPlan?.[i]?.targetSec != null ? { target_sec: beatPlan[i].targetSec } : {}),
       ...framingFor(i + 1, blueprint, seg),
       caption_text: pushCaption(captionFromLine(line), n),
       pause_after: true,
