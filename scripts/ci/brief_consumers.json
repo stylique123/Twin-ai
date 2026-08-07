@@ -53,12 +53,10 @@
       "readBy": ["supabase/functions/generate-blueprint/index.ts"]
     },
     "workKind": {
-      "readBy": [],
-      "unwiredReason": "The script generator is never told what the creator does, so a doctor and a hobbyist get the same script. Two lines in the blueprint brief, beside Audience and Goal."
+      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
     },
     "workKindOther": {
-      "readBy": [],
-      "unwiredReason": "Ships with workKind. The free text a creator types to explain what they actually do is currently discarded at the last hop, which is the most insulting version of this bug."
+      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
     },
     "promotes": {
       "readBy": ["supabase/functions/generate-blueprint/index.ts"]
