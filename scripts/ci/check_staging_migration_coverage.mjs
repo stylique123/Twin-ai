@@ -89,6 +89,16 @@ export const EXCLUDED = {
     + '`post_outcome_observations` and `dna_claims` — none of which staging has. '
     + 'Same reason as 0112: staging is an editor test bed that never publishes, so '
     + 'the migration would fail outright rather than pass vacuously.',
+  '0117_no_trigger_function_is_an_rpc':
+    'Eleven REVOKEs, and staging has only TWO of the eleven functions (verified by '
+    + 'querying its catalog: `editor_capture_no_mutate` and `editor_capture_ready_guard` '
+    + 'exist; the other nine do not). A REVOKE on a function that does not exist is an '
+    + 'error, so the migration would fail on its first statement rather than pass '
+    + 'vacuously — staging is an editor test bed and has no credits, profiles, ops or '
+    + 'subscriptions tables to hang the rest on. Applied to production and verified by '
+    + 'exercising BOTH classes after the revoke: `reject_new_autoedit_job` still refuses '
+    + 'an autoedit insert, and the SECURITY DEFINER `notify_admins_on_ops_alert` still '
+    + 'wrote one notification per admin.',
   '0109_pre_script_brief':
     'Adds a column to `brand_voices`, which on staging is a fixture rather than the '
     + 'real table. The editor reads the brief through the blueprint, not directly.',
