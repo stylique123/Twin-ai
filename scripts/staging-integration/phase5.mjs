@@ -209,22 +209,47 @@ function stopAll() { for (const w of [...workers]) stopWorker(w, 'SIGKILL') }
 // ---- fixture: a REAL spoken recording with known content -------------------
 //  seg1 (scripted): "The quick brown fox jumps over the lazy dog."
 //  1.5s silence
-//  seg2 (scripted): "Um, I want, I want to tell you about pineapples today."
+//  the FILLED PAUSE: "um", synthesized QUIETER and flanked by hesitation
+//  0.4s silence
+//  seg2 (scripted): "I want, I want to tell you about pineapples today."
 //  1.5s silence
 //  seg3 (OFF-script): "Bananas are wonderful in the morning."
+//
+// WHY THE "um" IS ITS OWN SEGMENT (issue #194).
+//
+// It used to be the first word of seg2, synthesized at the same amplitude as
+// everything else and read as continuous prose. That fixture contained the
+// WORD "um" but not a FILLED PAUSE: espeak emits constant-amplitude speech, so
+// there was no energy drop, and reading it inline left no hesitation either
+// side. The only thing marking it as a disfluency was the ASR token.
+//
+// That was fine while the filler gate only asked "did the VAD hear sound here",
+// and it stopped being fine the moment #194's detector started requiring
+// acoustic evidence — because S12 was then asserting detection from the
+// transcript alone, which is the exact thing #194 forbids. The detector was
+// right to refuse it; the fixture was not expressing what the check claimed.
+//
+// So the fixture now contains a real one: quieter than the surrounding speech
+// (`-a 55` against `-a 120`) and flanked by pauses. S12 is unchanged.
 async function makeSpeechFixture(dir) {
-  const es = (out, text) => execFile('espeak-ng', ['-v', 'en-us', '-s', '130', '-a', '120', '-w', out, text], { timeout: 60_000 })
+  const es = (out, text, amp = 120) => execFile('espeak-ng', ['-v', 'en-us', '-s', '130', '-a', String(amp), '-w', out, text], { timeout: 60_000 })
   const ff = (args) => execFile('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', ...args], { timeout: 120_000 })
   await es(join(dir, 's1.wav'), 'The quick brown fox jumps over the lazy dog.')
-  await es(join(dir, 's2.wav'), 'Um, I want, I want to tell you about pineapples today.')
+  // Reduced effort, as a real filled pause is produced.
+  await es(join(dir, 'um.wav'), 'Um,', 55)
+  await es(join(dir, 's2.wav'), 'I want, I want to tell you about pineapples today.')
   await es(join(dir, 's3.wav'), 'Bananas are wonderful in the morning.')
   await ff(['-f', 'lavfi', '-i', 'anullsrc=r=22050:cl=mono', '-t', '1.5', '-sample_fmt', 's16', join(dir, 'gap.wav')])
-  for (const f of ['s1', 's2', 's3']) {
+  // The trailing hesitation. Deliberately short — long enough to read as a
+  // hesitation, short enough not to become a silence candidate in its own right.
+  await ff(['-f', 'lavfi', '-i', 'anullsrc=r=22050:cl=mono', '-t', '0.4', '-sample_fmt', 's16', join(dir, 'hes.wav')])
+  for (const f of ['s1', 'um', 's2', 's3']) {
     await ff(['-i', join(dir, `${f}.wav`), '-ac', '1', '-ar', '22050', '-sample_fmt', 's16', join(dir, `${f}n.wav`)])
   }
-  await ff(['-i', join(dir, 's1n.wav'), '-i', join(dir, 'gap.wav'), '-i', join(dir, 's2n.wav'),
+  await ff(['-i', join(dir, 's1n.wav'), '-i', join(dir, 'gap.wav'), '-i', join(dir, 'umn.wav'),
+    '-i', join(dir, 'hes.wav'), '-i', join(dir, 's2n.wav'),
     '-i', join(dir, 'gap.wav'), '-i', join(dir, 's3n.wav'),
-    '-filter_complex', '[0:a][1:a][2:a][3:a][4:a]concat=n=5:v=0:a=1[a]', '-map', '[a]', join(dir, 'speech.wav')])
+    '-filter_complex', '[0:a][1:a][2:a][3:a][4:a][5:a][6:a]concat=n=7:v=0:a=1[a]', '-map', '[a]', join(dir, 'speech.wav')])
   const dur = (await execFile('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', join(dir, 'speech.wav')])).stdout.trim()
   await ff(['-f', 'lavfi', '-i', `testsrc=size=720x1280:rate=30:duration=${Math.ceil(Number(dur))}`,
     '-i', join(dir, 'speech.wav'),
