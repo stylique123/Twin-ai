@@ -277,6 +277,11 @@ is a claim about staging.
 
 ## E. Outstanding on the user's side
 
+**See `docs/recording-day-runbook.md`** for what one recording settles, the two
+flags that gate it, the queries to run afterwards, and the process notes that
+cost hours to learn. This section is the summary; that document is the
+instruction.
+
 - **Rotate the Gemini API key** that was pasted in plaintext in the session
   transcript. https://aistudio.google.com/apikey, then update
   `/opt/twinai-worker.env` and `docker restart twinai-worker`. Check the
