@@ -19,7 +19,7 @@
 //   TIKTOK_CLIENT_KEY, TIKTOK_CLIENT_SECRET
 //   META_APP_ID, META_APP_SECRET            (Instagram via the Graph API)
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { encryptToken, decryptToken } from './tokenCrypto.ts'
 
 const cors = {

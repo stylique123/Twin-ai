@@ -13,7 +13,7 @@
 // token and to sign the private edits-bucket media — never to expose anything the
 // token doesn't point at.
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',

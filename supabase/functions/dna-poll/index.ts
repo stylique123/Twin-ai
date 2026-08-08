@@ -9,7 +9,7 @@
 //
 // Deploy:  supabase functions deploy dna-poll
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import {
   cors,
   extractPosts,

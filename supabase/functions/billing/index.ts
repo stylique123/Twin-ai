@@ -14,7 +14,7 @@
 //   STRIPE_SECRET_KEY, STRIPE_PRICE_<PLAN>
 //   CRYPTO_WALLET, CRYPTO_ASSET  (e.g. a USDT/USDC address)  — also used by fasset
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',

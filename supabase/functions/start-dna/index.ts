@@ -7,7 +7,7 @@
 // Deploy:  supabase functions deploy start-dna
 // Secrets: APIFY_TOKEN, GEMINI_API_KEY (shared with generate-blueprint)
 
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 import { cors, json, normalizeHandle, startApifyRun, type Platform } from '../_shared/dna.ts'
 
 const PLATFORMS: Platform[] = ['tiktok', 'instagram', 'youtube', 'other']

@@ -237,6 +237,14 @@ jobs:
       # An icon-only button with no accessible name is announced as "button"
       # and nothing else. Nine shipped; the tenth arrives by copying a file
       # written before the rule existed.
+      # A floating major means the code that deploys is not the code CI ran.
+      # On 2026-08-06 an npm/JSR propagation race on supabase-js killed a
+      # 50-minute matrix run; the same race during a deploy takes the functions
+      # down instead.
+      - name: Edge dependency pins (an edge import must name an exact version)
+        run: |
+          node scripts/ci/check_edge_dependency_pins.mjs --selftest
+          node scripts/ci/check_edge_dependency_pins.mjs
       - name: Icon-button labels (an icon-only button must say what it does)
         run: |
           node scripts/ci/check_icon_button_labels.mjs --selftest

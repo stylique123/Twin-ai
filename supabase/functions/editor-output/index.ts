@@ -42,7 +42,7 @@
 // that turning off new edits also makes every already-finished video
 // unplayable — a different and much worse decision than the one the switch was
 // created to express.
-import { createClient } from 'jsr:@supabase/supabase-js@2'
+import { createClient } from 'jsr:@supabase/supabase-js@2.112.2'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
