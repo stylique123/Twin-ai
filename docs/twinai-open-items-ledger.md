@@ -260,6 +260,66 @@ Zero. The legacy `autoedit` path completed 17 jobs; **editor v2 has never
 completed a run in production.** Everything in section A about the real render
 is a claim about staging.
 
+### C8. Per-step outcome record — EDITOR PARTIAL, SCRIPT ABSENT, DNA PARTIAL
+Requested directly: when a result comes back, we should be able to see **which
+steps ran, which succeeded, which failed, and why** — for the editor, for the
+script, and for DNA. Today that is true for one of the three.
+
+**Editor — recorded, but the reason is not.** `edit_events` is append-only,
+`seq`-ordered, one row per stage with `stage`/`pct`/`message_code`/`details`;
+`edit_projects.failure_code` is a typed code; `edit_director_calls` is a real
+state machine (`started → received → succeeded|failed|unknown`) carrying
+`failure_code` and token usage. This is what answered "how often has the
+director call failed, ever" on 2026-08-08 — three times in its whole history —
+and it is why that failure was correctly called transient rather than guessed at.
+
+What is missing is the CAUSE. `directorProvider.ts:151` builds
+`director provider HTTP ${res.status}`; `editorDirector.ts:287` re-throws
+carrying only the code. So a 429 (our quota), a 503 (Google's problem) and a
+400 (our malformed request) are indistinguishable in the record, and they call
+for three different responses. One-line fix; touches the render path, so it
+needs its own PR and its own matrix.
+
+**Script — no durable record of failure at all.** This is the real hole.
+`generate-blueprint` inserts the `generations` row only AFTER the model call
+succeeds (`index.ts:869`). On a timeout, a `MAX_TOKENS` truncation, invalid
+JSON, or a non-2xx, it refunds the credits, writes a `console.error`, and
+returns a generic "Generation failed." **No row is written anywhere.**
+Consequences, all of them current:
+
+- "How often does script generation fail?" — unanswerable from the database.
+- "What does it fail on?" — unanswerable.
+- The model-attempt loop falls back from the primary model to a backup; that
+  fallback is visible only in a console line, so we cannot tell how often we
+  are silently serving the second-choice model.
+
+Edge logs are ephemeral, so this is gone within days. The one durable record is
+an `ops_events` row written when the REFUND fails — i.e. we durably record the
+failure of the failure handler, but not the failure.
+
+**DNA — the claim is evidenced, the run is not.** `dna_claims` has real
+discipline on the OUTPUT (correlations need a sample size, hypotheses stay
+untested, business claims need attribution). There is no `edit_events`
+equivalent for the run that produced it, so "why was this claim NOT made" has
+no record.
+
+**What to build, in this order** (each is independently useful; do not batch):
+
+1. A durable attempt row for script generation, written BEFORE the model call
+   and settled after — the same shape `edit_director_calls` already proves
+   works. It must record the model actually used, the attempt index, and a
+   typed failure code. Written before the call is the whole point: a row only
+   written on success cannot describe a failure.
+2. Carry the provider's status/detail into the stored failure, for the script
+   path and the director path alike. A code without a cause is a code that
+   sends you to the logs, and the logs expire.
+3. A stage record for the DNA/brand-truth run, modelled on `edit_events`.
+
+**The trap to avoid.** Do not add a table that nothing writes to, and do not
+add a "reason" column that only ever holds a generic string. That is the
+reader-with-no-writer family of defect this whole ledger exists to remove. Each
+of the three lands with its writer, or it does not land.
+
 ---
 
 ## D. Loopholes found in the production audit
