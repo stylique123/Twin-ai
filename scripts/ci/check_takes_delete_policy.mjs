@@ -1,9 +1,18 @@
 // R6-4 / hardened R7-1: migration-derived proof of the `takes` storage-policy
 // posture, with SOUND, TABLE-QUALIFIED policy lifecycle handling.
 //
-// The prod-source-smoke residue accounting depends on ONE fact: a client cannot
-// delete its own `takes` object, because `storage.objects` has no DELETE-capable
-// policy targeting the `takes` bucket. This module builds a real policy INVENTORY
+// TWO facts about the `takes` bucket are asserted here.
+//
+// 1. A client cannot DELETE its own `takes` object — the prod-source-smoke
+//    residue accounting depends on it — because `storage.objects` has no
+//    DELETE-capable policy targeting the bucket.
+// 2. Since 0112, a client cannot INSERT into it either. That assertion used to
+//    run the other way: this guard REQUIRED the INSERT policy, which meant the
+//    one automated check watching this bucket was pinning a provenance bypass
+//    in place. Uploads go through source-asset → signed upload token →
+//    finalize → validate_source, and a signed target needs no bucket policy.
+//
+// SELECT is still required: existing recordings must stay playable. This module builds a real policy INVENTORY
 // keyed by (TABLE, policy name) — not by name alone — and models the full
 // lifecycle: CREATE / DROP / ALTER, each qualified by its target table.
 //
@@ -120,7 +129,20 @@ export function evaluate(sqlBySource) {
   // Sound gate: ANY DELETE/ALL policy on storage.objects fails (can't prove an
   // arbitrary/indirect predicate excludes the takes bucket).
   if (inv.deletePolicyPresent) for (const p of inv.deleteCapableOnStorage) reasons.push(`DELETE-capable policy on storage.objects present: "${p.name}" (for ${p.command}) — no client DELETE/ALL policy on storage.objects is permitted`)
-  if (!inv.insertPresent) reasons.push('expected takes INSERT policy is missing')
+  // INVERTED BY 0112, and the inversion is the point.
+  //
+  // This used to read `if (!inv.insertPresent)` — the guard REQUIRED a takes
+  // INSERT policy, so the one automated check watching this bucket was holding
+  // a security bypass in place. A client INSERT policy lets bytes land in
+  // `takes/<uid>/…` with no capture intent, no finalize record and no etag
+  // binding, which makes `bytes_changed_after_finalize` pass vacuously and
+  // leaves the 0090–0093 provenance chain resting on a row that was never
+  // created. Uploads go through source-asset → signed token → finalize →
+  // validate_source; a signed URL authorizes exactly one object and needs no
+  // bucket INSERT policy at all.
+  if (inv.insertPresent) reasons.push('a takes INSERT policy is present — uploads must go through source-asset → signed upload token → finalize (see 0112); a signed target needs no bucket INSERT policy')
+  // SELECT stays REQUIRED. 17 objects already live in this bucket and creators
+  // play them back; this gate is about who may write, not who may read.
   if (!inv.selectPresent) reasons.push('expected takes SELECT policy is missing')
   return { ok: reasons.length === 0, reasons, inventory: inv }
 }
@@ -136,27 +158,29 @@ function selftest() {
   const SELECT = `create policy "twinai takes read" on storage.objects for select to authenticated using (bucket_id = 'takes');`
   const DELETE_TAKES = `create policy "twinai takes delete" on storage.objects for delete to authenticated using (bucket_id = 'takes');`
   const cases = [
-    ['insert+select only → ok', { a: INSERT + '\n' + SELECT }, true],
-    ['planted FOR DELETE → fail', { a: INSERT + '\n' + SELECT + '\n' + DELETE_TAKES }, false],
-    ['planted FOR ALL → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "takes all" on storage.objects for all to authenticated using (bucket_id = 'takes');` }, false],
-    ['alt-format multiline DELETE → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "weird"\n  on storage.objects\n  as permissive\n  for   delete\n  to authenticated\n  using ( bucket_id = 'takes' );` }, false],
-    ['FOR omitted defaults ALL → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "implicit all takes" on storage.objects to authenticated using (bucket_id = 'takes');` }, false],
-    ['created-then-dropped DELETE (same table) → ok', { a: INSERT + '\n' + SELECT + '\n' + DELETE_TAKES, b: `drop policy if exists "twinai takes delete" on storage.objects;` }, true],
+    ['select only → ok (no client write path)', { a: SELECT }, true],
+    ['planted FOR DELETE → fail', { a: SELECT + '\n' + DELETE_TAKES }, false],
+    ['planted FOR ALL → fail', { a: SELECT + `\ncreate policy "takes all" on storage.objects for all to authenticated using (bucket_id = 'takes');` }, false],
+    ['alt-format multiline DELETE → fail', { a: SELECT + `\ncreate policy "weird"\n  on storage.objects\n  as permissive\n  for   delete\n  to authenticated\n  using ( bucket_id = 'takes' );` }, false],
+    ['FOR omitted defaults ALL → fail', { a: SELECT + `\ncreate policy "implicit all takes" on storage.objects to authenticated using (bucket_id = 'takes');` }, false],
+    ['created-then-dropped DELETE (same table) → ok', { a: SELECT + '\n' + DELETE_TAKES, b: `drop policy if exists "twinai takes delete" on storage.objects;` }, true],
     // R8-4: the sound gate rejects ANY DELETE/ALL on storage.objects — a
     // predicate for another bucket cannot be authoritatively proven to exclude
     // takes, so it must fail (repo has none).
-    ['delete on another bucket (storage.objects) → fail (sound gate)', { a: INSERT + '\n' + SELECT + `\ncreate policy "edits delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');` }, false],
+    ['delete on another bucket (storage.objects) → fail (sound gate)', { a: SELECT + `\ncreate policy "edits delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');` }, false],
     // R8-4 indirect-function predicate — no literal 'takes', still a DELETE on
     // storage.objects → must FAIL (previously passed via text heuristic).
-    ['indirect-function DELETE predicate → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "deleter" on storage.objects for delete to authenticated using (public.can_delete_take(name, auth.uid()));` }, false],
-    ['delete on a NON-storage table → ok (not storage.objects)', { a: INSERT + '\n' + SELECT + `\ncreate policy "gen delete" on public.generations for delete to authenticated using (true);` }, true],
-    ['missing insert → fail', { a: SELECT }, false],
+    ['indirect-function DELETE predicate → fail', { a: SELECT + `\ncreate policy "deleter" on storage.objects for delete to authenticated using (public.can_delete_take(name, auth.uid()));` }, false],
+    ['delete on a NON-storage table → ok (not storage.objects)', { a: SELECT + `\ncreate policy "gen delete" on public.generations for delete to authenticated using (true);` }, true],
+    ['a takes INSERT policy present → fail', { a: INSERT + '\n' + SELECT }, false],
+    ['INSERT via FOR ALL is still a write path → fail', { a: SELECT + `\ncreate policy "takes all" on storage.objects for all to authenticated with check (bucket_id = 'takes');` }, false],
+    ['missing select → fail (playback must keep working)', { a: '' }, false],
     // R7-1 adversarial fixtures — all THREE must FAIL (previously passed):
-    ['storage DELETE + same-name DROP on ANOTHER table → fail', { a: DELETE_TAKES + '\n' + INSERT + '\n' + SELECT, b: `drop policy if exists "twinai takes delete" on public.generations;` }, false],
-    ['storage DELETE + same-name CREATE on ANOTHER table → fail', { a: DELETE_TAKES + '\n' + INSERT + '\n' + SELECT, b: `create policy "twinai takes delete" on public.generations for select to authenticated using (true);` }, false],
-    ['storage DELETE altered from another bucket to takes → fail', { a: INSERT + '\n' + SELECT + `\ncreate policy "twinai takes delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');`, b: `alter policy "twinai takes delete" on storage.objects using (bucket_id = 'takes');` }, false],
+    ['storage DELETE + same-name DROP on ANOTHER table → fail', { a: DELETE_TAKES + '\n' + SELECT, b: `drop policy if exists "twinai takes delete" on public.generations;` }, false],
+    ['storage DELETE + same-name CREATE on ANOTHER table → fail', { a: DELETE_TAKES + '\n' + SELECT, b: `create policy "twinai takes delete" on public.generations for select to authenticated using (true);` }, false],
+    ['storage DELETE altered from another bucket to takes → fail', { a: SELECT + `\ncreate policy "twinai takes delete" on storage.objects for delete to authenticated using (bucket_id = 'edits');`, b: `alter policy "twinai takes delete" on storage.objects using (bucket_id = 'takes');` }, false],
     // ALTER that retargets AWAY from takes stays fail-closed (conservative) — documents the posture:
-    ['ALTER add rename keeps takes delete tracked → fail', { a: INSERT + '\n' + SELECT + '\n' + DELETE_TAKES, b: `alter policy "twinai takes delete" on storage.objects rename to "renamed del";` }, false],
+    ['ALTER add rename keeps takes delete tracked → fail', { a: SELECT + '\n' + DELETE_TAKES, b: `alter policy "twinai takes delete" on storage.objects rename to "renamed del";` }, false],
   ]
   let failed = 0
   for (const [name, sqlBySource, expOk] of cases) {
@@ -177,6 +201,6 @@ if (isMain) {
     console.log(`insert=${inventory.insertPresent} select=${inventory.selectPresent} deleteCapableOnStorageObjects=${inventory.deleteCapableOnStorage.length}`)
     console.log('NOTE: migration-derived; authoritative posture = live pg_policies (scripts/prod-smoke/verify_takes_policy_live.sql)')
     if (!ok) { for (const r of reasons) console.error(`::error::${r}`); process.exit(1) }
-    console.log('takes-delete-policy guard: OK (ZERO DELETE/ALL policy on storage.objects; insert+select present)')
+    console.log('takes-policy guard: OK (ZERO DELETE/ALL policy on storage.objects; NO client INSERT path; select present)')
   }
 }
