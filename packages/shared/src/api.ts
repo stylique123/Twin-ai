@@ -17,7 +17,6 @@ import { generationLifecycle, resolveFinishedOutputs } from './editor/finishedOu
 // A recorded take. The web recorder produces a Blob.
 export interface TakeFile { contentType: string; blob?: unknown; name?: string }
 // onProgress reports upload completion as a 0..1 fraction, or -1 for indeterminate.
-export type UploadTake = (path: string, file: TakeFile, onProgress?: (fraction: number) => void) => Promise<void>
 // A server-authorized signed-upload target (editor-v2 source flow): the token
 // authorizes a PUT of exactly this object — no storage INSERT policy involved.
 export interface SignedUploadTarget { bucket: string; path: string; token: string; signedUrl: string; contentType: string }
@@ -25,13 +24,14 @@ export type UploadSigned = (target: SignedUploadTarget, file: TakeFile, onProgre
 
 let _sb: SupabaseClient | undefined
 let _appOrigin = ''
-let _uploadTake: UploadTake | undefined
 let _uploadSigned: UploadSigned | undefined
 
-export function initApi(opts: { client: SupabaseClient; appOrigin?: string; uploadTake?: UploadTake; uploadSigned?: UploadSigned }): void {
+// `uploadTake` is deliberately absent: the only upload the platform injects now
+// is the signed-target one, because that is the only path that carries capture
+// provenance. Re-adding a raw bucket uploader here re-opens what 0112 closed.
+export function initApi(opts: { client: SupabaseClient; appOrigin?: string; uploadSigned?: UploadSigned }): void {
   _sb = opts.client
   _appOrigin = opts.appOrigin ?? ''
-  _uploadTake = opts.uploadTake
   _uploadSigned = opts.uploadSigned
 }
 
@@ -220,29 +220,23 @@ export interface IngestJob {
 
 // ---- Takes (recording durability) -------------------------------------------
 
-// Upload a recorded take to the `takes` bucket and return its storage path, so a
-// take is persisted the instant recording finishes (autosave) and the bytes are
-// safe on the server even if the tab is refreshed.
-// LEGACY direct-bucket upload (relies on the takes INSERT policy). New
-// recordings go through the source-asset intent flow (editor/api) — this stays
-// only for pre-Phase-1 callers during the transition. TRACKED CLOSURE: the
-// policy and this function are removed once telemetry shows zero
-// legacy_take_upload events across supported clients, and BEFORE editor beta
-// traffic begins (docs/editor-v2-source-asset.md).
-export async function uploadTakeToBucket(generationId: string, file: TakeFile, onProgress?: (fraction: number) => void): Promise<string> {
-  const { data: auth } = await supabase.auth.getUser()
-  if (!auth.user) throw new Error('Not signed in')
-  const uid = auth.user.id
-  const contentType = file.contentType || 'video/webm'
-  const ext = contentType.includes('mp4') ? 'mp4' : 'webm'
-  const take_path = `${uid}/${generationId}-${Date.now()}.${ext}`
-  // Telemetry for the closure decision: every legacy-path use is visible.
-  void logEvent('legacy_take_upload', { generation_id: generationId })
-  // Upload impl (uploads the recorder's Blob) is injected by the web app via initApi.
-  if (!_uploadTake) throw new Error('No uploadTake configured — pass it to initApi().')
-  await _uploadTake(take_path, file, onProgress)
-  return take_path
-}
+// REMOVED: `uploadTakeToBucket`, the legacy direct-bucket upload.
+//
+// It PUT bytes straight into `takes/<uid>/…` on the strength of a storage INSERT
+// policy, which meant a source asset could exist with no capture intent, no
+// finalize record and no etag binding — every guard in 0091 assumes the
+// contract path is the only way in, and this was a second way in with none of
+// it. 0112 drops the policy; this removes the only code that used it.
+//
+// Its own comment set the closure condition — zero `legacy_take_upload`
+// telemetry. That counter reads zero and proves nothing: it was added
+// 2026-07-28, after the last object landed (2026-07-15) and after the callers
+// were removed. An instrument installed once the traffic has stopped always
+// reads zero. What supports removal is that no caller exists anywhere, and that
+// nothing has entered the bucket in the 24 days since the callers went.
+//
+// Recording is unaffected. New takes go through source-asset → signed upload
+// token → finalize → validate_source, which is `uploadToSignedTarget` above.
 
 // Kick off real analysis of a reference URL. Returns the worker job id to watch.
 export async function ingestReference(url: string, platform?: string): Promise<{ jobId: string; transcriptId?: string }> {
