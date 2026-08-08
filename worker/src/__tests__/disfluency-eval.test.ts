@@ -205,6 +205,23 @@ const CASES: Case[] = [
     energy: curve([{ startMs: 1000, endMs: 1300, level: QUIET }], 2200), baseline: LEX,
   },
   {
+    // LEARNED FROM THE STAGING MATRIX, not from thinking about it.
+    //
+    // The Phase 5 harness synthesizes its fixture with espeak at a fixed
+    // amplitude and reads it as continuous prose, so its "um" had no energy
+    // drop and no flanking hesitation. The detector refused it and S12 failed —
+    // correctly. That fixture contained the WORD "um", not a filled pause, and
+    // the only thing marking it as a disfluency was the ASR token.
+    //
+    // Kept as a permanent negative so nobody "fixes" this by accepting a token
+    // with no prosody behind it. The harness now synthesizes a real one.
+    name: 'flat-amplitude TTS "um" in fluent prose — a token, not a filled pause',
+    isFiller: false,
+    startMs: 1000, endMs: 1250, prevWordEndMs: 990, nextWordStartMs: 1260,
+    vad: [{ startMs: 900, endMs: 1400 }],
+    energy: curve([{ startMs: 800, endMs: 1500, level: LEX }], 2000), baseline: LEX,
+  },
+  {
     name: 'clipping neighbour AND quiet AND bracketed — veto still wins',
     isFiller: false,
     startMs: 1000, endMs: 1300, prevWordEndMs: 1200, nextWordStartMs: 1900,
