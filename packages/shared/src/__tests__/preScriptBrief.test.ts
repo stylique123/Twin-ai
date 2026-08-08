@@ -11,7 +11,7 @@ import {
   BRIEF_GOALS, BRIEF_QUESTIONS, BRIEF_WORK_KINDS, CLAIMS_QUESTION_KINDS,
   asksForbiddenClaims, forbiddenClaimsAnswered, otherWithoutText,
   questionsFor, unansweredDecidingQuestions, type BriefAnswers,
-  PRODUCT_EVIDENCE_FORM, asksProductEvidence,
+  PRODUCT_EVIDENCE_FORM, asksProductEvidence, type BriefPromotes,
 } from '../preScriptBrief'
 
 const answers = (over: BriefAnswers = {}): BriefAnswers => ({
@@ -201,5 +201,56 @@ describe('the product question is conditional, and asked once', () => {
     expect(asksProductEvidence(null)).toBe(false)
     expect(asksProductEvidence(undefined)).toBe(false)
     expect(asksProductEvidence('saas')).toBe(true)
+  })
+
+  it('"nothing to sell" is not asked for a product page, but silence still is', () => {
+    // The gate a pinned `promotes` was always supposed to close. Someone who
+    // has just said they sell nothing being asked to hand over their product
+    // page is how a creator learns the questions are not listening.
+    expect(asksProductEvidence('saas', 'nothing_to_sell')).toBe(false)
+    expect(asksProductEvidence('ecommerce', 'nothing_to_sell')).toBe(false)
+
+    // PERMISSIVE ON SILENCE, deliberately. `null` is unanswered, not "no
+    // product" — reading it as a denial would drop the question for everyone
+    // who has not reached it yet, which is the three-state collapse this file
+    // guards against everywhere else.
+    expect(asksProductEvidence('saas', null)).toBe(true)
+    expect(asksProductEvidence('saas', undefined)).toBe(true)
+
+    // The other two pinned values are not "nothing to sell" and must not be
+    // caught by a truthiness check that happened to work on the third.
+    expect(asksProductEvidence('saas', 'own_product')).toBe(true)
+    expect(asksProductEvidence('saas', 'affiliate')).toBe(true)
+
+    // `promotes` never rescues `creator`: the work-kind exclusion is the
+    // stronger rule and stays first.
+    expect(asksProductEvidence('creator', 'own_product')).toBe(false)
+  })
+
+  it('questionsFor drops the product question once nothing_to_sell is chosen', () => {
+    // The gate is only real if the thing that lists the questions honours it.
+    const asked = (promotes: BriefPromotes | null) =>
+      questionsFor('during_scan', { workKind: 'ecommerce', promotes })
+        .some((q) => q.id === 'productEvidence')
+
+    expect(asked(null)).toBe(true)
+    expect(asked('own_product')).toBe(true)
+    expect(asked('nothing_to_sell')).toBe(false)
+  })
+
+  it('promotes is answered AFTER the question it gates, so the gate is dormant', () => {
+    // Recorded as a test rather than a comment, because it is the reason the
+    // change above does not yet alter what any creator sees.
+    //
+    // `productEvidence` is `during_scan`; `promotes` is `on_confirm`. Within a
+    // single forward pass the gating answer does not exist yet, so the narrowing
+    // can only fire on a resumed draft or a revisit. Closing that means moving
+    // `promotes` earlier — it passes the same test `workKind` does, since no
+    // scan can infer whether someone is an affiliate — and question placement is
+    // owned by the question-layer track, not smuggled in beside a gate fix.
+    const productEvidence = BRIEF_QUESTIONS.find((q) => q.id === 'productEvidence')
+    const promotes = BRIEF_QUESTIONS.find((q) => q.id === 'promotes')
+    expect(productEvidence?.stage).toBe('during_scan')
+    expect(promotes?.stage).toBe('on_confirm')
   })
 })
