@@ -2,7 +2,20 @@ name: PR checks
 # The safety net that was missing: nothing used to compile-check a PR, so a TS
 # error in packages/shared or worker/ could merge to main and auto-deploy broken.
 # Every deploy workflow triggers on push-to-main; this one gates the merge.
+# `workflow_dispatch` is here for RECOVERY, not convenience. On 2026-08-07 a
+# GitHub incident dropped this workflow's `pull_request` event: the PR sat with
+# no checks at all, and because a merge-gating workflow whose ONLY triggers are
+# `pull_request` and push-to-main has no replayable entry point, the sole way to
+# re-fire it was to CLOSE AND REOPEN the pull request. That works, but it is a
+# destructive-looking action taken under pressure on a PR someone is waiting on,
+# and it is not something a person should have to reason their way to at 2am.
+#
+# A gate you cannot re-run by hand is a gate that can strand a PR on an outage
+# it had nothing to do with. `staging-integration.yml` already carries a
+# dispatch trigger for exactly this reason, and it is what unjammed that same
+# incident. This aligns the two.
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches: [main]
