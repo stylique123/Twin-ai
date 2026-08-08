@@ -30,6 +30,7 @@ import { makeSlowPoint, watchCancellation, type CancelWatch } from './editorCanc
 import { loadEligibleSource } from './editorInspect.js'
 import { stageDownloadOpts, type VerifiedSourceSession } from './sourceSession.js'
 import { assertPinnedLanguage } from './speechLanguage.js'
+import { scoreDisfluency, speechBaseline, type DisfluencyAcousticVerdict } from './disfluencyAcoustics.js'
 
 export const SPEECH_ANALYSIS_SCHEMA_VERSION = 1
 
@@ -338,21 +339,30 @@ export function buildSpeechAnalysis(
     return Math.max(best, eMs - cursor, 0)
   }
 
-  // ACOUSTIC GUARD for every filler-kind candidate: an ASR token alone is not
-  // sufficient evidence — the disfluency-context prompt (or the LM) could emit
-  // a filler token that was never spoken. A candidate requires (a) independent
-  // acoustic evidence at the claimed timestamp — >=50% Silero-VAD speech
-  // overlap of the token interval (Silero is independent of Whisper) — and
-  // (b) no overlap (> 30ms) with neighboring lexical word intervals, so acting
-  // on it can never clip real speech.
-  const fillerAcousticOk = (startIdx: number, endIdx: number): boolean => {
-    const s = words[startIdx].startMs; const e = words[endIdx].endMs
-    const dur = Math.max(1, e - s)
-    if (speechOverlapMs(s, e, vadSegments) / dur < 0.5) return false
-    const prevOverlap = startIdx > 0 ? words[startIdx - 1].endMs - s : 0
-    const nextOverlap = endIdx < words.length - 1 ? e - words[endIdx + 1].startMs : 0
-    return prevOverlap <= 30 && nextOverlap <= 30
-  }
+  // ACOUSTIC GUARD for every filler-kind candidate (issue #194).
+  //
+  // An ASR token alone is not evidence. Whisper normalizes and omits
+  // disfluencies, and with a disfluency-context prompt it will emit an "um"
+  // nobody said — so a token is a reason to LOOK, never proof that a filled
+  // pause occurred. `disfluencyAcoustics.ts` decides on signals the transcript
+  // cannot influence: independent VAD presence, energy relative to THIS
+  // speaker's lexical baseline, flanking hesitation, and duration band.
+  //
+  // This used to be a VAD-overlap + neighbour-overlap boolean. Those two are
+  // now vetoes inside the detector, joined by prosodic support that has to
+  // actually count — which is what #194 asks for and what the eval in
+  // `disfluency-eval.test.ts` measures.
+  const baselineRms = speechBaseline(words, energy)
+  const fillerAcoustics = (startIdx: number, endIdx: number): DisfluencyAcousticVerdict =>
+    scoreDisfluency({
+      startMs: words[startIdx].startMs,
+      endMs: words[endIdx].endMs,
+      prevWordEndMs: startIdx > 0 ? words[startIdx - 1].endMs : null,
+      nextWordStartMs: endIdx < words.length - 1 ? words[endIdx + 1].startMs : null,
+      vadSegments,
+      energy: { windowMs: energy.windowMs, rms: energy.rms },
+      speechBaselineRms: baselineRms,
+    })
 
   // Disfluency fillers: runs of um/uh/… — high unless the ASR itself was
   // unsure (a low-confidence "um" may be a mis-heard real word).
@@ -360,15 +370,19 @@ export function buildSpeechAnalysis(
     if (!DISFLUENCY_FILLERS.has(norm[i])) { i++; continue }
     let j = i
     while (j + 1 < words.length && DISFLUENCY_FILLERS.has(norm[j + 1])) j++
-    if (!fillerAcousticOk(i, j)) { i = j + 1; continue }
+    const ac = fillerAcoustics(i, j)
+    if (!ac.acousticallyGrounded) { i = j + 1; continue }
     const run = words.slice(i, j + 1)
     const minConf = Math.min(...run.map((w) => w.confidence))
     cands.push({
       kind: 'filler', startMs: run[0].startMs, endMs: run[run.length - 1].endMs,
       wordIds: run.map((w) => w.id), prevWordId: wid(i - 1), nextWordId: wid(j + 1),
       confidence: minConf >= 0.5 ? 'high' : 'low',
-      evidenceCodes: minConf >= 0.5 ? ['filler_disfluency', 'vad_speech_at_token'] : ['filler_disfluency', 'vad_speech_at_token', 'asr_low_conf'],
-      evidence: { markerType: 'disfluency', words: run.map((w) => w.text), minAsrConfidence: minConf },
+      evidenceCodes: ['filler_disfluency', ...ac.preconditions, ...ac.codes, ...(minConf >= 0.5 ? [] : ['asr_low_conf'])],
+      evidence: {
+        markerType: 'disfluency', words: run.map((w) => w.text), minAsrConfidence: minConf,
+        acousticSupport: ac.supporting,
+      },
     })
     i = j + 1
   }
@@ -381,13 +395,17 @@ export function buildSpeechAnalysis(
     const boundaryBefore = i === 0 || words[i - 1].endsUnit || /,$/.test(words[i - 1].text)
     const bracketed = gapBefore(i) >= 200 || gapAfter(i) >= 200
     if (!boundaryBefore && !bracketed) continue // fluent, meaningful use — skip
-    if (!fillerAcousticOk(i, i)) continue
+    const acDm = fillerAcoustics(i, i)
+    if (!acDm.acousticallyGrounded) continue
     cands.push({
       kind: 'filler', startMs: words[i].startMs, endMs: words[i].endMs,
       wordIds: [words[i].id], prevWordId: wid(i - 1), nextWordId: wid(i + 1),
       confidence: 'low',
-      evidenceCodes: ['ambiguous_discourse_marker', 'vad_speech_at_token'],
-      evidence: { markerType: 'discourse', token: words[i].text, boundaryBefore, bracketed },
+      evidenceCodes: ['ambiguous_discourse_marker', ...acDm.preconditions, ...acDm.codes],
+      evidence: {
+        markerType: 'discourse', token: words[i].text, boundaryBefore, bracketed,
+        acousticSupport: acDm.supporting,
+      },
     })
   }
 
@@ -396,12 +414,13 @@ export function buildSpeechAnalysis(
     if (norm[i] !== 'you' || norm[i + 1] !== 'know') continue
     const bracketed = gapBefore(i) >= 200 || gapAfter(i + 1) >= 200 || /,$/.test(words[i + 1].text)
     if (!bracketed) continue
-    if (!fillerAcousticOk(i, i + 1)) continue
+    const acYk = fillerAcoustics(i, i + 1)
+    if (!acYk.acousticallyGrounded) continue
     cands.push({
       kind: 'filler', startMs: words[i].startMs, endMs: words[i + 1].endMs,
       wordIds: [words[i].id, words[i + 1].id], prevWordId: wid(i - 1), nextWordId: wid(i + 2),
-      confidence: 'low', evidenceCodes: ['ambiguous_discourse_marker', 'vad_speech_at_token'],
-      evidence: { markerType: 'discourse', token: 'you know', bracketed },
+      confidence: 'low', evidenceCodes: ['ambiguous_discourse_marker', ...acYk.preconditions, ...acYk.codes],
+      evidence: { markerType: 'discourse', token: 'you know', bracketed, acousticSupport: acYk.supporting },
     })
   }
 
