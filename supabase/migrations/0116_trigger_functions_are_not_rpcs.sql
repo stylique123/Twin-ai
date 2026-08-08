@@ -1,0 +1,48 @@
+-- 0116 — A TRIGGER FUNCTION IS NOT AN API ENDPOINT.
+--
+-- Supabase exposes every function in `public` at `/rest/v1/rpc/<name>`, and a
+-- function created without an explicit REVOKE keeps Postgres's default grant to
+-- PUBLIC. So a trigger function — written to be called by the trigger machinery
+-- and by nothing else — becomes a callable endpoint the moment it is created.
+--
+-- The database linter reports exactly this, and it is right:
+--
+--   Function `public.posts_binding_coherent()` can be executed by the `anon`
+--   role as a `SECURITY DEFINER` function via
+--   `/rest/v1/rpc/posts_binding_coherent`.
+--
+-- ── WHY THIS IS WORTH A MIGRATION RATHER THAN A SHRUG ─────────────────────
+--
+-- Calling either of these over REST fails: a trigger function dereferences
+-- `new`/`old` and reads `tg_op`, none of which exist outside a trigger, so the
+-- call errors. The exposure today is an error message and a `SECURITY DEFINER`
+-- entry point that answers to the anonymous role.
+--
+-- That is a thin argument for leaving it, and the reason not to lean on it is
+-- that "it happens to fail" is not a security property. It depends on the
+-- function body, and the function body changes. `posts_binding_coherent` grew a
+-- branch during review that returns early — if a future edit reorders the
+-- checks so an anon call reaches a query before it touches `new`, the failure
+-- that was protecting us stops protecting us, silently and with no diff that
+-- looks security-relevant.
+--
+-- ── THE INCONSISTENCY IS THE TELL ─────────────────────────────────────────
+--
+-- 0105 and 0113 both revoke their trigger functions. 0112 did not, and 0099
+-- never did. Nothing distinguishes them except that someone remembered twice
+-- and forgot twice — which is the definition of a rule that belongs in the
+-- schema rather than in a habit.
+--
+-- ── REVOKING DOES NOT STOP THE TRIGGER ────────────────────────────────────
+--
+-- The trigger machinery does not check EXECUTE on every fire; the privilege is
+-- checked when the trigger is created. The proof is already in this database:
+-- `post_outcome_observations_append_only` has been `service_role`-only since
+-- 0105 and its trigger has been refusing rewrites the whole time — including in
+-- the tests run against production this week.
+--
+-- Verified after applying, by exercising both triggers rather than trusting
+-- that claim.
+
+revoke all on function public.posts_binding_coherent() from public, anon, authenticated;
+revoke all on function public.enqueue_media_purge() from public, anon, authenticated;

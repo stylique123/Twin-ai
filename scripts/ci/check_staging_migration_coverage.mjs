@@ -77,6 +77,13 @@ export const EXCLUDED = {
     + 'applying it there would prove nothing the review path does not already prove. '
     + 'Applied to production and exercised there instead: approve, un-approve, '
     + 're-approve, and an unknown id refused.',
+  '0116_trigger_functions_are_not_rpcs':
+    'Two REVOKEs. One targets `posts_binding_coherent`, whose trigger is on '
+    + '`public.posts` — a table staging does not have, so the function is not there '
+    + 'either. The other targets `enqueue_media_purge`, which staging DOES have; '
+    + 'applying half a migration is worse than applying none, and the half that '
+    + 'matters is the one attached to publishing. Applied to production and verified '
+    + 'by exercising BOTH triggers after the revoke.',
   '0113_post_attribution':
     'Creates a table referencing `public.posts` and adds columns to '
     + '`post_outcome_observations` and `dna_claims` — none of which staging has. '
