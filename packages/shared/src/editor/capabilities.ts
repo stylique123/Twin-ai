@@ -184,11 +184,15 @@ export function sanitizeCapabilityFlagsForWrite(raw: unknown): CapabilityFlags {
  *                        is unset and hiding the feature from all of them would
  *                        be exactly the unset-read-as-false failure this file
  *                        exists to prevent.
- *   needs_approval    -> the review screen's lock, comments, and record of who
- *                        approved. The review screen now EXISTS (§4.8), so this
- *                        is the first consumer that becomes buildable — and it
- *                        is a regulated-tier feature with its own product
- *                        surface, not a flag read.
+ *   needs_approval    -> BUILT, as a gate rather than as a surface. The Result
+ *                        page refuses to offer "Post now" and `social`'s
+ *                        publish path refuses to publish when the flag is
+ *                        explicitly true and the approval is not CURRENT — see
+ *                        `editor/approval.ts`. The richer review-screen
+ *                        experience (comments, a record of who approved) is
+ *                        still ahead of it; the gate is what stops an
+ *                        unapproved or superseded video going out in the
+ *                        meantime.
  *
  * A test pins this list against the codebase, so the day something starts
  * reading a flag, this comment cannot stay wrong.
@@ -199,8 +203,17 @@ export const CAPABILITY_CONSUMERS_BUILT: readonly CapabilityFlagName[] = [
   // MISMATCH only where both halves are explicitly known — a card assessed as
   // needing objects, and a creator who has said they cannot film them.
   //
-  // `needs_approval` is still unread: the approval lock is a regulated-tier
-  // surface built on the review screen, not a flag read.
+  // `needs_approval` now has one, and it is deliberately the narrowest thing
+  // the flag can do rather than the "regulated-tier surface" this comment
+  // anticipated. `publishAllowed`/`approvalBlockReason` read it at the two
+  // moments a wrong answer costs something — the Result page's post action and
+  // the publish path in `social` — and nothing else branches on it. A flag
+  // whose first consumer is a whole product surface waits forever; one whose
+  // first consumer is a single gate ships and then earns the surface.
+  //
+  // It still blocks ONLY on an explicit `true`. Unset is not a requirement,
+  // and a creator who was never asked has not said that anyone approves.
   'can_film_objects',
   'can_record_screen',
+  'needs_approval',
 ]

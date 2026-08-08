@@ -6,7 +6,7 @@ import {
   Gift, Copy, Check, Clock, Eye, Trophy, ChevronDown,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
-import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, recordPostStats, validateClaim, resolveFinishedOutputs, type BrandStats, type DashboardStats, type FinishedOutput, type OutcomeClaim, type Post } from '../lib/api'
+import { claimQualifier, getDashboardStats, getReferralCode, getBrandStats, listBrandVoices, listGenerations, listPosts, recordPostStats, validateClaim, resolveFinishedOutputsResult, type BrandStats, type DashboardStats, type FinishedOutput, type OutcomeClaim, type Post } from '../lib/api'
 import type { BrandVoice, Generation } from '../lib/types'
 import { Aurora } from '../components/Aurora'
 import { OutcomeHistory } from '../components/OutcomeHistory'
@@ -28,6 +28,8 @@ export default function Dashboard() {
   // OUTPUT-1: the week deltas below counted `edit_path` only, so an editor-v2
   // render landed in "Drafts" on the creator's own dashboard.
   const [finished, setFinished] = useState<Map<string, FinishedOutput>>(new Map())
+  // See `outputsKnown` below: an empty `finished` is ambiguous on its own.
+  const [finishedComplete, setFinishedComplete] = useState(true)
   const [posts, setPosts] = useState<Post[]>(() => DASH_CACHE?.posts ?? [])
   const [voices, setVoices] = useState<BrandVoice[]>(() => DASH_CACHE?.voices ?? [])
   const [selectedBrand, setSelectedBrand] = useState('') // '' = all brands
@@ -49,7 +51,9 @@ export default function Dashboard() {
         const readyVoices = (vs as BrandVoice[]).filter((v) => v.status === 'ready')
         const recent5 = g.slice(0, 5)
         setStats(s); setRecent(recent5); setGens(g); setPosts(p); setVoices(readyVoices)
-        resolveFinishedOutputs(g).then(setFinished).catch(() => {})
+        resolveFinishedOutputsResult(g)
+          .then((r) => { setFinished(r.outputs); setFinishedComplete(r.complete) })
+          .catch(() => setFinishedComplete(false))
         DASH_CACHE = { stats: s, recent: recent5, gens: g, posts: p, voices: readyVoices }
       })
       .catch(() => { if (!DASH_CACHE) setError(true) })
@@ -73,8 +77,15 @@ export default function Dashboard() {
   // Stage tiles — mutually exclusive, derived from the generation lifecycle (same
   // source as the Library chips). draft = script only; ready = finished video;
   // published = posted. drafts + ready + published = total remixes.
-  const draftsVal = scoped ? brandStats!.drafts : stats?.drafts
-  const readyVal = scoped ? brandStats!.ready : stats?.ready
+  // `undefined` means UNKNOWN, and `StatCard` already renders that as "…" —
+  // which is what these two must show when the readiness lookup did not run.
+  // Drafts and Ready are derived from it; a failed resolve makes every video
+  // look unfinished, so `drafts` would silently absorb the whole library and
+  // the home screen would tell a creator none of their work is done. Published
+  // comes from `posts` and is unaffected.
+  const outputsKnown = scoped || (stats?.outputsComplete ?? true)
+  const draftsVal = scoped ? brandStats!.drafts : (outputsKnown ? stats?.drafts : undefined)
+  const readyVal = scoped ? brandStats!.ready : (outputsKnown ? stats?.ready : undefined)
   const publishedVal = scoped ? brandStats!.published : stats?.published
   const streak = postingStreak(posts)
   // The learning loop (panel: analytics that actually TEACHES): tie each post's
@@ -103,8 +114,18 @@ export default function Dashboard() {
   const weekAgo = Date.now() - 7 * 24 * 3600 * 1000
   const publishedIds = new Set(posts.filter((p) => p.status === 'posted' && p.generation_id).map((p) => p.generation_id))
   const newThisWeek = gens.filter((g) => +new Date(g.created_at) > weekAgo)
-  const wkDrafts = newThisWeek.filter((g) => !finished.has(g.id) && !publishedIds.has(g.id)).length
-  const wkReady = newThisWeek.filter((g) => finished.has(g.id) && !publishedIds.has(g.id)).length
+  // A MISS is only meaningful if the lookup ran. `wkDrafts` counts misses, so
+  // without this it reports every new video of the week as a draft the moment
+  // the resolve fails — a delta chip stating a falsehood in bold coloured text.
+  // `undefined` suppresses the chip; `wkReady` counts HITS, which are still
+  // real, but a partial resolve can only undercount them so it is suppressed
+  // too rather than shown as a quiet undercount.
+  const wkDrafts = finishedComplete
+    ? newThisWeek.filter((g) => !finished.has(g.id) && !publishedIds.has(g.id)).length
+    : undefined
+  const wkReady = finishedComplete
+    ? newThisWeek.filter((g) => finished.has(g.id) && !publishedIds.has(g.id)).length
+    : undefined
   const wkPublished = posts.filter((p) => p.status === 'posted' && p.posted_at && +new Date(p.posted_at) > weekAgo).length
 
   return (

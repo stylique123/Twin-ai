@@ -107,6 +107,35 @@ const MODELS = [
       'frame_rate_num', 'frame_rate_den',
     ],
   },
+  {
+    // The row every surface starts from, and the one whose interface had
+    // drifted furthest: `capability_flags` and `scene_timeline` were READ BY
+    // THE CLIENT and absent from the shape, so `getGeneration` — which selects
+    // `*` — returned a value the type said did not have them. That is the
+    // `editing_style` failure with the direction reversed: not data nobody can
+    // see, but data everybody reads through a cast.
+    iface: 'Generation',
+    file: 'packages/shared/src/types.ts',
+    table: 'generations',
+    serverOnly: [
+      // Billing bookkeeping for one creation. The client shows a BALANCE, read
+      // from the profile; a per-row charge is an accounting detail, and a UI
+      // that summed these would disagree with the ledger the moment a refund
+      // or a grant happened anywhere else.
+      'credits_spent',
+      // A CAPABILITY, not a field. Anyone holding this token can view the
+      // generation without logging in, which is the entire design of the
+      // login-free review link. The client obtains one through
+      // `ensure_review_token` when it deliberately creates a link; a client
+      // that could SELECT it could mint a public link for any row it can read.
+      'review_token',
+      // The client resolves its source through `media_assets` instead
+      // (kind='source', status='ready'), which carries the same fact PLUS the
+      // readiness this id cannot express. Reading the id alone would let a
+      // surface offer a take that has not finished probing.
+      'source_asset_id',
+    ],
+  },
 ]
 
 // ── SQL: build each table's column set from the migration chain ──────────────

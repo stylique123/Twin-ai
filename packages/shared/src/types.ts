@@ -198,9 +198,36 @@ export interface Generation {
   take_path?: string | null
   edl_path?: string | null // LEGACY (old editor's Edit Decision List)
   approved?: boolean // agency: marked client-approved before record/post
+  /** APPROVAL-1 (0111). WHICH output was approved, and when. NULL on approvals
+   *  predating 0111 — approved-but-UNBOUND, never unapproved: those creators
+   *  did approve something, and rewriting history to say otherwise would revoke
+   *  a real client's real decision to make a new check pass. Server-write only
+   *  (`set_generation_approval`); see `editor/approval.ts` for how the three
+   *  states are read. */
+  approved_output_asset_id?: string | null
+  approved_edit_project_id?: string | null
+  approved_at?: string | null
   // Client approval link (agency → client, login-free /review/:token).
   review_status?: 'none' | 'pending' | 'approved' | 'changes'
   review_note?: string | null
+  /** When the review was answered. Distinct from `created_at` and from
+   *  `approved_at`: a client can request CHANGES, which is a review that
+   *  happened and an approval that did not. */
+  reviewed_at?: string | null
+  /** The recorded script, as persisted jsonb. Read through
+   *  `recordingScriptApi` — which validates it against this generation before
+   *  returning it — rather than off this field directly. `unknown` on purpose:
+   *  a structured type here would invite a consumer to trust the shape without
+   *  the ownership check. */
+  scene_timeline?: unknown
+  /** PER-VIDEO capability overrides. What is true of THIS video wins over the
+   *  brand's defaults (`brand_voices.default_capability_flags`). Read via
+   *  `resolveCapabilitiesFor`; `unknown` for the same reason as
+   *  `scene_timeline`. */
+  capability_flags?: unknown
+  /** Which brand voice this was made for. The server resolves approval policy
+   *  and the brand snapshot through it. */
+  brand_voice_id?: string | null
   created_at: string
 }
 

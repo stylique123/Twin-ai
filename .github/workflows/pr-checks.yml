@@ -253,6 +253,22 @@ jobs:
         run: |
           node scripts/ci/check_shadowed_globals.mjs --selftest
           node scripts/ci/check_shadowed_globals.mjs
+      # The staging matrix applies a HAND-MAINTAINED migration list, and it has
+      # fallen behind three times. Every time, the symptom was a harness timeout
+      # with nothing in the diff mentioning a migration — the gate went green on
+      # a schema that could not exercise the change it was gating.
+      # The edge copy of the brand-truth projection must BE the shared one. A
+      # drifted copy hashes the same brand two ways, so `brand_truth_snapshots`
+      # silently stops reusing its row and every plan pins whichever copy
+      # produced its digest. Nothing errors; the lineage stops meaning one thing.
+      - name: Brand-truth parity (the edge copy is the shared projection, exactly)
+        run: |
+          node scripts/ci/check_brand_truth_parity.mjs --selftest
+          node scripts/ci/check_brand_truth_parity.mjs
+      - name: Staging migration coverage (a new migration is applied, or excluded with a reason)
+        run: |
+          node scripts/ci/check_staging_migration_coverage.mjs --selftest
+          node scripts/ci/check_staging_migration_coverage.mjs
       - name: Probe-residue classifier (partial/complete cleanup cannot silently pass)
         run: node scripts/prod-smoke/probe_residue_report.mjs --selftest
       - name: Takes storage-policy inventory (no client DELETE-capable policy; migration-derived)

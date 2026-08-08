@@ -6,7 +6,7 @@ import {
 } from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
-import { generationLifecycle, resolveFinishedOutputs } from './editor/finishedOutput'
+import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
 
 // ---- Client injection ------------------------------------------------------
 // The web app is the single client surface. It wires its Supabase client, an
@@ -339,13 +339,139 @@ export async function updateGenerationChoice(
   return !error && Array.isArray(data) && data.length > 0
 }
 
-// Agency approval: mark a blueprint client-approved (or back to pending). Owner-only.
+/**
+ * Agency approval: mark a video client-approved, or take it back to pending.
+ *
+ * THROUGH `set_generation_approval`, NOT a bare column write, and the difference
+ * is two live bugs rather than a preference.
+ *
+ * This used to be `update({ approved })`. After 0111 that leaves
+ * `approved_output_asset_id` NULL, which `approvalState` reads as `unbound` —
+ * approved, but we do not know of what. `publishAllowed` deliberately refuses
+ * `unbound` at publish time, so on a brand with `needs_approval: true` the
+ * owner's own approval produced a video that could never be posted and a
+ * "Needs approval" chip that re-approving could never clear.
+ *
+ * The UNAPPROVE direction was worse: on a row already bound by the review link,
+ * setting `approved = false` while the binding columns stayed set violates
+ * 0111's `generations_approval_binding_coherent` CHECK, so the write failed and
+ * the UI silently reverted the toggle.
+ *
+ * The RPC writes the flag and the binding in ONE statement — which is why it
+ * exists — so neither state is reachable.
+ */
 export async function setGenerationApproved(id: string, approved: boolean): Promise<boolean> {
-  // Same shape, higher stakes: this is the agency approval flag. An approval
-  // that did not persist is indistinguishable, to every later reader, from one
-  // that did.
-  const { data, error } = await supabase.from('generations').update({ approved }).eq('id', id).select('id')
-  return !error && Array.isArray(data) && data.length > 0
+  const { error } = await supabase.rpc('set_generation_approval', {
+    p_generation: id,
+    p_approved: approved,
+    // The review_status is the REVIEW's word, not the owner's toggle. Passing
+    // null leaves it untouched (the RPC coalesces), so an owner un-approving
+    // does not silently overwrite what a client said.
+    p_review_status: null,
+  })
+  return !error
+}
+
+export type DeleteGenerationResult =
+  | { ok: true; assetsPurged: number; projectsDeleted: number }
+  /** The row is not there, or is not yours. The RPC answers identically to both
+   *  ON PURPOSE — a distinct "not yours" would let anyone probe which ids
+   *  exist — so this cannot separate them either, and does not pretend to. */
+  | { ok: false; reason: 'not_found' }
+  /** 0114 is not applied here yet. Reported rather than swallowed: a delete
+   *  that silently did nothing is the worst possible outcome for this call. */
+  | { ok: false; reason: 'unavailable' }
+  | { ok: false; reason: 'failed' }
+
+/**
+ * Delete a video and everything that only existed because of it.
+ *
+ * THROUGH THE RPC, not through `.from('generations').delete()`, and the
+ * difference is the whole feature. A plain row delete leaves every
+ * `media_assets` row behind — `media_assets.generation_id` is ON DELETE SET
+ * NULL, verified against the live catalog — so 0099's purge trigger never
+ * fires and the raw take, a recording of the creator's face and voice, stays in
+ * storage forever. `delete_generation` removes the projects, then the assets,
+ * then the row, and it is the asset delete that queues the byte purge.
+ *
+ * The order is load-bearing and lives in SQL rather than here, because a
+ * transaction is the only place it can be guaranteed. Two client statements can
+ * be interrupted between them, and the interruption would leave a generation
+ * deleted with its footage still stored — the exact state this exists to
+ * prevent, reached by the code meant to prevent it.
+ *
+ * POSTS SURVIVE. A post is a fact about the world: something went out, on a
+ * date, to an audience. Deleting our working copy does not unpublish it, and
+ * erasing the record would leave a creator unable to answer "did I post that?"
+ * about a video still on the platform.
+ */
+export async function deleteGeneration(id: string): Promise<DeleteGenerationResult> {
+  const { data, error } = await supabase.rpc('delete_generation', { p_generation: id })
+  if (!error) {
+    const row = (Array.isArray(data) ? data[0] : data) as
+      { assets_purged?: number; projects_deleted?: number } | null
+    return {
+      ok: true,
+      assetsPurged: Number(row?.assets_purged ?? 0),
+      projectsDeleted: Number(row?.projects_deleted ?? 0),
+    }
+  }
+  const code = (error as { code?: string }).code
+  // 42883 = undefined_function. The migration has not been applied here.
+  if (code === '42883' || code === 'PGRST202') return { ok: false, reason: 'unavailable' }
+  // P0002 = no_data_found, which the RPC raises for both "no such row" and
+  // "not yours".
+  if (code === 'P0002') return { ok: false, reason: 'not_found' }
+  return { ok: false, reason: 'failed' }
+}
+
+export type BrandTruthResult =
+  | { ok: true; id: string; sha256: string; reused: boolean }
+  /** The function is not deployed here yet. Reported rather than swallowed:
+   *  a caller that treated this as "no snapshot" would go on to build a plan
+   *  with no lineage, which is the state C3 exists to end. */
+  | { ok: false; reason: 'unavailable' }
+  | { ok: false; reason: 'not_found' }
+  | { ok: false; reason: 'failed' }
+
+/**
+ * Issue (or reuse) the brand-truth snapshot a creative-transfer plan pins.
+ *
+ * C3. `creativeTransferPlan.ts` refuses a plan whose `brandTruthSnapshotId` and
+ * `brandTruthSha256` the SERVER did not issue — and until now nothing issued
+ * one, so those mismatch checks had never been able to fire and the lineage
+ * they enforce was decorative.
+ *
+ * ── WHY THIS IS A THIN CALL AND NOT A PROJECTION ──────────────────────────
+ *
+ * It sends a SELECTOR and nothing else. 0095 grants `brand_truth_snapshots` to
+ * service_role alone and states the reason: "a client that could insert one
+ * could assert its own brand truth, which is authority level 1." A projection
+ * computed here and posted would be that insert wearing a hat, so the edge
+ * function reads `profiles.dna` and the `brand_voices` row itself and projects
+ * from what is actually stored.
+ *
+ * Calling it twice with an unchanged brand returns the SAME id — 0095's unique
+ * index on (owner_id, snapshot_sha256) makes that a property of the data rather
+ * than of the caller's discipline.
+ */
+export async function ensureBrandTruthSnapshot(brandVoiceId?: string): Promise<BrandTruthResult> {
+  const { data, error } = await supabase.functions.invoke('brand-truth', {
+    body: brandVoiceId ? { brand_voice_id: brandVoiceId } : {},
+  })
+  if (!error && data && typeof (data as { id?: string }).id === 'string') {
+    const d = data as { id: string; sha256: string; reused?: boolean }
+    return { ok: true, id: d.id, sha256: d.sha256, reused: d.reused === true }
+  }
+  const status = (error as { context?: Response } | null)?.context?.status
+  // 404 from the function is "no such brand voice", which it answers
+  // identically to "not yours" so nobody can probe which ids exist.
+  if (status === 404) return { ok: false, reason: 'not_found' }
+  // A function that was never deployed answers 404 at the GATEWAY too, which is
+  // indistinguishable here — so `not_found` is the honest report for both, and
+  // `unavailable` is reserved for the transport failing outright.
+  if (error && status === undefined) return { ok: false, reason: 'unavailable' }
+  return { ok: false, reason: 'failed' }
 }
 
 // ---- Team seats / shared workspace -----------------------------------------
@@ -502,6 +628,20 @@ export interface DashboardStats {
   ready: number
   published: number
   recreationsLeft: number
+  /**
+   * Whether the readiness lookup behind `drafts`/`ready` actually ran.
+   *
+   * False means those two numbers are NOT WRONG SO MUCH AS UNKNOWN: a failed
+   * resolve leaves every generation looking unfinished, so `drafts` silently
+   * absorbs the whole library and the dashboard tells a creator none of their
+   * videos are done. `published` is unaffected — it comes from `posts`, which
+   * is a separate query, and a video that went out is finished regardless.
+   *
+   * The caller's job is to render the difference. A number that might be a
+   * fabrication is worse than no number, because nothing on the screen marks it
+   * as one.
+   */
+  outputsComplete: boolean
 }
 
 export async function getDashboardStats(creditsLeft: number): Promise<DashboardStats> {
@@ -515,16 +655,24 @@ export async function getDashboardStats(creditsLeft: number): Promise<DashboardS
   // succeeded — bytes in storage, validated, reviewed — was counted as a DRAFT.
   // The creator's dashboard told them the video they had just watched was not
   // finished.
-  const finished = await resolveFinishedOutputs(rows)
+  const finished = await resolveFinishedOutputsResult(rows)
   let drafts = 0, ready = 0, published = 0
   for (const g of rows) {
-    switch (generationLifecycle(g.id, finished, publishedIds)) {
+    switch (generationLifecycle(g.id, finished.outputs, publishedIds, finished.complete)) {
       case 'published': published++; break
       case 'ready': ready++; break
+      // `unknown` is counted as neither. It used to reach `default` and be
+      // counted as a draft, which is exactly how a lookup failure became the
+      // sentence "you have 14 drafts" on someone's home screen.
+      case 'unknown': break
       default: drafts++
     }
   }
-  return { drafts, ready, published, recreationsLeft: Math.floor(creditsLeft / 10) }
+  return {
+    drafts, ready, published,
+    recreationsLeft: Math.floor(creditsLeft / 10),
+    outputsComplete: finished.complete,
+  }
 }
 
 // ---- Posts (Phase 7: publish tracking) -----------------------------------
@@ -563,6 +711,62 @@ export async function listPosts(): Promise<Post[]> {
 // so every call destroyed history that cannot be reconstructed — and a function
 // that does that, left in reach with a reasonable name, gets called again.
 
+/**
+ * The video a post is ABOUT, recorded when the post is created rather than when
+ * it goes out.
+ *
+ * PUBLISH-1's second half. 0098 added `posts.edit_project_id` and
+ * `posts.output_asset_id`, and `social/index.ts` now writes them at the moment a
+ * publish SUCCEEDS. That is enough to answer "what did we post" afterwards and
+ * not enough to answer the question a creator actually has, which is asked
+ * BEFORE the fact:
+ *
+ *   A creator schedules Tuesday's video on Sunday. On Monday they re-edit it —
+ *   a different hook, a caption fix, a take swapped out. On Tuesday the cron
+ *   publishes whatever `currentOutput` resolves to, which is now the Monday
+ *   render. Nothing lied and nothing failed; the post simply became about a
+ *   different video than the one that was scheduled, with no moment at which
+ *   anyone decided that.
+ *
+ * This is the same defect 0111 closes for approvals, one surface along:
+ * scheduling, like approving, is a judgement about a SPECIFIC render, and a
+ * judgement that does not name its subject cannot be superseded — it can only
+ * be silently reassigned.
+ *
+ * ── NULL IS "SCHEDULED BEFORE WE RECORDED WHICH", NOT "NO VIDEO" ──────────
+ *
+ * Returns an EMPTY OBJECT, not explicit nulls, so an insert that spreads it is
+ * indistinguishable from the pre-binding one. Every scheduled post that already
+ * exists carries NULL here, and the publish path must keep treating that as
+ * "resolve it at publish time" — the three-state rule, at the place where
+ * collapsing it would refuse to publish a real creator's real scheduled post.
+ *
+ * ── A LEGACY GENERATION BINDS TO NOTHING, HONESTLY ────────────────────────
+ *
+ * Both columns are v2 identities. A legacy `edit_path` has no project and no
+ * asset to name, so there is nothing to record and this returns empty — the
+ * publish path falls through to `edit_path` exactly as before. Inventing an id
+ * to make the row look complete would be worse than the gap.
+ *
+ * ── AND IT NEVER BLOCKS THE SCHEDULE ──────────────────────────────────────
+ *
+ * A failed resolve degrades to "unbound". Refusing to schedule a post because
+ * we could not work out which render it was for would trade a lineage gap for a
+ * creator who cannot use their calendar.
+ */
+async function bindCurrentOutput(
+  generationId: string,
+): Promise<{ edit_project_id?: string; output_asset_id?: string }> {
+  try {
+    const resolved = await resolveFinishedOutputs([{ id: generationId }])
+    const out = resolved.get(generationId)
+    if (!out || out.authority !== 'editor_v2' || !out.editProjectId || !out.outputAssetId) return {}
+    return { edit_project_id: out.editProjectId, output_asset_id: out.outputAssetId }
+  } catch {
+    return {}
+  }
+}
+
 export async function markPosted(input: {
   generationId: string
   platform: string
@@ -581,6 +785,10 @@ export async function markPosted(input: {
       status: 'posted',
       posted_at: new Date().toISOString(),
       external_url: input.externalUrl ?? null,
+      // The creator posted this themselves, somewhere we do not publish to. The
+      // render is still the thing the outcome will be attributed to, so it is
+      // recorded here for the same reason the publish path records it.
+      ...(await bindCurrentOutput(input.generationId)),
     })
     .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
     .single()
@@ -601,6 +809,7 @@ export async function schedulePost(input: {
 }): Promise<Post> {
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) throw new Error('Not signed in')
+  const bound = await bindCurrentOutput(input.generationId)
   const { data, error } = await supabase
     .from('posts')
     .insert({
@@ -610,6 +819,7 @@ export async function schedulePost(input: {
       caption: input.caption ?? null,
       status: 'scheduled',
       scheduled_for: input.scheduledFor,
+      ...bound,
     })
     .select('id, generation_id, platform, caption, status, scheduled_for, posted_at, external_url, created_at')
     .single()

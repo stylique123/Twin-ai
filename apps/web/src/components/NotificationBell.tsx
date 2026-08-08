@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, Check, Clapperboard, MessageSquare, BadgeCheck } from 'lucide-react'
-import { listNotifications, markNotificationsRead, type AppNotification } from '../lib/api'
+import { listNotifications, markNotificationsRead, inAppPath, type AppNotification } from '../lib/api'
 import { cn } from '../lib/cn'
 
 const ICON: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -67,8 +67,23 @@ export function NotificationBell() {
 
   const openItem = (n: AppNotification) => {
     setOpen(false)
-    if (n.link) navigate(n.link)
+    // A STRING FROM THE DATABASE IS NOT A ROUTE. `notifications.link` is
+    // server-written today (0047 gives the client no INSERT, 0052 narrows its
+    // UPDATE to `read`), so nothing a user controls reaches here — but that is
+    // a fact about the current writers, not about this call, and the next edge
+    // function to build a link from a handle or a campaign name will not
+    // connect itself to react-router's open-redirect advisory. Checked where
+    // the value is USED, so the rule survives whichever writer arrives.
+    const to = inAppPath(n.link)
+    if (to) navigate(to)
   }
+  // A rejected link must not leave a CLICKABLE row that does nothing. The guard
+  // stops the navigation; without this the notification still looked actionable
+  // and the tap was simply swallowed, which reads as a broken product rather
+  // than as a link we declined to follow. `inAppPath.test.ts` states the
+  // contract — "the caller renders a non-clickable notification instead" — and
+  // this is the half that makes it true.
+  const canOpen = (n: AppNotification) => inAppPath(n.link) !== null
 
   return (
     <div className="relative">
@@ -106,7 +121,15 @@ export function NotificationBell() {
                       <button
                         key={n.id}
                         onClick={() => openItem(n)}
-                        className={cn('flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-white/[0.04]', !n.read && 'bg-white/[0.02]')}
+                        // A notification we cannot follow is still worth READING
+                        // — it carries the title and body — so it stays on the
+                        // list and stops being a button instead of vanishing.
+                        disabled={!canOpen(n)}
+                        className={cn(
+                          'flex w-full items-start gap-3 px-4 py-3 text-left transition-colors',
+                          canOpen(n) ? 'hover:bg-white/[0.04]' : 'cursor-default',
+                          !n.read && 'bg-white/[0.02]',
+                        )}
                       >
                         <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/5">
                           <Icon className="h-4 w-4 text-amber" />

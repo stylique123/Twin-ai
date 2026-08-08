@@ -312,7 +312,35 @@ jobs:
           # hand. Without the table, staging exercises that fallback rather than
           # the real read — so the one environment meant to prove the real path
           # was proving the degraded one instead.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary; do
+          # 0110 and 0111 are the newest instance of the same pattern, added
+          # BEFORE they could bite rather than after. 0110 records whether a
+          # reference was really analysed; 0111 binds an approval to the exact
+          # output asset. Without them staging cannot exercise either, so the
+          # gate that is supposed to protect those changes was blind to them —
+          # which is worse than an absent gate, because the green tick implies
+          # coverage that does not exist.
+          #
+          # Both were APPLIED TO STAGING BY HAND FIRST to prove they can be. That
+          # is not paranoia: 0111's RPC writes `generations.review_status`, and
+          # staging's `generations` is an 11-column stub that did not have it.
+          # plpgsql does not resolve column references at CREATE time, so the
+          # migration applied cleanly, the function was created cleanly, and the
+          # first CALL died with `42703: column g.review_status does not exist`
+          # four frames inside a security-definer function. The staging fixture
+          # now adds the three review columns; see staging-brand-schema.sql.
+          #
+          # Calling the function also found a real bug in it — see that fixture's
+          # comment and 0111's own header. A migration applying is not a
+          # migration working.
+          #
+          # 0114 IS APPLIED HERE and 0112/0113 ARE NOT, which looks inconsistent
+          # and is not. 0112 and 0113 attach to `public.posts`, which staging
+          # does not have, so they cannot apply at all. 0114's `delete_generation`
+          # touches only `generations`, `edit_projects` and `media_assets` —
+          # every one of which staging has and the matrix exercises — so the one
+          # environment that could catch a deletion-order regression is kept
+          # able to.
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done

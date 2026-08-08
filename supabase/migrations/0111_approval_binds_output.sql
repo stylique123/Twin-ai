@@ -99,12 +99,28 @@ language plpgsql
 security definer
 set search_path = pg_catalog, public
 as $$
+-- SCALARS, NOT A RECORD, and the difference is a live bug rather than a style
+-- preference.
+--
+-- The first version declared `proj record` and filled it only inside
+-- `if p_approved then`. On the UNAPPROVE path that branch is skipped, so `proj`
+-- has no structure, and plpgsql raises `record "proj" is not assigned yet` the
+-- moment the UPDATE mentions `proj.output_asset_id` — the surrounding
+-- `case when p_approved` does NOT save it, because the record has no fields to
+-- reference at all.
+--
+-- That path is what `review/index.ts` calls when a client requests CHANGES, so
+-- the whole request-changes flow would have 500'd. Found by CALLING the function
+-- on staging rather than by watching the migration apply cleanly, which it did.
+--
+-- Scalar variables initialise to NULL, so both paths are always well-defined.
 declare
-  proj record;
+  v_project uuid;
+  v_asset   uuid;
 begin
   if p_approved then
     select ep.id, ep.output_asset_id
-      into proj
+      into v_project, v_asset
       from public.edit_projects ep
      where ep.generation_id = p_generation
        and ep.status = 'completed'
@@ -118,9 +134,9 @@ begin
          review_status = coalesce(p_review_status, g.review_status),
          -- UNAPPROVING CLEARS THE BINDING. Leaving a stale asset id behind
          -- would let a later re-approval look bound to something nobody
-         -- re-examined.
-         approved_output_asset_id = case when p_approved then proj.output_asset_id else null end,
-         approved_edit_project_id = case when p_approved then proj.id else null end,
+         -- re-examined. `v_asset`/`v_project` are already NULL on that path.
+         approved_output_asset_id = case when p_approved then v_asset else null end,
+         approved_edit_project_id = case when p_approved then v_project else null end,
          approved_at = case when p_approved then now() else null end
    where g.id = p_generation;
 
@@ -130,8 +146,8 @@ begin
 
   return query
     select p_approved,
-           case when p_approved then proj.output_asset_id else null end,
-           case when p_approved then proj.id else null end;
+           case when p_approved then v_asset else null end,
+           case when p_approved then v_project else null end;
 end;
 $$;
 

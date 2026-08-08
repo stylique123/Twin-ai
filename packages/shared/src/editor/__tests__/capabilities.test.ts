@@ -141,17 +141,20 @@ describe('what may be written', () => {
   })
 })
 
-describe('nothing consumes these yet, and that is DECLARED', () => {
-  it('the built-consumer list is empty, matching the header', () => {
+describe('which flags are actually consumed is DECLARED, not assumed', () => {
+  it('the built-consumer list matches the header', () => {
     // The precedent is `analysis_components.json`'s `consumedByDirector: false`
     // for alignment: storable-but-unread is a COMPLETE state, and declaring it
     // is what stops the next reader assuming a flag they set changes something.
     // The day a consumer lands, this test fails and the header must be updated
     // with it.
     // The day a consumer landed, this test failed and was updated with the
-    // header — which is exactly what it was for. §7a's production-mode match
-    // now reads both filming flags (galleryRank.ts, against 0106's per-reference
-    // requirements). `needs_approval` is still unread.
-    expect([...CAPABILITY_CONSUMERS_BUILT]).toEqual(['can_film_objects', 'can_record_screen'])
+    // header — which is exactly what it was for, and it has now happened
+    // twice. §7a's production-mode match reads both filming flags
+    // (galleryRank.ts, against 0106's per-reference requirements), and
+    // `needs_approval` is read by `publishAllowed`/`approvalBlockReason` at
+    // the Result page's post action and in `social`'s publish path.
+    expect([...CAPABILITY_CONSUMERS_BUILT])
+      .toEqual(['can_film_objects', 'can_record_screen', 'needs_approval'])
   })
 })
