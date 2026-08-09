@@ -320,6 +320,68 @@ findings; confirmation that §5a's four gaps reach the creator.
 
 ---
 
+### 5c. One field doing three jobs — the shot-list defect
+
+`WHERE TO BE / BACKGROUND` is the field the creator reads while standing in a
+room holding a phone. It is being filled with b-roll.
+
+| Scene | What it said | What it should have said |
+|---|---|---|
+| 1 | "Real footage of a dusty, outdated living room being framed out into separate bedrooms" | where the creator physically stands |
+| 2 | "Footage of a beautifully staged communal living room, then cutting back to the creator in the kitchen" | a background — the cutaway belongs to the edit, not to him |
+| 4 | "Same brightly lit kitchen, ensuring the #00E5FF cyan lights are visible" | achievable direction, and no hex code anywhere near a physical instruction |
+
+Location, b-roll and edit instruction are three layers collapsed into one string.
+A creator is being told to *be inside footage that does not exist* — which is the
+exact failure the ownership matrix exists to prevent, arriving because nothing
+enforces the matrix at the field level.
+
+**The required split.** Three fields, because they have three different owners
+and three different failure modes:
+
+- `location` — where the creator physically stands. Achievable direction only:
+  never assumed inventory, and **never a hex colour**. The observed
+  "#00E5FF cyan backlighting under the cabinets" is the brand palette reaching a
+  physical instruction, which no amount of prompt tuning makes safe; the palette
+  must not be reachable from this field at all.
+- `brollRequest` — footage to supply, **gated on whether this creator can
+  actually produce it**. Ungated, it is finding 4 of §5a with a new name.
+- `editorIntent` — cutaway and return timing, consumed by the Edit Plan and
+  **never rendered as a place to stand**.
+
+**The contradiction that makes it unusable.** Scene 1 is labelled `Talking`,
+carries a line to say, and then reads *"WHAT TO DO WHILE YOU TALK: None for the
+creator, as this is a b roll overlay sequence."* The recorder asks him to perform
+a scene it simultaneously tells him he is not in. He stands there reading a line
+while the app says he is not needed.
+
+Scene type, spoken line and performance direction must be mutually consistent or
+the scene is invalid. **This is a contract check**, not a prompt instruction — a
+scene that says both things is malformed and should never reach a recorder.
+
+**Scene type must be gated on capability.** Scene 2 was `Show the product` for a
+creator who has no product: `workKind` is coaching, the CTA is "apply for my
+one-on-one coaching program". The scene type came from the reference — where
+there *was* a product, a $70 framed keepsake — and transferred without anyone
+asking whether it could be filled.
+
+That is the Compatibility Gate's job exactly (§16b): every reference dimension
+resolves to TRANSFER / ADAPT / REJECT / NOT OBSERVED *before* the Creative
+Decision Plan, so `product demonstration → REJECT, creator has no physical
+product` is a decision the system makes rather than a gap the creator discovers
+while filming.
+
+Work items:
+
+- 🔴 **Split the field into `location` / `brollRequest` / `editorIntent`**, with
+  the palette unreachable from `location`.
+- 🔴 **Scene-consistency contract check** — type, line and performance direction
+  agree, or the scene does not ship.
+- 🔴 **Compatibility Gate (§16b)** — scene types gated on capability, so an
+  unfillable type is REJECTed rather than rationalised.
+
+---
+
 ## 6. 🔴 The reference pipeline
 
 - 🔴 **`mode: 'pattern'` must be a hard stop before spending, in EVERY path.**
@@ -404,8 +466,11 @@ findings; confirmation that §5a's four gaps reach the creator.
 6. **Product DNA (§28 step 5).** Promoted by §5a: with the reference read
    working, the missing numbers are now the top defect in the produced script,
    and nothing else in this list addresses them.
-7. **Director Plan + palette boundary, Compatibility Gate, `approvedClaims`** —
-   the other three 🔴 rows in §5a's table. Production and claim safety.
+7. **The shot list the creator films against** (§5c), in this order because each
+   is cheaper than the one after it: the three-field split
+   (`location`/`brollRequest`/`editorIntent`) with the palette unreachable from
+   `location`; the scene-consistency contract check; then the Compatibility Gate
+   (§16b) gating scene TYPE on capability. Plus `approvedClaims` (§5a.5).
 8. **Visual analysis of the reference** — the nine NOT OBSERVED rows.
 9. Recorder guidance, checklist, teleprompter overlap.
 10. Security backlog.
