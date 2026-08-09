@@ -58,3 +58,20 @@ describe('a pasted channel URL resolves to the handle, not the tab', () => {
     expect(dna).not.toMatch(/const seg = u\.pathname\.split\('\/'\)\.filter\(Boolean\)\.pop\(\)/)
   })
 })
+
+describe('asking for the Shorts tab is not the same as being allowed to keep Shorts', () => {
+  // #310 requested `/shorts` and a Shorts-only channel STILL read as empty.
+  // `streamers/youtube-scraper` meters each kind of content with its own limit,
+  // and a limit that is not set is ZERO — so the run visited the tab and was
+  // permitted to keep nothing from it. The URL was necessary and not sufficient.
+  it('sets maxResultsShorts, not just maxResults', () => {
+    expect(dna).toContain('maxResultsShorts')
+  })
+
+  it('gives Shorts the same allowance as long-form', () => {
+    // Both read from RESULTS. A smaller Shorts quota would re-create the bug in
+    // miniature on any channel with more Shorts than the cap.
+    expect(dna).toMatch(/maxResultsShorts:\s*RESULTS/)
+    expect(dna).toMatch(/maxResults:\s*RESULTS/)
+  })
+})
