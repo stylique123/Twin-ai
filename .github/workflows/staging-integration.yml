@@ -340,7 +340,25 @@ jobs:
           # every one of which staging has and the matrix exercises — so the one
           # environment that could catch a deletion-order regression is kept
           # able to.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it; do
+          #
+          # 0118 drops the legacy `takes` INSERT policy and then ASSERTS no
+          # INSERT policy still admits bytes to that bucket. It is applied here
+          # rather than excluded for two reasons. It can run anywhere — the drop
+          # is guarded by an existence check, so an environment that never had
+          # the policy (staging, which starts at 0090) applies it as a no-op and
+          # still runs the assertion. And the assertion is the whole point of
+          # the migration: excluding it would leave the one automated
+          # environment that could prove the door is shut never checking.
+          #
+          # It carried the number 0112 until this rebase, which COLLIDED with
+          # 0112_post_output_binding_coherent already on main. Two migrations
+          # sharing an ordinal apply in an undefined order, and — worse here —
+          # 0112 sat below 0114, the newest entry in this list, so the coverage
+          # guard never required it to be classified at all. It reached a green
+          # matrix without staging ever applying it, while its own PR said
+          # "draft until the staging matrix runs the migration". Renumbering
+          # past 0117 is what forced this decision to be made explicitly.
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done

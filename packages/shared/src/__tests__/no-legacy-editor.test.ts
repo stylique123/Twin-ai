@@ -32,9 +32,31 @@ describe('old AI editor is gone from the client API surface', () => {
   })
 
   it('keeps the recording + playback primitives the recorder/library depend on', () => {
-    expect(typeof shared.uploadTakeToBucket).toBe('function') // save a take
     expect(typeof shared.getJob).toBe('function') // poll ingest jobs
     expect(typeof shared.signEditUrls).toBe('function') // play finished videos
+  })
+
+  it('exposes NO raw take uploader — the takes bucket has one door now', () => {
+    // This assertion used to run the other way: it required
+    // `uploadTakeToBucket` to exist. It uploaded straight into `takes/<uid>/…`
+    // on a storage INSERT policy, so bytes could land with no capture intent,
+    // no finalize record and no etag binding — and every guard added in 0091
+    // assumes the contract path is the only way in. 0118 drops the policy;
+    // this keeps the code from coming back to meet it.
+    //
+    // Recording still works: takes go through source-asset → signed upload
+    // token → finalize → validate_source, which is `uploadToSignedTarget`.
+    expect((shared as Record<string, unknown>).uploadTakeToBucket).toBeUndefined()
+    expect(typeof shared.uploadToSignedTarget).toBe('function')
+
+    // Nothing may re-introduce a take uploader under a different name. Scoped to
+    // takes on purpose: `uploadBrandLogo` is a legitimate neighbour and goes
+    // through the `brand-logo` edge function rather than writing a bucket, so a
+    // blanket /^upload/ rule would fail on code that is not the problem.
+    const takeUploaders = Object.keys(shared).filter(
+      (k) => /^upload/i.test(k) && /take/i.test(k),
+    )
+    expect(takeUploaders).toEqual([])
   })
 
   it('exposes no function whose name implies an auto-editor', () => {

@@ -91,9 +91,14 @@ const envOf = (store) => ({ ...Object.fromEntries(store) })
   for (const f of readdirSync('supabase/migrations').sort()) if (f.endsWith('.sql')) sqlBySource[f] = readFileSync(`supabase/migrations/${f}`, 'utf8')
   const { ok: polOk, inventory } = evalTakesPolicy(sqlBySource)
   ok(polOk && !inventory.deletePolicyPresent, 'migrations define NO DELETE-capable takes policy (table-qualified)')
-  ok(inventory.insertPresent && inventory.selectPresent, 'migrations define the expected takes INSERT + SELECT policies')
+  // Inverted by 0118: a client INSERT policy on `takes` is a provenance bypass,
+  // not part of the expected posture. SELECT stays required so existing
+  // recordings remain playable.
+  ok(!inventory.insertPresent && inventory.selectPresent, 'migrations define NO takes INSERT policy, and keep SELECT')
   const planted = buildTakesInventory({ ...sqlBySource, _p: `create policy "x" on storage.objects for delete to authenticated using (bucket_id='takes');` })
   ok(planted.deletePolicyPresent, 'inventory catches a planted takes DELETE policy')
+  const plantedInsert = buildTakesInventory({ ...sqlBySource, _p: `create policy "y" on storage.objects for insert to authenticated with check (bucket_id='takes');` })
+  ok(plantedInsert.insertPresent, 'inventory catches a planted takes INSERT policy')
 }
 
 // ── Section B: smoke-chain boundary injection + recovery-state + compose ──────
