@@ -62,7 +62,12 @@ export default function V2Create() {
     const t = input.trim()
     const looksUrl = /^https?:\/\//i.test(t)
     nav('/v2/building', {
-      state: { reference_url: looksUrl ? t : '', reference_note: looksUrl ? '' : t, fidelity, tone },
+      // ONE KEY PER CLICK (0119). Minted HERE rather than on the building screen
+      // because this is the moment the creator asks for a video — the building
+      // screen only carries out the ask, and it remounts. Two deliberate clicks
+      // mint two keys and correctly cost two remixes; a remount, a back-and-
+      // forward or a refresh reuses this one and costs nothing extra.
+      state: { reference_url: looksUrl ? t : '', reference_note: looksUrl ? '' : t, fidelity, tone, idempotency_key: crypto.randomUUID() },
     })
   }
 

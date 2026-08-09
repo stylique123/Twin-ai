@@ -465,12 +465,15 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string }
   try {
     body = await req.json()
   } catch {
     return json({ error: 'Invalid JSON body' }, 400)
   }
+  // ONE CLICK-INTENT, ONE REMIX (0119). Bounded because it reaches a unique
+  // index; anything longer is a caller bug, not a key.
+  const idempotency_key = (body.idempotency_key ?? '').trim().slice(0, 200)
   const reference_url = (body.reference_url ?? '').trim()
   // Bound user-controlled inputs that flow into the model prompt (cost + abuse).
   const reference_note = (body.reference_note ?? '').trim().slice(0, 2000)
@@ -597,6 +600,27 @@ Deno.serve(async (req: Request) => {
               ? 'We could not read this video, so the script follows the format instead.'
               : 'The analysis came back empty, so the script follows the format instead.',
           }
+
+  // REPLAY BEFORE SPEND (0119). A remount, a refresh or a double-click sends the
+  // SAME key, and the build it names has already been paid for. Returning that
+  // row is not a cache — it is the same generation, which is why it returns 200
+  // with the identical body the first call returned.
+  //
+  // This sits ABOVE `spend_credits` on purpose. Every line below it costs a
+  // remix, so a replay that reached even one of them would already have charged
+  // twice, and a refund after the fact is a worse contract than never taking the
+  // money. The window this closes is exactly the one the creator hit: three
+  // navigations to the building screen, three successful builds, three charges,
+  // one video.
+  if (idempotency_key) {
+    const { data: prior } = await admin
+      .from('generations')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('idempotency_key', idempotency_key)
+      .maybeSingle()
+    if (prior) return json(prior)
+  }
 
   // Spend credits atomically BEFORE the model call. Refund on failure.
   const { error: spendErr } = await admin.rpc('spend_credits', {
@@ -878,9 +902,43 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         brand_voice_id: voice?.id ?? null,
         transcript_id: transcript_id || null,
         credits_spent: BLUEPRINT_COST,
+        idempotency_key: idempotency_key || null,
       })
       .select('*')
       .single()
+    // THE RACE THE REPLAY CHECK CANNOT CATCH. Two requests carrying the same key
+    // can both pass the lookup above before either has inserted — a double-click
+    // or a remount that overlaps the first build. The unique index is what
+    // actually decides; 23505 means the other one won.
+    //
+    // Falling through to `throw` would be wrong twice over: the creator would see
+    // an error for a build that succeeded, and the refund in the catch would
+    // return the loser's credits while the WINNER's spend stands — which is
+    // correct, and is exactly why this must refund too. Both requests spent; only
+    // one row exists; the loser's remix goes back.
+    if (insErr && (insErr as { code?: string }).code === '23505' && idempotency_key) {
+      const { data: won } = await admin
+        .from('generations')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('idempotency_key', idempotency_key)
+        .maybeSingle()
+      if (won) {
+        const { error: raceRefundErr } = await admin.rpc('refund_credits', {
+          p_user: ownerId,
+          p_amount: BLUEPRINT_COST,
+          p_reason: 'blueprint_refund_duplicate',
+        })
+        if (raceRefundErr) {
+          console.error('DUPLICATE REFUND FAILED — manual reconciliation for', user.id, raceRefundErr)
+          await admin
+            .from('ops_alerts')
+            .insert({ kind: 'refund_failed', severity: 'critical', user_id: user.id, detail: { fn: 'generate-blueprint', amount: BLUEPRINT_COST, reason: 'duplicate_key_race', error: String((raceRefundErr as { message?: string }).message ?? raceRefundErr) } })
+            .then(() => {}, () => {})
+        }
+        return json(won)
+      }
+    }
     if (insErr) throw insErr
 
     // Data layer: record the blueprint + the time it saved (≈30 min scripting) for

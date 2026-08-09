@@ -201,6 +201,13 @@ export interface GenerateInput {
   // Optional: when the reference was analyzed by the worker (real transcript),
   // pass its transcript_id so the blueprint is built from the actual video.
   transcript_id?: string
+  // ONE CLICK-INTENT, ONE REMIX (0119). The building screen runs its build in an
+  // effect guarded by a ref, and a ref dies with the component — so navigating
+  // away and back, or refreshing, starts a SECOND fully-charged build for the
+  // same video. Send the same key for the same intent and the server returns the
+  // generation it already made instead of spending again. Mint a NEW key only
+  // when the creator deliberately asks for another build.
+  idempotency_key?: string
 }
 
 // ---- Reference ingestion (worker: transcribe + derive real structure) ----
