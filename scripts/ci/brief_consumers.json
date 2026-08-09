@@ -40,8 +40,7 @@
 
   "keys": {
     "goal": {
-      "readBy": [],
-      "unwiredReason": "The brief's goal is never read. generate-blueprint takes goal from the voice profile, then profiles.dna, then the literal string 'turn attention into trust' — three authorities, none of them the answer the creator gave. This is the audit's overlapping-authorities finding wearing a naming collision: the word is everywhere in that file and the brief's value reaches none of it."
+      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
     },
     "audience": {
       "readBy": ["supabase/functions/generate-blueprint/index.ts"]
