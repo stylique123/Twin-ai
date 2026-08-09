@@ -293,36 +293,61 @@ depth here produces four half-built subtypes and no working script.
 
 ---
 
-## 8. ⚖️ Subtype routing — exactly one path, never all three
+## 8. ⚖️ Subtype routing — per ENTITY, never per creator
 
-The failure to avoid is running a physical-product schema, a SaaS schema and a
-service schema over the same input and merging the results. Q3 + Q4 select
-**exactly one**.
+> **CORRECTED.** An earlier version of this section routed Q3 + Q4 to *exactly
+> one* subtype for the whole creator. That was wrong, and it was the biggest
+> structural flaw in the plan. A creator can be a founder with their own SaaS,
+> an affiliate for other tools, a sponsor partner, and sell consulting — all at
+> once. Humans insist on having multiple revenue streams.
+>
+> A single global subtype means an affiliate creator who later launches their
+> own product causes an identity crisis in the schema. **The routing is right;
+> the scope was wrong.**
+
+**Q3 establishes primary identity. Q4 establishes one or more commercial
+relationships. Product DNA is a LIBRARY of entities, and the subtype is chosen
+per entity.**
 
 ```
-Q3 = Founder → SaaS/App          ─┐
-Q4 = My app/software             ─┴→  SAAS DNA                     (§10)
+Product Library
 
-Q3 = Founder → Physical/Ecommerce ─┐
-Q4 = My physical products         ─┴→  PHYSICAL PRODUCT DNA        (§9)
-
-Q3 = Coach / Agency / Professional ─┐
-Q4 = My services                   ─┴→  SERVICE (OFFER) DNA        (§11)
-
-Q4 = Affiliate / Sponsors /       ──→  AFFILIATE DNA               (§12)
-     Products I review                  ownership = THIRD PARTY
-
-Q4 = My ideas/expertise  or       ──→  NO PRODUCT DNA.
-     Nothing commercial                 Nothing breaks. See §24.
+├── Twin AI          type: SAAS      relationship: OWN_PRODUCT
+├── Claude           type: SAAS      relationship: AFFILIATE
+├── Consulting       type: SERVICE   relationship: OWN_SERVICE
+└── Sponsored Tool X type: SAAS      relationship: SPONSOR
 ```
 
-**Shared spine across all four subtypes:**
+Every entity carries **two independent axes**, and conflating them is the bug
+this structure exists to prevent:
+
+| Axis | Values | Decides |
+|---|---|---|
+| `type` | `SAAS` · `PHYSICAL` · `SERVICE` · `DIGITAL` | **which schema** (§9–§11) |
+| `relationship` | `OWN_PRODUCT` · `OWN_SERVICE` · `AFFILIATE` · `SPONSOR` · `REVIEW_ONLY` | **what may be claimed** (§12) |
+
+An affiliated SaaS uses the SaaS schema *and* the third-party ownership rules.
+Those are different questions and were previously answered by one field.
+
+**What is still true, and still the failure to avoid:** never run a
+physical-product schema, a SaaS schema and a service schema over the *same
+entity* and merge the results. One entity, one `type`.
+
+**Per-video selection.** Each video then asks: *which product context is
+relevant here?* A creator with 23 entities does not put 23 products in one
+script — the Script Container Plan (§18a) requests what it needs, and the
+library is ranked against the reference (§14).
+
+**No commercial entities at all** — Q4 says ideas/expertise or nothing
+commercial — means no Product DNA. Nothing breaks. See §24.
+
+**Shared spine across every entity, whatever its type:**
 
 ```
 identity · positioning · benefits · proof · restrictions · commercial · visual
 ```
 
-**`restrictions` is the one field that must never be optional**, in any subtype.
+**`restrictions` is the one field that must never be optional**, in any type.
 
 ---
 
@@ -407,9 +432,40 @@ relationship:  AFFILIATE
 ownership:     THIRD PARTY
 ```
 
-This prevents *"we built…"* and *"our product…"*, and permits *"I've been
-using…"* — **only when that experience claim is actually confirmed by the
-creator**, not inferred.
+This prevents *"we built…"* and *"our product…"*.
+
+### ⚖️ Commercial relationship is NOT personal experience
+
+> **CORRECTED.** An earlier version said the affiliate flag is *"why it can say
+> 'I've been using…'"*. It is not. **Being an affiliate does not prove the
+> creator has ever used the product.** Treating a commercial arrangement as
+> evidence of personal experience manufactures a testimonial out of a payment
+> agreement — the exact class of fabrication this taxonomy exists to stop.
+
+Two independent fields, never collapsed:
+
+```
+relationship:  AFFILIATE | SPONSOR | REVIEW_ONLY | OWN_PRODUCT | OWN_SERVICE
+personal_use:  CONFIRMED | NOT_CONFIRMED
+```
+
+| `personal_use` | The script may write |
+|---|---|
+| `CONFIRMED` | *"I've been using…"* — a creator-experience claim |
+| `NOT_CONFIRMED` | *"This tool offers…"* — a product-fact claim only |
+
+`NOT_CONFIRMED` is the default, and it is not a gap to be filled by inference.
+Only the creator can move it, by saying so.
+
+**Sponsorship carries its own obligation:**
+
+```
+relationship: SPONSOR
+relationship_disclosure_required: true
+```
+
+Disclosure is a property of the entity, not a per-video decision the writer may
+weigh against pacing.
 
 Stores: `product` · `brand` · `productUrl` · `affiliateUrl` · `features` ·
 `price` · `audience` · `verifiedClaims` · `creatorsActualOpinion` · `pros` ·
@@ -515,6 +571,68 @@ surface as a conflict rather than silently winning.
 
 ---
 
+## 16a. ⚖️ Per-video intent — the onboarding goal is a DEFAULT, not a verdict
+
+Q1 captures the creator's standing objective. **Individual videos differ.**
+Someone whose default is *build authority* will make one video to *launch a
+feature*, and forcing that through a profile-level goal makes the whole intent
+layer feel wrong at exactly the moment it matters.
+
+```
+Profile Intent      default goals, from Q1
+        +
+Video Intent        THIS video's goal
+```
+
+When a reference is chosen, offer a one-tap override, **pre-filled with their
+default**: Authority · Reach · Leads · Sales · Education.
+
+⚖️ One tap, never a re-run of onboarding. A per-video question that costs more
+than a tap will be skipped, and a skipped override silently reasserts the
+default — which is worse than not offering one, because now the screen implies
+the creator chose it.
+
+---
+
+## 16b. ⚖️ Reference Compatibility Gate — before the plan, not inside it
+
+Between Reference DNA and the Creative Decision Plan there is one more stage,
+and it asks a single question:
+
+> **Can this reference actually be adapted for this person?**
+
+Every reference dimension gets one of four verdicts:
+
+```
+TRANSFER      take it as is
+ADAPT         take the mechanism, change the execution
+REJECT        do not carry this across
+NOT OBSERVED  we never measured it, so we have no opinion
+```
+
+*A luxury perfume brand referencing an aggressive comedy creator:*
+
+```
+3-part reveal structure ....... TRANSFER
+mid-video re-hook ............. TRANSFER
+fast pacing ................... ADAPT
+loud performance .............. REJECT
+creator's jokes ............... REJECT
+product claims ................ REJECT
+camera rhythm ................. NOT OBSERVED
+```
+
+⚖️ **This must be a separate stage with its own output.** Folded into the
+writing prompt, the model rationalises every reference into compatibility —
+because a writer asked to write will always find a way. A gate that runs first,
+and can return REJECT on most dimensions, is what makes "this reference is
+wrong for you" a possible answer.
+
+The verdicts become an input to the Creative Decision Plan. They are not
+re-derived by it.
+
+---
+
 ## 17. The Creative Decision Plan
 
 Before scripting, Twin **freezes** every decision. This becomes the single
@@ -543,6 +661,63 @@ DO NOT USE           Reference products · reference identity ·
 reference contributed that must **not** transfer, and it is what stops the
 script becoming a re-shoot of someone else's video.
 
+### ⚖️ Every decision carries source, reason and confidence
+
+The CDP is a **contract, not a generated paragraph.** Each line is inspectable:
+
+```
+Decision:    3-item list
+Source:      REFERENCE_DNA
+Reason:      the reference's core narrative mechanism
+Confidence:  0.96
+
+Decision:    calm delivery
+Source:      CREATOR_DNA
+Reason:      creator voice conflicts with the reference's aggressive delivery
+Confidence:  0.88
+```
+
+Without `source`, nobody downstream can tell a transferred mechanic from an
+invented one — and the trust screen becomes decoration.
+
+**The full field list**, because a plan missing a field silently delegates that
+decision to whoever writes next:
+
+```
+video objective · audience · audience level · topic · angle · format · target length
+creator DNA selections · product DNA selections · reference transfer decisions
+research requirements · container definitions · CTA · forbidden claims
+required evidence · commercial relationship · personal-use status
+visual energy · director strategy · pattern-interrupt strategy
+supported production mode · unsupported requirements · DO NOT USE
+```
+
+---
+
+## 17a. Concept candidates — generate, score, then write
+
+The CDP does not hand straight to the writer.
+
+```
+Creative Decision Plan → 3–5 concept candidates → score → selected concept
+```
+
+From *"3 things I stopped buying after becoming a personal trainer"*:
+
+```
+A. 3 AI subscriptions I stopped paying for
+B. 3 creator tools founders don't need
+C. 3 things I stopped doing after building Twin
+D. 3 tools I'd never recommend to a new founder
+```
+
+Scored on: audience relevance · goal relevance · DNA fit · **evidence
+availability** · novelty · recreate feasibility · Product DNA relevance.
+
+⚖️ *Evidence availability* is the one that does real work. A concept nothing
+can substantiate scores badly **before** it is written, rather than being
+discovered as an unfillable slot halfway through a script.
+
 ---
 
 ## 18. Script Containers, and who fills them
@@ -566,11 +741,27 @@ CTA              save / share mechanism
 
 | Layer | Fills | Must NEVER fill |
 |---|---|---|
-| **Creator DNA** | voice, vocabulary, attitude, opinion style, sentence rhythm, emotional delivery | topic, facts, claims |
-| **User Intent** | goal, audience, desired outcome, current direction | voice, structure |
+| **Creator DNA** | voice, vocabulary, attitude, opinion style, sentence rhythm, emotional delivery — **and may PROPOSE and RANK topics** | facts, claims, **final** topic authority |
+| **User Intent** | goal, audience, desired outcome, current direction — **and DECIDES the topic** | voice, structure |
 | **Product DNA** | product facts, benefits, features, differentiators, offer, proof, approved claims, product examples | tone, structure |
 | **Research** | current products, statistics, trends, comparisons, third-party examples | claims about the creator's product |
 | **Reference DNA** | hook mechanism, container shape, sequencing, escalation, payoff, CTA mechanism, observed pacing | topic, claims, voice |
+
+### ⚖️ "May suggest" is not "may decide"
+
+> **CORRECTED.** An earlier version forbade Creator DNA from touching topic at
+> all. Too strict, and it throws away the best topic signal in the system.
+
+Creator DNA knows the niche, sub-niche, beliefs, the enemy, historically strong
+formats and recurring themes. Those are exactly what good topic *generation*
+needs. So:
+
+> **Creator DNA may propose and rank topics. User Intent, the selected
+> reference, and the Creative Decision Plan decide which one is made.**
+
+Twin may offer *"Three SaaS pricing mistakes founders make"* because the DNA
+shows repeated pricing opinions. It must **not** force pricing onto a creator
+who asked for an onboarding video. The distinction is authority, not silence.
 
 **This is the fix for "the script is stupid."** Today Creator DNA fills
 everything because it is the only layer with data, so the script can only
@@ -579,6 +770,49 @@ restate the creator's own POV back to them.
 🟨 `creative_transfer_plans` is the persisted form of this object. Table,
 contract and semantic validator all exist. **It has no writer.** Giving it one
 is step 6.
+
+---
+
+## 18a. ⚖️ The Script Container Plan is its own stored object
+
+Two different questions, two different objects:
+
+| Object | Answers |
+|---|---|
+| **Creative Decision Plan** | *What video are we making?* |
+| **Script Container Plan** | *What information must exist to write it?* |
+
+Each container carries a **source and a resolution status**:
+
+```
+ITEM_1   source: verified research           status: RESOLVED
+ITEM_2   source: affiliate product library   status: RESOLVED
+ITEM_3   source: research                    status: UNRESOLVED
+```
+
+> ### **Do not write until every required container is RESOLVED.**
+
+⚖️ This is type-checking for creativity — a ridiculous phrase that happens to
+be exactly right. An unresolved container handed to a writer does not come back
+empty; it comes back **invented**, phrased with the same confidence as the
+resolved ones. That is how a tech reviewer ends up promoting three products
+that do not exist.
+
+`UNRESOLVED` is a stop, not a warning.
+
+### Research runs only when a container demands it
+
+```
+Container requires:   3 current AI tools
+Product Library has:  1 relevant entity
+                      ────────────────────
+RESEARCH_REQUIRED  =  2 items
+```
+
+Research is a **tool invoked to resolve a named gap**, never a step that runs
+because the pipeline reached it. Automatic research costs latency, money, and —
+the expensive one — hallucination surface, since a model handed unrequested
+search results will find a way to use them.
 
 ---
 
@@ -834,6 +1068,48 @@ force commerce where none exists.
 
 ---
 
+## 24a. ⚖️ The canonical flow
+
+Twin is not "DNA → script". It is **understand → qualify → decide → fill →
+write → direct → execute → learn.** The middle stages are what stop a reviewer
+confidently promoting three imaginary products.
+
+```
+SOCIAL HANDLE
+      ↓
+DNA EXTRACTION  ←── 5 ADAPTIVE QUESTIONS (Q1–Q3 during the scan)
+      ↓
+FINAL CREATOR PROFILE ──── PRODUCT LIBRARY (many entities, §8)
+      ↓
+PERSONALISED GALLERY (§23)
+      ↓
+REFERENCE SELECTED → REFERENCE ANALYSIS → REFERENCE DNA
+      ↓
+COMPATIBILITY / TRANSFER GATE (§16b)
+      ↓
+CREATIVE DECISION PLAN (§17)
+      ↓
+CONCEPT CANDIDATES → SELECTED CONCEPT (§17a)
+      ↓
+SCRIPT CONTAINER PLAN (§18a)
+      ↓
+PRODUCT / RESEARCH RESOLUTION   ← writing blocked until RESOLVED
+      ↓
+SCRIPT (§19)
+      ↓
+DIRECTOR PLAN (§20) → SCENE PLAN → TELEPROMPTER (§21)
+      ↓
+RECORDING → SCRIPT ↔ AUDIO ALIGNMENT
+      ↓
+REVIEW GATE (§22a)
+      ↓
+EDIT PLAN → RENDERER → FINISHED VIDEO
+      ↓
+PERFORMANCE → RECOMMENDATION LEARNING (§26b)
+```
+
+---
+
 ## 25. The data objects, and their one responsibility each
 
 | Object | Answers |
@@ -898,6 +1174,61 @@ Reference DNA influenced the structure.** That is the separation.
 
 ---
 
+## 26a. ⚖️ Failure design — downgrade, never "try your best"
+
+Every stage needs a defined failure, or the model supplies one: confident
+nonsense. **A guessed answer and a refusal look identical in a script.**
+
+| When | Twin does |
+|---|---|
+| Reference transcription fails | Refuse before spend. **Shipped** (§28 step 1) |
+| Reference has no speech / too long | Refuse before spend, naming the measurement. **Shipped** |
+| Reference is mostly visual | *"This reference relies mainly on visuals, which Twin hasn't analysed yet. I can adapt the spoken concept, or you can pick another."* |
+| Product page cannot be read | Entity stays `Missing information`. Mentionable, **no claims generated** |
+| Research cannot verify a claim | Container stays `UNRESOLVED`. Writing does not start |
+| Product DNA conflicts with the request | Surface the conflict; the creator decides. Never silently prefer one |
+| Container cannot be filled | Offer to change the concept — never invent the item |
+| Recording missing | Keep the take, name the gap, allow retry without refilming |
+| Render fails | Classified failure + a retry button **only where retry can work** ✅ built |
+
+⚖️ The last one is the pattern for all of them: `failureExplain.ts` classifies
+every failure code and offers retry only where the class says retry can
+succeed. Telling someone to retry a failure that can never clear is the
+specific cruelty this design prevents.
+
+⚖️ And the offer must be **a real alternative**, not an apology. *"I can adapt
+the spoken concept, or choose another reference"* leaves the creator with two
+moves. *"Something went wrong"* leaves them with none.
+
+---
+
+## 26b. The performance loop — architected now, built later
+
+The pipeline does not end at a finished video.
+
+```
+Final video → Published → Performance → Learning
+```
+
+Record per video: format · reference mechanics · topic · hook · goal ·
+audience · product · concept type · length · the creative decisions · results.
+
+⚖️ **Learning updates Gallery ranking, NOT raw Creator DNA** — at least not
+first. One viral video must never rewrite the creator's identity into
+*"contrarian hooks are best."* What the system may hold is:
+
+```
+Evidence: contrarian hooks outperformed baseline in 4 of the last 6
+          comparable videos
+```
+
+That is already this repo's rule, enforced in code: `validateClaim` refuses a
+correlation claim below n≥2, and the Dashboard prints *"across 3 videos — a
+pattern, not a cause."* The performance loop extends a working guard rather
+than inventing a new one.
+
+---
+
 ## 27. ⚖️ THE STANDING RULE
 
 > **Never add a question without a reader in the same PR.**
@@ -927,13 +1258,15 @@ Each step is shippable and leaves the product working.
 | # | Step | Why here |
 |---|---|---|
 | **1** | ✅ **Reference `mode: 'pattern'` → hard stop before spend, every path** | If there is no substance, do not sell a script. **Shipped.** |
-| **2** | 🔴 **Wire `workKind` + `workKindOther` into the prompt** | Two lines. Ends "a doctor and a hobbyist get the same script." Highest lever per hour, and it turns on the routing answer everything else needs. |
+| **2** | ✅ **Wire `workKind` + `workKindOther` into the prompt** | Ends "a doctor and a hobbyist get the same script." **Shipped (#294).** |
+| **2a** | 🔴 **Surface WHY a take failed to save** | The recorder's five failure paths all collapsed into one silent `failed`, so a creator whose upload never landed saw no edit button and concluded there was no editor. Nothing downstream can run until takes arrive. |
 | **3** | 🔴 **Wire `goal`; stop preferring three other authorities over the creator's answer** | Same shape, same file. `generate-blueprint` currently takes goal from the voice profile, then `profiles.dna`, then the literal string `'turn attention into trust'` — three authorities, none of them the creator's answer. |
 | **4** | 🔴 **Move Q1–Q3 into the scan; chunk the review screen** | Without this the answers keep coming back empty, and steps 2–3 wire up fields nobody filled in. |
-| **5** | 🔴 **Product DNA: subtype routing + URL ingestion + restrictions block — SaaS only, end to end** | The substance layer. One subtype proves the whole chain. |
-| **6** | 🔴 **Write `creative_transfer_plans`** | Table, contract and validator already exist. Give the container object its writer. |
-| **7** | 🔴 **Creative Decision Plan as a frozen object** | Depends on 2, 3, 5. |
-| **8** | 🔴 **Director Plan + setups + pattern interrupts** | Depends on 7. |
+| **4a** | 🔴 **Wire `alsoWantsToMake` into the Gallery + the CDP** | The last dead onboarding answer with an obvious home. Format preference shapes what is recommended and what production shape the script takes. |
+| **5** | 🔴 **Product DNA as a LIBRARY: entity model (`type` × `relationship`), URL ingestion, restrictions — SaaS entity end to end** | The substance layer. One entity type proves the whole chain. `productEvidence` moves onto the entity instead of floating as a disconnected onboarding field. |
+| **6** | 🔴 **Write `creative_transfer_plans`, and the Compatibility Gate that feeds it** | Table, contract and validator already exist. Give the container object its writer, and put TRANSFER/ADAPT/REJECT/NOT-OBSERVED in front of it. |
+| **7** | 🔴 **Creative Decision Plan as a frozen contract, + concept candidates, + Script Container Plan with resolution status** | Depends on 2, 3, 5. Writing blocks until every required container is RESOLVED. |
+| **8** | 🔴 **Director Plan + Edit Plan as formal contracts — setups, pattern interrupts, visual-energy density** | Depends on 7. Both must be stored objects, not UI behaviour. |
 | **9** | 🔴 **Visual reference analysis** | The nine NOT OBSERVED rows. Largest, and the only step needing new infrastructure. |
 | **10** | 🔴 **Gallery scoring incl. container fillability** | Depends on 5 and 6. |
 | **11** | 🔴 **Remaining Product DNA subtypes; Product Library surface** | Physical → Service → Affiliate, in that order. |

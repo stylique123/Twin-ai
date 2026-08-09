@@ -169,6 +169,31 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // 'saving' → autosave upload in flight · 'saved' → take is in the takes bucket ·
   // 'failed' → autosave failed (Download is the only way to keep the take).
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  // WHY THE REASON IS STATE AND NOT A CONSOLE LINE.
+  //
+  // `saveSourceOnce` can fail in five distinct places — no recorded scenes, the
+  // script SHA, the accepted-window projection, the intent contract, and the
+  // upload itself. Every one of them used to land in `.catch(() => 'failed')`,
+  // which threw the reason away. The creator saw one sentence telling them to
+  // retry, and retrying a provenance mismatch fails identically forever.
+  //
+  // It is worse than a bad message: the edit handoff below renders only when
+  // the save reaches `saved`, so a silent failure here presents as "TwinAI has
+  // no editor" — which is what a creator reported, and what the single
+  // production source asset stuck in `uploading` with no object behind it is
+  // the database's version of. The pipeline was never reached, and nothing on
+  // the screen or in the row said why.
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  // One place to record a failed save, so the two callers cannot disagree about
+  // what a failure leaves behind. Logged AND surfaced: the log is for us, the
+  // sentence is for the creator, and neither substitutes for the other.
+  const failSave = (e: unknown) => {
+    const msg = e instanceof Error && e.message.trim() ? e.message.trim() : 'The upload did not complete.'
+    console.warn('[capture] source save failed', e)
+    setSaveError(msg)
+    setSaveState('failed')
+  }
   // Teleprompter feel: font size (S/M/L/XL) + a per-scene timing clock so the script
   // can advance word-by-word in step with the chosen WPM.
   const FONT_PX = [24, 30, 38, 48]
@@ -442,9 +467,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     // error or an empty blob is not worth persisting.
     if (!recErrRef.current && blob.size >= MIN_TAKE_BYTES) {
       setSaveState('saving')
+      setSaveError(null)
       saveSourceOnce(blob)
         .then((r) => { savedTakePathRef.current = r.path; setSaveState('saved') })
-        .catch(() => setSaveState('failed')) // the beforeunload guard still protects
+        .catch(failSave) // the beforeunload guard still protects
     }
   }
 
@@ -520,9 +546,10 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     const blob = reviewBlobRef.current
     if (!blob || saveState === 'saving') return
     setSaveState('saving')
+    setSaveError(null)
     saveSourceOnce(blob)
       .then((r) => { savedTakePathRef.current = r.path; setSaveState('saved') })
-      .catch(() => setSaveState('failed'))
+      .catch(failSave)
   }
 
   // A real few-second webm/mp4 take is tens of KB minimum; anything under this is
@@ -630,7 +657,12 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
                   <p className="text-xs text-stone">
                     {saveState === 'saved' && 'Saved to your library — safe even if you close this tab.'}
                     {saveState === 'saving' && 'Saving to your library…'}
-                    {saveState === 'failed' && 'Source not saved — retry the upload, or use Download to keep a copy.'}
+                    {/* The CAUSE, not just the outcome. Some of these are
+                        retryable (the upload dropped) and some are not (the
+                        recorded windows do not match the script), and a
+                        creator pressing Retry forever on the second kind is
+                        the specific harm of collapsing them into one line. */}
+                    {saveState === 'failed' && (saveError ?? 'The upload did not complete.')}
                     {saveState === 'idle' && 'Download it to keep it, or record another take.'}
                   </p>
                 </div>
@@ -638,9 +670,19 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
             )}
 
             {saveState === 'failed' && (
-              <button onClick={retrySave} className="w-full rounded-2xl bg-coral px-3 py-4 text-center text-sm font-semibold text-ink shadow-glow hover:opacity-90">
-                Retry upload
-              </button>
+              <>
+                <button onClick={retrySave} className="w-full rounded-2xl bg-coral px-3 py-4 text-center text-sm font-semibold text-ink shadow-glow hover:opacity-90">
+                  Retry upload
+                </button>
+                {/* Never let a failed save read as a missing feature. Twin CAN
+                    edit this take; it has not received it yet. Saying so is
+                    what stops a creator concluding the editor does not exist
+                    and downloading the raw file instead. */}
+                <p className="text-center text-[11px] leading-relaxed text-stone">
+                  Your take is still here, and Download always works. Twin can edit
+                  it as soon as this upload lands.
+                </p>
+              </>
             )}
 
             {/* THE HANDOFF THAT WAS MISSING.
@@ -673,11 +715,16 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
             <button onClick={onBack} className="w-full py-2 text-sm text-white/50 hover:text-white">
               {saveState === 'saved' ? 'Back to studio' : 'Exit without keeping this take'}
             </button>
-            {saveState !== 'saved' && (
+            {(saveState === 'saving' || saveState === 'idle') && (
               // Only while the take is still in flight. The old line said AI
               // editing was being rebuilt and sat here unconditionally, which
               // told a creator with a perfectly editable take that the feature
               // did not exist.
+              //
+              // `failed` is excluded because "while it uploads" describes an
+              // upload that is still happening. Saying it after one stopped is
+              // the same class of untruth, just quieter — and it sits directly
+              // under the sentence explaining that the upload did not finish.
               <p className="text-center text-[11px] text-stone">Your raw take is kept safe here while it uploads.</p>
             )}
           </div>
