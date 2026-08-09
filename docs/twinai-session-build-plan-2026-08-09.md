@@ -375,8 +375,14 @@ Work items:
 
 - 🔴 **Split the field into `location` / `brollRequest` / `editorIntent`**, with
   the palette unreachable from `location`.
-- 🔴 **Scene-consistency contract check** — type, line and performance direction
-  agree, or the scene does not ship.
+- 🟡 **Scene-consistency contract check** — `sceneConsistency.ts`, with the two
+  real strings from the run as its tests. `palette_leak` is EXACT: a hex colour
+  in an instruction a person carries out with their hands is always wrong.
+  `absent_performer` is a HEURISTIC and is documented as one — it reads the
+  stated contradiction, and a model that phrases it differently escapes. The
+  recorder now withholds the contradicting line rather than showing both halves.
+  The heuristic exists only until the field split lands, which removes what it
+  catches.
 - 🔴 **Compatibility Gate (§16b)** — scene types gated on capability, so an
   unfillable type is REJECTed rather than rationalised.
 

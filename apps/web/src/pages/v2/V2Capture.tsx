@@ -19,6 +19,7 @@ import { pickRecorderMime, getGeneration, uploadSourceRecording, newRecordingAtt
 import { buildTeleprompterIntent, captureScriptSha256, sha256Hex, normalizeDialogue } from '../../lib/api'
 import type { CaptureUploadPayload } from '../../lib/api'
 import { saveTakePointer, clearTakePointer } from '../../lib/savedTake'
+import { safeToShow } from '../../lib/api'
 import { cn } from '../../lib/cn'
 import { Aurora } from '../../components/Aurora'
 import {
@@ -847,7 +848,14 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
         <div className="text-[10px] font-bold uppercase tracking-wider text-white/45">Set up your shot 👇</div>
         {next?.background && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Where to be / background</div><p className="text-white/90">{next.background}</p></div>}
         {next?.camera_framing && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">How to sit &amp; frame yourself</div><p className="text-white/90">{next.camera_framing}</p></div>}
-        {next?.movement && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What to do while you talk</div><p className="text-white/90">{next.movement}</p></div>}
+        {/* A CONTRADICTION IS NOT IMPROVED BY BEING DISPLAYED. This line read
+            "None for the creator, as this is a b roll overlay sequence" on a
+            scene that hands the creator words to say — so the screen asked him
+            to perform a scene it told him he was not in. Where the direction is
+            the half that is wrong, showing nothing beats showing both and
+            leaving him to work out which to believe. See sceneConsistency.ts;
+            the structural fix is the field split in §5c. */}
+        {next?.movement && safeToShow({ spoken: !!next.show_in_teleprompter, dialogue: next.dialogue, movement: next.movement }, 'movement') && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">What to do while you talk</div><p className="text-white/90">{next.movement}</p></div>}
         {next?.purpose && <div><div className="text-[10px] font-bold uppercase tracking-wider text-emerald-400/90">Why this scene matters</div><p className="text-white/90">{next.purpose}</p></div>}
       </div>
 

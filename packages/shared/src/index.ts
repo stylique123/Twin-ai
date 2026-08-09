@@ -5,6 +5,7 @@
 export * from './types'
 export * from './brand'
 export * from './recordingScript'
+export * from './sceneConsistency'
 export * from './recordingScriptAdapter'
 export * from './recordingScriptApi'
 export * from './scriptEdit'
