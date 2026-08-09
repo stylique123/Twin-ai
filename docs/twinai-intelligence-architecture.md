@@ -1,5 +1,19 @@
 # TwinAI — the four-source intelligence architecture
 
+> ## ⚠️ SUPERSEDED — do not build from this file
+>
+> The layer specifications and the build order have moved to
+> **`docs/twinai-content-intelligence-system.md`**, which is canonical. The
+> running order across BOTH tracks (this one and the editor's Phases 9–13) is
+> **`docs/twinai-unified-build-plan.md`**, which is where to start.
+>
+> This file is kept because it is the record of when these decisions were first
+> made, and its §2 mapping of spec-onto-repo is what established that most of
+> this is a wiring job. Everything in it is carried forward into the canonical
+> file, expanded. **Where the two disagree, the canonical file wins** — it has
+> the five-question set, the Product Library, the Director Plan and the Product
+> DNA subtype field specifications, none of which are here.
+
 The target architecture for Creator DNA, User Intent, Product DNA and Reference
 DNA, and the build order to reach it.
 
