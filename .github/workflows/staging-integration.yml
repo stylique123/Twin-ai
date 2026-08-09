@@ -350,6 +350,15 @@ jobs:
           # the migration: excluding it would leave the one automated
           # environment that could prove the door is shut never checking.
           #
+          # 0119 adds `generations.idempotency_key` and its partial unique
+          # index. APPLIED rather than excluded, for the reason the exclusion
+          # list exists to make people state: it is `add column if not exists`
+          # plus `create unique index if not exists`, so it runs anywhere, and
+          # applying it keeps staging's `generations` the SAME SHAPE as
+          # production. Excusing it would leave the one environment that could
+          # catch a drift on that table permanently one column behind the thing
+          # it is supposed to be a rehearsal for.
+          #
           # It carried the number 0112 until this rebase, which COLLIDED with
           # 0112_post_output_binding_coherent already on main. Two migrations
           # sharing an ordinal apply in an undefined order, and — worse here —
@@ -358,7 +367,7 @@ jobs:
           # matrix without staging ever applying it, while its own PR said
           # "draft until the staging matrix runs the migration". Renumbering
           # past 0117 is what forced this decision to be made explicitly.
-          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy; do
+          for f in 0090_editor_capture_intent 0091_editor_capture_hardening 0092_editor_director_decision_v2 0093_editor_capture_retention_cascade 0094_editor_editplan_render_completion 0096_editor_output_asset_and_completion 0097_editor_output_bucket_fence 0100_register_alignment_component 0102_editor_review_gate 0104_brand_glossary 0110_reference_analysis_provenance 0111_approval_binds_output 0114_delete_a_video_deletes_it 0118_drop_legacy_takes_insert_policy 0119_blueprint_idempotency; do
             echo "== applying $f =="
             psql "$STAGING_DB_URL" -v ON_ERROR_STOP=1 -q -f "supabase/migrations/$f.sql"
           done
