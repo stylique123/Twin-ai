@@ -54,6 +54,31 @@ describe('the kind is the point, and there are four of them', () => {
     expect(beat.source).toMatch(/not something we measured/i)
   })
 
+  it('does not claim a transcript when no transcript was read', () => {
+    // THE SCREEN USED TO CONTRADICT ITSELF. In pattern mode the banner says "We
+    // could not read this video, so the script follows the format instead", and
+    // every interpreted row underneath said "a model's reading of the
+    // TRANSCRIPT". There was no transcript — the rows asserted evidence the
+    // same screen had just denied, in the exact case where the creator most
+    // needs to know their reference was not used.
+    const rows = transferRows(set([
+      item({ type: 'narrative_beat', kind: 'interpreted', value: 'setup', sourcePath: 'structure.beats[0]' }),
+    ]), false)
+    const beat = rows.find((r) => r.type === 'narrative_beat')!
+    expect(beat.source).toMatch(/no transcript was read/i)
+    expect(beat.source).not.toMatch(/reading of the transcript/i)
+    // Still INTERPRETED: the kind describes what KIND of claim it is, and that
+    // has not changed — only what it says about its own basis.
+    expect(KIND_LABEL[beat.kind]).toBe('INTERPRETED')
+  })
+
+  it('a measured row is unaffected — it never rested on the interpreted path', () => {
+    const rows = transferRows(set([
+      item({ type: 'reference_platform', kind: 'observed', value: 'youtube', sourcePath: 'transcript.platform' }),
+    ]), false)
+    expect(rows.find((r) => r.type === 'reference_platform')!.source).toMatch(/read directly from the reference/i)
+  })
+
   it('a computed number says it was computed', () => {
     const rows = transferRows(set([
       item({ type: 'measured_words_per_minute', kind: 'measured', value: 148, sourcePath: 'derived:transcript.words' }),

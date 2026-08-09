@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { AtSign, Loader2, Check, Sparkles, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
+import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
@@ -30,6 +30,7 @@ const PROMOTES_LABEL: Record<BriefPromotes, string> = {
 }
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
+import { LogoMark } from '../components/Logo'
 import {
   ONBOARDING_DRAFT_VERSION,
   clearOnboardingDraft,
@@ -282,7 +283,7 @@ function HandleStep({
   return (
     <>
       <span className="grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft">
-        <AtSign className="h-5 w-5 text-cream" />
+        <LogoMark size={22} />
       </span>
       <p className="eyebrow mt-5">Your brand voice · the one-tap way</p>
       <h1 className="mt-3 font-display text-3xl leading-tight">
@@ -446,7 +447,7 @@ function BuildingStep({
     <>
       <span className="relative grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft">
         <span className="absolute inset-0 animate-ping rounded-2xl bg-coral/20" />
-        <Sparkles className="relative h-5 w-5 text-cream" />
+        <LogoMark size={22} className="relative" />
       </span>
       <p className="eyebrow mt-5">Reading your voice</p>
       <h1 className="mt-3 font-display text-3xl">Studying your recent posts…</h1>

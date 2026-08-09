@@ -66,7 +66,17 @@ export function CreativeTransfer({ generationId, blueprint, referenceAnalysis }:
   // because "we do not know which path ran" is not a sentence a creator can use
   // and inventing "pattern" for it would slander a generation that was read
   // properly.
-  const disclosure = referenceDisclosure(readReferenceAnalysis(referenceAnalysis))
+  const analysis = readReferenceAnalysis(referenceAnalysis)
+  const disclosure = referenceDisclosure(analysis)
+  // Did a transcript actually reach the model? The rows below used to say "a
+  // model's reading of the transcript" even when the banner directly above them
+  // said we could not read the video — the screen contradicting itself in the
+  // one case where the creator most needs it to be exact.
+  //
+  // 'unknown' keeps the default sentence rather than claiming no transcript: a
+  // pre-0110 generation has no record, and "we do not know" must not be
+  // rendered as "we did not read it".
+  const transcriptRead = analysis.mode !== 'pattern' && analysis.mode !== 'none'
   const rows = useMemo(() => {
     const rr = blueprint.reference_read
     const evidence = normalizeReferenceEvidence({
@@ -81,8 +91,8 @@ export function CreativeTransfer({ generationId, blueprint, referenceAnalysis }:
       },
       transcript: { platform: rr?.platform ?? null },
     })
-    return transferRows(evidence)
-  }, [generationId, blueprint])
+    return transferRows(evidence, transcriptRead)
+  }, [generationId, blueprint, transcriptRead])
 
   return (
     <div className="rounded-card border border-white/5 bg-ink2/85 p-6 shadow-glass backdrop-blur-md">

@@ -4,11 +4,12 @@
 // Plan screen the instant the timeline is ready. See PRODUCT_VISION §13.
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Sparkles, Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
+import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob } from '../../lib/api'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
+import { LogoMark } from '../../components/Logo'
 import { buildRecordingScript } from '../../lib/api'
 import { saveRecordingScript } from '../../lib/api'
 
@@ -43,6 +44,44 @@ interface BuildState {
   reference_note?: string
   fidelity?: 'close' | 'balanced' | 'loose'
   tone?: 'understated' | 'balanced' | 'punchy'
+  // Minted by V2Create, one per click of "build". Carried in nav state so a
+  // remount of THIS screen reuses it — see buildKey below.
+  idempotency_key?: string
+}
+
+// ONE CLICK-INTENT, ONE REMIX.
+//
+// The build runs in an effect guarded by `started` — a ref, which dies with the
+// component. Navigating away and back mounts a fresh instance, the guard is
+// false again, and the creator is charged a second time for the same video. The
+// server (0119) converges on an idempotency key; this decides what that key is.
+//
+// Preference order matters. A key minted by V2Create is per-CLICK, so asking for
+// the same video twice on purpose correctly costs twice. When there isn't one we
+// derive a key from the INPUT and park it in sessionStorage, which makes a
+// remount converge without making a deliberate rebuild impossible: sessionStorage
+// dies with the tab, and V2Create mints a fresh key on the next real click.
+function buildKey(state: BuildState): string {
+  if (state.idempotency_key) return state.idempotency_key
+  const sig = JSON.stringify([
+    (state.reference_url || '').trim(),
+    (state.reference_note || '').trim(),
+    state.fidelity ?? 'balanced',
+    state.tone ?? 'balanced',
+  ])
+  const slot = `twinai.buildkey.${sig}`
+  try {
+    const existing = sessionStorage.getItem(slot)
+    if (existing) return existing
+    const minted = crypto.randomUUID()
+    sessionStorage.setItem(slot, minted)
+    return minted
+  } catch {
+    // Private mode / storage disabled. Falling back to a fresh key is the honest
+    // failure: idempotency is unavailable, so the build behaves as it did before
+    // 0119 rather than silently colliding with someone else's intent.
+    return crypto.randomUUID()
+  }
 }
 
 export default function V2Building() {
@@ -56,10 +95,10 @@ export default function V2Building() {
   // time). Drives a slow crawl so the bar never freezes at 12% and reads as stuck.
   const [ingesting, setIngesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  // Why we did NOT use the reference the creator pasted. Shown rather than
-  // swallowed: silently building from something else is how they end up with a
-  // script that has nothing to do with the video they chose, and no idea why.
-  const [refNote, setRefNote] = useState<string | null>(null)
+  // A reference we measured and will not build from. Distinct from `error`: this
+  // is a decision about the INPUT, taken before any credit is spent, so the copy
+  // says what to do next rather than apologising for a failure.
+  const [unusableRef, setUnusableRef] = useState<string | null>(null)
   const started = useRef(false)
   // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
   // Calendar…) keeps the build running in the background, but Cancel truly stops
@@ -166,7 +205,24 @@ export default function V2Building() {
                   if (mayUseReference(check)) {
                     transcript_id = job.result.transcript_id
                   } else {
-                    setRefNote(REFERENCE_REASON_TEXT[check.reason])
+                    // STOP. DO NOT SPEND.
+                    //
+                    // This used to record the reason and carry on into a
+                    // pattern-mode build, on the theory that a less-tailored
+                    // script beats "We hit a snag". That theory charges a remix
+                    // for a video the creator did not ask for: they pasted a
+                    // reference precisely so the script would follow it, and we
+                    // announced at 94% that we had ignored it — after the money
+                    // was gone.
+                    //
+                    // A creator who wants a build from their own style alone can
+                    // have one for free: leave the reference out. What they must
+                    // never get is a bill for us silently substituting that.
+                    if (alive) {
+                      setUnusableRef(REFERENCE_REASON_TEXT[check.reason])
+                      setActive(0)
+                    }
+                    return
                   }
                   break
                 }
@@ -188,6 +244,9 @@ export default function V2Building() {
           reference_note: state.reference_note || '',
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
+          // Same intent → same key → the server returns the build it already
+          // made instead of charging for it twice (0119).
+          idempotency_key: buildKey(state),
           ...(transcript_id ? { transcript_id } : {}),
         })
         // A recreation was just spent — refresh so the remixes-left counter is
@@ -241,9 +300,23 @@ export default function V2Building() {
       </div>
 
       <div className="relative w-full max-w-md">
-        {error ? (
+        {unusableRef ? (
+          // NOT "We hit a snag" — nothing went wrong and nothing was charged. The
+          // reference was read, measured, and judged the wrong shape to copy.
+          // Saying so plainly is what stops a creator paying to find out.
           <div className="glass gradient-border p-7 text-center">
-            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-coral/15"><Sparkles className="h-5 w-5 text-coral" /></span>
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
+            <h2 className="mt-4 font-display text-2xl">That reference won’t copy well</h2>
+            <p className="mt-2 text-sm leading-relaxed text-stone">{unusableRef}</p>
+            <p className="mt-3 text-xs leading-relaxed text-stone/80">
+              No remix was used. Pick a shorter reference — a normal short-form
+              video works best — or build from your own idea with no reference at all.
+            </p>
+            <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
+          </div>
+        ) : error ? (
+          <div className="glass gradient-border p-7 text-center">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-coral/15"><LogoMark size={22} /></span>
             <h2 className="mt-4 font-display text-2xl">We hit a snag</h2>
             <p className="mt-2 text-sm leading-relaxed text-stone">{error}</p>
             {isVoiceIssue ? (
@@ -261,7 +334,7 @@ export default function V2Building() {
             <div className="relative mx-auto h-14 w-14">
               <span className="absolute inset-0 animate-ping rounded-2xl bg-signature opacity-30" />
               <span className="relative grid h-14 w-14 place-items-center rounded-2xl bg-signature shadow-glow">
-                <Sparkles className="h-6 w-6 text-ink" />
+                <LogoMark size={26} />
               </span>
             </div>
 
@@ -298,11 +371,11 @@ export default function V2Building() {
               })}
             </ul>
 
-            {refNote && (
-              <p className="mt-6 rounded-card border border-amber/25 bg-amber/[0.06] px-4 py-3 text-center text-xs leading-relaxed text-sand">
-                {refNote} We are building from your idea and your own style instead.
-              </p>
-            )}
+            {/* The "we are building from your idea instead" notice lived here. It
+                is gone because the thing it excused is gone: an unusable
+                reference now STOPS before the spend and says so on its own
+                screen, rather than being announced at 94% on a build the
+                creator has already paid for. */}
             <p className="mt-6 rounded-card border border-white/8 bg-white/[0.02] px-4 py-3 text-center text-xs leading-relaxed text-stone">
               Usually 30–60 seconds. Leave anytime — we keep building and it lands in your Library.
             </p>

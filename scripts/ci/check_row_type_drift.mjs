@@ -134,6 +134,17 @@ const MODELS = [
       // readiness this id cannot express. Reading the id alone would let a
       // surface offer a take that has not finished probing.
       'source_asset_id',
+      // Deduplication for generate-blueprint (0119), and server-only for the
+      // same reason `edit_projects.idempotency_key` is: the client MINTS one
+      // per click-intent and sends it, and never reads the stored copy back.
+      //
+      // Reading it back would be actively wrong here. A replay returns the
+      // EXISTING row, so the key it carries is the one the FIRST call stored —
+      // a client that compared them would see a match and conclude its own
+      // request had done the work, when the truth is that it was refused and
+      // handed someone else's (its own earlier) result. The observable fact a
+      // caller needs is the generation, which it already has.
+      'idempotency_key',
     ],
   },
 ]
