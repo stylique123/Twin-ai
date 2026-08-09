@@ -7,6 +7,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob } from '../../lib/api'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
+import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
 import { LogoMark } from '../../components/Logo'
@@ -166,13 +167,38 @@ export default function V2Building() {
         //    creator's DNA (pattern mode). A slightly-less-tailored script always
         //    beats "We hit a snag". The wait is also capped so a slow read never
         //    strands the creator for minutes.
+        // EVERY UNREAD PATH STOPS HERE (§12 step 1). Below, four different
+        // things can go wrong and all four used to end the same way: a
+        // pattern-mode build, charged. They now end with a sentence naming
+        // which one happened, and no spend.
+        //
+        // The server refuses the same case as a backstop, but it only ever
+        // learns "no transcript arrived". This is the layer that knows the
+        // host was unsupported, or the read timed out rather than failed — so
+        // the creator is told what to change instead of what went wrong.
+        const halt = (cause: keyof typeof REFERENCE_UNREAD_TEXT) => {
+          if (alive) { setUnusableRef(REFERENCE_UNREAD_TEXT[cause]); setActive(0) }
+        }
+
+        // An unreadable host never even reaches the worker. This used to sail
+        // straight past into a paid build whose reference was decoration.
+        if (refUrl && !willIngest) { halt('unsupported_host'); return }
+
         let transcript_id: string | undefined
+        // null = we have a transcript, or there was no read to do.
+        let unread: keyof typeof REFERENCE_UNREAD_TEXT | null = null
         if (willIngest) {
           setIngesting(true)
           try {
             const { jobId, transcriptId } = await ingestReference(refUrl)
             transcript_id = transcriptId // cache hit → immediate
             if (!transcript_id) {
+              // Starts as the timeout, because that is what an answer that
+              // never comes IS. Each branch below that learns something more
+              // specific overwrites it; reaching the end of the loop leaves it
+              // true. Defaulting to `null` instead would make silence look
+              // like success.
+              unread = 'read_timed_out'
               // Poll on a tighter 1.2s cadence so a transcript that finishes early is
               // picked up promptly (was 2.5s → up to 2.5s wasted after it was ready).
               // ~72s ceiling preserved, then we proceed in pattern mode regardless.
@@ -204,6 +230,7 @@ export default function V2Building() {
                   })
                   if (mayUseReference(check)) {
                     transcript_id = job.result.transcript_id
+                    unread = null // read, measured, and fit to follow
                   } else {
                     // STOP. DO NOT SPEND.
                     //
@@ -226,18 +253,25 @@ export default function V2Building() {
                   }
                   break
                 }
-                if (job.status === 'failed') break // unreadable → fall through to pattern mode
+                // A job that finished WITHOUT a transcript is a different fact
+                // from one that failed, and from one still running. Naming it
+                // stops all three collapsing into "taking too long".
+                if (job.status === 'done') { unread = 'read_empty'; break }
+                if (job.status === 'failed') { unread = 'read_failed'; break }
               }
             }
           } catch (e) {
-            // Ingest itself errored — log and build from the reference without it.
-            console.warn('[build] reference read failed; using pattern mode', e)
+            // Ingest itself errored. Logged, then refused — this is exactly the
+            // case that used to become a silent pattern-mode charge.
+            console.warn('[build] reference read failed; refusing to spend', e)
+            unread = 'read_failed'
           } finally {
             setIngesting(false)
           }
         }
 
         if (cancelled.current) return // Cancel pressed during the read → no spend
+        if (unread) { halt(unread); return }
         startPacing()
         const gen = await generateBlueprint({
           reference_url: refUrl,
@@ -265,7 +299,19 @@ export default function V2Building() {
         if (alive) { setActive(STEPS.length); nav(`/result/${gen.id}`, { replace: true }) }
       } catch (e) {
         if (ticker) clearInterval(ticker)
-        if (alive) setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
+        if (!alive) return
+        // The server's own hard stop. Reached only when this screen's checks
+        // did not fire first — a client older than the server, or a read that
+        // looked fine here and produced nothing there. It is a refusal, not a
+        // failure, and nothing was charged, so it must not wear "We hit a
+        // snag": that copy sends the creator to retry the thing that will
+        // refuse again.
+        if ((e as { code?: string } | null)?.code === REFERENCE_UNREAD_CODE) {
+          setUnusableRef(e instanceof Error ? e.message : REFERENCE_UNREAD_TEXT.read_failed)
+          setActive(0)
+          return
+        }
+        setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
       }
     })()
 
@@ -306,11 +352,15 @@ export default function V2Building() {
           // Saying so plainly is what stops a creator paying to find out.
           <div className="glass gradient-border p-7 text-center">
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
-            <h2 className="mt-4 font-display text-2xl">That reference won’t copy well</h2>
+            <h2 className="mt-4 font-display text-2xl">We can’t follow that reference</h2>
             <p className="mt-2 text-sm leading-relaxed text-stone">{unusableRef}</p>
+            {/* The two ways out are the same whichever check refused, so they
+                live here rather than in the per-cause sentence above. "Shorter"
+                used to be here and is advice about only one of them. */}
             <p className="mt-3 text-xs leading-relaxed text-stone/80">
-              No remix was used. Pick a shorter reference — a normal short-form
-              video works best — or build from your own idea with no reference at all.
+              No remix was used. Try another short-form video from TikTok,
+              Instagram or YouTube — or build from your own idea with no
+              reference at all, which costs nothing extra.
             </p>
             <button onClick={() => nav('/v2', { replace: true })} className="btn-gradient mt-6 w-full">Try a different reference</button>
           </div>

@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import {
   readReferenceAnalysis, referenceDisclosure, shouldDiscloseReference,
+  REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE,
 } from '../referenceAnalysis'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -111,5 +112,68 @@ describe('the TypeScript modes and the SQL CHECK cannot drift', () => {
     // A column a client can write is a column that can claim we watched a video
     // we did not.
     expect(sql).not.toMatch(/grant update \(reference_analysis\)/)
+  })
+})
+
+// ── THE HARD STOP ─────────────────────────────────────────────────────────
+//
+// The tests above are about DISCLOSING a pattern-mode build. These are about
+// there no longer being one to disclose. `pattern` is refused before spend, so
+// the disclosure path now covers only generations bought before this rule.
+describe('an unreadable reference refuses before it charges', () => {
+  const fn = readFileSync(
+    resolve(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
+
+  it('the refusal is above the line that takes the money', () => {
+    const stop = fn.indexOf("referenceAnalysis.mode === 'pattern'")
+    const spend = fn.indexOf("rpc('spend_credits'")
+    expect(stop).toBeGreaterThan(-1)
+    expect(spend).toBeGreaterThan(-1)
+    // Below the spend, the creator has already paid for the refusal.
+    expect(stop).toBeLessThan(spend)
+  })
+
+  it('the refusal is BELOW the replay check, so a paid build still returns', () => {
+    // A replay names a generation that already exists and was already charged
+    // for — including one bought under the old pattern-mode behaviour. Refusing
+    // it would keep the money and withhold the work.
+    const replay = fn.indexOf('if (idempotency_key)')
+    const stop = fn.indexOf("referenceAnalysis.mode === 'pattern'")
+    expect(replay).toBeGreaterThan(-1)
+    expect(stop).toBeGreaterThan(replay)
+  })
+
+  it('it refuses with a code, not only a sentence', () => {
+    // The client tells a refusal from a failure by this code. Matching on the
+    // prose instead breaks the first time someone rewords the copy.
+    expect(fn).toContain(REFERENCE_UNREAD_CODE)
+  })
+
+  it('`none` is not caught by it — a build with no reference stays free', () => {
+    // The escape hatch IS the rule's justification: we refuse to sell a
+    // reference-less build in place of the one asked for, and we still give it
+    // away when it is the one asked for.
+    expect(fn).not.toContain("referenceAnalysis.mode === 'none'")
+  })
+})
+
+describe('the client and the server promise the same thing', () => {
+  it('every cause has a sentence that says what we could not do', () => {
+    for (const [cause, text] of Object.entries(REFERENCE_UNREAD_TEXT)) {
+      expect(text.length).toBeGreaterThan(20)
+      // Never a judgement about someone else's video — §7c. We report what we
+      // could not do; "bad", "poor" and "low quality" are claims about a video
+      // nobody here measured.
+      expect(text).not.toMatch(/\bbad\b|\bpoor\b|low quality/i)
+      expect(cause).toMatch(/^[a-z_]+$/)
+    }
+  })
+
+  it('the sentence never offers the pattern-mode build it used to sell', () => {
+    // "so the script follows the format instead" was the fallback's caption.
+    // If it reappears here, the fallback came back.
+    for (const text of Object.values(REFERENCE_UNREAD_TEXT)) {
+      expect(text).not.toMatch(/follows the format instead/)
+    }
   })
 })

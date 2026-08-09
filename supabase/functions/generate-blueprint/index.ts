@@ -709,6 +709,7 @@ Deno.serve(async (req: Request) => {
               : 'The analysis came back empty, so the script follows the format instead.',
           }
 
+
   // REPLAY BEFORE SPEND (0119). A remount, a refresh or a double-click sends the
   // SAME key, and the build it names has already been paid for. Returning that
   // row is not a cache — it is the same generation, which is why it returns 200
@@ -728,6 +729,35 @@ Deno.serve(async (req: Request) => {
       .eq('idempotency_key', idempotency_key)
       .maybeSingle()
     if (prior) return json(prior)
+  }
+
+  // THE HARD STOP (§12 step 1). A reference we could not read is not a cheaper
+  // build — it is a different product, and the creator asked for this one.
+  //
+  // The client stops earlier and says more, because it knows WHICH read failed.
+  // This is the backstop that makes the rule true rather than merely usual: it
+  // sits on the last line before the money moves, so no caller — a retry, a
+  // direct POST, a client shipped before this change — can route around it.
+  //
+  // BELOW the replay check on purpose. A replay names a build that was already
+  // paid for, including one bought under the old pattern-mode behaviour;
+  // refusing to return it would take the money and withhold the generation.
+  //
+  // `none` is untouched. Building from the creator's own style with no
+  // reference is a choice they are allowed to make, and it costs nothing extra
+  // to honour, because nothing was promised about a video.
+  if (referenceAnalysis.mode === 'pattern') {
+    return json(
+      {
+        // Server-side we know only that no transcript arrived, never why. The
+        // client's causes are more specific; these two are the honest floor.
+        error: !transcript_id
+          ? 'We could not read this video — it may be private, deleted, or from an account that blocks us.'
+          : 'We reached this video but the read came back empty, so there is nothing for us to follow.',
+        code: 'REFERENCE_UNREAD',
+      },
+      409,
+    )
   }
 
   // Spend credits atomically BEFORE the model call. Refund on failure.
