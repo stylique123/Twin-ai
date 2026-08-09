@@ -147,17 +147,34 @@ export const PRODUCT_EVIDENCE_FORM: Record<BriefWorkKind, ProductEvidenceForm> =
  * interrogated about a product they do not have — asking someone about a thing
  * that does not exist is how they learn to click past the questions that matter.
  *
- * FURTHER NARROWING BELONGS TO `promotes`. "Nothing to sell" should skip this
- * entirely, and "an affiliate product" should ask for the product's page rather
- * than the creator's own. That field exists on `BriefAnswers` and its values are
- * not pinned yet, so this conditions on what is actually decided today and says
- * so rather than guessing an enum it does not own.
+ * NARROWED BY `promotes`, which is now pinned. This comment used to say the
+ * values were "not pinned yet" and to condition on `workKind` alone — and it
+ * stayed there after `BRIEF_PROMOTES` was pinned twenty lines above it, so a
+ * creator who had just said they have nothing to sell was still asked to hand
+ * over their product page. An accurate note that stops being accurate reads
+ * exactly like one that never was.
+ *
+ * SILENCE IS NOT "NOTHING TO SELL". Only an explicit `nothing_to_sell`
+ * suppresses the question. A null `promotes` means unanswered, and someone who
+ * has not reached that question yet still has a product to describe — so this
+ * gate is permissive on silence, like `can_film_objects` and unlike
+ * `can_record_screen`. The asymmetry between those two is deliberate; see
+ * `capabilities.ts` before assuming it is a bug.
+ *
+ * STILL OPEN: `affiliate` should ask for the PRODUCT'S page rather than the
+ * creator's own. That is a copy change to `PRODUCT_EVIDENCE_FORM`, not a gate
+ * change, and it is a decision about what to say rather than whether to ask —
+ * so it is not smuggled in here.
  */
-export function asksProductEvidence(kind: BriefWorkKind | null | undefined): boolean {
+export function asksProductEvidence(
+  kind: BriefWorkKind | null | undefined,
+  promotes?: BriefPromotes | null,
+): boolean {
   // `creator` is excluded deliberately: it is the one kind where a product is
   // the exception rather than the rule, and the offer question already catches
   // the ones who have one.
-  return !!kind && kind !== 'creator'
+  if (!kind || kind === 'creator') return false
+  return promotes !== 'nothing_to_sell'
 }
 
 export interface BriefAnswers {
@@ -263,7 +280,7 @@ export function questionsFor(stage: BriefStage, answers: BriefAnswers): BriefQue
   return BRIEF_QUESTIONS.filter((q) => {
     if (q.stage !== stage) return false
     if (q.id === 'forbiddenClaims') return asksForbiddenClaims(answers.workKind)
-    if (q.id === 'productEvidence') return asksProductEvidence(answers.workKind)
+    if (q.id === 'productEvidence') return asksProductEvidence(answers.workKind, answers.promotes)
     return true
   })
 }
