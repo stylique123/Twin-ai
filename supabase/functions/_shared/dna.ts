@@ -29,8 +29,21 @@ export function normalizeHandle(raw: string): string {
   if (urlMatch) {
     try {
       const u = new URL(h)
-      const seg = u.pathname.split('/').filter(Boolean).pop() ?? ''
-      h = seg || u.hostname
+      const segs = u.pathname.split('/').filter(Boolean)
+      // PREFER THE @SEGMENT over the last one.
+      //
+      // Taking the last path segment is right for a bare profile URL and wrong
+      // for every URL a creator actually copies. YouTube's own UI hands out
+      // `.../@name/shorts`, `.../@name/videos`, `.../@name/featured`, and the
+      // browser is usually sitting on one of those tabs when someone hits
+      // copy — so the last segment is the TAB NAME. The scan then runs against
+      // a handle called `shorts`, and the creator is told that account has no
+      // public posts, which is true and completely misleading.
+      //
+      // An @segment is unambiguous wherever it appears, so it wins. Falling
+      // back to the last segment keeps `instagram.com/name/` working.
+      const at = segs.find((s) => s.startsWith('@'))
+      h = at ?? segs.pop() ?? u.hostname
     } catch {
       /* fall through to raw cleanup */
     }
@@ -71,7 +84,30 @@ function actorInput(platform: Platform, handle: string): Record<string, unknown>
         addParentData: false,
       }
     case 'youtube':
-      return { startUrls: [{ url: `https://www.youtube.com/@${handle}/videos` }], maxResults: RESULTS }
+      // `/videos` DOES NOT LIST SHORTS. YouTube keeps them on a separate tab, so
+      // a channel that posts only Shorts has an EMPTY `/videos` tab — the scrape
+      // succeeds, returns zero items, and the creator is told "we couldn't read
+      // any public posts from @you" about an account that is public and full of
+      // content. Reported against a real public Shorts channel.
+      //
+      // That failure lands hardest on exactly the creators this product is for:
+      // TwinAI makes short-form video, so a short-form-only channel is the
+      // typical case, not the edge one. Asking for `/videos` alone meant the
+      // scan was blindest precisely where it needed to see.
+      //
+      // Both tabs are requested. A channel with only long-form returns nothing
+      // for `/shorts`, a Shorts-only channel returns nothing for `/videos`, and
+      // a channel with both contributes from each — in every case the union is
+      // what "their recent posts" actually means. Shorts lead because this
+      // product writes short-form, so when the cap binds it should bind on the
+      // long-form tail.
+      return {
+        startUrls: [
+          { url: `https://www.youtube.com/@${handle}/shorts` },
+          { url: `https://www.youtube.com/@${handle}/videos` },
+        ],
+        maxResults: RESULTS,
+      }
     case 'tiktok':
     default:
       return {
