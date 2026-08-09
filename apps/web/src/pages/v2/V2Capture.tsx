@@ -169,6 +169,19 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // 'saving' → autosave upload in flight · 'saved' → take is in the takes bucket ·
   // 'failed' → autosave failed (Download is the only way to keep the take).
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'failed'>('idle')
+  // HOW FAR THE UPLOAD ACTUALLY GOT.
+  //
+  // `uploadSourceRecording` has taken an onProgress callback all along and the
+  // teleprompter passed `undefined`, so this screen showed one static sentence
+  // from the first byte to the last. A creator watching "Saving to your library…"
+  // cannot tell a slow upload from a dead one — and on the run that produced this
+  // fix, the take never saved and the screen never said so.
+  const [savePct, setSavePct] = useState(0)
+  // The last moment bytes moved. A stalled upload is not an error: fetch/XHR on a
+  // phone that loses its connection mid-PUT can hang without ever rejecting, which
+  // is why 'saving' could outlive the upload entirely. Silence needs its own
+  // deadline or it is indistinguishable from progress.
+  const progressAtRef = useRef(0)
   // WHY THE REASON IS STATE AND NOT A CONSOLE LINE.
   //
   // `saveSourceOnce` can fail in five distinct places — no recorded scenes, the
@@ -322,6 +335,36 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // A take is "dirty" (worth warning about on unload) while recording, or while a
   // finished take is being reviewed but isn't autosaved server-side yet.
   useEffect(() => { dirtyRef.current = recording || (!!reviewUrl && saveState !== 'saved') }, [recording, reviewUrl, saveState])
+
+  // A SAVE THAT STOPPED IS NOT A SAVE THAT IS SLOW.
+  //
+  // Reported from the recording run: "Saving to your library…" that never
+  // resolved, on a take that never reached the Library. Nothing was wrong with
+  // the error handling — `failSave` names five distinct causes. The problem is
+  // that a stalled upload produces no error to name. An XHR whose connection
+  // dies mid-PUT can sit open indefinitely, so the promise never settles, the
+  // catch never runs, and the screen keeps promising something that stopped
+  // happening minutes ago.
+  //
+  // The deadline is on SILENCE, not on total time: a genuinely slow upload keeps
+  // firing progress events and is left alone however long it takes. Only an
+  // upload where nothing has moved for this long is called stalled.
+  //
+  // The take itself is never at risk — the Blob is still in memory, Download
+  // still works, and Retry reuses the same attempt id so the server resumes the
+  // same asset rather than minting a duplicate. So this converts a silent hang
+  // into a state with a way out, which is the whole of what it claims to do.
+  useEffect(() => {
+    if (saveState !== 'saving') return
+    const STALL_MS = 45_000
+    const h = window.setInterval(() => {
+      if (performance.now() - progressAtRef.current < STALL_MS) return
+      window.clearInterval(h)
+      failSave(new Error('The upload stopped partway. Your take is still on this device — press Retry, or download it to keep it.'))
+    }, 2000)
+    return () => window.clearInterval(h)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveState])
 
   // Real teleprompter motion: the whole script GLIDES UPWARD (translateY on the text
   // block) past a fixed read-line, regardless of length — not a word-by-word jump.
@@ -496,7 +539,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
     // the take recoverable after refresh and on other devices. A real recorder
     // error or an empty blob is not worth persisting.
     if (!recErrRef.current && blob.size >= MIN_TAKE_BYTES) {
-      setSaveState('saving')
+      setSaveState('saving'); setSavePct(0); progressAtRef.current = performance.now()
       setSaveError(null)
       saveSourceOnce(blob)
         .then((r) => { savedTakePathRef.current = r.path; setSaveState('saved') })
@@ -565,7 +608,13 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
       segments: accepted_segments.map((a) => ({ sceneNumber: a.scene_number, startMs: a.start_ms, endMs: a.end_ms, dialogue: '' })),
     })
     const capture: CaptureUploadPayload = { origin: 'teleprompter', recording_script_sha256: scriptSha, recorder_clock: 'mediarecorder-active-time-ms', accepted_segments }
-    const intent = await uploadSourceRecording(genId, attemptIdRef.current, { blob, contentType, sizeBytes: blob.size }, undefined, capture)
+    const intent = await uploadSourceRecording(
+      genId,
+      attemptIdRef.current,
+      { blob, contentType, sizeBytes: blob.size },
+      (p) => { progressAtRef.current = performance.now(); setSavePct(p) },
+      capture,
+    )
     saveTakePointer(genId, { takePath: intent.path, contentType, sourceAssetId: intent.assetId })
     return { path: intent.path }
   })
@@ -575,7 +624,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   const retrySave = () => {
     const blob = reviewBlobRef.current
     if (!blob || saveState === 'saving') return
-    setSaveState('saving')
+    setSaveState('saving'); setSavePct(0); progressAtRef.current = performance.now()
     setSaveError(null)
     saveSourceOnce(blob)
       .then((r) => { savedTakePathRef.current = r.path; setSaveState('saved') })
@@ -686,7 +735,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
                   <p className="text-sm font-semibold text-cream">Your recording looks good.</p>
                   <p className="text-xs text-stone">
                     {saveState === 'saved' && 'Saved to your library — safe even if you close this tab.'}
-                    {saveState === 'saving' && 'Saving to your library…'}
+                    {saveState === 'saving' && (savePct > 0 ? `Saving to your library… ${Math.round(savePct * 100)}%` : 'Saving to your library…')}
                     {/* The CAUSE, not just the outcome. Some of these are
                         retryable (the upload dropped) and some are not (the
                         recorded windows do not match the script), and a

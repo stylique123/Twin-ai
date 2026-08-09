@@ -283,10 +283,27 @@ re-runs a ~1.2s mic sample and a track read; if orientation is the only row that
 can change and it cannot change (defect 2), the button correctly re-measures and
 correctly reports the same thing. Suspected duplicate of 2 — verify after 2.
 
-**5 · The take was not saved.** 🔴 "Saving to your library…" never resolved.
+**5 · The take was not saved.** ⚠️ "Saving to your library…" never resolved.
 `edit_projects` is still 0 and now `takes` may be too. **This is the highest
 priority item in the whole plan** — see §10.1: nothing downstream matters until
 one take completes in production.
+
+Two things were wrong and only one of them is fixed.
+
+*Fixed:* the screen could not tell a slow upload from a dead one.
+`uploadSourceRecording` has accepted an `onProgress` callback all along and the
+teleprompter passed `undefined`, so one static sentence covered the whole
+upload. And `failSave` names five distinct causes — but a STALLED upload
+produces no error to name: an XHR whose connection dies mid-PUT can sit open
+indefinitely, so the promise never settles and the catch never runs. There is
+now a percentage, and a deadline on SILENCE (45s with no bytes moving; a slow
+upload that keeps reporting is left alone however long it takes). The Blob stays
+in memory, Download still works, and Retry reuses the same attempt id.
+
+*Not fixed, because it is not yet known:* WHY it stopped. The instrumentation
+above is what makes the next run diagnostic rather than another blank — it will
+say whether the upload never started, stopped at 60%, or completed and failed to
+finalize. Until then, naming a cause would be a guess.
 
 **6 · Reopening the review screen after ~5 minutes restarted everything.** 🟡
 Same class as the V2Building replay, in a second screen: state held in refs that
