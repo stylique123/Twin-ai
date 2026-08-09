@@ -108,7 +108,16 @@ export const NOT_OBSERVED_SOURCE = 'We did not analyse the video — your brand 
  * reference we happened to extract less from would let absence look like
  * completeness, which is the failure the screen exists to prevent.
  */
-export function transferRows(evidence: NormalizedReferenceEvidenceV1 | null): TransferRow[] {
+export function transferRows(
+  evidence: NormalizedReferenceEvidenceV1 | null,
+  // Whether a transcript actually reached the model. Defaults to TRUE so every
+  // existing caller keeps its current sentence; the honest variant is opt-in by
+  // the one surface that knows the answer. `readReferenceAnalysis().mode` is
+  // that answer: 'real' means a transcript was read, 'pattern' and 'none' mean
+  // it was not, and 'unknown' (pre-0110 rows) is not a claim either way — so it
+  // keeps the default rather than inventing a fact about history.
+  transcriptRead = true,
+): TransferRow[] {
   const rows: TransferRow[] = []
   const seen = new Set<EvidenceType>()
 
@@ -125,7 +134,7 @@ export function transferRows(evidence: NormalizedReferenceEvidenceV1 | null): Tr
       kind: item.kind,
       source: item.kind === 'unknown'
         ? NOT_OBSERVED_SOURCE
-        : sourceSentence(item.kind, item.sourcePath),
+        : sourceSentence(item.kind, item.sourcePath, transcriptRead),
       value: item.kind === 'unknown' ? null : item.value,
     })
   }
@@ -150,7 +159,7 @@ export function transferRows(evidence: NormalizedReferenceEvidenceV1 | null): Tr
  * something says which is which, and that difference is the entire subject of
  * this page.
  */
-function sourceSentence(kind: EvidenceKind, sourcePath: string): string {
+function sourceSentence(kind: EvidenceKind, sourcePath: string, transcriptRead: boolean): string {
   if (kind === 'measured') {
     return sourcePath.startsWith('derived:')
       ? 'Computed from the transcript\'s word timings.'
@@ -158,6 +167,21 @@ function sourceSentence(kind: EvidenceKind, sourcePath: string): string {
   }
   if (kind === 'observed') return 'Read directly from the reference.'
   // The one that matters most, and the one §1.1's example table gets wrong.
+  //
+  // IT ALSO USED TO CONTRADICT THE BANNER ABOVE IT. In pattern mode the page
+  // says "We could not read this video, so the script follows the format
+  // instead" — and then every interpreted row underneath claimed to be "a
+  // model's reading of the TRANSCRIPT". There was no transcript. The rows were
+  // asserting evidence the same screen had just said did not exist.
+  //
+  // That is worse than a wrong label. This screen's entire job is to separate
+  // what we measured from what we guessed, so a row here that overstates its
+  // own basis breaks the one thing the page is for — and it overstates it in
+  // the exact case where the creator most needs to know the script was built
+  // without their reference.
+  if (!transcriptRead) {
+    return 'Inferred from the format and your own style — no transcript was read.'
+  }
   return 'A model\'s reading of the transcript — not something we measured.'
 }
 
