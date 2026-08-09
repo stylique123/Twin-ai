@@ -688,6 +688,25 @@ Not *"50mm equivalent, shallow depth of field, key light at 45°."*
 
 Simple enough to act on.
 
+### Lighting and depth — the same rule applied
+
+> Face the brightest natural light available.
+> Keep the background slightly out of focus, if your phone supports it.
+
+⚖️ Both are phrased as **achievable direction conditioned on what the creator
+has**, not as assumed inventory. *"Face the brightest natural light"* works in
+any room at any hour; *"use a key light at 45°"* assumes equipment nobody asked
+about. *"If your phone supports it"* is doing real work — portrait mode is not
+universal, and an instruction the creator cannot follow reads as the product not
+knowing them.
+
+⚖️ **Preflight measures the room; the Director advises about it.** Do not
+conflate them. `preflightSignals.ts` reports only what a browser can honestly
+observe — orientation, whether a live audio track exists, its peak — and
+explicitly refuses lighting, because lighting needs a subject region it cannot
+segment. So a Director lighting *instruction* is legitimate; a Director claim
+that the light **is** good is not, and must never be rendered as a green tick.
+
 ### Pattern interrupts — simple, creator-performed, no B-roll
 
 tight → wider · seated → standing · straight-on → slight side angle · centre →
