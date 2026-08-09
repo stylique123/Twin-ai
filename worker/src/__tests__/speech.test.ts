@@ -54,8 +54,45 @@ function fixtureBridge() {
       { start: 2.7, end: 5.7 },
       { start: 7.3, end: 8.8 },
     ],
-    energy: { window_ms: 200, rms: Array.from({ length: 73 }, (_, i) => (i % 10) / 20) },
+    // An energy curve that MODELS THE RECORDING rather than filling space.
+    //
+    // The previous value was `(i % 10) / 20` — a sawtooth with no relationship
+    // to where the words are. That was harmless while filler detection only
+    // asked the VAD, and became load-bearing the moment #194's detector started
+    // comparing a candidate against the speaker's own lexical baseline. A test
+    // asserting "this IS a filler" over a curve that models nothing was
+    // asserting detection from ASR text alone — the exact thing #194 forbids.
+    //
+    // So: lexical speech at 0.40, the filled pause at 0.18 (reduced effort, as
+    // real filled pauses are), silence near zero.
+    energy: { window_ms: 200, rms: fixtureEnergy() },
   }
+}
+
+/** Build an RMS curve from [startMs, endMs, level] spans; gaps read as silence. */
+function energyFor(spans: Array<[number, number, number]>, totalMs: number, windowMs = 100): number[] {
+  return Array.from({ length: Math.ceil(totalMs / windowMs) }, (_, i) => {
+    const mid = i * windowMs + windowMs / 2
+    const hit = spans.find(([s, e]) => mid >= s && mid < e)
+    return hit ? hit[2] : 0.01
+  })
+}
+
+/** 200ms windows across ~8.8s. Index i covers [i*200, (i+1)*200) ms. */
+function fixtureEnergy(): number[] {
+  const LEXICAL = 0.40
+  const FILLED_PAUSE = 0.18
+  const SILENCE = 0.01
+  const speech: Array<[number, number]> = [
+    [300, 1400],   // "The quick fox."
+    [3100, 5700],  // "I want, I want to tell you about pineapples."
+    [7300, 8800],  // "Bananas are wonderful."
+  ]
+  return Array.from({ length: 45 }, (_, i) => {
+    const mid = i * 200 + 100
+    if (mid >= 2800 && mid < 3100) return FILLED_PAUSE // the "Um,"
+    return speech.some(([s, e]) => mid >= s && mid < e) ? LEXICAL : SILENCE
+  })
 }
 
 describe('speech word contract', () => {
@@ -302,6 +339,11 @@ describe('speech candidate contract (proposals, never removals)', () => {
         { w: 'winner.', start: 0.8, end: 1.2, p: 0.99 },
       ],
       vad_segments: [{ start: 0.0, end: 1.2 }],
+      // Fluent speech throughout, at one level. These sub-fixtures used to
+      // inherit the main bridge's curve, which is built for a completely
+      // different timeline — so the energy under these words described some
+      // other recording. Self-consistent now.
+      energy: { window_ms: 100, rms: energyFor([[0, 1200, 0.40]], 1400) },
     }
     const af = buildSpeechAnalysis(asset, fluent, opts) as Record<string, any>
     expect(af.candidates.some((c: any) => c.evidence?.markerType === 'discourse')).toBe(false)
@@ -315,6 +357,12 @@ describe('speech candidate contract (proposals, never removals)', () => {
         { w: 'good.', start: 1.7, end: 2.1, p: 0.95 },  // >200ms pause after
       ],
       vad_segments: [{ start: 0.0, end: 2.1 }],
+      // A real hesitation is BOTH bracketed and produced with less effort. The
+      // detector now requires both, so the fixture has to contain both — a
+      // marker at full lexical energy with a pause either side is not
+      // distinguishable from someone pausing mid-sentence, which is why the
+      // conjunction exists.
+      energy: { window_ms: 100, rms: energyFor([[0, 500, 0.40], [1000, 1300, 0.18], [1700, 2100, 0.40]], 2200) },
     }
     const ah = buildSpeechAnalysis(asset, hes, opts) as Record<string, any>
     const dm = ah.candidates.find((c: any) => c.evidence?.markerType === 'discourse')
