@@ -196,6 +196,7 @@ export default function Onboarding() {
                   onReady={handleReady}
                   onBack={() => setMode('handle')}
                   onScanDead={forgetDeadScan}
+                  onDraftChange={persistDraft}
                 />
               )}
               {mode === 'confirm' && draft && (
@@ -368,16 +369,31 @@ function HandleStep({
 // --- Step 2: live progress while the scan runs -----------------------------
 const SCAN_STAGES = ['Fetching your posts', 'Reading captions & hooks', 'Synthesizing your voice']
 
+// Q1's options. Stored as the free text `goal` the brief already carries, so
+// this adds a CHOOSER over an existing field rather than a second authority for
+// the same fact — a chip and a text box that both mean "goal" would drift, and
+// the one that lost would be the creator's.
+const SCAN_GOALS = [
+  'Grow audience',
+  'Build authority',
+  'Educate',
+  'Generate leads',
+  'Drive sales',
+  'Entertain',
+] as const
+
 function BuildingStep({
   draft,
   onReady,
   onBack,
   onScanDead,
+  onDraftChange,
 }: {
   draft: OnboardingDraft
   onReady: (profile: VoiceProfile) => void
   onBack: () => void
   onScanDead: () => void
+  onDraftChange: (next: OnboardingDraft) => void
 }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
@@ -512,6 +528,90 @@ function BuildingStep({
           CONFIRM screen now, after what the creator does and what they sell,
           because how someone films is the last thing that matters and was the
           first thing we asked. */}
+      {/* THE THREE QUESTIONS NO SCAN CAN ANSWER, ASKED WHILE IT RUNS.
+          §6 of the intelligence architecture. They used to sit below the fold on
+          the confirm screen, and in the first real production run EVERY question
+          below the fold came back unanswered — placement, not wording, is why
+          the answers were empty.
+          One per stage, never all three: three questions stacked on a waiting
+          screen is the same wall in a new place. Each is answered in a tap
+          (audience aside), so a stage's worth of waiting is enough time.
+          They persist on every change rather than on a Next button, because the
+          scan finishes on its own schedule and can advance out from under a
+          half-typed answer. `forgetDeadScan` clears only `voiceId`, so a scan
+          that dies keeps every answer given here. */}
+      {!err && (
+        <div className="mt-6 rounded-card border border-white/10 bg-white/[0.03] p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
+            While we read · {Math.min(stage + 1, 3)} of 3
+          </p>
+          {stage === 0 && (
+            <>
+              <p className="mt-2 text-sm text-cream">What should your content achieve?</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {SCAN_GOALS.map((g) => (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() => onDraftChange({ ...draft, goal: draft.goal === g ? '' : g })}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs transition',
+                      draft.goal === g
+                        ? 'border-coral bg-coral/15 text-cream'
+                        : 'border-white/15 text-sand hover:bg-white/5',
+                    )}
+                  >
+                    {g}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {stage === 1 && (
+            <>
+              <p className="mt-2 text-sm text-cream">Who are you making these for?</p>
+              <input
+                className="field mt-3"
+                value={draft.audience}
+                onChange={(e) => onDraftChange({ ...draft, audience: e.target.value })}
+                placeholder="e.g. working parents who want passive income"
+              />
+              {/* A category is not an audience. "People interested in X" gives the
+                  writer nothing to aim at, and the difference shows in the script. */}
+              <p className="mt-2 text-[11px] text-stone">One line about the person, not a category.</p>
+            </>
+          )}
+          {stage >= 2 && (
+            <>
+              <p className="mt-2 text-sm text-cream">What best describes what you do?</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {BRIEF_WORK_KINDS.map((k) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => onDraftChange({ ...draft, workKind: draft.workKind === k ? null : k })}
+                    className={cn(
+                      'rounded-full border px-3 py-1.5 text-xs transition',
+                      draft.workKind === k
+                        ? 'border-coral bg-coral/15 text-cream'
+                        : 'border-white/15 text-sand hover:bg-white/5',
+                    )}
+                  >
+                    {WORK_KIND_LABEL[k]}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {/* Skipping is allowed and unpunished. A required question on a waiting
+              screen turns a wait into a toll, and every one of these is asked
+              again on the confirm screen where the answer is still editable. */}
+          <p className="mt-3 text-[11px] text-stone">
+            Optional, and you can change any of it on the next screen.
+          </p>
+        </div>
+      )}
+
       {err && (
         <div className="mt-6 space-y-2">
           <p className="rounded-lg bg-coral/10 px-3 py-2 text-sm text-coral">{err}</p>
