@@ -30,6 +30,7 @@ import { Check, Loader2, Pencil, SlidersHorizontal, TriangleAlert, User, Video, 
 import {
   applyDialogueEdit, applyHookEdit, buildRecordingScript, changesTheRecordedScript,
   establishDurableRecordingScriptLive, loadRecordingScript, SCRIPT_EDIT_MESSAGE,
+  sceneOverrunSec, overrunWorthShowing,
   type RecordingScene, type RecordingScript, type ScriptEditResult,
 } from '../lib/api'
 import type { Blueprint } from '../lib/types'
@@ -187,6 +188,28 @@ function safeBuild(
   }
 }
 
+/** THE DRIFT, WHERE IT IS ACTIONABLE.
+ *
+ *  A beat was planned for 6 seconds and the line now estimates at 14. Before
+ *  this, the editor could only show the current number, so a creator learned
+ *  they had overrun while filming it — which is the expensive place to find out.
+ *
+ *  Renders NOTHING when there is no target. "Nothing to compare" and "no drift"
+ *  are different facts and only one of them means the line is the right length,
+ *  so an absent plan shows an absent indicator rather than a reassuring one. */
+function BeatLength({ scene }: { scene?: RecordingScene }) {
+  if (!scene || typeof scene.target_sec !== 'number') return null
+  const over = sceneOverrunSec(scene)
+  if (!overrunWorthShowing(over)) {
+    return <span className="text-[11px] text-sand/60">{scene.target_sec}s beat</span>
+  }
+  return (
+    <span className="text-[11px] text-coral">
+      {scene.duration_sec}s against a {scene.target_sec}s beat, about {over}s long
+    </span>
+  )
+}
+
 function SceneCard({ label, text, guidance, onSave }: {
   label: string
   text: string
@@ -215,9 +238,12 @@ function SceneCard({ label, text, guidance, onSave }: {
   return (
     <div className="rounded-card border border-white/5 bg-ink2/85 p-6 shadow-glass backdrop-blur-md">
       <div className="flex items-center justify-between gap-2">
-        <span className="rounded-full border border-white/5 bg-ink2/40 px-3 py-1 text-[11px] font-semibold tracking-wide text-sand">
-          {label}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border border-white/5 bg-ink2/40 px-3 py-1 text-[11px] font-semibold tracking-wide text-sand">
+            {label}
+          </span>
+          <BeatLength scene={guidance} />
+        </div>
         {!editing && (
           <button
             type="button"

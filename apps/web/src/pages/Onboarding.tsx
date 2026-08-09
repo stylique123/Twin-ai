@@ -102,6 +102,7 @@ export default function Onboarding() {
       platform,
       profile,
       workKind: null,
+      workKindOther: null,
       forbiddenClaims: null,
       promotes: null,
       // The scan pre-fills the offer, so it starts as NOT the creator's answer.
@@ -122,8 +123,8 @@ export default function Onboarding() {
     audience: string,
     product: string,
     goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>
-      = { workKind: null, forbiddenClaims: null, promotes: null, offerFromCreator: false, canRecordScreen: null, canFilmObjects: null },
+    brief: Pick<OnboardingDraft, 'workKind' | 'workKindOther' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>
+      = { workKind: null, workKindOther: null, forbiddenClaims: null, promotes: null, offerFromCreator: false, canRecordScreen: null, canFilmObjects: null },
   ) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
@@ -557,7 +558,7 @@ function ConfirmStep({
   draft: OnboardingDraft
   onDraftChange: (
     profile: VoiceProfile, audience: string, product: string, goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>,
+    brief: Pick<OnboardingDraft, 'workKind' | 'workKindOther' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>,
   ) => void
   onDone: () => Promise<void>
   onBack: () => void
@@ -574,6 +575,7 @@ function ConfirmStep({
   // §8a.1's brief. `workKind` decides whether the claims question appears at
   // all; `forbiddenClaims` is the answer no model can infer.
   const [workKind, setWorkKind] = useState<BriefWorkKind | null>(draft.workKind)
+  const [workKindOther, setWorkKindOther] = useState<string>(draft.workKindOther ?? '')
   const [forbiddenClaims, setForbiddenClaims] = useState(draft.forbiddenClaims ?? '')
   const [promotes, setPromotes] = useState<BriefPromotes | null>(draft.promotes ?? null)
   // The offer arrives PRE-FILLED FROM THE SCAN — which is the defect §8a names,
@@ -616,11 +618,12 @@ function ConfirmStep({
   useEffect(() => {
     if (vp) {
       onDraftChange(vp, audience, product, goal, {
-        workKind, forbiddenClaims: forbiddenClaims.trim() || null, promotes, offerFromCreator: offerTouched,
+        workKind, workKindOther: workKindOther.trim() || null,
+        forbiddenClaims: forbiddenClaims.trim() || null, promotes, offerFromCreator: offerTouched,
         canRecordScreen, canFilmObjects,
       })
     }
-  }, [vp, audience, product, goal, workKind, forbiddenClaims, promotes, offerTouched, canRecordScreen, canFilmObjects, onDraftChange])
+  }, [vp, audience, product, goal, workKind, workKindOther, forbiddenClaims, promotes, offerTouched, canRecordScreen, canFilmObjects, onDraftChange])
 
   if (!vp) {
     return (
@@ -680,7 +683,8 @@ function ConfirmStep({
       // answer no reader can act on — `readStoredBrief` would drop it anyway,
       // silently. The chooser is the other track's to add.
       await savePreScriptBrief(draft.voiceId, {
-        workKind, forbiddenClaims, audience, promotes,
+        workKind, workKindOther: workKindOther.trim() || null,
+        forbiddenClaims, audience, promotes,
         // The offer, but ONLY if the creator typed it. `offerTouched` is exactly
         // that fact, and without it we would store the scan's guess as though
         // they had confirmed it — which is the inference this question exists to
@@ -789,6 +793,22 @@ function ConfirmStep({
               </button>
             ))}
           </div>
+          {/* THE BOX THE CONTRACT HAS ALWAYS REQUIRED.
+              `otherWithoutText` has existed in preScriptBrief.ts since the brief
+              was written, and nothing rendered a place to type. So `other`
+              reached the script as the bare word "other" — which describes
+              nobody, and is the one answer where the creator has more to say
+              than any chip could hold. Shown only for `other`, because a text
+              box beside six chips invites everyone to skip the chips. */}
+          {workKind === 'other' && (
+            <input
+              value={workKindOther}
+              onChange={(e) => setWorkKindOther(e.target.value.slice(0, 240))}
+              placeholder="In one line — what do you actually do?"
+              aria-label="Describe what you do"
+              className="mt-2 w-full rounded-lg border border-white/15 bg-transparent px-3 py-2 text-sm text-cream placeholder:text-sand/50 focus:border-coral focus:outline-none"
+            />
+          )}
         </Labeled>
         {/* Q4 — WHOSE product the CTA points at.
             Placed directly after "what do you do", because it qualifies the

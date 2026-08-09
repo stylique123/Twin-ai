@@ -20,6 +20,11 @@ export interface OnboardingDraft {
   // all, and `forbiddenClaims` is the one answer no model can infer — see
   // packages/shared/src/preScriptBrief.ts.
   workKind: BriefWorkKind | null
+  // The sentence a creator types when no chip describes them. The contract has
+  // required it for `other` since the brief was written and the UI never had a
+  // box for it, so `other` reached the script as a word that describes nobody.
+  // Free text, and the highest-signal answer in the set BECAUSE they typed it.
+  workKindOther: string | null
   forbiddenClaims: string | null
   // §8a.3 Q4 — whose product the CTA points at. A CHOOSER: §2.3's three
   // container routes branch on it, and null is a real state meaning unanswered.
@@ -72,6 +77,7 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       product: value.product ?? value.profile?.offer ?? '',
       goal: value.goal ?? '',
       workKind: value.workKind ?? null,
+      workKindOther: typeof value.workKindOther === 'string' ? value.workKindOther : null,
       forbiddenClaims: value.forbiddenClaims ?? null,
       // VALIDATED, not cast. A draft is localStorage — a value outside the
       // vocabulary reaches the confirm screen as a selected chip and then the
@@ -123,6 +129,7 @@ export function readOnboardingDraft(storage: Storage, userId: string): Onboardin
     audience: '',
     product: '',
     workKind: null,
+    workKindOther: null,
     forbiddenClaims: null,
     promotes: null,
     canFilmObjects: null,
