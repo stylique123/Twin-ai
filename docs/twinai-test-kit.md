@@ -4,10 +4,24 @@
 Composer, beat plan, `workKind` and visual hook deploy, the same inputs can be
 run again and diffed. Without the baseline the second run proves nothing.
 
-**Production is at `814bf51`.** It has `promotes` wired and none of the rest.
+> ## ⚠️ UPDATED 2026-08-09 — what changed under this kit
+>
+> This kit was written when production had **`promotes` wired and none of the
+> rest**. Three things have shipped since, and one of them **inverts what Run 2
+> proves**:
+>
+> | Shipped | Effect on this kit |
+> |---|---|
+> | **`workKind` + `workKindOther` now reach the prompt** (#294) | **Run 2 flips.** It used to prove the answer was dead; it now proves the wiring is live. Prediction 5 is inverted below. |
+> | **Reference `mode: 'pattern'` refuses before spend** (#307) | A reference Twin cannot read now costs **0 credits** and says why. Trying links is free — only a successful build is billed. |
+> | **A failed take now names its cause** (#308) | If a recording will not save, the screen says which of the five failure paths fired instead of silently hiding the edit button. |
+>
+> `goal`, `productEvidence` and `alsoWantsToMake` are **still unread**, so Runs
+> 3 and its prediction stand exactly as written.
 
 **Cost:** each generation is 10 credits. The full kit below is 4 generations,
-40 credits, plus 1–2 recordings.
+40 credits, plus 1–2 recordings. **Failed reference reads are free**, so a dead
+link costs time and nothing else.
 
 ---
 
@@ -49,6 +63,16 @@ object. If A is a solo creator, B is a business. The point of run 4 is to see
 whether two genuinely different creators get genuinely different videos, or
 whether the same skeleton comes back wearing different words.
 
+### ⚖️ The strongest Creator A is YOUR OWN handle
+
+Added 2026-08-09, because it resolves the objection above rather than working
+around it. Your own account is the only one where **you can tell a right voice
+from a plausible one instantly** — which is the entire judgement this test
+exists to make. It is also the account whose Product DNA you will build first,
+so the baseline stays useful after this kit is finished.
+
+Use a second, unrelated real account for Creator B.
+
 ### What the REFERENCE video needs to be
 
 - **A format, not a topic.** Something whose STRUCTURE could carry a different
@@ -56,6 +80,55 @@ whether the same skeleton comes back wearing different words.
 - **Under 90 seconds**, so the beat structure is legible.
 - **Talking-head or screen-led**, not something that only works with a crew.
 - **Same one for runs 1–3.** Changing it breaks the control.
+
+**Only four hosts can be read** — TikTok, Instagram, YouTube and youtu.be. Any
+other link is refused before spend, for free, and says so.
+
+**A 30-second way to find one.** Open TikTok or Reels and search a format
+phrase rather than a topic, because a format is what transfers:
+
+```
+"3 things I stopped"      "nobody tells you about"
+"I was wrong about"       "the mistake everyone makes"
+"before and after"        "what I'd do differently"
+```
+
+Take the first result that is under 90 seconds, is someone talking to camera,
+and whose structure could carry a completely different subject. Copy the share
+link. **Do not optimise this choice** — the control matters far more than the
+pick, and a reference Twin cannot read now costs nothing to try.
+
+---
+
+## PART B2 — THE ANSWER SHEET
+
+Paste-ready. Only the **bolded** cell changes between runs.
+
+| Field | Run 1 (baseline) | Run 2 (`workKind`) | Run 3 (`goal`) |
+|---|---|---|---|
+| Handle | your handle | same | same |
+| Reference | Reference R | **same R** | **same R** |
+| Goal | the true one | same | **the opposite one** |
+| Audience | one specific line | same | same |
+| Offer | the real offer | same | same |
+| What do you do | the honest chip | **the furthest-away chip** | the honest chip |
+| Videos promote | the honest answer | same | same |
+| Forbidden claims | honest, if asked | same | same |
+| Tone / fidelity | defaults | defaults | defaults |
+
+**Audience — write a line, not a category.** *"Solo founders who've shipped
+something and can't get anyone to watch it"* is usable. *"People interested in
+AI"* is not, and the difference will show in the script.
+
+**Goal opposites for Run 3:** `Drive sales` ↔ `Entertain`, or `Generate leads`
+↔ `Grow audience`. Pick the pair that is furthest apart for you and watch the
+**CTA beat** specifically.
+
+**`workKind` opposites for Run 2:** if Run 1 was `creator`, use `professional`.
+If `saas`, use `ecommerce`. The point is maximum distance, not plausibility.
+
+**Run 4** is Creator B with their own honest answers and, if it still fits, the
+same reference.
 
 ---
 
@@ -88,14 +161,23 @@ Change **only** "What do you do" to something as far from the truth as the
 chips allow. If Run 1 was `creator`, use `professional`. If it was `saas`, use
 `ecommerce`.
 
-> **What it proves:** on today's code `workKind` reaches no prompt, so the
-> script should come back **materially the same shape** — same beat structure,
-> same kind of hook, same register. Some wording will differ because the model
-> is not deterministic; that is noise, not signal. **What matters is whether a
-> regulated professional and a hobbyist get recognisably different scripts.**
+> **What it proves — INVERTED as of #294.** `workKind` and `workKindOther` now
+> reach the prompt as *"What they do: this creator …"*, beside Audience and
+> Offer. So this run is no longer a test of a dead field; it is the
+> **acceptance test for the wiring**.
 >
-> If they DO come back meaningfully different, my diagnosis is wrong and I want
-> to know before building further on it.
+> The script should now come back **recognisably different** — a regulated
+> professional and a hobbyist should not get the same register, the same
+> assumed expertise, or the same CTA posture.
+>
+> **If it comes back materially identical, the wiring did not take**, and that
+> is a bug in #294 rather than a finding about the product. Check
+> `pre_script_brief.workKind` actually stored the changed chip before blaming
+> the prompt: an answer that never persisted cannot change an output, and that
+> failure looks identical from the outside.
+>
+> ⚖️ This is the one run whose meaning changed today. Any earlier notes
+> predicting "no difference" describe the old build.
 
 ---
 
@@ -174,13 +256,21 @@ Stated now so this is a test rather than an explanation of whatever arrives.
 | 2 | Nothing describes the opening VISUAL, only the opening words | `visual_hook` is unnecessary |
 | 3 | Run 3's CTA barely differs from Run 1's | `goal` is already wired and I misread it |
 | 4 | Background guidance is generic, likely the literal "Clean, well-lit background" | the shoot plan is already specific enough |
-| 5 | Run 2 is materially the same as Run 1 | `workKind` already works and A2 is redundant |
+| 5 | **INVERTED (#294).** Run 2 is materially DIFFERENT from Run 1 — different register and assumed expertise | the `workKind` wiring did not take; check the brief stored the changed chip before blaming the prompt |
 | 6 | CTA ownership language IS correct for `promotes` | the merge did not take |
 | 7 | `[SHOW: …]` names nothing specific | product evidence already reaches the script |
 
-**Predictions 3 and 5 are the load-bearing ones.** They are the two mutations,
-and if either comes back different, a piece of what I built today is aimed at
-the wrong target.
+**Predictions 3 and 5 are the load-bearing ones**, and they now point in
+opposite directions, which is what makes the pair worth running:
+
+- **Run 3 should barely move.** `goal` is still unread — three authorities beat
+  the creator's own answer, ending in a hardcoded string. A CTA that ignores
+  "sell" is the defect made visible.
+- **Run 2 should move.** `workKind` is wired now. This is the acceptance test.
+
+If Run 2 does *not* move, the wiring is broken. If Run 3 *does* move, `goal`
+was already reaching the prompt by a path I did not find, and step 3 needs
+re-scoping before it is built.
 
 **Misses matter more than hits.** Anything bad in the output that is NOT on this
 list is a gap in my diagnosis, and those are worth more than seven confirmations.
