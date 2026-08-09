@@ -459,8 +459,25 @@ Work items:
 
 - 🔴 **Extract the enumeration count during the reference read**, beside the
   transcript. It is the format's spine and currently nothing carries it.
-- 🔴 **Count contract check** — announced N equals delivered N; all counts in the
-  artifact agree; no silent scene inside an enumeration. Same shape as the §5c
+- 🔴 **THE HOOK MUST CARRY THE COUNT.** Confirmed on review of the same run:
+  not one of the five hook options names five. The hook is where an enumerated
+  promise is MADE — "here are the 5 ways" is the contract the rest of the video
+  pays off — so a hook that drops the number has already broken the format
+  before scene 2 exists. The count is not decoration on the script; it is the
+  hook's payload.
+- 🔴 **The real gap is WHAT WE TAKE from the reference, and HOW the script is
+  built from it.** Every §5d symptom is downstream of that one seam. The read
+  currently extracts a transcript and a loose structural impression, and the
+  generator is then free to re-derive the format from vibes. What it must
+  extract is the reference's MECHANISM as data — the enumeration and its count,
+  the promise made in the hook, where the re-hook lands, what each beat owes the
+  next — and the script must be COMPOSED from that record rather than written
+  in its general direction. Voice ✅ and structure ✅ (§5a) were always the easy
+  halves: they are style. The mechanism is what makes the reference work, and it
+  is the half still being paraphrased instead of transferred.
+- 🔴 **Count contract check** — announced N equals delivered N; every count in
+  the artifact agrees, INCLUDING the hooks; no silent scene inside an
+  enumeration. Same shape as the §5c
   consistency check, and it belongs directly after it in the order.
 
 ---
