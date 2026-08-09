@@ -375,6 +375,9 @@ Work items:
 
 - 🔴 **Split the field into `location` / `brollRequest` / `editorIntent`**, with
   the palette unreachable from `location`.
+- 🔴 **Count contract check (§5d)** — announced N equals delivered N. Directly
+  after the scene-consistency check: same shape, and a broken count is the one
+  defect that fails out loud in the creator's mouth on camera.
 - 🟡 **Scene-consistency contract check** — `sceneConsistency.ts`, with the two
   real strings from the run as its tests. `palette_leak` is EXACT: a hex colour
   in an instruction a person carries out with their hands is always wrong.
@@ -385,6 +388,80 @@ Work items:
   catches.
 - 🔴 **Compatibility Gate (§16b)** — scene types gated on capability, so an
   unfillable type is REJECTed rather than rationalised.
+
+---
+
+### 5d. The count is the format, and the count was dropped
+
+Second reference run. Creator: Alex Hormozi DNA, workKind creator, goal grow
+audience, audience entrepreneurs and founders. Reference:
+`youtube.com/shorts/RNRjGXC9lCs` — an enumerated list of **five**.
+
+THREE DIFFERENT COUNTS APPEAR IN ONE PLAN AND NONE OF THEM IS FIVE.
+
+| Where | What it says |
+|---|---|
+| Reference | five ways |
+| YOUR VIDEO IDEA | "the top **three** pieces of common business advice" |
+| Hook option 3 | "these exact **three** pieces" |
+| The script itself | "The **first** way…", "The **second** way…" — then scene 4 is a SILENT SHOT and the enumeration stops |
+
+So the creator walks on camera, promises three, counts to two, and goes quiet.
+The person who notices is the viewer, who was counting.
+
+**Why this is the most damaging defect found so far.** The enumerated list is not
+a stylistic feature of that reference — it IS the mechanism. A numbered promise
+is what holds a viewer through forty-five seconds, because each item pays a debt
+and opens the next one. The system transferred the reference's TONE and dropped
+its SPINE, which is a more complete failure than transferring nothing would have
+been: a script with no count is merely flat, while a script that announces a
+count and abandons it visibly breaks in the creator's mouth, on camera, in front
+of their audience.
+
+**It is decidable by counting, so it is a contract check, not a prompt rule** —
+the same argument as §5c's scene-consistency check:
+
+- The count is a REFERENCE-READ output. If the reference enumerates, the number
+  is a fact about it and must be extracted with the transcript, not re-invented
+  downstream.
+- A script that announces N must deliver N enumerated beats. Announcing three
+  and shipping two is malformed, not merely weak.
+- A silent scene may never interrupt an enumeration it is a member of. Scene 4
+  breaks the count in the middle, which is how "three" became "two".
+- Every count in the artifact must agree: idea, hooks, and script. Three
+  independent numbers in one plan means nothing owns the count.
+
+**Confirmations of already-specced defects, from the same run:**
+
+🔴 **The palette leak is now in TWO fields, and one is rationalised.** Scene 1
+`Where to film`: "Stark white wall, creator wearing a plain black t-shirt to
+emphasize the brand colors (#000000 and #FFFFFF)". Scene 2: "line graph drawn in
+yellow (#FFFF00)". The first one EXPLAINS ITSELF — the model believes emphasising
+brand colour is what the field is for. That settles the §5c design question:
+prompt tuning cannot fix an instruction the model is confident is correct. The
+palette must be structurally unreachable from `location`.
+
+🔴 **A fourth layer in the same field.** "Where to film: White wall, black
+shirt." A shirt is WARDROBE. §5c documented location + b-roll + edit intent;
+this adds a fourth, and the split must carry it.
+
+🔴 **Ungated production asset.** Scene 2 is EXTRA CLIP + STOCK CLIP + "Full
+Screen Graphic": an animated line graph flatlining. That is motion design, and
+nothing asked whether this creator can make one. Same class as the renovation
+timelapse — `brollRequest` ungated.
+
+✅ **PRESERVE — the best output this system produces.** "Chop hands downward on
+'million' to emphasize the boundary. Shake head in disgust on 'brand problem'."
+Word-anchored to words that genuinely occur in that scene's line. The field split
+must not regress this; it is the thing worth protecting in the whole shot list.
+
+Work items:
+
+- 🔴 **Extract the enumeration count during the reference read**, beside the
+  transcript. It is the format's spine and currently nothing carries it.
+- 🔴 **Count contract check** — announced N equals delivered N; all counts in the
+  artifact agree; no silent scene inside an enumeration. Same shape as the §5c
+  consistency check, and it belongs directly after it in the order.
 
 ---
 
