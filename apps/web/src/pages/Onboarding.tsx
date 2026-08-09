@@ -152,10 +152,32 @@ export default function Onboarding() {
     startDraft(voiceId, platform, profile)
     setMode(profile ? 'confirm' : 'building')
   }, [startDraft])
+  // THE SCAN MUST NOT OVERWRITE WHAT THE CREATOR JUST TYPED.
+  //
+  // This used to hand the scan's own reading straight in — `profile.audience`
+  // for audience and a literal `''` for goal — which was harmless while both
+  // were only ever asked afterwards. Now that they are answered DURING the
+  // scan, that same line silently discards them at the moment the scan
+  // finishes: the creator answers three questions and arrives at a screen
+  // showing none of them.
+  //
+  // The creator's answer wins wherever they gave one. The scan fills only what
+  // is still blank, which is what it was always for.
   const handleReady = useCallback((profile: VoiceProfile) => {
-    updateAnswers(profile, profile.audience ?? '', profile.offer ?? '', '')
+    setDraft((current) => {
+      if (!current || current.userId !== userId) return current
+      const next: OnboardingDraft = {
+        ...current,
+        profile,
+        audience: current.audience.trim() || profile.audience || '',
+        product: current.product.trim() || profile.offer || '',
+        goal: current.goal,
+      }
+      safeWriteDraft(next)
+      return next
+    })
     setMode('confirm')
-  }, [updateAnswers])
+  }, [userId])
 
   if (!session) return <Navigate to="/auth" replace />
 
@@ -382,6 +404,10 @@ const SCAN_GOALS = [
   'Entertain',
 ] as const
 
+// Three, and the code must agree with itself about that: the counter, the
+// last-question test and "Skip all" all read this rather than a literal.
+const SCAN_QUESTION_COUNT = 3
+
 function BuildingStep({
   draft,
   onReady,
@@ -397,6 +423,27 @@ function BuildingStep({
 }) {
   const [err, setErr] = useState<string | null>(null)
   const [stage, setStage] = useState(0)
+
+  // THE QUESTIONS RUN AT THE CREATOR'S PACE, THE SCAN AT ITS OWN.
+  //
+  // Version one advanced the question with the scan STAGE, which meant a
+  // stage timer decided how long someone had to think — and a scan that
+  // finished early took the screen away with an answer half-typed. Tying the
+  // two together made the faster scan the worse experience, which is the same
+  // inversion the confirm screen had.
+  //
+  // They are now independent. `qIndex` moves only when the creator answers or
+  // skips. `readyProfile` parks the finished scan until they are done, so
+  // finishing early means WAITING, never interrupting. The last one to finish
+  // hands over, whichever it is.
+  const [qIndex, setQIndex] = useState(0)
+  const [readyProfile, setReadyProfile] = useState<VoiceProfile | null>(null)
+  const questionsDone = qIndex >= SCAN_QUESTION_COUNT
+
+  // Hand over exactly once, and only when BOTH halves are finished.
+  useEffect(() => {
+    if (questionsDone && readyProfile) onReady(readyProfile)
+  }, [questionsDone, readyProfile, onReady])
   const timer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Advance the visual stage on a gentle clock so the wait feels alive even
@@ -425,7 +472,10 @@ function BuildingStep({
         if (stopped) return
         if (res.status === 'ready') {
           if (timer.current) clearInterval(timer.current)
-          if (res.profile) onReady(res.profile)
+          // DO NOT LEAVE THE SCREEN YET. The profile is parked; `advance` below
+          // decides when to hand it over, because a scan that finishes mid
+          // question would take the screen away with the answer half-typed.
+          if (res.profile) setReadyProfile(res.profile)
           else {
             setErr('The scan finished without a voice profile. Try a different handle or describe it yourself.')
             onScanDead()
@@ -540,12 +590,24 @@ function BuildingStep({
           scan finishes on its own schedule and can advance out from under a
           half-typed answer. `forgetDeadScan` clears only `voiceId`, so a scan
           that dies keeps every answer given here. */}
-      {!err && (
+      {!err && questionsDone && (
+        // Answered everything before the scan finished. Say so plainly — a
+        // spinner with no sentence reads as a stall, and this is the one moment
+        // the creator is genuinely just waiting.
+        <div className="mt-6 rounded-card border border-white/10 bg-white/[0.03] p-4 text-center">
+          <p className="text-sm text-cream">Thanks — that is everything we needed.</p>
+          <p className="mt-1 text-xs text-stone">
+            {readyProfile ? 'Opening your voice…' : 'Finishing the scan, then we will show you your voice.'}
+          </p>
+        </div>
+      )}
+
+      {!err && !questionsDone && (
         <div className="mt-6 rounded-card border border-white/10 bg-white/[0.03] p-4">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
-            While we read · {Math.min(stage + 1, 3)} of 3
+            While we read · {qIndex + 1} of {SCAN_QUESTION_COUNT}
           </p>
-          {stage === 0 && (
+          {qIndex === 0 && (
             <>
               <p className="mt-2 text-sm text-cream">What should your content achieve?</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -567,7 +629,7 @@ function BuildingStep({
               </div>
             </>
           )}
-          {stage === 1 && (
+          {qIndex === 1 && (
             <>
               <p className="mt-2 text-sm text-cream">Who are you making these for?</p>
               <input
@@ -581,7 +643,7 @@ function BuildingStep({
               <p className="mt-2 text-[11px] text-stone">One line about the person, not a category.</p>
             </>
           )}
-          {stage >= 2 && (
+          {qIndex === 2 && (
             <>
               <p className="mt-2 text-sm text-cream">What best describes what you do?</p>
               <div className="mt-3 flex flex-wrap gap-2">
@@ -603,10 +665,27 @@ function BuildingStep({
               </div>
             </>
           )}
-          {/* Skipping is allowed and unpunished. A required question on a waiting
-              screen turns a wait into a toll, and every one of these is asked
-              again on the confirm screen where the answer is still editable. */}
-          <p className="mt-3 text-[11px] text-stone">
+          {/* THE CREATOR MOVES THE QUESTIONS, NOTHING ELSE DOES.
+              Skipping is unpunished: a required question on a waiting screen
+              turns a wait into a toll, and all three are asked again on the
+              confirm screen where they stay editable. */}
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setQIndex((i) => i + 1)}
+              className="btn-gradient flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold"
+            >
+              {qIndex + 1 === SCAN_QUESTION_COUNT ? 'Done' : 'Next'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setQIndex(SCAN_QUESTION_COUNT)}
+              className="shrink-0 px-2 py-2 text-xs text-stone hover:text-cream"
+            >
+              Skip all
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-stone">
             Optional, and you can change any of it on the next screen.
           </p>
         </div>
