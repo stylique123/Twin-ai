@@ -17,7 +17,7 @@
 --
 -- PASS criteria (all):
 --   1. delete_or_all_policies_on_storage_objects = 0
---   2. has_insert = FALSE          -- inverted by 0112, see below
+--   2. has_insert = FALSE          -- inverted by 0118, see below
 --   3. has_select = true
 -- Any nonzero delete/all count fails the posture and BLOCKS sign-off.
 --
@@ -26,7 +26,7 @@
 -- provenance bypass: bytes could land in `takes/<uid>/…` with no capture intent,
 -- no finalize record and no etag binding, which makes
 -- `bytes_changed_after_finalize` pass vacuously and leaves the 0090–0093 chain
--- resting on a row that was never created. 0112 drops the policy. Uploads go
+-- resting on a row that was never created. 0118 drops the policy. Uploads go
 -- through source-asset → signed upload token → finalize → validate_source, and a
 -- signed URL authorizes exactly one object without any bucket INSERT policy.
 --

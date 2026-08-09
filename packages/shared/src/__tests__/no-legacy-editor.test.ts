@@ -41,7 +41,7 @@ describe('old AI editor is gone from the client API surface', () => {
     // `uploadTakeToBucket` to exist. It uploaded straight into `takes/<uid>/…`
     // on a storage INSERT policy, so bytes could land with no capture intent,
     // no finalize record and no etag binding — and every guard added in 0091
-    // assumes the contract path is the only way in. 0112 drops the policy;
+    // assumes the contract path is the only way in. 0118 drops the policy;
     // this keeps the code from coming back to meet it.
     //
     // Recording still works: takes go through source-asset → signed upload

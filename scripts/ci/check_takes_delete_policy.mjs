@@ -6,7 +6,7 @@
 // 1. A client cannot DELETE its own `takes` object — the prod-source-smoke
 //    residue accounting depends on it — because `storage.objects` has no
 //    DELETE-capable policy targeting the bucket.
-// 2. Since 0112, a client cannot INSERT into it either. That assertion used to
+// 2. Since 0118, a client cannot INSERT into it either. That assertion used to
 //    run the other way: this guard REQUIRED the INSERT policy, which meant the
 //    one automated check watching this bucket was pinning a provenance bypass
 //    in place. Uploads go through source-asset → signed upload token →
@@ -129,7 +129,7 @@ export function evaluate(sqlBySource) {
   // Sound gate: ANY DELETE/ALL policy on storage.objects fails (can't prove an
   // arbitrary/indirect predicate excludes the takes bucket).
   if (inv.deletePolicyPresent) for (const p of inv.deleteCapableOnStorage) reasons.push(`DELETE-capable policy on storage.objects present: "${p.name}" (for ${p.command}) — no client DELETE/ALL policy on storage.objects is permitted`)
-  // INVERTED BY 0112, and the inversion is the point.
+  // INVERTED BY 0118, and the inversion is the point.
   //
   // This used to read `if (!inv.insertPresent)` — the guard REQUIRED a takes
   // INSERT policy, so the one automated check watching this bucket was holding
@@ -140,7 +140,7 @@ export function evaluate(sqlBySource) {
   // created. Uploads go through source-asset → signed token → finalize →
   // validate_source; a signed URL authorizes exactly one object and needs no
   // bucket INSERT policy at all.
-  if (inv.insertPresent) reasons.push('a takes INSERT policy is present — uploads must go through source-asset → signed upload token → finalize (see 0112); a signed target needs no bucket INSERT policy')
+  if (inv.insertPresent) reasons.push('a takes INSERT policy is present — uploads must go through source-asset → signed upload token → finalize (see 0118); a signed target needs no bucket INSERT policy')
   // SELECT stays REQUIRED. 17 objects already live in this bucket and creators
   // play them back; this gate is about who may write, not who may read.
   if (!inv.selectPresent) reasons.push('expected takes SELECT policy is missing')

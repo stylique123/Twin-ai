@@ -91,7 +91,7 @@ const envOf = (store) => ({ ...Object.fromEntries(store) })
   for (const f of readdirSync('supabase/migrations').sort()) if (f.endsWith('.sql')) sqlBySource[f] = readFileSync(`supabase/migrations/${f}`, 'utf8')
   const { ok: polOk, inventory } = evalTakesPolicy(sqlBySource)
   ok(polOk && !inventory.deletePolicyPresent, 'migrations define NO DELETE-capable takes policy (table-qualified)')
-  // Inverted by 0112: a client INSERT policy on `takes` is a provenance bypass,
+  // Inverted by 0118: a client INSERT policy on `takes` is a provenance bypass,
   // not part of the expected posture. SELECT stays required so existing
   // recordings remain playable.
   ok(!inventory.insertPresent && inventory.selectPresent, 'migrations define NO takes INSERT policy, and keep SELECT')

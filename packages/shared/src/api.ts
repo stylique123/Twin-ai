@@ -28,7 +28,7 @@ let _uploadSigned: UploadSigned | undefined
 
 // `uploadTake` is deliberately absent: the only upload the platform injects now
 // is the signed-target one, because that is the only path that carries capture
-// provenance. Re-adding a raw bucket uploader here re-opens what 0112 closed.
+// provenance. Re-adding a raw bucket uploader here re-opens what 0118 closed.
 export function initApi(opts: { client: SupabaseClient; appOrigin?: string; uploadSigned?: UploadSigned }): void {
   _sb = opts.client
   _appOrigin = opts.appOrigin ?? ''
@@ -226,7 +226,7 @@ export interface IngestJob {
 // policy, which meant a source asset could exist with no capture intent, no
 // finalize record and no etag binding — every guard in 0091 assumes the
 // contract path is the only way in, and this was a second way in with none of
-// it. 0112 drops the policy; this removes the only code that used it.
+// it. 0118 drops the policy; this removes the only code that used it.
 //
 // Its own comment set the closure condition — zero `legacy_take_upload`
 // telemetry. That counter reads zero and proves nothing: it was added
