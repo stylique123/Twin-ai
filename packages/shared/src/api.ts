@@ -325,6 +325,32 @@ export async function listGenerations(): Promise<Generation[]> {
   return (data ?? []) as Generation[]
 }
 
+// THE BUILD THAT ALREADY HAPPENED.
+//
+// 0119 gave every build INTENT a key and made the server converge retries of it
+// onto one row. That stopped the double charge, but it left the client replaying
+// a build it had already paid for: a remount re-ran the whole sequence — the
+// ~72s reference read included — and only discovered at the end that the server
+// had been handing back the same generation the entire time.
+//
+// This is the client-side half of the same contract. Ask first: is there already
+// a generation for this key? If so there is nothing to build, only somewhere to
+// go. It also delivers the behaviour a creator expects for free — leave while it
+// writes, come back, and the finished plan opens itself.
+//
+// RLS scopes `generations` to the owner, so the key alone is a sufficient
+// lookup; a key is only ever meaningful next to the person who minted it.
+export async function findGenerationByKey(key: string): Promise<Generation | null> {
+  const { data, error } = await supabase
+    .from('generations')
+    .select('*')
+    .eq('idempotency_key', key)
+    .order('created_at', { ascending: false })
+    .limit(1)
+  if (error) return null
+  return (data?.[0] as Generation | undefined) ?? null
+}
+
 export async function getGeneration(id: string): Promise<Generation | null> {
   const { data, error } = await supabase.from('generations').select('*').eq('id', id).single()
   if (error) return null

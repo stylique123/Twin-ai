@@ -5,11 +5,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
-import { generateBlueprint, ingestReference, getJob } from '../../lib/api'
+import { generateBlueprint, ingestReference, getJob, findGenerationByKey } from '../../lib/api'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
+import { cn } from '../../lib/cn'
 import { LogoMark } from '../../components/Logo'
 import { buildRecordingScript } from '../../lib/api'
 import { saveRecordingScript } from '../../lib/api'
@@ -26,6 +27,11 @@ const STEPS = [
 // Target progress % per active step, so the bar always shows forward motion and
 // the last (long) model call never looks frozen. Index 5 = finished → 100.
 const STEP_PCT = [12, 34, 58, 80, 94, 100]
+// The last step is one model call and it can run for minutes. Parking the bar on
+// STEP_PCT[4] made it sit at exactly 94% the whole time, which reads as a hang —
+// reported from a real run as "it stayed on ninety-four for five minutes". It
+// creeps toward this ceiling instead: never still, never claiming to be done.
+const LAST_STEP_CEILING = 99
 
 // The hosts ingest-reference can actually fetch + transcribe (mirrors its
 // SSRF allow-list). A link to one of these gets truly READ; anything else
@@ -85,6 +91,19 @@ function buildKey(state: BuildState): string {
   }
 }
 
+// A transcript that was fetched, measured and judged fit to follow is a fact
+// about the REFERENCE, not about this component. Parking it under the build key
+// means a remount that happens while the first build is still writing (so no
+// generation row exists to find yet) doesn't sit through the ~72s read a second
+// time for an answer we already have. It dies with the tab, like the key.
+const transcriptSlot = (key: string) => `twinai.transcript.${key}`
+function rememberTranscript(key: string, id: string): void {
+  try { sessionStorage.setItem(transcriptSlot(key), id) } catch { /* storage off — just re-read */ }
+}
+function recallTranscript(key: string): string | undefined {
+  try { return sessionStorage.getItem(transcriptSlot(key)) ?? undefined } catch { return undefined }
+}
+
 export default function V2Building() {
   const nav = useNavigate()
   const loc = useLocation()
@@ -126,9 +145,13 @@ export default function V2Building() {
   useEffect(() => {
     if (error) return
     const scraping = active === 0 && ingesting
-    const target = scraping ? 40 : STEP_PCT[Math.min(active, STEP_PCT.length - 1)]
-    const factor = scraping ? 0.012 : 0.08 // gentler climb during the long read
-    const floor = scraping ? 0.12 : 0.4
+    const writing = active === STEPS.length - 1 // the long model call
+    const target = scraping ? 40 : writing ? LAST_STEP_CEILING : STEP_PCT[Math.min(active, STEP_PCT.length - 1)]
+    const factor = scraping ? 0.012 : writing ? 0.004 : 0.08 // gentler climb during the long waits
+    // No floor while writing: a floor is a promised RATE, and this step has no
+    // known duration. Purely proportional motion is slow, always visible, and
+    // never arrives — which is the honest shape of "still working".
+    const floor = scraping ? 0.12 : writing ? 0 : 0.4
     const id = setInterval(() => {
       setPct((p) => (p >= target ? p : Math.min(target, p + Math.max(floor, (target - p) * factor))))
     }, 90)
@@ -144,6 +167,7 @@ export default function V2Building() {
     if (started.current) return
     started.current = true
 
+    const key = buildKey(state)
     const refUrl = (state.reference_url || '').trim()
     const willIngest = !!refUrl && isSupportedRef(refUrl)
     let ticker: ReturnType<typeof setInterval> | null = null
@@ -160,6 +184,33 @@ export default function V2Building() {
 
     ;(async () => {
       try {
+        // 0) IS THERE ANYTHING LEFT TO BUILD? Ask before doing any of it.
+        //
+        // `started` is a ref, so it dies with the component and every mount
+        // re-runs everything below. 0119 made that safe for the creator's
+        // credits — the key converges and the server returns the build it
+        // already made — but nothing told THIS screen, so it re-walked the whole
+        // sequence, ~72s reference read included, to arrive at a generation that
+        // had existed the entire time. Reported from a real run: the bar reached
+        // 94%, then started again from the beginning while the finished plan was
+        // already sitting in the Library.
+        //
+        // One indexed lookup on the same key answers it. Found → there is
+        // nothing to build, only somewhere to go, and the plan opens itself.
+        //
+        // A failed lookup NEVER blocks a build: the server's own idempotency is
+        // the guarantee against a double charge, and this is only ever an
+        // optimisation on top of it.
+        try {
+          const done = await findGenerationByKey(key)
+          if (done) {
+            if (alive) { setActive(STEPS.length); setPct(100); nav(`/result/${done.id}`, { replace: true }) }
+            return
+          }
+        } catch (e) {
+          console.warn('[build] existing-build lookup failed; building', e)
+        }
+        if (cancelled.current) return
         // 1) READING the reference is BEST-EFFORT. A supported link gets truly read
         //    (transcript + structure) for the most tailored script — but if the read
         //    fails, the video is private/unreadable, or the worker is briefly backed
@@ -184,10 +235,12 @@ export default function V2Building() {
         // straight past into a paid build whose reference was decoration.
         if (refUrl && !willIngest) { halt('unsupported_host'); return }
 
-        let transcript_id: string | undefined
+        // A read this key already completed. Skipping it skips only the WAIT —
+        // the transcript it returns was measured and accepted the first time.
+        let transcript_id: string | undefined = willIngest ? recallTranscript(key) : undefined
         // null = we have a transcript, or there was no read to do.
         let unread: keyof typeof REFERENCE_UNREAD_TEXT | null = null
-        if (willIngest) {
+        if (willIngest && !transcript_id) {
           setIngesting(true)
           try {
             const { jobId, transcriptId } = await ingestReference(refUrl)
@@ -272,6 +325,7 @@ export default function V2Building() {
 
         if (cancelled.current) return // Cancel pressed during the read → no spend
         if (unread) { halt(unread); return }
+        if (transcript_id) rememberTranscript(key, transcript_id)
         startPacing()
         const gen = await generateBlueprint({
           reference_url: refUrl,
@@ -280,7 +334,7 @@ export default function V2Building() {
           tone: state.tone,
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
-          idempotency_key: buildKey(state),
+          idempotency_key: key,
           ...(transcript_id ? { transcript_id } : {}),
         })
         // A recreation was just spent — refresh so the remixes-left counter is
@@ -379,7 +433,7 @@ export default function V2Building() {
             )}
           </div>
         ) : (
-          <div className="glass gradient-border p-6 sm:p-8">
+          <div className="glass gradient-border p-5 sm:p-8">
             {/* Signature icon + gentle pulse */}
             <div className="relative mx-auto h-14 w-14">
               <span className="absolute inset-0 animate-ping rounded-2xl bg-signature opacity-30" />
@@ -413,9 +467,15 @@ export default function V2Building() {
                     ) : (
                       <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full border-2 border-dashed border-white/15 text-[11px] font-bold text-stone">{i + 1}</span>
                     )}
-                    <span className={done ? 'text-sm text-sand' : isActive ? 'text-sm font-medium text-cream' : 'text-sm text-stone'}>{stepLabel(i, s.label)}</span>
-                    {isActive && <span className="ml-auto text-[11px] font-medium text-amber">Working…</span>}
-                    {done && <span className="ml-auto text-[11px] font-medium text-coral">Done</span>}
+                    {/* min-w-0 flex-1 + a non-shrinking status: on a 360px phone
+                        the longest label ("Using your reference as a guide") and
+                        the status badge were both shrinkable, so the badge wrapped
+                        mid-word and the rows stopped lining up with each other.
+                        The label is the only thing allowed to wrap; the badge
+                        keeps its own line and the right edge stays straight. */}
+                    <span className={cn('min-w-0 flex-1 text-sm', done ? 'text-sand' : isActive ? 'font-medium text-cream' : 'text-stone')}>{stepLabel(i, s.label)}</span>
+                    {isActive && <span className="shrink-0 whitespace-nowrap text-[11px] font-medium text-amber">Working…</span>}
+                    {done && <span className="shrink-0 whitespace-nowrap text-[11px] font-medium text-coral">Done</span>}
                   </li>
                 )
               })}
