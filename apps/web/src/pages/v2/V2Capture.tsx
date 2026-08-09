@@ -141,6 +141,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   setTimeline: (t: RecordingScript) => void
   onBack: () => void
 }) {
+  const nav = useNavigate()
   const scenes = useMemo(() => teleprompterScenes(timeline), [timeline])
   const [i, setI] = useState(0)
   const [recording, setRecording] = useState(false)
@@ -617,6 +618,27 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
               </button>
             )}
 
+            {/* THE HANDOFF THAT WAS MISSING.
+                This screen's only exits were "record again", "download raw" and
+                "leave" — under a line saying AI editing was being rebuilt. It
+                is not: the pipeline runs end to end, and `Result` already owns
+                the whole start-an-edit flow (the ready-source check, the stable
+                refusal codes, progress, cancel).
+                So this ROUTES there rather than calling `startEditorV2` itself.
+                A second start seam would be a second place for the idempotency
+                key, the ready-source rule and the 503 copy to drift — the exact
+                duplication this codebase keeps deleting.
+                Shown only once the source is SAVED, because an edit of a take
+                that has not finished uploading has nothing to read. */}
+            {saveState === 'saved' && (
+              <button
+                onClick={() => nav(`/result/${genId}`)}
+                className="btn-gradient w-full rounded-2xl px-3 py-4 text-center text-sm font-semibold"
+              >
+                Turn this into a video
+                <div className="text-[11px] font-normal opacity-80">Twin edits your take — captions, cuts, export</div>
+              </button>
+            )}
             <button onClick={reRecord} className="w-full rounded-2xl border border-white/12 bg-white/[0.04] px-3 py-4 text-center hover:bg-white/[0.08]">
               <RotateCcw className="mx-auto h-4 w-4 text-cream" />
               <div className="mt-1 text-sm font-semibold text-cream">Record again</div>
@@ -626,7 +648,13 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
             <button onClick={onBack} className="w-full py-2 text-sm text-white/50 hover:text-white">
               {saveState === 'saved' ? 'Back to studio' : 'Exit without keeping this take'}
             </button>
-            <p className="text-center text-[11px] text-stone">AI editing is being rebuilt — for now your raw take is kept safe here.</p>
+            {saveState !== 'saved' && (
+              // Only while the take is still in flight. The old line said AI
+              // editing was being rebuilt and sat here unconditionally, which
+              // told a creator with a perfectly editable take that the feature
+              // did not exist.
+              <p className="text-center text-[11px] text-stone">Your raw take is kept safe here while it uploads.</p>
+            )}
           </div>
         </div>
       </div>
