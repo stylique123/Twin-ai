@@ -1,0 +1,457 @@
+// THE ENTITY LIBRARY — one vocabulary for "the thing this video is about".
+//
+// §8's correction is the reason this file exists: an earlier design routed Q3 +
+// Q4 to exactly ONE subtype for the whole creator. A person can be a founder
+// with their own SaaS, an affiliate for other tools, a sponsor partner, and sell
+// consulting — all at once, because humans insist on having multiple revenue
+// streams. So the subtype is chosen PER ENTITY, and the creator holds a library.
+//
+// ── THE TWO AXES, AND WHY CONFLATING THEM IS THE BUG ──────────────────────
+//
+//   type          SAAS | PHYSICAL | SERVICE | DIGITAL      → WHICH SCHEMA
+//   relationship  OWN_PRODUCT | OWN_SERVICE | AFFILIATE |
+//                 SPONSOR | REVIEW_ONLY | NONE             → WHAT MAY BE CLAIMED
+//
+// An affiliated SaaS uses the SaaS schema AND the third-party ownership rules.
+// Those are different questions, and one field cannot answer both without
+// deciding one of them by accident.
+//
+// ── NO QUESTION MAY RE-ASK WHAT ANOTHER ANSWER IMPLIES ────────────────────
+//
+// Q3 ("what do you do") already determines ownership for four of its seven
+// answers. A founder who has just said "Software" does not then need to be
+// asked whether they have a product — so Q3 MINTS the owned entity, it is shown
+// PRE-FILLED and correctable on confirm, and it is never asked again. That is
+// the pattern `offer` already uses, and `mintFromWorkKind` is where it lives.
+//
+// Q4 is then free to ask the only thing still genuinely unknown: entities the
+// creator does NOT own. See `relationshipForNonOwned`.
+//
+// ── PERSONAL USE IS NOT A COMMERCIAL RELATIONSHIP ─────────────────────────
+//
+// §12's correction, and the one rule in this file most likely to be "simplified"
+// by a future reader: BEING AN AFFILIATE DOES NOT PROVE THE CREATOR HAS EVER
+// USED THE PRODUCT. Treating a commercial arrangement as evidence of personal
+// experience manufactures a testimonial out of a payment agreement.
+//
+// So `personalUse` is a SEPARATE axis with `NOT_CONFIRMED` as its default, and
+// nothing in this module may promote it. Only the creator moves it, by saying so.
+
+import type { ProductEvidence } from './productEvidence'
+import type { BriefWorkKind } from './preScriptBrief'
+
+// ---------------------------------------------------------------------------
+// THE VOCABULARY
+// ---------------------------------------------------------------------------
+
+/** WHICH SCHEMA the entity is described by (§9–§11). Never what may be claimed. */
+export const ENTITY_TYPES = ['SAAS', 'PHYSICAL', 'SERVICE', 'DIGITAL'] as const
+export type EntityType = (typeof ENTITY_TYPES)[number]
+
+/** WHAT MAY BE CLAIMED about the entity. Never which schema describes it.
+ *
+ *  `NONE` is a real member rather than a null: "this creator features nothing
+ *  they do not own" is an answer the CTA rule acts on, and an absent
+ *  relationship is merely a question not yet reached. Collapsing those two is
+ *  how a creator who said "nothing" gets a purchase CTA anyway. */
+export const ENTITY_RELATIONSHIPS = [
+  'OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR', 'REVIEW_ONLY', 'NONE',
+] as const
+export type EntityRelationship = (typeof ENTITY_RELATIONSHIPS)[number]
+
+/** Has the creator actually used it? Independent of every commercial fact.
+ *
+ *  `NOT_CONFIRMED` is the default and is NOT a gap to be filled by inference. */
+export const PERSONAL_USE_STATES = ['CONFIRMED', 'NOT_CONFIRMED'] as const
+export type PersonalUse = (typeof PERSONAL_USE_STATES)[number]
+
+/** The relationships that mean the creator owns the thing. Used in enough
+ *  places that a second hand-written list would eventually disagree with this
+ *  one — which is the drift bug this repo keeps catching. */
+export const OWNED_RELATIONSHIPS: readonly EntityRelationship[] = ['OWN_PRODUCT', 'OWN_SERVICE']
+
+export function isOwned(relationship: EntityRelationship): boolean {
+  return (OWNED_RELATIONSHIPS as readonly string[]).includes(relationship)
+}
+
+// ---------------------------------------------------------------------------
+// Q3 MINTS THE OWNED ENTITY
+// ---------------------------------------------------------------------------
+
+/**
+ * What Q3 already told us about ownership — for the four answers where it told
+ * us anything at all.
+ *
+ * FOUR OF SEVEN, and the three that mint nothing are deliberate:
+ *
+ *   `creator` — a product is the exception rather than the rule, so Q3 implies
+ *               nothing and Q4 does double duty for them (see
+ *               `q4AsksOwnership`).
+ *   `brand`   — "Brand/Content Team" is as often a team making content FOR
+ *               someone else's brand as it is the brand itself. Minting an
+ *               owned product here would assert a commercial relationship the
+ *               answer does not carry.
+ *   `other`   — by construction unknown; `workKindOther` is free text and
+ *               nothing may be routed off an unparsed sentence.
+ *
+ * A mint is a PRE-FILL, never a verdict: `userConfirmed` is false until the
+ * creator has looked at it, and every caller must render it as correctable.
+ */
+export const WORK_KIND_MINT: Partial<Record<BriefWorkKind, { type: EntityType; relationship: EntityRelationship }>> = {
+  saas: { type: 'SAAS', relationship: 'OWN_PRODUCT' },
+  ecommerce: { type: 'PHYSICAL', relationship: 'OWN_PRODUCT' },
+  professional: { type: 'SERVICE', relationship: 'OWN_SERVICE' },
+  local_service: { type: 'SERVICE', relationship: 'OWN_SERVICE' },
+}
+
+/** Does Q3 determine ownership for this answer? The inverse is exactly the set
+ *  for which Q4 must also ask about ownership. */
+export function mintsOwnedEntity(kind: BriefWorkKind | null | undefined): boolean {
+  return !!kind && kind in WORK_KIND_MINT
+}
+
+/**
+ * Must Q4 still ask whether the creator owns anything?
+ *
+ * ONLY where Q3 was uninformative. This is the executable form of the standing
+ * rule "no question may re-ask what another answer implies" — a founder who has
+ * just said "Software" is never asked whether they have a product, and a
+ * `creator` still is, because for them nothing has been established.
+ */
+export function q4AsksOwnership(kind: BriefWorkKind | null | undefined): boolean {
+  return !mintsOwnedEntity(kind)
+}
+
+/**
+ * The entity Q3 implies, ready to be shown pre-filled on the confirm screen.
+ *
+ * Returns null where Q3 implies nothing — which is a different fact from "they
+ * have nothing", and callers must not render it as one.
+ */
+export function mintFromWorkKind(
+  kind: BriefWorkKind | null | undefined,
+  opts: { name?: string | null; now?: string } = {},
+): DraftEntity | null {
+  const mint = kind ? WORK_KIND_MINT[kind] : undefined
+  if (!mint) return null
+  const name = (opts.name ?? '').trim()
+  return {
+    name: name === '' ? null : name,
+    type: mint.type,
+    relationship: mint.relationship,
+    // The default, and nothing here may move it. A founder owning a product
+    // does not establish that they use it — and for an owned product the
+    // creator-experience claim is not the one that matters anyway.
+    personalUse: 'NOT_CONFIRMED',
+    productUrl: null,
+    affiliateUrl: null,
+    evidence: null,
+    restrictions: emptyRestrictions(),
+    // INFERRED FROM AN ANSWER, not observed and not stated. The creator said
+    // what they do; the ENTITY is our reading of what that implies, and the
+    // confirm screen is where that reading gets checked.
+    source: 'inferred',
+    userConfirmed: false,
+    updated: opts.now ?? new Date().toISOString(),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Q4 — ONLY ABOUT ENTITIES THEY DO NOT OWN
+// ---------------------------------------------------------------------------
+
+/**
+ * Q4's answers, rewritten.
+ *
+ * The old Q4 asked "do you have a product", which is redundant exactly where Q3
+ * was informative. This asks the residue: what do you feature that ISN'T yours?
+ *
+ * `none` is the answer that means ideas-only. For a `creator` — where Q3 implied
+ * nothing — it additionally means NO PRODUCT DNA IS CREATED AT ALL, because for
+ * them Q4 is the only ownership signal that exists.
+ */
+export const Q4_ANSWERS = ['affiliate', 'sponsor', 'review_only', 'none'] as const
+export type Q4Answer = (typeof Q4_ANSWERS)[number]
+
+const Q4_TO_RELATIONSHIP: Record<Q4Answer, EntityRelationship> = {
+  affiliate: 'AFFILIATE',
+  sponsor: 'SPONSOR',
+  review_only: 'REVIEW_ONLY',
+  none: 'NONE',
+}
+
+export function relationshipForNonOwned(answer: Q4Answer): EntityRelationship {
+  return Q4_TO_RELATIONSHIP[answer]
+}
+
+/**
+ * READING A BRIEF WRITTEN BEFORE Q4 WAS SPLIT.
+ *
+ * The old vocabulary was `own_product | affiliate | nothing_to_sell`, and it
+ * answered TWO questions at once. Under the split, each half has a new home:
+ *
+ *   ownership   → Q3 mints it. A stored value cannot improve on that and is
+ *                 discarded for this purpose, NOT re-asked. This is safe
+ *                 precisely because Q3 is the stronger source about existence.
+ *   third party → maps onto the new Q4 unchanged.
+ *
+ * THE ONE THING THAT MUST SURVIVE. `nothing_to_sell` drives a live behaviour
+ * today — `generate-blueprint` writes "do not write a purchase or signup CTA at
+ * all". If Q3 now mints an owned entity for that same creator, they would start
+ * receiving the sales CTAs they had explicitly switched off. So the old answer
+ * is carried forward as a CTA SUPPRESSION, which is a preference, and never as
+ * an ownership fact, which Q3 now owns. Facts may still be used; selling may
+ * not resume without the creator saying so.
+ *
+ * ⚖️ Verified against production before this mapping was written: `brand_voices`
+ * held 26 rows and NOT ONE had a stored `promotes` value, so no real creator is
+ * migrated by this function today. It exists because the legacy value is still
+ * writable by an older client, and a mapping that only appears once the first
+ * row shows up is a mapping nobody reviews.
+ */
+export interface LegacyPromotesReading {
+  q4: Q4Answer
+  ctaSuppressed: boolean
+}
+
+export function readLegacyPromotes(value: string | null | undefined): LegacyPromotesReading | null {
+  switch (value) {
+    // Ownership is Q3's now. It said nothing about third parties, so `none`.
+    case 'own_product': return { q4: 'none', ctaSuppressed: false }
+    case 'affiliate': return { q4: 'affiliate', ctaSuppressed: false }
+    case 'nothing_to_sell': return { q4: 'none', ctaSuppressed: true }
+    default: return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// WHAT MAY BE SAID — the whole reason `relationship` exists
+// ---------------------------------------------------------------------------
+
+/**
+ * What a script is permitted to write about an entity.
+ *
+ * Derived, never stored: a stored permission set is a second authority that
+ * drifts from the relationship it was derived from, and then nobody knows which
+ * one the script obeyed.
+ */
+export interface EntityClaimRules {
+  /** "my product", "we built", "our roadmap". */
+  ownershipLanguage: boolean
+  /** Facts from the page / sheet / manual entry. */
+  productFacts: boolean
+  /** What the VENDOR asserts. `attributed` means only as "they say…". */
+  marketingClaims: 'allowed' | 'attributed' | 'forbidden'
+  /** "I've been using…" — gated on `personalUse`, never on the commercial tie. */
+  creatorExperience: boolean
+  /** A material connection the viewer must be told about. */
+  disclosureRequired: boolean
+  /** May the CTA ask for a purchase or a signup at all. */
+  commercialCta: boolean
+}
+
+export function claimRulesFor(
+  relationship: EntityRelationship,
+  personalUse: PersonalUse = 'NOT_CONFIRMED',
+): EntityClaimRules {
+  // THE ONE LINE THAT IS NOT PER-RELATIONSHIP. §12's correction in executable
+  // form: personal experience is established by the creator alone, so every
+  // relationship reads it from the same place and none of them may override it.
+  const creatorExperience = personalUse === 'CONFIRMED'
+
+  switch (relationship) {
+    case 'OWN_PRODUCT':
+    case 'OWN_SERVICE':
+      return {
+        ownershipLanguage: true,
+        productFacts: true,
+        // Their own claims to make, and their own liability for making them.
+        // `restrictions.approvedClaims` still bounds this — see `entityStatus`.
+        marketingClaims: 'allowed',
+        creatorExperience,
+        disclosureRequired: false,
+        commercialCta: true,
+      }
+
+    case 'AFFILIATE':
+      return {
+        ownershipLanguage: false,
+        productFacts: true,
+        marketingClaims: 'attributed',
+        creatorExperience,
+        // DELIBERATELY TRUE, and worth arguing with rather than deleting. §12
+        // attaches disclosure to SPONSOR explicitly and is silent on affiliate.
+        // A paid link is a material connection all the same, so the safer
+        // reading is encoded here; a script that discloses when it need not is
+        // a smaller failure than one that does not when it must.
+        disclosureRequired: true,
+        commercialCta: true,
+      }
+
+    case 'SPONSOR':
+      return {
+        ownershipLanguage: false,
+        productFacts: true,
+        marketingClaims: 'attributed',
+        creatorExperience,
+        // A property of the entity, not a per-video decision the writer may
+        // weigh against pacing.
+        disclosureRequired: true,
+        commercialCta: true,
+      }
+
+    case 'REVIEW_ONLY':
+      return {
+        ownershipLanguage: false,
+        productFacts: true,
+        // THE DISTINCTION THAT MAKES REVIEW_ONLY WORTH HAVING. A reviewer
+        // repeating the vendor's marketing is an advertisement wearing a
+        // review's clothes. Product facts and the creator's own experience are
+        // the only two things a review may be built from.
+        marketingClaims: 'forbidden',
+        creatorExperience,
+        // No commercial tie yet. Adding an affiliate URL promotes this entity
+        // to AFFILIATE — see `promoteToAffiliate` — and disclosure arrives with
+        // the relationship rather than being bolted on separately.
+        disclosureRequired: false,
+        commercialCta: false,
+      }
+
+    case 'NONE':
+      return {
+        ownershipLanguage: false,
+        productFacts: false,
+        marketingClaims: 'forbidden',
+        creatorExperience: false,
+        disclosureRequired: false,
+        commercialCta: false,
+      }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE ENTITY ITSELF
+// ---------------------------------------------------------------------------
+
+/** `restrictions` is the one block that must never be optional, in any type
+ *  (§8). An entity with no restrictions block is one whose compliance answer is
+ *  "nobody asked", rendered as though it were "nothing applies". */
+export interface EntityRestrictions {
+  /** An outcome claim needs a permission that EXISTS, not merely the absence of
+   *  a prohibition — §5a.5, the finance creator whose title claimed a replaced
+   *  income that nothing had approved. */
+  approvedClaims: string[]
+  forbiddenClaims: string[]
+  complianceNotes: string | null
+}
+
+export function emptyRestrictions(): EntityRestrictions {
+  return { approvedClaims: [], forbiddenClaims: [], complianceNotes: null }
+}
+
+/** An entity before it has an id — what a mint or a Q4 answer produces, and
+ *  what the confirm screen edits. */
+export interface DraftEntity {
+  name: string | null
+  type: EntityType
+  relationship: EntityRelationship
+  personalUse: PersonalUse
+  productUrl: string | null
+  /** Present ⇒ there is a commercial tie. See `promoteToAffiliate`. */
+  affiliateUrl: string | null
+  /** The product itself — a link we READ or images of the thing. `'declined'`
+   *  is a real answer ("there is nothing to show"); absent is not.
+   *
+   *  THIS IS WHERE `productEvidence` LIVES NOW. It used to float as a brief key
+   *  belonging to the creator rather than to a thing, which meant a creator with
+   *  two products had one slot for both. */
+  evidence: ProductEvidence | 'declined' | null
+  restrictions: EntityRestrictions
+  /** `inferred` for a Q3 mint, `user_answer` once the creator has touched it.
+   *  Reuses `dnaProvenance`'s vocabulary rather than inventing a second one. */
+  source: 'user_answer' | 'inferred'
+  userConfirmed: boolean
+  updated: string
+}
+
+export interface ProductEntityRecord extends DraftEntity {
+  id: string
+}
+
+/**
+ * THE UPGRADE PATH, and the point of modelling REVIEW_ONLY at all.
+ *
+ * A creator reviews a tool, then joins its affiliate programme. Nothing about
+ * the product changed — only the creator's relationship to it. So the same
+ * entity is promoted in place: no new row, no re-capture, no schema change, and
+ * every product fact already gathered survives.
+ *
+ * The rules that change are exactly the ones that should: marketing claims
+ * become attributable, a commercial CTA becomes permitted, and disclosure
+ * becomes required. `personalUse` is untouched, because taking a commission
+ * still is not evidence of having used the thing.
+ */
+export function promoteToAffiliate<T extends DraftEntity>(entity: T, affiliateUrl: string, now?: string): T {
+  const url = affiliateUrl.trim()
+  if (url === '') return entity
+  if (entity.relationship !== 'REVIEW_ONLY') return { ...entity, affiliateUrl: url }
+  return {
+    ...entity,
+    relationship: 'AFFILIATE',
+    affiliateUrl: url,
+    // The creator supplied a commercial link; that is them speaking.
+    source: 'user_answer',
+    updated: now ?? new Date().toISOString(),
+  }
+}
+
+// ---------------------------------------------------------------------------
+// STATUS — and "Missing information" is a HARD state
+// ---------------------------------------------------------------------------
+
+/**
+ * §14's three statuses. `missing_information` is a STOP, not a warning: an
+ * entity in that state may be MENTIONED but must not have claims generated
+ * about it. Same principle as the reference hard stop already shipped — if
+ * there is no substance, do not manufacture some.
+ */
+export type EntityStatus = 'ready' | 'needs_review' | 'missing_information'
+
+export function entityStatus(entity: DraftEntity): EntityStatus {
+  // NONE is not an under-filled entity; it is the absence of one, and it is
+  // complete as an answer.
+  if (entity.relationship === 'NONE') return 'ready'
+  const hasName = (entity.name ?? '').trim() !== ''
+  const hasEvidence = entity.evidence === 'declined'
+    || (!!entity.evidence && typeof entity.evidence === 'object' && entity.evidence.sections.length > 0)
+  if (!hasName || !hasEvidence) return 'missing_information'
+  // Twin inferred something load-bearing and no human has confirmed it. The
+  // entity is usable for facts and should be checked before it carries claims.
+  if (!entity.userConfirmed || entity.source === 'inferred') return 'needs_review'
+  return 'ready'
+}
+
+/** May a script generate CLAIMS about this entity? The hard half of §14. */
+export function mayGenerateClaims(entity: DraftEntity): boolean {
+  return entityStatus(entity) !== 'missing_information' && entity.relationship !== 'NONE'
+}
+
+// ---------------------------------------------------------------------------
+// VALIDATION — nothing outside the vocabulary reaches a prompt
+// ---------------------------------------------------------------------------
+
+export function isEntityType(v: unknown): v is EntityType {
+  return typeof v === 'string' && (ENTITY_TYPES as readonly string[]).includes(v)
+}
+
+export function isEntityRelationship(v: unknown): v is EntityRelationship {
+  return typeof v === 'string' && (ENTITY_RELATIONSHIPS as readonly string[]).includes(v)
+}
+
+export function isPersonalUse(v: unknown): v is PersonalUse {
+  return typeof v === 'string' && (PERSONAL_USE_STATES as readonly string[]).includes(v)
+}
+
+export function isQ4Answer(v: unknown): v is Q4Answer {
+  return typeof v === 'string' && (Q4_ANSWERS as readonly string[]).includes(v)
+}

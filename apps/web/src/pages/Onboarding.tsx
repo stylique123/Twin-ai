@@ -181,8 +181,21 @@ export default function Onboarding() {
 
   if (!session) return <Navigate to="/auth" replace />
 
+  // `min-h-screen` IS 100vh, AND ON iOS SAFARI THAT IS THE *LARGE* VIEWPORT —
+  // the height the page would have if the browser chrome were hidden. Safari
+  // does not hide it here, so the last ~90px of every step rendered underneath
+  // the address bar: the "Back" button on the scan screen was sliced in half,
+  // and no amount of scrolling revealed it because the page believed it had
+  // already fitted.
+  //
+  // `100dvh` is the viewport that actually exists, and it is the unit the rest
+  // of this app already uses (`v2/ScreenLayout.tsx`, `V2Capture.tsx`). The
+  // bottom padding then clears the home indicator on notched phones, with the
+  // same `max(…, env(safe-area-inset-bottom))` idiom used there — so this
+  // screen stops being the one place that measures the phone differently from
+  // every other.
   return (
-    <main className="relative grid min-h-screen place-items-center overflow-clip px-5 py-12 pt-20">
+    <main className="relative grid min-h-[100dvh] place-items-center overflow-clip px-4 pb-[max(2rem,env(safe-area-inset-bottom))] pt-20 sm:px-5 sm:pb-12">
       <Aurora />
       <motion.div
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
@@ -520,48 +533,57 @@ function BuildingStep({
         <span className="absolute inset-0 animate-ping rounded-2xl bg-coral/20" />
         <LogoMark size={22} className="relative" />
       </span>
+      {/* SIZED FOR THE PHONE FIRST. `text-3xl` turned this heading into two
+          lines on a 390px screen and the sub-paragraph into three, which is
+          most of a viewport spent restating the eyebrow. The copy also said
+          "this usually takes under a minute" directly above a progress bar that
+          reports the same thing more honestly, so it goes: a static estimate
+          next to a live indicator is the one that gets believed, and it is the
+          one that can be wrong. */}
       <p className="eyebrow mt-5">Reading your voice</p>
-      <h1 className="mt-3 font-display text-3xl">Studying your recent posts…</h1>
-      <p className="mt-2.5 text-sand">
-        Pulling your hooks, pacing and signature phrases. This usually takes under a minute.
+      <h1 className="mt-2.5 font-display text-2xl sm:text-3xl">Studying your recent posts…</h1>
+      <p className="mt-2 text-sm text-sand sm:text-base">
+        Pulling your hooks, pacing and signature phrases.
       </p>
 
-      <div className="mt-7 space-y-3">
-        {SCAN_STAGES.map((s, i) => {
-          // A STOPPED STAGE IS NOT AN ACTIVE ONE. On failure the stage the scan
-          // died on renders as halted rather than in progress — the spinner is
-          // a promise that something is still happening.
-          const state = err
-            ? (i < stage ? 'done' : 'todo')
-            : i < stage ? 'done' : i === stage ? 'active' : 'todo'
-          return (
-            <div
-              key={s}
-              className={cn(
-                'flex items-center gap-3 rounded-card border p-3.5 transition-all duration-500',
-                state === 'active' && 'border-coral/40 bg-coral/5 text-cream',
-                state === 'done' && 'border-white/8 bg-white/[0.02] text-sand',
-                state === 'todo' && 'border-white/8 bg-white/[0.02] text-stone opacity-60',
-              )}
-            >
-              <span
-                className={cn(
-                  'grid h-6 w-6 shrink-0 place-items-center rounded-full',
-                  state === 'done' ? 'bg-teal/20' : 'bg-white/5',
-                )}
-              >
-                {state === 'done' ? (
-                  <Check className="h-3.5 w-3.5 text-teal" />
-                ) : state === 'active' ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-coral" />
-                ) : (
-                  <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
-                )}
-              </span>
-              {s}
-            </div>
-          )
-        })}
+      {/* ONE LINE, NOT THREE CARDS.
+          Three stacked status cards cost ~200px — over a third of a phone
+          viewport — to say one thing: which of three stages is running. They
+          pushed the QUESTION to the fold, which is the exact defect §6 exists
+          to fix. Every stage below the active one was also pure padding: a
+          creator does not need "Synthesizing your voice" listed as pending in
+          order to understand that a scan has steps.
+          So the stage is a single line with a progress bar, and the space it
+          gave back goes to the question. The information lost is the list of
+          stages not yet reached, which nobody acted on. `SCAN_STAGES` still
+          drives both the label and the bar, so the two cannot disagree. */}
+      <div className="mt-6">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-5 w-5 shrink-0 place-items-center">
+            {err ? (
+              <span className="h-1.5 w-1.5 rounded-full bg-white/20" />
+            ) : (
+              <Loader2 className="h-4 w-4 animate-spin text-coral" />
+            )}
+          </span>
+          <p className="min-w-0 flex-1 truncate text-sm text-sand">
+            {err ? 'Scan stopped' : SCAN_STAGES[stage]}
+          </p>
+          {/* A COUNT, so "is it moving" is answerable at a glance without
+              needing three rows to show it. */}
+          <p className="shrink-0 text-xs tabular-nums text-stone">
+            {Math.min(stage + 1, SCAN_STAGES.length)}/{SCAN_STAGES.length}
+          </p>
+        </div>
+        <div className="mt-2.5 h-1 overflow-hidden rounded-full bg-white/8">
+          <div
+            className={cn(
+              'h-full rounded-full transition-all duration-700',
+              err ? 'bg-white/20' : 'bg-gradient-to-r from-amber to-coral',
+            )}
+            style={{ width: `${((stage + 1) / SCAN_STAGES.length) * 100}%` }}
+          />
+        </div>
       </div>
 
       {/* ASKED DURING THE SCAN, not on the confirm screen.
@@ -603,13 +625,18 @@ function BuildingStep({
       )}
 
       {!err && !questionsDone && (
-        <div className="mt-6 rounded-card border border-white/10 bg-white/[0.03] p-4">
+        // THE QUESTION IS THE CONTENT OF THIS SCREEN, so it is styled like it.
+        // It used to be a faint box below three louder status cards, which read
+        // as an aside to the "real" thing happening above — and an aside is
+        // what people skip. The scan is the thing that needs no attention; the
+        // question is the only thing here only the creator can do.
+        <div className="mt-5 rounded-card border border-amber/25 bg-amber/[0.06] p-4 sm:p-5">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-amber">
             While we read · {qIndex + 1} of {SCAN_QUESTION_COUNT}
           </p>
           {qIndex === 0 && (
             <>
-              <p className="mt-2 text-sm text-cream">What should your content achieve?</p>
+              <p className="mt-2 text-base font-medium text-cream">What should your content achieve?</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {SCAN_GOALS.map((g) => (
                   <button
@@ -631,7 +658,7 @@ function BuildingStep({
           )}
           {qIndex === 1 && (
             <>
-              <p className="mt-2 text-sm text-cream">Who are you making these for?</p>
+              <p className="mt-2 text-base font-medium text-cream">Who are you making these for?</p>
               <input
                 className="field mt-3"
                 value={draft.audience}
@@ -645,7 +672,7 @@ function BuildingStep({
           )}
           {qIndex === 2 && (
             <>
-              <p className="mt-2 text-sm text-cream">What best describes what you do?</p>
+              <p className="mt-2 text-base font-medium text-cream">What best describes what you do?</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {BRIEF_WORK_KINDS.map((k) => (
                   <button
