@@ -174,7 +174,11 @@ export default function Onboarding() {
            is fifteen EMPTY boxes, which is the worst version of it. */
         className={cn('relative w-full', mode === 'confirm' ? 'max-w-4xl' : 'max-w-xl')}
       >
-        <div className="glass overflow-hidden rounded-panel p-8 sm:p-9">
+        {/* p-8 is 64px of horizontal padding, which is 16% of a 390px phone
+            spent on nothing. The confirm step is the longest screen in the
+            product, so that width is exactly what makes its fields feel
+            cramped and its labels wrap. Phones get p-5 and grow from there. */}
+        <div className="glass overflow-hidden rounded-panel p-5 sm:p-8 lg:p-9">
           <AnimatePresence mode="wait">
             <motion.div
               key={mode}
@@ -606,7 +610,37 @@ function ConfirmStep({
       .filter((v) => Array.isArray(v) && v.length > 0)
     return text.length === 0 && lists.length === 0
   }, [draft.profile])
-  const [showVoice, setShowVoice] = useState(!voiceIsEmpty)
+  // What the scan heard, in ONE line, so collapsing hides length and not
+  // information. A creator who cannot see that the read was right has no reason
+  // to trust a section they have been asked to skip — so this names the fields
+  // that would be wrong most visibly (niche and tone) and COUNTS the rest
+  // rather than listing them, because a count is checkable at a glance and a
+  // list is another wall.
+  const voiceDigest = useMemo(() => {
+    const p = draft.profile
+    if (!p) return 'What the scan heard.'
+    const bits: string[] = []
+    if (typeof p.niche === 'string' && p.niche.trim()) bits.push(p.niche.trim())
+    if (typeof p.tone === 'string' && p.tone.trim()) bits.push(p.tone.trim().split(',')[0].trim())
+    const words = Array.isArray(p.vocabulary) ? p.vocabulary.length : 0
+    const ctas = Array.isArray(p.recurring_ctas) ? p.recurring_ctas.length : 0
+    if (words) bits.push(`${words} signature ${words === 1 ? 'phrase' : 'phrases'}`)
+    if (ctas) bits.push(`${ctas} recurring ${ctas === 1 ? 'CTA' : 'CTAs'}`)
+    return bits.length ? `${bits.join(' · ')}. Tap to change anything.` : 'What the scan heard.'
+  }, [draft.profile])
+
+  // INVERTED, because the old default made a GOOD scan the worst screen.
+  //
+  // It opened whenever the scan found something — so the better the read, the
+  // more fields appeared, and a creator whose voice was captured perfectly met
+  // fifteen expanded inputs they had no reason to touch. The screen was longest
+  // exactly when it needed the least work.
+  //
+  // Now it opens only when the scan found NOTHING, which is the one case where
+  // these boxes are a task rather than a record. When there is something to
+  // show, `voiceDigest` below summarises it in one line and the section stays
+  // one tap away. Nothing is hidden; it just stops being homework.
+  const [showVoice, setShowVoice] = useState(voiceIsEmpty)
 
   const [canRecordScreen, setCanRecordScreen] = useState<boolean | null>(draft.canRecordScreen)
   const [canFilmObjects, setCanFilmObjects] = useState<boolean | null>(draft.canFilmObjects)
@@ -946,7 +980,7 @@ function ConfirmStep({
             <span className="mt-1 block text-xs text-stone">
               {voiceIsEmpty
                 ? 'The scan found nothing to fill these in. You can add them now or leave them, and Twin will learn them from how you talk on camera.'
-                : 'What the scan heard. Change anything that sounds wrong.'}
+                : voiceDigest}
             </span>
           </span>
           <span className="shrink-0 text-xs text-sand">{showVoice ? 'Hide' : 'Show'}</span>
