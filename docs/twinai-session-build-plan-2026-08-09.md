@@ -145,6 +145,88 @@ Work items:
 
 ---
 
+### 5a. The first script from a reference that genuinely read
+
+Everything above was written when the reference contributed nothing. This is the
+next run, with the read working — and it isolates the remaining defects exactly,
+because for the first time the pipeline's early layers can be marked ✅ and the
+failures that are left cannot be blamed on a missing input.
+
+| Layer | Working? |
+| --- | --- |
+| Reference read | ✅ genuinely read, specifics extracted |
+| Creator DNA → voice | ✅ hook template + signature phrases exact |
+| Reference → structure | ✅ container transferred |
+| Substance / numbers | 🔴 absent — no Product DNA |
+| Director / filming | 🔴 invents inventory, hex-coded lighting |
+| Feasibility gate | 🔴 none — asks for unfilmable b-roll |
+| Claim safety | 🔴 none — unverified income claim |
+
+**Voice is solved. Structure is solved. Substance and production are not.**
+
+**1 · The script has no numbers, because nothing holds the creator's.** The
+reference's power came from two figures — $5,000 and $70. The script that
+transferred its structure says:
+
+> "…renting by the room, which completely changes the math on your monthly cash
+> flow."
+
+No figure anywhere. That is the content-empty defect in a single line, and it
+names its own fix: DNA knows how the creator *sounds*; nothing knows what their
+deals actually *return*. **Only step 5 (Product DNA) closes this.** The moment
+real numbers exist, "changes the math" becomes "$5,200 a month from one
+property" and the script stops being a well-spoken empty container.
+
+**2 · Invented physical inventory, with a hex code.**
+
+> "A brightly lit, fully renovated kitchen with subtle #00E5FF cyan backlighting
+> under the cabinets."
+
+Also "Creator tossing keys", "a beautifully staged communal living room". This is
+the walnut-chair failure and it is worse than documented: it does not merely
+assume a renovated kitchen exists, it specifies under-cabinet lighting **in a
+named hex colour**, because the brand palette leaked out of packaging and into a
+filming instruction. §20's rule — achievable direction plus a reason, never
+assumed inventory — is the fix, and the hex leak says the palette needs a hard
+boundary at the shot list, not only a better prompt.
+
+**3 · A scene that cannot be filmed, because packaging leaked into the shot
+list.** Scene 4: *Silent shot · Where to film: Thumbnail image · Framing: Split
+screen*. "Thumbnail image" is not a place to stand.
+
+**4 · COPY THEIRS transferred a production the creator cannot make.**
+
+> "Fast paced visuals of an outdated house transforming into multiple modern
+> private suites."
+
+A renovation timelapse — unfilmable in a single-take short, and flagged COPY
+THEIRS, i.e. carried over from the reference without anyone asking whether it
+could be recreated. This is the exact case the Compatibility Gate (§16b) exists
+to answer REJECT on, so its absence is not a quality problem but a missing gate.
+
+**5 · An unverified claim in the title position.**
+
+> "How one working parent replaced their income using a single coliving
+> rehabilitation"
+
+A specific outcome claim, permitted by nothing: no `approvedClaims` exists, and
+`forbiddenClaims` only forbids what the creator thought to name. For a finance
+creator this is the highest-consequence gap in the system — the one whose
+failure mode is regulatory rather than aesthetic.
+
+Work items, in the order their value lands:
+
+- 🔴 **Step 5 — Product DNA.** The single most valuable change in the plan. It is
+  what turns finding 1 from a phrasing problem into a solved one.
+- 🔴 **Step 8 — Director Plan (§20) + a palette boundary.** Findings 2 and 3.
+  Brand colours must not be reachable from a filming instruction at all.
+- 🔴 **Compatibility Gate (§16b).** Finding 4. A COPY THEIRS beat that the
+  creator cannot physically produce must be REJECTed, not transferred.
+- 🔴 **`approvedClaims`.** Finding 5. An outcome claim needs a permission that
+  exists, not merely the absence of a prohibition.
+
+---
+
 ## 6. 🔴 The reference pipeline
 
 - 🔴 **`mode: 'pattern'` must be a hard stop before spending, in EVERY path.**
@@ -220,9 +302,14 @@ Work items:
    script quality.
 4. **`goal` and `productEvidence`: ask AND wire.**
 5. **Interleave questions with the scan; chunk the review screen.**
-6. **Visual analysis of the reference** — the nine NOT OBSERVED rows.
-7. Recorder guidance, checklist, teleprompter overlap.
-8. Security backlog.
+6. **Product DNA (§28 step 5).** Promoted by §5a: with the reference read
+   working, the missing numbers are now the top defect in the produced script,
+   and nothing else in this list addresses them.
+7. **Director Plan + palette boundary, Compatibility Gate, `approvedClaims`** —
+   the other three 🔴 rows in §5a's table. Production and claim safety.
+8. **Visual analysis of the reference** — the nine NOT OBSERVED rows.
+9. Recorder guidance, checklist, teleprompter overlap.
+10. Security backlog.
 
 ---
 
