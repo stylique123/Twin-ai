@@ -39,23 +39,35 @@
 -- would be the same defect this repository keeps finding: a true statement whose
 -- truth has nothing to do with what it appears to certify.
 --
--- WHAT ACTUALLY SUPPORTS THE REMOVAL, measured against production:
+-- WHY DROPPING THIS CANNOT BREAK EDITOR v2, in flight or otherwise. The contract
+-- path does not rest on this policy, or on any RLS policy. `source-asset` mints
+-- the destination with the SERVICE-ROLE client (`createSignedUploadUrl`) and the
+-- browser PUTs against that token (`uploadToSignedUrl`). A signed upload is
+-- authorized by the token itself, not by `storage.objects` RLS, so the
+-- `authenticated` INSERT policy was never in the v2 path — not for a new upload,
+-- and not for one already open when this runs.
+--
+-- WHAT ACTUALLY SUPPORTS THE REMOVAL, measured against production 2026-08-09:
 --
 --   callers of uploadTakeToBucket, anywhere ..... 0 (removed mid-July)
 --   objects in takes ............................ 17, newest 2026-07-15
 --   objects since the callers were removed ...... 0
---   rows in public.media_assets ................. 0
+--   rows in public.media_assets ................. 1, status `uploading`
+--   media_assets rows with bytes behind them .... 0
 --
 -- The last object predates the caller removal and nothing has landed in the 24
 -- days since. The object names also match the legacy path format exactly
 -- (`<uid>/<generationId>-<epoch>.mp4`), so those 17 are that function's output,
--- from before it was orphaned.
+-- from before it was orphaned. The one v2 row uses the three-segment contract
+-- path (`<uid>/<generationId>/<assetId>.mp4`) and is not among them.
 --
--- `media_assets` being EMPTY is why the doc's other closure condition — "zero
--- unmatched new objects", i.e. objects with no media_assets row — cannot be met
--- today and is not evidence of a bypass: all 17 are unmatched because the v2
--- contract flow has never run in production at all. The editor is off. That
--- condition only becomes meaningful once it has.
+-- That single row is a v2 `source` asset opened 13:13 UTC today, still
+-- `uploading`, with no object behind it. So v2 HAS started a run in production —
+-- but no run has finished one. That is why the doc's other closure condition —
+-- "zero unmatched new objects", i.e. objects with no media_assets row — cannot be
+-- met today and is not evidence of a bypass: all 17 are unmatched because no v2
+-- upload has ever completed a round trip into this bucket. The condition only
+-- becomes meaningful once one has.
 --
 -- READ IS DELIBERATELY LEFT ALONE. 17 objects already live in this bucket and
 -- creators can still play them back; `twinai takes read` stays exactly as it is.
