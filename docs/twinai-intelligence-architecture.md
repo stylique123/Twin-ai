@@ -1,5 +1,19 @@
 # TwinAI — the four-source intelligence architecture
 
+> ## ⚠️ SUPERSEDED — do not build from this file
+>
+> The layer specifications and the build order have moved to
+> **`docs/twinai-content-intelligence-system.md`**, which is canonical. The
+> running order across BOTH tracks (this one and the editor's Phases 9–13) is
+> **`docs/twinai-unified-build-plan.md`**, which is where to start.
+>
+> This file is kept because it is the record of when these decisions were first
+> made, and its §2 mapping of spec-onto-repo is what established that most of
+> this is a wiring job. Everything in it is carried forward into the canonical
+> file, expanded. **Where the two disagree, the canonical file wins** — it has
+> the five-question set, the Product Library, the Director Plan and the Product
+> DNA subtype field specifications, none of which are here.
+
 The target architecture for Creator DNA, User Intent, Product DNA and Reference
 DNA, and the build order to reach it.
 
@@ -304,7 +318,7 @@ Each step is shippable and leaves the product working.
 
 | # | Step | Why first |
 |---|---|---|
-| **1** | **Reference `mode: 'pattern'` → hard stop before spend, every path** | If there is no substance, do not sell a script. Blocks nothing else and stops the bleeding. |
+| **1** | ✅ **Reference `mode: 'pattern'` → hard stop before spend, every path** | If there is no substance, do not sell a script. Blocks nothing else and stops the bleeding. |
 | **2** | **Wire `workKind` + `workKindOther` into the prompt** | Two lines. Ends "a doctor and a hobbyist get the same script." Highest lever per hour. |
 | **3** | **Wire `goal`; stop preferring three other authorities over the creator's answer** | Same shape, same file. |
 | **4** | **Move Q1–Q3 into the scan; chunk the review screen** | Without this the answers keep coming back empty. |
@@ -314,6 +328,21 @@ Each step is shippable and leaves the product working.
 | **8** | **Director Plan + setups + pattern interrupts** | Depends on 7. |
 | **9** | **Visual reference analysis** | The nine NOT OBSERVED rows. Largest, and the only one needing new infrastructure. |
 | **10** | **Gallery scoring incl. container fillability** | Depends on 5 and 6. |
+
+**Step 1, as shipped.** One of the five unread paths already refused — a
+reference that was read successfully and then measured as the wrong shape
+(`assessReference`). The other four still walked into a charge: an unsupported
+host, an ingest that threw, a job that failed, and a read that timed out. All
+four now stop in `V2Building` with a sentence naming *which* read failed, and
+`generate-blueprint` refuses `mode: 'pattern'` on the last line before
+`spend_credits` — the backstop that covers a direct POST or a client older than
+the server.
+
+`mode: 'none'` is deliberately untouched: a build from the creator's own style
+with no reference is a thing they may ask for, and it is the escape hatch that
+makes the refusal fair. What is gone is being *sold* that build in place of the
+one they asked for. `referenceDisclosure` now describes only generations bought
+before this rule.
 
 ---
 

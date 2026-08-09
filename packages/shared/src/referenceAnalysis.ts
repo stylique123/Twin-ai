@@ -66,3 +66,54 @@ export function referenceDisclosure(a: ReferenceAnalysis): string | null {
   return a.reason
     ?? 'We could not read this video, so the script follows the format instead.'
 }
+
+// ── THE HARD STOP ─────────────────────────────────────────────────────────
+//
+// `pattern` used to be a fallback: the read failed, so the model reasoned from
+// the format instead and the creator was charged for it. The theory was that a
+// less-tailored script beats "We hit a snag".
+//
+// It does not, because the creator did not ask for one. Pasting a reference IS
+// the request: write this, the way that one is written. A pattern-mode build
+// answers a different question, and it announced that at 94% — after the remix
+// was gone. `referenceDisclosure` above exists to caption exactly that
+// experience, which is the tell that it should never have been sold.
+//
+// So `pattern` now refuses BEFORE spend, everywhere. The creator who wants a
+// build from their own style alone still has one, free: leave the reference
+// out. What they must never get is a bill for us substituting that silently.
+//
+// The reasons are causes of a FAILED READ, not judgements about the video —
+// that axis is `referenceCheck.ts`'s `ReferenceReason`, which measures a video
+// we did read. These say what we could not do.
+
+/** Why no transcript reached the writer. */
+export type ReferenceUnreadCause =
+  /** Not a host `ingest-reference` can fetch (mirrors its SSRF allow-list). */
+  | 'unsupported_host'
+  /** The read was attempted and errored. */
+  | 'read_failed'
+  /** The read did not finish inside the wait the creator can reasonably sit through. */
+  | 'read_timed_out'
+  /** The read finished and produced nothing usable. */
+  | 'read_empty'
+
+/**
+ * What to tell the creator, per cause. One sentence of fact, then nothing —
+ * the screen supplies "no remix was used" and the way out, because those are
+ * the same whatever the cause.
+ *
+ * These sentences are ALSO produced by `generate-blueprint`, which cannot
+ * import this package (Deno, at deploy time). `referenceAnalysis.test.ts`
+ * reads that file and fails when the two disagree, so the duplication cannot
+ * drift into two different promises about the same event.
+ */
+export const REFERENCE_UNREAD_TEXT: Record<ReferenceUnreadCause, string> = {
+  unsupported_host: 'We can only watch TikTok, Instagram and YouTube links, so we could not read this one.',
+  read_failed: 'We could not read this video — it may be private, deleted, or from an account that blocks us.',
+  read_timed_out: 'This video is taking longer to read than we can hold you here for.',
+  read_empty: 'We reached this video but the read came back empty, so there is nothing for us to follow.',
+}
+
+/** The code the server returns, and the client recognises, for the hard stop. */
+export const REFERENCE_UNREAD_CODE = 'REFERENCE_UNREAD'

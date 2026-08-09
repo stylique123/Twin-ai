@@ -292,16 +292,25 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
     // error.message, read the function's JSON body so the real reason
     // (e.g. "Not enough credits") reaches the UI.
     let msg = (error as { message?: string }).message ?? 'Generation failed'
+    let code: string | undefined
     const ctx = (error as { context?: Response }).context
     if (ctx && typeof ctx.json === 'function') {
       try {
         const body = await ctx.json()
         if (body?.error) msg = body.error
+        // The function distinguishes refusals that are not failures — an
+        // unreadable reference, an unset brand voice — by `code`. Dropping it
+        // forced the UI to regex the sentence to tell "nothing was charged and
+        // here is what to do" apart from "we hit a snag", which breaks the
+        // moment the copy is reworded.
+        if (typeof body?.code === 'string') code = body.code
       } catch {
         /* fall back to msg */
       }
     }
-    throw new Error(msg)
+    const err = new Error(msg) as Error & { code?: string }
+    if (code) err.code = code
+    throw err
   }
   return data as Generation
 }
