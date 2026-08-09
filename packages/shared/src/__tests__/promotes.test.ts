@@ -1,18 +1,22 @@
-// §8a.3 Q4 — WHOSE PRODUCT THE CTA POINTS AT.
+// Q4 — WHAT APPEARS THAT THE CREATOR DOES NOT OWN.
 //
 // The blueprint brief has always told the model WHAT to point the CTA at
 // (`- Product or offer the CTA should point at: ${offer}`) and never WHOSE it
 // is. Those are different facts, and the second changes what may be said:
 //
 //   * A creator may promise what their OWN product does. They control it and
-//     they are accountable for it.
+//     they are accountable for it. That is now established by `workKind`, which
+//     MINTS the owned entity — this question no longer re-asks it.
 //   * They may NOT promise what someone else's does — not its support, not its
 //     refunds, not its roadmap. A script saying "my product" over an affiliate
 //     link is wrong about the world, and the creator is the one who reads it
 //     aloud to their audience.
-//   * With NOTHING TO SELL, a model given an offer field and asked for a CTA
-//     will write one anyway — inventing a business, which the plan calls the
-//     most expensive failure this product can produce.
+//   * A REVIEWER may not repeat the vendor's marketing. Product facts and their
+//     own experience are the whole of what a review is built from; anything more
+//     is an advertisement wearing a review's clothes.
+//   * With NOTHING of anyone else's, a model given an offer field and asked for
+//     a CTA will still reach for a third-party product — inventing one, which
+//     the plan calls the most expensive failure this product can produce.
 //
 // It is also the input §2.3's container rule has been missing: the three routes
 // that fill a `[SHOW: …]` slot branch on this answer, which is why it is a
@@ -34,8 +38,12 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const REPO = resolve(HERE, '../../../..')
 
 describe('the vocabulary is closed, because a branch cannot be taken on a sentence', () => {
-  it('has exactly the three routes §2.3 defines', () => {
-    expect([...BRIEF_PROMOTES]).toEqual(['own_product', 'affiliate', 'nothing_to_sell'])
+  it('has exactly the four routes, and NONE of them asserts ownership', () => {
+    // Ownership left this vocabulary deliberately: `workKind` implies it for
+    // four of its seven answers, and a question that re-asks what another
+    // answer already established is the defect the standing rule names.
+    expect([...BRIEF_PROMOTES]).toEqual(['affiliate', 'sponsor', 'review_only', 'none'])
+    expect([...BRIEF_PROMOTES]).not.toContain('own_product')
   })
 
   it('round-trips a real answer', () => {
@@ -48,10 +56,19 @@ describe('the vocabulary is closed, because a branch cannot be taken on a senten
     // unparseable goal degrades a prompt; an unparseable `promotes` sends the
     // container rule down a route the creator never chose.
     expect(readStoredBrief({ promotes: 'my own thing i guess' }).promotes).toBeUndefined()
-    expect(readStoredBrief({ promotes: 'own_product' }).promotes).toBe('own_product')
+    expect(readStoredBrief({ promotes: 'sponsor' }).promotes).toBe('sponsor')
   })
 
-  it('unanswered stays unanswered — never defaulted to own_product', () => {
+  it('MAPS a brief written before the split rather than dropping it', () => {
+    // Both legacy values spoke about ownership, which `workKind` now answers
+    // better, and neither said anything about a third party — so both become
+    // `none`. Dropping them instead would silently re-ask a question the
+    // creator already answered.
+    expect(readStoredBrief({ promotes: 'own_product' }).promotes).toBe('none')
+    expect(readStoredBrief({ promotes: 'nothing_to_sell' }).promotes).toBe('none')
+  })
+
+  it('unanswered stays unanswered — never defaulted', () => {
     // A default here would be the system deciding a liability-adjacent fact
     // nobody asked about, and deciding it in the direction that permits the
     // most claims.
@@ -84,7 +101,7 @@ describe('the blueprint brief tells the model whose product it is', () => {
     expect(fn).toContain('- Product or offer the CTA should point at: ${offer}${promotesLine}')
   })
 
-  it('branches on all three answers', () => {
+  it('branches on all four answers', () => {
     for (const mode of BRIEF_PROMOTES) {
       expect(fn).toContain(`brief.promotes === '${mode}'`)
     }
@@ -99,11 +116,26 @@ describe('the blueprint brief tells the model whose product it is', () => {
     expect(affiliate).toMatch(/refunds|support|roadmap/i)
   })
 
-  it('NOTHING TO SELL suppresses the purchase CTA rather than leaving it implied', () => {
+  it('REVIEW_ONLY forbids repeating the vendor’s marketing', () => {
+    // The branch that makes `review_only` worth having as its own value. A
+    // reviewer who repeats marketing copy has made an advertisement, and the
+    // distinction is invisible to a model unless it is stated.
+    const review = fn.slice(fn.indexOf("brief.promotes === 'review_only'"))
+    expect(review).toMatch(/marketing claims/i)
+    expect(review).toMatch(/purchase cta/i)
+  })
+
+  it('SPONSOR requires the disclosure rather than suggesting it', () => {
+    const sponsor = fn.slice(fn.indexOf("brief.promotes === 'sponsor'"))
+    expect(sponsor).toMatch(/disclos/i)
+    expect(sponsor).toMatch(/not optional/i)
+  })
+
+  it('NONE stops the model reaching for a third-party product', () => {
     // Silence is not enough: given an offer field and no instruction, a model
     // asked for a CTA writes one.
-    const nothing = fn.slice(fn.indexOf("brief.promotes === 'nothing_to_sell'"))
-    expect(nothing).toMatch(/do not write a purchase or signup cta/i)
+    const nothing = fn.slice(fn.indexOf("brief.promotes === 'none'"))
+    expect(nothing).toMatch(/do not introduce, recommend or name a third-party product/i)
   })
 
   it('an UNANSWERED brief emits nothing into the prompt', () => {

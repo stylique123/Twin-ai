@@ -38,7 +38,7 @@
 // nothing in this module may promote it. Only the creator moves it, by saying so.
 
 import type { ProductEvidence } from './productEvidence'
-import type { BriefWorkKind } from './preScriptBrief'
+import { BRIEF_PROMOTES, type BriefWorkKind } from './preScriptBrief'
 
 // ---------------------------------------------------------------------------
 // THE VOCABULARY
@@ -170,7 +170,11 @@ export function mintFromWorkKind(
  * nothing — it additionally means NO PRODUCT DNA IS CREATED AT ALL, because for
  * them Q4 is the only ownership signal that exists.
  */
-export const Q4_ANSWERS = ['affiliate', 'sponsor', 'review_only', 'none'] as const
+// THE SAME LIST AS THE STORAGE VOCABULARY, not a copy of it. `BRIEF_PROMOTES`
+// is what `pre_script_brief.promotes` accepts; this is what the question offers.
+// Two hand-written lists for one set is the drift bug this repo keeps catching —
+// the day someone adds a fifth answer to one, the other cannot stay silent.
+export const Q4_ANSWERS = BRIEF_PROMOTES
 export type Q4Answer = (typeof Q4_ANSWERS)[number]
 
 const Q4_TO_RELATIONSHIP: Record<Q4Answer, EntityRelationship> = {

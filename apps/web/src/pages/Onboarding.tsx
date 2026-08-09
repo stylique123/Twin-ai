@@ -5,7 +5,11 @@ import { Loader2, Check, ArrowRight, ArrowLeft, RotateCcw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { pollDna, saveCapabilityDefaults, savePreScriptBrief, saveDNA, saveVoiceProfile, startDna, startManualVoice } from '../lib/api'
 import type { Platform, Profile, VoiceProfile } from '../lib/types'
-import { asksForbiddenClaims, BRIEF_PROMOTES, BRIEF_WORK_KINDS, type BriefPromotes, type BriefWorkKind } from '../lib/api'
+import { asksForbiddenClaims, BRIEF_WORK_KINDS, type BriefWorkKind } from '../lib/api'
+import {
+  Q4_ANSWERS, mintFromWorkKind, mintsOwnedEntity, q4AsksOwnership,
+  saveMintedEntity, type EntityType, type Q4Answer,
+} from '../lib/api'
 import { Aurora } from '../components/Aurora'
 
 /** The chooser's words. Kept beside the screen rather than in the contract: the
@@ -19,14 +23,32 @@ const WORK_KIND_LABEL: Record<BriefWorkKind, string> = {
   local_service: 'Local service',
   other: 'Something else',
 }
-// §8a.3 Q4. The words a creator would use, not the stored enum: "someone
-// else's" is what an affiliate relationship feels like from the inside, and
-// "nothing to sell" has to be an affirmative choice rather than the absence of
-// one, or it reads as the question being skipped.
-const PROMOTES_LABEL: Record<BriefPromotes, string> = {
-  own_product: 'My own product',
-  affiliate: "Someone else's (affiliate)",
-  nothing_to_sell: 'Nothing to sell',
+// Q4, REWRITTEN — it now asks ONLY about things the creator does NOT own.
+//
+// The old Q4 ("what do your videos promote", with "my own product" as a chip)
+// re-asked what Q3 had already answered: a creator who has just said "Software"
+// does not need to be asked whether they have a product. That redundancy is the
+// standing rule's exact target — no question may re-ask what another answer
+// implies — and Q3 now MINTS the owned entity instead, pre-filled and
+// correctable.
+//
+// What is left is the only part still genuinely unknown: whose ELSE'S things
+// appear in these videos. Four answers, and each one changes what a script may
+// say (`claimRulesFor`), not merely how it is phrased.
+const Q4_LABEL: Record<Q4Answer, string> = {
+  affiliate: 'Affiliate products',
+  sponsor: 'Sponsored products',
+  review_only: 'Products I review',
+  none: 'Nothing of anyone else’s',
+}
+
+/** The words for the minted entity, so the creator reads a sentence rather than
+ *  an enum. The ids are the contract; how they are said to a person is not. */
+const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
+  SAAS: 'software product',
+  PHYSICAL: 'physical product',
+  SERVICE: 'service',
+  DIGITAL: 'digital product',
 }
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'
@@ -104,7 +126,10 @@ export default function Onboarding() {
       workKind: null,
       workKindOther: null,
       forbiddenClaims: null,
-      promotes: null,
+      q4: null,
+      // Q3 has not been answered yet, so nothing is minted and `ownsEntity` has
+      // no opinion. Never seeded in either direction.
+      ownsEntity: null,
       // The scan pre-fills the offer, so it starts as NOT the creator's answer.
       // Only their edit flips it.
       offerFromCreator: false,
@@ -123,8 +148,8 @@ export default function Onboarding() {
     audience: string,
     product: string,
     goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'workKindOther' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>
-      = { workKind: null, workKindOther: null, forbiddenClaims: null, promotes: null, offerFromCreator: false, canRecordScreen: null, canFilmObjects: null },
+    brief: Pick<OnboardingDraft, 'workKind' | 'workKindOther' | 'forbiddenClaims' | 'q4' | 'ownsEntity' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>
+      = { workKind: null, workKindOther: null, forbiddenClaims: null, q4: null, ownsEntity: null, offerFromCreator: false, canRecordScreen: null, canFilmObjects: null },
   ) => {
     setDraft((current) => {
       if (!current || current.userId !== userId) return current
@@ -768,7 +793,7 @@ function ConfirmStep({
   draft: OnboardingDraft
   onDraftChange: (
     profile: VoiceProfile, audience: string, product: string, goal: string,
-    brief: Pick<OnboardingDraft, 'workKind' | 'workKindOther' | 'forbiddenClaims' | 'promotes' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>,
+    brief: Pick<OnboardingDraft, 'workKind' | 'workKindOther' | 'forbiddenClaims' | 'q4' | 'ownsEntity' | 'offerFromCreator' | 'canRecordScreen' | 'canFilmObjects'>,
   ) => void
   onDone: () => Promise<void>
   onBack: () => void
@@ -787,7 +812,12 @@ function ConfirmStep({
   const [workKind, setWorkKind] = useState<BriefWorkKind | null>(draft.workKind)
   const [workKindOther, setWorkKindOther] = useState<string>(draft.workKindOther ?? '')
   const [forbiddenClaims, setForbiddenClaims] = useState(draft.forbiddenClaims ?? '')
-  const [promotes, setPromotes] = useState<BriefPromotes | null>(draft.promotes ?? null)
+  const [q4, setQ4] = useState<Q4Answer | null>(draft.q4 ?? null)
+  // WHETHER THE CREATOR KEPT THE ENTITY Q3 MINTED. Defaults to keeping it when
+  // Q3 was informative — that is what "pre-filled" means — and the screen gives
+  // a one-tap way out, which is what "correctable" means. A pre-fill with no
+  // exit is just a decision we made and blamed on them.
+  const [ownsEntity, setOwnsEntity] = useState<boolean>(draft.ownsEntity ?? true)
   // The offer arrives PRE-FILLED FROM THE SCAN — which is the defect §8a names,
   // not a feature. Tracking whether the creator changed it is what separates
   // "they told us" from "the model guessed and nobody corrected it", and only
@@ -859,11 +889,15 @@ function ConfirmStep({
     if (vp) {
       onDraftChange(vp, audience, product, goal, {
         workKind, workKindOther: workKindOther.trim() || null,
-        forbiddenClaims: forbiddenClaims.trim() || null, promotes, offerFromCreator: offerTouched,
+        forbiddenClaims: forbiddenClaims.trim() || null, q4, offerFromCreator: offerTouched,
+        // Only meaningful where Q3 minted something. Where it did not, the
+        // creator was never shown the block and has no opinion to record —
+        // which is the null this three-state field exists to keep.
+        ownsEntity: mintsOwnedEntity(workKind) ? ownsEntity : null,
         canRecordScreen, canFilmObjects,
       })
     }
-  }, [vp, audience, product, goal, workKind, workKindOther, forbiddenClaims, promotes, offerTouched, canRecordScreen, canFilmObjects, onDraftChange])
+  }, [vp, audience, product, goal, workKind, workKindOther, forbiddenClaims, q4, ownsEntity, offerTouched, canRecordScreen, canFilmObjects, onDraftChange])
 
   if (!vp) {
     return (
@@ -873,6 +907,12 @@ function ConfirmStep({
       </>
     )
   }
+
+  // THE ENTITY Q3 IMPLIES, recomputed as the creator changes their answer.
+  // `mintFromWorkKind` returns null where Q3 said nothing, and the block that
+  // renders this is gated on `mintsOwnedEntity` — so the fallback type below is
+  // never the one displayed, it only keeps the lookup total.
+  const mintedType: EntityType = mintFromWorkKind(workKind)?.type ?? 'SAAS'
 
   const setField = (k: keyof VoiceProfile, v: string) => setVp({ ...vp, [k]: v })
   const setList = (k: keyof VoiceProfile, v: string[]) => setVp({ ...vp, [k]: v })
@@ -924,13 +964,42 @@ function ConfirmStep({
       // silently. The chooser is the other track's to add.
       await savePreScriptBrief(draft.voiceId, {
         workKind, workKindOther: workKindOther.trim() || null,
-        forbiddenClaims, audience, promotes,
+        forbiddenClaims, audience, promotes: q4,
         // The offer, but ONLY if the creator typed it. `offerTouched` is exactly
         // that fact, and without it we would store the scan's guess as though
         // they had confirmed it — which is the inference this question exists to
         // replace.
         offer: offerTouched ? product : null,
       })
+      // THE ENTITY Q3 MINTED — written here, not asked anywhere.
+      //
+      // A creator who said "Software" has told us they own a SaaS product; a
+      // separate question asking whether they have one would be re-asking what
+      // this answer already implied. So the entity is derived, shown pre-filled
+      // above, and persisted here with whatever correction they made.
+      //
+      // `ownsEntity === false` writes NOTHING, which is the whole mechanism for
+      // "I don't own one" — including the creator whose old `nothing_to_sell`
+      // answer was mapped to it. No owned entity means nothing downstream has
+      // anything to sell, which is exactly what that answer bought them.
+      //
+      // A FAILED MINT MUST NOT LOSE THE VOICE. Everything above is already
+      // committed by this point, and the entity is a refinement rather than a
+      // prerequisite: a creator whose product row failed to write still has a
+      // working profile and can correct it from the Product Library. Throwing
+      // here would send them back to a confirm screen whose work is already
+      // saved, to do it again.
+      if (ownsEntity && mintsOwnedEntity(workKind)) {
+        try {
+          await saveMintedEntity(
+            draft.userId,
+            draft.voiceId,
+            mintFromWorkKind(workKind, { name: product.trim() || null }),
+          )
+        } catch (mintError) {
+          console.warn('mint owned entity', mintError)
+        }
+      }
       // ALSO seed the Creator DNA (profile.dna) from the scan + these answers, so
       // the scanned signup isn't left with a half-empty DNA (the "audience/product/
       // goal Not set" bug). This is the durable onboarding boundary: do not enter
@@ -1050,34 +1119,85 @@ function ConfirmStep({
             />
           )}
         </Labeled>
-        {/* Q4 — WHOSE product the CTA points at.
-            Placed directly after "what do you do", because it qualifies the
-            offer rather than adding a new subject: the offer box says WHAT, this
-            says WHOSE, and a script needs both to know what it may promise.
+        {/* WHAT Q3 ALREADY TOLD US — SHOWN, NOT ASKED.
+            A creator who has just said "Software" is not then asked whether they
+            have a product. Q3 mints the owned entity and it appears here
+            pre-filled and correctable, which is the pattern `offer` directly
+            above already uses.
+            CORRECTABLE MEANS A REAL EXIT. The mint is an inference from an
+            answer, not the answer itself, so "That's not right" clears it rather
+            than arguing — and clearing it hands ownership back to Q4 below,
+            which is where a creator with nothing of their own belongs. */}
+        {mintsOwnedEntity(workKind) && (
+          <div className="rounded-card border border-white/10 bg-white/[0.03] p-3.5">
+            {ownsEntity ? (
+              <>
+                <p className="text-sm text-cream">
+                  We’ll treat{' '}
+                  <span className="text-amber">{product.trim() || 'your offer'}</span>{' '}
+                  as your own {ENTITY_TYPE_LABEL[mintedType]}.
+                </p>
+                <p className="mt-1 text-[11px] text-stone">
+                  From what you do — so a script may speak for it, and say what it costs.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setOwnsEntity(false)}
+                  className="mt-2 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
+                >
+                  That’s not right — I don’t own one
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-sand">No product of your own, then.</p>
+                <button
+                  type="button"
+                  onClick={() => setOwnsEntity(true)}
+                  className="mt-2 text-[11px] text-stone underline decoration-white/20 underline-offset-2 hover:text-cream"
+                >
+                  Actually, I do own one
+                </button>
+              </>
+            )}
+          </div>
+        )}
+        {/* Q4 — ONLY ABOUT THINGS THE CREATOR DOES NOT OWN.
+            Placed after the mint because it is the residue: the block above
+            settles what is theirs, this settles whose else's appears.
 
-            Three chips and no default. Leaving it unset is a real state that
-            emits nothing into the prompt — the same three-state rule the claims
-            question follows. A pre-selected "my own product" would have this
-            screen deciding a liability-adjacent fact nobody asked about. */}
-        <Labeled label="What do your videos promote?">
+            NO DEFAULT. Leaving it unset is a real state that emits nothing into
+            the prompt — the same three-state rule the claims question follows. A
+            pre-selected answer would have this screen deciding a
+            liability-adjacent fact nobody asked about.
+
+            FOR A `creator` IT DOES DOUBLE DUTY. Q3 implies nothing for them, so
+            "Nothing of anyone else's" additionally means ideas-only and no
+            Product DNA at all — which is why the helper line changes with
+            `q4AsksOwnership`. */}
+        <Labeled label={q4AsksOwnership(workKind)
+          ? 'Do your videos feature any products?'
+          : 'Anything else in your videos that isn’t yours?'}>
           <div className="flex flex-wrap gap-2">
-            {BRIEF_PROMOTES.map((k) => (
+            {Q4_ANSWERS.map((k) => (
               <button
                 key={k}
                 type="button"
-                onClick={() => setPromotes(promotes === k ? null : k)}
+                onClick={() => setQ4(q4 === k ? null : k)}
                 className={`rounded-full border px-3 py-1.5 text-xs transition ${
-                  promotes === k
+                  q4 === k
                     ? 'border-coral bg-coral/15 text-cream'
                     : 'border-white/15 text-sand hover:bg-white/5'
                 }`}
               >
-                {PROMOTES_LABEL[k]}
+                {Q4_LABEL[k]}
               </button>
             ))}
           </div>
           <p className="mt-1 text-[11px] text-stone">
-            It changes what a script may promise. You can only speak for a product you own.
+            {q4AsksOwnership(workKind)
+              ? 'It changes what a script may promise — you can only speak for something you own.'
+              : 'Someone else’s product means no ownership language, and a disclosure where one is owed.'}
           </p>
         </Labeled>
         {/* HOW THEY CAN SHOOT IT — last, and that ordering is the point.

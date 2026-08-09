@@ -59,32 +59,65 @@ export const BRIEF_WORK_KINDS = [
 export type BriefWorkKind = (typeof BRIEF_WORK_KINDS)[number]
 
 /**
- * Q4. WHOSE PRODUCT THE CTA POINTS AT.
+ * Q4. WHAT APPEARS IN THESE VIDEOS THAT THE CREATOR DOES NOT OWN.
  *
- * A CHOOSER, not free text, and the reason is §2.3's container rule: the three
- * routes that fill a `[SHOW: …]` slot BRANCH on this answer, and a branch cannot
- * be taken on a sentence nobody parses. "I do affiliate stuff for supplements
+ * A CHOOSER, not free text, and the reason is §2.3's container rule: the routes
+ * that fill a `[SHOW: …]` slot BRANCH on this answer, and a branch cannot be
+ * taken on a sentence nobody parses. "I do affiliate stuff for supplements
  * mostly" is a fine thing for a human to say and useless to a rule that has to
  * decide whether the product being shown belongs to the creator.
  *
  * The distinction earns its place because getting it wrong is not cosmetic:
  *
- *   own_product      the CTA points at something the creator controls. A claim
- *                    about it is theirs to make, and theirs to be liable for.
- *   affiliate        the CTA points at someone ELSE's product. The creator
- *                    cannot promise what it does, cannot speak for its support
- *                    or refunds, and a script that says "my product" is wrong
- *                    about the world.
- *   nothing_to_sell  there is no CTA of this kind at all. A script that invents
- *                    one is inventing a business — the confidently-wrong failure
- *                    the plan calls the most expensive this product can produce.
+ *   affiliate    someone ELSE's product, with a commission. The creator cannot
+ *                promise what it does, cannot speak for its support or refunds,
+ *                and a script that says "my product" is wrong about the world.
+ *                A material connection, so it is disclosed.
+ *   sponsor      someone else's product, paid to feature it. Disclosure is a
+ *                property of the arrangement, not a per-video decision the
+ *                writer may weigh against pacing.
+ *   review_only  someone else's product, no commercial tie. Product facts and
+ *                the creator's own experience only — never the vendor's
+ *                marketing, which would make the review an advertisement.
+ *   none         nothing of anyone else's. For a `creator`, where Q3 implied
+ *                nothing about ownership either, this additionally means
+ *                ideas-only and NO Product DNA at all.
+ *
+ * OWNERSHIP IS NOT HERE, and that is the change. Q3 mints the owned entity —
+ * see `productEntity.ts` — so this question no longer re-asks what another
+ * answer already implied.
  *
  * Stored in `brand_voices.pre_script_brief`, which 0109's CHECK already permits
- * (`promotes` is in its key set and in `BRIEF_STORED_KEYS`) — so this needs NO
- * migration. Verified before writing one.
+ * (`promotes` is in its key set and in `BRIEF_STORED_KEYS`) and which pins the
+ * KEY SET rather than these values — so this needs NO migration. Verified
+ * against 0109 before writing one.
  */
-export const BRIEF_PROMOTES = ['own_product', 'affiliate', 'nothing_to_sell'] as const
+// REWRITTEN — Q4 NO LONGER ASKS ABOUT OWNERSHIP.
+//
+// The old vocabulary was `own_product | affiliate | nothing_to_sell`, and it
+// answered TWO questions in one field: do you own something, and do you feature
+// anything of anyone else's. The first is redundant exactly where Q3 was
+// informative — a creator who has just said "Software" does not need to be asked
+// whether they have a product — and that redundancy is what the standing rule
+// forbids. Q3 MINTS the owned entity now (`productEntity.ts`), so this field is
+// free to carry only the half still genuinely unknown.
+//
+// `sponsor` and `review_only` are new members rather than a widening for its own
+// sake: each changes what a script may SAY. A sponsor owes a disclosure; a
+// reviewer may state product facts and their own experience but never repeat the
+// vendor's marketing. Collapsing either into `affiliate` would license a claim
+// its relationship does not.
+//
+// STORAGE IS UNCHANGED. 0109's CHECK constrains the KEY SET and requires a
+// non-empty string; it never pinned these values, so this needs no migration.
+// Verified against the migration before this comment was written.
+export const BRIEF_PROMOTES = ['affiliate', 'sponsor', 'review_only', 'none'] as const
 export type BriefPromotes = (typeof BRIEF_PROMOTES)[number]
+
+/** The values this field used to hold. Kept so `readStoredBrief` can recognise
+ *  a brief written before the split rather than silently dropping it — see
+ *  `readLegacyPromotes` in `productEntity.ts` for what each one becomes. */
+export const LEGACY_BRIEF_PROMOTES = ['own_product', 'nothing_to_sell'] as const
 
 /**
  * The kinds for which "what may you NOT claim" is asked.
@@ -154,12 +187,18 @@ export const PRODUCT_EVIDENCE_FORM: Record<BriefWorkKind, ProductEvidenceForm> =
  * over their product page. An accurate note that stops being accurate reads
  * exactly like one that never was.
  *
- * SILENCE IS NOT "NOTHING TO SELL". Only an explicit `nothing_to_sell`
- * suppresses the question. A null `promotes` means unanswered, and someone who
- * has not reached that question yet still has a product to describe — so this
- * gate is permissive on silence, like `can_film_objects` and unlike
- * `can_record_screen`. The asymmetry between those two is deliberate; see
- * `capabilities.ts` before assuming it is a bug.
+ * SILENCE IS NOT "NOTHING TO SELL". Only an explicit `none` suppresses the
+ * question. A null `promotes` means unanswered, and someone who has not reached
+ * that question yet still has a product to describe — so this gate is permissive
+ * on silence, like `can_film_objects` and unlike `can_record_screen`. The
+ * asymmetry between those two is deliberate; see `capabilities.ts` before
+ * assuming it is a bug.
+ *
+ * `none` NOW MEANS SOMETHING NARROWER than `nothing_to_sell` did, and the gate
+ * is correspondingly narrower. It says "nothing of anyone ELSE'S" — it says
+ * nothing about what the creator owns, because Q3 answers that. So a founder who
+ * answers `none` is still asked for their product: they have one, Q3 minted it,
+ * and it is the entity this evidence attaches to.
  *
  * STILL OPEN: `affiliate` should ask for the PRODUCT'S page rather than the
  * creator's own. That is a copy change to `PRODUCT_EVIDENCE_FORM`, not a gate
@@ -174,7 +213,10 @@ export function asksProductEvidence(
   // the exception rather than the rule, and the offer question already catches
   // the ones who have one.
   if (!kind || kind === 'creator') return false
-  return promotes !== 'nothing_to_sell'
+  // A creator who features nothing of anyone else's AND owns nothing is the only
+  // combination with no product at all — and `kind === 'creator'` above is the
+  // only kind where owning nothing is possible, so it is already excluded.
+  return promotes !== 'none'
 }
 
 export interface BriefAnswers {
@@ -417,6 +459,22 @@ export function readStoredBrief(raw: unknown): BriefAnswers {
         // unparseable value here does not degrade the CTA, it sends the
         // container rule down a route the creator never picked.
         if ((BRIEF_PROMOTES as readonly string[]).includes(v)) out.promotes = v as BriefPromotes
+        // A BRIEF WRITTEN BEFORE Q4 WAS SPLIT. Both legacy values said something
+        // about ownership, which Q3 now answers better, and one of them also
+        // said something about third parties, which still maps:
+        //
+        //   own_product      → ownership only. Nothing about anyone else's, so
+        //                      `none`, and Q3's mint supplies what it used to.
+        //   nothing_to_sell  → also `none`. Its CTA suppression is carried by
+        //                      the ABSENCE OF AN OWNED ENTITY rather than by a
+        //                      second flag — see `productEntity.ts`'s
+        //                      `readLegacyPromotes`, and `onboardingDraft.ts`
+        //                      where it becomes `ownsEntity: false`.
+        //
+        // Mapped rather than dropped, because dropping it would silently re-ask
+        // a question the creator already answered — the exact failure this
+        // vocabulary change exists to remove.
+        else if (v === 'own_product' || v === 'nothing_to_sell') out.promotes = 'none'
       } else out[k] = v as never
     }
   }

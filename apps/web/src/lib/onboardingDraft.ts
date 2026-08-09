@@ -1,4 +1,4 @@
-import { BRIEF_PROMOTES, type BriefPromotes, type BriefWorkKind } from './api'
+import { Q4_ANSWERS, readLegacyPromotes, type BriefWorkKind, type Q4Answer } from './api'
 import type { Platform, VoiceProfile } from './types'
 
 export const ONBOARDING_DRAFT_VERSION = 2
@@ -26,9 +26,26 @@ export interface OnboardingDraft {
   // Free text, and the highest-signal answer in the set BECAUSE they typed it.
   workKindOther: string | null
   forbiddenClaims: string | null
-  // §8a.3 Q4 — whose product the CTA points at. A CHOOSER: §2.3's three
-  // container routes branch on it, and null is a real state meaning unanswered.
-  promotes: BriefPromotes | null
+  // Q4, REWRITTEN — what appears in these videos that the creator does NOT own.
+  // Ownership itself is Q3's answer now (it mints the entity), so this no longer
+  // re-asks it. A CHOOSER: §2.3's container routes branch on it, and null is a
+  // real state meaning unanswered.
+  q4: Q4Answer | null
+  // DID THE CREATOR KEEP THE ENTITY Q3 MINTED FOR THEM?
+  //
+  // Three states, and the third is why this is not a boolean. `null` means Q3
+  // minted nothing (a `creator`, a `brand`, an `other`) — which is a different
+  // fact from a founder who looked at their minted product and said "that's not
+  // right", and both are different from one who kept it.
+  //
+  // IT IS ALSO WHERE THE OLD `nothing_to_sell` LANDS. That answer drove a live
+  // behaviour — "do not write a purchase or signup CTA at all" — and its
+  // ownership half is superseded by Q3. Mapping it to `ownsEntity: false` keeps
+  // the behaviour without inventing a second flag: no owned entity is minted,
+  // so nothing downstream has anything to sell, which is precisely what they
+  // asked for. A creator who says "actually, I do own one" is the only thing
+  // that resumes it, which is the right hand to put that in.
+  ownsEntity: boolean | null
   // §8a.3 Q6 — can the creator put a product or object in front of the camera?
   // THREE-STATE, and the third state is load-bearing: `can_film_objects = false`
   // permanently withholds footage suggestions, so "they never said" must never
@@ -84,9 +101,18 @@ function parseDraft(raw: string | null, userId: string): OnboardingDraft | null 
       // brief, so an old or hand-edited draft could pick a container route the
       // creator never chose. `readStoredBrief` refuses it on the way back out
       // too; this refuses it before it can render as an answer.
-      promotes: (BRIEF_PROMOTES as readonly string[]).includes(value.promotes as string)
-        ? (value.promotes as BriefPromotes)
-        : null,
+      q4: (Q4_ANSWERS as readonly string[]).includes(value.q4 as string)
+        ? (value.q4 as Q4Answer)
+        // A DRAFT WRITTEN BEFORE THE SPLIT still carries the old three-value
+        // `promotes`. Its third-party half maps across unchanged; its ownership
+        // half is dropped because Q3 answers that better. Not re-asked.
+        : (readLegacyPromotes((value as { promotes?: string }).promotes)?.q4 ?? null),
+      ownsEntity: typeof value.ownsEntity === 'boolean'
+        ? value.ownsEntity
+        // `nothing_to_sell` becomes "owns nothing", which is the CTA suppression
+        // it actually bought. Every other legacy value leaves this unanswered so
+        // Q3's mint stands.
+        : readLegacyPromotes((value as { promotes?: string }).promotes)?.ctaSuppressed ? false : null,
       // A REAL boolean or nothing — the same rule `canRecordScreen` follows one
       // line down. A draft written before the question existed has no opinion,
       // and `?? false` would manufacture one.
@@ -131,7 +157,8 @@ export function readOnboardingDraft(storage: Storage, userId: string): Onboardin
     workKind: null,
     workKindOther: null,
     forbiddenClaims: null,
-    promotes: null,
+    q4: null,
+    ownsEntity: null,
     canFilmObjects: null,
     offerFromCreator: false,
     canRecordScreen: null,

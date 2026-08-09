@@ -852,7 +852,7 @@ Deno.serve(async (req: Request) => {
       ? audience
       : (niche !== 'unspecified' ? `people into ${niche}${subNiche ? `, specifically ${subNiche}` : ''}` : 'unspecified')
     const povList = (vp?.pov ?? []) as string[]
-    // WHOSE PRODUCT THE CTA POINTS AT (§8a.3 Q4).
+    // WHAT APPEARS IN THIS VIDEO THAT THE CREATOR DOES NOT OWN (Q4).
     //
     // The line above has always told the model WHAT to point the CTA at and
     // never WHOSE it is. Those are different facts and the second one changes
@@ -862,24 +862,41 @@ Deno.serve(async (req: Request) => {
     // an affiliate link is wrong about the world, and the creator is the one who
     // reads it aloud.
     //
-    // `nothing_to_sell` is the case worth stating explicitly rather than by
-    // omission. Given an offer field and no instruction, a model asked for a CTA
-    // will write one — inventing a business, which the plan calls the most
-    // expensive failure this product can produce. Saying it plainly is what
-    // stops that.
+    // Q4 NO LONGER CARRIES OWNERSHIP. It used to answer "do you have a product",
+    // which re-asked what `workKind` already implied — a creator who said
+    // "Software" owns a SaaS product, and asking again is the redundancy the
+    // standing rule forbids. Ownership now arrives as a minted ENTITY
+    // (`product_entities`), and this field says only whose ELSE'S things appear.
+    //
+    // EACH BRANCH NAMES A DIFFERENT PERMISSION, which is why four values rather
+    // than one "third party" flag:
+    //
+    //   affiliate    a commission, so a material connection to disclose
+    //   sponsor      paid to feature it; disclosure is a property of the
+    //                arrangement, not a pacing decision the writer may weigh
+    //   review_only  no commercial tie, and CRUCIALLY no licence to repeat the
+    //                vendor's marketing — that would make the review an advert
+    //   none         nothing of anyone else's
+    //
+    // `none` IS STATED EXPLICITLY rather than by omission. Given an offer field
+    // and no instruction, a model asked for a CTA will write one — inventing a
+    // business, which the plan calls the most expensive failure this product can
+    // produce. Saying it plainly is what stops that.
     //
     // UNANSWERED EMITS NOTHING, the same three-state rule the claims block
-    // follows five lines down: `readStoredBrief` drops any value outside
-    // `BRIEF_PROMOTES`, so this is either a real answer or silence. A default of
-    // "assume it is theirs" would be this system deciding a compliance-adjacent
-    // fact nobody asked about.
-    const promotesLine = brief.promotes === 'own_product'
-      ? '\n- WHOSE product that is: the CREATOR\'S OWN. They may speak to what it does, and are accountable for it.'
-      : brief.promotes === 'affiliate'
-        ? '\n- WHOSE product that is: SOMEONE ELSE\'S — the creator promotes it as an affiliate. Do NOT write "my product", "we built", or any claim of ownership, support, refunds or roadmap. Recommend it as a user, never as its maker.'
-        : brief.promotes === 'nothing_to_sell'
-          ? '\n- WHOSE product that is: THERE IS NOTHING TO SELL. Do not write a purchase or signup CTA at all. The call to action is engagement — follow, save, comment — or nothing.'
-          : ''
+    // follows: `readStoredBrief` drops any value outside `BRIEF_PROMOTES`, so
+    // this is either a real answer or silence. A default of "assume it is
+    // theirs" would be this system deciding a compliance-adjacent fact nobody
+    // asked about.
+    const promotesLine = brief.promotes === 'affiliate'
+      ? '\n- SOMEONE ELSE\'S PRODUCT is featured, as an AFFILIATE. Do NOT write "my product", "we built", or any claim of ownership, support, refunds or roadmap. Recommend it as a user, never as its maker, and disclose the affiliate relationship.'
+      : brief.promotes === 'sponsor'
+        ? '\n- SOMEONE ELSE\'S PRODUCT is featured, as a PAID SPONSOR. Do NOT write "my product", "we built", or any claim of ownership, support, refunds or roadmap. The sponsorship MUST be disclosed in the script — it is not optional and not a pacing decision.'
+        : brief.promotes === 'review_only'
+          ? '\n- SOMEONE ELSE\'S PRODUCT is REVIEWED, with no commercial relationship. State product facts and the creator\'s own experience only. Do NOT repeat the vendor\'s marketing claims, do NOT write "my product" or "we built", and do NOT write a purchase CTA — there is no commercial tie to act on.'
+          : brief.promotes === 'none'
+            ? '\n- NOTHING OF ANYONE ELSE\'S appears. Do not introduce, recommend or name a third-party product the creator has not mentioned.'
+            : ''
 
     // WHAT THE CREATOR DOES FOR A LIVING.
     //
@@ -1060,7 +1077,7 @@ ${fenced('claims this creator may NOT make', forbidden)}
         `Audience: ${audienceResolved}`,
         `What they do: ${brief.workKind === 'other' ? workKindOther : (brief.workKind ?? 'not stated')}`,
         `Offer: ${offer}`,
-        `Whose product it is: ${brief.promotes ?? 'not stated'}`,
+        `Anything featured that is not theirs: ${brief.promotes ?? 'not stated'}`,
         `Goal: ${goal}`,
         `Tone: ${tone}`,
       ].join('\n'))

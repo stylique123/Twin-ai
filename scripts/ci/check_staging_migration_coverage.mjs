@@ -102,6 +102,15 @@ export const EXCLUDED = {
   '0109_pre_script_brief':
     'Adds a column to `brand_voices`, which on staging is a fixture rather than the '
     + 'real table. The editor reads the brief through the blueprint, not directly.',
+  '0120_product_entities':
+    'Creates a table with a foreign key to `public.brand_voices`, which on staging is '
+    + 'a FIXTURE APPLIED AFTER the migration loop — so the FK target does not exist at '
+    + 'apply time and the migration fails on its first statement rather than passing '
+    + 'vacuously. Verified by reading the workflow order: the `for f in …` loop runs, '
+    + 'then `staging-brand-schema.sql`. Weakening the production FK to suit that '
+    + 'ordering would be the tail wagging the dog. The editor never reads '
+    + '`product_entities` either — entities reach it through the blueprint prompt, the '
+    + 'same route the brief takes in 0109 above.',
 }
 
 // `excluded` is a PARAMETER rather than a direct read of the constant so the
