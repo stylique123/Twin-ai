@@ -794,7 +794,35 @@ Deno.serve(async (req: Request) => {
     const offer = brief.offer ?? vp?.offer ?? dna.product ?? 'unspecified'
     const pain = vp?.audience_pain ?? dna.pain ?? ''
     const dream = vp?.dream_outcome ?? dna.dream ?? ''
-    const goal = vp?.goal ?? dna.goal ?? 'turn attention into trust'
+    // WHAT THE CREATOR WANTS THESE VIDEOS TO DO.
+    //
+    // This line used to read `vp?.goal ?? dna.goal ?? 'turn attention into
+    // trust'` — three authorities, and the creator's own answer was none of
+    // them. That is the audit's overlapping-authorities finding wearing a naming
+    // collision: the word `goal` is everywhere in this file and the value the
+    // creator typed reached none of it, so a creator who said "sell" and a
+    // creator who said "entertain" got the same CTA rule.
+    //
+    // `brief.goal` is an enum, validated on the way in, so it maps to a fixed
+    // instruction rather than being pasted as a slug. `- Goal: followers` invites
+    // the model to decide what that implies; naming the consequence is what
+    // changes the writing — the same reasoning as WORK_KIND_LINES below.
+    //
+    // The inferred values still stand behind it. They are a reading of the
+    // creator's public content, which is a real signal when they never answered
+    // — just never a better one than the answer itself.
+    const GOAL_LINES: Record<string, string> = {
+      followers: 'GROW THE AUDIENCE. Reach and shareability come first — the ending should earn a follow or a share, not a purchase.',
+      authority: 'BUILD AUTHORITY. The viewer must trust this creator more at the end than at the start; prefer depth and specifics over breadth.',
+      educate: 'TEACH SOMETHING USABLE. The viewer should be able to DO the thing by the end — one complete idea beats three partial ones.',
+      leads: 'GENERATE LEADS. The payoff should open a conversation; the CTA asks for a step toward them (comment, DM, link), not a sale on the spot.',
+      sell: 'SELL THE OFFER. Make the offer the natural conclusion of the value just delivered, and name it plainly in the CTA.',
+      entertain: 'ENTERTAIN. Attention and rewatch are the point — do not bolt a commercial ask onto a video whose job is to be enjoyed.',
+      personal_brand: 'BUILD THE PERSON, not just the information. Carry their stance and their story; a generic explainer fails this goal even when it is accurate.',
+    }
+    const goal = (brief.goal && GOAL_LINES[brief.goal])
+      ? GOAL_LINES[brief.goal]
+      : (vp?.goal ?? dna.goal ?? 'turn attention into trust')
     const tone = vp?.tone ?? dna.voice ?? 'direct, warm, a little punchy'
     const editing = vp?.editing_style ?? dna.editing_style ?? 'fast jump cuts, burned-in captions'
     const platforms = voice?.platform
