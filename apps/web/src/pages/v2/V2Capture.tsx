@@ -247,7 +247,32 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // and the scene's estimated length — drives the word highlight + the timing bar.
   const words = useMemo(() => (scene?.dialogue || '').split(/\s+/).filter(Boolean), [scene])
   const wpmVal = WPM_PRESETS[timeline.wpm]
-  const readCount = recording ? Math.floor((sceneElapsed / 60) * wpmVal) : -1
+  // NOBODY STARTS SPEAKING ON THE FRAME THE LIGHT GOES RED. The prompter used to
+  // count the first word as read at t=0, so the creator was already behind before
+  // they had drawn breath, and every word after inherited that debt. A short
+  // lead-in is what a human does anyway.
+  const PROMPTER_LEAD_IN_SEC = 0.8
+  const readSec = Math.max(0, sceneElapsed - PROMPTER_LEAD_IN_SEC)
+  const readCount = recording ? Math.floor((readSec / 60) * wpmVal) : -1
+  // ONE CLOCK FOR BOTH MOTIONS.
+  //
+  // Reported from a real recording run: "there's two scrollers — one going down,
+  // the other highlighting", and scene 2's prompter "vanished in two seconds".
+  // Both are this number. The highlight advances on WORDS-over-WPM; the glide
+  // used to advance on the scene's PLANNED seconds. Those are different clocks
+  // and they disagree by however much the plan's estimate was wrong.
+  //
+  // Scene 2 is the worst case and it is not rare: a beat planned at "about 5s"
+  // carrying ~45 words of dialogue. The highlight paced it at ~20 seconds. The
+  // glide ran the entire text past the read-line in five — so the words scrolled
+  // off while the creator was still on the first line of them.
+  //
+  // The prompter now moves with the reader: progress is the share of the WORDS
+  // that should have been spoken, so the word being highlighted is the word at
+  // the read-line, by construction rather than by coincidence. The plan's own
+  // number still drives the timing bar and the auto-stop cap — this changes what
+  // the TEXT does, not what the scene is worth. The glide itself is computed per
+  // frame in the rAF tick below, from the same words-over-WPM sum.
   // THE SCENE'S OWN LENGTH, not a second opinion about it.
   //
   // This used to re-derive the estimate from the words right here, ignoring
@@ -309,6 +334,7 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
   // element may not be laid out the instant the effect fires — measuring per frame
   // means EVERY scene scrolls, not just the first hook. A floor on travel keeps even
   // a short scene visibly gliding upward.
+  const wordCount = words.length
   useEffect(() => {
     const p = textRef.current, box = promptScrollRef.current
     if (!p || !box) return
@@ -320,13 +346,17 @@ function Teleprompter({ genId, timeline, setTimeline, onBack }: {
       const readY = box.clientHeight * 0.6         // read-line a touch below middle — text starts lower, sits in a comfortable eye-line
       if (!recording) { p.style.transform = `translateY(${readY}px)`; return }
       const travel = Math.max(p.offsetHeight + readY, box.clientHeight * 0.9) // always a visible glide
-      const prog = Math.min(1, (now - start) / 1000 / estSec)
+      // The SAME word clock `readCount` uses — see the note above it. Read
+      // per frame from `now` rather than from `sceneElapsed` so the glide stays
+      // smooth at 60fps instead of stepping with that state's 100ms tick.
+      const el = Math.max(0, (now - start) / 1000 - PROMPTER_LEAD_IN_SEC)
+      const prog = wordCount ? Math.min(1, (el / 60) * wpmVal / wordCount) : Math.min(1, el / estSec)
       p.style.transform = `translateY(${readY - prog * travel}px)`
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [recording, i, estSec, fontIdx])
+  }, [recording, i, estSec, fontIdx, wpmVal, wordCount])
 
   // Acquire the camera (front or back); re-acquire when the creator flips it. Flipping
   // is only offered before recording starts (see the Flip control), so tearing down

@@ -227,6 +227,82 @@ Work items, in the order their value lands:
 
 ---
 
+### 5b. The recording run — the recorder's own defects
+
+The first run that got as far as filming. Everything here is from that session,
+with the cause established in code rather than guessed.
+
+**1 · The prompter ran on two clocks, and the wrong one drove the text.** 🟡
+*fixed, not verified live.* Reported as "there's two scrollers — one going down,
+the other highlighting", and scene 2's prompter "vanished in two seconds".
+
+Both symptoms are one number. The word HIGHLIGHT advanced on words-over-WPM; the
+GLIDE advanced on the scene's PLANNED seconds (`estSec = plannedSec`, the
+adapter's `duration_sec`). Those disagree by exactly however wrong the plan's
+estimate was — and scene 2 is the worst case and not a rare one: planned "about
+5s", carrying ~45 words. The highlight paced it at ~20 seconds. The glide ran the
+whole text past the read-line in five.
+
+The prompter now moves with the reader — progress is the share of the WORDS due
+by now, so the highlighted word IS the word at the read-line by construction.
+Plus a 0.8s lead-in, because nobody starts speaking on the frame the light turns
+red, and without it the creator is behind before drawing breath.
+
+The plan's own number still drives the timing bar and the auto-stop cap. This
+changed what the TEXT does, not what the scene is worth.
+
+**2 · "Phone upright ✗" while the phone WAS upright — and the take came out
+horizontal. These are the same bug.** 🔴
+
+`getUserMedia` is called with `width: {ideal: 1080}, height: {ideal: 1920}`.
+iOS Safari does not honour a portrait ideal that way: it hands back a LANDSCAPE
+track. The preview looks vertical only because it is `object-cover` cropped, so
+nothing on screen reveals it — but the recorded file is landscape, which is what
+the review screen then plays back, and it is the reason a short-form vertical
+take arrived horizontal.
+
+`preflightSignals.ts` reads orientation from *the video track's own reported
+dimensions*. Given a landscape track it correctly reports landscape. The
+checklist was not broken; it was faithfully reporting the real defect underneath
+it, in language ("turn your phone upright") that blamed the creator for it.
+
+Fix is one change with two payoffs: constrain by `aspectRatio` (which Safari does
+respect) and/or rotate at capture, and the false alarm disappears with the
+horizontal file. **Needs a real device to verify — do not ship blind.**
+
+**3 · Three of five preflight rows say "Not checked".** 🔴 — but *by design*, and
+the design is right. `framing`, `lighting` and `room` are `unmeasured` because
+each needs a face box or a decay measurement the browser will not give, and the
+module's header argues at length that a green tick from a check that never ran is
+worse than an honest blank. What is wrong is the SCREEN, not the engine: five
+rows of mostly "Not checked" reads as a broken feature. Either show only what is
+measured, or say plainly what the phone cannot see and why.
+
+**4 · "Check again" appears to do nothing.** 🔴 Not reproduced in code yet. It
+re-runs a ~1.2s mic sample and a track read; if orientation is the only row that
+can change and it cannot change (defect 2), the button correctly re-measures and
+correctly reports the same thing. Suspected duplicate of 2 — verify after 2.
+
+**5 · The take was not saved.** 🔴 "Saving to your library…" never resolved.
+`edit_projects` is still 0 and now `takes` may be too. **This is the highest
+priority item in the whole plan** — see §10.1: nothing downstream matters until
+one take completes in production.
+
+**6 · Reopening the review screen after ~5 minutes restarted everything.** 🟡
+Same class as the V2Building replay, in a second screen: state held in refs that
+die with the component, so a remount re-runs the sequence. The V2Building fix
+(look up what already exists, then navigate) is the shape of this one too.
+
+**7 · The plan the creator filmed against contains §5a's defects, live.**
+Scene 2 was "Show the product · about 5s" whose direction reads "Real footage of
+a dusty, outdated living room being framed out into separate bedrooms" and "None
+for the creator, as this is a b roll overlay sequence" — an unfilmable COPY
+THEIRS beat handed to someone standing in their bedroom holding a phone. The hook
+is "replace your paycheck with passive income", the unverified claim. Not new
+findings; confirmation that §5a's four gaps reach the creator.
+
+---
+
 ## 6. 🔴 The reference pipeline
 
 - 🔴 **`mode: 'pattern'` must be a hard stop before spending, in EVERY path.**
@@ -293,9 +369,15 @@ Work items, in the order their value lands:
 
 ## 10. Recommended order
 
-1. **Record one short take and press "Turn this into a video."** `edit_projects`
+1. **Get ONE take saved, then press "Turn this into a video."** `edit_projects`
    is 0. Nothing below is worth tuning until the pipeline has succeeded once in
-   production. Credits are available.
+   production. Credits are available. §5b.5 escalates this: the run that was
+   meant to produce that take ended on "Saving to your library…" that never
+   resolved, so the blocker is now the save itself, not the willingness to film.
+1b. **The vertical take that records horizontal** (§5b.2). A short-form product
+   that writes landscape files fails at the last step regardless of script
+   quality — and it is also the cause of the false "phone upright" alarm.
+   Device-verified, not blind.
 2. **Reference `pattern` → hard stop before spend, every path.** If we have no
    substance, do not sell a script.
 3. **`workKind` + `workKindOther`: ask AND wire.** The single largest lever on
