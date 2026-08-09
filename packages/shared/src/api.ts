@@ -7,7 +7,7 @@ import {
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
 import {
-  emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse,
+  emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
   type DraftEntity, type EntityRestrictions, type ProductEntityRecord,
 } from './productEntity'
 import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
@@ -1285,6 +1285,7 @@ interface ProductEntityRow {
   type: string
   relationship: string
   personal_use: string
+  showability: string
   product_url: string | null
   affiliate_url: string | null
   evidence: unknown
@@ -1295,7 +1296,7 @@ interface ProductEntityRow {
 }
 
 const ENTITY_COLUMNS =
-  'id, name, type, relationship, personal_use, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at'
+  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at'
 
 /** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
  *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
@@ -1339,6 +1340,11 @@ function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
     // and withholding one the creator could have made is a smaller failure than
     // writing one they never earned.
     personalUse: isPersonalUse(row.personal_use) ? row.personal_use : 'NOT_CONFIRMED',
+    // UNKNOWN on anything unreadable, which is the honest fallback and also the
+    // conservative one: `mayShowOnScreen` refuses it, so a malformed value
+    // withholds a product-display scene rather than inventing a shot the creator
+    // may not be able to take.
+    showability: isShowability(row.showability) ? row.showability : 'UNKNOWN',
     productUrl: row.product_url ?? null,
     affiliateUrl: row.affiliate_url ?? null,
     evidence: row.evidence === 'declined'
@@ -1394,6 +1400,7 @@ export async function saveMintedEntity(
       type: entity.type,
       relationship: entity.relationship,
       personal_use: entity.personalUse,
+      showability: entity.showability,
       product_url: entity.productUrl,
       affiliate_url: entity.affiliateUrl,
       evidence: entity.evidence,

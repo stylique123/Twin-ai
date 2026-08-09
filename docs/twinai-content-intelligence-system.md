@@ -1055,6 +1055,27 @@ The Gallery is then not recommending viral videos. It is reasoning about what
 
 ---
 
+## 23a. ⚖️ §5d — the mechanism is not the same thing as the structure
+
+The SHAPE is solved: five beats, a re-hook, a payoff. The CONTRACT between beats
+is not. Nothing holds *"this video promises five things"* as a fact later stages
+must honour, so nothing can notice when they do not — and a real run produced
+three different counts, none of them the reference's.
+
+⚖️ **A contract check beats a prompt rule wherever the defect is decidable by
+looking at the object.** Counting is decidable. `sceneConsistency.ts` already
+proved the shape with `palette_leak`, an EXACT check that catches what a prompt
+instruction had failed to prevent for months.
+
+⚖️ **And the palette leak now rationalises itself** — *"a plain black t-shirt to
+emphasize the brand colors (#000000 and #FFFFFF)"*. The model has inferred that
+connecting wardrobe to brand colour is the field's PURPOSE, and explains itself
+while doing it. You cannot tune away confident correctness; the palette must be
+structurally unreachable from a physical instruction, which is why the field
+split is four fields and not a better sentence.
+
+---
+
 ## 24. When there is NO product — nothing breaks
 
 A creator selecting *ideas/expertise* + *nothing commercial* simply has no
@@ -1264,6 +1285,7 @@ Each step is shippable and leaves the product working.
 | **4** | 🔴 **Move Q1–Q3 into the scan; chunk the review screen** | Without this the answers keep coming back empty, and steps 2–3 wire up fields nobody filled in. |
 | **4a** | 🔴 **Wire `alsoWantsToMake` into the Gallery + the CDP** | The last dead onboarding answer with an obvious home. Format preference shapes what is recommended and what production shape the script takes. |
 | **5** | 🔴 **Product DNA as a LIBRARY: entity model (`type` × `relationship`), URL ingestion, restrictions — SaaS entity end to end** | The substance layer. One entity type proves the whole chain. `productEvidence` moves onto the entity instead of floating as a disconnected onboarding field. |
+| **5b** | 🔴 **THE MECHANISM RECORD + the count contract check** | §5d. Extract the reference's enumeration and its COUNT, the hook's promise, the re-hook position and what each beat owes the next — as DATA — then compose from that record. The check asserts announced N == delivered N across idea, hooks and script, and refuses a silent scene inside an enumeration. **Wired in the same PR**, or it is the `creative_transfer_plans` trap again. A contract check beats a prompt rule wherever the defect is decidable, and counting is decidable. |
 | **6** | 🔴 **Write `creative_transfer_plans`, and the Compatibility Gate that feeds it** | Table, contract and validator already exist. Give the container object its writer, and put TRANSFER/ADAPT/REJECT/NOT-OBSERVED in front of it. |
 | **7** | 🔴 **Creative Decision Plan as a frozen contract, + concept candidates, + Script Container Plan with resolution status** | Depends on 2, 3, 5. Writing blocks until every required container is RESOLVED. |
 | **8** | 🔴 **Director Plan + Edit Plan as formal contracts — setups, pattern interrupts, visual-energy density** | Depends on 7. Both must be stored objects, not UI behaviour. |

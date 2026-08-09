@@ -16,6 +16,7 @@ import {
   relationshipForNonOwned, readLegacyPromotes, claimRulesFor, isOwned,
   promoteToAffiliate, entityStatus, mayGenerateClaims, emptyRestrictions,
   isEntityType, isEntityRelationship, isPersonalUse, isQ4Answer,
+  SHOWABILITY_STATES, inferShowability, mayShowOnScreen, isShowability,
   type DraftEntity,
 } from '../productEntity'
 import { BRIEF_WORK_KINDS } from '../preScriptBrief'
@@ -27,6 +28,7 @@ const entity = (over: Partial<DraftEntity> = {}): DraftEntity => ({
   type: 'SAAS',
   relationship: 'OWN_PRODUCT',
   personalUse: 'NOT_CONFIRMED',
+  showability: 'UNKNOWN',
   productUrl: null,
   affiliateUrl: null,
   evidence: 'declined',
@@ -308,5 +310,75 @@ describe('nothing outside the vocabulary reaches a prompt', () => {
     for (const t of ENTITY_TYPES) expect(ENTITY_RELATIONSHIPS).not.toContain(t as never)
     for (const r of ENTITY_RELATIONSHIPS) expect(ENTITY_TYPES).not.toContain(r as never)
     expect(PERSONAL_USE_STATES).toHaveLength(2)
+  })
+})
+
+
+describe('showability — derived from the capability answers, never asked again', () => {
+  it('software and digital read the SCREEN flag', () => {
+    // Showing software means capturing a screen. There is no object to hold.
+    expect(inferShowability('SAAS', { canRecordScreen: true })).toBe('ALWAYS')
+    expect(inferShowability('SAAS', { canRecordScreen: false })).toBe('NEVER')
+    expect(inferShowability('DIGITAL', { canRecordScreen: true })).toBe('ALWAYS')
+  })
+
+  it('a physical product reads the OBJECT flag', () => {
+    expect(inferShowability('PHYSICAL', { canFilmObjects: true })).toBe('ALWAYS')
+    expect(inferShowability('PHYSICAL', { canFilmObjects: false })).toBe('NEVER')
+  })
+
+  it('reads the flag that matches the type, and not the other one', () => {
+    // The mapping is the whole point. A creator who can film objects but not
+    // record a screen cannot show their SaaS, and vice versa — crossing the
+    // wires would hand a screen-capture instruction to someone holding a bottle.
+    expect(inferShowability('SAAS', { canFilmObjects: true })).toBe('UNKNOWN')
+    expect(inferShowability('PHYSICAL', { canRecordScreen: true })).toBe('UNKNOWN')
+  })
+
+  it('a SERVICE can never be shown, and no flag changes that', () => {
+    // "Show the consulting" is not a shot. A service has no physical referent
+    // to point a camera at, so this is a fact about the world rather than about
+    // the creator's setup.
+    expect(inferShowability('SERVICE', { canFilmObjects: true })).toBe('NEVER')
+    expect(inferShowability('SERVICE', { canRecordScreen: true })).toBe('NEVER')
+    expect(inferShowability('SERVICE')).toBe('NEVER')
+  })
+
+  it('NO BACKFILL — an unanswered flag is UNKNOWN, never NEVER', () => {
+    // 0103's rule one layer up: a missing value read as false silently removes
+    // a scene type from everyone who was never asked.
+    expect(inferShowability('SAAS')).toBe('UNKNOWN')
+    expect(inferShowability('SAAS', {})).toBe('UNKNOWN')
+    expect(inferShowability('SAAS', { canRecordScreen: null })).toBe('UNKNOWN')
+    expect(inferShowability('PHYSICAL', { canFilmObjects: null })).toBe('UNKNOWN')
+  })
+
+  it('the mint pre-fills showability instead of asking for it', () => {
+    expect(mintFromWorkKind('saas', { flags: { canRecordScreen: true }, now: NOW })!.showability)
+      .toBe('ALWAYS')
+    expect(mintFromWorkKind('ecommerce', { flags: { canFilmObjects: false }, now: NOW })!.showability)
+      .toBe('NEVER')
+    // A licensed professional sells a service, which cannot be shown at all.
+    expect(mintFromWorkKind('professional', { flags: { canFilmObjects: true }, now: NOW })!.showability)
+      .toBe('NEVER')
+    // And with nothing answered, nothing is claimed.
+    expect(mintFromWorkKind('saas', { now: NOW })!.showability).toBe('UNKNOWN')
+  })
+
+  it('ONLY `ALWAYS` permits a scene that depends on the product being visible', () => {
+    // A script is written once and filmed later, so a scene depending on a
+    // product the creator SOMETIMES has is a scene that sometimes cannot be
+    // filmed — discovered while standing in a room holding a phone.
+    expect(mayShowOnScreen('ALWAYS')).toBe(true)
+    expect(mayShowOnScreen('SOMETIMES')).toBe(false)
+    expect(mayShowOnScreen('NEVER')).toBe(false)
+    expect(mayShowOnScreen('UNKNOWN')).toBe(false)
+  })
+
+  it('validates the vocabulary', () => {
+    expect([...SHOWABILITY_STATES]).toEqual(['ALWAYS', 'SOMETIMES', 'NEVER', 'UNKNOWN'])
+    expect(isShowability('ALWAYS')).toBe(true)
+    expect(isShowability('MAYBE')).toBe(false)
+    expect(isShowability(null)).toBe(false)
   })
 })

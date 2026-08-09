@@ -66,6 +66,24 @@ create table if not exists public.product_entities (
   type          text not null,
   relationship  text not null,
   personal_use  text not null default 'NOT_CONFIRMED',
+  -- CAN THIS PRODUCT BE PUT ON SCREEN, and how dependably?
+  --
+  -- §5's Q4 conditionals, which the spec has always carried and no screen ever
+  -- asked: "talk about it / show it / both" for software, "usually have it while
+  -- filming / sometimes / no" for a physical product. Those are the same
+  -- question in two vocabularies, so they are ONE column — otherwise every
+  -- downstream reader branches on `type` before it can ask the only thing it
+  -- wants to know, and the less common type's field rots.
+  --
+  -- These are PRODUCTION FACTS, not preferences. This is what makes "hold the
+  -- bottle beside your face" a legal instruction instead of the invented
+  -- inventory of §5a's renovated kitchen.
+  --
+  -- UNKNOWN IS THE DEFAULT AND IT IS LOAD-BEARING, for the reason 0103 wrote
+  -- down for `can_record_screen`: read as NEVER it silently removes a scene type
+  -- from everyone who was never asked; read as ALWAYS it hands a shot
+  -- instruction to someone who cannot take it. Neither is a default anyone chose.
+  showability   text not null default 'UNKNOWN',
 
   product_url   text,
   -- Present ⇒ there is a commercial tie. Adding one promotes a REVIEW_ONLY
@@ -97,6 +115,8 @@ create table if not exists public.product_entities (
     check (relationship in ('OWN_PRODUCT', 'OWN_SERVICE', 'AFFILIATE', 'SPONSOR', 'REVIEW_ONLY', 'NONE')),
   constraint product_entities_personal_use_known
     check (personal_use in ('CONFIRMED', 'NOT_CONFIRMED')),
+  constraint product_entities_showability_known
+    check (showability in ('ALWAYS', 'SOMETIMES', 'NEVER', 'UNKNOWN')),
   constraint product_entities_source_known
     check (source in ('user_answer', 'inferred')),
   -- Same three-state discipline 0109 enforces on the brief: a name is either a

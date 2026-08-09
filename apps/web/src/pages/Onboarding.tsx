@@ -994,7 +994,15 @@ function ConfirmStep({
           await saveMintedEntity(
             draft.userId,
             draft.voiceId,
-            mintFromWorkKind(workKind, { name: product.trim() || null }),
+            // SHOWABILITY IS PRE-FILLED FROM THE CAPABILITY ANSWERS, not asked
+            // again. Whether this product can be put on screen is the question
+            // "can you record a screen / film an object" applied to a specific
+            // thing — so it is derived, marked inferred, and correctable from
+            // the Product Library rather than costing another tap here.
+            mintFromWorkKind(workKind, {
+              name: product.trim() || null,
+              flags: { canRecordScreen, canFilmObjects },
+            }),
           )
         } catch (mintError) {
           console.warn('mint owned entity', mintError)

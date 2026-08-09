@@ -65,6 +65,103 @@ export type EntityRelationship = (typeof ENTITY_RELATIONSHIPS)[number]
 export const PERSONAL_USE_STATES = ['CONFIRMED', 'NOT_CONFIRMED'] as const
 export type PersonalUse = (typeof PERSONAL_USE_STATES)[number]
 
+/**
+ * CAN THIS PRODUCT BE PUT ON SCREEN, and how reliably?
+ *
+ * §5's Q4 conditionals, which the spec has always carried and no screen has ever
+ * asked. They are NOT preference questions — they are PRODUCTION FACTS, and they
+ * are what makes "hold the bottle beside your face" a legal instruction instead
+ * of invented inventory (§5a finding 2, the renovated kitchen that did not
+ * exist).
+ *
+ * ONE FIELD FOR WHAT LOOKED LIKE TWO QUESTIONS. The spec asks software creators
+ * "talk about it · show it · both" and physical-product creators "usually have it
+ * while filming · sometimes · no". Those are the same question — how dependably
+ * can this thing appear on camera — asked in the vocabulary of two different
+ * product types. Storing them as two fields would mean every downstream reader
+ * branching on `type` before it could ask the only thing it wants to know, and
+ * the second field would rot on whichever type was less common.
+ *
+ * So the FIELD is shared and only the WORDS differ per type; see the confirm
+ * screen for the copy.
+ *
+ *   ALWAYS     it can be shown whenever the script wants it
+ *   SOMETIMES  it can be shown, but a scene must not DEPEND on it
+ *   NEVER      talking only — a shot of this product cannot be taken
+ *
+ * `UNKNOWN` is the fourth state and it is the load-bearing one, for exactly the
+ * reason `can_record_screen` documents: a missing value read as NEVER silently
+ * removes a scene type from everyone who was never asked, and read as ALWAYS
+ * hands a shot instruction to someone who cannot take it. Neither is a default
+ * anyone chose.
+ */
+export const SHOWABILITY_STATES = ['ALWAYS', 'SOMETIMES', 'NEVER', 'UNKNOWN'] as const
+export type Showability = (typeof SHOWABILITY_STATES)[number]
+
+/**
+ * May a scene be written that DEPENDS on this product being visible?
+ *
+ * Only `ALWAYS` earns a yes. `SOMETIMES` is deliberately excluded: a script is
+ * written once and filmed later, so a scene that depends on a product the
+ * creator "sometimes" has is a scene that sometimes cannot be filmed — and the
+ * creator discovers that standing in a room with a phone, which is the failure
+ * §5a.4 records. Sometimes-available products may still be MENTIONED, and may
+ * be shown by a scene that does not fall apart without them.
+ *
+ * `UNKNOWN` is a no, and that is not the same rule as `can_film_objects`. That
+ * flag withholds SUGGESTIONS, so being permissive on silence costs an ignorable
+ * tip. This decides whether a scene is written at all, so being permissive on
+ * silence costs an unfilmable scene in a plan someone is holding a phone to
+ * follow.
+ */
+export function mayShowOnScreen(showability: Showability): boolean {
+  return showability === 'ALWAYS'
+}
+
+export function isShowability(v: unknown): v is Showability {
+  return typeof v === 'string' && (SHOWABILITY_STATES as readonly string[]).includes(v)
+}
+
+/**
+ * PRE-FILL showability from what the creator already told us. ADD NO QUESTION.
+ *
+ * The capability flags (0103) are three-state and already answered: can this
+ * creator record a screen, can they put an object in front of the camera. A
+ * product's showability is those same facts asked about a specific thing, so
+ * asking again would re-ask what another answer implies — and would spend the
+ * creator's attention on a question we can already answer.
+ *
+ * WHICH FLAG DEPENDS ON THE TYPE, and that is the whole mapping:
+ *
+ *   SAAS · DIGITAL  → `canRecordScreen`. Showing software means capturing a
+ *                     screen; there is no object to hold.
+ *   PHYSICAL        → `canFilmObjects`. Showing it means having it in the room.
+ *   SERVICE         → NEVER, and not because of a flag. A service has no
+ *                     physical referent to point a camera at — "show the
+ *                     consulting" is not a shot. A coach's video is talking,
+ *                     b-roll, or a screen, none of which is the service itself.
+ *
+ * THE RESULT IS `inferred`, NEVER `user_answer`. It is shown marked as inferred
+ * and stays correctable, because a flag about the creator's setup is strong
+ * evidence about a product and not a statement about it — someone who can film
+ * objects may still not own the one being discussed.
+ *
+ * NO BACKFILL. An unanswered flag yields UNKNOWN rather than NEVER: 0103's rule
+ * is that a missing value read as false silently removes a surface from everyone
+ * who was never asked, and this is the same trap one layer up.
+ */
+export function inferShowability(
+  type: EntityType,
+  flags: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null } = {},
+): Showability {
+  if (type === 'SERVICE') return 'NEVER'
+  const flag = type === 'PHYSICAL' ? flags.canFilmObjects : flags.canRecordScreen
+  if (flag === true) return 'ALWAYS'
+  if (flag === false) return 'NEVER'
+  // Unanswered. Not a denial, and not a permission.
+  return 'UNKNOWN'
+}
+
 /** The relationships that mean the creator owns the thing. Used in enough
  *  places that a second hand-written list would eventually disagree with this
  *  one — which is the drift bug this repo keeps catching. */
@@ -130,7 +227,13 @@ export function q4AsksOwnership(kind: BriefWorkKind | null | undefined): boolean
  */
 export function mintFromWorkKind(
   kind: BriefWorkKind | null | undefined,
-  opts: { name?: string | null; now?: string } = {},
+  opts: {
+    name?: string | null
+    now?: string
+    /** The capability answers, so showability is PRE-FILLED rather than asked.
+     *  Absent means unanswered, which yields UNKNOWN — never a denial. */
+    flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
+  } = {},
 ): DraftEntity | null {
   const mint = kind ? WORK_KIND_MINT[kind] : undefined
   if (!mint) return null
@@ -143,6 +246,10 @@ export function mintFromWorkKind(
     // does not establish that they use it — and for an owned product the
     // creator-experience claim is not the one that matters anyway.
     personalUse: 'NOT_CONFIRMED',
+    // DERIVED, NOT ASKED. From the capability flags the creator already
+    // answered — see `inferShowability`. UNKNOWN when they have not answered
+    // them either, which is honest rather than convenient.
+    showability: inferShowability(mint.type, opts.flags),
     productUrl: null,
     affiliateUrl: null,
     evidence: null,
@@ -360,6 +467,9 @@ export interface DraftEntity {
   type: EntityType
   relationship: EntityRelationship
   personalUse: PersonalUse
+  /** How dependably this product can appear on camera. `UNKNOWN` until asked —
+   *  never inferred, in either direction. */
+  showability: Showability
   productUrl: string | null
   /** Present ⇒ there is a commercial tie. See `promoteToAffiliate`. */
   affiliateUrl: string | null

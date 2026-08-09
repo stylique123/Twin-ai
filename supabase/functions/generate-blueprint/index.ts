@@ -641,6 +641,23 @@ Deno.serve(async (req: Request) => {
     .eq('is_default', true)
     .maybeSingle()
 
+  // THE OWNED ENTITY — what the creator actually sells, minted from `workKind`.
+  //
+  // Loaded here rather than derived, because the creator may have CORRECTED the
+  // mint on the confirm screen ("that's not right, I don't own one"), and a
+  // correction that the prompt re-derives past is not a correction. Absent is
+  // the normal case for a creator with nothing of their own, and it must read as
+  // "no product" rather than as an error.
+  //
+  // ONE ROW BY CONSTRUCTION: `product_entities_one_owned_per_voice` is a partial
+  // unique index, so this cannot silently pick between duplicates.
+  const { data: ownedEntity } = await admin
+    .from('product_entities')
+    .select('name, type, relationship, personal_use, showability, evidence')
+    .eq('owner_id', ownerId)
+    .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+    .maybeSingle()
+
   const dna = profile?.dna ?? {}
   const vp = voice?.profile ?? null
   // §8a.1's BRIEF — what the creator TYPED, as opposed to what the scan read.
@@ -898,6 +915,32 @@ Deno.serve(async (req: Request) => {
             ? '\n- NOTHING OF ANYONE ELSE\'S appears. Do not introduce, recommend or name a third-party product the creator has not mentioned.'
             : ''
 
+    // WHETHER THE PRODUCT CAN ACTUALLY BE PUT ON SCREEN.
+    //
+    // §5a's finding 4 and §5c's closing note in one line: a "Show the product"
+    // scene was generated for a coach with no product, transferred from a
+    // reference that had one, and nobody asked whether it could be filled. The
+    // creator discovered it standing in a bedroom holding a phone.
+    //
+    // ONLY `ALWAYS` PERMITS A SCENE THAT DEPENDS ON THE PRODUCT BEING VISIBLE.
+    // `SOMETIMES` is excluded on purpose: a script is written once and filmed
+    // later, so a scene depending on a product the creator sometimes has is a
+    // scene that sometimes cannot be filmed. It may still be mentioned.
+    //
+    // AND UNKNOWN IS A REFUSAL, which is the opposite of `can_film_objects`'s
+    // rule and deliberately so. That flag withholds SUGGESTIONS, so silence
+    // costs an ignorable tip. This decides whether a scene is written at all, so
+    // silence costs an unfilmable scene in a plan someone is following with a
+    // phone in their hand.
+    const showability = (ownedEntity?.showability ?? 'UNKNOWN') as string
+    const showLine = !ownedEntity
+      ? ''
+      : showability === 'ALWAYS'
+        ? `\n- SHOWING IT: the creator can put ${ownedEntity.name ?? 'the product'} on screen. A scene may show it directly.`
+        : showability === 'SOMETIMES'
+          ? `\n- SHOWING IT: the creator can only SOMETIMES put ${ownedEntity.name ?? 'the product'} on screen. It may be mentioned, and a scene must NOT depend on it being visible.`
+          : `\n- SHOWING IT: the creator CANNOT put ${ownedEntity.name ?? 'the product'} on screen. Write NO shot that requires showing, holding or demonstrating it. This is a talking script.`
+
     // WHAT THE CREATOR DOES FOR A LIVING.
     //
     // Asked at `during_scan`, validated against BRIEF_WORK_KINDS, stored — and
@@ -988,7 +1031,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${workKindLine}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${workKindLine}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
