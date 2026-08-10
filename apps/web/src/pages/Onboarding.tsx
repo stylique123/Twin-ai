@@ -1225,7 +1225,11 @@ function ConfirmStep({
             HIDES a capture surface; `can_film_objects = false` withholds
             footage SUGGESTIONS. Saying no to the second removes advice, not
             ability, so the sentence has to promise the right thing. */}
-        <Labeled label="How can you film?">
+        <Section
+          title="How can you film?"
+          hint="Two answers that decide which shots Twin is allowed to ask you for."
+          badge={canRecordScreen === null || canFilmObjects === null ? 'Not answered' : null}
+        >
           <p className="text-xs text-sand">Can you record your screen?</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {([true, false] as const).map((v) => (
@@ -1274,7 +1278,7 @@ function ConfirmStep({
             full checklist, because a suggestion you ignore costs nothing and a missing one costs
             a video.
           </p>
-        </Labeled>
+        </Section>
         {/* THE CONDITIONAL. Unguessable, and unforgivable to get wrong for a
             doctor, lawyer, financial adviser or supplement brand — there is no
             model that can infer what a regulator will not let someone say. */}
@@ -1377,6 +1381,59 @@ function ConfirmStep({
         </button>
       </div>
     </>
+  )
+}
+
+/**
+ * A COLLAPSIBLE GROUP, because this screen is five phone-screens of one scroll.
+ *
+ * The confirm step carries every answer that changes what a script says AND
+ * every field the scan drafted, flat, at identical weight. The first real
+ * production run found the consequence: EVERY question below the fold came back
+ * unanswered. That is not a wording problem — a form nobody can see the shape of
+ * is a form people abandon partway and believe they finished.
+ *
+ * So each group states what it is and how many answers are still open, and only
+ * the group being worked on is expanded. `<details>` rather than a `useState`
+ * accordion on purpose: it is keyboard-accessible, it survives without
+ * JavaScript, and the browser gives the open/closed animation for free.
+ *
+ * ⚖️ COLLAPSED IS NOT HIDDEN. Every group renders its fields in the DOM whether
+ * open or shut, so nothing here can silently drop an answer the creator gave
+ * before collapsing it — and the summary line tells them what is left rather
+ * than making them open each one to find out.
+ */
+function Section({
+  title, hint, open, badge, children,
+}: {
+  title: string
+  hint?: string
+  open?: boolean
+  /** What is still unanswered in here. Absent when there is nothing outstanding. */
+  badge?: string | null
+  children: React.ReactNode
+}) {
+  return (
+    <details
+      open={open}
+      className="group rounded-card border border-white/10 bg-white/[0.02] transition-colors open:border-white/15 open:bg-white/[0.035]"
+    >
+      <summary className="flex cursor-pointer list-none items-center gap-3 p-4 [&::-webkit-details-marker]:hidden">
+        <div className="min-w-0 flex-1">
+          <p className="eyebrow text-cream">{title}</p>
+          {hint && <p className="mt-1 text-xs leading-relaxed text-stone">{hint}</p>}
+        </div>
+        {badge && (
+          <span className="shrink-0 rounded-full border border-amber/30 bg-amber/10 px-2 py-0.5 text-[11px] text-amber">
+            {badge}
+          </span>
+        )}
+        {/* Rotates with the group's own open state — no JS, no second source of
+            truth about whether this is expanded. */}
+        <ArrowRight className="h-4 w-4 shrink-0 text-stone transition-transform group-open:rotate-90" />
+      </summary>
+      <div className="space-y-4 border-t border-white/8 p-4 pt-4">{children}</div>
+    </details>
   )
 }
 
