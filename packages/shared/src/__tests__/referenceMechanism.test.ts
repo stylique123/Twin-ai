@@ -369,3 +369,49 @@ describe('the unit is content — the cross-paired run’s weakest transfer', ()
     for (const u of [null, undefined, '', '   ']) expect(isContentlessUnit(u)).toBe(false)
   })
 })
+
+describe('a count the WRITER invented is still a promise', () => {
+  // ⚠️ FOUND IN A 36-RUN MATRIX. The contract gated entirely on the REFERENCE
+  // being enumerated, so a plan whose mechanism read said `is_enumerated: false`
+  // and whose hook then said "these are the 4 common mistakes" was checked by
+  // nothing. That run delivered all four, so it cost nothing — and it would have
+  // been just as silent had it delivered two.
+  const selfEnumerated = (lines: string[]) => ({
+    reference_read: { mechanism: { enumeration: { is_enumerated: 'false', count: '', unit: '' } } },
+    concept: { premise: 'common mistakes people make with AI tools' },
+    hook_options: ['These are the 4 common mistakes I see people making.'],
+    script: [{ section: 'Hook', line: 'These are the 4 common mistakes I see people making.' },
+      ...lines.map((l, i) => ({ section: `Item ${i + 1}`, line: l }))],
+  })
+
+  it('catches a self-promised 4 that delivers 2', () => {
+    const codes = blueprintCountIssues(selfEnumerated([
+      'The first mistake is not testing them.',
+      'The second mistake is only looking for free tools.',
+    ])).map((i) => i.code)
+    expect(codes).toContain('undelivered_count')
+  })
+
+  it('is silent when the self-promise is paid', () => {
+    expect(blueprintCountIssues(selfEnumerated([
+      'The first mistake is not testing them.',
+      'The second mistake is only looking for free tools.',
+      'The third mistake is ignoring your workflow.',
+      'And the fourth mistake is chasing every shiny object.',
+    ]))).toEqual([])
+  })
+
+  it('does NOT invent a contract from an ambiguous hook', () => {
+    // Two numbers is not a promise anyone tracked, and holding a script to a
+    // guess about which one counted would fail good plans.
+    const bp = selfEnumerated(['one thing'])
+    bp.hook_options = ['I tried 3 tools and made 5 mistakes.']
+    expect(blueprintCountIssues(bp)).toEqual([])
+  })
+
+  it('still says nothing about a plan with no hook at all', () => {
+    const bp = selfEnumerated(['one thing'])
+    bp.hook_options = []
+    expect(blueprintCountIssues(bp)).toEqual([])
+  })
+})

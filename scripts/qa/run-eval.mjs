@@ -205,7 +205,9 @@ function knowledgeBlock(k) {
   }
   if ((k.audience ?? []).length) {
     parts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that'
-      + ' answers one of these is wanted before it is made.\n'
+      + ' answers one of these is wanted before it is made. THIS LIST IS NEVER SPOKEN'
+      + ' EITHER. Answer the question; do not announce that it was asked. A line like'
+      + ' "one my audience asks about a lot" narrates our notes to the room.\n'
       + k.audience.map((a) => `  * ${a.summary} (asked ~${a.asked}x)`).join('\n'))
   }
   return parts.join('\n')

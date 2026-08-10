@@ -1193,7 +1193,7 @@ Deno.serve(async (req: Request) => {
         + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
     }
     if (aRows.length) {
-      knowledgeParts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that answers one of these is wanted before it is made.\n'
+      knowledgeParts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that answers one of these is wanted before it is made. THIS LIST IS NEVER SPOKEN EITHER. Answer the question; do not announce that it was asked — a line like "one my audience asks about a lot" narrates our notes to the room and asserts something about their comment section that nobody verified.\n'
         + aRows.map((a) => `  * ${a.summary} (asked ~${a.asked}x)`).join('\n'))
     }
     const knowledgeBlock = knowledgeParts.join('\n')

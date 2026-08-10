@@ -468,10 +468,36 @@ export interface BlueprintCountView {
  */
 export function blueprintCountIssues(bp: BlueprintCountView | null | undefined): MechanismIssue[] {
   if (!bp) return []
+  let mechanism = readMechanism(bp.reference_read?.mechanism)
+  const hookList = (bp.hook_options ?? []).filter((h): h is string => typeof h === 'string' && h.trim() !== '')
+
+  // ⚠️ A COUNT THE WRITER INVENTED IS STILL A PROMISE TO THE VIEWER.
+  //
+  // The contract gated entirely on the REFERENCE being enumerated, so a plan
+  // whose mechanism read said `is_enumerated: false` and whose hook then said
+  // "these are the 4 common mistakes" was checked by nothing at all. Found in a
+  // 36-run matrix: that run happened to deliver all four, so it cost nothing —
+  // but it would have been equally silent had it delivered two, which is the
+  // defect this module exists for, arriving through a door it did not watch.
+  //
+  // ⚖️ Only an UNAMBIGUOUS self-promise counts. If the recommended hook names
+  // exactly one plausible list size, that is the number the audience heard and
+  // the script owes it. Two numbers in a hook is not a promise anyone tracked,
+  // and inventing a contract out of an ambiguous line would fail good scripts.
+  if (!mechanism.enumeration.isEnumerated && hookList.length > 0) {
+    const promised = countsIn(hookList[0])
+    if (promised.length === 1) {
+      mechanism = {
+        ...mechanism,
+        enumeration: { isEnumerated: true, count: promised[0], unit: mechanism.enumeration.unit },
+      }
+    }
+  }
+
   return countContractIssues({
-    mechanism: readMechanism(bp.reference_read?.mechanism),
+    mechanism,
     idea: bp.concept?.premise ?? null,
-    hooks: (bp.hook_options ?? []).filter((h): h is string => typeof h === 'string' && h.trim() !== ''),
+    hooks: hookList,
     beats: (bp.script ?? []).map((b) => ({
       section: typeof b.section === 'string' ? b.section : '',
       line: typeof b.line === 'string' ? b.line : null,
