@@ -9,10 +9,19 @@
 // linking one, which is the path that works without a transcript ingest.
 //
 // ⚠️ THIS IS A HARNESS, NOT THE EDGE FUNCTION. It lifts the REAL rule strings
-// (FIDELITY_RULE, TONE_RULE) verbatim out of generate-blueprint/index.ts so the
-// axes under test are the product's own, but the surrounding prompt is
-// reconstructed. It therefore tests the DESIGN — containers, ownership, goals,
-// options — and cannot prove the deployed function behaves identically.
+// verbatim out of generate-blueprint/index.ts so the axes under test are the
+// product's own, but the surrounding prompt is reconstructed. It therefore tests
+// the DESIGN — containers, ownership, goals, options — and cannot prove the
+// deployed function behaves identically.
+//
+// EVERY RULE UNDER TEST MUST BE LIFTED, NEVER RETYPED. Twice now a hand-written
+// approximation has been mistaken for a product finding: once for `promotes`
+// (a bare enum with the prohibition omitted), once for the count contract (a
+// paraphrase missing the clause the fix turned on, and gated behind a
+// `reference_read` field the harness never requested, so the rule was inert).
+// Retyped text drifts, and drift is indistinguishable from a result. `liftBlock`
+// exits non-zero rather than falling back — a harness that silently
+// under-specifies the prompt does not measure the product, it measures itself.
 import { readFileSync } from 'node:fs'
 
 const KEY = process.env.GEMINI_API_KEY
@@ -44,6 +53,45 @@ function promotesLine(v) {
   const m = EDGE.match(re)
   return m ? m[1].replace(/\\n/g, '').replace(/\\'/g, "'") : ''
 }
+// THE COUNT CONTRACT, LIFTED VERBATIM — for the same reason as the above.
+//
+// This block was PARAPHRASED here for one round of runs, and the paraphrase
+// dropped the clause the fix actually turned on ("this is the specific way that
+// rule was broken three times"). The runs that moved Cleo from one spoken
+// ordinal to five therefore measured a string the product does not send. The
+// direction held, the evidence did not cover the shipped text.
+//
+// ⚖️ Anything hand-copied here will drift, and drift is indistinguishable from
+// a finding. So the block is extracted between two markers and the extraction
+// FAILS LOUDLY rather than falling back to a paraphrase.
+function liftBlock(startMarker, endMarker, label) {
+  const from = EDGE.indexOf(startMarker)
+  const to = EDGE.indexOf(endMarker, from)
+  if (from < 0 || to < 0) {
+    console.error(`FATAL: could not lift ${label} from generate-blueprint/index.ts.`)
+    console.error('The harness will not run on a paraphrase. Fix the marker, do not inline the text.')
+    process.exit(1)
+  }
+  return EDGE.slice(from, to + endMarker.length)
+    .split('\n').map((l) => l.replace(/^\s{2}/, '')).join('\n')
+}
+const COUNT_CONTRACT = liftBlock(
+  '- THE COUNT IS THE FORMAT',
+  'Silent beats are fine BEFORE the first item and AFTER the last.',
+  'the count contract',
+)
+// ⚖️ THE COUNT CONTRACT IS CONDITIONAL ON A FIELD THE HARNESS NEVER ASKED FOR.
+// Every rule above fires only "if enumeration.is_enumerated is true" — and the
+// harness's requested JSON had no `reference_read` at all, so that condition was
+// never established in any run to date. The rules were present and inert. The
+// mechanism read is lifted too, and emitted BEFORE the contract, in the same
+// order as production, so the precondition can actually become true.
+const MECHANISM_READ = liftBlock(
+  '- reference_read.mechanism: READ THE FORMAT',
+  'the debt that makes a list a sequence rather than a pile.',
+  'the mechanism read',
+)
+
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
 async function gen({ creator, refNote, fidelity, tone, goal }) {
@@ -80,10 +128,13 @@ ${/(sell|leads)/.test(goal ?? creator.answers.goal)
 - beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - This is a SHORT-FORM vertical video.
-- THE VIEWER HEARS ONLY THE SPOKEN LINE. Section names are never spoken aloud. If this video promises a count, every item's ordinal MUST appear in the spoken line itself ("the first one is...", "number two..."), and the section name MUST NOT contain a number or ordinal. A count that lives in section names is a count the audience never hears.
+${MECHANISM_READ}
+
+${COUNT_CONTRACT}
 
 Return JSON only:
-{"beat_plan":[{"beat":"","target_sec":"","scene_type":"","proof":""}],
+{"reference_read":{"mechanism":{"enumeration":{"is_enumerated":"","count":"","unit":""},"hook_promise":"","rehook_after_item":"","beat_debts":[""]}},
+ "beat_plan":[{"beat":"","target_sec":"","scene_type":"","proof":""}],
  "concept":{"premise":""},"hook_options":["","","","",""],
  "script":[{"section":"","line":"","location":"","broll_request":"","wardrobe":"","action_posing":""}],
  "cta":""}`
