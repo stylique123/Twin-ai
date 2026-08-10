@@ -596,104 +596,28 @@ earlier.
 
 None of it was visible from reading the code. All of it was visible in twenty
 minutes of using it.
-
 ---
 
-### 5d. THE REFRAME — voice and structure are STYLE; the MECHANISM is broken
+## 12. Where §5d's pieces stand — status, not a second diagnosis
 
-Everything above §5d was written as though the remaining work were substance and
-production. Two more real runs say the diagnosis was one layer too shallow.
-
-**Voice ✅ and structure ✅ are solved, and both are STYLE.** What is still broken
-is the MECHANISM: what we extract from the reference, and how the script is
-composed from it.
-
-**The evidence, and it is not subtle.** A five-item enumerated Short produced a
-plan containing THREE DIFFERENT COUNTS, none of them five:
-
-| Layer | What it said |
-|---|---|
-| The idea | three |
-| The hook options | no number at all |
-| The script | "first", "second", then silence at scene 4 |
-
-The creator walks on camera, promises three, and delivers two.
-
-⚖️ **The enumerated list is not a flavour of that reference — it IS the
-mechanism.** The hook is where the count is PROMISED ("here are the 5 ways"),
-and every generated hook option dropped it. A script with no count is merely
-flat. A script that announces a count and abandons it **breaks out loud, on
-camera, in front of the audience.** It is the only defect on this board the
-creator cannot hide, edit around, or quietly skip.
-
-**Why this reorders the plan.** §5a concluded "voice is solved, structure is
-solved, substance and production are not." That is true and incomplete: the
-structure that is solved is the SHAPE (five beats, a re-hook, a payoff), not the
-CONTRACT between beats. Nothing holds "this video promises five things" as a
-fact that later stages must honour, so nothing can notice when they do not.
-
-⚖️ **A contract check beats a prompt rule wherever the defect is decidable by
-looking at the object. Counting is decidable.** `sceneConsistency.ts` already
-proved the shape: an EXACT check (`palette_leak`) catches what a prompt
-instruction had been failing to prevent for months. The count is the same class
-of defect and admits the same class of fix.
-
-#### The mechanism record — extract it AS DATA, then compose FROM it
-
-Today the reference read produces prose that the writer is asked to follow in the
-general direction of. It must instead produce a record:
-
-- the enumeration, and its **COUNT**
-- the **promise the hook makes**
-- **where the re-hook lands**
-- **what each beat owes the next**
-
-Then the count contract check, wired in the same PR:
-
-- announced N **==** delivered N
-- **every** count agrees — idea, hooks, script. The hook must carry the number.
-- **no silent scene inside an enumeration** — that is how three became two
-
-⚖️ **Wire it in the same PR.** An unwired validator is the
-`creative_transfer_plans` trap: a table, a contract and a semantic validator, all
-careful, all correct, and nothing writes to them. This document has recorded that
-trap since §2 and the project has walked into it once already.
-
-#### The field split gains a FOURTH layer
-
-§5c named three fields (`location` · `brollRequest` · `editorIntent`). The run
-found a fourth: **`wardrobe`**. *"White wall, black shirt"* — a shirt is not a
-location and not a background.
-
-**And the palette leak now RATIONALISES ITSELF:**
-
-> *"wearing a plain black t-shirt to emphasize the brand colors (#000000 and
-> #FFFFFF)"*
-
-⚖️ This is the finding that settles the argument about prompt tuning. The model
-is no longer leaking the palette by accident — it has inferred that connecting
-wardrobe to brand colours **is what the field is for**, and it explains its
-reasoning while doing it. **You cannot tune away confident correctness.** The
-palette must be STRUCTURALLY UNREACHABLE from `location` and `wardrobe`, not
-discouraged in an instruction the model will reason its way around.
-
-`brollRequest` must be gated on what this creator can actually produce. An
-animated flatlining line graph was handed to a solo founder.
-
-#### Status of the pieces this reframe depends on
+§5d (above) is the diagnosis and it is not restated here. This section exists
+only so "done" cannot quietly cover "merged but nobody checked it deployed" —
+the five-way status rule applied to the reframe's own work items.
 
 | Piece | State |
 |---|---|
 | `sceneConsistency.ts` | 🟡 merged (#313). `palette_leak` EXACT; `absent_performer` a HEURISTIC that retires when the field split lands |
-| Entity model (`type` × `relationship` × `personal_use`) | 🟡 built — `productEntity.ts` + `0120_product_entities` |
-| `showability` — show-vs-talk | 🟡 built, DERIVED from the capability flags, no new question |
-| Mechanism record + count contract | 🔴 **not started — now the top item** |
-| Four-field split | 🔴 |
+| The count is the format (§5d diagnosis) | 🟡 merged (#315) — a finding, not a fix |
+| Entity model (`type` × `relationship` × `personal_use`) | 🟡 `productEntity.ts` + `0120_product_entities`. Migration NOT applied to production |
+| Q3 mints the owned entity; Q4 no longer re-asks it | 🟡 merged to the branch, deploy unverified |
+| `showability` — show-vs-talk | 🟡 DERIVED from the capability flags, no new question, read by `generate-blueprint` |
+| Confirm screen chunked (§28 step 4) | 🟡 collapsible groups; deploy unverified |
+| **Mechanism record + count contract** | 🔴 **not started — the top item** |
+| Four-field split incl. `wardrobe` | 🔴 |
 | Compatibility Gate (§16b) | 🔴 |
-| Word-anchored performance direction | ✅ working, and the best output the system produces — **preserve** |
+| `productEvidence` onto the entity | 🔴 column exists, brief key still holds it |
+| Word-anchored performance direction | ✅ working — **preserve, do not regress** |
 
-⚖️ **Word-anchored direction is the one thing not to touch.** *"Chop hands
-downward on 'million'. Shake head in disgust on 'brand problem'."* The field
-split must not break it; formalising it as first-class per-scene fields (purpose
-· delivery · gesture · eyeline · framing · patternInterrupt) is how it gets
-protected rather than left to survive by luck.
+⚖️ **Every row above marked 🟡 is a claim about code.** `edit_projects` is still
+0 and no take has ever saved, so none of them is yet a claim about a video. That
+distinction is the reason this table is a status list and not a victory lap.
