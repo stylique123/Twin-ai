@@ -101,12 +101,25 @@ function actorInput(platform: Platform, handle: string): Record<string, unknown>
       // what "their recent posts" actually means. Shorts lead because this
       // product writes short-form, so when the cap binds it should bind on the
       // long-form tail.
+      //
+      // ASKING FOR THE TAB IS NOT ASKING FOR THE VIDEOS. #310 added the
+      // `/shorts` URL and the Shorts-only channel STILL read as empty, because
+      // `streamers/youtube-scraper` meters each kind of content with its OWN
+      // limit: `maxResults` covers long-form, `maxResultsShorts` covers Shorts,
+      // and `maxResultStreams` covers streams. A limit that is not set is not
+      // "unlimited" — it is zero. So the run dutifully visited the Shorts tab
+      // and was allowed to keep none of what it found.
+      //
+      // That is why the first fix looked right and changed nothing: the request
+      // named the tab, and the quota silently refused it. Both numbers are set
+      // now, and a scan that asks for a tab is entitled to what is on it.
       return {
         startUrls: [
           { url: `https://www.youtube.com/@${handle}/shorts` },
           { url: `https://www.youtube.com/@${handle}/videos` },
         ],
         maxResults: RESULTS,
+        maxResultsShorts: RESULTS,
       }
     case 'tiktok':
     default:
