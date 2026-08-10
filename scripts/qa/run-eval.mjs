@@ -27,6 +27,23 @@ const lift = (name, key) => {
 const FID = {
   close: lift('close'), balanced: lift('balanced'), loose: lift('loose'),
 }
+// THE PROMOTES PROHIBITION, LIFTED VERBATIM.
+//
+// The first version of this harness sent the bare enum ("review_only") and the
+// output produced a founder launch — which I briefly recorded as a product
+// defect. It was not. `generate-blueprint` emits a full prohibition for each
+// value, and the harness was simply not sending it. That is the exact failure
+// the edge function's own comment warns about: "`- What they do: saas` invites
+// the model to invent what that implies; naming the consequence is what changes
+// the writing."
+//
+// A harness that under-specifies the prompt does not measure the product, it
+// measures the harness. So these are lifted rather than paraphrased.
+function promotesLine(v) {
+  const re = new RegExp(`brief\\.promotes === '${v}'[\\s\\S]*?\\?\\s*'([\\s\\S]*?)'\\n`, 'm')
+  const m = EDGE.match(re)
+  return m ? m[1].replace(/\\n/g, '').replace(/\\'/g, "'") : ''
+}
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
 async function gen({ creator, refNote, fidelity, tone, goal }) {
@@ -47,7 +64,7 @@ CREATOR'S ANSWERS
 - Goal: ${goal ?? creator.answers.goal}
 - Audience: ${creator.answers.audience}
 - What they do: ${creator.answers.workKind}
-- Third-party products featured: ${creator.answers.promotes}
+- Third-party products featured: ${creator.answers.promotes}${promotesLine(creator.answers.promotes)}
 
 REFERENCE (described, not transcribed)
 ${refNote}
