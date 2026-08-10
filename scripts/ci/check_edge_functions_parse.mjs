@@ -75,6 +75,17 @@ const entries = readdirSync(FUNCTIONS_DIR, { withFileTypes: true })
   .map((e) => `${FUNCTIONS_DIR}/${e.name}/index.ts`)
   .filter((p) => existsSync(p))
 
+// ⚠️ THE WORKER'S PROMPT FILES BELONG HERE TOO, and did not until a backtick in
+// `worker/src/voice.ts` closed a template literal for the THIRD time on this
+// branch. The guard was scoped to edge functions because that is where the first
+// two happened, which is scoping a rule to its last instance rather than to the
+// defect. Any file holding a long prompt in a template literal is exposed; the
+// worker typechecks in CI, so this is belt-and-braces there, but it makes the
+// failure message name the real cause instead of a bare TS1005.
+for (const p of ['worker/src/voice.ts', 'worker/src/jobs/voice.ts']) {
+  if (existsSync(p)) entries.push(p)
+}
+
 if (entries.length === 0) {
   console.error('edge-functions-parse guard: found no functions to check — the layout moved.')
   process.exit(1)

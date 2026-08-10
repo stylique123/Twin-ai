@@ -216,6 +216,33 @@ export function writableClaims(k: CreatorKnowledge): KnowledgeItem[] {
   return k.items.filter((i) => i.basis !== 'inferred' && i.kind !== 'covered')
 }
 
+/**
+ * HOW CURRENT IS THIS, in words a prompt can use.
+ *
+ * ⚠️ `lastObservedAt` was stored by the extractor and READ BY NOTHING. In a niche
+ * that moves — phones, AI tools, platform payouts — a position from three years
+ * ago and one from last month are different facts about a person, and handing
+ * both to the writer flat is how a script confidently names last generation's
+ * thing. Recency is not a tiebreak here; it is part of whether a specific is
+ * safe to say out loud.
+ *
+ * ⚖️ Unknown is its own answer and never "old". An item with no date was seen at
+ * a time nobody recorded, and guessing it stale would quietly bury real
+ * substance — the same reason an absent `basis` reads as `inferred` rather than
+ * as false.
+ */
+export type Freshness = 'recent' | 'established' | 'ageing' | 'undated'
+
+export function freshness(item: KnowledgeItem, now: Date): Freshness {
+  if (!item.lastObservedAt) return 'undated'
+  const t = Date.parse(item.lastObservedAt)
+  if (Number.isNaN(t)) return 'undated'
+  const months = (now.getTime() - t) / (1000 * 60 * 60 * 24 * 30.44)
+  if (months <= 6) return 'recent'
+  if (months <= 18) return 'established'
+  return 'ageing'
+}
+
 /** What they have already made a video about. The writer needs this to avoid
  *  handing a creator their own last upload back. */
 export function alreadyCovered(k: CreatorKnowledge): KnowledgeItem[] {
@@ -307,6 +334,7 @@ export function knowledgePromptLine(
   k: CreatorKnowledge,
   limit = 12,
   about?: string | null,
+  now: Date = new Date(),
 ): string {
   const claims = about === undefined
     ? rankedKnowledge(k).slice(0, limit)
@@ -319,8 +347,17 @@ export function knowledgePromptLine(
       '\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style.'
       + ' Build the video out of THIS. These are their own positions and examples,'
       + ' so you may put them in their mouth; anything you add that is not here is'
-      + ' yours, and they did not say it.\n'
-      + claims.map((c) => `  * (${c.kind}) ${c.text}`).join('\n'))
+      + ' yours, and they did not say it.'
+      + ' NAME THE SPECIFIC THING. Their audience already knows the general shape of'
+      + ' their opinion; what earns the watch is the actual model, tool, number or'
+      + ' case below. "3 phone features I stopped paying extra for" is a title, not a'
+      + ' script — say WHICH features and on WHAT. Never soften a named thing into a'
+      + ' category to sound tidier.'
+      + ' The tag after each item is how recently they were heard saying it:'
+      + ' [recent] is safe to state flatly, [ageing] should be framed as something'
+      + ' they have said rather than something that is true today, and [undated]'
+      + ' means nobody recorded when — treat it as ageing.\n'
+      + claims.map((c) => `  * (${c.kind}) [${freshness(c, now)}] ${c.text}`).join('\n'))
   }
   if (covered.length) {
     parts.push(

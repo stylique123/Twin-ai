@@ -149,7 +149,7 @@
   {
    "key": "mkbhd",
    "name": "Marques Brownlee",
-   "handle": "MKBHD",
+   "handle": "@mkbhd",
    "platform": "tiktok",
    "truth": {
     "relationship": "REVIEW_ONLY on every gadget reviewed",
@@ -233,8 +233,8 @@
   {
    "key": "doctormike",
    "name": "Doctor Mike",
-   "handle": "@doctormike",
-   "platform": "tiktok",
+   "handle": "@DoctorMike",
+   "platform": "youtube",
    "truth": {
     "relationship": "SPONSOR (disclosed) + minor OWN_PRODUCT (merch/podcast)",
     "regulated": true,
@@ -318,7 +318,7 @@
   {
    "key": "hormozi",
    "name": "Alex Hormozi",
-   "handle": "Alex Hormozi",
+   "handle": "@hormozi",
    "platform": "instagram",
    "truth": {
     "relationship": "OWN_SERVICE (Acquisition.com)",
@@ -389,7 +389,7 @@
   {
    "key": "ali",
    "name": "Ali Abdaal",
-   "handle": "Ali Abdaal",
+   "handle": "@aliabdaal",
    "platform": "youtube",
    "truth": {
     "relationship": "OWN_PRODUCT (book, PTYA course) + OWN_SERVICE (community, podcast) + AFFILIATE + SPONSOR",
@@ -474,7 +474,7 @@
    "key": "garyvee",
    "name": "Gary Vaynerchuk",
    "handle": "@garyvee",
-   "platform": "tiktok",
+   "platform": "instagram",
    "truth": {
     "relationship": "OWN_PRODUCT + OWN_SERVICE (VaynerX, VaynerMedia, VeeFriends) — but ~85-95% of short-form sells NOTHING",
     "showability": "talking-head/keynote; low b-roll; MOSTLY CLIPPED FROM LONG-FORM",
@@ -624,7 +624,7 @@
   {
    "key": "codie",
    "name": "Codie Sanchez",
-   "handle": "Codie Sanchez",
+   "handle": "@codiesanchez",
    "platform": "instagram",
    "answers": {
     "goal": "leads+authority",
@@ -782,8 +782,8 @@
   {
    "key": "colinsamir",
    "name": "Colin & Samir",
-   "handle": "@colinandsamir",
-   "platform": "instagram",
+   "handle": "@ColinandSamir",
+   "platform": "youtube",
    "answers": {
     "goal": "educate+followers",
     "audience": "creators, familiar",
@@ -860,7 +860,7 @@
   {
    "key": "marktilbury",
    "name": "Mark Tilbury",
-   "handle": "Mark Tilbury",
+   "handle": "@marktilbury",
    "platform": "youtube",
    "answers": {
     "goal": "followers+educate",
@@ -936,7 +936,7 @@
   {
    "key": "techiela",
    "name": "TECH-iELA",
-   "handle": "TECH-iELA Shorts",
+   "handle": "@tech_iela",
    "platform": "youtube",
    "answers": {
     "goal": "followers+educate",
@@ -1015,5 +1015,6 @@
   "TECH-iELA's enumeration ground truth (does the spoken hook say 3? are all 3 tools verbally marked?) is UNVERIFIED and must be sourced before the count contract is scored against it.",
   "THE SYSTEM ASSUMES ONE CREATOR. Colin & Samir are two, plus guests. There is no speaker attribution anywhere in the script contract."
  ],
- "knowledgeNote": "FIXTURE KNOWLEDGE, NOT AN EXTRACTION. These are well-known public positions of each creator, written by hand to stand in for what Creator Knowledge extraction WOULD produce. They are labelled with an honest basis, but no scan generated them, so a run using this pack tests whether the WRITER uses substance — never whether the extractor finds it."
+ "knowledgeNote": "FIXTURE KNOWLEDGE, NOT AN EXTRACTION. These are well-known public positions of each creator, written by hand to stand in for what Creator Knowledge extraction WOULD produce. They are labelled with an honest basis, but no scan generated them, so a run using this pack tests whether the WRITER uses substance — never whether the extractor finds it.",
+ "scanTargets": "Owner-supplied handle and platform for each persona, for the scan retest. These are the accounts a real DNA scan would run against; every result recorded so far used hand-written fixture knowledge instead, so nothing here has been scanned yet."
 }

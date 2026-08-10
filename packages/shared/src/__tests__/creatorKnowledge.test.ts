@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptyKnowledge, readKnowledge, readKnowledgeItem, writableClaims, alreadyCovered,
-  rankedKnowledge, sourceExpired, knowledgePromptLine, selectRelevantKnowledge, KNOWLEDGE_KINDS,
+  rankedKnowledge, sourceExpired, knowledgePromptLine, selectRelevantKnowledge, freshness, KNOWLEDGE_KINDS,
   type CreatorKnowledge,
 } from '../creatorKnowledge'
 
@@ -228,5 +228,38 @@ describe('confidence is stored but must not be ranked on', () => {
     })
     expect(rankedKnowledge(flat).map((i) => i.text))
       .toEqual(['seen six times, low confidence', 'seen once, perfect confidence'])
+  })
+})
+
+describe('how current a thing is — the niche moves', () => {
+  // ⚠️ `lastObservedAt` was stored by the extractor and read by NOTHING. In
+  // phones, AI tools or platform payouts, a position from three years ago and
+  // one from last month are different facts, and handing both to the writer
+  // flat is how a script confidently names last generation's thing.
+  const at = (iso: string | null) =>
+    readKnowledgeItem({ kind: 'product', text: 'x', basis: 'stated', last_observed_at: iso })!
+  const NOW = new Date('2026-08-10T00:00:00Z')
+
+  it('reads recent, established and ageing off the date', () => {
+    expect(freshness(at('2026-06-01T00:00:00Z'), NOW)).toBe('recent')
+    expect(freshness(at('2025-09-01T00:00:00Z'), NOW)).toBe('established')
+    expect(freshness(at('2023-01-01T00:00:00Z'), NOW)).toBe('ageing')
+  })
+
+  it('UNDATED is its own answer, never "old"', () => {
+    // Guessing stale would quietly bury real substance — the same reason an
+    // absent basis reads as inferred rather than as false.
+    expect(freshness(at(null), NOW)).toBe('undated')
+    expect(freshness(at('not a date'), NOW)).toBe('undated')
+  })
+
+  it('the prompt tags each item so the writer knows what it may state flatly', () => {
+    const k = readKnowledge({ items: [
+      { kind: 'product', text: 'the 200MP sensor loses to an older iPhone', basis: 'stated', last_observed_at: '2026-07-01T00:00:00Z' },
+    ] })
+    const line = knowledgePromptLine(k, 12, undefined, NOW)
+    expect(line).toContain('[recent]')
+    expect(line).toMatch(/NAME THE SPECIFIC THING/)
+    expect(line).toMatch(/ageing.*something they have said/is)
   })
 })
