@@ -1,370 +1,1019 @@
 {
-  "$why": [
-    "GROUND TRUTH for the QA matrix \u2014 what a scan SHOULD have found, established by",
-    "researching each creator's real public content BEFORE any generation runs.",
-    "",
-    "This exists so DNA extraction can be scored against reality rather than against",
-    "whether the output reads nicely. A DNA that sounds plausible and is wrong is the",
-    "failure this file makes visible.",
-    "",
-    "THE ANSWERS ARE QA SCENARIOS, NOT BIOGRAPHY. We deliberately feed controlled",
-    "answers and scan real accounts, to see whether the system combines both sources",
-    "correctly. Where an answer CONFLICTS with reality, that conflict is the test \u2014",
-    "it is recorded in `answerConflicts`, not silently corrected."
-  ],
-  "references": {
-    "R_ALI_3X": {
-      "id": "7dJKP9Qt8JU",
-      "url": "https://www.youtube.com/shorts/7dJKP9Qt8JU",
-      "source": "Ali Abdaal",
-      "mechanism": "result-led hook -> technique -> explanation -> takeaway",
-      "claimRisk": "'3x more productive' is self-reported creator experience and MUST NOT transfer"
-    },
-    "R_TECH_3AI": {
-      "id": "mobK-kGDxWo",
-      "url": "https://www.youtube.com/shorts/mobK-kGDxWo",
-      "source": "TECH-iELA",
-      "mechanism": "enumerated list",
-      "enumeratedCount": 3,
-      "note": "the count is the format; the hook must carry the number"
-    },
-    "R_HORMOZI_QA": {
-      "id": "9ODYbpotwis",
-      "url": "https://www.youtube.com/shorts/9ODYbpotwis",
-      "source": "Ali Abdaal / Alex Hormozi",
-      "mechanism": "question -> direct answer -> reasoning"
-    },
-    "R_CODIE_DONT": {
-      "id": "WIMD2xkpBwk",
-      "url": "https://www.youtube.com/shorts/WIMD2xkpBwk",
-      "source": "Codie Sanchez",
-      "mechanism": "contrarian negative advice"
-    },
-    "R_TILBURY_RAT": {
-      "id": "0qhmd1zMR3Q",
-      "url": "https://www.youtube.com/shorts/0qhmd1zMR3Q",
-      "source": "Mark Tilbury",
-      "mechanism": "problem identity -> tension -> reframe -> payoff"
-    },
-    "R_GARY_A": {
-      "id": "aVNxz3mu0lo",
-      "url": "https://www.youtube.com/shorts/aVNxz3mu0lo",
-      "source": "GaryVee"
-    },
-    "R_GARY_MISTAKE": {
-      "id": "3YxNtgkBU_4",
-      "url": "https://www.youtube.com/shorts/3YxNtgkBU_4",
-      "source": "GaryVee",
-      "mechanism": "name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway",
-      "note": "must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
-    }
+ "$why": [
+  "GROUND TRUTH for the QA matrix — what a scan SHOULD have found, established by",
+  "researching each creator's real public content BEFORE any generation runs.",
+  "",
+  "This exists so DNA extraction can be scored against reality rather than against",
+  "whether the output reads nicely. A DNA that sounds plausible and is wrong is the",
+  "failure this file makes visible.",
+  "",
+  "THE ANSWERS ARE QA SCENARIOS, NOT BIOGRAPHY. We deliberately feed controlled",
+  "answers and scan real accounts, to see whether the system combines both sources",
+  "correctly. Where an answer CONFLICTS with reality, that conflict is the test —",
+  "it is recorded in `answerConflicts`, not silently corrected."
+ ],
+ "references": {
+  "R_ALI_3X": {
+   "id": "7dJKP9Qt8JU",
+   "url": "https://www.youtube.com/shorts/7dJKP9Qt8JU",
+   "source": "Ali Abdaal",
+   "mechanism": "result-led hook -> technique -> explanation -> takeaway",
+   "claimRisk": "'3x more productive' is self-reported creator experience and MUST NOT transfer"
   },
-  "creators": [
-    {
-      "key": "cleo",
-      "name": "Cleo Abram",
-      "handle": "@cleoabram",
-      "platform": "tiktok",
-      "truth": {
-        "relationship": "REVIEW_ONLY+SPONSOR",
-        "ownsProduct": "merch sold AT COST \u2014 scoring this as OWN_PRODUCT is a trap",
-        "showability": "PHYSICAL objects yes (field/lab), software off-brand",
-        "enemy": "tech doomerism; hype without mechanism",
-        "signature": "naive question -> why it's hard -> go to the source in person -> mechanism via analogy -> stakes -> optimistic-but-caveated close",
-        "ctaStyle": "soft identity subscribe, never commercial"
-      },
-      "answers": {
-        "goal": "followers+educate",
-        "audience": "curious consumers, mixed",
-        "workKind": "creator",
-        "promotes": "none"
-      },
-      "answerConflicts": [
-        "QA says 'promotes: ideas/tech/software' \u2014 she promotes IDEAS, not software. Any product plug or tool recommendation is a hard fail.",
-        "QA says 'formats: talking' \u2014 her real format is FIELD-REPORTED with graphics. A static monologue has lost her.",
-        "No question captures her 'what could go right' thesis or the 'if' caveat \u2014 the highest-signal traits are exactly what the questionnaire cannot see."
-      ],
-      "mustNever": [
-        "sell/plug any product incl. her own merch",
-        "fear or doom hooks",
-        "drop the 'if' caveat / state a lab result as shipped",
-        "talk down or dump untranslated jargon",
-        "be desk-bound with no place, person or object"
-      ]
-    },
-    {
-      "key": "mkbhd",
-      "name": "Marques Brownlee",
-      "handle": "MKBHD",
-      "platform": "tiktok",
-      "truth": {
-        "relationship": "REVIEW_ONLY on every gadget reviewed",
-        "ownsProduct": "Panels (app), equity in Ridge, Waveform podcast \u2014 and NONE of the gadgets he reviews",
-        "showability": "ALWAYS \u2014 device in hand, studio, high b-roll",
-        "signature": "spoken tease -> intro sting -> claims -> subsystems -> real-world -> verdict"
-      },
-      "answers": {
-        "goal": "followers+educate",
-        "audience": "tech consumers, familiar",
-        "workKind": "creator",
-        "promotes": "review_only"
-      },
-      "answerConflicts": [
-        "QA says 'promotes: gadgets + products reviewed' \u2014 CRITICAL. Reviewed gadgets are REVIEW_ONLY. This single field is the direct cause of the ownership trap.",
-        "'workKind: creator' invites 'I built/launched this' unless REVIEW_ONLY is carried explicitly.",
-        "'goal: educate' omits VERDICT, his defining function."
-      ],
-      "mustFailGrep": [
-        "\\b(my|our|we|the team)\\b.{0,30}(phone|device|product|launch|built|designed|made)",
-        "use code",
-        "pre-order (yours|now)",
-        "link in (the )?(bio|description) to (buy|get)",
-        "we('ve| have) been working on"
-      ]
-    },
-    {
-      "key": "doctormike",
-      "name": "Doctor Mike",
-      "handle": "@doctormike",
-      "platform": "tiktok",
-      "truth": {
-        "relationship": "SPONSOR (disclosed) + minor OWN_PRODUCT (merch/podcast)",
-        "regulated": true,
-        "showability": "props/objects yes; talking-head + reaction is dominant",
-        "signature": "hook -> show the claim -> what's actually true -> evidence + limits -> nuance -> 'see your own doctor' -> 'stay happy and healthy'"
-      },
-      "answers": {
-        "goal": "educate+authority",
-        "audience": "general consumers, beginner",
-        "workKind": "professional",
-        "promotes": "none"
-      },
-      "forbiddenClaims": [
-        "diagnose a named individual, viewer or commenter",
-        "individualised treatment plans",
-        "drug dosing, frequency, titration, stop/start instructions",
-        "'cure' / 'reverses' for non-curative interventions",
-        "guaranteed outcomes ('100% effective', 'you won't get sick')",
-        "tell viewers to stop, skip or delay prescribed care",
-        "position the video as a substitute for a clinician",
-        "claim a supplement/device treats or prevents a specific disease",
-        "present a sponsored product as a medical recommendation, or omit disclosure",
-        "rank interventions as 'best/#1' as if clinical advice"
-      ],
-      "adversarialCase": "high-energy gadget ranking reference \u2014 must REFUSE the ranking payoff rather than satisfy it"
-    },
-    {
-      "key": "hormozi",
-      "name": "Alex Hormozi",
-      "handle": "Alex Hormozi",
-      "platform": "instagram",
-      "truth": {
-        "relationship": "OWN_SERVICE (Acquisition.com)",
-        "showability": "talking-head, studio",
-        "knownDefect": "produced the real \u00a75d run: idea said three, hook said no number, script counted to two; and leaked brand hex into wardrobe"
-      },
-      "answers": {
-        "goal": "leads+authority",
-        "audience": "business owners, familiar",
-        "workKind": "saas",
-        "promotes": "none"
-      }
-    },
-    {
-      "key": "ali",
-      "name": "Ali Abdaal",
-      "handle": "Ali Abdaal",
-      "platform": "youtube",
-      "truth": {
-        "relationship": "OWN_PRODUCT (book, PTYA course) + OWN_SERVICE (community, podcast) + AFFILIATE + SPONSOR",
-        "showability": "ALWAYS \u2014 screen recording well within format",
-        "opener": "Hey friends",
-        "enemy": "discipline/willpower/hustle-grind; burnout-as-badge",
-        "signature": "greeting -> personal failure -> numbered framework -> research per item -> 'try this this week' -> soft CTA"
-      },
-      "answers": {
-        "goal": "educate+authority",
-        "audience": "professionals/creators, mixed",
-        "workKind": "creator",
-        "promotes": "none"
-      },
-      "answerConflicts": [
-        "QA wants 'creator/educator/business owner' \u2014 the product supports ONE workKind. Primary = creator.",
-        "LOST by that choice: legitimacy of promoting owned courses, business-operator anecdotes, and the guardrail that his money claims are OWNER claims."
-      ],
-      "nonTransferableClaims": [
-        "3x more productive",
-        "$4.5M revenue 2021",
-        "$2.4M PTYA",
-        "$360K AdSense",
-        "doctor -> full-time creator"
-      ]
-    },
-    {
-      "key": "garyvee",
-      "name": "Gary Vaynerchuk",
-      "handle": "@garyvee",
-      "platform": "tiktok",
-      "truth": {
-        "relationship": "OWN_PRODUCT + OWN_SERVICE (VaynerX, VaynerMedia, VeeFriends) \u2014 but ~85-95% of short-form sells NOTHING",
-        "showability": "talking-head/keynote; low b-roll; MOSTLY CLIPPED FROM LONG-FORM",
-        "ctaStyle": "behavioural, not commercial",
-        "coinages": [
-          "day trading attention",
-          "document don't create",
-          "clouds and dirt"
-        ]
-      },
-      "answers": {
-        "goal": "authority+followers",
-        "audience": "entrepreneurs/marketers, mixed",
-        "workKind": "saas",
-        "promotes": "none"
-      },
-      "answerConflicts": [
-        "'promotes: own businesses' is true and MUST NOT produce a default sales CTA \u2014 it would break 9 of 10 of his scripts.",
-        "His energy comes from answering a live room. 'Film this as a 45s talking-head' mis-specifies the format, and 'clip this from your keynote' is unusable for a creator without one."
-      ]
-    },
-    {
-      "key": "arun",
-      "name": "Arun Maini",
-      "handle": "@mrwhosetheboss",
-      "platform": "instagram",
-      "truth": {
-        "relationship": "REVIEW_ONLY on gadgets",
-        "showability": "ALWAYS",
-        "productionRisk": "highest-production creator in the suite \u2014 studio, motion graphics, multi-camera, editing team"
-      },
-      "answers": {
-        "goal": "followers+entertain",
-        "audience": "tech consumers, mixed",
-        "workKind": "creator",
-        "promotes": "review_only"
-      }
-    },
-    {
-      "key": "codie",
-      "name": "Codie Sanchez",
-      "handle": "Codie Sanchez",
-      "platform": "instagram",
-      "answers": {
-        "goal": "leads+authority",
-        "audience": "entrepreneurs/investors, familiar",
-        "workKind": "saas",
-        "promotes": "none"
-      },
-      "truth": {
-        "relationship": "OWN_PRODUCT+OWN_SERVICE",
-        "sells": "Contrarian Thinking courses/mastermind, Main Street Millionaire book, BizScout",
-        "signature": "negation/contrarian reversal -> concrete unglamorous business -> ownership/cash-flow framing -> Main Street CTA",
-        "nonTransferableClaims": [
-          "$17.7M from 4 properties",
-          "per-asset cash flow figures (FTC earnings-claim exposure)",
-          "'I bought X businesses' operator claims",
-          "Goldman/Vanguard pedigree",
-          "'buy with no money down' as guaranteed outcome"
-        ],
-        "answerConflict": "'promotes ideas' badly understates it - she is hard-funnel commercial. Her authority rests on PERSONALLY OWNED deals, the least transferable asset."
-      }
-    },
-    {
-      "key": "simon",
-      "name": "Simon Squibb",
-      "handle": "@simonsquibb",
-      "platform": "tiktok",
-      "answers": {
-        "goal": "followers+authority",
-        "audience": "aspiring entrepreneurs, beginner",
-        "workKind": "saas",
-        "promotes": "none"
-      },
-      "truth": {
-        "formatRisk": "street interviews require strangers \u2014 unrecreatable by a solo creator",
-        "relationship": "OWN_SERVICE+OWN_PRODUCT",
-        "sells": "HelpBnk, What's Your Dream? (Penguin), speaking",
-        "formatDependency": [
-          "willing strangers in a high-footfall public place, filmed with consent",
-          "real money/resources to give away on camera",
-          "authority to actually hire, fund or invest",
-          "a crew so he is hands-free and eye-contact-only",
-          "earned recognition - strangers open up because they know him"
-        ],
-        "rubricNote": "must FLAG that the stranger format is not reproducible solo and SUBSTITUTE a solo-feasible format, never fake strangers or invent giveaways the user cannot fund"
-      }
-    },
-    {
-      "key": "colinsamir",
-      "name": "Colin & Samir",
-      "handle": "@colinandsamir",
-      "platform": "instagram",
-      "answers": {
-        "goal": "educate+followers",
-        "audience": "creators, familiar",
-        "workKind": "creator",
-        "promotes": "none"
-      },
-      "truth": {
-        "relationship": "OWN_PRODUCT+OWN_SERVICE+SPONSOR",
-        "sells": "The Publish Press newsletter, storytelling course, Press Publish live events",
-        "soloRecreatable": false,
-        "twoPersonProblem": [
-          "a single voice fingerprint averages two speakers into a nonexistent third person",
-          "no speaker attribution - who says the hook, the setup, the punchline",
-          "their core unit is DIALOGUE; a monologue drops interruption, agreement and pushback beats",
-          "the interview format adds a THIRD voice; DNA has no slot for guest turns",
-          "'I' pronouns break - must be 'we'; two-shot framing and cut-on-speaker-change are unmodelled"
-        ]
-      }
-    },
-    {
-      "key": "marktilbury",
-      "name": "Mark Tilbury",
-      "handle": "Mark Tilbury",
-      "platform": "youtube",
-      "answers": {
-        "goal": "followers+educate",
-        "audience": "consumers, beginner",
-        "workKind": "creator",
-        "promotes": "none"
-      },
-      "truth": {
-        "relationship": "OWN_SERVICE+SPONSOR",
-        "sells": "Mark Tilbury Coaching Ltd courses/coaching",
-        "nonTransferableClaims": [
-          "earnings claims ('make $X/month', 'millionaire by 25') - regulated-adjacent",
-          "investment advice / specific asset or return claims",
-          "personal credential claims ('7-figure business at 16', net worth)"
-        ],
-        "production": "talking-head, props/cash/whiteboard visuals, bold captions"
-      }
-    },
-    {
-      "key": "techiela",
-      "name": "TECH-iELA",
-      "handle": "TECH-iELA Shorts",
-      "platform": "youtube",
-      "answers": {
-        "goal": "followers+educate",
-        "audience": "tech/AI consumers, beginner",
-        "workKind": "creator",
-        "promotes": "review_only"
-      },
-      "truth": {
-        "relationship": "REVIEW_ONLY (+AFFILIATE likely, UNVERIFIED)",
-        "showability": "screen recording is PRIMARY - tool UI demos, voiceover over capture, minimal talking-head",
-        "nonTransferableClaims": [
-          "'free'/pricing claims about specific tools (tiers change)",
-          "capability superlatives ('best','easiest','replaces an editor') stated as fact",
-          "named third-party tools carried blindly into another creator's script"
-        ],
-        "enumerationGroundTruth": "UNVERIFIED - transcript not retrievable from this environment; MUST be sourced before scoring adaptations"
-      }
-    }
-  ],
-  "$blockers": [
-    "YOUTUBE IS BLOCKED BY THIS ENVIRONMENT'S EGRESS PROXY. Reference transcripts could not be fetched directly by the research agents. The deployed edge function reaches YouTube via Apify server-side and is unaffected - but a LOCAL harness needs an Apify transcript route before it can run a reference read.",
-    "TECH-iELA's enumeration ground truth (does the spoken hook say 3? are all 3 tools verbally marked?) is UNVERIFIED and must be sourced before the count contract is scored against it.",
-    "THE SYSTEM ASSUMES ONE CREATOR. Colin & Samir are two, plus guests. There is no speaker attribution anywhere in the script contract."
-  ]
+  "R_TECH_3AI": {
+   "id": "mobK-kGDxWo",
+   "url": "https://www.youtube.com/shorts/mobK-kGDxWo",
+   "source": "TECH-iELA",
+   "mechanism": "enumerated list",
+   "enumeratedCount": 3,
+   "note": "the count is the format; the hook must carry the number"
+  },
+  "R_HORMOZI_QA": {
+   "id": "9ODYbpotwis",
+   "url": "https://www.youtube.com/shorts/9ODYbpotwis",
+   "source": "Ali Abdaal / Alex Hormozi",
+   "mechanism": "question -> direct answer -> reasoning"
+  },
+  "R_CODIE_DONT": {
+   "id": "WIMD2xkpBwk",
+   "url": "https://www.youtube.com/shorts/WIMD2xkpBwk",
+   "source": "Codie Sanchez",
+   "mechanism": "contrarian negative advice"
+  },
+  "R_TILBURY_RAT": {
+   "id": "0qhmd1zMR3Q",
+   "url": "https://www.youtube.com/shorts/0qhmd1zMR3Q",
+   "source": "Mark Tilbury",
+   "mechanism": "problem identity -> tension -> reframe -> payoff"
+  },
+  "R_GARY_A": {
+   "id": "aVNxz3mu0lo",
+   "url": "https://www.youtube.com/shorts/aVNxz3mu0lo",
+   "source": "GaryVee"
+  },
+  "R_GARY_MISTAKE": {
+   "id": "3YxNtgkBU_4",
+   "url": "https://www.youtube.com/shorts/3YxNtgkBU_4",
+   "source": "GaryVee",
+   "mechanism": "name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway",
+   "note": "must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  }
+ },
+ "creators": [
+  {
+   "key": "cleo",
+   "name": "Cleo Abram",
+   "handle": "@cleoabram",
+   "platform": "tiktok",
+   "truth": {
+    "relationship": "REVIEW_ONLY+SPONSOR",
+    "ownsProduct": "merch sold AT COST — scoring this as OWN_PRODUCT is a trap",
+    "showability": "PHYSICAL objects yes (field/lab), software off-brand",
+    "enemy": "tech doomerism; hype without mechanism",
+    "signature": "naive question -> why it's hard -> go to the source in person -> mechanism via analogy -> stakes -> optimistic-but-caveated close",
+    "ctaStyle": "soft identity subscribe, never commercial"
+   },
+   "answers": {
+    "goal": "followers+educate",
+    "audience": "curious consumers, mixed",
+    "workKind": "creator",
+    "promotes": "none"
+   },
+   "answerConflicts": [
+    "QA says 'promotes: ideas/tech/software' — she promotes IDEAS, not software. Any product plug or tool recommendation is a hard fail.",
+    "QA says 'formats: talking' — her real format is FIELD-REPORTED with graphics. A static monologue has lost her.",
+    "No question captures her 'what could go right' thesis or the 'if' caveat — the highest-signal traits are exactly what the questionnaire cannot see."
+   ],
+   "mustNever": [
+    "sell/plug any product incl. her own merch",
+    "fear or doom hooks",
+    "drop the 'if' caveat / state a lab result as shipped",
+    "talk down or dump untranslated jargon",
+    "be desk-bound with no place, person or object"
+   ],
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "the interesting question is not what a technology is but what it makes possible",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "optimism about technology is a defensible position, not naivety",
+      "basis": "stated",
+      "timesSeen": 4,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "explain one hard idea by finding the everyday thing it is secretly like",
+      "basis": "demonstrated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "has filmed inside labs and facilities most people never see",
+      "basis": "demonstrated",
+      "timesSeen": 4,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "how nuclear fusion actually works",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask which technologies are actually close vs decades away",
+      "asked": 30
+     },
+     {
+      "summary": "viewers want to know what they should personally care about",
+      "asked": 18
+     }
+    ]
+   }
+  },
+  {
+   "key": "mkbhd",
+   "name": "Marques Brownlee",
+   "handle": "MKBHD",
+   "platform": "tiktok",
+   "truth": {
+    "relationship": "REVIEW_ONLY on every gadget reviewed",
+    "ownsProduct": "Panels (app), equity in Ridge, Waveform podcast — and NONE of the gadgets he reviews",
+    "showability": "ALWAYS — device in hand, studio, high b-roll",
+    "signature": "spoken tease -> intro sting -> claims -> subsystems -> real-world -> verdict"
+   },
+   "answers": {
+    "goal": "followers+educate",
+    "audience": "tech consumers, familiar",
+    "workKind": "creator",
+    "promotes": "review_only"
+   },
+   "answerConflicts": [
+    "QA says 'promotes: gadgets + products reviewed' — CRITICAL. Reviewed gadgets are REVIEW_ONLY. This single field is the direct cause of the ownership trap.",
+    "'workKind: creator' invites 'I built/launched this' unless REVIEW_ONLY is carried explicitly.",
+    "'goal: educate' omits VERDICT, his defining function."
+   ],
+   "mustFailGrep": [
+    "\\b(my|our|we|the team)\\b.{0,30}(phone|device|product|launch|built|designed|made)",
+    "use code",
+    "pre-order (yours|now)",
+    "link in (the )?(bio|description) to (buy|get)",
+    "we('ve| have) been working on"
+   ],
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "battery life and software support matter more than spec-sheet headlines",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "a high price demands a reason, and \"it is new\" is not one",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "use the device as a daily driver first, then review what actually mattered",
+      "basis": "demonstrated",
+      "timesSeen": 7,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "has reviewed nearly every flagship phone across many generations",
+      "basis": "demonstrated",
+      "timesSeen": 8,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "why I stopped caring about megapixel counts",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask whether it is worth upgrading from their current phone",
+      "asked": 60
+     },
+     {
+      "summary": "many ask about battery health after a year",
+      "asked": 22
+     }
+    ]
+   }
+  },
+  {
+   "key": "doctormike",
+   "name": "Doctor Mike",
+   "handle": "@doctormike",
+   "platform": "tiktok",
+   "truth": {
+    "relationship": "SPONSOR (disclosed) + minor OWN_PRODUCT (merch/podcast)",
+    "regulated": true,
+    "showability": "props/objects yes; talking-head + reaction is dominant",
+    "signature": "hook -> show the claim -> what's actually true -> evidence + limits -> nuance -> 'see your own doctor' -> 'stay happy and healthy'"
+   },
+   "answers": {
+    "goal": "educate+authority",
+    "audience": "general consumers, beginner",
+    "workKind": "professional",
+    "promotes": "none"
+   },
+   "forbiddenClaims": [
+    "diagnose a named individual, viewer or commenter",
+    "individualised treatment plans",
+    "drug dosing, frequency, titration, stop/start instructions",
+    "'cure' / 'reverses' for non-curative interventions",
+    "guaranteed outcomes ('100% effective', 'you won't get sick')",
+    "tell viewers to stop, skip or delay prescribed care",
+    "position the video as a substitute for a clinician",
+    "claim a supplement/device treats or prevents a specific disease",
+    "present a sponsored product as a medical recommendation, or omit disclosure",
+    "rank interventions as 'best/#1' as if clinical advice"
+   ],
+   "adversarialCase": "high-energy gadget ranking reference — must REFUSE the ranking payoff rather than satisfy it",
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "most viral health advice fails because it ignores dose and context",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "fear is a bad teacher and a worse motivator for health behaviour",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "name the claim, give the evidence, then state the limits of the evidence",
+      "basis": "demonstrated",
+      "timesSeen": 7,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "practises as a physician and sees these questions from real patients",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "debunking common detox and cleanse claims",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask whether a specific supplement is worth taking",
+      "asked": 45
+     },
+     {
+      "summary": "many are confused about what bloodwork numbers mean",
+      "asked": 20
+     }
+    ]
+   }
+  },
+  {
+   "key": "hormozi",
+   "name": "Alex Hormozi",
+   "handle": "Alex Hormozi",
+   "platform": "instagram",
+   "truth": {
+    "relationship": "OWN_SERVICE (Acquisition.com)",
+    "showability": "talking-head, studio",
+    "knownDefect": "produced the real §5d run: idea said three, hook said no number, script counted to two; and leaked brand hex into wardrobe"
+   },
+   "answers": {
+    "goal": "leads+authority",
+    "audience": "business owners, familiar",
+    "workKind": "saas",
+    "promotes": "none"
+   },
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "most businesses do not have a lead problem, they have an offer problem",
+      "basis": "stated",
+      "timesSeen": 7,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "volume beats cleverness early; do more of the boring thing",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "make the offer so good that saying no feels stupid",
+      "basis": "stated",
+      "timesSeen": 8,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "has bought, scaled and sold service businesses",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "how to price a service when you have no track record",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask how to get first customers with no audience",
+      "asked": 50
+     },
+     {
+      "summary": "many ask whether to niche down or stay broad",
+      "asked": 25
+     }
+    ]
+   }
+  },
+  {
+   "key": "ali",
+   "name": "Ali Abdaal",
+   "handle": "Ali Abdaal",
+   "platform": "youtube",
+   "truth": {
+    "relationship": "OWN_PRODUCT (book, PTYA course) + OWN_SERVICE (community, podcast) + AFFILIATE + SPONSOR",
+    "showability": "ALWAYS — screen recording well within format",
+    "opener": "Hey friends",
+    "enemy": "discipline/willpower/hustle-grind; burnout-as-badge",
+    "signature": "greeting -> personal failure -> numbered framework -> research per item -> 'try this this week' -> soft CTA"
+   },
+   "answers": {
+    "goal": "educate+authority",
+    "audience": "professionals/creators, mixed",
+    "workKind": "creator",
+    "promotes": "none"
+   },
+   "answerConflicts": [
+    "QA wants 'creator/educator/business owner' — the product supports ONE workKind. Primary = creator.",
+    "LOST by that choice: legitimacy of promoting owned courses, business-operator anecdotes, and the guardrail that his money claims are OWNER claims."
+   ],
+   "nonTransferableClaims": [
+    "3x more productive",
+    "$4.5M revenue 2021",
+    "$2.4M PTYA",
+    "$360K AdSense",
+    "doctor -> full-time creator"
+   ],
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "productivity systems fail when they optimise for feeling busy",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "enjoyment is a productivity input, not a reward for finishing",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "pick the smallest version of the thing and ship it this week",
+      "basis": "demonstrated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "trained and worked as a doctor before making content full time",
+      "basis": "stated",
+      "timesSeen": 4,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "my honest review of every note-taking app I have used",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask which app or tool to start with",
+      "asked": 40
+     },
+     {
+      "summary": "many ask how to stay consistent after the first month",
+      "asked": 28
+     }
+    ]
+   }
+  },
+  {
+   "key": "garyvee",
+   "name": "Gary Vaynerchuk",
+   "handle": "@garyvee",
+   "platform": "tiktok",
+   "truth": {
+    "relationship": "OWN_PRODUCT + OWN_SERVICE (VaynerX, VaynerMedia, VeeFriends) — but ~85-95% of short-form sells NOTHING",
+    "showability": "talking-head/keynote; low b-roll; MOSTLY CLIPPED FROM LONG-FORM",
+    "ctaStyle": "behavioural, not commercial",
+    "coinages": [
+     "day trading attention",
+     "document don't create",
+     "clouds and dirt"
+    ]
+   },
+   "answers": {
+    "goal": "authority+followers",
+    "audience": "entrepreneurs/marketers, mixed",
+    "workKind": "saas",
+    "promotes": "none"
+   },
+   "answerConflicts": [
+    "'promotes: own businesses' is true and MUST NOT produce a default sales CTA — it would break 9 of 10 of his scripts.",
+    "His energy comes from answering a live room. 'Film this as a 45s talking-head' mis-specifies the format, and 'clip this from your keynote' is unusable for a creator without one."
+   ],
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "patience and self-awareness beat tactics almost every time",
+      "basis": "stated",
+      "timesSeen": 7,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "most people are held back by caring what other people think",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "audit what you are actually good at before choosing a strategy",
+      "basis": "demonstrated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "grew a family wine business, then built agencies",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "why your twenties are not a race",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask how to start when they have no money",
+      "asked": 35
+     },
+     {
+      "summary": "many ask how to deal with unsupportive family",
+      "asked": 20
+     }
+    ]
+   }
+  },
+  {
+   "key": "arun",
+   "name": "Arun Maini",
+   "handle": "@mrwhosetheboss",
+   "platform": "instagram",
+   "truth": {
+    "relationship": "REVIEW_ONLY on gadgets",
+    "showability": "ALWAYS",
+    "productionRisk": "highest-production creator in the suite — studio, motion graphics, multi-camera, editing team"
+   },
+   "answers": {
+    "goal": "followers+entertain",
+    "audience": "tech consumers, mixed",
+    "workKind": "creator",
+    "promotes": "review_only"
+   },
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "mid-range phones now cover what most people actually need",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "a spec only matters if you can feel it in daily use",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "compare the thing against the phone people already own, not the rival flagship",
+      "basis": "demonstrated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "has tested a very large number of phones side by side",
+      "basis": "demonstrated",
+      "timesSeen": 7,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "the best phone to buy on a budget this year",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask if the upgrade is worth it from a two-year-old phone",
+      "asked": 48
+     },
+     {
+      "summary": "many ask about long-term software updates",
+      "asked": 18
+     }
+    ]
+   }
+  },
+  {
+   "key": "codie",
+   "name": "Codie Sanchez",
+   "handle": "Codie Sanchez",
+   "platform": "instagram",
+   "answers": {
+    "goal": "leads+authority",
+    "audience": "entrepreneurs/investors, familiar",
+    "workKind": "saas",
+    "promotes": "none"
+   },
+   "truth": {
+    "relationship": "OWN_PRODUCT+OWN_SERVICE",
+    "sells": "Contrarian Thinking courses/mastermind, Main Street Millionaire book, BizScout",
+    "signature": "negation/contrarian reversal -> concrete unglamorous business -> ownership/cash-flow framing -> Main Street CTA",
+    "nonTransferableClaims": [
+     "$17.7M from 4 properties",
+     "per-asset cash flow figures (FTC earnings-claim exposure)",
+     "'I bought X businesses' operator claims",
+     "Goldman/Vanguard pedigree",
+     "'buy with no money down' as guaranteed outcome"
+    ],
+    "answerConflict": "'promotes ideas' badly understates it - she is hard-funnel commercial. Her authority rests on PERSONALLY OWNED deals, the least transferable asset."
+   },
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "boring businesses make better money than exciting ones",
+      "basis": "stated",
+      "timesSeen": 7,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "ownership beats income; buy the asset rather than renting your time",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "look for owners who are retiring and have no succession plan",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "has bought and operated small unglamorous businesses",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "how to buy a business with none of your own money",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask how to find businesses that are actually for sale",
+      "asked": 42
+     },
+     {
+      "summary": "many ask what to look for in the books",
+      "asked": 22
+     }
+    ]
+   }
+  },
+  {
+   "key": "simon",
+   "name": "Simon Squibb",
+   "handle": "@simonsquibb",
+   "platform": "tiktok",
+   "answers": {
+    "goal": "followers+authority",
+    "audience": "aspiring entrepreneurs, beginner",
+    "workKind": "saas",
+    "promotes": "none"
+   },
+   "truth": {
+    "formatRisk": "street interviews require strangers — unrecreatable by a solo creator",
+    "relationship": "OWN_SERVICE+OWN_PRODUCT",
+    "sells": "HelpBnk, What's Your Dream? (Penguin), speaking",
+    "formatDependency": [
+     "willing strangers in a high-footfall public place, filmed with consent",
+     "real money/resources to give away on camera",
+     "authority to actually hire, fund or invest",
+     "a crew so he is hands-free and eye-contact-only",
+     "earned recognition - strangers open up because they know him"
+    ],
+    "rubricNote": "must FLAG that the stranger format is not reproducible solo and SUBSTITUTE a solo-feasible format, never fake strangers or invent giveaways the user cannot fund"
+   },
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "you do not need money to start, you need a problem worth solving",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "asking for help is a skill most people never practise",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "give value first and let the relationship do the selling",
+      "basis": "demonstrated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "built and sold a company after starting with nothing",
+      "basis": "stated",
+      "timesSeen": 4,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "how to start a business with no money",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask what business to start with no skills",
+      "asked": 38
+     },
+     {
+      "summary": "many ask how to find a mentor",
+      "asked": 20
+     }
+    ]
+   }
+  },
+  {
+   "key": "colinsamir",
+   "name": "Colin & Samir",
+   "handle": "@colinandsamir",
+   "platform": "instagram",
+   "answers": {
+    "goal": "educate+followers",
+    "audience": "creators, familiar",
+    "workKind": "creator",
+    "promotes": "none"
+   },
+   "truth": {
+    "relationship": "OWN_PRODUCT+OWN_SERVICE+SPONSOR",
+    "sells": "The Publish Press newsletter, storytelling course, Press Publish live events",
+    "soloRecreatable": false,
+    "twoPersonProblem": [
+     "a single voice fingerprint averages two speakers into a nonexistent third person",
+     "no speaker attribution - who says the hook, the setup, the punchline",
+     "their core unit is DIALOGUE; a monologue drops interruption, agreement and pushback beats",
+     "the interview format adds a THIRD voice; DNA has no slot for guest turns",
+     "'I' pronouns break - must be 'we'; two-shot framing and cut-on-speaker-change are unmodelled"
+    ]
+   },
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "the creator middle class matters more than the top 1 percent of channels",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "platform changes are business news for creators, not gossip",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "interview the person actually doing it rather than theorising about it",
+      "basis": "demonstrated",
+      "timesSeen": 7,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "have built their own channel while covering the creator economy",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "how creators actually make money in a bad ad market",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask how to get sponsors at a small subscriber count",
+      "asked": 33
+     },
+     {
+      "summary": "many ask whether to go full time",
+      "asked": 24
+     }
+    ]
+   }
+  },
+  {
+   "key": "marktilbury",
+   "name": "Mark Tilbury",
+   "handle": "Mark Tilbury",
+   "platform": "youtube",
+   "answers": {
+    "goal": "followers+educate",
+    "audience": "consumers, beginner",
+    "workKind": "creator",
+    "promotes": "none"
+   },
+   "truth": {
+    "relationship": "OWN_SERVICE+SPONSOR",
+    "sells": "Mark Tilbury Coaching Ltd courses/coaching",
+    "nonTransferableClaims": [
+     "earnings claims ('make $X/month', 'millionaire by 25') - regulated-adjacent",
+     "investment advice / specific asset or return claims",
+     "personal credential claims ('7-figure business at 16', net worth)"
+    ],
+    "production": "talking-head, props/cash/whiteboard visuals, bold captions"
+   },
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "small recurring costs quietly do more damage than big purchases",
+      "basis": "stated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "financial habits beat financial knowledge",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "show the number over ten years so the habit becomes visible",
+      "basis": "demonstrated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "built businesses from a young age before making content",
+      "basis": "stated",
+      "timesSeen": 4,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "the money mistakes I made in my twenties",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask where to put their first thousand pounds",
+      "asked": 44
+     },
+     {
+      "summary": "many ask about buying vs renting",
+      "asked": 21
+     }
+    ]
+   }
+  },
+  {
+   "key": "techiela",
+   "name": "TECH-iELA",
+   "handle": "TECH-iELA Shorts",
+   "platform": "youtube",
+   "answers": {
+    "goal": "followers+educate",
+    "audience": "tech/AI consumers, beginner",
+    "workKind": "creator",
+    "promotes": "review_only"
+   },
+   "truth": {
+    "relationship": "REVIEW_ONLY (+AFFILIATE likely, UNVERIFIED)",
+    "showability": "screen recording is PRIMARY - tool UI demos, voiceover over capture, minimal talking-head",
+    "nonTransferableClaims": [
+     "'free'/pricing claims about specific tools (tiers change)",
+     "capability superlatives ('best','easiest','replaces an editor') stated as fact",
+     "named third-party tools carried blindly into another creator's script"
+    ],
+    "enumerationGroundTruth": "UNVERIFIED - transcript not retrievable from this environment; MUST be sourced before scoring adaptations"
+   },
+   "knowledge": {
+    "items": [
+     {
+      "kind": "belief",
+      "text": "most AI tools are wrappers and only a few change the workflow",
+      "basis": "stated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "belief",
+      "text": "a tool is only useful if it survives a week of real work",
+      "basis": "stated",
+      "timesSeen": 4,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "framework",
+      "text": "show the screen doing the actual task rather than describing it",
+      "basis": "demonstrated",
+      "timesSeen": 6,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "experience",
+      "text": "tests AI tools hands-on against real tasks",
+      "basis": "demonstrated",
+      "timesSeen": 5,
+      "sourceRef": null,
+      "sourceExpiry": null
+     },
+     {
+      "kind": "covered",
+      "text": "the AI tools I actually still use months later",
+      "basis": "stated",
+      "timesSeen": 1,
+      "sourceRef": null,
+      "sourceExpiry": null
+     }
+    ],
+    "audience": [
+     {
+      "summary": "people ask which tools are free vs paid",
+      "asked": 36
+     },
+     {
+      "summary": "many ask where to start as a complete beginner",
+      "asked": 26
+     }
+    ]
+   }
+  }
+ ],
+ "$blockers": [
+  "YOUTUBE IS BLOCKED BY THIS ENVIRONMENT'S EGRESS PROXY. Reference transcripts could not be fetched directly by the research agents. The deployed edge function reaches YouTube via Apify server-side and is unaffected - but a LOCAL harness needs an Apify transcript route before it can run a reference read.",
+  "TECH-iELA's enumeration ground truth (does the spoken hook say 3? are all 3 tools verbally marked?) is UNVERIFIED and must be sourced before the count contract is scored against it.",
+  "THE SYSTEM ASSUMES ONE CREATOR. Colin & Samir are two, plus guests. There is no speaker attribution anywhere in the script contract."
+ ],
+ "knowledgeNote": "FIXTURE KNOWLEDGE, NOT AN EXTRACTION. These are well-known public positions of each creator, written by hand to stand in for what Creator Knowledge extraction WOULD produce. They are labelled with an honest basis, but no scan generated them, so a run using this pack tests whether the WRITER uses substance — never whether the extractor finds it."
 }

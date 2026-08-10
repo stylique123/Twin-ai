@@ -175,9 +175,45 @@ const RESPONSE_SCHEMA = {
   required: ['reference_read', 'beat_plan', 'concept', 'hook_options', 'script', 'cta'],
 }
 
+// CREATOR KNOWLEDGE, rendered exactly as `knowledgePromptLine` renders it.
+// ⚖️ Empty stays EMPTY. The whole point of the module is that it never tells the
+// model to invent substance, so a creator with no knowledge must produce no
+// block at all — otherwise the A/B below measures a different prompt, not a
+// different memory.
+function knowledgeBlock(k) {
+  if (!k) return ''
+  const items = (k.items ?? []).filter((i) => i.basis !== 'inferred' && i.kind !== 'covered')
+    .sort((a, b) => (b.timesSeen ?? 1) - (a.timesSeen ?? 1))
+  const covered = (k.items ?? []).filter((i) => i.kind === 'covered')
+  const parts = []
+  if (items.length) {
+    parts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style.'
+      + ' Build the video out of THIS. These are their own positions and examples,'
+      + ' so you may put them in their mouth; anything you add that is not here is'
+      + ' yours, and they did not say it.\n'
+      + items.slice(0, 12).map((c) => `  * (${c.kind}) ${c.text}`).join('\n'))
+  }
+  if (covered.length) {
+    parts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand'
+      + ' them their own upload back; go at the topic from an angle they have not used.'
+      + ' THIS LIST IS NEVER SPOKEN. It steers what you choose, and it must not appear'
+      + ' in any line: a script that says "we\'ve had a video on this" is narrating our'
+      + ' notes to the audience, and it asserts something about their back catalogue'
+      + ' that nobody checked the phrasing of. Use it to pick a DIFFERENT angle, then'
+      + ' write as though the earlier video were simply not the subject.\n'
+      + covered.map((c) => `  * ${c.text}`).join('\n'))
+  }
+  if ((k.audience ?? []).length) {
+    parts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that'
+      + ' answers one of these is wanted before it is made.\n'
+      + k.audience.map((a) => `  * ${a.summary} (asked ~${a.asked}x)`).join('\n'))
+  }
+  return parts.join('\n')
+}
+
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
-async function gen({ creator, refNote, fidelity, tone, goal }) {
+async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true }) {
   const t = creator.truth ?? {}
   // ⚠️ ORDER MIRRORS PRODUCTION, AND IT IS LOAD-BEARING.
   //
@@ -214,6 +250,7 @@ CREATOR'S ANSWERS
 - Audience: ${creator.answers.audience}
 - What they do: ${creator.answers.workKind}
 - Third-party products featured: ${creator.answers.promotes}${promotesLine(creator.answers.promotes)}
+${withKnowledge ? knowledgeBlock(creator.knowledge) : ''}
 
 REFERENCE (described, not transcribed)
 ${refNote}
@@ -255,8 +292,8 @@ const CASES = JSON.parse(process.env.CASES ?? '[]')
 const out = []
 for (const c of CASES) {
   const creator = pack.creators.find(x => x.key === c.creator)
-  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal })
+  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false })
   out.push({ case: c, blueprint: bp })
-  console.error(`done: ${c.creator} / ${c.fidelity} / ${c.label}`)
+  console.error(`done: ${c.creator} / ${c.fidelity} / ${c.label}${c.withKnowledge === false ? " [no-knowledge]" : ""}`)
 }
 console.log(JSON.stringify(out, null, 2))
