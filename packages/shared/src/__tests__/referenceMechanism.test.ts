@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptyMechanism, readMechanism, containsCount, countsIn, deliveredItemCount,
-  countContractIssues, mechanismPromptLine,
+  countContractIssues, mechanismPromptLine, blueprintCountIssues, breaksOnCamera,
   type ReferenceMechanism, type MechanismScriptBeat,
 } from '../referenceMechanism'
 
@@ -35,6 +35,25 @@ describe('reading the mechanism back', () => {
       const m = readMechanism({ enumeration: { is_enumerated: true, count: raw } })
       expect(m.enumeration.count).toBe(5)
       expect(m.enumeration.isEnumerated).toBe(true)
+    }
+  })
+
+  it('ACCEPTS THE STRING "true", WHICH IS WHAT THE GENERATOR ACTUALLY SENDS', () => {
+    // ⚠️ `generate-blueprint`'s schema types every mechanism field as STRING and
+    // its prompt asks for "true" in quotes. Reading only the boolean made this
+    // false on every real generation, silently withholding the count contract
+    // from exactly the plans it was written for. No test had ever fed this
+    // function the generator's own output shape.
+    for (const raw of ['true', 'TRUE', ' true ']) {
+      expect(readMechanism({ enumeration: { is_enumerated: raw, count: '5' } })
+        .enumeration.isEnumerated).toBe(true)
+    }
+  })
+
+  it('still refuses anything that is not an explicit true', () => {
+    for (const raw of ['false', 'maybe', '', 1, {}, null, undefined]) {
+      expect(readMechanism({ enumeration: { is_enumerated: raw, count: '5' } })
+        .enumeration.isEnumerated).toBe(false)
     }
   })
 
@@ -255,5 +274,74 @@ describe('the prompt line is built FROM the record', () => {
     // Handing a count to an unenumerated reference is the mirror-image failure
     // of dropping one.
     expect(mechanismPromptLine(emptyMechanism())).toBe('')
+  })
+})
+
+// THE WIRING, WHICH WAS THE ONE PART NOTHING TESTED.
+//
+// ⚠️ `blueprintCountIssues` and `breaksOnCamera` had zero test imports, while
+// being the two functions with production callers. Everything below them was
+// tested thoroughly and the adapter on top was not — so the module's own
+// warning about the `creative_transfer_plans` trap (a careful validator that
+// nothing calls) had been half re-earned: the call existed, and nothing checked
+// that it read a real blueprint correctly. Deleting the `is_enumerated` guard
+// or half of `breaksOnCamera` left the whole suite green.
+describe('blueprintCountIssues reads the shape the generator actually emits', () => {
+  // The §5d run: the idea says three, the hook drops the number, the script
+  // reaches two and stops.
+  const THE_REAL_RUN = {
+    reference_read: { mechanism: { enumeration: { is_enumerated: 'true', count: '3', unit: 'pieces of advice' } } },
+    concept: { premise: 'the three pieces of business advice keeping you broke' },
+    hook_options: ['Most business advice is keeping you broke.'],
+    script: [
+      { section: 'Hook', line: 'Most business advice is keeping you broke.' },
+      { section: 'Item 1', line: 'The first one is "follow your passion".' },
+      { section: 'Item 2', line: 'The second is "hustle harder".' },
+      { section: 'CTA', line: 'Which one got you?' },
+    ],
+  }
+
+  it('catches the count the audience never hears', () => {
+    const codes = blueprintCountIssues(THE_REAL_RUN).map((i) => i.code)
+    expect(codes).toContain('undelivered_count')
+    expect(codes).toContain('hook_drops_count')
+  })
+
+  it('is silent on a plan that pays its promise', () => {
+    expect(blueprintCountIssues({
+      ...THE_REAL_RUN,
+      hook_options: ['Here are the 3 pieces of business advice keeping you broke.'],
+      script: [
+        { section: 'Hook', line: 'Here are the 3 pieces of business advice keeping you broke.' },
+        { section: 'One', line: 'The first one is "follow your passion".' },
+        { section: 'Two', line: 'The second is "hustle harder".' },
+        { section: 'Three', line: 'And the third is "never take a salary".' },
+      ],
+    })).toEqual([])
+  })
+
+  it('withholds the check rather than inventing one', () => {
+    // A blueprint from before the mechanism existed owes no number, and must not
+    // be failed against one nobody promised.
+    expect(blueprintCountIssues(null)).toEqual([])
+    expect(blueprintCountIssues(undefined)).toEqual([])
+    expect(blueprintCountIssues({ concept: { premise: 'three ways to save' }, script: [] })).toEqual([])
+  })
+})
+
+describe('breaksOnCamera separates what the creator can still fix', () => {
+  const issue = (code: 'undelivered_count' | 'silent_scene_in_enumeration' | 'hook_drops_count' | 'count_disagreement') =>
+    ({ code, field: 'script' as const, detail: 'x' })
+
+  it('is true for the two that reach the camera', () => {
+    // Both, separately — testing only the first left the second unguarded.
+    expect(breaksOnCamera([issue('undelivered_count')])).toBe(true)
+    expect(breaksOnCamera([issue('silent_scene_in_enumeration')])).toBe(true)
+  })
+
+  it('is false for the two that are fixable by editing text first', () => {
+    expect(breaksOnCamera([issue('hook_drops_count')])).toBe(false)
+    expect(breaksOnCamera([issue('count_disagreement')])).toBe(false)
+    expect(breaksOnCamera([])).toBe(false)
   })
 })

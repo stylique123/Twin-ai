@@ -116,7 +116,22 @@ export function readMechanism(raw: unknown): ReferenceMechanism {
   const src = raw as Record<string, unknown>
   const enumSrc = (src.enumeration ?? {}) as Record<string, unknown>
   const count = coerceCount(enumSrc.count)
-  const isEnumerated = enumSrc.is_enumerated === true || enumSrc.isEnumerated === true
+  // ⚠️ THE FLAG ARRIVES AS THE STRING "true", NOT THE BOOLEAN.
+  //
+  // `generate-blueprint`'s response schema types every mechanism field as
+  // STRING, and its prompt asks for `is_enumerated: "true"` in quotes. Reading
+  // only the boolean meant this was `false` on every real generation, so the
+  // whole count contract was withheld from precisely the plans it was written
+  // for — the module's own `creative_transfer_plans` warning, earned: the
+  // validator was wired, and it was reading a shape the producer never emits.
+  // Found by writing the first test that fed it the generator's actual output.
+  //
+  // ⚖️ Only an explicit true reads as true. A missing flag, "false", "maybe" or
+  // a stray object all stay not-enumerated, because a fabricated count would
+  // fail every script against a number nobody promised.
+  const flag = enumSrc.is_enumerated ?? enumSrc.isEnumerated
+  const isEnumerated = flag === true
+    || (typeof flag === 'string' && flag.trim().toLowerCase() === 'true')
   out.enumeration = {
     // AN ENUMERATION WITHOUT A COUNT IS NOT ONE. The flag and the number have to
     // agree or the check has a promise it cannot verify, which is worse than no

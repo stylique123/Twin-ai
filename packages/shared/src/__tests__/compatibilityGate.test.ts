@@ -119,6 +119,27 @@ describe('b-roll density is gated on what the creator can produce', () => {
     expect(verdictFor({ observed: ALL, referenceIsBRollHeavy: false }, 'b_roll_density')
       .verdict).toBe('TRANSFER')
   })
+
+  it('is BLOCKING — the Gallery must refuse the remix, not just annotate it', () => {
+    // ⚠️ FOUND BY MUTATION. Deleting `|| v.dimension === 'b_roll_density'` from
+    // `hasBlockingRejection` left every test green, which meant the b-roll half
+    // of that function was decorative: a creator who cannot shoot the footage
+    // the format depends on would have spent a remix to find out. The product
+    // demonstration case was covered and this one was not, so the function
+    // looked tested while half of it was unguarded.
+    expect(hasBlockingRejection(compatibilityVerdicts({
+      ...heavy, canProduceBRoll: null,
+    }))).toBe(true)
+  })
+})
+
+describe('the dimensions that ADAPT — mechanism travels, execution does not', () => {
+  // ⚠️ Three of eleven dimensions had no verdict assertion at all, so flipping
+  // `pacing` to TRANSFER — telling a calm creator to run at the reference's
+  // speed — passed the whole suite. Untested is not the same as safe.
+  it.each(['pacing', 'setting', 'camera_work'] as const)('%s adapts', (d) => {
+    expect(verdictFor({ observed: ALL }, d).verdict).toBe('ADAPT')
+  })
 })
 
 describe('NOT OBSERVED is the honest fourth answer', () => {
