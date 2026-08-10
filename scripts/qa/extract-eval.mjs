@@ -87,8 +87,9 @@ async function extract(label, transcripts) {
                   properties: {
                     kind: { type: 'STRING' }, text: { type: 'STRING' },
                     basis: { type: 'STRING' }, times_seen: { type: 'STRING' },
+                    confidence: { type: 'STRING' }, source_video: { type: 'STRING' },
                   },
-                  required: ['kind', 'text', 'basis', 'times_seen'],
+                  required: ['kind', 'text', 'basis', 'times_seen', 'confidence', 'source_video'],
                 },
               },
             },

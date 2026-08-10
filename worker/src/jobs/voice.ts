@@ -117,6 +117,21 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         // actually known to be junk.
         basis: ['stated', 'demonstrated', 'inferred'].includes(r.basis) ? r.basis : 'inferred',
         times_seen: Math.max(1, Math.min(50, Number(r.times_seen) || 1)),
+        // ⚖️ AN UNREADABLE CONFIDENCE IS 0.5, NEVER 1. Silence about how sure
+        // the extractor was must not read as certainty — the same rule that
+        // makes an unstated `basis` degrade to `inferred`.
+        confidence: (() => {
+          const n = Number(r.confidence)
+          return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5
+        })(),
+        // The video it was actually read out of, so a creator disputing an item
+        // can go and watch it. Out-of-range or unparseable yields null rather
+        // than a wrong URL, because pointing at the wrong video is worse than
+        // pointing at none.
+        source_url: (() => {
+          const i = Number(r.source_video)
+          return Number.isInteger(i) && i >= 1 && i <= urls.length ? urls[i - 1] : null
+        })(),
         last_observed_at: new Date().toISOString(),
       }))
       .filter((r) => ['fact', 'opinion', 'topic', 'example', 'experience', 'framework', 'claim', 'product', 'covered'].includes(r.kind))

@@ -214,8 +214,10 @@ const knowledgeSchema = obj(
           text: { type: 'STRING' },
           basis: { type: 'STRING' },
           times_seen: { type: 'STRING' },
+          confidence: { type: 'STRING' },
+          source_video: { type: 'STRING' },
         },
-        ['kind', 'text', 'basis', 'times_seen'],
+        ['kind', 'text', 'basis', 'times_seen', 'confidence', 'source_video'],
       ),
     },
   },
@@ -230,6 +232,8 @@ const KNOWLEDGE_SYSTEM = `You are TwinAI's Creator Knowledge engine. You are giv
 - basis is exactly one of: stated (they said it outright), demonstrated (they showed it or acted on it without saying it), inferred (you are reasoning past what they said).
 - BE HONEST WITH basis AND DO NOT ROUND IT UP. Only "stated" and "demonstrated" are ever put back into this creator's mouth; "inferred" is used to steer and is never spoken. Marking a guess as stated is how a script tells someone's audience that they said something they did not say.
 - times_seen is how many of the supplied videos carried it, as a digit.
+- confidence is how sure YOU are that this is really what they meant, as a decimal between 0 and 1. It is a different question from basis: basis is HOW you know, confidence is HOW WELL. A remark you heard clearly but only once is "stated" with a middling confidence. Do not round it up to 1 to look decisive.
+- source_video is the number of the VIDEO this came from, as a digit matching the "--- VIDEO n ---" headings below. Where an item appears in several, give the first. A creator correcting an item needs to be able to go and watch the thing you read it out of.
 - RETURN AN EMPTY LIST IF THE TRANSCRIPTS CARRY NO SUBSTANCE. That is a real and useful answer. Do NOT pad it, do NOT invent positions that would merely be plausible for someone in this niche, and do NOT convert a generic remark into a belief to have something to write.`
 
 export interface RawKnowledgeItem {
@@ -237,6 +241,13 @@ export interface RawKnowledgeItem {
   text: string
   basis: string
   times_seen: string
+  /** How sure the extractor is, 0-1 as a string. See `confidence` in
+   *  `packages/shared/src/creatorKnowledge.ts` — an absent one reads as 0.5,
+   *  never as 1. */
+  confidence: string
+  /** Which "--- VIDEO n ---" it was read out of, so the caller can map it back
+   *  to a real URL. Provenance a creator can act on beats an opaque id. */
+  source_video: string
 }
 
 /** Distil what a creator knows from what they said. Returns raw rows for the

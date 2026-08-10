@@ -213,3 +213,20 @@ describe('the prompt line', () => {
     }
   })
 })
+
+describe('confidence is stored but must not be ranked on', () => {
+  // ⚠️ MEASURED. Against real speech the extractor returned 1.0 for all twelve
+  // items, prompt instruction notwithstanding. Until a run shows it varying it
+  // is a constant that looks like a measurement, and `rankedKnowledge` must keep
+  // ordering by things counted from the transcripts rather than asserted.
+  it('ranks identically whatever the confidence says', () => {
+    const flat = readKnowledge({
+      items: [
+        { kind: 'opinion', text: 'seen six times, low confidence', basis: 'stated', timesSeen: 6, confidence: 0.1 },
+        { kind: 'opinion', text: 'seen once, perfect confidence', basis: 'stated', timesSeen: 1, confidence: 1 },
+      ],
+    })
+    expect(rankedKnowledge(flat).map((i) => i.text))
+      .toEqual(['seen six times, low confidence', 'seen once, perfect confidence'])
+  })
+})

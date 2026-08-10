@@ -84,8 +84,20 @@ export interface KnowledgeItem {
   text: string
   basis: KnowledgeBasis
   /** How sure the extractor was, 0-1. Distinct from `basis`: basis is HOW we
-   *  know, confidence is HOW WELL. A clearly stated remark heard once is
-   *  `stated` with modest confidence; both are needed to rank honestly. */
+   *  know, confidence is HOW WELL.
+   *
+   *  ⚠️ CURRENTLY DEGENERATE, AND NOTHING MAY RANK ON IT UNTIL THAT CHANGES.
+   *  Run against real speech the extractor returned 1.0 for all twelve items,
+   *  including ones it had inferred across videos, despite its prompt saying in
+   *  as many words not to round up to look decisive. A field that is always 1.0
+   *  is not a measurement; it is a constant that LOOKS like one, which is worse
+   *  than an absent field because a reader trusts it.
+   *
+   *  It is stored rather than dropped because the owner asked for it and because
+   *  a self-report is still evidence about the extractor. It is deliberately NOT
+   *  used by `rankedKnowledge`, which ranks on `timesSeen` and `basis` — two
+   *  things counted from the transcripts rather than asserted about them. Wire
+   *  this into a ranking only after a run shows it varying. */
   confidence: number
   /** How many separate videos this showed up in. A position held once is a
    *  remark; the same one across five videos is what they are known for. */
