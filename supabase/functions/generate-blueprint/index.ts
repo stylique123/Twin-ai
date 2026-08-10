@@ -77,6 +77,47 @@ function normalizeHookLine<T>(bp: T): T {
   return bp
 }
 
+// A TEMPLATE THE CREATOR WOULD READ ALOUD.
+//
+// Inlined from `packages/shared/src/spokenPlaceholders.ts` (Deno cannot import
+// the shared package at deploy time), where the full rationale and its tests
+// live. In short: a cross-paired run returned five hooks and four script lines
+// that were all unfilled templates — "This gadget actually changed how I
+// [achieved a specific result]" — and `normalizeHookLine` below did not catch
+// one of them, because it only repairs a line that is ENTIRELY a bracket token.
+//
+// ⚖️ EVERY bracketed span counts. A false positive discards one hook of five and
+// nobody notices; a false negative is read aloud with the camera running.
+/** Non-global on purpose: a `/g` regex carries `lastIndex` between `.test()`
+ *  calls, so the same shared instance answers differently depending on what it
+ *  was asked before it. */
+const SPOKEN_PLACEHOLDER = /\[[^\]]*\]/
+
+/** Drop templated hooks; count what remains templated in the script.
+ *  ⚖️ Hooks are REPAIRABLE because five are generated and one is chosen. A script
+ *  line has no alternates, so it is reported and never invented over. */
+function dropSpokenPlaceholders<T>(bp: T): { bp: T; hooksDropped: number; linesAffected: number } {
+  let hooksDropped = 0
+  let linesAffected = 0
+  try {
+    const b = bp as unknown as { hook_options?: unknown; script?: Array<{ line?: unknown }> }
+    if (Array.isArray(b.hook_options)) {
+      const before = b.hook_options.length
+      const kept = (b.hook_options as unknown[]).filter(
+        (h) => typeof h === 'string' && h.trim() !== '' && !SPOKEN_PLACEHOLDER.test(h))
+      // Only replace when something usable survives: an empty hook list is a
+      // worse outcome than a templated one, and the caller can still see the
+      // count in analytics.
+      if (kept.length > 0) { b.hook_options = kept; hooksDropped = before - kept.length }
+      else hooksDropped = 0
+    }
+    if (Array.isArray(b.script)) {
+      linesAffected = b.script.filter((s) => typeof s?.line === 'string' && SPOKEN_PLACEHOLDER.test(s.line)).length
+    }
+  } catch { /* never fail a generation on a cosmetic pass */ }
+  return { bp, hooksDropped, linesAffected }
+}
+
 // Gemini responseSchema (OpenAPI subset: uppercase types, no additionalProperties).
 // Guarantees the shape the frontend renders.
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -1362,8 +1403,21 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       ownDnaText: creatorDna,
       userNote: reference_note || null,
     })
+    // ⚖️ BEFORE the link sanitiser, because a templated hook is not worth
+    // sanitising and the two are independent failures.
+    const templated = dropSpokenPlaceholders(normalizeHookLine(stripDashes(JSON.parse(raw))))
+    if (templated.hooksDropped || templated.linesAffected) {
+      // Loud for the same reason the link removals below are: a creator reading
+      // "[gadget name]" aloud is the failure, and it must be findable in logs
+      // rather than inferred later from a complaint.
+      console.warn(JSON.stringify({
+        event: 'spoken_placeholders',
+        hooks_dropped: templated.hooksDropped,
+        script_lines_affected: templated.linesAffected,
+      }))
+    }
     const { blueprint, removals: linkRemovals } = sanitizeBlueprintLinks(
-      normalizeHookLine(stripDashes(JSON.parse(raw))),
+      templated.bp,
       linkAllow,
     )
     if (linkRemovals.length) {
@@ -1437,7 +1491,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // links_stripped is COUNTS and PATHS only, never the removed text. The
       // text is attacker-influenced and belongs in the log line above, not in
       // a props blob that analytics queries and dashboards read back.
-      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, tone_requested: tone, tone_applied: appliedTone, cta_sell_intent: sellIntent, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path) } })
+      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, tone_requested: tone, tone_applied: appliedTone, cta_sell_intent: sellIntent, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path), placeholder_hooks_dropped: templated.hooksDropped, placeholder_lines: templated.linesAffected } })
       .then(() => {}, () => {})
 
     return json(gen)
