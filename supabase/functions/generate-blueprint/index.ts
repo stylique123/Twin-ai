@@ -1000,6 +1000,34 @@ Deno.serve(async (req: Request) => {
           ? `\n- SHOWING IT: the creator can only SOMETIMES put ${ownedEntity.name ?? 'the product'} on screen. It may be mentioned, and a scene must NOT depend on it being visible.`
           : `\n- SHOWING IT: the creator CANNOT put ${ownedEntity.name ?? 'the product'} on screen. Write NO shot that requires showing, holding or demonstrating it. This is a talking script.`
 
+    // THE COMPATIBILITY GATE'S REFUSALS (§16b), reaching the prompt as decisions
+    // rather than as facts for the writer to weigh.
+    //
+    // ⚖️ THIS IS A `DO NOT USE` BLOCK AND NOT A CONSIDERATION. Folded in as
+    // context, a model rationalises every reference into compatibility — "show
+    // the product" becomes "show something representing your coaching", and the
+    // output looks like an adaptation rather than a defect. Stated as a refusal
+    // with its reason, it is a decision already made.
+    //
+    // Only the dimensions decidable from what this function HOLDS are listed.
+    // The rest of §16b's dimensions need the visual reference analysis that does
+    // not exist yet, and a refusal invented without evidence would be the same
+    // failure in the opposite direction. `compatibilityGate.ts` carries the full
+    // stage and returns NOT_OBSERVED for exactly those.
+    const noProduct = !ownedEntity || ownedEntity.relationship === 'NONE'
+    const cannotShow = !noProduct && showability !== 'ALWAYS'
+    const doNotUse = [
+      noProduct
+        ? '  * PRODUCT DEMONSTRATION — this creator has no product. Do NOT write a scene that shows, holds or demonstrates one, however the reference used it. A scene that cannot be filled is discovered while standing in a room holding a phone.'
+        : '',
+      cannotShow
+        ? '  * PRODUCT DEMONSTRATION — this creator cannot dependably put their product on screen. Do NOT write a scene that depends on it being visible.'
+        : '',
+      '  * THE REFERENCE CREATOR\'S IDENTITY — their jokes, catchphrases and persona are theirs. Carrying them across makes this a re-shoot of their video with a different face.',
+      '  * THE REFERENCE\'S PRODUCT CLAIMS — claims belong to the product they were made about. Nothing carries a claim from one product to another.',
+    ].filter(Boolean).join('\n')
+    const doNotUseBlock = `\n- DO NOT USE — ruled out before writing began, and a reason to include them anyway is not one you may find:\n${doNotUse}`
+
     // WHAT THE CREATOR DOES FOR A LIVING.
     //
     // Asked at `during_scan`, validated against BRIEF_WORK_KINDS, stored — and
@@ -1090,7 +1118,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${workKindLine}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${doNotUseBlock}${workKindLine}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `

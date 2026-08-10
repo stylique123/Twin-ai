@@ -614,7 +614,7 @@ the five-way status rule applied to the reframe's own work items.
 | Confirm screen chunked (§28 step 4) | 🟡 collapsible groups; deploy unverified |
 | **Mechanism record + count contract** | 🟡 `referenceMechanism.ts` + the `mechanism` block on `reference_read`. Extraction is a SCHEMA + PROMPT change; the check is wired at `recordingScriptAdapter` and rendered by `CountPromise` on the plan screen. **Unproven against a real generation** — no run has yet produced a `mechanism` record |
 | Four-field split incl. `wardrobe` | 🟡 `shotDirection.ts` — four fields on the script beat, palette STRIPPED from `location`/`wardrobe` after generation, wired through `recordingScriptAdapter` so the recorder shows a place to stand. **Legacy strings are NOT backfilled** — see below |
-| Compatibility Gate (§16b) | 🔴 |
+| Compatibility Gate (§16b) | 🟡 `compatibilityGate.ts` — four verdicts over eleven dimensions. The two decidable from what the system holds today (product demonstration, product claims + reference identity) reach the prompt as a DO NOT USE block. The rest return NOT_OBSERVED until the visual analysis (step 8) exists |
 | `productEvidence` onto the entity | 🔴 column exists, brief key still holds it |
 | Word-anchored performance direction | ✅ working — **preserve, do not regress** |
 
