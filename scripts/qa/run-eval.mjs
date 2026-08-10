@@ -108,11 +108,96 @@ const MECHANISM_READ = liftBlock(
   'the mechanism read',
 )
 
+// ⚠️ THE REASON 4 OF 12 CASES RETURNED ONLY `reference_read`.
+//
+// `generate-blueprint` sends `responseSchema: blueprintSchema` with `required`
+// lists. This harness sent `responseMimeType` alone, so the model was free to
+// emit a well-formed PARTIAL object — and it did: 2,299 output tokens of a
+// 20,000 budget, finishReason STOP. It read the mechanism, wrote a beat-by-beat
+// `beat_debts`, and considered the job finished.
+//
+// I blamed prompt ORDER first and moved the blocks to match production. That
+// changed nothing, which is what ruled the hypothesis out — the reorder stays
+// because it is closer to the real prompt, but it was not the cause. Then I
+// blamed token exhaustion; the usage numbers ruled that out too. The difference
+// was the one piece of the request I had never compared.
+//
+// ⚖️ Kept deliberately shallow. Mirroring the full production schema would be a
+// second copy of it here, free to drift; this pins only the KEYS whose absence
+// silently turns a run into a non-result.
+const S = (t) => ({ type: t })
+const RESPONSE_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    reference_read: {
+      type: 'OBJECT',
+      properties: {
+        mechanism: {
+          type: 'OBJECT',
+          properties: {
+            enumeration: {
+              type: 'OBJECT',
+              properties: { is_enumerated: S('STRING'), count: S('STRING'), unit: S('STRING') },
+              required: ['is_enumerated', 'count', 'unit'],
+            },
+            hook_promise: S('STRING'),
+            rehook_after_item: S('STRING'),
+            beat_debts: { type: 'ARRAY', items: S('STRING') },
+          },
+          required: ['enumeration', 'hook_promise', 'rehook_after_item', 'beat_debts'],
+        },
+      },
+      required: ['mechanism'],
+    },
+    beat_plan: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { beat: S('STRING'), target_sec: S('STRING'), scene_type: S('STRING'), proof: S('STRING') },
+        required: ['beat', 'target_sec', 'scene_type', 'proof'],
+      },
+    },
+    concept: { type: 'OBJECT', properties: { premise: S('STRING') }, required: ['premise'] },
+    hook_options: { type: 'ARRAY', items: S('STRING') },
+    script: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: {
+          section: S('STRING'), line: S('STRING'), location: S('STRING'),
+          broll_request: S('STRING'), wardrobe: S('STRING'), action_posing: S('STRING'),
+        },
+        required: ['section', 'line', 'location', 'broll_request', 'wardrobe', 'action_posing'],
+      },
+    },
+    cta: S('STRING'),
+  },
+  required: ['reference_read', 'beat_plan', 'concept', 'hook_options', 'script', 'cta'],
+}
+
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
 async function gen({ creator, refNote, fidelity, tone, goal }) {
   const t = creator.truth ?? {}
+  // ⚠️ ORDER MIRRORS PRODUCTION, AND IT IS LOAD-BEARING.
+  //
+  // The rules come FIRST, as they do in `generate-blueprint`'s SYSTEM constant,
+  // and the task list comes LAST. When MECHANISM_READ sat near the end instead,
+  // 4 of 12 cases returned only `reference_read` and stopped — finishReason
+  // STOP, not truncation. Its opening words are "before you write anything
+  // else", and in a short prompt a near-final instruction reads as the whole
+  // job. In the real SYSTEM it is one bullet with a hundred lines after it.
   const prompt = `You are TwinAI's reference engine. Turn a proven short-form reference into a personalized, shootable blueprint in the creator's OWN voice.
+
+HOW TO READ THE REFERENCE AND HOLD ITS FORMAT
+${MECHANISM_READ}
+
+${COUNT_CONTRACT}
+
+HOW TO SHAPE THE VIDEO
+- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
+- Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
+- This is a SHORT-FORM vertical video.
 
 CREATOR DNA
 - Name: ${creator.name}
@@ -141,14 +226,9 @@ ${/(sell|leads)/.test(goal ?? creator.answers.goal)
   ? '- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
   : '- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'}
 
-- beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
-- Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
-- This is a SHORT-FORM vertical video.
-${MECHANISM_READ}
+YOUR TASK: produce the FULL blueprint now — the mechanism read AND the beat plan AND the concept AND five hook options AND every script beat AND the CTA. Reading the reference is the first step, never the deliverable; a response containing only reference_read is incomplete.
 
-${COUNT_CONTRACT}
-
-Return JSON only:
+Return JSON only, with EVERY key below present and populated:
 {"reference_read":{"mechanism":{"enumeration":{"is_enumerated":"","count":"","unit":""},"hook_promise":"","rehook_after_item":"","beat_debts":[""]}},
  "beat_plan":[{"beat":"","target_sec":"","scene_type":"","proof":""}],
  "concept":{"premise":""},"hook_options":["","","","",""],
@@ -160,7 +240,7 @@ Return JSON only:
     headers: { 'x-goog-api-key': KEY, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', maxOutputTokens: 20000, temperature: 0.9, thinkingConfig: { thinkingBudget: 0 } },
+      generationConfig: { responseMimeType: 'application/json', responseSchema: RESPONSE_SCHEMA, maxOutputTokens: 20000, temperature: 0.9, thinkingConfig: { thinkingBudget: 0 } },
     }),
   })
   const j = await r.json()
