@@ -22,6 +22,22 @@
 // Retyped text drifts, and drift is indistinguishable from a result. `liftBlock`
 // exits non-zero rather than falling back — a harness that silently
 // under-specifies the prompt does not measure the product, it measures itself.
+//
+// ⚠️ AND THE THIRD TIME: ORDER IS A RULE TOO, AND THIS HARNESS DOES NOT LIFT IT.
+//
+// Lifting the strings fixed WHAT is sent and not WHERE. In the cross-paired run,
+// 4 of 12 cases returned a complete, parseable object containing ONLY
+// `reference_read` — finishReason STOP, so the model had finished, not been cut
+// off. It had read the mechanism and considered the job done, because
+// MECHANISM_READ opens "READ THE FORMAT'S SPINE ... before you write anything
+// else" and this prompt is short enough that a near-final instruction dominates.
+// In `generate-blueprint` the same sentence is one bullet inside ~100 lines of
+// SYSTEM with an explicit ordered task list after it, and it does not dominate.
+//
+// So a stopped-early case here is EVIDENCE ABOUT THIS FILE, not about the
+// product, and must never be reported as a refusal or a defect. Until the
+// harness reproduces the real prompt's ORDER, only cases that return a full
+// blueprint carry any signal at all.
 import { readFileSync } from 'node:fs'
 
 const KEY = process.env.GEMINI_API_KEY
@@ -150,6 +166,8 @@ Return JSON only:
   const j = await r.json()
   const txt = j?.candidates?.[0]?.content?.parts?.[0]?.text
   if (!txt) return { error: j?.error?.message ?? j?.candidates?.[0]?.finishReason ?? 'no text' }
+  const finish = j?.candidates?.[0]?.finishReason
+  if (finish && finish !== 'STOP') console.error(`  finishReason=${finish}`)
   try { return JSON.parse(txt) } catch { return { error: 'unparseable', raw: txt.slice(0, 300) } }
 }
 
