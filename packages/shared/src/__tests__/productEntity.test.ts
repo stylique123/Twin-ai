@@ -17,6 +17,7 @@ import {
   promoteToAffiliate, entityStatus, mayGenerateClaims, emptyRestrictions,
   isEntityType, isEntityRelationship, isPersonalUse, isQ4Answer,
   SHOWABILITY_STATES, inferShowability, mayShowOnScreen, isShowability,
+  mayWriteCommercialCta, clampTone, toneClampReason, defaultToneBounds,
   type DraftEntity,
 } from '../productEntity'
 import { BRIEF_WORK_KINDS } from '../preScriptBrief'
@@ -162,7 +163,7 @@ describe('what may be claimed — the point of `relationship`', () => {
     expect(rules.marketingClaims).toBe('forbidden')
     expect(rules.ownershipLanguage).toBe(false)
     // No commercial tie yet, so no purchase CTA and nothing to disclose.
-    expect(rules.commercialCta).toBe(false)
+    expect(rules.commercialCta).toBe('forbidden')
     expect(rules.disclosureRequired).toBe(false)
   })
 
@@ -186,7 +187,7 @@ describe('what may be claimed — the point of `relationship`', () => {
     expect(rules).toMatchObject({
       ownershipLanguage: false, productFacts: false,
       marketingClaims: 'forbidden', creatorExperience: false,
-      commercialCta: false, disclosureRequired: false,
+      commercialCta: 'forbidden', disclosureRequired: false,
     })
   })
 
@@ -232,7 +233,9 @@ describe('the upgrade path — a review becomes an affiliate, in place', () => {
     const after = promoteToAffiliate(entity({ relationship: 'REVIEW_ONLY' }), 'https://x.test/ref', NOW)
     const rules = claimRulesFor(after.relationship, after.personalUse)
     expect(rules.marketingClaims).toBe('attributed')
-    expect(rules.commercialCta).toBe(true)
+    // Permitted, but only when this video's intent says to sell — owning a
+    // commercial tie is not the same as pitching in every video.
+    expect(rules.commercialCta).toBe('only_if_intended')
     expect(rules.disclosureRequired).toBe(true)
     // And the one that must not: a commission is still not evidence of use.
     expect(after.personalUse).toBe('NOT_CONFIRMED')
@@ -380,5 +383,73 @@ describe('showability — derived from the capability answers, never asked again
     expect(isShowability('ALWAYS')).toBe(true)
     expect(isShowability('MAYBE')).toBe(false)
     expect(isShowability(null)).toBe(false)
+  })
+})
+
+describe('a commercial CTA is a per-video decision, not a property of owning', () => {
+  // MEASURED, not argued: Doctor Mike answered `promotes: none` and a real
+  // generation handed him "check out my podcast and merch". And ~85-95% of
+  // GaryVee's short-form sells nothing while he genuinely owns several
+  // businesses — so "they have a product" cannot imply "pitch it".
+  it('owning something does not license a sales CTA by default', () => {
+    for (const r of ['OWN_PRODUCT', 'OWN_SERVICE'] as const) {
+      expect(claimRulesFor(r).commercialCta).toBe('only_if_intended')
+      expect(mayWriteCommercialCta(claimRulesFor(r))).toBe(false)
+    }
+  })
+
+  it('an explicit sell intent unlocks it', () => {
+    expect(mayWriteCommercialCta(claimRulesFor('OWN_PRODUCT'), 'sell')).toBe(true)
+    expect(mayWriteCommercialCta(claimRulesFor('AFFILIATE'), 'sell')).toBe(true)
+  })
+
+  it('an engage intent, or none at all, does not', () => {
+    // Silence is not permission: the cost of withholding a pitch is one softer
+    // video; the cost of adding one is a creator sounding like an advert.
+    for (const v of ['engage', null, undefined] as const) {
+      expect(mayWriteCommercialCta(claimRulesFor('OWN_PRODUCT'), v)).toBe(false)
+    }
+  })
+
+  it('REVIEW_ONLY and NONE can never be unlocked, whatever the intent', () => {
+    for (const r of ['REVIEW_ONLY', 'NONE'] as const) {
+      expect(claimRulesFor(r).commercialCta).toBe('forbidden')
+      expect(mayWriteCommercialCta(claimRulesFor(r), 'sell')).toBe(false)
+    }
+  })
+})
+
+describe('tone is bounded by the creator, never layered over them', () => {
+  const strict = { allowsClickbait: false, allowsFearHooks: false, allowsAbsoluteCertainty: false }
+
+  it('punchy degrades to balanced for a voice that does not do hype', () => {
+    // The measured defect: tone=punchy produced "You won't believe what these 5
+    // health gadgets PROMISE you!" for a physician whose voice is documented as
+    // claim-first correction, NOT hype.
+    expect(clampTone('punchy', strict)).toBe('balanced')
+  })
+
+  it('one violated bound is enough', () => {
+    expect(clampTone('punchy', { ...defaultToneBounds(), allowsClickbait: false })).toBe('balanced')
+    expect(clampTone('punchy', { ...defaultToneBounds(), allowsFearHooks: false })).toBe('balanced')
+    expect(clampTone('punchy', { ...defaultToneBounds(), allowsAbsoluteCertainty: false })).toBe('balanced')
+  })
+
+  it('punchy survives for a creator whose voice permits it', () => {
+    expect(clampTone('punchy', defaultToneBounds())).toBe('punchy')
+  })
+
+  it('DIALLING DOWN is always allowed — it cannot violate a voice', () => {
+    // A slider may narrow a voice and must never widen it.
+    expect(clampTone('understated', strict)).toBe('understated')
+    expect(clampTone('balanced', strict)).toBe('balanced')
+  })
+
+  it('explains the override rather than silently applying it', () => {
+    const reason = toneClampReason('punchy', clampTone('punchy', strict), strict)
+    expect(reason).toContain('hype openers')
+    expect(reason).toContain('fear framing')
+    // And says nothing when nothing was overridden.
+    expect(toneClampReason('balanced', 'balanced', strict)).toBeNull()
   })
 })

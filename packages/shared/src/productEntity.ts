@@ -357,8 +357,46 @@ export interface EntityClaimRules {
   creatorExperience: boolean
   /** A material connection the viewer must be told about. */
   disclosureRequired: boolean
-  /** May the CTA ask for a purchase or a signup at all. */
-  commercialCta: boolean
+  /**
+   * MAY THE CTA ASK FOR A PURCHASE OR SIGNUP?
+   *
+   * THREE STATES, AND THE MIDDLE ONE IS THE CORRECTION. This was a boolean that
+   * returned `true` for every owned entity, and a real generation proved it
+   * wrong: Doctor Mike, answering `promotes: none`, was handed "check out my
+   * podcast and merch". Owning something is a standing fact; SELLING IT IN THIS
+   * VIDEO is a per-video decision (§16a).
+   *
+   * The evidence is not one script. ~85-95% of GaryVee's short-form sells
+   * nothing — a default sales CTA would be wrong in nine posts out of ten for a
+   * creator who genuinely owns several businesses. "They have a product"
+   * therefore cannot imply "pitch it".
+   *
+   *   allowed            no permission needed beyond the relationship
+   *   only_if_intended   permitted ONLY when this video's intent says to sell
+   *   forbidden          no commercial tie exists to act on
+   */
+  commercialCta: 'allowed' | 'only_if_intended' | 'forbidden'
+}
+
+/** What THIS video is for. Profile intent is a default; the video decides
+ *  (§16a). Absent means nobody chose, and nobody choosing is not a sale. */
+export type VideoIntent = 'sell' | 'engage'
+
+/**
+ * May this script write a purchase or signup CTA?
+ *
+ * SILENCE IS NOT PERMISSION. An unset intent yields false for
+ * `only_if_intended`, because the cost of withholding a pitch is one softer
+ * video and the cost of adding one nobody asked for is a creator sounding like
+ * an advert to their own audience.
+ */
+export function mayWriteCommercialCta(
+  rules: EntityClaimRules,
+  videoIntent?: VideoIntent | null,
+): boolean {
+  if (rules.commercialCta === 'forbidden') return false
+  if (rules.commercialCta === 'allowed') return true
+  return videoIntent === 'sell'
 }
 
 export function claimRulesFor(
@@ -381,7 +419,8 @@ export function claimRulesFor(
         marketingClaims: 'allowed',
         creatorExperience,
         disclosureRequired: false,
-        commercialCta: true,
+        // NOT `allowed`. They own it; that does not mean this video sells it.
+        commercialCta: 'only_if_intended',
       }
 
     case 'AFFILIATE':
@@ -396,7 +435,7 @@ export function claimRulesFor(
         // reading is encoded here; a script that discloses when it need not is
         // a smaller failure than one that does not when it must.
         disclosureRequired: true,
-        commercialCta: true,
+        commercialCta: 'only_if_intended',
       }
 
     case 'SPONSOR':
@@ -408,7 +447,7 @@ export function claimRulesFor(
         // A property of the entity, not a per-video decision the writer may
         // weigh against pacing.
         disclosureRequired: true,
-        commercialCta: true,
+        commercialCta: 'only_if_intended',
       }
 
     case 'REVIEW_ONLY':
@@ -425,7 +464,7 @@ export function claimRulesFor(
         // to AFFILIATE — see `promoteToAffiliate` — and disclosure arrives with
         // the relationship rather than being bolted on separately.
         disclosureRequired: false,
-        commercialCta: false,
+        commercialCta: 'forbidden',
       }
 
     case 'NONE':
@@ -435,7 +474,7 @@ export function claimRulesFor(
         marketingClaims: 'forbidden',
         creatorExperience: false,
         disclosureRequired: false,
-        commercialCta: false,
+        commercialCta: 'forbidden',
       }
   }
 }
@@ -568,4 +607,74 @@ export function isPersonalUse(v: unknown): v is PersonalUse {
 
 export function isQ4Answer(v: unknown): v is Q4Answer {
   return typeof v === 'string' && (Q4_ANSWERS as readonly string[]).includes(v)
+}
+
+// ---------------------------------------------------------------------------
+// TONE IS BOUNDED BY THE CREATOR, NOT LAYERED OVER THEM
+// ---------------------------------------------------------------------------
+
+/** The delivery-energy setting the creator picks per video. */
+export type ToneChoice = 'understated' | 'balanced' | 'punchy'
+
+/**
+ * What a creator's own voice REFUSES, whatever tone is selected.
+ *
+ * Derived from the DNA rather than typed by anyone: these are facts about how
+ * the person actually speaks, and a slider must not be able to overrule them.
+ */
+export interface ToneBounds {
+  /** Hype openers — "you won't believe", "this will blow your mind". A
+   *  claim-first corrector and an optimistic explainer both refuse these, for
+   *  different reasons and with equal force. */
+  allowsClickbait: boolean
+  /** Fear, doom and scarcity framing. */
+  allowsFearHooks: boolean
+  /** Manufactured certainty — the register a regulated professional cannot use
+   *  even when the reference's mechanism depends on it. */
+  allowsAbsoluteCertainty: boolean
+}
+
+export function defaultToneBounds(): ToneBounds {
+  return { allowsClickbait: true, allowsFearHooks: true, allowsAbsoluteCertainty: true }
+}
+
+/**
+ * CLAMP the requested tone to what this creator's voice permits.
+ *
+ * ⚠️ THE DEFECT THIS FIXES WAS MEASURED, not argued. With the real prohibition,
+ * the beat plan and the full forbidden-claims block all present,
+ * `tone: punchy` still produced — for a licensed physician —
+ *
+ *     "You won't believe what these 5 health gadgets PROMISE you!"
+ *
+ * His own voice is documented as "claim-first correction or curiosity gap, NOT
+ * hype". So the tone setting was not colouring the delivery, it was overwriting
+ * the creator. The same run at `balanced` for a different creator produced no
+ * clickbait at all, which is what isolates tone as the cause.
+ *
+ * ⚖️ A SLIDER MAY NARROW A VOICE AND MUST NEVER WIDEN IT. `punchy` on a creator
+ * who does not do hype degrades to `balanced` rather than unlocking a register
+ * they never use — because the creator did not ask to sound like someone else,
+ * they asked for more energy. `understated` is always reachable: dialling
+ * energy DOWN cannot violate a voice.
+ */
+export function clampTone(requested: ToneChoice, bounds: ToneBounds): ToneChoice {
+  if (requested !== 'punchy') return requested
+  const punchyWouldViolate =
+    !bounds.allowsClickbait || !bounds.allowsFearHooks || !bounds.allowsAbsoluteCertainty
+  return punchyWouldViolate ? 'balanced' : 'punchy'
+}
+
+/** Why a tone was clamped, for the creator to read. Silence about an
+ *  overridden setting is how a product looks broken rather than careful. */
+export function toneClampReason(
+  requested: ToneChoice, applied: ToneChoice, bounds: ToneBounds,
+): string | null {
+  if (requested === applied) return null
+  const why = [
+    !bounds.allowsClickbait ? 'hype openers' : '',
+    !bounds.allowsFearHooks ? 'fear framing' : '',
+    !bounds.allowsAbsoluteCertainty ? 'absolute certainty' : '',
+  ].filter(Boolean)
+  return `Kept at ${applied}: your voice does not use ${why.join(' or ')}, and more energy should not change who you sound like.`
 }
