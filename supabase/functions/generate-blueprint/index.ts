@@ -102,6 +102,20 @@ const CONTENTLESS_UNITS = new Set(['item', 'items', 'thing', 'things', 'stuff', 
 const isContentlessUnit = (u: unknown): boolean =>
   typeof u === 'string' && CONTENTLESS_UNITS.has(u.trim().toLowerCase())
 
+// A COUNT ATTACHED TO A NOUN THAT NAMES NOTHING, in the words the viewer hears.
+// Inlined from `packages/shared/src/referenceMechanism.ts`, where the fixtures
+// and the reasoning live.
+//
+// ⚠️ THE TELL IS A TERMINAL NOUN. "you just need these 3 things." promises a
+// number and no more; "3 things I stopped buying after I turned 30" is carried
+// by its clause and is a perfectly good hook — the first version of this check
+// condemned the second, which is the reference this entire design began from.
+//
+// ⚖️ Measured, not argued: across 36 cross-paired runs one creator produced the
+// unqualified shape at ALL THREE fidelities. A prompt rule asking the writer to
+// re-derive the unit was added first and two matrices say it did not work.
+const GENERIC_PROMISE = /\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(items?|things?|stuff|points?)\s*[.!?]*\s*$/i
+
 /** Non-global on purpose: a `/g` regex carries `lastIndex` between `.test()`
  *  calls, so the same shared instance answers differently depending on what it
  *  was asked before it. */
@@ -118,7 +132,12 @@ function dropSpokenPlaceholders<T>(bp: T): { bp: T; hooksDropped: number; linesA
     if (Array.isArray(b.hook_options)) {
       const before = b.hook_options.length
       const kept = (b.hook_options as unknown[]).filter(
-        (h) => typeof h === 'string' && h.trim() !== '' && !SPOKEN_PLACEHOLDER.test(h))
+        (h) => typeof h === 'string' && h.trim() !== ''
+          && !SPOKEN_PLACEHOLDER.test(h)
+          // Same repairable-where-there-is-a-choice rule as the placeholder
+          // drop above: five hooks are generated, so discarding the ones that
+          // promise nothing still leaves something real to say.
+          && !GENERIC_PROMISE.test(h))
       // Only replace when something usable survives: an empty hook list is a
       // worse outcome than a templated one, and the caller can still see the
       // count in analytics.
@@ -1497,7 +1516,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // "[gadget name]" aloud is the failure, and it must be findable in logs
       // rather than inferred later from a complaint.
       console.warn(JSON.stringify({
-        event: 'spoken_placeholders',
+        event: 'spoken_placeholders_or_empty_promises',
         hooks_dropped: templated.hooksDropped,
         script_lines_affected: templated.linesAffected,
       }))

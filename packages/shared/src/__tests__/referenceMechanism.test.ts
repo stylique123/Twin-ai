@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptyMechanism, readMechanism, containsCount, countsIn, deliveredItemCount,
-  countContractIssues, mechanismPromptLine, blueprintCountIssues, breaksOnCamera, isContentlessUnit,
+  countContractIssues, mechanismPromptLine, blueprintCountIssues, breaksOnCamera, isContentlessUnit, promisesNothingInParticular,
   type ReferenceMechanism, type MechanismScriptBeat,
 } from '../referenceMechanism'
 
@@ -413,5 +413,39 @@ describe('a count the WRITER invented is still a promise', () => {
     const bp = selfEnumerated(['one thing'])
     bp.hook_options = []
     expect(blueprintCountIssues(bp)).toEqual([])
+  })
+})
+
+describe('a count attached to a noun that names nothing', () => {
+  it('catches the hooks that actually shipped — the noun is TERMINAL', () => {
+    // Simon produced this shape at all three fidelities, so it is not a stray
+    // sample. Nothing follows the noun; the hook promises a number and no more.
+    for (const h of [
+      "You don't need money or a mentor to start a business, you just need these 3 things.",
+      'Want to start a business but think you need money? You actually only need 3 things!',
+      'Here is what nobody tells you about the first 5 things.',
+    ]) expect(promisesNothingInParticular(h)).toBe(true)
+  })
+
+  it('LEAVES A QUALIFIED PROMISE ALONE — including the reference this began with', () => {
+    // ⚠️ The first version of this check condemned "Three things I stopped
+    // buying after I turned 30", which is the reference the whole Creator
+    // Knowledge design was built around and a promise anyone can want. The word
+    // "things" is not the defect; an unqualified count is.
+    for (const h of [
+      'Three things I stopped buying after I turned 30.',
+      'Here are 3 things that look totally boring now, but will redefine computing.',
+      'Here are 3 items you absolutely need to get your first customers.',
+      'Here are the 3 pieces of business advice keeping you broke.',
+      'These are the 4 common mistakes I see people making.',
+    ]) expect(promisesNothingInParticular(h)).toBe(false)
+  })
+
+  it('does not fire on a number that is not a count of anything', () => {
+    expect(promisesNothingInParticular('I built a $46 million thing')).toBe(false)
+    expect(promisesNothingInParticular('back in 2025 things were different')).toBe(false)
+    for (const bad of [null, undefined, 42, {}, '']) {
+      expect(promisesNothingInParticular(bad)).toBe(false)
+    }
   })
 })

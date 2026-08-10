@@ -551,3 +551,48 @@ export function isContentlessUnit(unit: string | null | undefined): boolean {
   const w = unit.trim().toLowerCase()
   return w !== '' && CONTENTLESS_UNITS.has(w)
 }
+
+/**
+ * A COUNT ATTACHED TO A NOUN THAT NAMES NOTHING — measured in the spoken line.
+ *
+ * ⚠️ `isContentlessUnit` above reads `enumeration.unit`, which is a READ OF THE
+ * REFERENCE, and two matrices showed that is the wrong place to look. Across 36
+ * runs the unit field was contentless 9 times while only 5 hooks actually said
+ * anything generic aloud — a faithful read of a reference that really does count
+ * "items" was being flagged, and the harm is not in the field. The harm is:
+ *
+ *     "You don't need money or a mentor to start a business, you just need
+ *      these 3 things."
+ *
+ * That hook promises a number and nothing else. One creator produced it at all
+ * three fidelities, so it is not a stray sample.
+ *
+ * ⚖️ THIS IS WHY THE PROMPT RULE WAS THE WRONG TOOL. A rule was added telling the
+ * writer to re-derive the unit; two matrices say it did not work. A count next to
+ * a contentless noun is decidable by looking at the sentence, so it is decided
+ * here — the fifth time on this branch that a check has succeeded where asking
+ * harder failed.
+ */
+/**
+ * ⚖️ THE TELL IS A TERMINAL NOUN, NOT THE NOUN ITSELF — and its own fixtures
+ * taught it that. The first version flagged any count next to "things", which
+ * condemned "Three things I stopped buying after I turned 30" — the very
+ * reference this work started from, and a promise anyone can want. The word is
+ * not the problem; the problem is a count of a contentless noun that NOTHING
+ * QUALIFIES before the sentence ends:
+ *
+ *     "you just need these 3 things."      nothing follows — promises nothing
+ *     "3 things I stopped buying"          the clause carries the meaning
+ *
+ * So this fires only when the noun is terminal: end of string, or a clause
+ * boundary. Narrow on purpose. A check that condemns good hooks trains whoever
+ * reads its output to ignore all of it, which costs more than the miss.
+ */
+const GENERIC_PROMISE = new RegExp(
+  `\\b(\\d{1,2}|${Object.keys(NUMBER_WORDS).join('|')})\\s+`
+  + '(items?|things?|stuff|points?)\\s*[.!?]*\\s*$', 'i')
+
+/** Does this spoken text promise a count of nothing in particular? */
+export function promisesNothingInParticular(text: unknown): boolean {
+  return typeof text === 'string' && GENERIC_PROMISE.test(text)
+}
