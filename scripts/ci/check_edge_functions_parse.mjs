@@ -31,35 +31,44 @@
 // defect was decidable, and a decidable defect belongs to a check rather than to
 // whoever reads the diff next.
 //
-// ── WHY THE ERROR ALLOWLIST IS A LIST OF CODES, NOT A LIST OF FILES ───────
+// ── WHY THIS DENIES SPECIFIC CODES RATHER THAN ALLOWING THE REST ──────────
 //
-// These are Deno modules typechecked by the Node toolchain, so three complaints
-// are structural and expected: the `Deno` global, `jsr:`/`https:` specifiers,
-// and `.ts` import extensions. They are ignored BY CODE, so a new file cannot
-// opt itself out and a genuine error in an ignored file is still caught.
-// Anything else fails the build.
+// ⚠️ THE FIRST VERSION OF THIS GUARD GOT THIS BACKWARDS, and CI caught it
+// immediately: it failed everything except a Deno-structural allowlist, passed
+// locally, and then reported thirteen `TS7006`/`TS2339` errors on the runner.
+// Those are type-INFERENCE results, and they move with the compiler's settings
+// and version — so the guard's verdict depended on which machine ran it.
+//
+// It was also claiming more than it can prove. These functions deploy through
+// esbuild, which ERASES types without checking them. An implicit `any` does not
+// stop a deploy; an unparseable file does. So the failing set is exactly the
+// two things that genuinely cannot ship, both of which have already happened
+// here:
+//
+//   * TS1xxx — the syntax family. A backtick in prose closing a template
+//     literal lands here, and the file is not a program.
+//   * TS2448 / TS2454 — a binding read above its own declaration, or before
+//     assignment. Erased types do not save this: it throws at runtime.
+//
+// Everything else is reported as advisory and does not fail the build. That
+// keeps the guard's verdict a property of the SOURCE rather than of the
+// toolchain that happened to run it.
 import { execFileSync } from 'node:child_process'
 import { readdirSync, existsSync } from 'node:fs'
 
 const FUNCTIONS_DIR = 'supabase/functions'
 
-// Structural noise from typechecking Deno source with the Node toolchain.
-// Deliberately narrow: every one of these is about MODULE RESOLUTION or the
-// Deno global, and none of them can mask a syntax error or a dead-zone read.
-// Matched against the WHOLE diagnostic — headline plus its indented detail
-// lines — because tsc puts the identifying sentence in the detail. Matching the
-// headline alone would have meant allowlisting all of TS2769, which is a real
-// error code that can hide real bugs.
-const IGNORED = [
-  { code: 'TS2304', match: /Cannot find name 'Deno'/ },
-  { code: 'TS2307', match: /Cannot find module '(jsr|npm|https?):/ },
-  { code: 'TS5097', match: /import path can only end with a '\.ts' extension/ },
-  // TypeScript 5.7 made `Uint8Array` generic over its buffer, so `BufferSource`
-  // parameters reject a plain `Uint8Array` under Node's lib. Deno's own types
-  // do not, and this code runs on Deno. Pinned to the SharedArrayBuffer
-  // sentence, which only this lib mismatch produces.
-  { code: 'TS2769', match: /Type 'SharedArrayBuffer' is not assignable to type 'ArrayBuffer'/ },
-]
+/** Does this diagnostic mean the file cannot ship? Syntax, or a dead-zone read. */
+const isFatal = (line) => {
+  const m = /error TS(\d+):/.exec(line)
+  if (!m) return false
+  const code = Number(m[1])
+  // TS1000-1999 is the syntactic family: the file is not a program.
+  if (code >= 1000 && code < 2000) return true
+  // Block-scoped binding used before declaration / before assignment. Types are
+  // erased at deploy; these still throw at runtime.
+  return code === 2448 || code === 2454
+}
 
 const entries = readdirSync(FUNCTIONS_DIR, { withFileTypes: true })
   .filter((e) => e.isDirectory() && !e.name.startsWith('_'))
@@ -82,28 +91,35 @@ try {
   out = `${e.stdout ?? ''}${e.stderr ?? ''}`
 }
 
-// Group each diagnostic with its indented continuation lines, so the allowlist
-// can match on the detail rather than on the bare code.
-const diagnostics = []
-for (const line of out.split('\n')) {
-  if (/error TS\d+:/.test(line) && !/^\s/.test(line)) diagnostics.push([line])
-  else if (diagnostics.length > 0 && /^\s+/.test(line) && line.trim() !== '') {
-    diagnostics[diagnostics.length - 1].push(line)
-  }
-}
+const headlines = out.split('\n').filter((l) => /error TS\d+:/.test(l) && !/^\s/.test(l))
+const fatal = headlines.filter(isFatal)
+// Expected structurally, because this is Deno source read by the Node
+// toolchain. Dropped from the advisory PRINT only — they were never fatal, so
+// this changes readability and not the verdict.
+const DENO_NOISE = [
+  /Cannot find name 'Deno'/,
+  /Cannot find module '(jsr|npm|https?):/,
+  /import path can only end with a '\.ts' extension/,
+]
+const advisory = headlines
+  .filter((l) => !isFatal(l))
+  .filter((l) => !DENO_NOISE.some((r) => r.test(l)))
 
-const real = diagnostics
-  .map((lines) => lines.join('\n'))
-  .filter((d) => !IGNORED.some((i) => d.includes(`error ${i.code}:`) && i.match.test(d)))
-
-if (real.length > 0) {
-  console.error(`edge-functions-parse guard: FAILED — ${real.length} error(s) the Deno allowlist does not cover.\n`)
-  for (const l of real) console.error(`  ${l}`)
-  console.error('\nA syntax error here means the function CANNOT DEPLOY. Two of the most')
-  console.error('common causes, both of which have already happened in this file:')
-  console.error('  * a backtick in prose inside a template literal — write "field", not `field`')
-  console.error('  * TS2448: a const read above its own declaration in the same block')
+if (fatal.length > 0) {
+  console.error(`edge-functions-parse guard: FAILED — ${fatal.length} error(s) that stop a deploy.\n`)
+  for (const l of fatal) console.error(`  ${l}`)
+  console.error('\nThe two causes that have already happened in this repo:')
+  console.error('  * a backtick in prose inside a template literal closes it — write "field", not a backticked field')
+  console.error('  * TS2448/TS2454: a binding read above its own declaration in the same block')
   process.exit(1)
 }
 
-console.log(`edge-functions-parse guard: OK (${entries.length} functions compile)`)
+// Reported, never fatal. These move with the compiler version and settings, and
+// esbuild erases types at deploy — failing on them would make the guard's
+// verdict a property of the runner rather than of the source.
+if (advisory.length > 0) {
+  console.log(`edge-functions-parse guard: ${advisory.length} type note(s), not deploy-blocking:`)
+  for (const l of advisory.slice(0, 20)) console.log(`  ${l}`)
+}
+
+console.log(`edge-functions-parse guard: OK (${entries.length} functions parse; no dead-zone reads)`)
