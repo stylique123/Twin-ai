@@ -613,7 +613,7 @@ the five-way status rule applied to the reframe's own work items.
 | `showability` — show-vs-talk | 🟡 DERIVED from the capability flags, no new question, read by `generate-blueprint` |
 | Confirm screen chunked (§28 step 4) | 🟡 collapsible groups; deploy unverified |
 | **Mechanism record + count contract** | 🟡 `referenceMechanism.ts` + the `mechanism` block on `reference_read`. Extraction is a SCHEMA + PROMPT change; the check is wired at `recordingScriptAdapter` and rendered by `CountPromise` on the plan screen. **Unproven against a real generation** — no run has yet produced a `mechanism` record |
-| Four-field split incl. `wardrobe` | 🔴 |
+| Four-field split incl. `wardrobe` | 🟡 `shotDirection.ts` — four fields on the script beat, palette STRIPPED from `location`/`wardrobe` after generation, wired through `recordingScriptAdapter` so the recorder shows a place to stand. **Legacy strings are NOT backfilled** — see below |
 | Compatibility Gate (§16b) | 🔴 |
 | `productEvidence` onto the entity | 🔴 column exists, brief key still holds it |
 | Word-anchored performance direction | ✅ working — **preserve, do not regress** |
@@ -621,3 +621,24 @@ the five-way status rule applied to the reframe's own work items.
 ⚖️ **Every row above marked 🟡 is a claim about code.** `edit_projects` is still
 0 and no take has ever saved, so none of them is yet a claim about a video. That
 distinction is the reason this table is a status list and not a victory lap.
+
+### ⚖️ The 87 stored `background` strings — decided
+
+Unlike the `promotes` question, this one has a real population: production holds
+**39 generations carrying 87 non-empty `background` strings.**
+
+**They are not backfilled.** A stored string cannot be split without inventing
+which half was the location, and that invention IS the defect — *"Real footage of
+a dusty, outdated living room being framed out into separate bedrooms"* would
+become a LOCATION, which is how a creator got told to stand inside b-roll in the
+first place. A migration that guesses would bake the defect into the data and
+call it corrected.
+
+So a legacy string is read as what it is: `legacyCombined` carries it, `location`
+stays **null**, and any consumer that needs a place to stand asks and correctly
+gets nothing rather than a paragraph. The recorder keeps displaying it exactly as
+today — no regression for the 39 — while the Edit Plan, which must never be
+handed a place to stand, sees `location: null`.
+
+The palette strip applies to legacy strings too: a hex colour in an instruction a
+person carries out with their hands is always wrong, whenever it was written.

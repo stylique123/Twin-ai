@@ -144,7 +144,19 @@ export interface Blueprint {
     section: string
     line: string
     direction: string
+    /** THE PRE-SPLIT FIELD (§5c + §5d). Carried location, b-roll, edit intent
+     *  and wardrobe at once. Kept because 39 generations in production hold 87
+     *  of these strings and they cannot be split without inventing which half
+     *  was the location — see `shotDirection.ts`. Not written for new beats. */
     background?: string
+    /** Where the creator physically stands. Achievable direction only. */
+    location?: string
+    /** Footage to supply — gated on whether this creator can produce it. */
+    broll_request?: string
+    /** Cutaway/return timing, for the Edit Plan. Never a place to stand. */
+    editor_intent?: string
+    /** What the creator wears. §5d's fourth layer. */
+    wardrobe?: string
     cuts_info?: string
     action_posing?: string
   }[]

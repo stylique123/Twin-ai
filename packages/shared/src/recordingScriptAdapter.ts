@@ -32,15 +32,27 @@ function captionFromLine(line: string): string {
 function framingFor(
   i: number,
   blueprint: Blueprint,
-  seg?: { background?: string; action_posing?: string; direction?: string },
+  seg?: {
+    background?: string; action_posing?: string; direction?: string
+    location?: string; broll_request?: string; editor_intent?: string; wardrobe?: string
+  },
 ): { camera_framing: string; background: string; movement: string } {
   const shot = blueprint.shot_list?.[i]
+  // WHAT THE CREATOR READS WHILE STANDING IN THE ROOM (§5c + §5d).
+  //
+  // `placeToStand` returns `location` when the beat has one and the pre-split
+  // `background` string when that is all there is — and NEVER `broll_request`
+  // or `editor_intent`, which are the two that produced "be in real footage of
+  // a dusty living room being framed out". No fallback chain may reach them.
+  //
+  // The palette is stripped on the way through rather than warned about, for
+  // §5d's reason: the leak now rationalises itself, so there is nothing left to
+  // tune. A shot-list note is stripped too — it lands in the same field a person
+  // performs, so it is the same instruction whatever wrote it.
+  const stand = placeToStand(readShotDirection(seg)) ?? stripPalette(shot?.notes)
   return {
     camera_framing: shot?.framing?.trim() || 'Chest-up shot',
-    // Prefer the per-beat SCRIPT background (the real "setting, props, lighting" the
-    // model is prompted to write) over the shot-list note, which is often generic or
-    // an expression cue — that mismatch was the "Background says an expression" bug.
-    background: seg?.background?.trim() || shot?.notes?.trim() || 'Clean, well-lit background',
+    background: stand || 'Clean, well-lit background',
     // Movement/expression comes from the beat's action_posing (gestures + face), not a
     // fixed default, so the card actually guides how to perform the scene.
     movement: seg?.action_posing?.trim() || 'Look at camera, natural energy',
@@ -49,6 +61,7 @@ function framingFor(
 
 import { readBeatPlan, beatDurationSec, type PlannedBeat } from './beatPlan'
 import { blueprintCountIssues, type MechanismIssue } from './referenceMechanism'
+import { placeToStand, readShotDirection, stripPalette } from './shotDirection'
 
 export interface BuildRecordingScriptInput {
   generationId: string

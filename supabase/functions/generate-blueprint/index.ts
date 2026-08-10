@@ -178,11 +178,24 @@ const blueprintSchema = obj(
           section: str,
           line: str,
           direction: str,
+          // FOUR LAYERS, NOT ONE STRING (§5c + §5d). `background` used to carry
+          // a location, a b-roll request, an edit instruction and a wardrobe
+          // note at once — which is how a creator was told to "be in real
+          // footage of a dusty living room being framed out".
+          //
+          // `background` is KEPT so the 39 generations already in production
+          // still read, and is no longer written for new beats: `location` is
+          // what a person standing in a room needs, and the other three have
+          // different owners entirely.
           background: str,
+          location: str,
+          broll_request: str,
+          editor_intent: str,
+          wardrobe: str,
           cuts_info: str,
           action_posing: str,
         },
-        ['section', 'line', 'direction', 'background', 'cuts_info', 'action_posing'],
+        ['section', 'line', 'direction', 'background', 'location', 'broll_request', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing'],
       ),
     ),
     shot_list: arr(
@@ -280,6 +293,14 @@ HOOKS (the single most important field):
   * concept.premise MUST state the SAME number. No other number may appear as the count anywhere in the plan.
   * The script MUST deliver EVERY item, each explicitly marked in the spoken line ("the first…", "the second…", "the third…"). Announcing N and delivering fewer breaks OUT LOUD, on camera, in front of the audience — it is the one defect the creator cannot hide.
   * NO SILENT BEAT may appear while items are still owed. A silent shot inside an open enumeration is where the count gets dropped. Silent beats are fine BEFORE the first item and AFTER the last.
+
+- WHERE TO BE IS FOUR FIELDS, NOT ONE. Each has a different owner and a different failure mode, and collapsing them is how a creator gets told to stand inside footage that does not exist:
+  * location: WHERE THE CREATOR PHYSICALLY STANDS, and nothing else. Achievable direction only — "clean neutral wall, facing the brightest window" works in any room at any hour. NEVER assumed inventory ("the walnut chair beside your lamp", "your fully renovated kitchen"), NEVER footage, NEVER an edit instruction.
+  * broll_request: footage to supply. Ask only for what one person with a phone can actually produce — no renovation timelapses, no motion graphics, no animated charts.
+  * editor_intent: cutaway and return timing, for the EDIT. This is never a place to stand.
+  * wardrobe: what the creator wears.
+  * NEVER PUT A HEX COLOUR IN location OR wardrobe. The brand palette belongs to packaging and thumbnails. "A black t-shirt to emphasize the brand colors (#000000)" is not something a person can carry out, and it is removed automatically — write the direction without it.
+- Leave `background` as an empty string. It is the pre-split field, kept only so older plans still render.
 
 - hook_options: give 5, ordered best first. The FIRST one is your recommended pick. Each hook is one spoken line under ~12 words, scroll-stopping, and must visibly stack at least two of the four triggers above.
 - AT LEAST TWO of the five hooks must reuse the creator's signature vocabulary or their exact hook FORMULA from CREATOR DNA. A hook that could belong to any creator in this niche is a failure. Rewrite until it is unmistakably THEIRS.
