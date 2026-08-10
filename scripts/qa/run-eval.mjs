@@ -80,6 +80,7 @@ ${/(sell|leads)/.test(goal ?? creator.answers.goal)
 - beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
 - Write every script line TO ITS BEAT'S target_sec. A line for a 6 second beat is roughly 15 words at a natural pace; a line for a 16 second beat is roughly 40. Do not write a forty word line into a six second beat.
 - This is a SHORT-FORM vertical video.
+- THE VIEWER HEARS ONLY THE SPOKEN LINE. Section names are never spoken aloud. If this video promises a count, every item's ordinal MUST appear in the spoken line itself ("the first one is...", "number two..."), and the section name MUST NOT contain a number or ordinal. A count that lives in section names is a count the audience never hears.
 
 Return JSON only:
 {"beat_plan":[{"beat":"","target_sec":"","scene_type":"","proof":""}],

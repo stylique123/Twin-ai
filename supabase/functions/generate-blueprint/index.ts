@@ -292,6 +292,7 @@ HOOKS (the single most important field):
   * The recommended hook (hook_options[0]) MUST state the number. The hook is where an enumerated promise is MADE — "here are the 5 ways" is the contract the rest of the video pays off. A hook that drops the number has already broken the format before the second beat exists.
   * concept.premise MUST state the SAME number. No other number may appear as the count anywhere in the plan.
   * The script MUST deliver EVERY item, each explicitly marked in the spoken line ("the first…", "the second…", "the third…"). Announcing N and delivering fewer breaks OUT LOUD, on camera, in front of the audience — it is the one defect the creator cannot hide.
+  * THE VIEWER HEARS ONLY THE `line` FIELD. `section` is a label for you and is NEVER spoken aloud, so an ordinal that lives there is a count the audience never hears. Every item's ordinal MUST appear in the spoken `line` itself, and `section` MUST NOT carry the number. This is not a restatement of the rule above — it is the specific way that rule was broken three times: the plan numbered the DOCUMENT and left the VIDEO uncounted.
   * NO SILENT BEAT may appear while items are still owed. A silent shot inside an open enumeration is where the count gets dropped. Silent beats are fine BEFORE the first item and AFTER the last.
 
 - WHERE TO BE IS FOUR FIELDS, NOT ONE. Each has a different owner and a different failure mode, and collapsing them is how a creator gets told to stand inside footage that does not exist:
