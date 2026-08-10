@@ -1,6 +1,6 @@
 import { db, type Job } from '../db.js'
 import { transcribeFromUrl } from '../media.js'
-import { synthesizeVoiceFromAudio } from '../voice.js'
+import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio } from '../voice.js'
 
 // Handles `build_voice` jobs — the audio upgrade for a brand voice.
 // payload: { brand_voice_id, handle, platform, urls: string[] }
@@ -41,7 +41,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   // context and upgrades the voice itself.
   const { data: existing } = await db
     .from('brand_voices')
-    .select('profile')
+    .select('profile, owner_id')
     .eq('id', voiceId)
     .maybeSingle()
   const captionProfile = (existing?.profile as Record<string, unknown> | null) ?? {}
@@ -83,10 +83,73 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     else provenance[key] = priorProvenance[key] === 'user_confirmed' ? 'user_confirmed' : 'caption_synthesis'
   }
 
+  // ── CREATOR KNOWLEDGE: EXTRACT IN FLIGHT, THEN LET THE SPEECH GO ─────────
+  //
+  // The transcripts are already in memory here and, until now, left it as
+  // `audio_transcripts: <count>` — the richest substance in the system fetched,
+  // read once for TONE, and dropped. That is the founding "voice-accurate,
+  // content-empty" defect at its source.
+  //
+  // ⚖️ RETENTION IS NEVER-PERSIST. Nothing below writes a transcript anywhere.
+  // The distillate is stored and the raw text goes out of scope when this
+  // function returns, which is why `source_expiry` stays NULL — read downstream
+  // as "never retained", the strongest state rather than a missing value.
+  //
+  // ⚖️ ENRICHMENT, NOT A GATE. Every failure path here leaves the voice upgrade
+  // untouched. A creator whose knowledge extraction breaks must still get their
+  // voice; trading a working feature for a new one is not an upgrade.
+  let knowledgeStored = 0
+  const ownerId = (existing as { owner_id?: string } | null)?.owner_id ?? null
+  // No owner means no row can be attributed, and an unattributed claim about a
+  // person is worse than none at all.
+  if (ownerId) try {
+    const raw = await extractKnowledgeFromAudio(handle, platform, transcripts)
+    const rows = raw
+      .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
+      .slice(0, 40)
+      .map((r) => ({
+        owner_id: ownerId,
+        voice_id: voiceId,
+        kind: r.kind,
+        text: r.text.trim().slice(0, 240),
+        // An unreadable basis becomes `inferred` here rather than at the
+        // database default, so the weakest reading is chosen where the value is
+        // actually known to be junk.
+        basis: ['stated', 'demonstrated', 'inferred'].includes(r.basis) ? r.basis : 'inferred',
+        times_seen: Math.max(1, Math.min(50, Number(r.times_seen) || 1)),
+        last_observed_at: new Date().toISOString(),
+      }))
+      .filter((r) => ['fact', 'opinion', 'topic', 'example', 'experience', 'framework', 'claim', 'product', 'covered'].includes(r.kind))
+    if (rows.length) {
+      // ⚠️ NOT AN UPSERT, AND THE REASON IS A BUG ALREADY FIXED ONCE HERE.
+      // `saveMintedEntity` used `onConflict` against a PARTIAL index; Postgres
+      // cannot infer an index whose predicate the statement does not repeat, and
+      // PostgREST cannot express one, so every write raised 42P10 and failed
+      // invisibly. `creator_knowledge_one_per_claim` is an EXPRESSION index
+      // (coalesce, lower, btrim), which is uninferrable for exactly the same
+      // reason. So the existing claims are read and the new ones filtered
+      // against them; the index stays as the authority that makes a duplicate
+      // impossible rather than merely unlikely.
+      const { data: seen } = await db
+        .from('creator_knowledge')
+        .select('kind, text')
+        .eq('owner_id', ownerId)
+        .eq('voice_id', voiceId)
+      const have = new Set((seen ?? []).map((r) => `${r.kind}\u0000${String(r.text).trim().toLowerCase()}`))
+      const fresh = rows.filter((r) => !have.has(`${r.kind}\u0000${r.text.toLowerCase()}`))
+      if (fresh.length) {
+        const { error: kErr } = await db.from('creator_knowledge').insert(fresh)
+        if (!kErr) knowledgeStored = fresh.length
+      }
+    }
+  } catch {
+    // Deliberately swallowed — see the enrichment note above.
+  }
+
   const withProvenance = {
     ...merged,
     _provenance: provenance,
-    _provenance_evidence: { audio_transcripts: transcripts.length },
+    _provenance_evidence: { audio_transcripts: transcripts.length, knowledge_items: knowledgeStored },
   }
 
   // Only upgrade a voice that's still ready (don't resurrect a deleted/failed one).
@@ -100,6 +163,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   return {
     upgraded: true,
     videos_used: transcripts.length,
+    knowledge_items: knowledgeStored,
     fields_from_audio: audioFields.size,
     fields_from_captions: Object.values(provenance).filter((v) => v === 'caption_synthesis').length,
   }

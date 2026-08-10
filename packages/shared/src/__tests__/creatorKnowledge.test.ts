@@ -7,16 +7,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptyKnowledge, readKnowledge, readKnowledgeItem, writableClaims, alreadyCovered,
-  rankedKnowledge, sourceExpired, knowledgePromptLine, KNOWLEDGE_KINDS,
+  rankedKnowledge, sourceExpired, knowledgePromptLine, selectRelevantKnowledge, KNOWLEDGE_KINDS,
   type CreatorKnowledge,
 } from '../creatorKnowledge'
 
 const TECH: CreatorKnowledge = readKnowledge({
   items: [
-    { kind: 'belief', text: 'megapixel numbers are oversold', basis: 'stated', timesSeen: 4, sourceRef: 'v1', sourceExpiry: '2026-01-01T00:00:00Z' },
-    { kind: 'belief', text: 'battery life matters more than camera gimmicks', basis: 'stated', timesSeen: 6, sourceRef: 'v2', sourceExpiry: null },
+    { kind: 'opinion', text: 'megapixel numbers are oversold', basis: 'stated', timesSeen: 4, sourceRef: 'v1', sourceExpiry: '2026-01-01T00:00:00Z' },
+    { kind: 'opinion', text: 'battery life matters more than camera gimmicks', basis: 'stated', timesSeen: 6, sourceRef: 'v2', sourceExpiry: null },
     { kind: 'experience', text: 'has reviewed several foldables', basis: 'demonstrated', timesSeen: 3, sourceRef: 'v3' },
-    { kind: 'belief', text: 'probably dislikes subscription hardware', basis: 'inferred', timesSeen: 1, sourceRef: null },
+    { kind: 'opinion', text: 'probably dislikes subscription hardware', basis: 'inferred', timesSeen: 1, sourceRef: null },
     { kind: 'covered', text: 'why I stopped upgrading every year', basis: 'stated', timesSeen: 1, sourceRef: 'v4' },
   ],
   audience: [
@@ -51,14 +51,14 @@ describe('nothing may be invented', () => {
   it('an UNSTATED basis degrades to inferred, never to stated', () => {
     // Silence about provenance must read as the weakest thing. A default of
     // "stated" is precisely how a guess becomes a quote.
-    expect(readKnowledgeItem({ kind: 'belief', text: 'x' })!.basis).toBe('inferred')
-    expect(readKnowledgeItem({ kind: 'belief', text: 'x', basis: 'nonsense' })!.basis).toBe('inferred')
+    expect(readKnowledgeItem({ kind: 'opinion', text: 'x' })!.basis).toBe('inferred')
+    expect(readKnowledgeItem({ kind: 'opinion', text: 'x', basis: 'nonsense' })!.basis).toBe('inferred')
   })
 
   it('refuses a half-item rather than storing one', () => {
     // A claim with no text, or of no known kind, reads as verified once stored.
-    for (const bad of [null, undefined, 42, [], {}, { kind: 'belief' }, { text: 'x' },
-      { kind: 'invented_kind', text: 'x' }, { kind: 'belief', text: '   ' }]) {
+    for (const bad of [null, undefined, 42, [], {}, { kind: 'opinion' }, { text: 'x' },
+      { kind: 'invented_kind', text: 'x' }, { kind: 'opinion', text: '   ' }]) {
       expect(readKnowledgeItem(bad)).toBeNull()
     }
   })
@@ -83,7 +83,7 @@ describe('nothing may be invented', () => {
 describe('extract, then forget', () => {
   it('a source with no retention at all counts as already expired', () => {
     // Never retained is the STRONGEST state, not a missing value.
-    const item = readKnowledgeItem({ kind: 'belief', text: 'x', basis: 'stated' })!
+    const item = readKnowledgeItem({ kind: 'opinion', text: 'x', basis: 'stated' })!
     expect(item.sourceExpiry).toBeNull()
     expect(sourceExpired(item, new Date('2020-01-01T00:00:00Z'))).toBe(true)
   })
@@ -115,6 +115,61 @@ describe('the audience memory holds summaries, not people', () => {
 
   it('drops an entry with no summary rather than keeping an empty one', () => {
     expect(readKnowledge({ audience: [{ asked: 9 }, { summary: '  ' }] }).audience).toEqual([])
+  })
+})
+
+describe('provenance a person can act on', () => {
+  it('carries the video, the date it was last seen, and a confidence', () => {
+    const i = readKnowledgeItem({
+      kind: 'opinion', text: 'x', basis: 'stated', confidence: 0.9,
+      source_url: 'https://youtube.com/shorts/abc', last_observed_at: '2026-03-01T00:00:00Z',
+    })!
+    expect(i.sourceUrl).toBe('https://youtube.com/shorts/abc')
+    expect(i.lastObservedAt).toBe('2026-03-01T00:00:00Z')
+    expect(i.confidence).toBe(0.9)
+  })
+
+  it('an ABSENT confidence is 0.5, never 1', () => {
+    // Nobody said how sure they were. Reading that as certainty is the same
+    // error as defaulting `basis` to `stated`.
+    expect(readKnowledgeItem({ kind: 'fact', text: 'x' })!.confidence).toBe(0.5)
+    expect(readKnowledgeItem({ kind: 'fact', text: 'x', confidence: 'nonsense' })!.confidence).toBe(0.5)
+    expect(readKnowledgeItem({ kind: 'fact', text: 'x', confidence: 9 })!.confidence).toBe(1)
+    expect(readKnowledgeItem({ kind: 'fact', text: 'x', confidence: -3 })!.confidence).toBe(0)
+  })
+
+  it('separates a FACT from an OPINION', () => {
+    // "USB-C is reversible" survives being attributed to anybody. "Megapixels
+    // are oversold" is a stance, and stating it flatly puts a position in
+    // someone's mouth as though it were measurement.
+    expect(readKnowledgeItem({ kind: 'fact', text: 'x' })!.kind).toBe('fact')
+    expect(readKnowledgeItem({ kind: 'opinion', text: 'x' })!.kind).toBe('opinion')
+    expect(readKnowledgeItem({ kind: 'product', text: 'x' })!.kind).toBe('product')
+  })
+})
+
+describe('the blueprint reads a SUBSET, never the whole store', () => {
+  it('picks what the video is actually about', () => {
+    const picked = selectRelevantKnowledge(TECH, 'a video about phone camera quality', 2)
+    expect(picked.map((i) => i.text)).toContain('battery life matters more than camera gimmicks')
+  })
+
+  it('still returns something when nothing matches the topic', () => {
+    // A creator whose stored positions miss this topic still has positions, and
+    // sending none is the failure this module exists to end.
+    const picked = selectRelevantKnowledge(TECH, 'sourdough baking for beginners', 2)
+    expect(picked).toHaveLength(2)
+    expect(picked[0].timesSeen).toBe(6) // best-established first
+  })
+
+  it('never exceeds the limit, and never returns an inferred item', () => {
+    const picked = selectRelevantKnowledge(TECH, 'phones', 2)
+    expect(picked.length).toBeLessThanOrEqual(2)
+    expect(picked.every((i) => i.basis !== 'inferred')).toBe(true)
+  })
+
+  it('is empty only when the store is', () => {
+    expect(selectRelevantKnowledge(emptyKnowledge(), 'anything')).toEqual([])
   })
 })
 

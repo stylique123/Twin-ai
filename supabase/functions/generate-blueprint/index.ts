@@ -808,6 +808,29 @@ Deno.serve(async (req: Request) => {
   // it is the one the creator confirmed here. The error is surfaced rather than
   // swallowed, because "the lookup failed" and "they own nothing" produce very
   // different scripts and must never be the same value.
+  // CREATOR KNOWLEDGE — what this person actually knows, as opposed to how they
+  // sound. The founding defect is that only the second was ever stored, so the
+  // writer had their voice and almost nothing else and handed them their own
+  // opinions back in their own phrasing.
+  //
+  // ⚖️ ABSENT IS SILENT, NOT A PROMPT TO INVENT. A creator with no knowledge yet
+  // gets no block at all — deliberately NOT "none stored, infer some", which is
+  // what the pov and enemy fallbacks below do and is the exact move that
+  // manufactures opinions. A failed read is treated the same as none: it may
+  // make a script thinner, never wronger.
+  const { data: knowledgeRows } = await admin
+    .from('creator_knowledge')
+    .select('kind, text, basis, times_seen, confidence')
+    .eq('owner_id', ownerId)
+    .order('times_seen', { ascending: false })
+    .limit(40)
+  const { data: audienceRows } = await admin
+    .from('audience_questions')
+    .select('summary, asked')
+    .eq('owner_id', ownerId)
+    .order('asked', { ascending: false })
+    .limit(8)
+
   const { data: ownedEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
     .select('name, type, relationship, personal_use, showability, evidence')
@@ -1127,6 +1150,54 @@ Deno.serve(async (req: Request) => {
     // audience.
     // Reads the RESOLVED goal, so the request can express intent. Reading
     // `brief.goal` directly is what made this permanently false.
+    // Inlined from `packages/shared/src/creatorKnowledge.ts` (Deno cannot import
+    // shared), where the rationale and its 19 tests live.
+    //
+    // ⚖️ `inferred` NEVER REACHES THE SCRIPT. An inferred belief is our guess
+    // about a person, and voicing it is indistinguishable — to them and to their
+    // audience — from them having said it. It may steer; it may not be spoken.
+    const kRows = Array.isArray(knowledgeRows) ? knowledgeRows : []
+    // ⚖️ A SUBSET FOR THIS VIDEO, NEVER THE WHOLE STORE. Knowledge accumulates
+    // across every scan, so an established creator holds far more than a prompt
+    // can carry. Pasting all of it buries the three items that matter under
+    // forty that do not and spends budget the reference read needs. Relevance is
+    // lexical overlap with what this video is ABOUT — simple and explainable on
+    // purpose, so "why did it say that" has an answer.
+    const aboutTerms = new Set(
+      `${reference_note} ${brief.idea ?? ''}`.toLowerCase().split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 3))
+    const ranked = kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered')
+    const scored = ranked.map((k) => ({
+      k,
+      hit: String(k.text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => aboutTerms.has(w)).length,
+    }))
+    // Topic matches first, then the best-established — so a niche subject never
+    // starves the prompt of substance entirely.
+    const speakable = [
+      ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.k),
+      ...scored.filter((x) => x.hit === 0).map((x) => x.k),
+    ].slice(0, 10)
+    const coveredRows = kRows.filter((k) => k.kind === 'covered')
+    const aRows = Array.isArray(audienceRows) ? audienceRows : []
+    const knowledgeParts: string[] = []
+    if (speakable.length) {
+      knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
+        + speakable.map((k) => `  * (${k.kind}) ${k.text}`).join('\n'))
+    }
+    if (coveredRows.length) {
+      // ⚠️ THIS LEAKED. The first version said only "do not repeat", and a run
+      // produced the spoken line "megapixel count. We've had a video on this,
+      // but it's still true" — our notes narrated to the audience, carrying an
+      // unchecked claim about their back catalogue.
+      knowledgeParts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand them their own upload back; go at the topic from an angle they have not used. THIS LIST IS NEVER SPOKEN. It steers what you choose and must not appear in any line: a script that says "we\'ve had a video on this" is narrating our notes to the audience. Pick a DIFFERENT angle, then write as though the earlier video were simply not the subject.\n'
+        + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
+    }
+    if (aRows.length) {
+      knowledgeParts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that answers one of these is wanted before it is made.\n'
+        + aRows.map((a) => `  * ${a.summary} (asked ~${a.asked}x)`).join('\n'))
+    }
+    const knowledgeBlock = knowledgeParts.join('\n')
+
     const sellIntent = videoGoal === 'sell' || videoGoal === 'leads'
     const ctaIntentLine = sellIntent
       ? '\n- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
@@ -1276,7 +1347,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${doNotUseBlock}${workKindLine}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${doNotUseBlock}${workKindLine}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `

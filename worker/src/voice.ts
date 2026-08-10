@@ -183,3 +183,88 @@ Synthesize this creator's voice profile.${visionNote}`
   const profile = (await geminiJson(POSTS_SYSTEM, prompt, postsSchema, 60_000, budget, undefined, images)) as Record<string, unknown>
   return enrichVoiceProfile(profile, handle, platform)
 }
+
+// ── CREATOR KNOWLEDGE: WHAT THEY KNOW, NOT HOW THEY SOUND ─────────────────
+//
+// `synthesizeVoiceFromAudio` above reads the same transcripts and is told, in
+// its own words, to "capture how THEY talk". It does that well. Nothing then
+// asked what they SAID, and the transcripts were discarded — `voice.ts`'s caller
+// persisted `audio_transcripts: <count>` and dropped the text. That is the
+// founding defect at its source: the richest substance in the system, fetched,
+// used once for tone, and deleted.
+//
+// ⚖️ THIS RUNS ON TRANSCRIPTS ALREADY IN MEMORY AND PERSISTS NO SPEECH. It
+// returns short distilled claims; the caller writes those and lets the raw text
+// fall out of scope. `creator_knowledge.text` is CHECK-capped at 240 characters
+// so the schema itself refuses to become a transcript store.
+//
+// ⚖️ AND IT IS ALLOWED TO RETURN NOTHING. The DNA extractor beside it is told
+// "COMPLETENESS IS MANDATORY … a confident, specific inference is far more
+// useful than a blank", which is why `pov` and `enemy` are never empty and never
+// trustworthy. Here an empty list is the correct answer for a creator who spent
+// five videos saying nothing checkable, and `basis` records how we know each
+// item rather than flattening all of them into assertion.
+const knowledgeSchema = obj(
+  {
+    items: {
+      type: 'ARRAY',
+      items: obj(
+        {
+          kind: { type: 'STRING' },
+          text: { type: 'STRING' },
+          basis: { type: 'STRING' },
+          times_seen: { type: 'STRING' },
+        },
+        ['kind', 'text', 'basis', 'times_seen'],
+      ),
+    },
+  },
+  ['items'],
+)
+
+const KNOWLEDGE_SYSTEM = `You are TwinAI's Creator Knowledge engine. You are given VERBATIM TRANSCRIPTS of a creator speaking on camera. Another system already captured HOW they talk. Your job is the opposite and you must not duplicate it: record WHAT THEY KNOW AND HAVE SAID.
+- Never describe delivery. Tone, pacing, energy and vocabulary are somebody else's field and are wrong answers here.
+- Each item is ONE line, at most 240 characters, in plain words. It is a distillate, never a quotation, and never a passage copied out of a transcript.
+- kind is exactly one of: topic (something they return to), belief (a position they hold), example (a concrete case they used), experience (something they personally did), framework (a repeatable method they teach), claim (an assertion carrying a number or outcome), covered (a subject they have already made a video about).
+- basis is exactly one of: stated (they said it outright), demonstrated (they showed it or acted on it without saying it), inferred (you are reasoning past what they said).
+- BE HONEST WITH basis AND DO NOT ROUND IT UP. Only "stated" and "demonstrated" are ever put back into this creator's mouth; "inferred" is used to steer and is never spoken. Marking a guess as stated is how a script tells someone's audience that they said something they did not say.
+- times_seen is how many of the supplied videos carried it, as a digit.
+- RETURN AN EMPTY LIST IF THE TRANSCRIPTS CARRY NO SUBSTANCE. That is a real and useful answer. Do NOT pad it, do NOT invent positions that would merely be plausible for someone in this niche, and do NOT convert a generic remark into a belief to have something to write.`
+
+export interface RawKnowledgeItem {
+  kind: string
+  text: string
+  basis: string
+  times_seen: string
+}
+
+/** Distil what a creator knows from what they said. Returns raw rows for the
+ *  caller to validate through `readKnowledge` — this function does not decide
+ *  what is storable, it only asks. */
+export async function extractKnowledgeFromAudio(
+  handle: string,
+  platform: string,
+  transcripts: string[],
+): Promise<RawKnowledgeItem[]> {
+  if (!transcripts.length) return []
+  const corpus = transcripts
+    .map((t, i) => `--- VIDEO ${i + 1} (spoken) ---\n${t}`)
+    .join('\n\n')
+    .slice(0, 12000)
+
+  const prompt = `CREATOR: @${handle} on ${platform}
+SPOKEN TRANSCRIPTS:
+${corpus}
+
+Record what this creator knows, believes, has done, and has already covered.`
+
+  try {
+    const out = (await geminiJson(KNOWLEDGE_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
+    return Array.isArray(out?.items) ? out.items : []
+  } catch {
+    // ⚖️ Knowledge is an ENRICHMENT of the voice build, never a gate on it. A
+    // creator whose extraction failed must still get their voice; failing the
+    // whole job here would trade a working feature for a new one.
+    return []
+  }
+}

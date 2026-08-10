@@ -111,6 +111,16 @@ export const EXCLUDED = {
     + 'ordering would be the tail wagging the dog. The editor never reads '
     + '`product_entities` either — entities reach it through the blueprint prompt, the '
     + 'same route the brief takes in 0109 above.',
+  '0121_creator_knowledge':
+    'Creates `creator_knowledge` and `audience_questions`, both with foreign keys to '
+    + '`public.brand_voices` — the same staging FIXTURE-APPLIED-AFTER-THE-LOOP ordering '
+    + 'that excludes 0120 above, and the same verification: the `for f in …` loop runs, '
+    + 'then `staging-brand-schema.sql`, so the FK target does not exist at apply time. '
+    + 'The editor never reads either table; knowledge reaches the writer through the '
+    + 'blueprint prompt, the route 0109 and 0120 already take. ⚠️ The RLS policies and '
+    + 'the deliberate ABSENCE of an INSERT policy are therefore unexercised on staging, '
+    + 'which is the real cost of this exclusion and is worth saying out loud: nothing '
+    + 'proves before production that a creator cannot insert claims about themselves.',
 }
 
 // `excluded` is a PARAMETER rather than a direct read of the constant so the

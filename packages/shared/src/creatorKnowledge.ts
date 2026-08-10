@@ -59,14 +59,22 @@ export type KnowledgeBasis = (typeof KNOWLEDGE_BASIS)[number]
 /** What kind of substance this is. Closed, so a new kind cannot appear
  *  downstream with nothing deciding whether it may be spoken. */
 export const KNOWLEDGE_KINDS = [
+  'fact',        // checkable, and true independently of them
+  'opinion',     // a position they hold — theirs, and contestable
   'topic',       // something they return to
-  'belief',      // a position they hold
   'example',     // a concrete case they have used
   'experience',  // something they personally did
   'framework',   // a repeatable method they teach
   'claim',       // an assertion carrying a number or outcome
+  'product',     // a product they have mentioned or worked with
   'covered',     // already made a video about it — do NOT repeat
 ] as const
+
+/** ⚖️ `fact` AND `opinion` ARE SEPARATE KINDS, NOT SHADES OF ONE. "USB-C is
+ *  reversible" survives being attributed to anybody; "megapixels are oversold"
+ *  is a stance, and a script that states it flatly has put a position in
+ *  someone's mouth as though it were measurement. Collapsing the two is how a
+ *  creator ends up sounding more certain than they have ever been. */
 export type KnowledgeKind = (typeof KNOWLEDGE_KINDS)[number]
 
 export interface KnowledgeItem {
@@ -75,12 +83,24 @@ export interface KnowledgeItem {
    *  not a quotation, and a long one is a transcript wearing a disguise. */
   text: string
   basis: KnowledgeBasis
+  /** How sure the extractor was, 0-1. Distinct from `basis`: basis is HOW we
+   *  know, confidence is HOW WELL. A clearly stated remark heard once is
+   *  `stated` with modest confidence; both are needed to rank honestly. */
+  confidence: number
   /** How many separate videos this showed up in. A position held once is a
    *  remark; the same one across five videos is what they are known for. */
   timesSeen: number
   /** Which source it was distilled from — an id, never the text. Enough to
    *  trace, not enough to reconstitute. */
   sourceRef: string | null
+  /** The video it came from, so a creator correcting an item can go and watch
+   *  the thing we read it out of. Provenance a person can act on beats an
+   *  opaque id. */
+  sourceUrl: string | null
+  /** When it was last seen in their output. A position from four years ago and
+   *  one from last month are different facts about a person, and only a dated
+   *  record can tell them apart or let a stale one decay. */
+  lastObservedAt: string | null
   /** When the RAW source may no longer be kept. The item outlives it. Null means
    *  the source was never retained in the first place, which is the strongest
    *  state rather than a missing value. */
@@ -112,6 +132,15 @@ function line(v: unknown): string | null {
   return t === '' ? null : t.slice(0, MAX_TEXT)
 }
 
+/** Confidence in [0,1]. ⚖️ An unreadable or absent value is 0.5, never 1: a
+ *  missing confidence means nobody said how sure they were, and reading that as
+ *  certainty is the same error as defaulting `basis` to `stated`. */
+function unit(v: unknown): number {
+  const n = typeof v === 'number' ? v : Number(v)
+  if (!Number.isFinite(n)) return 0.5
+  return Math.min(1, Math.max(0, n))
+}
+
 function count(v: unknown): number {
   const n = typeof v === 'number' ? v : Number(v)
   return Number.isInteger(n) && n > 0 ? n : 1
@@ -136,8 +165,11 @@ export function readKnowledgeItem(raw: unknown): KnowledgeItem | null {
     kind,
     text,
     basis,
+    confidence: unit(src.confidence),
     timesSeen: count(src.timesSeen ?? src.times_seen),
     sourceRef: line(src.sourceRef ?? src.source_ref),
+    sourceUrl: line(src.sourceUrl ?? src.source_url),
+    lastObservedAt: line(src.lastObservedAt ?? src.last_observed_at),
     sourceExpiry: line(src.sourceExpiry ?? src.source_expiry),
   }
 }
@@ -178,6 +210,61 @@ export function alreadyCovered(k: CreatorKnowledge): KnowledgeItem[] {
   return k.items.filter((i) => i.kind === 'covered')
 }
 
+/**
+ * The subset worth sending for THIS video.
+ *
+ * ⚖️ NEVER DUMP THE WHOLE STORE. Knowledge accumulates across every scan, so an
+ * established creator will hold far more than a prompt can carry, and pasting
+ * all of it does not make the script better — it buries the three items that
+ * matter under forty that do not, and spends the budget that the reference read
+ * and the creator's DNA need. A prompt is a briefing, not an archive.
+ *
+ * Relevance is lexical overlap with what this video is ABOUT (the reference and
+ * the creator's note), tie-broken by how established the item is. Deliberately
+ * simple and deliberately explainable: a creator asking "why did it say that"
+ * gets an answer, which an embedding score would not give them.
+ *
+ * ⚖️ ALWAYS RETURNS SOMETHING when knowledge exists. A video whose topic matches
+ * nothing stored still belongs to a person with positions, and falling back to
+ * their best-established items is better than sending none — the failure this
+ * whole module exists to end is a script with no substance at all.
+ */
+export function selectRelevantKnowledge(
+  k: CreatorKnowledge,
+  about: string | null | undefined,
+  limit = 10,
+): KnowledgeItem[] {
+  const pool = rankedKnowledge(k)
+  if (pool.length === 0) return []
+  const terms = new Set(
+    String(about ?? '').toLowerCase().split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 3 && !STOPWORDS.has(w)))
+  if (terms.size === 0) return pool.slice(0, limit)
+  const scored = pool.map((item) => {
+    const words = item.text.toLowerCase().split(/[^a-z0-9]+/)
+    const overlap = words.filter((w) => terms.has(w)).length
+    return { item, overlap }
+  })
+  const hits = scored.filter((s) => s.overlap > 0)
+    .sort((a, b) => b.overlap - a.overlap)
+    .map((s) => s.item)
+  // Top up from the best-established items so a niche topic never starves.
+  const out = [...hits]
+  for (const item of pool) {
+    if (out.length >= limit) break
+    if (!out.includes(item)) out.push(item)
+  }
+  return out.slice(0, limit)
+}
+
+/** Words too common to signal relevance. Short list on purpose — a long one
+ *  starts making editorial decisions nobody reviewed. */
+const STOPWORDS = new Set([
+  'this', 'that', 'with', 'from', 'they', 'them', 'their', 'what', 'when',
+  'have', 'here', 'your', 'about', 'video', 'thing', 'things', 'stopped',
+  'after', 'turned', 'more', 'than', 'into', 'been', 'were', 'will',
+])
+
 /** Ranked by how established a position is — repeated first, then directly
  *  stated over merely demonstrated. What someone is KNOWN for should reach a
  *  bounded prompt before a one-off remark does. */
@@ -204,8 +291,14 @@ export function sourceExpired(item: KnowledgeItem, now: Date): boolean {
  * borrowed substance, which is honest, rather than one with invented substance,
  * which is not.
  */
-export function knowledgePromptLine(k: CreatorKnowledge, limit = 12): string {
-  const claims = rankedKnowledge(k).slice(0, limit)
+export function knowledgePromptLine(
+  k: CreatorKnowledge,
+  limit = 12,
+  about?: string | null,
+): string {
+  const claims = about === undefined
+    ? rankedKnowledge(k).slice(0, limit)
+    : selectRelevantKnowledge(k, about, limit)
   const covered = alreadyCovered(k)
   if (claims.length === 0 && covered.length === 0) return ''
   const parts: string[] = []
