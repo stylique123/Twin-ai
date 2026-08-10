@@ -9,6 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Link2, Wand2, Target, Shuffle, Feather, Wind, Activity, Flame, SlidersHorizontal, ChevronDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { listGenerations } from '../../lib/api'
+import { VIDEO_GOALS, VIDEO_GOAL_LABELS, type VideoGoal } from '@twinai/shared'
 import { videosFromCredits } from '../../lib/brand'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -52,6 +53,11 @@ export default function V2Create() {
   const [advanced, setAdvanced] = useState(false)
   const [fidelity, setFidelity] = useState<Fidelity>('balanced')
   const [tone, setTone] = useState<Tone>('balanced') // recommended default
+  // WHAT THIS VIDEO IS FOR. Starts UNSET on purpose: absent means an engagement
+  // CTA, and a goal nobody chose must not put a pitch in their mouth. Picking
+  // "Sell my offer" or "Start conversations" is what unlocks a commercial CTA —
+  // the intent the writer had no way to receive until now.
+  const [goal, setGoal] = useState<VideoGoal | null>(null)
   const [checking, setChecking] = useState(false)
   // A generation that already used this exact link — surfaced so we can offer to
   // open it instead of silently spending another remix on a duplicate.
@@ -67,7 +73,7 @@ export default function V2Create() {
       // screen only carries out the ask, and it remounts. Two deliberate clicks
       // mint two keys and correctly cost two remixes; a remount, a back-and-
       // forward or a refresh reuses this one and costs nothing extra.
-      state: { reference_url: looksUrl ? t : '', reference_note: looksUrl ? '' : t, fidelity, tone, idempotency_key: crypto.randomUUID() },
+      state: { reference_url: looksUrl ? t : '', reference_note: looksUrl ? '' : t, fidelity, tone, ...(goal ? { goal } : {}), idempotency_key: crypto.randomUUID() },
     })
   }
 
@@ -168,9 +174,41 @@ export default function V2Create() {
             <div className="mx-auto mt-4 max-w-md space-y-6 rounded-panel border border-white/8 bg-ink2/50 p-5 text-left backdrop-blur-sm">
               <OptionRow label="How close to the reference" options={FIDELITY} value={fidelity} onPick={(v) => setFidelity(v as Fidelity)} />
               <OptionRow label="How it should sound" options={TONE} value={tone} onPick={(v) => setTone(v as Tone)} />
+              {/* Seven options, so a wrapping chip row rather than the 3-up grid
+                  above — it stays one readable column on a phone and fills the
+                  width on a laptop without either being cut off. */}
+              <div>
+                <div className="eyebrow mb-2.5">What this video is for</div>
+                <div className="flex flex-wrap gap-2">
+                  {VIDEO_GOALS.map((g) => {
+                    const active = goal === g
+                    return (
+                      <button
+                        key={g}
+                        type="button"
+                        aria-pressed={active}
+                        // Tapping the active chip clears it, so "no goal" stays
+                        // reachable after a mis-tap rather than being a state you
+                        // can only leave by reloading.
+                        onClick={() => setGoal(active ? null : g)}
+                        className={cn(
+                          'rounded-full border px-3.5 py-2 text-[13px] font-medium transition-colors',
+                          active
+                            ? 'border-coral/50 bg-coral/[0.07] text-cream'
+                            : 'border-white/10 bg-white/[0.02] text-sand hover:border-white/20 hover:bg-white/[0.04]',
+                        )}
+                      >
+                        {VIDEO_GOAL_LABELS[g]}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
               <p className="text-xs leading-relaxed text-stone">
-                These steer the writing for real: <span className="text-sand">closeness</span> decides how tightly the script mirrors the reference's structure, and{' '}
-                <span className="text-sand">sound</span> sets the energy of the hooks and lines. Change them and you'll get a different script.
+                These steer the writing for real: <span className="text-sand">closeness</span> decides how tightly the script mirrors the reference's structure,{' '}
+                <span className="text-sand">sound</span> sets the energy of the hooks and lines, and{' '}
+                <span className="text-sand">what it's for</span> decides the ending. Leave the last one unpicked and the script asks for engagement;{' '}
+                pick <span className="text-sand">Sell my offer</span> or <span className="text-sand">Start conversations</span> and it may ask for the sale.
               </p>
             </div>
           )}

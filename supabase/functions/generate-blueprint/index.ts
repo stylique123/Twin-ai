@@ -955,8 +955,27 @@ Deno.serve(async (req: Request) => {
       entertain: 'ENTERTAIN. Attention and rewatch are the point — do not bolt a commercial ask onto a video whose job is to be enjoyed.',
       personal_brand: 'BUILD THE PERSON, not just the information. Carry their stance and their story; a generic explainer fails this goal even when it is accurate.',
     }
-    const goal = (brief.goal && GOAL_LINES[brief.goal])
-      ? GOAL_LINES[brief.goal]
+    // THE GOAL IS A PROPERTY OF THE VIDEO, NOT OF THE PERSON, which is why the
+    // REQUEST wins over the stored brief.
+    //
+    // ⚠️ `brief.goal` was READ HERE AND WRITTEN BY NOTHING. `savePreScriptBrief`
+    // is its only writer and deliberately omits it, so `videoGoal` was always
+    // absent, `sellIntent` was always false, and EVERY script — including one
+    // for a founder who onboarded to sell — carried "NOT a selling video, do NOT
+    // write a purchase CTA". The consumer registry passed the whole time,
+    // because it checks that a reader EXISTS, not that a writer does.
+    //
+    // ⚖️ Per-video rather than per-voice: one creator makes awareness videos AND
+    // sell videos from the same voice, and making the second require editing
+    // their profile is the wrong shape. `fidelity` and `tone` already ride the
+    // request for exactly this reason. The stored brief stays as a fallback so a
+    // caller that sends nothing keeps its old behaviour rather than silently
+    // changing meaning.
+    const videoGoal = (body.goal && GOAL_LINES[body.goal]) ? body.goal
+      : (brief.goal && GOAL_LINES[brief.goal]) ? brief.goal
+        : null
+    const goal = videoGoal
+      ? GOAL_LINES[videoGoal]
       : (vp?.goal ?? dna.goal ?? 'turn attention into trust')
     const tone = vp?.tone ?? dna.voice ?? 'direct, warm, a little punchy'
     const editing = vp?.editing_style ?? dna.editing_style ?? 'fast jump cuts, burned-in captions'
@@ -1050,7 +1069,9 @@ Deno.serve(async (req: Request) => {
     // the cost of withholding a pitch is one softer video and the cost of adding
     // one nobody asked for is a creator sounding like an advert to their own
     // audience.
-    const sellIntent = brief.goal === 'sell' || brief.goal === 'leads'
+    // Reads the RESOLVED goal, so the request can express intent. Reading
+    // `brief.goal` directly is what made this permanently false.
+    const sellIntent = videoGoal === 'sell' || videoGoal === 'leads'
     const ctaIntentLine = sellIntent
       ? '\n- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
       : '\n- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'

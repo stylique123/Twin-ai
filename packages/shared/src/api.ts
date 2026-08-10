@@ -195,6 +195,26 @@ export async function saveDNA(dna: CreatorDNA): Promise<Profile> {
 
 // ---- Blueprint generation (real AI via edge function) -------------------
 
+/** What a video is FOR. Mirrors `GOAL_LINES` in generate-blueprint, which is the
+ *  authority on what each one instructs the writer to do. `sell` and `leads` are
+ *  the two that permit a commercial CTA. */
+export const VIDEO_GOALS = [
+  'followers', 'authority', 'educate', 'leads', 'sell', 'entertain', 'personal_brand',
+] as const
+export type VideoGoal = (typeof VIDEO_GOALS)[number]
+
+/** Short labels for the create screen. The prompt lines live server-side; these
+ *  are what a creator picking one actually reads. */
+export const VIDEO_GOAL_LABELS: Record<VideoGoal, string> = {
+  followers: 'Grow my audience',
+  authority: 'Build authority',
+  educate: 'Teach something',
+  leads: 'Start conversations',
+  sell: 'Sell my offer',
+  entertain: 'Entertain',
+  personal_brand: 'Build my personal brand',
+}
+
 export interface GenerateInput {
   reference_url: string
   reference_note: string
@@ -202,6 +222,16 @@ export interface GenerateInput {
   // How the script should SOUND (delivery energy), independent of fidelity (how
   // close to the reference structure). Optional; defaults to 'balanced' server-side.
   tone?: 'understated' | 'balanced' | 'punchy'
+  // What THIS video is for. Per-video rather than per-voice, because one creator
+  // makes awareness videos and sell videos from the same voice.
+  //
+  // ⚠️ The reader for this existed long before any writer did: the edge function
+  // read `pre_script_brief.goal`, whose only writer deliberately omits it, so
+  // the value was always absent and every script was told "NOT a selling video".
+  // Optional here, and absent still means engagement — silence is refusal, and
+  // the cost of withholding a pitch is one softer video while the cost of adding
+  // one nobody asked for is a creator sounding like an advert to their audience.
+  goal?: VideoGoal
   // Optional: when the reference was analyzed by the worker (real transcript),
   // pass its transcript_id so the blueprint is built from the actual video.
   transcript_id?: string
