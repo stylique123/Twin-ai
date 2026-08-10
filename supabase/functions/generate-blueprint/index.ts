@@ -88,6 +88,20 @@ function normalizeHookLine<T>(bp: T): T {
 //
 // ⚖️ EVERY bracketed span counts. A false positive discards one hook of five and
 // nobody notices; a false negative is read aloud with the camera running.
+// A unit that names nothing. Inlined from `packages/shared/src/referenceMechanism.ts`
+// (Deno cannot import shared), where the rationale and tests live. The tech
+// reference's generic "items" rode into a science explainer and two business
+// creators — "3 critical items that business owners need to implement".
+//
+// ⚖️ REPORTED, NEVER BLOCKING. An undelivered count is provably wrong on camera;
+// a weak unit is a judgement, and a check that refuses on a guess would discard
+// good plans for less than it saves. Deliberately tiny: every entry is a word
+// that could be deleted from the promise without losing meaning, which is why
+// "tips", "mistakes", "signs" and "habits" are absent — those are real categories.
+const CONTENTLESS_UNITS = new Set(['item', 'items', 'thing', 'things', 'stuff', 'point', 'points'])
+const isContentlessUnit = (u: unknown): boolean =>
+  typeof u === 'string' && CONTENTLESS_UNITS.has(u.trim().toLowerCase())
+
 /** Non-global on purpose: a `/g` regex carries `lastIndex` between `.test()`
  *  calls, so the same shared instance answers differently depending on what it
  *  was asked before it. */
@@ -335,6 +349,7 @@ HOOKS (the single most important field):
   * The script MUST deliver EVERY item, each explicitly marked in the spoken line ("the first…", "the second…", "the third…"). Announcing N and delivering fewer breaks OUT LOUD, on camera, in front of the audience — it is the one defect the creator cannot hide.
   * THE VIEWER HEARS ONLY THE "line" FIELD. "section" is a label for you and is NEVER spoken aloud, so an ordinal that lives there is a count the audience never hears. Every item's ordinal MUST appear in the spoken "line" itself, and "section" MUST NOT carry the number. This is not a restatement of the rule above — it is the specific way that rule was broken three times: the plan numbered the DOCUMENT and left the VIDEO uncounted.
   * NO SILENT BEAT may appear while items are still owed. A silent shot inside an open enumeration is where the count gets dropped. Silent beats are fine BEFORE the first item and AFTER the last.
+  * THE COUNT TRANSFERS. THE UNIT DOES NOT. enumeration.unit records what the REFERENCE was counting, and it is a reading of their video, not a word for yours. Name what THIS creator is counting, in their own domain: a science explainer counts "things that are harder than they look", a founder counts "hiring mistakes". Carrying the reference's noun across is content, not structure, and it is the rule above this one being broken in the one field the count makes mandatory. NEVER write a contentless unit — "items", "things", "stuff", "points" name nothing and are the shape this fails into: "3 critical items that business owners need to" is not a promise anybody can want.
 
 - WHERE TO BE IS FOUR FIELDS, NOT ONE. Each has a different owner and a different failure mode, and collapsing them is how a creator gets told to stand inside footage that does not exist:
   * location: WHERE THE CREATOR PHYSICALLY STANDS, and nothing else. Achievable direction only — "clean neutral wall, facing the brightest window" works in any room at any hour. NEVER assumed inventory ("the walnut chair beside your lamp", "your fully renovated kitchen"), NEVER footage, NEVER an edit instruction.
@@ -1416,6 +1431,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         script_lines_affected: templated.linesAffected,
       }))
     }
+    const weakUnit = isContentlessUnit(
+      (templated.bp as { reference_read?: { mechanism?: { enumeration?: { unit?: unknown } } } })
+        ?.reference_read?.mechanism?.enumeration?.unit)
+    if (weakUnit) {
+      console.warn(JSON.stringify({ event: 'contentless_enumeration_unit' }))
+    }
     const { blueprint, removals: linkRemovals } = sanitizeBlueprintLinks(
       templated.bp,
       linkAllow,
@@ -1491,7 +1512,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // links_stripped is COUNTS and PATHS only, never the removed text. The
       // text is attacker-influenced and belongs in the log line above, not in
       // a props blob that analytics queries and dashboards read back.
-      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, tone_requested: tone, tone_applied: appliedTone, cta_sell_intent: sellIntent, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path), placeholder_hooks_dropped: templated.hooksDropped, placeholder_lines: templated.linesAffected } })
+      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, tone_requested: tone, tone_applied: appliedTone, cta_sell_intent: sellIntent, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path), placeholder_hooks_dropped: templated.hooksDropped, placeholder_lines: templated.linesAffected, contentless_unit: weakUnit } })
       .then(() => {}, () => {})
 
     return json(gen)

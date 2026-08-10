@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptyMechanism, readMechanism, containsCount, countsIn, deliveredItemCount,
-  countContractIssues, mechanismPromptLine, blueprintCountIssues, breaksOnCamera,
+  countContractIssues, mechanismPromptLine, blueprintCountIssues, breaksOnCamera, isContentlessUnit,
   type ReferenceMechanism, type MechanismScriptBeat,
 } from '../referenceMechanism'
 
@@ -343,5 +343,29 @@ describe('breaksOnCamera separates what the creator can still fix', () => {
     expect(breaksOnCamera([issue('hook_drops_count')])).toBe(false)
     expect(breaksOnCamera([issue('count_disagreement')])).toBe(false)
     expect(breaksOnCamera([])).toBe(false)
+  })
+})
+
+describe('the unit is content — the cross-paired run’s weakest transfer', () => {
+  it('flags the units that named nothing', () => {
+    // "3 critical items that business owners need to implement" — the tech
+    // reference's noun, carried into a business creator's video.
+    for (const u of ['items', 'Items', ' things ', 'stuff', 'points']) {
+      expect(isContentlessUnit(u)).toBe(true)
+    }
+  })
+
+  it('leaves real categories alone', () => {
+    // The two cases that re-derived correctly, plus the near-misses that must
+    // not be swept up: these are genuine promises, not filler.
+    for (const u of ['mistakes', 'ways', 'tips', 'signs', 'habits', 'things I stopped buying']) {
+      expect(isContentlessUnit(u)).toBe(false)
+    }
+  })
+
+  it('an ABSENT unit is not a contentless one', () => {
+    // Unstated and empty are different facts, and only a stated unit can be
+    // judged. Reporting silence as a defect is the mirror of inventing a count.
+    for (const u of [null, undefined, '', '   ']) expect(isContentlessUnit(u)).toBe(false)
   })
 })

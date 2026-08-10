@@ -490,3 +490,38 @@ export function blueprintCountIssues(bp: BlueprintCountView | null | undefined):
 export function breaksOnCamera(issues: readonly MechanismIssue[]): boolean {
   return issues.some((i) => i.code === 'undelivered_count' || i.code === 'silent_scene_in_enumeration')
 }
+
+// ── THE UNIT IS CONTENT, AND IT TRANSFERRED AS A WORD ─────────────────────
+//
+// In the cross-paired run, a tech reference's unit arrived as the generic
+// "items" and rode unchanged into a science explainer and two business
+// creators:
+//
+//     "3 critical items that business owners need to implement"
+//     "3 essential items that every aspiring entrepreneur needs"
+//
+// Neither is a promise anybody can want. The COUNT is structure and transfers;
+// the UNIT names what is being counted and is content, so "we copy STRUCTURE,
+// never content" was being broken in the one field the count makes mandatory.
+// Two of five cases re-derived it correctly ("mistakes", "things I stopped
+// buying"), so this is a pattern rather than a certainty.
+//
+// ⚖️ A SMELL, NOT A FATALITY, AND THE DIFFERENCE DECIDES THE HANDLING. An
+// undelivered count is wrong on camera and can be proven wrong. A weak unit is a
+// judgement — "tips" and "mistakes" are both real nouns, and only a closed list
+// of genuinely contentless ones is decidable. So this is REPORTED, never
+// blocking: a check that guesses at quality and refuses on the guess would
+// throw away good plans, which costs more than the thing it prevents.
+
+/** Nouns that name nothing. Deliberately tiny — every entry has to be a word
+ *  that could be deleted from the promise without losing meaning. "tips",
+ *  "mistakes", "signs" and "habits" are NOT here: they are real categories. */
+const CONTENTLESS_UNITS = new Set(['item', 'items', 'thing', 'things', 'stuff', 'point', 'points'])
+
+/** Is this enumeration unit contentless? Absent is not — an unstated unit is a
+ *  different fact from an empty one, and only a stated one can be judged. */
+export function isContentlessUnit(unit: string | null | undefined): boolean {
+  if (typeof unit !== 'string') return false
+  const w = unit.trim().toLowerCase()
+  return w !== '' && CONTENTLESS_UNITS.has(w)
+}
