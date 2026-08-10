@@ -52,6 +52,19 @@ const SUBSTANTIVE = [
    difference was real. Slow overnight charging kept noticeably more capacity.`,
 ]
 
+// A creator who NAMES THINGS — tools, models, prices. This fixture exists to
+// answer a question the first two could not: is the `product` kind reachable at
+// all, or is it a category the extractor never picks? The substantive fixture
+// above names almost no brand, so its zero product items proved nothing.
+const NAMED = [
+  `I dropped Notion for Obsidian about six months ago and I'm not going back. Notion got slow
+   once my vault passed a few thousand notes, and Obsidian is local-first so it just opens. I
+   still pay for Todoist because nothing else does natural language dates as well.`,
+  `The M4 iPad Pro is the one I actually recommend now, but only the 512 gig model, because
+   that's where you get the extra RAM. I tested Final Cut on the 256 and it choked on a
+   multicam timeline that the 512 handled fine.`,
+]
+
 // Fluent, confident, and says nothing that could be checked or attributed.
 // ⚖️ THE HARDER TEST. The correct output here is few items or none.
 const EMPTY = [
@@ -105,7 +118,7 @@ async function extract(label, transcripts) {
 }
 
 const out = []
-for (const [label, t] of [['SUBSTANTIVE', SUBSTANTIVE], ['EMPTY', EMPTY]]) {
+for (const [label, t] of [['SUBSTANTIVE', SUBSTANTIVE], ['NAMED', NAMED], ['EMPTY', EMPTY]]) {
   out.push(await extract(label, t))
 }
 console.log(JSON.stringify(out, null, 2))
