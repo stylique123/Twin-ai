@@ -1380,7 +1380,28 @@ export async function loadProductEntities(): Promise<ProductEntityRecord[]> {
  * that charged three times for one video — so a plain insert would give a
  * creator who navigates back and forward a duplicate product on every pass.
  * `product_entities_one_owned_per_voice` makes that unrepresentable; this
- * upserts onto it so the second pass CORRECTS the first rather than failing.
+ * writes onto it so the second pass CORRECTS the first rather than failing.
+ *
+ * ⚠️ NOT AN UPSERT, AND THAT IS THE WHOLE POINT. This used to be
+ * `.upsert(row, { onConflict: 'voice_id' })`, which makes PostgREST emit a bare
+ * `ON CONFLICT (voice_id)`. The only unique index on `voice_id` is PARTIAL
+ * (`where relationship in (…) and voice_id is not null`), and Postgres cannot
+ * infer a partial index as an arbiter unless the statement repeats the index
+ * predicate — which PostgREST has no way to express. So the write raised
+ * (expected `42P10`, "no unique or exclusion constraint matching the ON CONFLICT
+ * specification"; inferred from the index/statement mismatch rather than
+ * observed against a live database) on EVERY mint.
+ *
+ * It then failed invisibly: `Onboarding` catches and `console.warn`s, so the
+ * creator saw "We'll treat X as your own SaaS", the Product Library stayed
+ * empty, and `generate-blueprint` — finding no owned entity — emitted the
+ * `DO NOT USE — this creator has no product` block for creators who had one.
+ * The confirm screen and the script disagreed, and nothing surfaced it.
+ *
+ * ⚖️ The read-then-write below is NOT weaker than the upsert it replaces. The
+ * partial unique index is still the authority: a lost race raises 23505, which
+ * is caught and retried as the update it should have been. The index enforces;
+ * this function merely stops asking Postgres a question it cannot answer.
  *
  * Returns null when Q3 implied no entity. That is a different fact from "they
  * have nothing", and callers must not render it as one.
@@ -1391,25 +1412,56 @@ export async function saveMintedEntity(
   entity: DraftEntity | null,
 ): Promise<ProductEntityRecord | null> {
   if (!entity) return null
+  const row = {
+    owner_id: ownerId,
+    voice_id: voiceId,
+    name: entity.name,
+    type: entity.type,
+    relationship: entity.relationship,
+    personal_use: entity.personalUse,
+    showability: entity.showability,
+    product_url: entity.productUrl,
+    affiliate_url: entity.affiliateUrl,
+    evidence: entity.evidence,
+    restrictions: entity.restrictions,
+    source: entity.source,
+    user_confirmed: entity.userConfirmed,
+  }
+
+  // Scoped exactly like the partial index, so "already minted" here means the
+  // same thing it means to the database.
+  const updateOwned = async () => {
+    const { data, error } = await supabase
+      .from('product_entities')
+      .update(row)
+      .eq('voice_id', voiceId)
+      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+      .select(ENTITY_COLUMNS)
+      .single()
+    if (error) throw error
+    return readEntityRow(data as ProductEntityRow)
+  }
+
+  const { data: existing, error: readErr } = await supabase
+    .from('product_entities')
+    .select('id')
+    .eq('voice_id', voiceId)
+    .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+    .maybeSingle()
+  if (readErr) throw readErr
+  if (existing) return await updateOwned()
+
   const { data, error } = await supabase
     .from('product_entities')
-    .upsert({
-      owner_id: ownerId,
-      voice_id: voiceId,
-      name: entity.name,
-      type: entity.type,
-      relationship: entity.relationship,
-      personal_use: entity.personalUse,
-      showability: entity.showability,
-      product_url: entity.productUrl,
-      affiliate_url: entity.affiliateUrl,
-      evidence: entity.evidence,
-      restrictions: entity.restrictions,
-      source: entity.source,
-      user_confirmed: entity.userConfirmed,
-    }, { onConflict: 'voice_id', ignoreDuplicates: false })
+    .insert(row)
     .select(ENTITY_COLUMNS)
     .single()
-  if (error) throw error
+  // 23505 is the partial unique index doing its job against a concurrent mint —
+  // the remount replay this function exists for, arriving twice at once. The
+  // other pass won, so the correct outcome is the update we would have done.
+  if (error) {
+    if (error.code === '23505') return await updateOwned()
+    throw error
+  }
   return readEntityRow(data as ProductEntityRow)
 }

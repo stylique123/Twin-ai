@@ -292,7 +292,7 @@ HOOKS (the single most important field):
   * The recommended hook (hook_options[0]) MUST state the number. The hook is where an enumerated promise is MADE — "here are the 5 ways" is the contract the rest of the video pays off. A hook that drops the number has already broken the format before the second beat exists.
   * concept.premise MUST state the SAME number. No other number may appear as the count anywhere in the plan.
   * The script MUST deliver EVERY item, each explicitly marked in the spoken line ("the first…", "the second…", "the third…"). Announcing N and delivering fewer breaks OUT LOUD, on camera, in front of the audience — it is the one defect the creator cannot hide.
-  * THE VIEWER HEARS ONLY THE `line` FIELD. `section` is a label for you and is NEVER spoken aloud, so an ordinal that lives there is a count the audience never hears. Every item's ordinal MUST appear in the spoken `line` itself, and `section` MUST NOT carry the number. This is not a restatement of the rule above — it is the specific way that rule was broken three times: the plan numbered the DOCUMENT and left the VIDEO uncounted.
+  * THE VIEWER HEARS ONLY THE "line" FIELD. "section" is a label for you and is NEVER spoken aloud, so an ordinal that lives there is a count the audience never hears. Every item's ordinal MUST appear in the spoken "line" itself, and "section" MUST NOT carry the number. This is not a restatement of the rule above — it is the specific way that rule was broken three times: the plan numbered the DOCUMENT and left the VIDEO uncounted.
   * NO SILENT BEAT may appear while items are still owed. A silent shot inside an open enumeration is where the count gets dropped. Silent beats are fine BEFORE the first item and AFTER the last.
 
 - WHERE TO BE IS FOUR FIELDS, NOT ONE. Each has a different owner and a different failure mode, and collapsing them is how a creator gets told to stand inside footage that does not exist:
@@ -301,7 +301,7 @@ HOOKS (the single most important field):
   * editor_intent: cutaway and return timing, for the EDIT. This is never a place to stand.
   * wardrobe: what the creator wears.
   * NEVER PUT A HEX COLOUR IN location OR wardrobe. The brand palette belongs to packaging and thumbnails. "A black t-shirt to emphasize the brand colors (#000000)" is not something a person can carry out, and it is removed automatically — write the direction without it.
-- Leave `background` as an empty string. It is the pre-split field, kept only so older plans still render.
+- Leave "background" as an empty string. It is the pre-split field, kept only so older plans still render.
 
 - hook_options: give 5, ordered best first. The FIRST one is your recommended pick. Each hook is one spoken line under ~12 words, scroll-stopping, and must visibly stack at least two of the four triggers above.
 - AT LEAST TWO of the five hooks must reuse the creator's signature vocabulary or their exact hook FORMULA from CREATOR DNA. A hook that could belong to any creator in this niche is a failure. Rewrite until it is unmistakably THEIRS.
@@ -696,14 +696,14 @@ Deno.serve(async (req: Request) => {
   // professional, or any creator who named claims they may not make, has told us
   // their register has a ceiling. `readStoredBrief` guarantees these are real
   // answers rather than empty strings.
-  const voiceHasCeiling =
-    brief.workKind === 'professional'
-    || (typeof brief.forbiddenClaims === 'string' && brief.forbiddenClaims.trim() !== '')
-  const appliedTone = tone === 'punchy' && voiceHasCeiling ? 'balanced' : tone
-  const toneRule = TONE_RULE[appliedTone]
-  const toneClampLine = appliedTone === tone
-    ? ''
-    : '\n- TONE WAS CLAMPED. This creator works under stated limits on what they may claim, so the punchy register is not available to them: no hype openers ("you won\'t believe", "this will blow your mind"), no manufactured certainty. Write with energy, not with bait.'
+  //
+  // ⚠️ THE CLAMP ITSELF IS COMPUTED BELOW, NOT HERE, and the distance is not
+  // cosmetic. It read `brief` at this point while `const brief` is declared
+  // further down the SAME block — a temporal dead zone, so every request threw
+  // `ReferenceError: Cannot access 'brief' before initialization` before the
+  // handler's try/catch could see it. A total outage that no test caught,
+  // because nothing executes this function outside deploy. The rationale stays
+  // here with the decision; the code lives where its inputs exist.
 
   // Either a reference link OR a described idea is required — the "describe an
   // idea" create path sends reference_note with an empty reference_url.
@@ -739,14 +739,30 @@ Deno.serve(async (req: Request) => {
   // the normal case for a creator with nothing of their own, and it must read as
   // "no product" rather than as an error.
   //
-  // ONE ROW BY CONSTRUCTION: `product_entities_one_owned_per_voice` is a partial
-  // unique index, so this cannot silently pick between duplicates.
-  const { data: ownedEntity } = await admin
+  // ONE ROW BY CONSTRUCTION — BUT ONLY PER VOICE, WHICH IS WHY THIS FILTERS ON
+  // ONE. `product_entities_one_owned_per_voice` is unique on `voice_id`, not on
+  // `owner_id`. Scoped to the owner alone, a creator with two brand voices (or
+  // one library-added row with a null `voice_id`) returns two rows, and
+  // `.maybeSingle()` answers that with an ERROR rather than a row. The error was
+  // discarded — only `data` was destructured — so `ownedEntity` came back null
+  // and the prompt told a creator with two businesses that they have no product.
+  //
+  // ⚖️ Scoping to the voice is also the CORRECT read, not merely the safe one:
+  // the blueprint is being written for THIS voice, and the entity minted against
+  // it is the one the creator confirmed here. The error is surfaced rather than
+  // swallowed, because "the lookup failed" and "they own nothing" produce very
+  // different scripts and must never be the same value.
+  const { data: ownedEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
     .select('name, type, relationship, personal_use, showability, evidence')
     .eq('owner_id', ownerId)
+    .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
     .maybeSingle()
+  if (ownedEntityErr) {
+    console.error('product_entities lookup failed', ownedEntityErr)
+    return json({ error: 'We could not read your product details. Please try again.' }, 503)
+  }
 
   const dna = profile?.dna ?? {}
   const vp = voice?.profile ?? null
@@ -757,6 +773,18 @@ Deno.serve(async (req: Request) => {
   // under). The shape is 0109's CHECK, which refuses an empty string, so a
   // present key is a real answer and no trimming or truthiness test is needed.
   const brief = (voice?.pre_script_brief ?? {}) as Record<string, string | undefined>
+
+  // The tone clamp, whose full rationale is at the TONE_RULE table above. It
+  // sits HERE, immediately after `brief`, because that is the first line at
+  // which its inputs are readable.
+  const voiceHasCeiling =
+    brief.workKind === 'professional'
+    || (typeof brief.forbiddenClaims === 'string' && brief.forbiddenClaims.trim() !== '')
+  const appliedTone = tone === 'punchy' && voiceHasCeiling ? 'balanced' : tone
+  const toneRule = TONE_RULE[appliedTone]
+  const toneClampLine = appliedTone === tone
+    ? ''
+    : '\n- TONE WAS CLAMPED. This creator works under stated limits on what they may claim, so the punchy register is not available to them: no hype openers ("you won\'t believe", "this will blow your mind"), no manufactured certainty. Write with energy, not with bait.'
   // The creator's real brand palette (hex), if set — used to steer scene
   // backgrounds, props and wardrobe so the shoot looks on-brand.
   const pal = (voice?.brand_kit as { palette?: { primary?: string; secondary?: string; highlight?: string } } | null)?.palette ?? null
