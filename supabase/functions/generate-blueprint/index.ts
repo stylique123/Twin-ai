@@ -673,7 +673,37 @@ Deno.serve(async (req: Request) => {
     punchy:
       'TONE = PUNCHY. High-energy, bold, pattern-interrupting hooks and fast, emphatic delivery. Lean into momentum and big stakes — while staying within the creator\'s DNA and avoiding outright false claims.',
   }
-  const toneRule = TONE_RULE[tone]
+  // TONE IS CLAMPED BY THE CREATOR, NOT LAYERED OVER THEM.
+  //
+  // ⚠️ MEASURED, NOT ARGUED. With the ownership prohibition, the beat plan and
+  // the full forbidden-claims block ALL present, `tone: punchy` still produced,
+  // for a licensed physician:
+  //
+  //     "You won't believe what these 5 health gadgets PROMISE you!"
+  //
+  // A claim-first corrector does not open with hype. The same run at `balanced`
+  // for a different creator produced no clickbait at all, which is what isolates
+  // tone as the cause: the setting was not colouring the delivery, it was
+  // overwriting the creator.
+  //
+  // ⚖️ A SLIDER MAY NARROW A VOICE AND MUST NEVER WIDEN IT. `punchy` degrades to
+  // `balanced` where the creator's own constraints forbid the register — they
+  // asked for more energy, not to sound like someone else. `understated` is
+  // never clamped: dialling energy DOWN cannot violate a voice.
+  //
+  // THE SIGNAL IS DATA WE ALREADY HOLD, not a new question. A regulated
+  // professional, or any creator who named claims they may not make, has told us
+  // their register has a ceiling. `readStoredBrief` guarantees these are real
+  // answers rather than empty strings.
+  const voiceHasCeiling =
+    brief.workKind === 'professional'
+    || (typeof brief.forbiddenClaims === 'string' && brief.forbiddenClaims.trim() !== '')
+  const appliedTone = tone === 'punchy' && voiceHasCeiling ? 'balanced' : tone
+  const toneRule = TONE_RULE[appliedTone]
+  const toneClampLine = appliedTone === tone
+    ? ''
+    : '\n- TONE WAS CLAMPED. This creator works under stated limits on what they may claim, so the punchy register is not available to them: no hype openers ("you won\'t believe", "this will blow your mind"), no manufactured certainty. Write with energy, not with bait.'
+
   // Either a reference link OR a described idea is required — the "describe an
   // idea" create path sends reference_note with an empty reference_url.
   if (!reference_url && !reference_note) return json({ error: 'Add a reference link or describe your idea.' }, 400)
@@ -974,6 +1004,28 @@ Deno.serve(async (req: Request) => {
             ? '\n- NOTHING OF ANYONE ELSE\'S appears. Do not introduce, recommend or name a third-party product the creator has not mentioned.'
             : ''
 
+    // MAY THIS VIDEO ASK FOR A PURCHASE AT ALL?
+    //
+    // ⚠️ ALSO MEASURED. A creator answering `promotes: none` was handed "check
+    // out my podcast and merch" — because owning something was treated as
+    // licence to sell in every video. It is not: ~85-95% of a well-known
+    // business creator's short-form sells nothing while he genuinely owns
+    // several companies, so "they have a product" cannot imply "pitch it".
+    //
+    // OWNING IS A STANDING FACT; SELLING IN THIS VIDEO IS A DECISION (§16a).
+    // Until a per-video intent field exists, the creator's own GOAL is the
+    // honest proxy — it is the only stated signal about what this content is
+    // for, and they chose it.
+    //
+    // SILENCE IS REFUSAL. An unanswered goal yields an engagement CTA, because
+    // the cost of withholding a pitch is one softer video and the cost of adding
+    // one nobody asked for is a creator sounding like an advert to their own
+    // audience.
+    const sellIntent = brief.goal === 'sell' || brief.goal === 'leads'
+    const ctaIntentLine = sellIntent
+      ? '\n- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
+      : '\n- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'
+
     // WHETHER THE PRODUCT CAN ACTUALLY BE PUT ON SCREEN.
     //
     // §5a's finding 4 and §5c's closing note in one line: a "Show the product"
@@ -1118,7 +1170,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${doNotUseBlock}${workKindLine}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${doNotUseBlock}${workKindLine}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -1228,7 +1280,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - visual_hook: what the viewer SEES in the first second, and why it interrupts a scroll. Something that changes on screen, not a description of the spoken line. Achievable with a phone and whatever is already in the creator's room.
 - concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
 - packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, FOLLOWING the creator's title style and thumbnail style from CREATOR DNA and using their brand colors. Every hook and script beat must pay off that exact promise.
-- ${fidelityRule}
+- ${fidelityRule}${toneClampLine}
 - ${toneRule}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
@@ -1335,7 +1387,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // links_stripped is COUNTS and PATHS only, never the removed text. The
       // text is attacker-influenced and belongs in the log line above, not in
       // a props blob that analytics queries and dashboards read back.
-      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path) } })
+      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, tone_requested: tone, tone_applied: appliedTone, cta_sell_intent: sellIntent, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path) } })
       .then(() => {}, () => {})
 
     return json(gen)
