@@ -48,6 +48,7 @@ function framingFor(
 }
 
 import { readBeatPlan, beatDurationSec, type PlannedBeat } from './beatPlan'
+import { blueprintCountIssues, type MechanismIssue } from './referenceMechanism'
 
 export interface BuildRecordingScriptInput {
   generationId: string
@@ -55,6 +56,22 @@ export interface BuildRecordingScriptInput {
   selectedHook?: string | null
   platform?: string
   wpm?: WpmPreset
+}
+
+/**
+ * THE COUNT CONTRACT, CHECKED AT THE LAST MOMENT IT IS STILL FREE (§5d).
+ *
+ * This adapter is where a blueprint stops being a document and becomes the
+ * thing a person reads off a teleprompter, so it is the last point at which a
+ * broken count can be caught before it is broken OUT LOUD, on camera.
+ *
+ * It reports rather than repairs. Deleting a beat to make the numbers agree
+ * would silently ship a shorter video than the creator was promised, and
+ * rewriting the hook here would put this module in the writing business — the
+ * thing §3's ownership matrix exists to prevent. The caller decides.
+ */
+export function recordingScriptCountIssues(blueprint: Blueprint): MechanismIssue[] {
+  return blueprintCountIssues(blueprint as unknown as Parameters<typeof blueprintCountIssues>[0])
 }
 
 export function buildRecordingScript(input: BuildRecordingScriptInput): RecordingScript {

@@ -22,6 +22,7 @@ import { ScriptEditor } from '../components/ScriptEditor'
 import { CreativeTransfer } from '../components/CreativeTransfer'
 import { isWhollyPlaceholder } from '../lib/api'
 import { UnfilledContainers } from '../components/UnfilledContainers'
+import { CountPromise } from '../components/CountPromise'
 import { DeclaredClips } from '../components/DeclaredClips'
 import { CoverButton } from '../components/CoverDialog'
 import { SchedulePostDialog } from '../components/SchedulePostDialog'
@@ -1007,6 +1008,7 @@ export default function Result() {
               </div>
               
               <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
+              <CountPromise blueprint={b} />
               <ScriptEditor
                 onScriptChange={onScriptChange}
                 generationId={gen.id}
@@ -1343,6 +1345,7 @@ export default function Result() {
                 </div>
                 
                 <UnfilledContainers generationId={gen.id} blueprint={b} hook={chosenHook} script={liveScript} />
+              <CountPromise blueprint={b} />
                 <ScriptEditor
                   onScriptChange={onScriptChange}
                   generationId={gen.id}

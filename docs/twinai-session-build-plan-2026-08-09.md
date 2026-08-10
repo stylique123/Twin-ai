@@ -612,7 +612,7 @@ the five-way status rule applied to the reframe's own work items.
 | Q3 mints the owned entity; Q4 no longer re-asks it | 🟡 merged to the branch, deploy unverified |
 | `showability` — show-vs-talk | 🟡 DERIVED from the capability flags, no new question, read by `generate-blueprint` |
 | Confirm screen chunked (§28 step 4) | 🟡 collapsible groups; deploy unverified |
-| **Mechanism record + count contract** | 🔴 **not started — the top item** |
+| **Mechanism record + count contract** | 🟡 `referenceMechanism.ts` + the `mechanism` block on `reference_read`. Extraction is a SCHEMA + PROMPT change; the check is wired at `recordingScriptAdapter` and rendered by `CountPromise` on the plan screen. **Unproven against a real generation** — no run has yet produced a `mechanism` record |
 | Four-field split incl. `wardrobe` | 🔴 |
 | Compatibility Gate (§16b) | 🔴 |
 | `productEvidence` onto the entity | 🔴 column exists, brief key still holds it |

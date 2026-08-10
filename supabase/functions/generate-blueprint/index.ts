@@ -95,8 +95,32 @@ const blueprintSchema = obj(
         format_label: str,
         why_it_works: arr(str),
         retention_map: arr(obj({ beat: str, goal: str, tactic: str }, ['beat', 'goal', 'tactic'])),
+        // THE MECHANISM, AS DATA — §5d.
+        //
+        // Everything else in `reference_read` is prose the writer is asked to
+        // follow in the general direction of. None of it survives as a
+        // CHECKABLE fact, which is why nothing noticed when one plan carried
+        // three different counts and none of them was the reference's.
+        //
+        // An enumerated list is not a flavour of a reference — it IS the
+        // mechanism. The count is the spine, the hook is where it is promised,
+        // and each beat owes the next. Extracted here so
+        // `countContractIssues` has an authority to check against, rather than
+        // trying to infer the intended number from the output that broke it.
+        mechanism: obj(
+          {
+            enumeration: obj(
+              { is_enumerated: str, count: str, unit: str },
+              ['is_enumerated', 'count', 'unit'],
+            ),
+            hook_promise: str,
+            rehook_after_item: str,
+            beat_debts: arr(str),
+          },
+          ['enumeration', 'hook_promise', 'rehook_after_item', 'beat_debts'],
+        ),
       },
-      ['platform', 'format_label', 'why_it_works', 'retention_map'],
+      ['platform', 'format_label', 'why_it_works', 'retention_map', 'mechanism'],
     ),
     concept: obj(
       {
@@ -243,6 +267,20 @@ PACKAGING (title + thumbnail, decide this FIRST): most short-form videos are won
 
 HOOKS (the single most important field):
 - Derive hooks from the CREATOR'S OWN DNA and best-performing patterns supplied below (their hook_style, signature vocabulary, recurring angles), fused with the reference's proven hook SHAPE. Hooks must sound like this creator on their best day, not generic copywriting.
+- reference_read.mechanism: READ THE FORMAT'S SPINE AND WRITE IT DOWN AS DATA, before you write anything else.
+  * enumeration.is_enumerated: "true" only if the reference promises a COUNT of items ("5 ways", "3 things I stopped buying"). Otherwise "false".
+  * enumeration.count: the promised number as a digit ("5"). Empty string if not enumerated. NEVER guess a number the reference does not state.
+  * enumeration.unit: what is counted, in the reference's own words ("ways", "mistakes", "things I stopped buying").
+  * hook_promise: in one line, the promise the reference's hook makes to the viewer.
+  * rehook_after_item: which item the mid-video re-hook lands after, as a digit. Empty string if there is no re-hook.
+  * beat_debts: one line per beat, what that beat OWES the next — the debt that makes a list a sequence rather than a pile.
+
+- THE COUNT IS THE FORMAT, AND IT IS A CONTRACT — not a stylistic detail. If enumeration.is_enumerated is "true", then ALL of the following are REQUIRED and a plan that breaks any of them is malformed:
+  * The recommended hook (hook_options[0]) MUST state the number. The hook is where an enumerated promise is MADE — "here are the 5 ways" is the contract the rest of the video pays off. A hook that drops the number has already broken the format before the second beat exists.
+  * concept.premise MUST state the SAME number. No other number may appear as the count anywhere in the plan.
+  * The script MUST deliver EVERY item, each explicitly marked in the spoken line ("the first…", "the second…", "the third…"). Announcing N and delivering fewer breaks OUT LOUD, on camera, in front of the audience — it is the one defect the creator cannot hide.
+  * NO SILENT BEAT may appear while items are still owed. A silent shot inside an open enumeration is where the count gets dropped. Silent beats are fine BEFORE the first item and AFTER the last.
+
 - hook_options: give 5, ordered best first. The FIRST one is your recommended pick. Each hook is one spoken line under ~12 words, scroll-stopping, and must visibly stack at least two of the four triggers above.
 - AT LEAST TWO of the five hooks must reuse the creator's signature vocabulary or their exact hook FORMULA from CREATOR DNA. A hook that could belong to any creator in this niche is a failure. Rewrite until it is unmistakably THEIRS.
 - The five hooks must be genuinely DIFFERENT angles (e.g. a contrarian claim, a specific number, a callout to the exact viewer, a mistake/confession), not five rewordings of one idea. Where CREATOR DNA lists hook_patterns, draw each hook from a DIFFERENT one of THEIR patterns so the variety is in their own voice, not generic. Variety is how the creator can reshoot without repeating themselves.

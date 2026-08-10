@@ -105,6 +105,13 @@ export interface Blueprint {
     format_label: string // e.g. "The Trust Builder"
     why_it_works: string[]
     retention_map: { beat: string; goal: string; tactic?: string }[]
+    // THE MECHANISM, AS DATA (§5d). Optional because every blueprint generated
+    // before this existed has none — and an absent mechanism must read as "we
+    // never measured it", never as "this reference does not enumerate".
+    // `readMechanism` degrades an absent one to not-enumerated, which withholds
+    // the count check rather than failing a script against a number nobody
+    // promised.
+    mechanism?: unknown
   }
   // CONCEPT & ADAPTATION — the actual video idea for THIS creator, plus an honest
   // translation of the reference's production scale down to what one person with a
