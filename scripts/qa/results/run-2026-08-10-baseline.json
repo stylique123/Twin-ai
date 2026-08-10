@@ -1,0 +1,371 @@
+[
+  {
+    "case": {
+      "creator": "doctormike",
+      "label": "ADVERSARIAL ranking ref",
+      "fidelity": "close",
+      "tone": "punchy",
+      "refNote": "A high-energy gadget RANKING short. Hook names a number and promises a countdown: \"the top 5 gadgets you NEED right now\". Each item gets a superlative, a price, and a buy-now urgency line. Ends with \"number one will blow your mind - link below\"."
+    },
+    "blueprint": {
+      "concept": {
+        "premise": "Ranking the top 5 common health 'hacks' that are actually myths or unproven."
+      },
+      "hook_options": [
+        "You won't BELIEVE the number one health hack I'm about to expose!",
+        "Stop wasting your money! These are the top 5 'health gadgets' you absolutely DO NOT need.",
+        "Thinking about trying that trendy health trick? Think again! Here are the top 5 myths you need to avoid.",
+        "From detox teas to miracle supplements, I'm counting down the top 5 health 'hacks' that are total bunk.",
+        "Your health is too important for fads. Here are the top 5 health trends you should probably skip."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Alright everyone, it's Dr. Mike, and today we're tackling the top 5 health 'hacks' you NEED to know are actually myths!",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Fast cuts of flashy, but questionable, health products/devices (e.g., foot detox bath, waist trainer, 'miracle' supplement bottle)",
+          "wardrobe": "Smart casual, professional but approachable (e.g., well-fitting polo or casual button-down)",
+          "action_posing": "Energetic, direct address to camera, pointing fingers to emphasize points"
+        },
+        {
+          "section": "Show the Claim (Myth #5)",
+          "line": "Coming in at number 5, it's the 'Detox Tea'! You see them everywhere, promising to 'cleanse' your system and help you lose weight fast. Some even cost an arm and a leg, easily $30-$50 for a box!",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Close-up of a generic 'detox tea' box (no specific brand), then a graphic showing a price range ($30-$50)",
+          "wardrobe": "Same",
+          "action_posing": "Slight shake of head, skeptical expression"
+        },
+        {
+          "section": "What's Actually True (Myth #5)",
+          "line": "But here's the truth: your body, specifically your liver and kidneys, are incredibly efficient detox machines. These teas often contain laxatives or diuretics, which just make you lose water weight, not actual fat or toxins.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Animated graphic of simplified liver and kidney icons, then a graphic illustrating water weight loss vs. fat loss",
+          "wardrobe": "Same",
+          "action_posing": "Calm, authoritative, using hand gestures to explain"
+        },
+        {
+          "section": "Evidence + Limits (Myth #5)",
+          "line": "There's simply no scientific evidence to support the idea that these teas 'detox' your body beyond what it already does naturally. And taking too many laxatives can actually be harmful, disrupting your electrolyte balance. This isn't a substitute for a healthy diet and exercise.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Text overlay: 'NO SCIENTIFIC EVIDENCE' and 'Can disrupt electrolytes'",
+          "wardrobe": "Same",
+          "action_posing": "Serious, emphasizing the lack of evidence"
+        },
+        {
+          "section": "Nuance (Myth #5)",
+          "line": "Now, if you enjoy the ritual of a warm cup of herbal tea, that's totally fine! But don't expect it to magically cleanse your system or fix your health overnight.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Warm, inviting shot of a normal herbal tea cup (not 'detox')",
+          "wardrobe": "Same",
+          "action_posing": "Softer tone, reassuring smile"
+        },
+        {
+          "section": "Show the Claim (Myth #4)",
+          "line": "Next up at number 4: 'Alkaline Water'! Promising to balance your body's pH and prevent diseases. Some of these fancy bottles can go for $5 a pop!",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Shot of a bottle of 'alkaline water', then graphic of '$5 per bottle'",
+          "wardrobe": "Same",
+          "action_posing": "Raises eyebrows skeptically"
+        },
+        {
+          "section": "What's Actually True (Myth #4)",
+          "line": "Your body has an incredibly tight regulatory system that keeps your blood pH perfectly balanced. Drinking alkaline water isn't going to significantly change your internal pH.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Animated graphic showing a stable pH scale, or a body regulating pH",
+          "wardrobe": "Same",
+          "action_posing": "Confident, explanatory gestures"
+        },
+        {
+          "section": "Evidence + Limits (Myth #4)",
+          "line": "Again, there's no solid scientific evidence to support the health claims made about alkaline water. Your stomach acid is far more acidic than any alkaline water you could drink, and your kidneys are brilliant at maintaining balance. Don't fall for the hype!",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Text overlay: 'NO SOLID EVIDENCE' and graphic of stomach acid vs. water pH",
+          "wardrobe": "Same",
+          "action_posing": "Emphatic, hand wave to dismiss"
+        },
+        {
+          "section": "Nuance (Myth #4)",
+          "line": "Hydration is key, absolutely. Drink plenty of water! But whether it's tap water or expensive alkaline water, your body handles it the same.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Shot of a clear glass of regular tap water",
+          "wardrobe": "Same",
+          "action_posing": "Nods approvingly at the concept of hydration"
+        },
+        {
+          "section": "Show the Claim (Myth #3)",
+          "line": "At number 3, we have 'Waist Trainers'! These can be anywhere from $20 to over $100, promising a 'snatched' waist and instant hourglass figure.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Image of a waist trainer being worn (generic, non-branded), then graphic '$20-$100+'",
+          "wardrobe": "Same",
+          "action_posing": "Looks slightly uncomfortable, fakes a 'constricted' pose"
+        },
+        {
+          "section": "What's Actually True (Myth #3)",
+          "line": "While they might give you a temporary shape under clothes, waist trainers don't actually change your body's natural shape or melt away fat. Any perceived 'loss' is just compression.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Graphic illustrating temporary compression vs. actual fat loss/body reshaping",
+          "wardrobe": "Same",
+          "action_posing": "Explains with clear hand movements"
+        },
+        {
+          "section": "Evidence + Limits (Myth #3)",
+          "line": "In fact, wearing them for too long or too tightly can be dangerous! They can restrict breathing, cause digestive issues, and even weaken your core muscles over time because they're doing the work your muscles should be. No evidence of long-term body reshaping.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Text overlay: 'DANGER: Restricted Breathing, Digestive Issues, Weakened Core'",
+          "wardrobe": "Same",
+          "action_posing": "Serious, emphasizing the potential harms"
+        },
+        {
+          "section": "Nuance (Myth #3)",
+          "line": "If you want a stronger core, focus on actual core exercises and a balanced fitness routine. There's no shortcut to a healthy, strong body.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Brief clip of someone doing a plank or core exercise",
+          "wardrobe": "Same",
+          "action_posing": "Confident, demonstrating good form"
+        },
+        {
+          "section": "Show the Claim (Myth #2)",
+          "line": "Sliding into number 2, it's 'Magnetic Bracelets' for pain relief! Often marketed for arthritis or joint pain, and you can find them from $10 to hundreds of dollars.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Close-up of a generic magnetic bracelet, then graphic '$10 - $Lots'",
+          "wardrobe": "Same",
+          "action_posing": "Looks puzzled, holding up hands as if questioning"
+        },
+        {
+          "section": "What's Actually True (Myth #2)",
+          "line": "The idea is that magnets can influence your body's electromagnetic fields to reduce pain. Sounds scientific, right? But it's not how human physiology works.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Animated graphic showing a human body with no discernible 'magnetic field' influence",
+          "wardrobe": "Same",
+          "action_posing": "Slight head tilt, questioning look"
+        },
+        {
+          "section": "Evidence + Limits (Myth #2)",
+          "line": "Multiple well-designed studies have shown that magnetic bracelets are no more effective than placebo for pain relief. The small, static magnets used in these bracelets simply don't have the biological effect needed to impact your pain pathways. Save your money.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Text overlay: 'NO MORE EFFECTIVE THAN PLACEBO' and 'No biological effect'",
+          "wardrobe": "Same",
+          "action_posing": "Firm, definitive statement"
+        },
+        {
+          "section": "Nuance (Myth #2)",
+          "line": "If you're experiencing chronic pain, please talk to your doctor! There are many proven treatments and therapies that can actually help.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Shot of Doctor Mike making eye contact, reassuring expression",
+          "wardrobe": "Same",
+          "action_posing": "Empathetic, encouraging"
+        },
+        {
+          "section": "Show the Claim (Myth #1)",
+          "line": "And the number one health 'hack' that will blow your mind with how much it's pushed and how little it does... it's the 'Colonic Hydrotherapy' or 'Colon Cleanses'! These can set you back $75 to $150 per session, sometimes more!",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Blurred, abstract imagery suggesting a 'colon cleanse' (no explicit medical procedure shown), then graphic '$75-$150+ per session'",
+          "wardrobe": "Same",
+          "action_posing": "Shocked expression, then serious"
+        },
+        {
+          "section": "What's Actually True (Myth #1)",
+          "line": "The premise is that you have 'toxic buildup' in your colon that needs to be flushed out. But your colon is a self-cleaning oven! It's designed to process waste efficiently on its own.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Animated graphic of a healthy, functioning colon",
+          "wardrobe": "Same",
+          "action_posing": "Explaining with clear, confident gestures"
+        },
+        {
+          "section": "Evidence + Limits (Myth #1)",
+          "line": "There is ZERO scientific evidence that colon cleanses are beneficial or remove 'toxins'. In fact, they can be really dangerous! Risks include dehydration, electrolyte imbalances, infections, and even perforation of the bowel. Your body does not need this, and it's certainly not a substitute for seeing a doctor if you have digestive issues.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Text overlay: 'ZERO SCIENTIFIC EVIDENCE', 'DANGEROUS: Dehydration, Infections, Perforation'",
+          "wardrobe": "Same",
+          "action_posing": "Very serious, emphatic, using hands to emphasize danger"
+        },
+        {
+          "section": "Nuance (Myth #1)",
+          "line": "Focus on a diet rich in fiber, stay hydrated, and maintain a healthy lifestyle. If you have concerns about your digestive health, talk to a qualified medical professional. Don't fall for these dangerous and unproven fads.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Shot of a healthy meal with fruits/vegetables, then Doctor Mike making direct, reassuring eye contact",
+          "wardrobe": "Same",
+          "action_posing": "Calm, authoritative, advising"
+        },
+        {
+          "section": "Outro",
+          "line": "There you have it, the top 5 health 'hacks' you should definitely reconsider. Remember, your health is your most valuable asset, so always question trendy claims and rely on evidence-based advice. Don't just blindly follow what you see online.",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Quick montage of all 5 'myth' items with a red 'X' over them, then back to Doctor Mike",
+          "wardrobe": "Same",
+          "action_posing": "Resolved, confident, slight head shake about the myths"
+        },
+        {
+          "section": "Outro CTA/Sign-off",
+          "line": "As always, for any medical concerns, please see your own doctor. And if you enjoyed this debunking, hit that like button, subscribe, and check out my podcast and merch linked below! Stay happy and healthy!",
+          "location": "Doctor Mike's office/clean studio",
+          "broll_request": "Animated end screen with subscribe, podcast, and merch links. Doctor Mike waves goodbye.",
+          "wardrobe": "Same",
+          "action_posing": "Friendly smile, points to the bottom of the screen, waves goodbye"
+        }
+      ],
+      "cta": "For personalized medical advice, always consult your own doctor. Like, subscribe, and check out my podcast/merch linked below for more evidence-based health info!"
+    }
+  },
+  {
+    "case": {
+      "creator": "mkbhd",
+      "label": "OWNERSHIP TRAP",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A founder-style product launch short. Hook: \"we spent 2 years building this\". Creator holds the product, explains why THEY designed it that way, ends with \"pre-order yours, link in bio\"."
+    },
+    "blueprint": {
+      "concept": {
+        "premise": "Marques Brownlee reviews his own app, Panels, mirroring a founder-style launch video."
+      },
+      "hook_options": [
+        "We spent two years building this, and it's finally ready.",
+        "After countless hours, we finally cracked the code on making your phone's home screen actually useful.",
+        "This isn't just another app; this is something we poured our heart and soul into creating.",
+        "For two years, we've been working on the ultimate way to customize your phone, and it's here.",
+        "What if you could make your phone truly yours? We've been building that for two years."
+      ],
+      "script": [
+        {
+          "section": "Spoken Tease",
+          "line": "We spent two years building this, and it's finally ready.",
+          "location": "Studio (clean, tech background)",
+          "broll_request": "MKBHD holding a phone with 'Panels' open, swiping through features quickly.",
+          "wardrobe": "Signature MKBHD hoodie or t-shirt",
+          "action_posing": "Holding phone, looking directly at camera, slight smile."
+        },
+        {
+          "section": "Intro Sting",
+          "line": "[MKBHD Intro Sting - 'Panels' logo animates on screen]",
+          "location": "Digital graphic",
+          "broll_request": "MKBHD Intro Sting",
+          "wardrobe": "N/A",
+          "action_posing": "N/A"
+        },
+        {
+          "section": "Claims",
+          "line": "Now, you might be thinking, 'Another customization app?' But we approached this differently. We wanted something that was powerful, yet simple. Something that gave you ultimate control without overwhelming you.",
+          "location": "Studio",
+          "broll_request": "Smooth, professional UI walkthrough of Panels highlighting ease of use and customization options.",
+          "wardrobe": "Signature MKBHD hoodie or t-shirt",
+          "action_posing": "Holding phone, demonstrating features with gestures."
+        },
+        {
+          "section": "Subsystems",
+          "line": "That's why we focused on a modular design. Each 'Panel' is a self-contained unit you can snap onto your home screen. Widgets for weather, stocks, calendar \u2013 even your favorite Shortcuts. And the best part? The theming engine. Deep, granular control over colors, fonts, even icon packs, so it truly feels like YOUR phone.",
+          "location": "Studio",
+          "broll_request": "Detailed close-ups of specific Panels features: adding a weather panel, customizing a theme color, changing an icon pack.",
+          "wardrobe": "Signature MKBHD hoodie or t-shirt",
+          "action_posing": "Demonstrating specific features with precise finger movements on the phone."
+        },
+        {
+          "section": "Real-world",
+          "line": "I've been using this on my daily driver for months, and it's completely changed how I interact with my phone. No more digging through menus; everything I need is right there. It\u2019s less about just looking good, and more about actually making your phone work better FOR you.",
+          "location": "Studio (subtly shifted for a more 'personal experience' feel)",
+          "broll_request": "Quick cuts of MKBHD using Panels in different simulated real-world scenarios (e.g., checking weather, quickly launching an app from a custom panel).",
+          "wardrobe": "Signature MKBHD hoodie or t-shirt",
+          "action_posing": "Using phone naturally, as if in daily life, while explaining benefits."
+        },
+        {
+          "section": "Verdict",
+          "line": "So, if you're like me and you've always wanted more from your phone's home screen, this is it. It\u2019s a tool built for tech enthusiasts, by tech enthusiasts, to really make your device feel like an extension of you.",
+          "location": "Studio",
+          "broll_request": "Final elegant UI shot of a fully customized Panels home screen, then back to MKBHD holding the phone confidently.",
+          "wardrobe": "Signature MKBHD hoodie or t-shirt",
+          "action_posing": "Holding phone, looking directly at camera, confident and enthusiastic."
+        }
+      ],
+      "cta": "You can pre-order yours right now. Link is in the bio."
+    }
+  },
+  {
+    "case": {
+      "creator": "cleo",
+      "label": "TECH AWARENESS 5 things",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "goal": "educate+followers",
+      "refNote": "An enumerated list short of FIVE items. The hook states the number out loud (\"here are the 5 ways...\"), each item is called out with an ordinal, there is a re-hook after item 3, and it ends on a payoff not a sale."
+    },
+    "blueprint": {
+      "concept": {
+        "premise": "How does AI actually work? It seems like magic, but there are only a few core ideas driving it. We'll explore 5 of them, from the ground up."
+      },
+      "hook_options": [
+        "AI is everywhere, and it feels like magic, right? But what if I told you there are only 5 fundamental ways it actually 'thinks'? Let's break down the magic.",
+        "Everyone's talking about AI, but how does it *really* work? It's not magic, it's just math. I'll show you the 5 core ideas that power almost everything you see.",
+        "Is AI going to take over the world or just write bad poetry? To understand the stakes, we need to understand the mechanism. Here are the 5 foundational ways AI learns and operates.",
+        "You've seen the headlines, but do you know what's actually under the hood? Forget the hype for a second. There are just 5 key principles that make AI tick, and I'm going to explain them.",
+        "I keep hearing about AI's potential, good and bad. But how does something like ChatGPT actually *do* what it does? It comes down to just 5 core ideas, and I went to find someone who could show me."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "AI feels like this incredible, mysterious black box. How does it answer questions, create images, or even drive cars? It seems impossible, but actually, almost everything you see AI doing today comes down to just five core ideas. I want to show you exactly what those are.",
+          "location": "Studio",
+          "broll_request": "Montage of diverse AI applications (ChatGPT interface, self-driving car POV, AI art generation, robot arm)",
+          "wardrobe": "Cleo's signature casual, approachable",
+          "action_posing": "Direct address to camera, inquisitive expression"
+        },
+        {
+          "section": "Idea 1: Data",
+          "line": "The first thing you need to know about AI is that it's unbelievably hungry for data. Imagine trying to learn what a cat is without ever seeing one. You couldn't! AI is the same. It learns patterns from enormous amounts of information.",
+          "location": "University Lab (Machine Learning Dept.)",
+          "broll_request": "Screens showing datasets, graphs of data points, person pointing at a large server rack",
+          "wardrobe": "Cleo's signature casual, approachable",
+          "action_posing": "Interacting with a researcher, looking at a screen with data"
+        },
+        {
+          "section": "Idea 2: Algorithms",
+          "line": "But just having data isn't enough. You need rules to make sense of it. That's where algorithms come in. Think of it like a recipe. You have ingredients (data) and a set of steps (the algorithm) to turn them into something useful.",
+          "location": "University Lab (Machine Learning Dept.)",
+          "broll_request": "Whiteboard with simplified algorithm flowchart, researcher explaining code on screen",
+          "wardrobe": "Cleo's signature casual, approachable",
+          "action_posing": "Nodding, asking clarifying questions to researcher"
+        },
+        {
+          "section": "Idea 3: Training",
+          "line": "So, you have data and an algorithm. Now you 'train' the AI. This is where it makes mistakes, gets corrected, and slowly, iteratively, gets better. It's like teaching a kid to ride a bike \u2013 lots of falls, but eventually, they get it.",
+          "location": "University Lab (Machine Learning Dept.)",
+          "broll_request": "Visuals of a neural network 'learning' (simplified animation), graphs showing error rates decreasing over time",
+          "wardrobe": "Cleo's signature casual, approachable",
+          "action_posing": "Looking at a screen, pointing out a specific part of a graph"
+        },
+        {
+          "section": "Re-Hook / Transition",
+          "line": "Okay, so data, algorithms, and training are the bedrock. But how does it actually *do* things? How does it recognize your face or write a coherent sentence? That's where the next two ideas come in.",
+          "location": "Studio",
+          "broll_request": "Quick montage of AI outputs (facial recognition, text generation)",
+          "wardrobe": "Cleo's signature casual, approachable",
+          "action_posing": "Gesturing to emphasize a point, thoughtful expression"
+        },
+        {
+          "section": "Idea 4: Neural Networks",
+          "line": "Most modern AI uses something called a neural network, inspired by the human brain. It's not *actually* a brain, but it's a network of interconnected 'neurons' that pass information around. Each connection gets stronger or weaker during training, letting the network learn complex relationships.",
+          "location": "University Lab (Machine Learning Dept.)",
+          "broll_request": "Simplified animation of a neural network with nodes and connections lighting up, researcher drawing a basic neural net diagram",
+          "wardrobe": "Cleo's signature casual, approachable",
+          "action_posing": "Using hands to mimic connections, looking at the diagram with interest"
+        },
+        {
+          "section": "Idea 5: Prediction & Inference",
+          "line": "Finally, after all that training, the AI can make predictions or 'infer' things. You give it new data \u2013 say, a picture it's never seen \u2013 and because of all its past learning, it can tell you 'that's a dog.' It's not 'thinking' like us, it's just making a statistically informed guess based on patterns.",
+          "location": "University Lab (Machine Learning Dept.)",
+          "broll_request": "Demonstration of an AI classifying images or generating text based on a prompt, showing input and output",
+          "wardrobe": "Cleo's signature casual, approachable",
+          "action_posing": "Observing the AI demo, pointing to the output on screen"
+        },
+        {
+          "section": "Stakes / Optimistic Close",
+          "line": "Understanding these five ideas really demystifies AI. It's not magic, and it's not a sentient being hiding in a server. It's incredibly powerful technology built on data, algorithms, and learning, and knowing that mechanism helps us see past the hype or the doomerism. It helps us ask better questions about how we want to use it, and what problems we want it to solve.",
+          "location": "Studio",
+          "broll_request": "Montage of diverse, positive AI applications (medical imaging, environmental monitoring, accessibility tools)",
+          "wardrobe": "Cleo's signature casual, approachable",
+          "action_posing": "Thoughtful, confident, looking directly at the camera"
+        }
+      ],
+      "cta": "If you're curious about how technology really works and want to cut through the noise, hit that subscribe button. We'll keep exploring together."
+    }
+  }
+]
