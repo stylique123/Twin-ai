@@ -76,6 +76,36 @@ describe('edge ↔ shared substance-check parity', () => {
   it('the check reads the knowledge the PROMPT carried, not the whole store', () => {
     // Checking against `kRows` would excuse the fabrication this exists to
     // catch: a beat could cite something the writer was never shown.
-    expect(EDGE).toMatch(/substanceIssues\(declared, speakable\.map/)
+    //
+    // ⚖️ ASSERTS THE INVARIANT, NOT THE SPELLING. The first version pinned the
+    // literal `substanceIssues(declared, speakable.map` and broke the moment a
+    // second checker needed the same set and it was lifted to a named const —
+    // a refactor, not a regression. What must hold is that the supplied set is
+    // built from `speakable` and that BOTH checks read it.
+    expect(EDGE).toMatch(/const suppliedForCheck = speakable\.map/)
+    expect(EDGE).toMatch(/substanceIssues\(declared, suppliedForCheck\)/)
+    expect(EDGE).toMatch(/entitlementFailures\(declared, suppliedForCheck\)/)
+    // And neither may reach past it to the full store.
+    expect(EDGE).not.toMatch(/substanceIssues\(declared, kRows/)
+    expect(EDGE).not.toMatch(/entitlementFailures\(declared, kRows/)
+  })
+
+  it('entitlement is ENFORCED, not merely reported', () => {
+    // The behaviour that let 11 fabricated histories ship was detect-then-log.
+    // A repair must be attempted, re-checked, and what survives must never be
+    // spoken as written.
+    expect(EDGE).toMatch(/entitlement_blocked/)
+    expect(EDGE).toMatch(/entitlement_repair/)
+    // Re-check after repair — a repair nobody verified is the trust we just withdrew.
+    expect(EDGE).toMatch(/entFails = entitlementFailures\(declared, suppliedForCheck\)[\s\S]{0,200}still_failing/)
+    // Survivors become a question, not a fabrication.
+    expect(EDGE).toMatch(/b\.substance = 'needs_user'/)
+  })
+
+  it('the claim-strength patterns match the shared module character for character', () => {
+    expect(lift(EDGE, 'the edge function', 'CLAIM_HISTORY'))
+      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimEntitlement.ts'), 'utf8'), 'shared', 'HISTORY'))
+    expect(lift(EDGE, 'the edge function', 'CLAIM_POSITION'))
+      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimEntitlement.ts'), 'utf8'), 'shared', 'POSITION'))
   })
 })

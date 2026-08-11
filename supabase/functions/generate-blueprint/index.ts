@@ -237,6 +237,113 @@ function substanceIssues(
   return out
 }
 
+
+// ENTITLEMENT — DO WE HAVE THE RIGHT TO SAY THIS, IN THIS WAY?
+//
+// Inlined from `packages/shared/src/claimEntitlement.ts`, where the rules and
+// their 14 tests live; `claimEntitlementParity.test.ts` fails if the two drift.
+//
+// ⚠️ TRACEABILITY IS NOT ENTITLEMENT, and `substanceIssues` above only checks
+// the first. The line that proved it, from a real 112-run matrix:
+//
+//     "those high-end, wired earbuds I used to swear by"
+//
+// cited to the stored item "wired vs wireless earbuds". The citation is REAL, so
+// the substance check passed it. What the evidence supports is "he covered this
+// topic"; what the line says is "he owned these and loved them". Eleven such
+// lines shipped past a green matrix because nobody compared the STRENGTH of the
+// claim against the LEVEL of the evidence.
+const CLAIM_HISTORY =
+  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran|stopped|quit|regret(?:ted)?)\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI used to\b/i
+const CLAIM_POSITION =
+  /\bI (?:still |really |honestly |personally |genuinely )*(?:think|reckon|believe|say|feel|would argue)\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? /i
+
+type ClaimStrength = 'discussion' | 'position' | 'history'
+/** History first: "I used to think I needed every accessory" matches both and is
+ *  a history — it asserts a past state of the creator's life. */
+function claimStrength(line: string): ClaimStrength {
+  const t = String(line ?? '')
+  if (CLAIM_HISTORY.test(t)) return 'history'
+  if (CLAIM_POSITION.test(t)) return 'position'
+  return 'discussion'
+}
+const NEED: Record<ClaimStrength, number> = { discussion: 0, position: 1, history: 2 }
+const LEVEL_RANK: Record<string, number> = { coverage: 0, opinion: 1, experience: 2 }
+
+/** Strongest level the SUPPLIED knowledge reaches. `null` = nothing supplied,
+ *  which is not coverage and must not be rounded up to it. */
+function bestAvailableLevel(supplied: readonly SuppliedKnowledge[]): string | null {
+  let best: string | null = null
+  for (const i of supplied) {
+    const l = suppliedLevel(i)
+    if (best === null || LEVEL_RANK[l] > LEVEL_RANK[best]) best = l
+  }
+  return best
+}
+
+/** What the REGENERATOR is told. ⚠️ NEVER a rewritten sentence — a first draft of
+ *  this repaired by regex and turned "I used to struggle with distractions" into
+ *  "I've looked at to struggle with distractions". A false line rewritten into an
+ *  unreadable one fails where nobody notices. Prose needs the thing that writes. */
+function repairFor(strength: ClaimStrength, available: string | null): string {
+  if (available === null) {
+    return 'Nothing is on record for this creator. Rewrite this beat to carry no claim about them at all — describe the subject, not the person.'
+  }
+  if (strength === 'history') {
+    return available === 'opinion'
+      ? 'Rewrite WITHOUT any personal history. They are on record holding a view about this, so state the view — never an action they took, owned, bought, tried or stopped.'
+      : 'Rewrite WITHOUT any first-person claim. Only the subject is on record, not their experience of it. Say what is true of the thing, not what they did with it.'
+  }
+  return 'Rewrite WITHOUT stating this as the creator\'s own position. It is a subject they have covered, not a view they are on record holding.'
+}
+
+/** The repair call returns line rewrites, NOT a blueprint — so it needs its own
+ *  schema. `required` keeps a rewrite from arriving without the index that says
+ *  which beat it replaces. */
+const REPAIR_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    rewrites: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { index: { type: 'STRING' }, line: { type: 'STRING' } },
+        required: ['index', 'line'],
+      },
+    },
+  },
+  required: ['rewrites'],
+}
+
+interface EntitlementFail { index: number; line: string; repair: string; ask: string | null }
+
+/** Every beat whose claim outruns the evidence. Empty for an honest script. */
+function entitlementFailures(
+  beats: unknown,
+  supplied: readonly SuppliedKnowledge[],
+): EntitlementFail[] {
+  if (!Array.isArray(beats)) return []
+  const available = bestAvailableLevel(supplied)
+  const out: EntitlementFail[] = []
+  beats.forEach((raw, index) => {
+    const line = typeof (raw as { line?: unknown })?.line === 'string' ? (raw as { line: string }).line : ''
+    if (!line) return
+    const strength = claimStrength(line)
+    const entitled = available !== null && LEVEL_RANK[available] >= NEED[strength]
+    if (entitled) return
+    out.push({
+      index, line, repair: repairFor(strength, available),
+      // ⚖️ ONE TARGETED QUESTION BEATS ANY REFRAMING. A creator naming the gadget
+      // they actually regret produces a better video than the safest rewrite of
+      // a claim they never made.
+      ask: strength === 'history'
+        ? 'This beat only works as something you have personally done. What is your real example?'
+        : null,
+    })
+  })
+  return out
+}
+
 // Gemini responseSchema (OpenAPI subset: uppercase types, no additionalProperties).
 // Guarantees the shape the frontend renders.
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -550,6 +657,12 @@ async function callOnce(
   model: string,
   thinkBudget: number,
   timeoutMs: number,
+  // ⚠️ THE SCHEMA IS A PARAMETER BECAUSE A SECOND CALLER EXISTS. It was hard-wired
+  // to `blueprintSchema`, so the entitlement repair below — which asks for
+  // {"rewrites":[…]} — would have been forced into blueprint shape and returned
+  // something unparseable on every attempt. Caught before it shipped; the fix is
+  // one argument rather than a second, untested provider path.
+  schema: unknown = blueprintSchema,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
   const ctrl = new AbortController()
@@ -570,7 +683,7 @@ async function callOnce(
           temperature: 0.8,
           maxOutputTokens: 32768,
           responseMimeType: 'application/json',
-          responseSchema: blueprintSchema,
+          responseSchema: schema,
           // Cap reasoning tokens so a thinking model doesn't over-deliberate past
           // the wall-clock. 0 = unbounded/dynamic.
           ...(thinkBudget > 0 ? { thinkingConfig: { thinkingBudget: thinkBudget } } : {}),
@@ -701,7 +814,7 @@ async function composePosition(apiKey: string, facts: string): Promise<string | 
   }
 }
 
-async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
+async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
   // on BOTH attempts (edge logs showed repeated 500s at ~70-91s → "We hit a snag"
@@ -730,7 +843,7 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i]
     try {
-      const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs)
+      const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
       if (blueprintComplete(parsed)) return text // complete → accept
@@ -1741,9 +1854,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // against the fuller store would excuse exactly the fabrication this exists
     // to catch, because a beat could cite something the writer never saw.
     const declared = (templated.bp as { script?: unknown })?.script
-    const issues = substanceIssues(declared, speakable.map((k) => ({
+    // ⚖️ THE KNOWLEDGE THE PROMPT ACTUALLY CARRIED, shared by both checks.
+    // Checking either against the fuller store would license claims the writer
+    // could not have known.
+    const suppliedForCheck = speakable.map((k) => ({
       kind: String(k.kind), text: String(k.text), basis: String(k.basis),
-    })))
+    }))
+    const issues = substanceIssues(declared, suppliedForCheck)
     const bySource: Record<string, number> = {}
     if (Array.isArray(declared)) {
       for (const b of declared) {
@@ -1768,6 +1885,78 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // back to, and silently deleting a beat would hand the creator a video
       // with a hole in it rather than a sentence they can check.
       console.warn(JSON.stringify({ event: 'substance_unsupported', details: issues.slice(0, 20) }))
+    }
+
+    // ── ENFORCEMENT: BLOCK, REGENERATE, RE-CHECK ────────────────────────────
+    //
+    // ⚠️ THE BEHAVIOUR THIS REPLACES. Every substance check above this line
+    // REPORTED and shipped anyway. Measured over 112 real runs, that let 11
+    // fabricated personal histories through — "those wired earbuds I used to
+    // swear by", "once I started building my own" — each attached to a creator
+    // who never said it. A guard that only writes to a log is a smoke alarm
+    // wired to a dashboard.
+    //
+    // ⚖️ ONE REPAIR CALL, NOT A LOOP. A second model call is real latency and
+    // real spend on a path the creator already paid for, so this buys exactly
+    // one attempt and then stops guessing. Beats that survive the attempt are
+    // NOT shipped as written — see below.
+    let entFails = entitlementFailures(declared, suppliedForCheck)
+    const creatorQuestions: string[] = []
+    if (entFails.length) {
+      console.warn(JSON.stringify({
+        event: 'entitlement_blocked',
+        beats: entFails.length,
+        of: Array.isArray(declared) ? declared.length : 0,
+        available_evidence: bestAvailableLevel(suppliedForCheck),
+        strengths: entFails.map((f) => claimStrength(f.line)),
+      }))
+      try {
+        const repairPrompt = 'These script beats claim more about the creator than the evidence supports.'
+          + ' Rewrite ONLY the lines listed. Keep each line the same length, purpose and position in the'
+          + ' video. Do not add new facts. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
+          + entFails.map((f) => `index ${f.index}\nLINE: ${f.line}\nREQUIRED FIX: ${f.repair}`).join('\n\n')
+        // ⚖️ `callModel`, not `callOnce`: the repair inherits the same attempt
+        // ladder, timeout and model pin as the draft. A repair on a different
+        // path is a second provider integration nobody tests.
+        const repaired = await callModel(
+          apiKey,
+          'You rewrite single script lines to remove claims the evidence does not support.'
+          + ' You never invent a new fact, product, number or experience. You return JSON only.',
+          repairPrompt,
+          REPAIR_SCHEMA,
+        )
+        const parsed = JSON.parse(repaired) as { rewrites?: Array<{ index?: unknown; line?: unknown }> }
+        let applied = 0
+        for (const r of parsed?.rewrites ?? []) {
+          const i = Number(r?.index)
+          const line = typeof r?.line === 'string' ? r.line.trim() : ''
+          if (!Number.isInteger(i) || !line || !Array.isArray(declared) || !declared[i]) continue
+          ;(declared[i] as { line?: string }).line = line
+          applied++
+        }
+        // RE-CHECK. A repair nobody verified is the same trust we just withdrew
+        // from the first draft.
+        entFails = entitlementFailures(declared, suppliedForCheck)
+        console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
+      } catch (e) {
+        console.error('entitlement repair failed', String((e as Error)?.message ?? e))
+      }
+    }
+    // ⚖️ WHAT SURVIVES THE REPAIR IS NEVER SPOKEN AS WRITTEN. The beat is not
+    // deleted — a script shorter than the hook promised is the failure the count
+    // contract exists to stop — and it is not shipped as a fabrication either.
+    // It becomes a visible question addressed to the creator, which is the third
+    // of the three honest answers: research, reframe, or ASK.
+    for (const f of entFails) {
+      const b = Array.isArray(declared) ? (declared[f.index] as { line?: string; substance?: string } | undefined) : undefined
+      if (!b) continue
+      const q = f.ask ?? 'Only you can supply this. What would you actually say here?'
+      b.line = q
+      b.substance = 'needs_user'
+      if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
+    }
+    if (entFails.length) {
+      console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
     }
 
     const weakUnit = isContentlessUnit(
