@@ -76,7 +76,20 @@ const EMPTY = [
    great, and I'll see you in the next video.`,
 ]
 
-async function extract(label, transcripts) {
+
+// REAL CAPTIONS, read off the owner-supplied channel pages. This is the source
+// the caption extractor exists for: Johnny's titles name three phones in three
+// thumbnails, and none of that reaches the system today.
+const CAPTIONS = [
+  "I BOUGHT SAMSUNG'S PASSPORT SIZED FOLDABLE (SAMSUNG Z FOLD 8)",
+  'FIXING THE PHONE GOOGLE DOESN\'T WANT YOU TO BUY (FAIL)',
+  "THE PHONE GOOGLE DOESN'T WANT YOU TO BUY - GOOGLE PIXEL (1ST GEN)",
+  "I'M GIVING AWAY AN IPHONE 14 PRO MAX - HERE'S HOW YOU ENTER",
+  'I BOUGHT THE MOST UNIQUE SAMSUNG PHONE?!! SAMSUNG A80',
+  'I BOUGHT A BROKEN IPHONE 14 PRO MAX TO GIVE TO YOU',
+]
+
+async function extract(label, transcripts, system) {
   const corpus = transcripts.map((t, i) => `--- VIDEO ${i + 1} (spoken) ---\n${t}`).join('\n\n')
   const r = await fetch(
     'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
@@ -84,7 +97,7 @@ async function extract(label, transcripts) {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-goog-api-key': KEY },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: KNOWLEDGE_SYSTEM }] },
+        systemInstruction: { parts: [{ text: system ?? KNOWLEDGE_SYSTEM }] },
         contents: [{ parts: [{ text: `CREATOR: @tester on youtube\nSPOKEN TRANSCRIPTS:\n${corpus}\n\nRecord what this creator knows, believes, has done, and has already covered.` }] }],
         generationConfig: {
           responseMimeType: 'application/json',
@@ -118,7 +131,9 @@ async function extract(label, transcripts) {
 }
 
 const out = []
+const CAPTION_SYSTEM = liftConst('CAPTION_SYSTEM')
 for (const [label, t] of [['SUBSTANTIVE', SUBSTANTIVE], ['NAMED', NAMED], ['EMPTY', EMPTY]]) {
   out.push(await extract(label, t))
 }
+out.push(await extract('CAPTIONS(johnny)', CAPTIONS, CAPTION_SYSTEM))
 console.log(JSON.stringify(out, null, 2))

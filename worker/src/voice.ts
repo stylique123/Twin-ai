@@ -254,6 +254,58 @@ export interface RawKnowledgeItem {
 /** Distil what a creator knows from what they said. Returns raw rows for the
  *  caller to validate through `readKnowledge` — this function does not decide
  *  what is storable, it only asks. */
+/**
+ * CAPTIONS ARE EVIDENCE OF A DIFFERENT KIND, and the difference decides `basis`.
+ *
+ * ⚠️ WHY THIS EXISTS. Knowledge came only from up to five transcribed videos, so
+ * a channel with 4,500 uploads contributed five. Captions and titles are already
+ * scraped for every post, cost nothing extra, and are the densest source of
+ * NAMED THINGS in the system — "I bought the Samsung Z Fold 8" is a product and
+ * a covered topic in six words.
+ *
+ * ⚖️ BUT A TITLE IS A PROMISE, NOT A STATEMENT. "I bought the Z Fold 8" proves
+ * they made a video about that phone. It does NOT prove what they concluded
+ * about it, and treating a headline as a position is exactly how a guess becomes
+ * a quote. So this asks for `covered` and `product` freely — both are facts a
+ * title genuinely carries — and refuses to file an opinion as `stated` from a
+ * caption alone, because nobody heard them say it.
+ */
+const CAPTION_SYSTEM = `You are TwinAI's Creator Knowledge engine, reading CAPTIONS AND TITLES rather than speech. Another system already captured how this creator talks. Record WHAT THEIR VIDEOS ARE ABOUT.
+- A TITLE IS A PROMISE, NOT A STATEMENT. "I bought the Samsung Z Fold 8" tells you they covered that phone. It does NOT tell you what they concluded about it. Never write a conclusion a caption does not contain.
+- Because of that: use kind "covered" for a subject they have clearly made a video about, and kind "product" for a named product, model or tool they featured. Use "topic" for a subject they return to across several titles.
+- DO NOT emit "opinion", "claim" or "fact" from a caption unless the caption ITSELF states it outright ("megapixels are overrated" in the title is a stance; "I bought the new iPhone" is not).
+- basis is "demonstrated" for anything read from a title — they demonstrably made the video — and "stated" ONLY when the caption spells the position out in words. Never "stated" from a headline that merely names a thing.
+- CARRY THE TITLE'S ANGLE, NOT JUST ITS NOUN. Titles contain more than a product name and you must keep what is there: "I bought Samsung's PASSPORT SIZED foldable" carries a descriptor, "fixing the phone Google doesn't want you to buy (FAIL)" carries both a framing and an outcome, and "the most unique Samsung phone" carries a judgement. Record "took apart the Z Fold 8, Samsung's passport-sized foldable" rather than "Samsung Z Fold 8". A bare product name is NOT an item — it records that a word was said and nothing else, which is as useless to a script as a vague opinion with no product attached.
+- DO NOT emit the same subject twice as both "product" and "covered". Pick the one the title is really about: "covered" when the video is a treatment of the subject, "product" when it is the thing being featured.
+- times_seen is how many captions carried it, as a digit. confidence 0 to 1 as a decimal. source_video is the caption's number as a digit.
+- RETURN AN EMPTY LIST IF THE CAPTIONS CARRY NOTHING. Engagement bait, "link in bio" and pure hype are not knowledge.`
+
+/** Distil what a creator's CAPTIONS say their videos are about. Same row shape
+ *  as the audio extractor, validated by the same reader. */
+export async function extractKnowledgeFromCaptions(
+  handle: string,
+  platform: string,
+  captions: string[],
+): Promise<RawKnowledgeItem[]> {
+  const usable = captions.map((c) => String(c ?? '').trim()).filter((c) => c.length > 8)
+  if (!usable.length) return []
+  const corpus = usable.slice(0, 120)
+    .map((c, i) => `--- CAPTION ${i + 1} ---\n${c}`).join('\n')
+    .slice(0, 12000)
+  const prompt = `CREATOR: @${handle} on ${platform}
+CAPTIONS AND TITLES:
+${corpus}
+
+Record what these videos are about, what products they name, and what subjects are already covered.`
+  try {
+    const out = (await geminiJson(CAPTION_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
+    return Array.isArray(out?.items) ? out.items : []
+  } catch {
+    // Enrichment, never a gate — same rule as the audio extractor above.
+    return []
+  }
+}
+
 export async function extractKnowledgeFromAudio(
   handle: string,
   platform: string,

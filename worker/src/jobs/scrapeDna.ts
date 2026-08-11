@@ -151,7 +151,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
         // best-effort upgrade — NEVER retry (a retry re-runs the paid transcript
         // calls; default 5 attempts could mean up to 25 paid calls) (#10).
         max_attempts: 1,
-        payload: { brand_voice_id: voiceId, handle, platform, urls },
+        payload: { brand_voice_id: voiceId, handle, platform, urls, captions: posts.map((x) => x.text).filter(Boolean).slice(0, 120) },
       })
     }
   } catch (err) {

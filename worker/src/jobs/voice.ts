@@ -1,13 +1,13 @@
 import { db, type Job } from '../db.js'
 import { transcribeFromUrl } from '../media.js'
-import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio } from '../voice.js'
+import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
 
 // Handles `build_voice` jobs — the audio upgrade for a brand voice.
 // payload: { brand_voice_id, handle, platform, urls: string[] }
 // Transcribes the creator's top videos and re-synthesizes the voice from their
 // actual spoken audio, then updates the (already-ready) brand_voices.profile.
 export async function handleBuildVoice(job: Job): Promise<Record<string, unknown>> {
-  const p = job.payload as { brand_voice_id?: string; handle?: string; platform?: string; urls?: string[] }
+  const p = job.payload as { brand_voice_id?: string; handle?: string; platform?: string; urls?: string[]; captions?: string[] }
   const voiceId = String(p.brand_voice_id ?? '')
   const handle = String(p.handle ?? '')
   const platform = String(p.platform ?? 'tiktok')
@@ -103,7 +103,20 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
   // No owner means no row can be attributed, and an unattributed claim about a
   // person is worse than none at all.
   if (ownerId) try {
-    const raw = await extractKnowledgeFromAudio(handle, platform, transcripts)
+    // ⚖️ TWO SOURCES, ONE STORE. Speech carries positions; captions carry NAMED
+    // THINGS and what has already been covered, across the whole channel rather
+    // than the five videos we could afford to transcribe. They are extracted
+    // separately because the evidence is of a different kind — a title proves a
+    // video was made, not what it concluded — and the caption prompt refuses to
+    // file an opinion as `stated` for exactly that reason.
+    const captions = Array.isArray(p.captions) ? p.captions : []
+    const [fromAudio, fromCaptions] = await Promise.all([
+      extractKnowledgeFromAudio(handle, platform, transcripts),
+      extractKnowledgeFromCaptions(handle, platform, captions),
+    ])
+    // Audio first: where both sources produced the same claim, the one somebody
+    // was HEARD saying should win the dedup below.
+    const raw = [...fromAudio, ...fromCaptions]
     const rows = raw
       .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
       .slice(0, 40)
