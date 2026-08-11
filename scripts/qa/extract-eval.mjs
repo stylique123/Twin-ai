@@ -89,6 +89,17 @@ const CAPTIONS = [
   'I BOUGHT A BROKEN IPHONE 14 PRO MAX TO GIVE TO YOU',
 ]
 
+
+// EVERY TITLE LEGIBLE IN THE OWNER'S FIVE CHANNEL SCREENSHOTS.
+//
+// ⚠️ NOT A SCRAPE, AND THE DIFFERENCE MATTERS. Three routes to a real scan are
+// closed in this environment: the Apify and Supabase MCP tools need an approval
+// prompt a non-interactive session cannot show, and the sandbox network policy
+// 403s the CONNECT tunnel to youtube.com while allowing the Gemini API. So these
+// are REAL titles, read off real channel pages, transcribed by hand — six per
+// channel rather than the hundred a scan would return. Real, and thin.
+const REAL = JSON.parse(readFileSync(process.env.REAL_CAPTIONS ?? '/dev/null', 'utf8'))
+
 async function extract(label, transcripts, system) {
   const corpus = transcripts.map((t, i) => `--- VIDEO ${i + 1} (spoken) ---\n${t}`).join('\n\n')
   const r = await fetch(
@@ -135,5 +146,7 @@ const CAPTION_SYSTEM = liftConst('CAPTION_SYSTEM')
 for (const [label, t] of [['SUBSTANTIVE', SUBSTANTIVE], ['NAMED', NAMED], ['EMPTY', EMPTY]]) {
   out.push(await extract(label, t))
 }
-out.push(await extract('CAPTIONS(johnny)', CAPTIONS, CAPTION_SYSTEM))
+for (const [who, caps] of Object.entries(REAL)) {
+  out.push(await extract(`REAL:${who}`, caps, CAPTION_SYSTEM))
+}
 console.log(JSON.stringify(out, null, 2))

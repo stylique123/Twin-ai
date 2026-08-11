@@ -1058,7 +1058,60 @@
      "ownsProduct": "nothing confirmed",
      "regulated": false
     },
-    "forbiddenClaims": []
+    "forbiddenClaims": [],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "product",
+       "text": "Ninja outdoor grill and griddle",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "STRUTT ev1 electric wheelchair",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "battery charging dock that shows charge level per cell",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Citring One Juicer that drops whole oranges in the top",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "KitchenAid air fryer",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Polimo Dog Grooming Table with an adjustable arm",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ],
+     "audience": []
+    }
    },
    {
     "key": "jeremyrayholst",
@@ -1098,7 +1151,52 @@
      "no specific earnings figure may be stated as typical or achievable",
      "no claim that a result is guaranteed, fast, or passive",
      "no implication that a car, income or lifestyle follows from buying anything"
-    ]
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "covered",
+       "text": "using Claude for email and SMS marketing with Omnisend",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how to buy a dream car with AI money",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how average people are making thousands of dollars a day",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "best free YouTube video for Claude dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ],
+     "audience": []
+    }
    },
    {
     "key": "carterpcs",
@@ -1167,7 +1265,68 @@
      "ownsProduct": "nothing confirmed",
      "regulated": false
     },
-    "forbiddenClaims": []
+    "forbiddenClaims": [],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "product",
+       "text": "Samsung Z Fold 8, Samsung's passport sized foldable",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "fixing the phone Google doesn't want you to buy (FAIL)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Google Pixel (1st Gen), the phone Google doesn't want you to buy",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPhone 14 Pro Max",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "giving away an iPhone 14 Pro Max",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Samsung A80, the most unique Samsung phone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "bought a broken iPhone 14 Pro Max to give away",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ],
+     "audience": []
+    }
    },
    {
     "key": "nathanespinoza",
@@ -1206,6 +1365,7 @@
     "forbiddenClaims": []
    }
   ],
-  "answersNote": "The `answers` and `truth` blocks are DERIVED FROM OBSERVABLE CHANNEL FACTS, not supplied by the creator. What someone TYPES in onboarding is a handful of closed choices readable off a channel page — do they hold the product on camera, do they sell anything, what do they make. What someone BELIEVES is a claim about their mind. The first is derivable; the second is not, which is why there is still no `knowledge` block here. Where a fact is genuinely unknown it says UNVERIFIED rather than guessing."
+  "answersNote": "The `answers` and `truth` blocks are DERIVED FROM OBSERVABLE CHANNEL FACTS, not supplied by the creator. What someone TYPES in onboarding is a handful of closed choices readable off a channel page — do they hold the product on camera, do they sell anything, what do they make. What someone BELIEVES is a claim about their mind. The first is derivable; the second is not, which is why there is still no `knowledge` block here. Where a fact is genuinely unknown it says UNVERIFIED rather than guessing.",
+  "knowledgeProvenance": "EXTRACTED, NOT WRITTEN. These items came from the real extractor reading the real titles legible in the owner-supplied screenshots — six per channel, not a scan. Two of the five produced ZERO and have no knowledge block, which is the correct answer for their input rather than a failure: their on-screen text is burned-in caption fragments (\"CAN'T HAVE A\", \"unlock\"), not descriptive titles."
  }
 }

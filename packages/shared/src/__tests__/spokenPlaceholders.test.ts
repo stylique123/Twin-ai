@@ -88,3 +88,26 @@ describe('repairing only where there is a choice', () => {
     expect(dropPlaceholderHooks(['  ', null, 7, 'A real hook.'])).toEqual(['A real hook.'])
   })
 })
+
+describe('a filler token wearing no brackets', () => {
+  it('catches the line that scored CLEAN on real data', () => {
+    // ⚠️ MEASURED. Same creator, knowledge on vs off: the no-knowledge run opened
+    // "I bought the new XYZ Phone" and every check here passed it, because they
+    // all looked for a bracket. The bracket was never the defect — it was the
+    // costume the defect usually wears.
+    expect(hasPlaceholder('I bought the new XYZ Phone, and here is what nobody shows you.')).toBe(true)
+    expect(hasPlaceholder('Brand X says it lasts all day.')).toBe(true)
+    expect(hasPlaceholder('Insert hook here')).toBe(true)
+  })
+
+  it('leaves real names that merely LOOK like codes alone', () => {
+    // A shape test — letter plus digit — would condemn half of consumer tech,
+    // which is why this matches placeholder WORDS instead.
+    for (const ok of [
+      'The Samsung A80 has a rotating camera.',
+      'I recommend the M4 iPad Pro, 512 gig only.',
+      'The Pixel 7a is the one to buy.',
+      'Z Fold 8 is a passport sized foldable.',
+    ]) expect(hasPlaceholder(ok)).toBe(false)
+  })
+})

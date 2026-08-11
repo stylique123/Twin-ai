@@ -51,10 +51,28 @@ export interface PlaceholderHit {
 /** Any `[...]` span in text meant to be spoken. */
 const PLACEHOLDER = /\[[^\]]*\]/g
 
+/**
+ * A FILLER TOKEN WEARING NO BRACKETS.
+ *
+ * ⚠️ FOUND ON REAL DATA. Running the same creator with and without extracted
+ * knowledge, the no-knowledge script opened "I bought the new XYZ Phone" — and
+ * this module scored it CLEAN, because every check here looked for a bracket.
+ * The bracket was never the defect; it was the costume the defect usually wears.
+ *
+ * ⚖️ Deliberately a short list of tokens that are only ever stand-ins. "XYZ",
+ * "Brand X", "Product A", "insert" — nobody says these on camera meaning them.
+ * Real names that merely LOOK like codes ("Pixel 7a", "M4", "A80") must survive,
+ * which is why this matches placeholder WORDS rather than a shape like
+ * letter-plus-digit — the shape test would condemn half of consumer tech.
+ */
+const FILLER = /\b(xyz|abc123|brand\s?[xy]\b|product\s?[abx]\b|company\s?[xy]\b|insert\s+\w+\s+here|your\s+product\s+here|tbd|lorem ipsum|placeholder)\b/i
+
 /** Does this spoken text contain an unfilled template span? */
 export function placeholderTokens(text: unknown): string[] {
   if (typeof text !== 'string' || text.trim() === '') return []
-  return [...text.matchAll(PLACEHOLDER)].map((m) => m[0])
+  const bracketed = [...text.matchAll(PLACEHOLDER)].map((m) => m[0])
+  const filler = FILLER.exec(text)
+  return filler ? [...bracketed, filler[0]] : bracketed
 }
 
 export function hasPlaceholder(text: unknown): boolean {
