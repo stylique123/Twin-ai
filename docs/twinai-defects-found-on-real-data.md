@@ -371,10 +371,43 @@ honestly. **Tightening a checked path pushes the same pressure onto the
 unchecked one**, which is an argument for checking every declared source rather
 than the one that was easiest to check first.
 
-Alongside it, in the same run: placeholder beats 6 → 17, and hook grounding
-31% → 23%. The prohibition removed false content without supplying true
-content, so the writer reached for a bracket instead. Prohibition without
-substitution moves a defect; it does not close it.
+### ⚠️ RETRACTED: most of the "cost" I reported was noise
+
+I reported that the claim rules cost substance — placeholder beats 6 → 17, hook
+grounding 31% → 23%, `product_dna` 46 → 70 — and explained it as "prohibition
+without substitution". **A replicate run with a byte-identical prompt does not
+support that.** Three runs of the same 112 cases:
+
+| | run 1 (old prompt) | run 2 (new) | run 3 (new, replicate) |
+|---|---|---|---|
+| placeholder beats | 6 | 17 | **7** |
+| `product_dna`, none supplied | 46 | 70 | **96** |
+| hook grounded in creator knowledge | 31% | 23% | **29%** |
+| UNSUPPORTED citations | 13 | 9 | **14** |
+
+Run-to-run variance on an UNCHANGED prompt (run 2 → run 3) is as large as the
+change I attributed to the fix. Placeholders swing 17 → 7; `product_dna` keeps
+climbing 70 → 96 with nothing changed. So the honest statement is that these
+metrics **did not move measurably**, not that they got worse.
+
+What survives three runs is the part with a large, one-directional gap:
+
+| | run 1 | run 2 | run 3 |
+|---|---|---|---|
+| purchase CTA, no commercial tie | 16 | **0** | **0** |
+| purchase pitch in a spoken line | 7 | **0** | **0** |
+| unearned first-person history | 11 | **2** | **1** |
+
+**The lesson is the one this document keeps re-learning, arriving from a new
+direction:** a single sample is an anecdote even when the tooling around it is
+correct. Everything above was measured with a fixed harness, a fixed scorer and
+an identical case list — and the cost column was still mostly noise, because
+nobody had asked how noisy one run is. A delta is only a finding when it is
+bigger than the variance of the thing that produced it.
+
+`product_dna` is still a real defect — 46, 70 and 96 beats citing a source that
+does not exist are all indefensible. What is NOT established is that the claim
+rules made it worse.
 
 ---
 
@@ -399,6 +432,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | sell leak found | it was a review saying "never buy this" |
 | `product_dna` | nothing was ever supplied under that label |
 | one rule, one place | four copies, three of them stale |
+| the fix cost us substance | one sample, and the noise was bigger |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where
