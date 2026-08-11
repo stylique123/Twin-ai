@@ -38,6 +38,22 @@
 // An exclusion naming a migration that does not exist ALSO fails, so the list
 // cannot rot into a set of names that excuse nothing.
 //
+// ── ⚠️ AN EXCLUSION IS A DEBT, NOT A DISMISSAL ────────────────────────────
+//
+// EXCLUDING A MIGRATION HERE MEANS NOTHING WILL EVER APPLY IT ANYWHERE. That is
+// the whole cost and it went uncollected: on 2026-08-11, `0120_product_entities`
+// and `0121_creator_knowledge` were found committed and NOT PRESENT IN
+// PRODUCTION — the live ledger ended at 0119. Both were excluded below for a
+// correct reason (their FK target is a staging fixture applied after the
+// migration loop). Because they never ran on staging, nobody noticed they had
+// never run in production either, and the branch that reads `product_entities`
+// was one merge away from returning 503 on EVERY blueprint generation.
+//
+// So when you exclude a migration, you are taking on a manual apply. Say so in
+// the reason, and do not ship code that reads the new tables until it is done.
+// This guard cannot check production — it has no credentials and should not
+// have any — which is exactly why the obligation has to be written down here.
+//
 //   node scripts/ci/check_staging_migration_coverage.mjs            # live
 //   node scripts/ci/check_staging_migration_coverage.mjs --selftest # fixtures
 import { readdirSync, readFileSync } from 'node:fs'
@@ -110,7 +126,7 @@ export const EXCLUDED = {
     + 'then `staging-brand-schema.sql`. Weakening the production FK to suit that '
     + 'ordering would be the tail wagging the dog. The editor never reads '
     + '`product_entities` either — entities reach it through the blueprint prompt, the '
-    + 'same route the brief takes in 0109 above.',
+    + 'same route the brief takes in 0109 above. ⚠️ MANUAL APPLY OWED: as of 2026-08-11 this has NOT been applied to production and must be, by hand, BEFORE any code reading `product_entities` ships.',
   '0121_creator_knowledge':
     'Creates `creator_knowledge` and `audience_questions`, both with foreign keys to '
     + '`public.brand_voices` — the same staging FIXTURE-APPLIED-AFTER-THE-LOOP ordering '
@@ -120,7 +136,7 @@ export const EXCLUDED = {
     + 'blueprint prompt, the route 0109 and 0120 already take. ⚠️ The RLS policies and '
     + 'the deliberate ABSENCE of an INSERT policy are therefore unexercised on staging, '
     + 'which is the real cost of this exclusion and is worth saying out loud: nothing '
-    + 'proves before production that a creator cannot insert claims about themselves.',
+    + 'proves before production that a creator cannot insert claims about themselves. ⚠️ MANUAL APPLY OWED: as of 2026-08-11 neither table exists in production. Apply by hand before shipping any reader.',
 }
 
 // `excluded` is a PARAMETER rather than a direct read of the constant so the
