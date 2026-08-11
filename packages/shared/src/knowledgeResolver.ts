@@ -242,3 +242,102 @@ export function resolutionPromptLine(rs: readonly Resolution[]): string {
     + ' the instruction for that beat tells you what to do instead.\n'
     + lines.join('\n')
 }
+
+// ── THE DECLARATION, AND WHY IT IS CHECKED ────────────────────────────────
+//
+// Resolving BEFORE writing is the right order and it costs a second model call:
+// the containers come from the reference read, which happens in the same request
+// as the writing. So the affordable version inverts it — the writer DECLARES,
+// per beat, where that beat's substance came from, and the declaration is then
+// verified against what it was actually given.
+//
+// ⚖️ A DECLARATION NOBODY CHECKS IS A COMMENT. The whole value is that
+// `substance: creator_knowledge` is falsifiable: if the beat cites something the
+// prompt never contained, the model did not use creator knowledge, it wrote a
+// plausible sentence and labelled it. That is the same failure as a guess
+// wearing a `stated` basis, one layer up, and it is decidable — so it is decided
+// here rather than trusted.
+
+export interface DeclaredBeat {
+  section?: unknown
+  line?: unknown
+  /** What the writer says filled this beat. */
+  substance?: unknown
+  /** What it says it used — matched against the knowledge actually supplied. */
+  substance_evidence?: unknown
+}
+
+export type SubstanceIssueCode =
+  /** Claimed creator knowledge that was never in the prompt. */
+  | 'unsupported_creator_claim'
+  /** Claimed a source but named nothing to check. */
+  | 'undeclared_evidence'
+  /** A first-person personal history with no experience-level evidence. */
+  | 'unearned_first_person'
+
+export interface SubstanceIssue {
+  code: SubstanceIssueCode
+  beat: number
+  detail: string
+}
+
+/** First-person personal history — "I bought", "I used it for", "I switched".
+ *  ⚖️ Narrow on purpose: "I think" and "I'd say" are opinion, not history, and
+ *  condemning them would fail every honest talking-head script. */
+const FIRST_PERSON_HISTORY =
+  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran)\b|\bmy own\b|\bwhen I (?:got|bought|switched)\b/i
+
+/** Loose containment: the beat need not quote verbatim, only overlap enough that
+ *  the claim traces back to something real. */
+function tracesTo(cited: string, supplied: readonly KnowledgeItem[]): boolean {
+  const c = terms(cited)
+  if (c.size === 0) return false
+  return supplied.some((i) => {
+    const t = terms(i.text)
+    const overlap = [...c].filter((w) => t.has(w)).length
+    return overlap >= Math.min(2, c.size)
+  })
+}
+
+/**
+ * Check what the writer CLAIMED against what it was GIVEN.
+ *
+ * Empty for an honest plan, which is the normal case. `supplied` must be exactly
+ * the knowledge the prompt carried — checking against a fuller set would excuse
+ * the fabrication this exists to catch.
+ */
+export function substanceIssues(
+  beats: readonly DeclaredBeat[] | null | undefined,
+  supplied: readonly KnowledgeItem[],
+): SubstanceIssue[] {
+  if (!Array.isArray(beats)) return []
+  const out: SubstanceIssue[] = []
+  beats.forEach((b, i) => {
+    const source = typeof b.substance === 'string' ? b.substance : ''
+    const cited = typeof b.substance_evidence === 'string' ? b.substance_evidence.trim() : ''
+    const line = typeof b.line === 'string' ? b.line : ''
+
+    if (source === 'creator_knowledge') {
+      if (cited === '') {
+        out.push({ code: 'undeclared_evidence', beat: i,
+          detail: 'Beat claims creator knowledge and names nothing it used.' })
+      } else if (!tracesTo(cited, supplied)) {
+        out.push({ code: 'unsupported_creator_claim', beat: i,
+          detail: `Beat cites "${cited.slice(0, 80)}", which is not in the knowledge this prompt carried.` })
+      }
+    }
+
+    // ⚖️ THE MOST EXPENSIVE ERROR, CHECKED SEPARATELY. A personal history is a
+    // claim about the creator's life, and no source other than experience-level
+    // evidence can license it — not research, not a title, not a rephrasing.
+    if (FIRST_PERSON_HISTORY.test(line)) {
+      const licensed = supplied.some((k) => evidenceLevel(k) === 'experience'
+        && (cited === '' ? true : tracesTo(cited, [k])))
+      if (!licensed) {
+        out.push({ code: 'unearned_first_person', beat: i,
+          detail: 'Beat speaks a personal history, and nothing on record says the creator did it.' })
+      }
+    }
+  })
+  return out
+}

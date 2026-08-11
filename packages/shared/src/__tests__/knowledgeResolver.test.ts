@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import { readKnowledge } from '../creatorKnowledge'
 import {
-  evidenceLevel, resolveContainer, resolveAll, resolutionStats, resolutionPromptLine,
+  evidenceLevel, resolveContainer, resolveAll, resolutionStats, resolutionPromptLine, substanceIssues,
   type Container,
 } from '../knowledgeResolver'
 
@@ -141,5 +141,59 @@ describe('the writer receives decisions, not a bracket', () => {
 
   it('is empty when there are no containers to rule on', () => {
     expect(resolutionPromptLine([])).toBe('')
+  })
+})
+
+describe('a declaration nobody checks is a comment', () => {
+  const supplied = WITH_SPEECH.items
+
+  it('catches a beat that cites knowledge the prompt never carried', () => {
+    // The failure this exists for: the model writes a plausible sentence and
+    // labels it `creator_knowledge`. Same shape as a guess wearing a `stated`
+    // basis, one layer up.
+    const issues = substanceIssues([
+      { line: 'The camera bump is the real problem.', substance: 'creator_knowledge',
+        substance_evidence: 'creator said camera bumps ruin the design' },
+    ], supplied)
+    expect(issues.map((i) => i.code)).toContain('unsupported_creator_claim')
+  })
+
+  it('accepts a beat that traces back to something real', () => {
+    expect(substanceIssues([
+      { line: 'Hinges are still what fails first.', substance: 'creator_knowledge',
+        substance_evidence: 'the hinge is the first thing to fail on a foldable' },
+    ], supplied)).toEqual([])
+  })
+
+  it('catches a claim with nothing named to check', () => {
+    expect(substanceIssues([
+      { line: 'x', substance: 'creator_knowledge', substance_evidence: '' },
+    ], supplied).map((i) => i.code)).toContain('undeclared_evidence')
+  })
+
+  it('REFUSES an unearned personal history', () => {
+    // No research and no rephrasing makes "I used it for six months" true of
+    // this person. Nothing licenses it but experience-level evidence.
+    const issues = substanceIssues([
+      { line: 'I used the Pixel as my only phone for six months.', substance: 'research' },
+    ], readKnowledge({ items: [
+      { kind: 'product', text: 'Google Pixel', basis: 'demonstrated' }] }).items)
+    expect(issues.map((i) => i.code)).toContain('unearned_first_person')
+  })
+
+  it('allows a personal history the creator is on record for', () => {
+    expect(substanceIssues([
+      { line: 'I used the Z Fold 8 as my only phone for two weeks.',
+        substance: 'creator_knowledge', substance_evidence: 'used the Z Fold 8 as his only phone for two weeks' },
+    ], supplied)).toEqual([])
+  })
+
+  it('does not condemn ordinary opinion phrasing', () => {
+    // "I think" and "I'd say" are stance, not history. Failing those would fail
+    // every honest talking-head script.
+    expect(substanceIssues([
+      { line: "I think foldables are finally worth it.", substance: 'creator_knowledge',
+        substance_evidence: 'the hinge is the first thing to fail on a foldable' },
+    ], supplied)).toEqual([])
   })
 })
