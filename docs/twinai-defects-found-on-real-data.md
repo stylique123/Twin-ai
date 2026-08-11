@@ -721,6 +721,54 @@ carry one.
 
 ---
 
+## 22. The noise band, measured — and what it does to today's conclusions
+
+Every experiment today used 32-case arms and I never measured how much those
+metrics move when NOTHING changes. Three runs of the identical prompt:
+
+| arm | USE | body-empty | proof-empty (n) | superlatives |
+|---|---|---|---|---|
+| baseline #1 | 45% | 53% | 25% (28) | 10 |
+| baseline #2 | 47% | 49% | 24% (25) | 10 |
+| baseline #3 | 50% | 48% | **52% (44)** | 9 |
+| *+ evidence rule* | *41%* | *57%* | *45% (22)* | *6* |
+
+**The bands at n=32, unchanged prompt:**
+
+| metric | range | usable? |
+|---|---|---|
+| superlatives | 9–10 | **yes — tight** |
+| USE | 45–50% | ~5 points |
+| body-empty | 48–53% | ~5 points |
+| proof-empty | **24–52%** | **NO — useless at this size** |
+
+### This corrects the revert's stated reason
+
+I reported that the evidence rule made proof-beat emptiness worse, 25% → 45%.
+**That is entirely inside the noise band**, which spans 24–52% on an unchanged
+prompt — the section is too small (22–44 beats) to measure anything.
+
+What IS outside the band, in both directions:
+
+- **superlatives 10/10/9 → 6.** The rule did the thing it was written to do.
+  That metric is tight, and the reduction is real.
+- **USE 45/47/50 → 41** and **body-empty 48/49/53 → 57.** Both worse than any
+  baseline run.
+
+So the rule is a genuine TRADE — fewer empty superlatives, less use of the
+creator's substance — and not the flat failure I described. The revert still
+stands, because trading measured substance use for prose polish is the wrong
+side of this product's founding defect. But it stands for a different reason
+than the one I gave, and the reason I gave was noise.
+
+⚖️ **THE STANDING RULE THIS PRODUCES.** A 32-case arm cannot detect anything
+smaller than ~5 points on USE or body-empty, and cannot measure per-section
+emptiness at all. Any future prompt experiment either clears that bar or is
+reported as inconclusive. Three retractions in one day all trace to the same
+missing number, and it cost 64 API calls to get.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -748,6 +796,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | the prompt needs more substance | it ignores over half of what it already has |
 | half-empty is just script shape | 55% with every CTA excluded |
 | the beat proves the claim | 25% prove nothing — and 81% was the harness again |
+| the rule made it worse | that metric swings 24-52% on its own |
 | the ladder blocks the good lines | 97.8% of lines were already permitted |
 | 97.8% of lines were permitted | the classifier could not see the other kind |
 | the guard caught 11 fabrications | it saw 11; it was blind to 81% of the candidates |
