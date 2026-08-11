@@ -1016,5 +1016,111 @@
   "THE SYSTEM ASSUMES ONE CREATOR. Colin & Samir are two, plus guests. There is no speaker attribution anywhere in the script contract."
  ],
  "knowledgeNote": "FIXTURE KNOWLEDGE, NOT AN EXTRACTION. These are well-known public positions of each creator, written by hand to stand in for what Creator Knowledge extraction WOULD produce. They are labelled with an honest basis, but no scan generated them, so a run using this pack tests whether the WRITER uses substance — never whether the extractor finds it.",
- "scanTargets": "Owner-supplied handle and platform for each persona, for the scan retest. These are the accounts a real DNA scan would run against; every result recorded so far used hand-written fixture knowledge instead, so nothing here has been scanned yet."
+ "scanTargets": "Owner-supplied handle and platform for each persona, for the scan retest. These are the accounts a real DNA scan would run against; every result recorded so far used hand-written fixture knowledge instead, so nothing here has been scanned yet.",
+ "cohort2": {
+  "note": "SECOND COHORT — SCAN TARGETS, NOT PERSONAS. Everything recorded here is visible on the channel page the owner supplied: handle, platform, subscriber and video counts, bio text, and the format legible in the Shorts grid. There is deliberately NO `knowledge` block for any of them. Cohort 1 carries hand-written positions because those creators are well documented and the fixture was needed to test the WRITER; inventing positions for these five would be the exact defect this work exists to remove — a guess about a person, stored as though observed. Their knowledge must come from a real scan or stay empty.",
+  "whyTheseFive": "They stress what cohort 1 could not. All five are PRODUCT-LED, so they exercise the `product` knowledge kind, `showability`, and the ownership split between reviewing and owning — the axes cohort 1 mostly left idle.",
+  "creators": [
+   {
+    "key": "justicebuys",
+    "name": "Justice Buys",
+    "platform": "youtube",
+    "handle": "@justicebuys1",
+    "observed": {
+     "subscribers": "2.11M",
+     "videos": 147,
+     "bio": "#1 Source For Product Discovery",
+     "link": "justicebuys.com",
+     "format": "product discovery shorts; hands-on demos of named appliances and gadgets",
+     "namedInThumbnails": [
+      "Ninja grill",
+      "STRUTT ev1",
+      "Citring One Juicer",
+      "KitchenAid air fryer",
+      "Polimo Dog Grooming Table"
+     ],
+     "viewsSeen": "64k-471k"
+    },
+    "stresses": "ENUMERATED FORMAT, visible: one thumbnail reads \"10. Citring One Juicer\", so the videos are numbered countdowns. This is the count contract's home turf and the first cohort member whose OWN format is enumerated rather than borrowed from a reference.",
+    "openQuestion": "Reviews or affiliates? The bio says discovery and the site is their own — ownership is UNVERIFIED and must be asked, not assumed."
+   },
+   {
+    "key": "jeremyrayholst",
+    "name": "Jeremy Ray Holst",
+    "platform": "youtube",
+    "handle": "@Jeremyrayholst",
+    "observed": {
+     "subscribers": "237k",
+     "videos": 1300,
+     "bio": "started this channel to share everything I wish I knew when I first started e-commerce",
+     "link": "dropshippingstarter.com and 3 more",
+     "format": "talking head, e-commerce and AI tooling tutorials",
+     "namedInThumbnails": [
+      "Claude",
+      "Omnisend"
+     ],
+     "viewsSeen": "1k-1.6k"
+    },
+    "stresses": "HIGHEST CLAIM RISK IN EITHER COHORT. Thumbnails say \"How To Buy Your Dream Car With Ai Money\" and \"how average people are making thousands of dollars a day\". Earnings claims are the one class where a transferred claim is a regulatory problem rather than an aesthetic one, so this is the persona that should exercise forbidden-claims handling hardest.",
+    "openQuestion": "Owns paid products (dropshippingstarter.com) — an OWN_PRODUCT relationship that must be confirmed, and a sell goal that is legitimate for them."
+   },
+   {
+    "key": "carterpcs",
+    "name": "CarterPCs",
+    "platform": "youtube",
+    "handle": "@actuallycarterpcs",
+    "observed": {
+     "subscribers": "3.14M",
+     "videos": 4500,
+     "bio": "making tech less of a snooze fest 4x a day",
+     "link": "keychain.club/carterpcs",
+     "format": "high-energy face cam, heavy burned-in captions, saturated backdrop",
+     "viewsSeen": "803k-1m"
+    },
+    "stresses": "The TONE CLAMP's opposite case. Their stated identity is high energy, so `punchy` should NOT clamp here, and `understated` should be visibly wrong for them. Cohort 1 tested the clamp firing; this tests it staying out of the way.",
+    "openQuestion": "4x a day cadence implies a very large already-covered set — the strongest test of not handing them their own upload back."
+   },
+   {
+    "key": "johnnyytech",
+    "name": "Johnny",
+    "platform": "youtube",
+    "handle": "@johnnyytech",
+    "observed": {
+     "subscribers": "60k",
+     "videos": 270,
+     "bio": "Everything #tech",
+     "format": "\"I bought X\" — device in hand, teardown and repair",
+     "namedInThumbnails": [
+      "Samsung Z Fold 8",
+      "Google Pixel (1st gen)",
+      "iPhone 14 Pro Max",
+      "Samsung A80"
+     ],
+     "viewsSeen": "17k-165k"
+    },
+    "stresses": "SHOWABILITY = ALWAYS and REVIEW_ONLY, with the most named products per thumbnail of any creator in either cohort. If the `product` kind stays empty for this person after a real scan, the extractor is not finding named things and the fixture excuse no longer applies.",
+    "openQuestion": "Runs giveaways — a promotional mechanic the entity model has no vocabulary for yet."
+   },
+   {
+    "key": "nathanespinoza",
+    "name": "Nathan Espinoza",
+    "platform": "youtube",
+    "handle": "@NathanEspinoza",
+    "observed": {
+     "subscribers": "2.13M",
+     "videos": 589,
+     "bio": "tech, gadgets, and stuff",
+     "link": "nathanespinoza.bio",
+     "format": "gadget reveals, single-word caption emphasis, outdoor and in-hand shots",
+     "namedInThumbnails": [
+      "Tesla Cybercab",
+      "Fitbit Air"
+     ],
+     "viewsSeen": "868k-7.1m"
+    },
+    "stresses": "Highest reach in either cohort (7.1M on one short), so the widest gap between a good and a bad script.",
+    "openQuestion": "Covers unreleased or concept hardware (Cybercab) — knowledge freshness matters more here than anywhere else."
+   }
+  ]
+ }
 }
