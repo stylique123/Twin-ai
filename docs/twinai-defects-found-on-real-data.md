@@ -437,6 +437,63 @@ whole chain, and the weakest link was the one nobody thought to check.
 
 ---
 
+## 17. The evidence ceiling is not what is making scripts empty
+
+I have said repeatedly that transcript-based stance extraction is "not started"
+and is "the big unlock". **Both halves were wrong**, and the correction matters
+because it was steering the roadmap.
+
+**It is already built and already runs.** `scrapeDna` takes the creator's top 5
+videos by plays/likes and enqueues `build_voice`, which transcribes them and
+calls `extractKnowledgeFromAudio` — the one path that can produce
+`kind: 'experience'` with `basis: 'stated'`. `max_attempts: 1`, because a retry
+re-runs paid transcript calls.
+
+**And the "zero experience-level knowledge across 8 creators" figure I kept
+citing is a fact about the QA CORPUS, not the product.** Those creators were
+caption-scraped for research; `clampCaptionBasis` correctly forces caption
+items to `demonstrated`. A real onboarded creator gets 5 transcribed videos.
+
+### What the ceiling actually costs, measured
+
+Captions clamp to `demonstrated`, so caption-only knowledge can never exceed
+`coverage` — which means `position` ("I still think X is overrated") and
+`history` ("I bought X") are both unreachable. All 479 items across the 8
+creators are `coverage`. That sounds fatal. It is not:
+
+| claim strength of a real generated beat | count | share |
+|---|---|---|
+| discussion — allowed on coverage | 1404 | **97.8%** |
+| position — blocked | 24 | 1.7% |
+| history — blocked | 8 | 0.6% |
+
+Across 1,436 real beats from two full matrix runs, **the writer is already
+writing 97.8% of its lines at a strength coverage-level evidence permits.** The
+ladder is not what is holding it back. Raising the ceiling would unlock about
+one beat in forty.
+
+### What is actually missing: use, not permission
+
+| | |
+|---|---|
+| beats whose words overlap a supplied knowledge item | **42%** |
+| beats declaring `creator_knowledge` | 37% |
+| share of a creator's stored knowledge that appears in ANY of 28 scripts | **12–36%** |
+
+Production shows the writer 10 items per generation (topic-ranked) out of the
+47–79 stored. That cap is a defensible relevance decision, not obviously a
+defect — but the result is that **58% of beats touch none of the creator's
+substance at all**, while 479 real specifics sit unused.
+
+**So the founding defect — voice-accurate, content-empty — is not primarily an
+evidence-ceiling problem. The writer is permitted to say the things it already
+knows, and mostly writes generic prose instead.** Transcripts remain worth
+having (they are the only route to a personal history, and to the `position`
+strength a strong opinion piece needs), but they are a second-order lever, and
+I had them ranked first on a premise I never measured.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -460,6 +517,8 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | one rule, one place | four copies, three of them stale |
 | the fix cost us substance | one sample, and the noise was bigger |
 | results are reproducible | the corpus they came from was not committed |
+| transcripts are the big unlock | already built, and worth ~1 beat in 40 |
+| the ladder blocks the good lines | 97.8% of lines were already permitted |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where
