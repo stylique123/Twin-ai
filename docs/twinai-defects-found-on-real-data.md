@@ -645,7 +645,47 @@ measurement is evidence.
 
 ---
 
-## 21. The beat named "evidence" is 81% content-free
+## 21. ⚠️ CORRECTED: the 81% was measured with the wrong knowledge selection
+
+**The headline below is wrong and the correction matters more than the finding.**
+
+The 81% was computed over runs where the QA harness supplied the **12
+most-frequently-seen** knowledge items. Production supplies **10 ranked by
+lexical overlap with the video's subject**. I fixed that divergence (defect 20's
+setup) and re-measured on a production-mirroring arm: proof beats — evidence,
+item, demo — are **25% empty, not 81%**.
+
+I flagged this exact risk when I fixed the selection ("those numbers described
+the harness") and then quoted the 81% anyway in the next commit. A number
+survives its own retraction if you keep repeating the headline.
+
+### And the fix aimed at it did not work
+
+A prompt rule requiring an evidence beat to name a specific from the supplied
+lists or declare `needs_user`, tested as one variable against the same 32 cases:
+
+| | baseline | + evidence rule |
+|---|---|---|
+| beats overlapping a supplied item | 45% | **41%** |
+| body beats carrying nothing | 53% | **57%** |
+| proof beats carrying nothing | 25% | **45%** |
+| superlatives ("unmatched", "seamless") | 10 | **6** |
+| `needs_user` escalations | 0 | 0 |
+
+The one thing it did was reduce superlatives. Everything it was aimed at moved
+the wrong way. **Reverted** — a prompt rule that adds two hundred words and
+demonstrates no benefit is the prohibition-without-substitution pattern this
+document already retracted once.
+
+⚖️ **AND THE HONEST CAVEAT ON MY OWN NEGATIVE RESULT:** 22–28 proof beats per
+arm is far too small to conclude harm either. The placeholder metric swung
+6 → 17 → 7 on an unchanged prompt at four times this sample size. What is
+established is the absence of evidence FOR the rule, which is enough not to
+ship it, and not enough to call it harmful.
+
+---
+
+## 21b. (superseded) The beat named "evidence" is 81% content-free
 
 If 55% of beats carry none of the creator's substance, the charitable reading is
 that a script legitimately contains transitions and CTAs. Measured by section
@@ -707,7 +747,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | transcripts are the big unlock | already built, and worth ~1 beat in 40 |
 | the prompt needs more substance | it ignores over half of what it already has |
 | half-empty is just script shape | 55% with every CTA excluded |
-| the beat proves the claim | 81% of "evidence" beats prove nothing |
+| the beat proves the claim | 25% prove nothing — and 81% was the harness again |
 | the ladder blocks the good lines | 97.8% of lines were already permitted |
 | 97.8% of lines were permitted | the classifier could not see the other kind |
 | the guard caught 11 fabrications | it saw 11; it was blind to 81% of the candidates |
