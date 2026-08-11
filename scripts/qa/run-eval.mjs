@@ -120,6 +120,107 @@ const MECHANISM_READ = liftBlock(
   'the mechanism read',
 )
 
+// ⚠️ AND THE FOURTH TIME: THE HARNESS WAS SCORING A CTA RULE THAT NO LONGER EXISTS.
+//
+// Until now this file decided the CTA from the VIDEO GOAL ALONE — the exact
+// approximation `generate-blueprint` replaced when it learned that permission
+// comes from the RELATIONSHIP, not the goal. So a matrix run reporting "0
+// inappropriate sales CTAs" was a fact about code we had already deleted, and
+// the four claim rules the product actually sends (vendor attribution, review-
+// is-not-advert, no unearned personal use, mandatory disclosure) were sent in
+// ZERO runs. `grep -c` for any of them in this file returned 0.
+//
+// Lifted, not retyped, for the same reason as everything above it.
+
+/** Lift one single-quoted string LITERAL containing `anchor`, unescaped.
+ *  Fails loudly — a claim rule that silently resolves to '' is a rule the
+ *  matrix will report as obeyed because it was never sent. */
+function liftQuoted(anchor, label) {
+  const at = EDGE.indexOf(anchor)
+  if (at < 0) {
+    console.error(`FATAL: could not lift ${label} — anchor not found in generate-blueprint/index.ts.`)
+    console.error('Fix the anchor, do not inline the text.')
+    process.exit(1)
+  }
+  const open = EDGE.lastIndexOf("'", at)
+  let i = open + 1
+  for (; i < EDGE.length; i++) {
+    if (EDGE[i] === '\\') { i++; continue }
+    if (EDGE[i] === "'") break
+  }
+  return EDGE.slice(open + 1, i)
+    .replace(/\\'/g, "'").replace(/\\n/g, '\n').replace(/\\\\/g, '\\')
+}
+
+const CTA_SELL = liftQuoted('\\n- CTA INTENT: this creator', 'the commercial CTA line')
+const CTA_NO_TIE = liftQuoted('\\n- CTA INTENT: NO COMMERCIAL CTA', 'the no-commercial-tie CTA line')
+const CTA_NOT_SELLING = liftQuoted('\\n- CTA INTENT: NOT a selling video', 'the non-selling CTA line')
+const CLAIM_ATTRIBUTED = liftQuoted('\\n- THE VENDOR', 'the vendor-attribution rule')
+const CLAIM_REVIEW = liftQuoted('\\n- THIS IS A REVIEW, NOT AN ADVERTISEMENT', 'the review-not-advert rule')
+const CLAIM_NO_USE = liftQuoted('\\n- THE CREATOR HAS NOT CONFIRMED', 'the unearned-personal-use rule')
+const CLAIM_DISCLOSURE = liftQuoted('\\n- A DISCLOSURE IS REQUIRED', 'the mandatory-disclosure rule')
+
+/** The production enum. A pack creator carrying anything else is a fixture bug,
+ *  and is refused rather than defaulted — defaulting is how `rel` would quietly
+ *  become NONE and every claim rule would go silent. */
+const RELATIONSHIPS = ['NONE', 'REVIEW_ONLY', 'AFFILIATE', 'SPONSOR', 'OWN_PRODUCT', 'OWN_SERVICE']
+
+/**
+ * `generate-blueprint`'s permission derivation, replicated on the harness's
+ * fixture shape. The BRANCHES are reproduced; every STRING is lifted.
+ *
+ * ⚖️ WHY THIS IS REPLICATED AND NOT LIFTED. The edge derives `rel` from a DB
+ * row (`ownedEntity.relationship`) that does not exist here, so the decision
+ * cannot be imported the way a string can. What is copied is small, and the
+ * parity test asserts the branch conditions are character-identical to the
+ * edge's — see `harnessClaimRulesParity.test.ts`.
+ */
+function claimRules(truth, goalRaw) {
+  const rel = truth?.relationshipCode
+  if (!RELATIONSHIPS.includes(rel)) {
+    console.error(`FATAL: creator truth has relationshipCode=${JSON.stringify(rel)}.`)
+    console.error(`It must be one of ${RELATIONSHIPS.join(', ')} — the prose \`relationship\` field is not a permission.`)
+    process.exit(1)
+  }
+  const personalUse = truth?.personalUse ?? 'NOT_CONFIRMED'
+  const creatorExperience = personalUse === 'CONFIRMED'
+  const commercialCta = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    || rel === 'AFFILIATE' || rel === 'SPONSOR'
+    ? 'only_if_intended'
+    : 'forbidden'
+  const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
+  const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    ? 'allowed'
+    : rel === 'AFFILIATE' || rel === 'SPONSOR'
+      ? 'attributed'
+      : 'forbidden'
+
+  // ⚖️ FIXTURE SHAPE, NOT A PRODUCT RULE. Production reads a single-valued
+  // `videoGoal` enum; the pack stores composite answer strings ("leads+authority")
+  // because a real onboarding answer is a sentence. Reducing to the commercial
+  // token is a translation between the two, and is deliberately the ONLY thing
+  // here that is not a copy of production.
+  const g = String(goalRaw ?? '')
+  const videoGoal = g.includes('sell') ? 'sell' : g.includes('leads') ? 'leads' : g
+  const goalWantsSale = videoGoal === 'sell' || videoGoal === 'leads'
+  const sellIntent = commercialCta === 'forbidden'
+    ? false
+    : commercialCta === 'allowed' || goalWantsSale
+  const ctaIntentLine = sellIntent
+    ? CTA_SELL
+    : commercialCta === 'forbidden' && goalWantsSale
+      ? CTA_NO_TIE
+      : CTA_NOT_SELLING
+
+  const claimLines = []
+  if (marketingClaims === 'attributed') claimLines.push(CLAIM_ATTRIBUTED)
+  else if (marketingClaims === 'forbidden' && rel === 'REVIEW_ONLY') claimLines.push(CLAIM_REVIEW)
+  if (!creatorExperience && rel !== 'NONE') claimLines.push(CLAIM_NO_USE)
+  if (disclosureRequired) claimLines.push(CLAIM_DISCLOSURE)
+
+  return { ctaIntentLine, claimRulesBlock: claimLines.join(''), rel, sellIntent }
+}
+
 // ⚠️ THE REASON 4 OF 12 CASES RETURNED ONLY `reference_read`.
 //
 // `generate-blueprint` sends `responseSchema: blueprintSchema` with `required`
@@ -235,6 +336,7 @@ async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = tru
   // changed because the CREATOR differs or because what they TOLD US differs —
   // and that is the comparison the questions exist to justify.
   const A = { ...creator.answers, ...(answers ?? {}) }
+  const PERMS = claimRules(t, goal ?? A.goal)
   // ⚠️ ORDER MIRRORS PRODUCTION, AND IT IS LOAD-BEARING.
   //
   // The rules come FIRST, as they do in `generate-blueprint`'s SYSTEM constant,
@@ -282,9 +384,7 @@ ${FID[fidelity]}
 ${(creator.truth?.regulated || (creator.forbiddenClaims||[]).length) && tone === 'punchy'
   ? "- TONE WAS CLAMPED. This creator works under stated limits on what they may claim, so the punchy register is not available to them: no hype openers (\"you won't believe\", \"this will blow your mind\"), no manufactured certainty. Write with energy, not with bait."
   : ''}
-${/(sell|leads)/.test(goal ?? A.goal)
-  ? '- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
-  : '- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'}
+${PERMS.ctaIntentLine}${PERMS.claimRulesBlock}
 
 YOUR TASK: produce the FULL blueprint now — the mechanism read AND the beat plan AND the concept AND five hook options AND every script beat AND the CTA. Reading the reference is the first step, never the deliverable; a response containing only reference_read is incomplete.
 
