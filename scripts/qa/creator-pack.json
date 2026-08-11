@@ -1369,19 +1369,19 @@
   "knowledgeProvenance": "EXTRACTED, NOT WRITTEN. These items came from the real extractor reading the real titles legible in the owner-supplied screenshots — six per channel, not a scan. Two of the five produced ZERO and have no knowledge block, which is the correct answer for their input rather than a failure: their on-screen text is burned-in caption fragments (\"CAN'T HAVE A\", \"unlock\"), not descriptive titles."
  },
  "cohort3": {
-  "$why": "The first cohort built from a REAL scan rather than from what an author could remember about a creator. Cohort 1 knowledge is hand-written; cohort 2 has none. This one is the live extractor output over 86 real titles, so a difference in results is a difference in the DATA and not in how carefully somebody typed a fixture.",
-  "$limits": "Titles only — no transcripts, so no opinion-level or experience-level evidence exists for anyone here. Every item is coverage. That is the honest ceiling of a caption-only scan and it is exactly what the comparison should show.",
+  "$why": "The first cohort built from a REAL scan. Knowledge is live extractor output over 501 real captions from 8 accounts.",
+  "$limits": "Titles only — no transcripts, so NO opinion-level or experience-level evidence exists for anyone here. Every item is coverage. That is the honest ceiling of a caption-only scan. ⚠️ DERIVED FROM THE 501-CAPTION CORPUS, WHICH LANDS WITH PR #320 — not from the 86-caption file currently on this branch. Regenerating from that older file gives different numbers.",
   "creators": [
    {
     "key": "johnny",
     "name": "Johnny",
     "handle": "@johnnyytech",
     "platform": "youtube",
-    "$provenance": "REAL SCAN 2026-08-11 via Apify streamers/youtube-channel-scraper. Knowledge is the LIVE extractor output with clampCaptionBasis applied. Nothing here is hand-written.",
+    "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
     "truth": {
      "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
      "showability": "UNKNOWN — the scan reads titles, never pixels.",
-     "signature": "NOT OBSERVED — titles only, no transcript."
+     "signature": "NOT OBSERVED — titles only."
     },
     "answers": {
      "goal": "followers",
@@ -1390,14 +1390,13 @@
      "promotes": "none"
     },
     "answerConflicts": [
-     "Every answer above is a DEFAULT, not the creator's answer. No onboarding was completed for these accounts — they were scanned, not enrolled.",
-     "A run using these answers tests the WRITER against real knowledge; it does not test the onboarding questions."
+     "Defaults, not the creator's answers. These accounts were scanned, not enrolled."
     ],
     "knowledge": {
      "items": [
       {
        "kind": "product",
-       "text": "Samsung Z Fold 8 perfect foldable phone design",
+       "text": "Samsung Z Fold 8",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1405,9 +1404,25 @@
       },
       {
        "kind": "covered",
-       "text": "the phone Google doesn't want you to buy",
+       "text": "perfect foldable phone design",
        "basis": "demonstrated",
        "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Google Pixel 1",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "phones Google doesn't want you to buy",
+       "basis": "demonstrated",
+       "timesSeen": 2,
        "sourceRef": null,
        "sourceExpiry": null
       },
@@ -1420,8 +1435,24 @@
        "sourceExpiry": null
       },
       {
+       "kind": "topic",
+       "text": "giveaways",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
        "kind": "product",
-       "text": "Samsung A80 most unique Samsung phone",
+       "text": "Samsung A80",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "most unique Samsung phone",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1447,13 +1478,21 @@
        "kind": "covered",
        "text": "fixing an iPhone",
        "basis": "demonstrated",
-       "timesSeen": 3,
+       "timesSeen": 4,
        "sourceRef": null,
        "sourceExpiry": null
       },
       {
        "kind": "product",
-       "text": "Google Pixel, the iPhone of Androids",
+       "text": "Google Pixel",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the iPhone of Androids",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1461,7 +1500,15 @@
       },
       {
        "kind": "product",
-       "text": "Pink iPhone 16",
+       "text": "iPhone 16",
+       "basis": "demonstrated",
+       "timesSeen": 4,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Xiaomi 17 Pro Max",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1469,15 +1516,7 @@
       },
       {
        "kind": "covered",
-       "text": "fixing a broken iPhone to give away",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "product",
-       "text": "Xiaomi 17 Pro Max",
+       "text": "is this the better 17 Pro Max",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1501,15 +1540,7 @@
       },
       {
        "kind": "product",
-       "text": "Pixel 10 Pro XL",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "covered",
-       "text": "hidden iPhone features",
+       "text": "Google Pixel 10 Pro XL",
        "basis": "demonstrated",
        "timesSeen": 2,
        "sourceRef": null,
@@ -1517,15 +1548,23 @@
       },
       {
        "kind": "covered",
-       "text": "new Siri AI usefulness",
+       "text": "if a Google Pixel can replace an iPhone",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
        "sourceExpiry": null
       },
       {
+       "kind": "topic",
+       "text": "hidden iPhone features",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
        "kind": "product",
-       "text": "Apple's new iOS 27 Beta software",
+       "text": "Siri AI",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1533,7 +1572,15 @@
       },
       {
        "kind": "covered",
-       "text": "Siri update",
+       "text": "Siri's usefulness with iOS 27 Beta",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "upgrading to Apple's new iOS 27 Beta software",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1541,7 +1588,39 @@
       },
       {
        "kind": "product",
-       "text": "health and fitness tracker with no subscription",
+       "text": "iOS 27 Beta",
+       "basis": "demonstrated",
+       "timesSeen": 4,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Siri updates",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "health and fitness trackers without subscriptions",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Fitbit Air",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Whoop",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1565,7 +1644,375 @@
       },
       {
        "kind": "product",
-       "text": "rugged smartphone Unihertz",
+       "text": "Honor phone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "rugged phones",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Unihertz",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the most overkill smartphone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Motorola Razr",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "greatest cell phone of all time",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "updating iPhones to iOS 18 and 26",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iOS 18",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iOS 26",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Samsung Galaxy Z Tri-Fold",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "unique Samsung phone capabilities",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Samsung DeX",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "LG G Flex 2",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "LG self-healing phone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "leaked iPhone 18 Pro colors",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPhone 18 Pro",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Finalmouse keyboard",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "a not normal keyboard",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Red Magic 11 Pro with real liquid cooling",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "upgrading dad's Android phone to something better",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "using a modern day Blackberry",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Blackberry",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "LG V60",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "desire for LG to make phones again",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPhone Fold",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "foldable iPhones",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Samsung S26 Ultra",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "is the S26 Ultra the phone of the year",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "recording the same video with every iPhone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "iPhone camera capabilities",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPod Shuffle",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "tech not needing to evolve past the iPod Shuffle",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "setting a custom iPhone charging sound",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "MacBook Neo",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "is the Neo everything hoped for",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Light L16 camera with 16 lenses",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "first 10 things to do with a new MacBook",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Samsung finally fixing the Android look with the S26 Ultra",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Samsung canceling the Tri-Fold",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPhone 17e",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the 'better' budget-friendly iPhone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "ESR S26 Ultra case",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "ESR S26 Ultra screen protector",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "testing ESR products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Oppo Find N6",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the first creaseless foldable",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Apple selling tons of MacBooks",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1579,11 +2026,11 @@
     "name": "Nathan Espinoza",
     "handle": "@NathanEspinoza",
     "platform": "youtube",
-    "$provenance": "REAL SCAN 2026-08-11 via Apify streamers/youtube-channel-scraper. Knowledge is the LIVE extractor output with clampCaptionBasis applied. Nothing here is hand-written.",
+    "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
     "truth": {
      "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
      "showability": "UNKNOWN — the scan reads titles, never pixels.",
-     "signature": "NOT OBSERVED — titles only, no transcript."
+     "signature": "NOT OBSERVED — titles only."
     },
     "answers": {
      "goal": "followers",
@@ -1592,22 +2039,29 @@
      "promotes": "none"
     },
     "answerConflicts": [
-     "Every answer above is a DEFAULT, not the creator's answer. No onboarding was completed for these accounts — they were scanned, not enrolled.",
-     "A run using these answers tests the WRITER against real knowledge; it does not test the onboarding questions."
+     "Defaults, not the creator's answers. These accounts were scanned, not enrolled."
     ],
     "knowledge": {
      "items": [
       {
        "kind": "product",
-       "text": "3D Printed Key that can UNLOCK Every Suitcase",
+       "text": "3D Printed Key",
        "basis": "demonstrated",
        "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "3D printing",
+       "basis": "demonstrated",
+       "timesSeen": 3,
        "sourceRef": null,
        "sourceExpiry": null
       },
       {
        "kind": "covered",
-       "text": "buying a car you CAN'T drive",
+       "text": "a car you can't drive",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1615,7 +2069,7 @@
       },
       {
        "kind": "product",
-       "text": "Fitbit Air vs WHOOP after 50 Days",
+       "text": "Fitbit Air",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1623,7 +2077,15 @@
       },
       {
        "kind": "product",
-       "text": "Samsung's THINNEST Fold yet",
+       "text": "WHOOP",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Samsung's thinnest fold phone yet",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1639,7 +2101,7 @@
       },
       {
        "kind": "covered",
-       "text": "trying a REAL Human Exoskeleton",
+       "text": "a real human exoskeleton",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1647,31 +2109,7 @@
       },
       {
        "kind": "covered",
-       "text": "How to ACTUALLY Stop Doomscrolling",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "Siri is ACTUALLY Good Now",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "the TRUTH about Meta Glasses",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "Tesla Self-Driving is Better Than You Think",
+       "text": "how to stop doomscrolling",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1679,55 +2117,7 @@
       },
       {
        "kind": "covered",
-       "text": "being tricked",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "The Most UNDERRATED iOS 27 Feature",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "UNDERRATED iPhone App I Use Everyday",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "The COOLEST Electric Bike Ever",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "The WHOOP Killer Could Be Here",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "The UGLIEST Ferrari Might Be Genius",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "opinion",
-       "text": "The COOLEST iPhone Accessory",
+       "text": "Siri is good now",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1735,7 +2125,7 @@
       },
       {
        "kind": "product",
-       "text": "this camera that SAVED me",
+       "text": "Meta Glasses",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1743,7 +2133,7 @@
       },
       {
        "kind": "covered",
-       "text": "my FAVORITE Non-Tech Products",
+       "text": "Tesla self-driving is better than you think",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1751,15 +2141,23 @@
       },
       {
        "kind": "covered",
-       "text": "Bringing Back Nostalgic Websites",
+       "text": "iOS 27 feature",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
        "sourceExpiry": null
       },
       {
-       "kind": "opinion",
-       "text": "The SCARIEST Robot Ever",
+       "kind": "product",
+       "text": "iPhone App",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "electric bike",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1767,7 +2165,31 @@
       },
       {
        "kind": "covered",
-       "text": "My Mini Content Studio Tour",
+       "text": "the WHOOP killer",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Ferrari",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPhone accessory",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "camera",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1775,23 +2197,239 @@
       },
       {
        "kind": "covered",
-       "text": "why my background is Always Blue",
+       "text": "non-tech products",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
        "sourceExpiry": null
       },
       {
-       "kind": "opinion",
-       "text": "AI Music is Getting Out of Hand",
+       "kind": "covered",
+       "text": "nostalgic websites",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
        "sourceExpiry": null
       },
       {
-       "kind": "opinion",
-       "text": "The BEST Switch 2 Accessory",
+       "kind": "product",
+       "text": "robot",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "mini content studio tour",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why his background is always blue",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "AI music getting out of hand",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Switch 2 accessory",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "apps you've never heard of",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why Coca-Cola Freestyle Machines have cameras",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "weirdest Amazon scam",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Justin Bieber case",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "everything he brings on flights",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "AirPods Max 2",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "vlog camera",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "earbuds",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "wireless charger",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "favorite 3D printed objects",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "futuristic AR glasses",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "$50 budget earbuds",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "drone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "worst phone accessory ever",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "privacy display on a laptop",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "YouTube feature",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "mini action camera",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Samsung's video stabilization",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "cancelled ChatGPT subscription",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "mini camera bag",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "wired vs wireless earbuds",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "wired earbuds in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how to get the orangest iPhone 17 Pro",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1805,11 +2443,11 @@
     "name": "CarterPCs",
     "handle": "@actuallycarterpcs",
     "platform": "youtube",
-    "$provenance": "REAL SCAN 2026-08-11 via Apify streamers/youtube-channel-scraper. Knowledge is the LIVE extractor output with clampCaptionBasis applied. Nothing here is hand-written.",
+    "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
     "truth": {
      "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
      "showability": "UNKNOWN — the scan reads titles, never pixels.",
-     "signature": "NOT OBSERVED — titles only, no transcript."
+     "signature": "NOT OBSERVED — titles only."
     },
     "answers": {
      "goal": "followers",
@@ -1818,16 +2456,15 @@
      "promotes": "none"
     },
     "answerConflicts": [
-     "Every answer above is a DEFAULT, not the creator's answer. No onboarding was completed for these accounts — they were scanned, not enrolled.",
-     "A run using these answers tests the WRITER against real knowledge; it does not test the onboarding questions."
+     "Defaults, not the creator's answers. These accounts were scanned, not enrolled."
     ],
     "knowledge": {
      "items": [
       {
-       "kind": "covered",
-       "text": "5 years on CarterPCs",
+       "kind": "topic",
+       "text": "tech facts",
        "basis": "demonstrated",
-       "timesSeen": 1,
+       "timesSeen": 4,
        "sourceRef": null,
        "sourceExpiry": null
       },
@@ -1841,7 +2478,7 @@
       },
       {
        "kind": "product",
-       "text": "custom \"creamy\" keyboard",
+       "text": "$250 custom 'creamy' keyboard",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1849,7 +2486,7 @@
       },
       {
        "kind": "covered",
-       "text": "a mangled laptop",
+       "text": "how a laptop got mangled",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1864,8 +2501,16 @@
        "sourceExpiry": null
       },
       {
-       "kind": "covered",
-       "text": "the US Government banning DJI",
+       "kind": "topic",
+       "text": "drone bans by the US government",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "DJI, the biggest drone company",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1873,7 +2518,199 @@
       },
       {
        "kind": "covered",
-       "text": "Apple's WWDC for normal people",
+       "text": "Apple's WWDC, only the parts normal people care about",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Tesla vehicles",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "lessons from driving a Tesla Model S Plaid for 24 hours",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the time Apple refused to help the FBI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why they will miss high school",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "what Apple has improved every year in the iPhone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "high school senior assassins",
+       "basis": "demonstrated",
+       "timesSeen": 4,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how much they make on TikTok with 5 million followers",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Old People vs airports rivalry",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "$2,000 all white PC build from Center",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "the best $43 gaming keyboard",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how to get through Airport TSA FAST",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "TikTok's origins and ban status",
+       "basis": "demonstrated",
+       "timesSeen": 5,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the US banning the 2nd biggest smartphone company",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Meta's lobbying",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Netflix wasting 120 million dollars on the Avatar the Last Airbender live action",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why they are not going to Idaho",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the need for a 3D scan of their face for animation outro",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Apple's history of unethical labor",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "AirPods (right AirPod)",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "'high quality content' is overrated",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "$5,000 server GPU for birthday",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "what a Temu employee said",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Kai Cenat/Speed Minecraft hardcore challenge",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the problem with tech content",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1881,7 +2718,15 @@
       },
       {
        "kind": "opinion",
-       "text": "Teslas have a soul",
+       "text": "paywalls are (sometimes) a good thing",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how Chromebooks would be marketed like high-end PCs",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1889,7 +2734,7 @@
       },
       {
        "kind": "product",
-       "text": "Tesla Model S Plaid",
+       "text": "Rabbit R1",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1897,7 +2742,7 @@
       },
       {
        "kind": "covered",
-       "text": "Dustin wielding the power of friendship",
+       "text": "First Gen AirPods as a cultural event",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1905,7 +2750,31 @@
       },
       {
        "kind": "covered",
-       "text": "giving away 3 free PCs if Dustin Poirier wins UFC 302",
+       "text": "the best PC for $250k",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "tech birthday wishes (Xbox, RAM, Steam)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Temu allegations",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the best iPhone camera technique",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1913,7 +2782,7 @@
       },
       {
        "kind": "product",
-       "text": "$34 Drone from Shein",
+       "text": "favorite PC case from Center",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1921,7 +2790,31 @@
       },
       {
        "kind": "covered",
-       "text": "Apple refused to help the FBI",
+       "text": "Fortnite refunding parents",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "S27 Ultra design predictions",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Magic John and its new unhinged mascot",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Vision Pro announcement and stance on it",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1929,7 +2822,271 @@
       },
       {
        "kind": "covered",
-       "text": "missing high school",
+       "text": "how gaming PCs and consoles go extinct",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "what Apple has copied from Samsung",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Apple Car release expectations",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Parker Burton (CEO of Google Meet)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Lenovo ThinkPad as the Toyota of laptops",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "signs an iPhone's battery is about to explode",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why an iPhone Air exploded",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "using old consoles to save gaming",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "iPhone's Action Button",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "JerryRigEverything vs foldable iPhone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "dog liking AirPods more than treats",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "top 5 worst Apple products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "bringing backup phones because school would take theirs",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "people don't appreciate Apple until they're gone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how to stop anti-virus pop-ups",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why GTA 6 hasn't started marketing yet",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "mobile games forcing ads on you should be illegal",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "leasing an iPad for $16/month",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why nobody wants to switch to Android (remembering their first phone)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "still pressed about aim assist in Fortnite",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "DoorDash doing drone deliveries",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Fortnite couldn't have been good for our hands",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "China gatekeeping the best tech",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why an iPhone feels slower when a new one comes out",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Chinese laptop that folds into a full monitor",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how to game on a laptop",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Trump phone as a collector's item",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Apple charging for using AI Siri too much",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the best PC you can build with $100k",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "folding iPhone becoming more expensive",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Elon suing Minnesota over AI corn law",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the US banning robot vacuums",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the problem with ultra high budget gaming PCs",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why someone bought a 'Pro' iPhone",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -1943,11 +3100,11 @@
     "name": "Jeremy Ray Holst",
     "handle": "@Jeremyrayholst",
     "platform": "youtube",
-    "$provenance": "REAL SCAN 2026-08-11 via Apify streamers/youtube-channel-scraper. Knowledge is the LIVE extractor output with clampCaptionBasis applied. Nothing here is hand-written.",
+    "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
     "truth": {
      "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
      "showability": "UNKNOWN — the scan reads titles, never pixels.",
-     "signature": "NOT OBSERVED — titles only, no transcript."
+     "signature": "NOT OBSERVED — titles only."
     },
     "answers": {
      "goal": "followers",
@@ -1956,94 +3113,13 @@
      "promotes": "none"
     },
     "answerConflicts": [
-     "Every answer above is a DEFAULT, not the creator's answer. No onboarding was completed for these accounts — they were scanned, not enrolled.",
-     "A run using these answers tests the WRITER against real knowledge; it does not test the onboarding questions."
+     "Defaults, not the creator's answers. These accounts were scanned, not enrolled."
     ],
     "knowledge": {
      "items": [
       {
        "kind": "topic",
-       "text": "dropshipping",
-       "basis": "demonstrated",
-       "timesSeen": 18,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "topic",
-       "text": "selling products",
-       "basis": "demonstrated",
-       "timesSeen": 10,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "product",
-       "text": "Shopify",
-       "basis": "demonstrated",
-       "timesSeen": 10,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "topic",
-       "text": "AI dropshipping stores",
-       "basis": "demonstrated",
-       "timesSeen": 3,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "topic",
-       "text": "AI ads for dropshipping",
-       "basis": "demonstrated",
-       "timesSeen": 3,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "topic",
-       "text": "email marketing with ChatGPT",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "product",
-       "text": "ChatGPT",
-       "basis": "demonstrated",
-       "timesSeen": 2,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "topic",
-       "text": "making money with Claude AI dropshipping",
-       "basis": "demonstrated",
-       "timesSeen": 3,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "product",
-       "text": "Claude AI",
-       "basis": "demonstrated",
-       "timesSeen": 7,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "topic",
-       "text": "email marketing in Shopify with AI (Omnisend + Claude)",
-       "basis": "demonstrated",
-       "timesSeen": 1,
-       "sourceRef": null,
-       "sourceExpiry": null
-      },
-      {
-       "kind": "product",
-       "text": "Omnisend",
+       "text": "dropshipping products to sell",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -2051,7 +3127,7 @@
       },
       {
        "kind": "topic",
-       "text": "AI dropshipping from scratch in 2026",
+       "text": "building an AI dropshipping store",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -2059,7 +3135,95 @@
       },
       {
        "kind": "topic",
-       "text": "building a $100K brand with Claude AI in 10 minutes",
+       "text": "making viral AI ads for dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "making $100K with Claude AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "top 10 dropshipping products to sell right now",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "tested Claude Fable 5 vs ChatGPT 5.6 Sol for dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "building a $100K dropshipping store with Claude AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "top 10 dropshipping products for July 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "building a free dropshipping store with AI in 10 minutes",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "using AI for email marketing in Shopify with Omnisend and Claude",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting AI dropshipping from scratch in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "making $50k/month with dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "winning products to sell now with Shopify dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "gave Claude AI 10 minutes to build a $100K brand",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -2075,7 +3239,7 @@
       },
       {
        "kind": "topic",
-       "text": "upsell app for Shopify stores in 2026",
+       "text": "upsell app printing money for Shopify stores in 2026",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -2090,8 +3254,8 @@
        "sourceExpiry": null
       },
       {
-       "kind": "product",
-       "text": "Base44",
+       "kind": "topic",
+       "text": "finding $100K/month dropshipping products with Claude AI",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -2107,7 +3271,15 @@
       },
       {
        "kind": "topic",
-       "text": "AI email & SMS system for Shopify stores",
+       "text": "making $100K with Claude AI dropshipping by copying the creator",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI email and SMS system for Shopify stores",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -2122,8 +3294,8 @@
        "sourceExpiry": null
       },
       {
-       "kind": "topic",
-       "text": "Shopify's NEW AI features",
+       "kind": "covered",
+       "text": "tested Shopify's new AI features",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -2131,7 +3303,47 @@
       },
       {
        "kind": "topic",
-       "text": "best tools for Shopify dropshipping (2026)",
+       "text": "best tools for Shopify dropshipping in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "tried AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI email marketing for Shopify dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "how to buy your dream car with AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "making $1,000/day with AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting AI dropshipping with Claude",
        "basis": "demonstrated",
        "timesSeen": 1,
        "sourceRef": null,
@@ -2144,10 +3356,2288 @@
        "timesSeen": 1,
        "sourceRef": null,
        "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting AI dropshipping with your phone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "top 10 dropshipping products for May 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting AI dropshipping from scratch",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI dropshipping store tutorial in 20 minutes",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "full AI dropshipping tutorial",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "using AI for SMS and email marketing in Shopify with Omnisend full setup",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting dropshipping with $0",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "full AI dropshipping tutorial for beginners",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting AI dropshipping in 15 minutes",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "email and SMS marketing with AI (Omnisend tutorial)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "top 10 winning products for Shopify dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "full free course for Shopify dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI dropshipping beginners tutorial",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "the best way to start AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "top 7 dropshipping products to sell now",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting AI dropshipping in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "tried to go viral with AI in 24 hours",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI dropshipping step by step guide",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting AI dropshipping with $0 in 2026 (beginner's guide)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI dropshipping full tutorial",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "starting AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "built a dropshipping store with AI in 5 minutes (free)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "viral dropshipping ad formula with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "setting up Omnisend for Shopify dropshipping (email marketing)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "fastest way to make $500",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "how to actually start AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "creating unlimited image ads with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "email & SMS marketing for dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "easiest way to make money with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "melting ice vs $3,000 MacBook",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "how to make $10K off one video",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "using AI models to make ads",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "full AI dropshipping tutorial for 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "24 hour AI content challenge (insane results)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "AI video got 8.3M+ in 24 hours",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "making AI influencers videos",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "how to actually start AI dropshipping in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "product research for Shopify dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "making sales on your Shopify store",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "3 dropshipping strategies that actually work",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "best videos for Shopify dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "tried dropshipping for 30 days",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "finding winning products for Shopify dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ]
+    }
+   },
+   {
+    "key": "ryan",
+    "name": "Ryan Kennedy",
+    "handle": "@realryankennedy",
+    "platform": "youtube",
+    "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
+    "truth": {
+     "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+     "showability": "UNKNOWN — the scan reads titles, never pixels.",
+     "signature": "NOT OBSERVED — titles only."
+    },
+    "answers": {
+     "goal": "followers",
+     "audience": "unknown",
+     "workKind": "creator",
+     "promotes": "none"
+    },
+    "answerConflicts": [
+     "Defaults, not the creator's answers. These accounts were scanned, not enrolled."
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "topic",
+       "text": "AI",
+       "basis": "demonstrated",
+       "timesSeen": 5,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Surface Pro",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Surface Laptop 7",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "new Xbox Series X",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Sony Afeela (Sony’s cancelled PlayStation car)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "new USPS Delivery Truck (Next Generation Delivery Vehicle)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "internet issues",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Xbox Game Pass",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iOS27 (with proof photos are not AI)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "GeForce Now",
+       "basis": "demonstrated",
+       "timesSeen": 4,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "AMD's 256-core processor",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "4GB laptops",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "iPhone camera button is overrated",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Ubisoft lost their minds with patching games",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Apple realized people don't care",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Rockstar lost the plot with GTA 6",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Spotify lost the plot",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Netflix ran out of ideas",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Nintendo Switch",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "wireless headphones for gaming",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Gemini",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "game streaming in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "first 100K PC",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "pre-built PCs",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPhone 18",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "RTX 5090",
+       "basis": "demonstrated",
+       "timesSeen": 4,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPod's name origin",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "RX9000 as a used car",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "SpaceX mobile service",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "CMF earbuds with AI slop in ad",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Siri limits aren't that bad",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Xbox is cooking right now",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Reddit changes",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "PlayStation Portal",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "discontinuing disk games isn't fine",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Windows update crash fixes",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "microphone dysfunction",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "$2,000 monitor vs $300 monitor",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "GPU prices getting worse",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iBUYPOWER pro workstations",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Sony Walkman's combination of phones with MP3s",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "government doesn't trust everyday AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Maingear zero PC",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "testing suspicious apps safely",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Microsoft AI (Project Perception) protecting PCs",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Halo Remake on Game Pass",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "RAM price doubling",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Apple hardware lease program (Apple Upgrade Program)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Intel 65W integrated GPU",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "restarting smart TVs (Sony Bravia, Android TV)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "4GB GPUs returning",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "LG monitors",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ]
+    }
+   },
+   {
+    "key": "justice",
+    "name": "Justice Buys",
+    "handle": "@justicebuys1",
+    "platform": "youtube",
+    "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
+    "truth": {
+     "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+     "showability": "UNKNOWN — the scan reads titles, never pixels.",
+     "signature": "NOT OBSERVED — titles only."
+    },
+    "answers": {
+     "goal": "followers",
+     "audience": "unknown",
+     "workKind": "creator",
+     "promotes": "none"
+    },
+    "answerConflicts": [
+     "Defaults, not the creator's answers. These accounts were scanned, not enrolled."
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "product",
+       "text": "MODULAR Grill",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "RECHARGES Batteries Like A Vending Machine",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "10 FAVORITE Kitchen Products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "SMART Cooker that Makes Perfect Rice Every Time",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Table that LIFTS Your Dog To Easily Groom Them",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Smart FAUCET that Shows Your Water Quality",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Top 10 TRAVEL Gadgets for 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Most ADVANCED Chess Robot That Can Beat Grandmasters",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "10 INSANE Wellness Tech Products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "ULTIMATE Backyard Movie Theater Projector Setup",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Suitcase that FOLLOWS You Around The Airport",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Sleep Earbuds that Have a SNORE DETECTOR",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "COMPACT Juicer that Makes Eating Healthy Easy",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Soundcore World-Record Earbuds that Have A SCREEN",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "10 Things I Bought for My BACKYARD",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Robot DOG",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "World’s First COOKING Robot",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "growing food on my counter in 7 days",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Cold Plunge that GENERATES Its Own Ice",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "device that can Feed Your Dog In SECONDS",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "10 Home GYM Finds",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "RIDEABLE Luggage that Makes Airport Travel Easy",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Swiffer vacuum that can do THIS",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "10 BIOHACKING Products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "INSANE Telescope that Takes Photos By Itself",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "10 Things I Bought My FIANCE",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "5 COOL Tech Products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Top Products of 2025 (Part 2)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "World’s First SMART Dog Door",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Swiffer cleaning tool",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Top 10 ORGANIZATION Products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Top 25 PRODUCTS of 2025",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "FASTEST Way To Learn Piano",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "The BEST Way To Clean For Busy People",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "MOVA P10 Pro Ultra Gen2",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "device that can LAUNCH Tennis Balls",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Anker Smart Display Charger",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "World’s 1st Robot Vacuum with an ARM",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "FAVORITE Products at CES 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Best ROBOTS at CES 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Best TECH Products of 2025",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "PORTABLE Dishwasher (Renter Friendly)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "The Future of Mobility",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Future of Dog Food",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "World’s First FOLDABLE Home Gym",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "RayNeo BRIGHTEST Budget AR Glasses Ever Made",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "DREO WINTER Things",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Desk that TRANSFORMS Into A Bed",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "COOL Things I Got From AliExpress",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "10 Things I Bought For My New HOUSE",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Top 10 HALLOWEEN Products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ]
+    }
+   },
+   {
+    "key": "kallaway",
+    "name": "Kallaway",
+    "handle": "@kanekallaway",
+    "platform": "tiktok",
+    "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
+    "truth": {
+     "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+     "showability": "UNKNOWN — the scan reads titles, never pixels.",
+     "signature": "NOT OBSERVED — titles only."
+    },
+    "answers": {
+     "goal": "followers",
+     "audience": "unknown",
+     "workKind": "creator",
+     "promotes": "none"
+    },
+    "answerConflicts": [
+     "Defaults, not the creator's answers. These accounts were scanned, not enrolled."
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "topic",
+       "text": "AI in farming",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "OpenArt's Wonder plan for unlimited Seedance 2.5 generations",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "AI that lets humans talk to dolphins",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Chinese \"ghost factories\" operating in total darkness",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "AI headset that lets you control your dreams",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "a breakthrough in the future of computing",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Google's AI maps project",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "ASML",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "reversing aging with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "advanced food service robots",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the most advanced soccer ball ever created",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how a Japanese broccoli farmer automated his farm with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "deciphering hidden text on ancient Roman scrolls with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the most advanced robot hand ever invented",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "ChatGPT Work",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how AI will change video creation",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "digitizing a local bakery with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how OpenAI helped solve 18 medical mysteries",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Midjourney pioneering wellness",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how AI will change how people watch sports",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Meta Ray-Ban Display update",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "a robot factory where robots build themselves",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the world’s first robot that can detect skin cancer automatically",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Gemini Omni for creators and marketers",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how AI will change the future of sports",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how OpenAI solved math",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Perplexity Computer",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Google Gemini's 3 massive releases at I/O",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "creating insane visuals by having a conversation with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "a website that lets AI agents rent humans for physical tasks",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Luma AI creative tool",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Claude's 10 new AI agents for Finance",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "The Shot Plan for making insane AI visuals",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the first ever experiment letting AI run an entire business",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Genspark tool for the future of work for businesses",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Artlist AI Studio for creative content creation",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "the first ever IP Copyright checker for AI content",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "a peek into how the internet will work in the future",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "GPT-5.5 and its best 3 uses",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "ChatGPT Images 2.0 and its impact on design",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "a device that teleports smells from old memories",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "an easy workflow to create realistic UGC avatar-driven content at scale",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "OpenAI's massive update for Codex",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "an MIT researcher giving AI a physical body to control, which then breathed",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "an easy workflow to create object flythrough shots that actually look good",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Seedance 2 on OpenArt, an impressive AI video platform",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Meta's acquisition of a $2B AI company and its impact on marketing for business owners",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "an easy workflow to using Kling Motion Control to map movements onto any other character",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "LTX-2.3 and its potential to change the video world",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "a company that builds living computers with human brain cells",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ]
+    }
+   },
+   {
+    "key": "brett",
+    "name": "Brett",
+    "handle": "@brett.tech",
+    "platform": "tiktok",
+    "$provenance": "REAL SCAN 2026-08-11 (Apify). Knowledge is the LIVE extractor output with clampCaptionBasis and the worker kind filter applied. Nothing hand-written. Corpus: scripts/qa/real/captions-2026-08-11.json @ 501 captions (PR #320).",
+    "truth": {
+     "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+     "showability": "UNKNOWN — the scan reads titles, never pixels.",
+     "signature": "NOT OBSERVED — titles only."
+    },
+    "answers": {
+     "goal": "followers",
+     "audience": "unknown",
+     "workKind": "creator",
+     "promotes": "none"
+    },
+    "answerConflicts": [
+     "Defaults, not the creator's answers. These accounts were scanned, not enrolled."
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "topic",
+       "text": "engineering",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "smart home technology",
+       "basis": "demonstrated",
+       "timesSeen": 8,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "DIY projects",
+       "basis": "demonstrated",
+       "timesSeen": 6,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Arduino",
+       "basis": "demonstrated",
+       "timesSeen": 5,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "maker culture",
+       "basis": "demonstrated",
+       "timesSeen": 4,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "hacker culture",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "decor",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "analogue displays",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Smart Home 101",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "HomeKit",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Alexa",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Siri",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Apple technology",
+       "basis": "demonstrated",
+       "timesSeen": 9,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "3D printing",
+       "basis": "demonstrated",
+       "timesSeen": 13,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "nuclear energy in Ontario",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "energy systems",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "aviation",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "glitchless 3D printer repair",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "unauthorized engineering",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Pudphones project",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "ESP32",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Flipper Zero",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "security",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "sound quality of Headamame's creations",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "audiophile equipment",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "mass fish surveillance ethics",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "OpenMote devices",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "practical 3D printing",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "reduce, reuse, recycle philosophy",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "abolishing 2047",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "robot vacuum deals for Prime Day",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Anker products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Beats by Dre Studio Pro headphones",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "repurposing a crashed drone into a microphone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Prime Day deals",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "home design",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Apple Mac",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "organization tools",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Oral-B iO Series 7 toothbrush",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "travel tech",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iOS 27",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPad use cases",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Apple AI",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "early developer beta of a complex system",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Siri update improvements",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Apple's data privacy commitment",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "WWDC summary",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
       }
      ]
     }
    }
   ]
+ },
+ "derivedReferences": {
+  "$why": "Shapes these creators ACTUALLY use, derived from the real corpus.",
+  "$limits": "TITLE-INFERRED. The promise is observed; beat order and re-hook placement are NOT. Never pool with pack.references without splitting on mechanismSource. ⚠️ DERIVED FROM THE 501-CAPTION CORPUS, WHICH LANDS WITH PR #320 — not from the 86-caption file currently on this branch. Regenerating from that older file gives different numbers.",
+  "references": {
+   "D_JOHNNYYTECH_QUESTION_TEST": {
+    "source": "@johnnyytech",
+    "shape": "QUESTION_TEST",
+    "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 12,
+    "evidence": [
+     "Is this the PERFECT Foldable phone design? #samsungzfold8 #zfold8 #samsung #tech",
+     "Can this IPHONE be fixed?!! #iphone14promax #johnnyytech #facebookmarketplace #tech",
+     "IS this the BETTER 17 Pro Max?! #xiaomi #xiaomi17promax #tech",
+     "Can this iPhone be FIXED?!! #iphone16 #tech"
+    ]
+   },
+   "D_NATHANESPINOZA_QUESTION_TEST": {
+    "source": "@nathanespinoza",
+    "shape": "QUESTION_TEST",
+    "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 15,
+    "evidence": [
+     "Would You Buy a Car You CAN’T Drive?",
+     "How to ACTUALLY Stop Doomscrolling",
+     "The Most UNDERRATED iOS 27 Feature?",
+     "The COOLEST iPhone Accessory?"
+    ]
+   },
+   "D_NATHANESPINOZA_SUPERLATIVE": {
+    "source": "@nathanespinoza",
+    "shape": "SUPERLATIVE",
+    "mechanism": "a superlative claim about one named thing, then the evidence for it",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 15,
+    "evidence": [
+     "Samsung’s THINNEST Fold Yet 👀",
+     "The Most UNDERRATED iOS 27 Feature?",
+     "The COOLEST Electric Bike Ever",
+     "The UGLIEST Ferrari Might Be Genius"
+    ]
+   },
+   "D_ACTUALLYCARTERPCS_QUESTION_TEST": {
+    "source": "@actuallycarterpcs",
+    "shape": "QUESTION_TEST",
+    "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 29,
+    "evidence": [
+     "How To Take Good Pictures (For Old People #carterpcs #tech #techtok #photography",
+     "Why Im going to miss highschool",
+     "How to win a game of highschool senior assassins",
+     "How much I make on Tiktok with 5 million followers q"
+    ]
+   },
+   "D_ACTUALLYCARTERPCS_ACQUISITION": {
+    "source": "@actuallycarterpcs",
+    "shape": "ACQUISITION",
+    "mechanism": "FIRST-PERSON acquisition or trial, then what was found by having it",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 6,
+    "evidence": [
+     "I Drove A Tesla Model S Plaid for 24 hours… this is what ive learned",
+     "I bought a $34 Drone from Shein",
+     "I bought a Model S Plaid before graduating highschool",
+     "I bought a fake vision pro from Aliexpress.."
+    ],
+    "requiresExperienceEvidence": true
+   },
+   "D_ACTUALLYCARTERPCS_SUPERLATIVE": {
+    "source": "@actuallycarterpcs",
+    "shape": "SUPERLATIVE",
+    "mechanism": "a superlative claim about one named thing, then the evidence for it",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 9,
+    "evidence": [
+     "The US Government is banning the BIGGEST DRONE COMPANY DJI #carterpcs #tech #techtok #gaming #techfa",
+     "The best $43 gaming keyboard",
+     "When the US banned the 2nd biggest smartphone company.",
+     "What’s the best PC you can get for $250k?? #carterpcs #tech #gaming #gpu #pc"
+    ]
+   },
+   "D_JEREMYRAYHOLST_ENUMERATED": {
+    "source": "@jeremyrayholst",
+    "shape": "ENUMERATED",
+    "mechanism": "a COUNT is announced in the title and each item is delivered in turn",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 11,
+    "evidence": [
+     "Top 7 Products To Sell This Week (Shopify Dropshipping)",
+     "Top 10 Dropshipping Products I’d Sell Right Now",
+     "Top 10 Dropshipping Products For July 2026",
+     "Top 7 WINNING Products To Sell Now (Shopify Dropshipping)"
+    ],
+    "enumeratedCount": 7
+   },
+   "D_JEREMYRAYHOLST_QUESTION_TEST": {
+    "source": "@jeremyrayholst",
+    "shape": "QUESTION_TEST",
+    "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 38,
+    "evidence": [
+     "How to Build a FREE AI Dropshipping Store in 5 Minutes",
+     "How To Make Viral Ai Ads For Dropshipping",
+     "How To Make $100K With Claude AI Dropshipping (Just Copy Me)",
+     "How I'd Build a $100K Dropshipping Store With Claude AI"
+    ]
+   },
+   "D_JEREMYRAYHOLST_ACQUISITION": {
+    "source": "@jeremyrayholst",
+    "shape": "ACQUISITION",
+    "mechanism": "FIRST-PERSON acquisition or trial, then what was found by having it",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 6,
+    "evidence": [
+     "I Tested Claude Fable 5 vs ChatGPT 5.6 Sol For Dropshipping",
+     "I Tested Shopify’s NEW AI Features…",
+     "I Tried AI Dropshipping",
+     "I Tried to Go Viral With AI in 24 Hours"
+    ],
+    "requiresExperienceEvidence": true
+   },
+   "D_JEREMYRAYHOLST_SUPERLATIVE": {
+    "source": "@jeremyrayholst",
+    "shape": "SUPERLATIVE",
+    "mechanism": "a superlative claim about one named thing, then the evidence for it",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 5,
+    "evidence": [
+     "Top 10 BEST Tools for Shopify Dropshipping (2026)",
+     "The Best Way To Start Ai Dropshipping",
+     "I Found The BEST Products To Sell Now (Shopify Dropshipping)",
+     "The Best Email & SMS Marketing Tool For Shopify"
+    ]
+   },
+   "D_REALRYANKENNEDY_QUESTION_TEST": {
+    "source": "@realryankennedy",
+    "shape": "QUESTION_TEST",
+    "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 6,
+    "evidence": [
+     "XBOX Game Pass losing games to Linux? #ryanreviews #heroicgameslauncher #lunux #shorts #tech",
+     "How’s game streaming in 2026? #ryanreviews #geforcenow #gamepass #tech",
+     "SpaceX mobile service a good idea? #ryanreviews #spacex #mobileplan",
+     "Is GeForce Now Any Good While RAM and GPUs are Expensive"
+    ]
+   },
+   "D_JUSTICEBUYS1_ENUMERATED": {
+    "source": "@justicebuys1",
+    "shape": "ENUMERATED",
+    "mechanism": "a COUNT is announced in the title and each item is delivered in turn",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 7,
+    "evidence": [
+     "Top 10 TRAVEL Gadgets for 2026 #shorts",
+     "10 Things I Bought My BACKYARD #home #tech",
+     "10 Things I Bought My FIANCE #shorts #justicebuys #products",
+     "Top 10 ORGANIZATION Products #shorts #justicebuys"
+    ],
+    "enumeratedCount": 10
+   },
+   "D_JUSTICEBUYS1_QUESTION_TEST": {
+    "source": "@justicebuys1",
+    "shape": "QUESTION_TEST",
+    "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 5,
+    "evidence": [
+     "These Sleep Earbuds Have a SNORE DETECTOR?! #sleep #tech",
+     "These World-Record Earbuds Have A SCREEN?! #soundcore",
+     "This Is A Robot DOG? #tech #pets",
+     "This Charging Brick Has A SCREEN? #shorts #AnkerSmartDisplayCharger"
+    ]
+   },
+   "D_JUSTICEBUYS1_SUPERLATIVE": {
+    "source": "@justicebuys1",
+    "shape": "SUPERLATIVE",
+    "mechanism": "a superlative claim about one named thing, then the evidence for it",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 4,
+    "evidence": [
+     "The Most ADVANCED Chess Robot That Can Beat Grandmasters #tech",
+     "The BEST Way To Clean For Busy People #shorts #tech #MOVA #MOVAP10ProUltraGen2",
+     "Best ROBOTS at CES 2026 #tech #shorts #justicebuys",
+     "Best TECH Products of 2025 #shorts #justicebuys #tech"
+    ]
+   },
+   "D_KANEKALLAWAY_SUPERLATIVE": {
+    "source": "@kanekallaway",
+    "shape": "SUPERLATIVE",
+    "mechanism": "a superlative claim about one named thing, then the evidence for it",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 7,
+    "evidence": [
+     "This is the most insane tech company in the world #ai #techtok #technology #artificialintelligence #asml",
+     "This is one of the most advanced food service robots ever invented #ai #tech #robotics #robot #techtok",
+     "This is the most advanced soccer ball ever created #tech #sports #fifa #worldcup #ai",
+     "This is the most advanced robot hand ever invented #tech #ai #techtok #artificialintelligence #robot"
+    ]
+   },
+   "D_BRETTTECH_QUESTION_TEST": {
+    "source": "@brett.tech",
+    "shape": "QUESTION_TEST",
+    "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+    "mechanismSource": "title_inferred",
+    "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+    "support": 4,
+    "evidence": [
+     "Chat is mass fish surveilance ethical?",
+     "Reduce reuse recycle? #3dprinting #aviation",
+     "ACTUAL good deals this year????? #smarthome #tech #home #greenscreen",
+     "This is a big deal…right???? RIGHT????? #apple #mac #tech"
+    ]
+   }
+  }
  }
 }
