@@ -91,6 +91,18 @@ function liftBlock(startMarker, endMarker, label) {
   return EDGE.slice(from, to + endMarker.length)
     .split('\n').map((l) => l.replace(/^\s{2}/, '')).join('\n')
 }
+// THE SUBSTANCE DECLARATION, LIFTED VERBATIM.
+//
+// ⚠️ THE HARNESS HAD FALLEN BEHIND PRODUCTION. #316 made the writer declare,
+// per beat, WHERE its content came from — and this harness kept sending the old
+// prompt and the old schema, so a matrix run could not see the one layer the
+// whole substance effort exists to produce. A harness that measures a previous
+// version of the product reports on a product nobody is shipping.
+const SUBSTANCE_RULES = liftBlock(
+  '- SUBSTANCE BEFORE PROSE.',
+  '- KILL THE BORING MIDDLE.',
+  'the substance declaration rules',
+)
 const COUNT_CONTRACT = liftBlock(
   '- THE COUNT IS THE FORMAT',
   'Silent beats are fine BEFORE the first item and AFTER the last.',
@@ -165,6 +177,7 @@ const RESPONSE_SCHEMA = {
         type: 'OBJECT',
         properties: {
           section: S('STRING'), line: S('STRING'), location: S('STRING'),
+          substance: S('STRING'), substance_evidence: S('STRING'),
           broll_request: S('STRING'), wardrobe: S('STRING'), action_posing: S('STRING'),
         },
         required: ['section', 'line', 'location', 'broll_request', 'wardrobe', 'action_posing'],
@@ -215,8 +228,13 @@ function knowledgeBlock(k) {
 
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
-async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true }) {
+async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers }) {
   const t = creator.truth ?? {}
+  // ⚖️ THE ANSWERS ARE AN INPUT, NOT A PROPERTY OF THE PERSON. A run that can
+  // only ever send one set of onboarding answers cannot tell whether the script
+  // changed because the CREATOR differs or because what they TOLD US differs —
+  // and that is the comparison the questions exist to justify.
+  const A = { ...creator.answers, ...(answers ?? {}) }
   // ⚠️ ORDER MIRRORS PRODUCTION, AND IT IS LOAD-BEARING.
   //
   // The rules come FIRST, as they do in `generate-blueprint`'s SYSTEM constant,
@@ -231,6 +249,9 @@ HOW TO READ THE REFERENCE AND HOLD ITS FORMAT
 ${MECHANISM_READ}
 
 ${COUNT_CONTRACT}
+
+DECIDE THE SUBSTANCE BEFORE THE PROSE
+${SUBSTANCE_RULES}
 
 HOW TO SHAPE THE VIDEO
 - beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
@@ -248,10 +269,10 @@ CREATOR DNA
 ${t.regulated ? `- REGULATED PROFESSIONAL. Forbidden claims:\n${(creator.forbiddenClaims ?? []).map(c => '  * ' + c).join('\n')}` : ''}
 
 CREATOR'S ANSWERS
-- Goal: ${goal ?? creator.answers.goal}
-- Audience: ${creator.answers.audience}
-- What they do: ${creator.answers.workKind}
-- Third-party products featured: ${creator.answers.promotes}${promotesLine(creator.answers.promotes)}
+- Goal: ${goal ?? A.goal}
+- Audience: ${A.audience}
+- What they do: ${A.workKind}
+- Third-party products featured: ${A.promotes}${promotesLine(A.promotes)}
 ${withKnowledge ? knowledgeBlock(creator.knowledge) : ''}
 
 REFERENCE (described, not transcribed)
@@ -261,7 +282,7 @@ ${FID[fidelity]}
 ${(creator.truth?.regulated || (creator.forbiddenClaims||[]).length) && tone === 'punchy'
   ? "- TONE WAS CLAMPED. This creator works under stated limits on what they may claim, so the punchy register is not available to them: no hype openers (\"you won't believe\", \"this will blow your mind\"), no manufactured certainty. Write with energy, not with bait."
   : ''}
-${/(sell|leads)/.test(goal ?? creator.answers.goal)
+${/(sell|leads)/.test(goal ?? A.goal)
   ? '- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
   : '- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'}
 
@@ -271,7 +292,7 @@ Return JSON only, with EVERY key below present and populated:
 {"reference_read":{"mechanism":{"enumeration":{"is_enumerated":"","count":"","unit":""},"hook_promise":"","rehook_after_item":"","beat_debts":[""]}},
  "beat_plan":[{"beat":"","target_sec":"","scene_type":"","proof":""}],
  "concept":{"premise":""},"hook_options":["","","","",""],
- "script":[{"section":"","line":"","location":"","broll_request":"","wardrobe":"","action_posing":""}],
+ "script":[{"section":"","line":"","location":"","broll_request":"","wardrobe":"","action_posing":"","substance":"","substance_evidence":""}],
  "cta":""}`
 
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
@@ -293,8 +314,13 @@ Return JSON only, with EVERY key below present and populated:
 const CASES = JSON.parse(process.env.CASES ?? '[]')
 const out = []
 for (const c of CASES) {
-  const creator = [...pack.creators, ...(pack.cohort2?.creators ?? [])].find(x => x.key === c.creator)
-  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false })
+  // ⚠️ EVERY COHORT, or a new one silently resolves to `undefined` and the run
+  // dies on `creator.truth` after the cases are already built. Cohort 3 is the
+  // real-scan cohort and was invisible here until it crashed the first matrix.
+  const creator = [...pack.creators, ...(pack.cohort2?.creators ?? []), ...(pack.cohort3?.creators ?? [])]
+    .find(x => x.key === c.creator)
+  if (!creator) throw new Error(`unknown creator key ${c.creator} — is its cohort in the lookup above?`)
+  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers })
   out.push({ case: c, blueprint: bp })
   console.error(`done: ${c.creator} / ${c.fidelity} / ${c.label}${c.withKnowledge === false ? " [no-knowledge]" : ""}`)
 }

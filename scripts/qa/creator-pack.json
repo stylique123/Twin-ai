@@ -1367,5 +1367,787 @@
   ],
   "answersNote": "The `answers` and `truth` blocks are DERIVED FROM OBSERVABLE CHANNEL FACTS, not supplied by the creator. What someone TYPES in onboarding is a handful of closed choices readable off a channel page — do they hold the product on camera, do they sell anything, what do they make. What someone BELIEVES is a claim about their mind. The first is derivable; the second is not, which is why there is still no `knowledge` block here. Where a fact is genuinely unknown it says UNVERIFIED rather than guessing.",
   "knowledgeProvenance": "EXTRACTED, NOT WRITTEN. These items came from the real extractor reading the real titles legible in the owner-supplied screenshots — six per channel, not a scan. Two of the five produced ZERO and have no knowledge block, which is the correct answer for their input rather than a failure: their on-screen text is burned-in caption fragments (\"CAN'T HAVE A\", \"unlock\"), not descriptive titles."
+ },
+ "cohort3": {
+  "$why": "The first cohort built from a REAL scan rather than from what an author could remember about a creator. Cohort 1 knowledge is hand-written; cohort 2 has none. This one is the live extractor output over 86 real titles, so a difference in results is a difference in the DATA and not in how carefully somebody typed a fixture.",
+  "$limits": "Titles only — no transcripts, so no opinion-level or experience-level evidence exists for anyone here. Every item is coverage. That is the honest ceiling of a caption-only scan and it is exactly what the comparison should show.",
+  "creators": [
+   {
+    "key": "johnny",
+    "name": "Johnny",
+    "handle": "@johnnyytech",
+    "platform": "youtube",
+    "$provenance": "REAL SCAN 2026-08-11 via Apify streamers/youtube-channel-scraper. Knowledge is the LIVE extractor output with clampCaptionBasis applied. Nothing here is hand-written.",
+    "truth": {
+     "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+     "showability": "UNKNOWN — the scan reads titles, never pixels.",
+     "signature": "NOT OBSERVED — titles only, no transcript."
+    },
+    "answers": {
+     "goal": "followers",
+     "audience": "unknown",
+     "workKind": "creator",
+     "promotes": "none"
+    },
+    "answerConflicts": [
+     "Every answer above is a DEFAULT, not the creator's answer. No onboarding was completed for these accounts — they were scanned, not enrolled.",
+     "A run using these answers tests the WRITER against real knowledge; it does not test the onboarding questions."
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "product",
+       "text": "Samsung Z Fold 8 perfect foldable phone design",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the phone Google doesn't want you to buy",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "iPhone 14 Pro Max",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Samsung A80 most unique Samsung phone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "fixing an iPhone 14 Pro Max",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Skylark Justin Bieber's first official speaker",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "fixing an iPhone",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Google Pixel, the iPhone of Androids",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Pink iPhone 16",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "fixing a broken iPhone to give away",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Xiaomi 17 Pro Max",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "giving away a fake iPhone",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "transferring data to an Android",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Pixel 10 Pro XL",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "hidden iPhone features",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "new Siri AI usefulness",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Apple's new iOS 27 Beta software",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Siri update",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "health and fitness tracker with no subscription",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "iPhones that will not get iOS 27",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "smartphone camera evolution",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "rugged smartphone Unihertz",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ]
+    }
+   },
+   {
+    "key": "nathan",
+    "name": "Nathan Espinoza",
+    "handle": "@NathanEspinoza",
+    "platform": "youtube",
+    "$provenance": "REAL SCAN 2026-08-11 via Apify streamers/youtube-channel-scraper. Knowledge is the LIVE extractor output with clampCaptionBasis applied. Nothing here is hand-written.",
+    "truth": {
+     "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+     "showability": "UNKNOWN — the scan reads titles, never pixels.",
+     "signature": "NOT OBSERVED — titles only, no transcript."
+    },
+    "answers": {
+     "goal": "followers",
+     "audience": "unknown",
+     "workKind": "creator",
+     "promotes": "none"
+    },
+    "answerConflicts": [
+     "Every answer above is a DEFAULT, not the creator's answer. No onboarding was completed for these accounts — they were scanned, not enrolled.",
+     "A run using these answers tests the WRITER against real knowledge; it does not test the onboarding questions."
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "product",
+       "text": "3D Printed Key that can UNLOCK Every Suitcase",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "buying a car you CAN'T drive",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Fitbit Air vs WHOOP after 50 Days",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Samsung's THINNEST Fold yet",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the phone snatching capital of the world",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "trying a REAL Human Exoskeleton",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "How to ACTUALLY Stop Doomscrolling",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Siri is ACTUALLY Good Now",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "the TRUTH about Meta Glasses",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Tesla Self-Driving is Better Than You Think",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "being tricked",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "The Most UNDERRATED iOS 27 Feature",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "UNDERRATED iPhone App I Use Everyday",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "The COOLEST Electric Bike Ever",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "The WHOOP Killer Could Be Here",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "The UGLIEST Ferrari Might Be Genius",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "The COOLEST iPhone Accessory",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "this camera that SAVED me",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "my FAVORITE Non-Tech Products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Bringing Back Nostalgic Websites",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "The SCARIEST Robot Ever",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "My Mini Content Studio Tour",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "why my background is Always Blue",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "AI Music is Getting Out of Hand",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "The BEST Switch 2 Accessory",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ]
+    }
+   },
+   {
+    "key": "carter",
+    "name": "CarterPCs",
+    "handle": "@actuallycarterpcs",
+    "platform": "youtube",
+    "$provenance": "REAL SCAN 2026-08-11 via Apify streamers/youtube-channel-scraper. Knowledge is the LIVE extractor output with clampCaptionBasis applied. Nothing here is hand-written.",
+    "truth": {
+     "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+     "showability": "UNKNOWN — the scan reads titles, never pixels.",
+     "signature": "NOT OBSERVED — titles only, no transcript."
+    },
+    "answers": {
+     "goal": "followers",
+     "audience": "unknown",
+     "workKind": "creator",
+     "promotes": "none"
+    },
+    "answerConflicts": [
+     "Every answer above is a DEFAULT, not the creator's answer. No onboarding was completed for these accounts — they were scanned, not enrolled.",
+     "A run using these answers tests the WRITER against real knowledge; it does not test the onboarding questions."
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "covered",
+       "text": "5 years on CarterPCs",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "cardboard PC",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "custom \"creamy\" keyboard",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "a mangled laptop",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "how to take good pictures (for old people)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "the US Government banning DJI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Apple's WWDC for normal people",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "opinion",
+       "text": "Teslas have a soul",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Tesla Model S Plaid",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Dustin wielding the power of friendship",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "giving away 3 free PCs if Dustin Poirier wins UFC 302",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "$34 Drone from Shein",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "Apple refused to help the FBI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "covered",
+       "text": "missing high school",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ]
+    }
+   },
+   {
+    "key": "jeremy",
+    "name": "Jeremy Ray Holst",
+    "handle": "@Jeremyrayholst",
+    "platform": "youtube",
+    "$provenance": "REAL SCAN 2026-08-11 via Apify streamers/youtube-channel-scraper. Knowledge is the LIVE extractor output with clampCaptionBasis applied. Nothing here is hand-written.",
+    "truth": {
+     "relationship": "REVIEW_ONLY — nothing in the scan shows an ownership or paid tie. NOT a measurement of absence.",
+     "showability": "UNKNOWN — the scan reads titles, never pixels.",
+     "signature": "NOT OBSERVED — titles only, no transcript."
+    },
+    "answers": {
+     "goal": "followers",
+     "audience": "unknown",
+     "workKind": "creator",
+     "promotes": "none"
+    },
+    "answerConflicts": [
+     "Every answer above is a DEFAULT, not the creator's answer. No onboarding was completed for these accounts — they were scanned, not enrolled.",
+     "A run using these answers tests the WRITER against real knowledge; it does not test the onboarding questions."
+    ],
+    "knowledge": {
+     "items": [
+      {
+       "kind": "topic",
+       "text": "dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 18,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "selling products",
+       "basis": "demonstrated",
+       "timesSeen": 10,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Shopify",
+       "basis": "demonstrated",
+       "timesSeen": 10,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI dropshipping stores",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI ads for dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "email marketing with ChatGPT",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "ChatGPT",
+       "basis": "demonstrated",
+       "timesSeen": 2,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "making money with Claude AI dropshipping",
+       "basis": "demonstrated",
+       "timesSeen": 3,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Claude AI",
+       "basis": "demonstrated",
+       "timesSeen": 7,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "email marketing in Shopify with AI (Omnisend + Claude)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Omnisend",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI dropshipping from scratch in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "building a $100K brand with Claude AI in 10 minutes",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "making AI UGC ads that look 100% real",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "upsell app for Shopify stores in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "building Shopify dropshipping apps with Base44",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "product",
+       "text": "Base44",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "turning any product into a viral dropshipping ad with AI",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "AI email & SMS system for Shopify stores",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "building an AI app that finds $10K/month products",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "Shopify's NEW AI features",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "best tools for Shopify dropshipping (2026)",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      },
+      {
+       "kind": "topic",
+       "text": "beginner's guide to dropshipping in 2026",
+       "basis": "demonstrated",
+       "timesSeen": 1,
+       "sourceRef": null,
+       "sourceExpiry": null
+      }
+     ]
+    }
+   }
+  ]
  }
 }
