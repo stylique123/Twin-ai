@@ -1,0 +1,41 @@
+{
+  "_comment": "Record of which creator accounts have been scraped for the QA caption corpus, with the exact actor + input used. READ THIS BEFORE SCRAPING — a fresh container has no other memory of what has already been pulled, and re-scraping costs Apify credits. Captions themselves live in captions-<scannedAt>.json, keyed by the same handle. This is research input for the QA harness only: nothing here is written to brand_voices, and it is not a DNA build.",
+  "corpus": "captions-2026-08-11.json",
+  "scannedAt": "2026-08-11",
+  "breadth": {
+    "youtube": { "maxResults": 50, "maxResultsShorts": 50, "maxResultStreams": 0, "sortVideosBy": "NEWEST" },
+    "tiktok": { "resultsPerPage": 50, "profileSorting": "latest", "profileScrapeSections": ["videos"] }
+  },
+  "actors": {
+    "youtube": {
+      "id": "streamers/youtube-channel-scraper",
+      "pricing": "pay-per-event, ~$0.0013/video",
+      "notes": [
+        "maxResultsShorts MUST equal maxResults. Setting it to 0 returns nothing at all for shorts-first creators, which looks identical to a wrong handle.",
+        "startUrls takes [{\"url\": \"https://www.youtube.com/@HANDLE\"}]."
+      ]
+    },
+    "tiktok": {
+      "id": "clockworks/tiktok-profile-scraper",
+      "pricing": "pay-per-event, $0.003/result on the free tier",
+      "notes": [
+        "profileSorting enum is lowercase: latest | popular | oldest. Capitalized values are rejected.",
+        "profiles takes bare handles, no @ and no URL.",
+        "Date and popularity filters are separately charged add-ons; leave them unset."
+      ]
+    }
+  },
+  "accounts": [
+    { "handle": "johnnyytech", "platform": "youtube", "channelName": "Johnny Tech", "subscribers": 60000, "captions": 50, "verified": true },
+    { "handle": "NathanEspinoza", "platform": "youtube", "corpusKey": "nathanespinoza", "captions": 50, "verified": true },
+    { "handle": "actuallycarterpcs", "platform": "youtube", "subscribers": 3150000, "captions": 100, "verified": true,
+      "warning": "NOT @CarterPCs. That handle resolves to an unrelated channel named \"five\" (146 subscribers, 3 videos) whose own titles credit @actuallycarterpcs." },
+    { "handle": "Jeremyrayholst", "platform": "youtube", "corpusKey": "jeremyrayholst", "captions": 96, "verified": true },
+    { "handle": "realryankennedy", "platform": "youtube", "channelName": "Ryan Kennedy", "subscribers": 1310000, "totalVideos": 249, "captions": 56, "verified": true },
+    { "handle": "justicebuys1", "platform": "youtube", "channelName": "Justice Buys", "subscribers": 2110000, "totalVideos": 147, "captions": 50, "verified": true,
+      "warning": "@justicebuys (no trailing 1) returns CHANNEL_DOES_NOT_EXIST. justicebuys1 is the corrected handle and was confirmed against the returned channel name and subscriber count." },
+    { "handle": "kanekallaway", "platform": "tiktok", "displayName": "Kallaway", "followers": 423600, "totalVideos": 612, "captions": 50, "verified": true },
+    { "handle": "brett.tech", "platform": "tiktok", "displayName": "brett.tech", "followers": 925700, "totalVideos": 1181, "captions": 49, "verified": true,
+      "note": "One returned post had an empty caption and was dropped, so 49 rather than 50." }
+  ]
+}
