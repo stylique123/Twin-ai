@@ -203,9 +203,15 @@ function claimRules(truth, goalRaw) {
   const g = String(goalRaw ?? '')
   const videoGoal = g.includes('sell') ? 'sell' : g.includes('leads') ? 'leads' : g
   const goalWantsSale = videoGoal === 'sell' || videoGoal === 'leads'
-  const sellIntent = commercialCta === 'forbidden'
-    ? false
-    : commercialCta === 'allowed' || goalWantsSale
+  // ⚖️ INTENT IS REQUIRED, NOT OPTIONAL — which is what the name says and what
+  // this now does. The previous form was `forbidden ? false : commercialCta
+  // === 'allowed' || goalWantsSale`, and `commercialCta` is only ever
+  // 'only_if_intended' or 'forbidden' — so the 'allowed' arm was unreachable
+  // and TypeScript said so. It was a leftover from a design where ownership
+  // alone licensed a pitch, which is exactly what the comment above rejects.
+  // Behaviour is unchanged for every relationship; the dead arm implied a
+  // state that cannot happen and misled the next reader about the model.
+  const sellIntent = commercialCta === 'only_if_intended' && goalWantsSale
   const ctaIntentLine = sellIntent
     ? CTA_SELL
     : commercialCta === 'forbidden' && goalWantsSale

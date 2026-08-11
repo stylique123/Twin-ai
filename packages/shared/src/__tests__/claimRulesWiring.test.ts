@@ -32,7 +32,12 @@ describe('the edge decides CTAs from the relationship, not just the goal', () =>
     // The defect: goal alone drove the CTA, so REVIEW_ONLY + goal:sell asked
     // viewers to buy someone else's product. `forbidden` must short-circuit
     // BEFORE the goal is consulted.
-    expect(EDGE).toMatch(/commercialCta === 'forbidden'\s*\n?\s*\?\s*false/)
+    // ⚖️ ASSERTS THE RULE, NOT THE SPELLING. This pinned the literal
+    // `commercialCta === 'forbidden' ? false` and broke when a provably-dead
+    // `=== 'allowed'` arm was removed — a simplification, not a regression.
+    // What must hold is that `only_if_intended` is REQUIRED for any sell
+    // intent, which is the same short-circuit stated positively.
+    expect(EDGE).toMatch(/const sellIntent = commercialCta === 'only_if_intended' && goalWantsSale/)
     // And the shared rule agrees: no intent unlocks a forbidden CTA.
     const review = claimRulesFor('REVIEW_ONLY')
     expect(mayWriteCommercialCta(review, 'sell')).toBe(false)
@@ -43,8 +48,10 @@ describe('the edge decides CTAs from the relationship, not just the goal', () =>
     expect(owned.commercialCta).toBe('only_if_intended')
     expect(mayWriteCommercialCta(owned, null)).toBe(false)
     expect(mayWriteCommercialCta(owned, 'sell')).toBe(true)
-    // The edge mirrors it: only_if_intended is gated on the goal.
-    expect(EDGE).toMatch(/commercialCta === 'allowed' \|\| goalWantsSale/)
+    // The edge mirrors it: only_if_intended is gated on the goal, and NOTHING
+    // else can grant intent — no relationship value bypasses `goalWantsSale`.
+    expect(EDGE).toMatch(/const sellIntent = commercialCta === 'only_if_intended' && goalWantsSale/)
+    expect(EDGE).not.toMatch(/commercialCta === 'allowed'/)
   })
 
   it('the same relationships require disclosure in both places', () => {

@@ -1614,9 +1614,15 @@ Deno.serve(async (req: Request) => {
     // ~85-95% of a typical creator's short-form sells nothing, so "they have a
     // product" must not imply "pitch it" — and `forbidden` cannot be overridden
     // by a goal, because no goal creates a commercial tie that does not exist.
-    const sellIntent = commercialCta === 'forbidden'
-      ? false
-      : commercialCta === 'allowed' || goalWantsSale
+    // ⚖️ INTENT IS REQUIRED, NOT OPTIONAL — which is what the name says and what
+    // this now does. The previous form was `forbidden ? false : commercialCta
+    // === 'allowed' || goalWantsSale`, and `commercialCta` is only ever
+    // 'only_if_intended' or 'forbidden' — so the 'allowed' arm was unreachable
+    // and TypeScript said so. It was a leftover from a design where ownership
+    // alone licensed a pitch, which is exactly what the comment above rejects.
+    // Behaviour is unchanged for every relationship; the dead arm implied a
+    // state that cannot happen and misled the next reader about the model.
+    const sellIntent = commercialCta === 'only_if_intended' && goalWantsSale
     const ctaIntentLine = sellIntent
       ? '\n- CTA INTENT: this creator\'s goal is commercial and they have a commercial tie to what is being promoted, so a purchase or signup CTA is appropriate here.'
       : commercialCta === 'forbidden' && goalWantsSale
