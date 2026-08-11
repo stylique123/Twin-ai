@@ -411,6 +411,32 @@ rules made it worse.
 
 ---
 
+## 16. A derived artifact whose source was not in the repo
+
+`derived-references.json` — the 16 reference shapes every matrix run used —
+could not be regenerated from this repository. The committed corpus held **4
+creators and 86 captions**; the file claimed `actuallycarterpcs` support=29
+against 14 available captions, and six of its references cited creators
+(`realryankennedy`, `justicebuys1`, `kanekallaway`, `brett.tech`) that were not
+in the corpus at all.
+
+The corpus was sitting in a PR **stacked on this branch rather than on main**,
+so merging in the obvious order would have silently orphaned it.
+
+**Closed** by merging it first: 8 creators, 501 captions, and re-running
+`derive-references.mjs` now reproduces the committed file byte-identically —
+which is the proof, not the caption count. `scan-manifest.json` records the
+exact actor and input per account so a fresh container does not re-spend Apify
+credits rediscovering the two handle traps (`@CarterPCs` resolves to an
+unrelated 146-subscriber channel; `@justicebuys` does not exist).
+
+**The shape:** every number this document reports was measured with a fixed
+harness and a fixed scorer — and one of the *inputs* was still missing from the
+repo. Reproducibility is not a property of the tooling; it is a property of the
+whole chain, and the weakest link was the one nobody thought to check.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -433,6 +459,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | `product_dna` | nothing was ever supplied under that label |
 | one rule, one place | four copies, three of them stale |
 | the fix cost us substance | one sample, and the noise was bigger |
+| results are reproducible | the corpus they came from was not committed |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where
