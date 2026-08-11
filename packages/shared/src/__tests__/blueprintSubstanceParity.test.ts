@@ -149,3 +149,51 @@ describe('edge ↔ shared product_dna parity', () => {
     expect(EDGE).not.toMatch(/substanceIssues\(declared, suppliedForCheck, brief/)
   })
 })
+
+// DETECTION IS WIRED TO AN OUTCOME, NOT TO A LOG LINE.
+describe('the product check is ENFORCED', () => {
+  it('escalates product failures to a question the creator can answer', () => {
+    // The first version of this check landed as a console.warn on a defect that
+    // ran 70 times per 112 scripts. This file had already paid for
+    // detect-then-log once, with 11 fabricated histories.
+    expect(EDGE).toMatch(/const productFails = issues\.filter/)
+    expect(EDGE).toMatch(/impossible_product_claim' \|\| i\.code === 'unsupported_product_claim'/)
+    expect(EDGE).toMatch(/product_claim_escalated/)
+  })
+
+  it('marks the escalated beat needs_user and clears its false citation', () => {
+    // Leaving `substance_evidence` in place would keep a citation to a source
+    // that does not exist attached to a beat we just admitted we cannot fill.
+    expect(EDGE).toMatch(/productEscalated[\s\S]{0,1200}b\.substance = 'needs_user'/)
+    expect(EDGE).toMatch(/b\.substance_evidence = ''/)
+  })
+
+  it('never double-escalates a beat the entitlement pass already took', () => {
+    expect(EDGE).toMatch(/if \(!b \|\| b\.substance === 'needs_user'\) continue/)
+  })
+
+  it('does NOT send product failures to the repair model', () => {
+    // ⚖️ Deliberate. An entitlement failure has a true weaker statement to fall
+    // back to; an impossible product claim has no floor at all, and the repair
+    // call returns lines without declarations, so the false `substance` would
+    // survive the rewrite untouched.
+    const repairPrompt = EDGE.slice(EDGE.indexOf('const repairPrompt'), EDGE.indexOf('RE-CHECK.'))
+    expect(repairPrompt).not.toMatch(/productFails/)
+  })
+})
+
+describe('a script that is mostly questions is visible in production', () => {
+  it('logs the density rather than inferring it later from a confused creator', () => {
+    // Replayed over the last matrix, one script would have had 5 of 6 beats
+    // escalated. Per beat that beats a fabrication; at that density it is a
+    // different product.
+    expect(EDGE).toMatch(/script_mostly_questions/)
+    expect(EDGE).toMatch(/asked \/ totalBeats >= 0\.4/)
+  })
+
+  it('counts what the beats actually SAY, not what was escalated this pass', () => {
+    // Counting `productEscalated + entFails.length` would miss beats the model
+    // itself declared needs_user, which are the same experience for the creator.
+    expect(EDGE).toMatch(/\?\.substance === 'needs_user'\)\.length/)
+  })
+})

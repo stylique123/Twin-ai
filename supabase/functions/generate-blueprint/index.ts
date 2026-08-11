@@ -2064,6 +2064,78 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
     }
 
+    // ── A DECLARED SOURCE THAT DOES NOT EXIST IS ASKED, NEVER REWRITTEN ──────
+    //
+    // ⚠️ DETECTION WITHOUT ENFORCEMENT IS THE MISTAKE ABOVE, REPEATED. The
+    // product check landed as a `console.warn` and nothing else, on a defect
+    // that ran 70 times per 112 scripts. A guard that only writes to a log is a
+    // smoke alarm wired to a dashboard — this file has now paid for that lesson
+    // twice, so the check is wired to an outcome in the same commit.
+    //
+    // ⚖️ AND IT IS NOT SENT TO THE REPAIR CALL, DELIBERATELY. An entitlement
+    // failure has a true weaker statement to fall back to: the creator DOES
+    // hold a view, just not an experience, so a rewrite lands somewhere honest.
+    // `impossible_product_claim` has no such floor — NOTHING was supplied about
+    // the product, so every rewrite is either a general platitude or a second
+    // invention, and the model returns lines without declarations, so the false
+    // `substance` would survive the rewrite untouched. The only honest output
+    // is the question, which is the third of the three answers this system
+    // allows: research, reframe, or ASK.
+    const productFails = issues.filter((i) =>
+      i.code === 'impossible_product_claim' || i.code === 'unsupported_product_claim')
+    let productEscalated = 0
+    for (const f of productFails) {
+      const b = Array.isArray(declared)
+        ? (declared[f.beat] as { line?: string; substance?: string; substance_evidence?: string } | undefined)
+        : undefined
+      // Already escalated by the entitlement pass — one beat, one outcome.
+      if (!b || b.substance === 'needs_user') continue
+      const q = f.code === 'impossible_product_claim'
+        ? 'This beat needs a real detail about your product, and nothing about it was supplied. What does it actually do here?'
+        : 'This beat describes your product in a way the supplied details do not cover. What is the accurate version?'
+      b.line = q
+      b.substance = 'needs_user'
+      b.substance_evidence = ''
+      if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
+      productEscalated++
+    }
+    if (productEscalated) {
+      console.warn(JSON.stringify({
+        event: 'product_claim_escalated',
+        beats: productEscalated,
+        of: Array.isArray(declared) ? declared.length : 0,
+        product_facts_supplied: productFactsForCheck.length,
+      }))
+    }
+
+    // ⚠️ A SCRIPT THAT IS MOSTLY QUESTIONS IS NOT A SCRIPT, AND THE CREATOR PAID
+    // FOR IT. Replayed over the last 112-run matrix, 80 of 111 scripts were
+    // untouched by the escalations above — but one had 5 of its 6 beats become
+    // questions, and another 7 beats. Per beat the escalation is strictly better
+    // than the fabrication it replaces; at that density it is a different
+    // product, delivered without warning.
+    //
+    // ⚖️ THIS LOGS AND DOES NOT REFUSE, deliberately. Refusing after the spend,
+    // or returning a shape the app has no reader for, are both worse than
+    // showing what we have. The threshold exists so the frequency is VISIBLE in
+    // production rather than inferred later from a confused creator — the
+    // decision it informs (a real "here is what we need from you" screen) is a
+    // UI change and belongs with one.
+    const totalBeats = Array.isArray(declared) ? declared.length : 0
+    const asked = Array.isArray(declared)
+      ? declared.filter((b) => (b as { substance?: string })?.substance === 'needs_user').length
+      : 0
+    if (totalBeats > 0 && asked / totalBeats >= 0.4) {
+      console.warn(JSON.stringify({
+        event: 'script_mostly_questions',
+        asked,
+        of: totalBeats,
+        knowledge_supplied: speakable.length,
+        product_facts_supplied: productFactsForCheck.length,
+        questions: creatorQuestions,
+      }))
+    }
+
     const weakUnit = isContentlessUnit(
       (templated.bp as { reference_read?: { mechanism?: { enumeration?: { unit?: unknown } } } })
         ?.reference_read?.mechanism?.enumeration?.unit)
