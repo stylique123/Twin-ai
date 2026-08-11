@@ -197,3 +197,80 @@ describe('a declaration nobody checks is a comment', () => {
     ], supplied)).toEqual([])
   })
 })
+
+describe('a citation carries the prefix the prompt taught it', () => {
+  // ⚠️ MEASURED. The prompt renders knowledge as `* (product) cardboard PC`, so
+  // the writer cites it back that way. All 18 claims flagged as fabrications
+  // across a 60-run matrix were this, and every one cited real knowledge.
+  const CARTER = readKnowledge({ items: [
+    { kind: 'product', text: 'This cardboard PC is insane', basis: 'demonstrated' },
+    { kind: 'product', text: 'This IPHONE 14 PRO MAX is going to one of YOU', basis: 'demonstrated' },
+  ]})
+
+  it('accepts a citation written the way the prompt displayed it', () => {
+    // Two words, one of which is the kind marker. Before the strip, "product"
+    // joined the term set and forced a two-term match that could not be made.
+    expect(substanceIssues([
+      { line: 'Look at my cardboard PC.', substance: 'creator_knowledge',
+        substance_evidence: '(product) cardboard PC' },
+    ], CARTER.items)).toEqual([])
+  })
+
+  it('accepts it for every kind marker, not just product', () => {
+    for (const k of ['topic', 'opinion', 'covered', 'experience']) {
+      expect(substanceIssues([
+        { line: 'x', substance: 'creator_knowledge',
+          substance_evidence: `(${k}) cardboard PC` },
+      ], CARTER.items)).toEqual([])
+    }
+  })
+
+  it('STILL CATCHES a fabrication that merely wears the prefix', () => {
+    // The strip must not become a way through. A prefixed citation that traces
+    // to nothing is exactly as unsupported as an unprefixed one.
+    expect(substanceIssues([
+      { line: 'x', substance: 'creator_knowledge',
+        substance_evidence: '(product) quantum toaster subscription' },
+    ], CARTER.items).map((i) => i.code)).toContain('unsupported_creator_claim')
+  })
+
+  it('a bare kind marker with nothing after it supports nothing', () => {
+    expect(substanceIssues([
+      { line: 'x', substance: 'creator_knowledge', substance_evidence: '(product)' },
+    ], CARTER.items).map((i) => i.code)).toContain('unsupported_creator_claim')
+  })
+})
+
+describe('a beat may rest on more than one item', () => {
+  const JEREMY = readKnowledge({ items: [
+    { kind: 'topic', text: 'AI ads for dropshipping', basis: 'demonstrated' },
+    { kind: 'product', text: 'ChatGPT can run your email marketing', basis: 'demonstrated' },
+  ]})
+
+  it('accepts a comma-joined citation of two real items', () => {
+    // MEASURED: three correctly-sourced beats were reported as fabrications
+    // because the whole string carried two items' worth of terms and no single
+    // stored item could match enough of them.
+    expect(substanceIssues([
+      { line: 'x', substance: 'creator_knowledge',
+        substance_evidence: 'ChatGPT, AI ads for dropshipping' },
+    ], JEREMY.items)).toEqual([])
+  })
+
+  it('still refuses a list where NOTHING traces', () => {
+    expect(substanceIssues([
+      { line: 'x', substance: 'creator_knowledge',
+        substance_evidence: 'quantum toasters, orbital mattresses' },
+    ], JEREMY.items).map((i) => i.code)).toContain('unsupported_creator_claim')
+  })
+
+  it('catches the no-knowledge fabrication, which is what it is FOR', () => {
+    // ⚠️ MEASURED AND REAL: in 4 of 4 runs with knowledge deliberately withheld,
+    // the writer still declared `creator_knowledge` and invented a citation —
+    // "Goal: educate", "his focus on tech reviews implies…". Given nothing, it
+    // claimed something. This is the case the whole check exists for.
+    expect(substanceIssues([
+      { line: 'x', substance: 'creator_knowledge', substance_evidence: 'Goal: educate' },
+    ], []).map((i) => i.code)).toContain('unsupported_creator_claim')
+  })
+})

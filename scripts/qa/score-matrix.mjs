@@ -35,12 +35,18 @@ const terms = (s) => new Set(String(s).toLowerCase().split(/[^a-z0-9]+/)
 
 /** Same loose containment `substanceIssues` uses: the beat need not quote, only
  *  overlap enough that the claim traces back to something real. */
+// The prompt shows `* (product) X`, so citations come back prefixed. Strip it,
+// or the kind word inflates the term set and short citations never match.
+const KIND_PREFIX = /^\s*\((?:fact|opinion|topic|example|experience|framework|claim|product|covered)\)\s*/i
 function tracesTo(cited, supplied) {
-  const c = terms(cited)
-  if (!c.size) return false
-  return supplied.some((i) => {
-    const t = terms(i.text ?? '')
-    return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+  const parts = cited.split(/[,;]/).map((x) => x.replace(KIND_PREFIX, '').trim()).filter(Boolean)
+  return (parts.length ? parts : [cited]).some((part) => {
+    const c = terms(part)
+    if (!c.size) return false
+    return supplied.some((i) => {
+      const t = terms(i.text ?? '')
+      return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+    })
   })
 }
 

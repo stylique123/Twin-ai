@@ -287,15 +287,40 @@ export interface SubstanceIssue {
 const FIRST_PERSON_HISTORY =
   /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran)\b|\bmy own\b|\bwhen I (?:got|bought|switched)\b/i
 
+/** ⚠️ THE PROMPT SHOWS EACH ITEM AS `* (product) cardboard PC`, so the writer
+ *  cites it back WITH THE KIND PREFIX. Left in, the literal word "product" or
+ *  "topic" joins the term set and pushes a two-word citation to a two-term
+ *  match it can never make: `(product) cardboard PC` shares only "cardboard"
+ *  with the item it correctly came from, and was reported as a fabrication.
+ *
+ *  MEASURED: 18 of 18 flagged claims across a 60-run matrix were this, and
+ *  every one of them cited real supplied knowledge. A check that cries wolf
+ *  teaches people to ignore it, which is worse than not having it. */
+const KIND_PREFIX = /^\s*\((?:fact|opinion|topic|example|experience|framework|claim|product|covered)\)\s*/i
+
 /** Loose containment: the beat need not quote verbatim, only overlap enough that
  *  the claim traces back to something real. */
+/** ⚖️ A BEAT MAY REST ON MORE THAN ONE ITEM, and the writer cites them the way
+ *  a person would: "ChatGPT, AI ads for dropshipping". Measured against the
+ *  whole citation those are two items' worth of terms, and no SINGLE stored
+ *  item can match enough of them — three correctly-sourced beats were reported
+ *  as fabrications for exactly this.
+ *
+ *  So each comma-separated part is traced independently and ANY part
+ *  supporting the beat is enough. That is the question this check actually
+ *  asks — "does this beat rest on something real" — and not "is every phrase
+ *  in the citation perfect". Citing one real item and one invented one is a
+ *  weaker failure than inventing the whole beat, and is not what this exists
+ *  to catch. */
 function tracesTo(cited: string, supplied: readonly KnowledgeItem[]): boolean {
-  const c = terms(cited)
-  if (c.size === 0) return false
-  return supplied.some((i) => {
-    const t = terms(i.text)
-    const overlap = [...c].filter((w) => t.has(w)).length
-    return overlap >= Math.min(2, c.size)
+  const parts = cited.split(/[,;]/).map((x) => x.replace(KIND_PREFIX, '').trim()).filter(Boolean)
+  return (parts.length ? parts : [cited]).some((part) => {
+    const c = terms(part)
+    if (c.size === 0) return false
+    return supplied.some((i) => {
+      const t = terms(i.text)
+      return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+    })
   })
 }
 

@@ -180,12 +180,26 @@ function suppliedLevel(k: SuppliedKnowledge): 'coverage' | 'opinion' | 'experien
   if (k.basis === 'stated') return 'opinion'
   return 'coverage'
 }
+// ⚠️ The knowledge block below renders each item as `* (product) X`, so the
+// writer cites it back with that prefix. Left in, the literal kind word joins
+// the term set and a short citation can never reach a two-term match — a
+// correctly cited beat gets reported as a fabrication. Measured: 18 of 18
+// flagged claims in a 60-run matrix were exactly this.
+const KIND_PREFIX = /^\s*\((?:fact|opinion|topic|example|experience|framework|claim|product|covered)\)\s*/i
+// A beat may rest on more than one item and the writer cites them as a list —
+// "ChatGPT, AI ads for dropshipping". Measured whole, that is two items' worth
+// of terms and no single stored item can match enough of them. Each part is
+// traced independently; any part supporting the beat is enough, because the
+// question is "does this beat rest on something real".
 function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolean {
-  const c = substanceTerms(cited)
-  if (c.size === 0) return false
-  return supplied.some((i) => {
-    const t = substanceTerms(String(i.text))
-    return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+  const parts = cited.split(/[,;]/).map((x) => x.replace(KIND_PREFIX, '').trim()).filter(Boolean)
+  return (parts.length ? parts : [cited]).some((part) => {
+    const c = substanceTerms(part)
+    if (c.size === 0) return false
+    return supplied.some((i) => {
+      const t = substanceTerms(String(i.text))
+      return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+    })
   })
 }
 function substanceIssues(
