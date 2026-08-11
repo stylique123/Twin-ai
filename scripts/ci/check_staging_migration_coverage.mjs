@@ -126,7 +126,7 @@ export const EXCLUDED = {
     + 'then `staging-brand-schema.sql`. Weakening the production FK to suit that '
     + 'ordering would be the tail wagging the dog. The editor never reads '
     + '`product_entities` either — entities reach it through the blueprint prompt, the '
-    + 'same route the brief takes in 0109 above. ⚠️ MANUAL APPLY OWED: as of 2026-08-11 this has NOT been applied to production and must be, by hand, BEFORE any code reading `product_entities` ships.',
+    + 'same route the brief takes in 0109 above. ⚠️ MANUAL APPLY: excluding it here means nothing applies it anywhere, so it was applied to production BY HAND on 2026-08-11 (verified: the table exists with RLS on). Any future migration excluded here carries the same debt.',
   '0121_creator_knowledge':
     'Creates `creator_knowledge` and `audience_questions`, both with foreign keys to '
     + '`public.brand_voices` — the same staging FIXTURE-APPLIED-AFTER-THE-LOOP ordering '
@@ -136,7 +136,7 @@ export const EXCLUDED = {
     + 'blueprint prompt, the route 0109 and 0120 already take. ⚠️ The RLS policies and '
     + 'the deliberate ABSENCE of an INSERT policy are therefore unexercised on staging, '
     + 'which is the real cost of this exclusion and is worth saying out loud: nothing '
-    + 'proves before production that a creator cannot insert claims about themselves. ⚠️ MANUAL APPLY OWED: as of 2026-08-11 neither table exists in production. Apply by hand before shipping any reader.',
+    + 'proves before production that a creator cannot insert claims about themselves. ⚠️ MANUAL APPLY: applied to production BY HAND on 2026-08-11, together with 0120 and in one transaction (verified: both tables exist with RLS on). The RLS policies still have no automated exercise anywhere — that cost stands.',
 }
 
 // `excluded` is a PARAMETER rather than a direct read of the constant so the
