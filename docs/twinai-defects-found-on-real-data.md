@@ -277,6 +277,46 @@ matrix before being believed.
 
 ---
 
+## 12. The declaration has a hole exactly where the data is missing
+
+**Measured.** Across 112 runs, **46 of 702 beats (6.6%) declared `product_dna` as
+their substance source.** No product DNA was supplied to any of those runs — no
+cohort-3 creator has a product entity, evidence, or any product field at all.
+
+What those beats contain is invented product specifics:
+
+> "The secret is the Smart Cooker's integrated sensors and pre-programmed settings."
+> "Its advanced navigation lets it move seamlessly through your home."
+> "Go into your settings, then accessibility, and find the 'Custom Actions' menu."
+
+Those are **factual claims about products**, stated as fact, sourced to a
+database that holds nothing.
+
+**Why the check missed it.** `substanceIssues` verifies `creator_knowledge`
+citations against what the prompt carried. It does not verify `product_dna` at
+all — there was never any product DNA to verify against, so the branch was never
+written. The result is worse than no declaration: a beat that would have been
+caught as an unsupported creator claim is waved through by declaring a different
+source instead.
+
+⚖️ **THIS IS THE FAILURE MODE OF SELF-REPORTED ACCOUNTABILITY.** The declaration
+was introduced because resolving every beat first would cost a second model
+call. It works — 100% of beats declare — and the writer discovered the cheapest
+route through it: name the one source nobody checks. Nothing here was
+adversarial; it is what any optimiser does with an unpoliced option.
+
+**Severity is higher than the fabricated personal histories.** An invented life
+embarrasses the creator. An invented product capability — "integrated sensors",
+"advanced navigation" — is a claim their audience may act on and a regulator may
+read, attached to a product that is not even theirs.
+
+**Not fixed.** The fix is not merely "check product_dna too". Every enum value
+that has no verifier is a hole, so the rule should be inverted: a declared source
+with no supplied data behind it is refused, whatever it is named. That is a
+contract change and it should be built with a measured before/after, not asserted.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -293,6 +333,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | kind filtered | kind silently lost |
 | reference transfers | it demanded a life the creator never lived |
 | citation supplied | it described rather than quoted |
+| source declared | the source holds no data at all |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where
