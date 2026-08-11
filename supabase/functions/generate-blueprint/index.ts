@@ -151,6 +151,78 @@ function dropSpokenPlaceholders<T>(bp: T): { bp: T; hooksDropped: number; linesA
   return { bp, hooksDropped, linesAffected }
 }
 
+// Inlined from `packages/shared/src/knowledgeResolver.ts`, where the rules and
+// their 21 tests live. Edge functions cannot import @twinai/shared under Deno
+// deploy, so the parity is kept by the edge-source-parity test rather than by
+// the module system.
+//
+// ⚖️ A DECLARATION NOBODY CHECKS IS A COMMENT. Asking the writer to say where
+// each beat's content came from is worth nothing on its own — the same model
+// that would invent a position will happily label the invention
+// `creator_knowledge`. What makes the field load-bearing is checking the claim
+// against the exact knowledge this prompt carried.
+const SUBSTANCE_STOP = new Set(['this', 'that', 'with', 'from', 'they', 'them', 'what', 'when',
+  'have', 'about', 'video', 'thing', 'things', 'your', 'their', 'more', 'than'])
+function substanceTerms(s: string): Set<string> {
+  return new Set(String(s).toLowerCase().split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 3 && !SUBSTANCE_STOP.has(w)))
+}
+/** First-person personal history — "I bought", "I used", "I switched".
+ *  ⚖️ Narrow on purpose: "I think" and "I'd say" are stance, not history, and
+ *  condemning them would fail every honest talking-head script. */
+const FIRST_PERSON_HISTORY =
+  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran)\b|\bmy own\b|\bwhen I (?:got|bought|switched)\b/i
+type SuppliedKnowledge = { kind: string; text: string; basis: string }
+/** Same ladder as the shared module: a title is coverage however confident it
+ *  sounds; only speech is opinion, and only first-person speech is experience. */
+function suppliedLevel(k: SuppliedKnowledge): 'coverage' | 'opinion' | 'experience' {
+  if (k.kind === 'experience' && k.basis === 'stated') return 'experience'
+  if (k.basis === 'stated') return 'opinion'
+  return 'coverage'
+}
+function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolean {
+  const c = substanceTerms(cited)
+  if (c.size === 0) return false
+  return supplied.some((i) => {
+    const t = substanceTerms(String(i.text))
+    return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+  })
+}
+function substanceIssues(
+  beats: unknown,
+  supplied: readonly SuppliedKnowledge[],
+): Array<{ code: string; beat: number; detail: string }> {
+  if (!Array.isArray(beats)) return []
+  const out: Array<{ code: string; beat: number; detail: string }> = []
+  beats.forEach((raw, i) => {
+    const b = raw as { substance?: unknown; substance_evidence?: unknown; line?: unknown }
+    const source = typeof b?.substance === 'string' ? b.substance : ''
+    const cited = typeof b?.substance_evidence === 'string' ? b.substance_evidence.trim() : ''
+    const line = typeof b?.line === 'string' ? b.line : ''
+    if (source === 'creator_knowledge') {
+      if (cited === '') {
+        out.push({ code: 'undeclared_evidence', beat: i,
+          detail: 'Beat claims creator knowledge and names nothing it used.' })
+      } else if (!tracesTo(cited, supplied)) {
+        out.push({ code: 'unsupported_creator_claim', beat: i,
+          detail: `Beat cites "${cited.slice(0, 80)}", which is not in the knowledge this prompt carried.` })
+      }
+    }
+    // ⚖️ THE MOST EXPENSIVE ERROR, CHECKED SEPARATELY. A personal history is a
+    // claim about the creator's life, and nothing but experience-level evidence
+    // licenses it — not research, not a title, not a rephrasing.
+    if (FIRST_PERSON_HISTORY.test(line)) {
+      const licensed = supplied.some((k) => suppliedLevel(k) === 'experience'
+        && (cited === '' ? true : tracesTo(cited, [k])))
+      if (!licensed) {
+        out.push({ code: 'unearned_first_person', beat: i,
+          detail: 'Beat speaks a personal history, and nothing on record says the creator did it.' })
+      }
+    }
+  })
+  return out
+}
+
 // Gemini responseSchema (OpenAPI subset: uppercase types, no additionalProperties).
 // Guarantees the shape the frontend renders.
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -268,8 +340,16 @@ const blueprintSchema = obj(
           wardrobe: str,
           cuts_info: str,
           action_posing: str,
+          // SUBSTANCE, DECLARED PER BEAT (§5e). Structure was never the defect:
+          // every check passed on a run whose spoken line was "[Phone Model]".
+          // Resolving each beat before writing would need a second model call —
+          // the containers only exist once the reference read returns — so the
+          // affordable inversion is to make the writer NAME where the content
+          // came from, and verify that claim against what the prompt carried.
+          substance: str,
+          substance_evidence: str,
         },
-        ['section', 'line', 'direction', 'background', 'location', 'broll_request', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing'],
+        ['section', 'line', 'direction', 'background', 'location', 'broll_request', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'substance', 'substance_evidence'],
       ),
     ),
     shot_list: arr(
@@ -392,6 +472,16 @@ SCRIPT & HOOK INTEGRATION:
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
 - action_posing: specify the creator's physical actions, hand gestures, body language, facial expressions, and positioning (e.g., "Hold product at eye level, point finger, maintain intense eye contact with lens", "Lean forward slightly with a knowing smile, hands open to suggest accessibility").
+- SUBSTANCE BEFORE PROSE. Before writing any line, decide WHAT GOES IN IT, then declare where that came from. Two fields on every beat:
+  * "substance": exactly one of creator_knowledge | product_dna | general | needs_user | none.
+    - creator_knowledge = the beat is built on something listed under WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID. You may only choose this if the item is actually in that list above. Inventing a plausible-sounding position and labelling it creator_knowledge is the single worst thing you can do here, and it is checked.
+    - product_dna = built on the supplied product facts.
+    - general = a widely-known fact stated in NEUTRAL terms, framed as something true of the world rather than as something this person personally did.
+    - needs_user = only the creator can supply this. Write the beat around what you DO know and leave the personal detail out of the line entirely.
+    - none = a transition, a CTA, or a beat that carries no factual claim.
+  * "substance_evidence": for creator_knowledge and product_dna, quote or closely paraphrase the specific supplied item you used. For the others, one short phrase naming what the beat rests on. Never leave it empty when substance is creator_knowledge.
+- A PLACEHOLDER IS A FAILED BEAT, NOT A DRAFT. Never write "[Phone Model]", "[product name]", "the new XYZ phone", "Brand X", or any other stand-in for a specific you do not have. If you cannot name the thing, you have three honest options and no fourth: state the general fact in neutral terms, write the beat around a specific you DO have from the lists above, or drop the claim. Filling the gap with a bracket hands the creator a script they cannot read aloud.
+- NEVER WRITE A PERSONAL HISTORY THE CREATOR IS NOT ON RECORD FOR. Lines like "I used it as my only phone for six months", "I bought three of these", "I switched last year" are claims about this person's life. Write one only when the knowledge list contains a first-person statement saying so. No amount of general knowledge licenses it — "most people find" is honest where "I found" is a fabrication.
 - KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never sags. Mark that beat's section as "Re-hook".
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
@@ -1554,6 +1644,40 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         script_lines_affected: templated.linesAffected,
       }))
     }
+    // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
+    // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
+    // against the fuller store would excuse exactly the fabrication this exists
+    // to catch, because a beat could cite something the writer never saw.
+    const declared = (templated.bp as { script?: unknown })?.script
+    const issues = substanceIssues(declared, speakable.map((k) => ({
+      kind: String(k.kind), text: String(k.text), basis: String(k.basis),
+    })))
+    const bySource: Record<string, number> = {}
+    if (Array.isArray(declared)) {
+      for (const b of declared) {
+        const s = typeof (b as { substance?: unknown })?.substance === 'string'
+          ? String((b as { substance?: unknown }).substance) : 'undeclared'
+        bySource[s] = (bySource[s] ?? 0) + 1
+      }
+    }
+    // Always emitted, including the clean case: the share of beats a creator can
+    // actually film is the number this whole layer exists to move, and a metric
+    // that only appears on failure cannot show a trend.
+    console.log(JSON.stringify({
+      event: 'beat_substance',
+      beats: Array.isArray(declared) ? declared.length : 0,
+      by_source: bySource,
+      knowledge_supplied: speakable.length,
+      issues: issues.length,
+      issue_codes: issues.map((i) => i.code),
+    }))
+    if (issues.length) {
+      // Reported, never rewritten. There are no alternate script lines to fall
+      // back to, and silently deleting a beat would hand the creator a video
+      // with a hole in it rather than a sentence they can check.
+      console.warn(JSON.stringify({ event: 'substance_unsupported', details: issues.slice(0, 20) }))
+    }
+
     const weakUnit = isContentlessUnit(
       (templated.bp as { reference_read?: { mechanism?: { enumeration?: { unit?: unknown } } } })
         ?.reference_read?.mechanism?.enumeration?.unit)
