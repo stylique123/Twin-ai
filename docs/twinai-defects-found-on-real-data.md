@@ -212,6 +212,71 @@ was visible.
 
 ---
 
+## 10. A reference can demand evidence the creator does not have
+
+**Measured.** 112 runs, 8 real creators, 702 beats — 56 against hand-observed
+references and 56 against title-inferred shapes, cross-paired so no creator got
+a shape derived from their own channel.
+
+**9 beats asserted a first-person history the creator never stated.** Verbatim:
+
+> "I used to struggle with distractions, especially with all the gadgets I review."
+> "those high-end, wired earbuds I used to swear by"
+> "These are three products I've bought and would absolutely never buy again."
+> "Once I started building my own, the cost savings were immediate."
+
+None of those people said any of that. The corpus is titles only, so **nobody in
+this cohort has experience-level evidence at all** — every one of these is
+unearned by construction.
+
+**What drives it.** The failure clusters on references whose MECHANISM REQUIRES A
+PERSONAL CLAIM — Ali's self-reported "3x more productive", Codie's contrarian
+"don't do X", Tilbury's identity story, "3 things I stopped buying". Handing
+those to a creator with no experience evidence is an instruction to invent one.
+
+⚠️ **THE COMPARISON IS CONFOUNDED AND THE NUMBERS MUST NOT BE READ AS
+OBSERVED-vs-INFERRED.** The observed references are business and productivity
+shapes; the derived ones are tech-native (question-test, superlative,
+enumerated). The two blocks differ in mechanism source AND in domain distance
+from the creator, so the 9-vs-2 split cannot be attributed to either. Reported
+here as a confound rather than a finding, because the tempting headline —
+"hand-observed references are worse" — is not supported.
+
+**The finding that does survive**: `unearned_first_person` caught **all nine**,
+and **nothing stopped any of them**. The check is report-only. In production
+those lines ship. `requiresExperienceEvidence` exists on the derived references
+and is advisory — the compatibility gate does not consult it.
+
+---
+
+## 11. A citation that describes instead of quoting
+
+**Measured.** 13 beats cited creator knowledge that could not be traced. Unlike
+the earlier false-alarm class, these are real — and they share a shape. The
+model does not quote the supplied item; it **describes a relationship to it**:
+
+> "3D printing is a known topic for the creator"
+> "AI in farming is a known topic for the creator"
+> "creator uses a simple system of bullet points and keywords"
+> "premise about innovative tech simplifying lives"
+
+Some are loosely true and still untraceable. One — the bullet-point system — is
+an invented capability wearing a citation, which is exactly the failure the
+check exists to catch.
+
+**Why it happens.** The prompt asks the writer to "quote or closely paraphrase
+the specific supplied item" but the schema accepts any string, so a description
+satisfies the letter. A citation that is prose about the creator cannot be
+mechanically checked against a list of claims.
+
+**Not yet fixed.** The fix is to require the citation to overlap the supplied
+text rather than talk about it — which is a prompt change AND a stricter check,
+and stricter checks on this path have twice produced false alarms. It should be
+built with the same discipline: mutation-tested, and measured against a real
+matrix before being believed.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -226,6 +291,8 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | rules are correct | nothing calls them |
 | citation unsupported | citation was fine |
 | kind filtered | kind silently lost |
+| reference transfers | it demanded a life the creator never lived |
+| citation supplied | it described rather than quoted |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where
