@@ -971,7 +971,24 @@ Deno.serve(async (req: Request) => {
   // holder and the key hides the read from the guard — which would leave this
   // field looking unwired again the moment somebody trusted the registry.
   const briefRaw = brief as unknown as Record<string, unknown>
-  const productEvidence = briefRaw.productEvidence
+  const briefEvidence = briefRaw.productEvidence
+
+  // ⚖️ THE ENTITY IS THE AUTHORITY; THE BRIEF IS WHERE THE ANSWER USED TO LIVE.
+  // Evidence describes A PRODUCT, and since §5d a creator may hold several — so
+  // storing it on the brief meant one creator had exactly one product's
+  // evidence, and a second business silently overwrote the first. The column
+  // moved to `product_entities.evidence`; this is the read that finishes the
+  // move, and until now the SELECT fetched that column and dropped it.
+  //
+  // THREE STATES, NOT TWO, AND THE FALLBACK RESPECTS THEM. `null` on the entity
+  // means UNANSWERED and defers to the brief, which is what makes this safe for
+  // creators whose answer predates the move. `"declined"` is an ANSWER — "there
+  // is nothing to show" — and must NOT fall through to a stale brief that still
+  // holds a capture, or a creator who withdrew permission gets it back.
+  const entityEvidence = (ownedEntity as { evidence?: unknown } | null)?.evidence
+  const productEvidence = entityEvidence === undefined || entityEvidence === null
+    ? briefEvidence
+    : entityEvidence
 
   // The tone clamp, whose full rationale is at the TONE_RULE table above. It
   // sits HERE, immediately after `brief`, because that is the first line at

@@ -232,3 +232,29 @@ export function productEvidencePromptLine(
       + ' display. Do not write a beat that puts this capture on screen; talk about the product'
       + ' instead of showing it.'
 }
+
+/** Either shape a stored answer can take, from either place it can be stored. */
+export type StoredEvidence = ProductEvidence | 'declined' | null | undefined
+
+/**
+ * WHICH ANSWER WINS when the entity and the brief both hold one.
+ *
+ * ⚖️ THE ENTITY IS THE AUTHORITY; THE BRIEF IS WHERE THE ANSWER USED TO LIVE.
+ * Evidence describes A PRODUCT, and since §5d a creator may hold several — so
+ * keeping it on the brief meant one creator had exactly one product's evidence
+ * and a second business silently overwrote the first. The column moved to
+ * `product_entities.evidence`; this is the precedence that finishes the move.
+ *
+ * ⚠️ THREE STATES, NOT TWO, AND THE DIFFERENCE IS THE WHOLE FUNCTION.
+ * `null`/`undefined` on the entity means UNANSWERED and defers to the brief,
+ * which is what makes the move safe for creators who answered before it.
+ * `'declined'` is an ANSWER — "there is nothing to show" — and must NOT fall
+ * through to a stale brief that still holds a capture, or a creator who
+ * withdrew permission has it handed back to them by a fallback.
+ */
+export function resolveProductEvidence(
+  onEntity: StoredEvidence,
+  onBrief: StoredEvidence,
+): StoredEvidence {
+  return onEntity === null || onEntity === undefined ? onBrief : onEntity
+}
