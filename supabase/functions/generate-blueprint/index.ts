@@ -1357,10 +1357,71 @@ Deno.serve(async (req: Request) => {
     // ⚖️ An UNANSWERED evidence field emits nothing — silence must not be read as
     // "there is nothing to show", which is a different and real answer.
 
-    const sellIntent = videoGoal === 'sell' || videoGoal === 'leads'
+    // WHAT THIS SCRIPT MAY CLAIM, DERIVED FROM THE RELATIONSHIP.
+    //
+    // Inlined from `packages/shared/src/productEntity.ts:claimRulesFor`, which
+    // holds the rules and their tests; the parity test compares the two.
+    //
+    // ⚠️ ASKED, STORED, TESTED — AND READ BY NOTHING. `claimRulesFor` and
+    // `mayWriteCommercialCta` existed with full coverage and the only mention
+    // outside their tests was a COMMENT. Every permission below was being
+    // decided by the video goal alone, which cannot see the relationship:
+    // a REVIEW_ONLY entity plus a commercial goal produced a purchase CTA for
+    // somebody else's product, and an affiliate tie produced no disclosure.
+    //
+    // Derived, never stored — a stored permission set is a second authority
+    // that drifts from the relationship it came from, and then nobody knows
+    // which one the script obeyed.
+    const rel = (ownedEntity?.relationship ?? 'NONE') as string
+    const personalUse = (ownedEntity?.personal_use ?? 'NOT_CONFIRMED') as string
+    // The one line that is NOT per-relationship: personal experience is
+    // established by the creator alone, so no relationship may override it.
+    const creatorExperience = personalUse === 'CONFIRMED'
+    const commercialCta = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+      || rel === 'AFFILIATE' || rel === 'SPONSOR'
+      ? 'only_if_intended'
+      : 'forbidden'
+    const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
+    const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+      ? 'allowed'
+      : rel === 'AFFILIATE' || rel === 'SPONSOR'
+        ? 'attributed'
+        : 'forbidden'
+
+    const goalWantsSale = videoGoal === 'sell' || videoGoal === 'leads'
+    // ⚖️ SILENCE IS NOT PERMISSION, AND NEITHER IS OWNERSHIP. Owning something
+    // is a standing fact; selling it IN THIS VIDEO is a per-video decision.
+    // ~85-95% of a typical creator's short-form sells nothing, so "they have a
+    // product" must not imply "pitch it" — and `forbidden` cannot be overridden
+    // by a goal, because no goal creates a commercial tie that does not exist.
+    const sellIntent = commercialCta === 'forbidden'
+      ? false
+      : commercialCta === 'allowed' || goalWantsSale
     const ctaIntentLine = sellIntent
-      ? '\n- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
-      : '\n- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'
+      ? '\n- CTA INTENT: this creator\'s goal is commercial and they have a commercial tie to what is being promoted, so a purchase or signup CTA is appropriate here.'
+      : commercialCta === 'forbidden' && goalWantsSale
+        ? '\n- CTA INTENT: NO COMMERCIAL CTA. The creator has no commercial tie to this thing — they do not own it, earn from it, and are not paid to feature it — so there is nothing here they may ask the viewer to buy or sign up for, whatever the stated goal. The call to action is engagement: follow, save, share, or a question worth answering.'
+        : '\n- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'
+
+    // WHAT MAY BE SAID ABOUT IT, as opposed to what may be ASKED of the viewer.
+    const claimLines: string[] = []
+    if (marketingClaims === 'attributed') {
+      claimLines.push('\n- THE VENDOR\'S CLAIMS ARE THEIRS, NOT THE CREATOR\'S. You may repeat what the maker says about this product only as something THEY say — "they claim", "according to them". Never restate a marketing claim as an established fact in the creator\'s own voice.')
+    } else if (marketingClaims === 'forbidden' && rel === 'REVIEW_ONLY') {
+      // The distinction that makes REVIEW_ONLY worth having: a reviewer
+      // repeating the vendor's copy is an advertisement in a review's clothes.
+      claimLines.push('\n- THIS IS A REVIEW, NOT AN ADVERTISEMENT. Do NOT repeat the maker\'s marketing claims at all, attributed or otherwise. A review may be built from exactly two things: observable product facts, and what the creator personally experienced.')
+    }
+    if (!creatorExperience && rel !== 'NONE') {
+      // Sharpens the same rule the substance check enforces per beat: nothing
+      // licenses a personal history except the creator being on record for it.
+      claimLines.push('\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
+    }
+    if (disclosureRequired) {
+      // A property of the entity, not a pacing decision the writer may weigh.
+      claimLines.push('\n- A DISCLOSURE IS REQUIRED AND IS NOT OPTIONAL. There is a paid or commission-earning relationship here, so the script must state it plainly in the creator\'s own words, early and out loud — not buried in a caption and not at the very end. This is a legal obligation, not a stylistic choice, and it may not be traded away for pacing.')
+    }
+    const claimRulesBlock = claimLines.join('')
 
     // WHETHER THE PRODUCT CAN ACTUALLY BE PUT ON SCREEN.
     //
@@ -1506,7 +1567,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${doNotUseBlock}${workKindLine}${evidenceBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${workKindLine}${evidenceBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
