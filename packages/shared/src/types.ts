@@ -105,6 +105,13 @@ export interface Blueprint {
     format_label: string // e.g. "The Trust Builder"
     why_it_works: string[]
     retention_map: { beat: string; goal: string; tactic?: string }[]
+    // THE MECHANISM, AS DATA (§5d). Optional because every blueprint generated
+    // before this existed has none — and an absent mechanism must read as "we
+    // never measured it", never as "this reference does not enumerate".
+    // `readMechanism` degrades an absent one to not-enumerated, which withholds
+    // the count check rather than failing a script against a number nobody
+    // promised.
+    mechanism?: unknown
   }
   // CONCEPT & ADAPTATION — the actual video idea for THIS creator, plus an honest
   // translation of the reference's production scale down to what one person with a
@@ -137,7 +144,19 @@ export interface Blueprint {
     section: string
     line: string
     direction: string
+    /** THE PRE-SPLIT FIELD (§5c + §5d). Carried location, b-roll, edit intent
+     *  and wardrobe at once. Kept because 39 generations in production hold 87
+     *  of these strings and they cannot be split without inventing which half
+     *  was the location — see `shotDirection.ts`. Not written for new beats. */
     background?: string
+    /** Where the creator physically stands. Achievable direction only. */
+    location?: string
+    /** Footage to supply — gated on whether this creator can produce it. */
+    broll_request?: string
+    /** Cutaway/return timing, for the Edit Plan. Never a place to stand. */
+    editor_intent?: string
+    /** What the creator wears. §5d's fourth layer. */
+    wardrobe?: string
     cuts_info?: string
     action_posing?: string
   }[]

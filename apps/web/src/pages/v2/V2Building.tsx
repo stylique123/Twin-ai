@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Check, Loader2, Eye, Wand2, FileText, Clapperboard, Captions } from 'lucide-react'
 import { generateBlueprint, ingestReference, getJob, findGenerationByKey } from '../../lib/api'
+import type { VideoGoal } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
@@ -51,6 +52,8 @@ interface BuildState {
   reference_note?: string
   fidelity?: 'close' | 'balanced' | 'loose'
   tone?: 'understated' | 'balanced' | 'punchy'
+  // What this video is for. Absent means an engagement CTA — see GenerateInput.
+  goal?: VideoGoal
   // Minted by V2Create, one per click of "build". Carried in nav state so a
   // remount of THIS screen reuses it — see buildKey below.
   idempotency_key?: string
@@ -75,6 +78,11 @@ function buildKey(state: BuildState): string {
     (state.reference_note || '').trim(),
     state.fidelity ?? 'balanced',
     state.tone ?? 'balanced',
+    // GOAL IS PART OF THE IDENTITY OF A BUILD. Omitting it would make "the same
+    // reference, now as a sell video" collide with the awareness version
+    // already in sessionStorage, and the creator would be handed the old script
+    // back with no sign anything was ignored.
+    state.goal ?? 'none',
   ])
   const slot = `twinai.buildkey.${sig}`
   try {
@@ -332,6 +340,7 @@ export default function V2Building() {
           reference_note: state.reference_note || '',
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
+          goal: state.goal,
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
           idempotency_key: key,

@@ -1,0 +1,138 @@
+[
+  {
+    "case": {
+      "creator": "mkbhd",
+      "label": "OWNERSHIP TRAP (real prohibition)",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A founder-style product launch short. Hook: \"we spent 2 years building this\". Creator holds the product, explains why THEY designed it that way, ends with \"pre-order yours, link in bio\"."
+    },
+    "blueprint": {
+      "concept": {
+        "premise": "Review the latest flagship smartphone, focusing on its design, internal components, and real-world performance, while directly countering any misleading marketing with objective testing and user experience."
+      },
+      "hook_options": [
+        "I've been using this phone for two weeks, and it's not what you think.",
+        "Forget the hype, let's talk about what this new phone actually delivers.",
+        "They spent two years building this phone. I spent two weeks breaking it down.",
+        "This is the new [Phone Model], and there's a lot to unpack here.",
+        "After all the teasers, is this the phone that changes everything?"
+      ],
+      "script": [
+        {
+          "section": "Spoken Tease",
+          "line": "This isn't just another smartphone launch; this is [Phone Model X], and after weeks with it, I've got some thoughts you won't hear in a press release.",
+          "location": "Studio, minimalist tech desk",
+          "broll_request": "Sleek shot of the phone rotating on a stand, then a close-up of the screen and camera module.",
+          "wardrobe": "Casual, dark t-shirt",
+          "action_posing": "Holding the phone, looking directly at the camera with a thoughtful expression."
+        },
+        {
+          "section": "Intro Sting",
+          "line": "MKBHD Intro Sting",
+          "location": "N/A",
+          "broll_request": "MKBHD Signature Intro",
+          "wardrobe": "N/A",
+          "action_posing": "N/A"
+        },
+        {
+          "section": "Claims (Counter-marketing)",
+          "line": "Now, the company says they redesigned the camera for 'unrivaled low-light performance.' My testing shows it's good, but 'unrivaled' might be a stretch when you compare it to last year's flagship, or even a few others on the market.",
+          "location": "Studio, test setup",
+          "broll_request": "Side-by-side comparison shots of low-light photos from the reviewed phone vs. competitors. Overlay text showing objective test results.",
+          "wardrobe": "Casual, dark t-shirt",
+          "action_posing": "Pointing to details on a large screen displaying photo comparisons."
+        },
+        {
+          "section": "Subsystems (Design/Hardware)",
+          "line": "What they did get right is the build quality. This matte finish on the back feels fantastic, and while the weight distribution is a little different, it actually feels really premium in hand. Internally, the new [Processor Name] chip is definitely a powerhouse, but let's see how it holds up under real-world gaming and daily multitasking.",
+          "location": "Studio, close-up table setup",
+          "broll_request": "Macro shots of the phone's finish, ports, buttons, and camera bump. Graphics illustrating the internal chip architecture briefly.",
+          "wardrobe": "Casual, dark t-shirt",
+          "action_posing": "Handling the phone, gesturing to its different parts, then pointing to a graphic of the internal chip."
+        },
+        {
+          "section": "Real-World Experience",
+          "line": "So I took this thing out for a full day of use: photos, videos, social media, even some video editing on the go. Battery life was respectable, lasting me until about 7 PM with heavy use. The display is bright and vibrant, fantastic for media consumption, but I did notice a slight green tint at extreme angles, which is a minor annoyance.",
+          "location": "Various outdoor and indoor real-world settings (cafe, park, walking street)",
+          "broll_request": "POV shots of the creator using the phone in different scenarios. Screen recordings showing app usage and battery drain. Shots highlighting the display's vibrancy and the subtle green tint.",
+          "wardrobe": "Casual jacket, practical for outdoor shoots",
+          "action_posing": "Interacting naturally with the phone in different environments, showing genuine reactions."
+        },
+        {
+          "section": "Verdict",
+          "line": "Ultimately, the [Phone Model X] is a solid phone. It's got some great features like [Feature 1] and [Feature 2], and the design is top-notch. But it's not without its quirks, especially when you consider the price point and what the competition is offering. If you're looking for a new flagship and these specific features appeal to you, it's worth considering, but manage your expectations.",
+          "location": "Studio, minimalist tech desk",
+          "broll_request": "Final glamour shots of the phone, intercut with quick flashes of the pros and cons discussed. Overlay text summarizing key takeaways.",
+          "wardrobe": "Casual, dark t-shirt",
+          "action_posing": "Holding the phone, giving a direct and thoughtful conclusion."
+        }
+      ],
+      "cta": "If you want to see more in-depth tech reviews, make sure you're subscribed to the channel. And if you're curious about my app, Panels, or the podcast, Waveform, check those out too. Catch you in the next one!"
+    }
+  },
+  {
+    "case": {
+      "creator": "arun",
+      "label": "OWNERSHIP TRAP 2 (real prohibition)",
+      "fidelity": "close",
+      "tone": "balanced",
+      "refNote": "A founder-style product launch short. Hook: \"we spent 2 years building this\". Creator holds the product, explains why THEY designed it that way, ends with \"pre-order yours, link in bio\"."
+    },
+    "blueprint": {
+      "concept": {
+        "premise": "Arun Maini reviews a new piece of tech, framing his review with a 'behind-the-scenes' style hook that mimics a founder's launch, but instead focuses on his experience reviewing it."
+      },
+      "hook_options": [
+        "I've spent the last two weeks putting this new gadget through its paces, and wow...",
+        "You know how much work goes into making a good phone? Well, I just spent ages testing out this new one.",
+        "Alright, so I've been living with this for a while now, and I've got some thoughts.",
+        "Building a great piece of tech is hard. Reviewing it properly? Also hard. Let's talk about this.",
+        "If I were to design a phone, here's what I'd focus on. Let's see how close this new one gets."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "I've spent the last two weeks putting this new gadget through its paces, and wow...",
+          "location": "Studio Desk",
+          "broll_request": "Close up on product box, Arun unboxing",
+          "wardrobe": "Casual T-shirt",
+          "action_posing": "Holding the product, looking directly at the camera with an intrigued expression"
+        },
+        {
+          "section": "Introduction to Product & Initial Thoughts",
+          "line": "This is the new [PRODUCT NAME], and let me tell you, it's been an interesting journey getting to know it.",
+          "location": "Studio Desk",
+          "broll_request": "Product glam shots, showing its design from multiple angles",
+          "wardrobe": "Casual T-shirt",
+          "action_posing": "Presenting the product, turning it slightly to show different sides"
+        },
+        {
+          "section": "Key Feature 1 & Arun's Experience",
+          "line": "First up, let's talk about the [FEATURE 1]. They've gone with a [specific design choice/tech spec]. In my testing, I found it [describe Arun's personal experience \u2013 e.g., 'made everyday tasks feel incredibly smooth' or 'struggled with intensive gaming after prolonged use'].",
+          "location": "Various, demonstrating feature",
+          "broll_request": "Screen recording of feature in use, close-ups of specific hardware design",
+          "wardrobe": "Casual T-shirt",
+          "action_posing": "Using the product, demonstrating the feature, looking thoughtful"
+        },
+        {
+          "section": "Key Feature 2 & Arun's Experience",
+          "line": "Then there's the [FEATURE 2]. The company says it does [briefly state a factual claim, without repeating marketing]. From what I experienced, the [performance/battery life/camera quality] was [describe Arun's personal experience \u2013 e.g., 'surprisingly robust for its size' or 'left a bit to be desired in low light conditions'].",
+          "location": "Various, demonstrating feature",
+          "broll_request": "Side-by-side comparison shots (if applicable), hands-on usage showing the feature",
+          "wardrobe": "Casual T-shirt",
+          "action_posing": "Interacting with the product, showing its functionality, gesturing to points of interest"
+        },
+        {
+          "section": "Overall Impression & Niche",
+          "line": "So, after all that time with it, what's my take? This [PRODUCT NAME] feels like it's really trying to hit a specific sweet spot. It's not going to be for everyone, but if you value [specific aspect], then you might find a lot to like here.",
+          "location": "Studio Desk",
+          "broll_request": "Montage of quick cuts, highlighting pros and cons demonstrated earlier",
+          "wardrobe": "Casual T-shirt",
+          "action_posing": "Holding the product, looking directly at the camera, leaning in slightly as if sharing a secret"
+        }
+      ],
+      "cta": "What do you guys think? Is this something you'd be interested in checking out? Let me know in the comments below!"
+    }
+  }
+]

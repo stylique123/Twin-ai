@@ -308,6 +308,23 @@ jobs:
       # defect lives BETWEEN them, which is the kind nobody is assigned to
       # notice. Unwired keys are declared rather than tolerated, and the
       # declaration self-expires: excusing a key that HAS a reader fails too.
+      # The edge functions were the one body of code CI never compiled. A prompt
+      # edit put a backtick in prose inside a template literal, which closed the
+      # literal and made generate-blueprint invalid TypeScript — it could not
+      # have deployed — and every other check stayed green through it, because
+      # the shared package and the web app typecheck their own trees and the
+      # parity test compares this file as a STRING. Underneath it sat a const
+      # read above its own declaration, a guaranteed uncaught 500 per request.
+      # Both are things the compiler names; nothing was asking the compiler.
+      - name: Edge functions compile (a syntax error here cannot deploy)
+        run: node scripts/ci/check_edge_functions_parse.mjs
+      # A table name is a STRING, so the compiler cannot check it and a test
+      # cannot reach it when the write is fire-and-forget. `ops_alerts` — the
+      # alert saying a refund failed and a human must reconcile it — was written
+      # to a table that has never existed, and the .then(noop, noop) ate the
+      # error every time.
+      - name: Every .from() names a table we actually create
+        run: node scripts/ci/check_table_names_exist.mjs
       - name: Brief answers have readers (every question we ask changes something)
         run: |
           node scripts/ci/check_brief_consumers.mjs --selftest

@@ -322,7 +322,12 @@ Deno.serve(async (req: Request) => {
           // best-effort upgrade — NEVER retry: each retry re-runs up to 5 paid Apify
           // transcript calls, so a default 5 attempts could mean 25 paid calls (#10).
           max_attempts: 1,
-          payload: { brand_voice_id: voiceId, handle: voice.handle, platform: voice.platform, urls },
+          // Captions ride along so the worker can mine what the whole channel is
+          // ABOUT, not only the five videos it can afford to transcribe. Free:
+          // these were already scraped for the DNA synthesis above.
+          payload: { brand_voice_id: voiceId, handle: voice.handle, platform: voice.platform, urls,
+            captions: ownItems.map((it: Record<string, unknown>) =>
+              String(it.text ?? it.caption ?? it.title ?? '')).filter((t: string) => t.trim() !== '').slice(0, 120) },
         })
       }
     } catch (e) {

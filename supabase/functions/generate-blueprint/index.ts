@@ -77,6 +77,152 @@ function normalizeHookLine<T>(bp: T): T {
   return bp
 }
 
+// A TEMPLATE THE CREATOR WOULD READ ALOUD.
+//
+// Inlined from `packages/shared/src/spokenPlaceholders.ts` (Deno cannot import
+// the shared package at deploy time), where the full rationale and its tests
+// live. In short: a cross-paired run returned five hooks and four script lines
+// that were all unfilled templates — "This gadget actually changed how I
+// [achieved a specific result]" — and `normalizeHookLine` below did not catch
+// one of them, because it only repairs a line that is ENTIRELY a bracket token.
+//
+// ⚖️ EVERY bracketed span counts. A false positive discards one hook of five and
+// nobody notices; a false negative is read aloud with the camera running.
+// A unit that names nothing. Inlined from `packages/shared/src/referenceMechanism.ts`
+// (Deno cannot import shared), where the rationale and tests live. The tech
+// reference's generic "items" rode into a science explainer and two business
+// creators — "3 critical items that business owners need to implement".
+//
+// ⚖️ REPORTED, NEVER BLOCKING. An undelivered count is provably wrong on camera;
+// a weak unit is a judgement, and a check that refuses on a guess would discard
+// good plans for less than it saves. Deliberately tiny: every entry is a word
+// that could be deleted from the promise without losing meaning, which is why
+// "tips", "mistakes", "signs" and "habits" are absent — those are real categories.
+const CONTENTLESS_UNITS = new Set(['item', 'items', 'thing', 'things', 'stuff', 'point', 'points'])
+const isContentlessUnit = (u: unknown): boolean =>
+  typeof u === 'string' && CONTENTLESS_UNITS.has(u.trim().toLowerCase())
+
+// A COUNT ATTACHED TO A NOUN THAT NAMES NOTHING, in the words the viewer hears.
+// Inlined from `packages/shared/src/referenceMechanism.ts`, where the fixtures
+// and the reasoning live.
+//
+// ⚠️ THE TELL IS A TERMINAL NOUN. "you just need these 3 things." promises a
+// number and no more; "3 things I stopped buying after I turned 30" is carried
+// by its clause and is a perfectly good hook — the first version of this check
+// condemned the second, which is the reference this entire design began from.
+//
+// ⚖️ Measured, not argued: across 36 cross-paired runs one creator produced the
+// unqualified shape at ALL THREE fidelities. A prompt rule asking the writer to
+// re-derive the unit was added first and two matrices say it did not work.
+const GENERIC_PROMISE = /\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(items?|things?|stuff|points?)\s*[.!?]*\s*$/i
+
+/** Non-global on purpose: a `/g` regex carries `lastIndex` between `.test()`
+ *  calls, so the same shared instance answers differently depending on what it
+ *  was asked before it. */
+const SPOKEN_PLACEHOLDER = /\[[^\]]*\]/
+
+/** Drop templated hooks; count what remains templated in the script.
+ *  ⚖️ Hooks are REPAIRABLE because five are generated and one is chosen. A script
+ *  line has no alternates, so it is reported and never invented over. */
+function dropSpokenPlaceholders<T>(bp: T): { bp: T; hooksDropped: number; linesAffected: number } {
+  let hooksDropped = 0
+  let linesAffected = 0
+  try {
+    const b = bp as unknown as { hook_options?: unknown; script?: Array<{ line?: unknown }> }
+    if (Array.isArray(b.hook_options)) {
+      const before = b.hook_options.length
+      const kept = (b.hook_options as unknown[]).filter(
+        (h) => typeof h === 'string' && h.trim() !== ''
+          && !SPOKEN_PLACEHOLDER.test(h)
+          // Same repairable-where-there-is-a-choice rule as the placeholder
+          // drop above: five hooks are generated, so discarding the ones that
+          // promise nothing still leaves something real to say.
+          && !GENERIC_PROMISE.test(h))
+      // Only replace when something usable survives: an empty hook list is a
+      // worse outcome than a templated one, and the caller can still see the
+      // count in analytics.
+      if (kept.length > 0) { b.hook_options = kept; hooksDropped = before - kept.length }
+      else hooksDropped = 0
+    }
+    if (Array.isArray(b.script)) {
+      linesAffected = b.script.filter((s) => typeof s?.line === 'string' && SPOKEN_PLACEHOLDER.test(s.line)).length
+    }
+  } catch { /* never fail a generation on a cosmetic pass */ }
+  return { bp, hooksDropped, linesAffected }
+}
+
+// Inlined from `packages/shared/src/knowledgeResolver.ts`, where the rules and
+// their 21 tests live. Edge functions cannot import @twinai/shared under Deno
+// deploy, so the parity is kept by the edge-source-parity test rather than by
+// the module system.
+//
+// ⚖️ A DECLARATION NOBODY CHECKS IS A COMMENT. Asking the writer to say where
+// each beat's content came from is worth nothing on its own — the same model
+// that would invent a position will happily label the invention
+// `creator_knowledge`. What makes the field load-bearing is checking the claim
+// against the exact knowledge this prompt carried.
+const SUBSTANCE_STOP = new Set(['this', 'that', 'with', 'from', 'they', 'them', 'what', 'when',
+  'have', 'about', 'video', 'thing', 'things', 'your', 'their', 'more', 'than'])
+function substanceTerms(s: string): Set<string> {
+  return new Set(String(s).toLowerCase().split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 3 && !SUBSTANCE_STOP.has(w)))
+}
+/** First-person personal history — "I bought", "I used", "I switched".
+ *  ⚖️ Narrow on purpose: "I think" and "I'd say" are stance, not history, and
+ *  condemning them would fail every honest talking-head script. */
+const FIRST_PERSON_HISTORY =
+  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran)\b|\bmy own\b|\bwhen I (?:got|bought|switched)\b/i
+type SuppliedKnowledge = { kind: string; text: string; basis: string }
+/** Same ladder as the shared module: a title is coverage however confident it
+ *  sounds; only speech is opinion, and only first-person speech is experience. */
+function suppliedLevel(k: SuppliedKnowledge): 'coverage' | 'opinion' | 'experience' {
+  if (k.kind === 'experience' && k.basis === 'stated') return 'experience'
+  if (k.basis === 'stated') return 'opinion'
+  return 'coverage'
+}
+function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolean {
+  const c = substanceTerms(cited)
+  if (c.size === 0) return false
+  return supplied.some((i) => {
+    const t = substanceTerms(String(i.text))
+    return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+  })
+}
+function substanceIssues(
+  beats: unknown,
+  supplied: readonly SuppliedKnowledge[],
+): Array<{ code: string; beat: number; detail: string }> {
+  if (!Array.isArray(beats)) return []
+  const out: Array<{ code: string; beat: number; detail: string }> = []
+  beats.forEach((raw, i) => {
+    const b = raw as { substance?: unknown; substance_evidence?: unknown; line?: unknown }
+    const source = typeof b?.substance === 'string' ? b.substance : ''
+    const cited = typeof b?.substance_evidence === 'string' ? b.substance_evidence.trim() : ''
+    const line = typeof b?.line === 'string' ? b.line : ''
+    if (source === 'creator_knowledge') {
+      if (cited === '') {
+        out.push({ code: 'undeclared_evidence', beat: i,
+          detail: 'Beat claims creator knowledge and names nothing it used.' })
+      } else if (!tracesTo(cited, supplied)) {
+        out.push({ code: 'unsupported_creator_claim', beat: i,
+          detail: `Beat cites "${cited.slice(0, 80)}", which is not in the knowledge this prompt carried.` })
+      }
+    }
+    // ⚖️ THE MOST EXPENSIVE ERROR, CHECKED SEPARATELY. A personal history is a
+    // claim about the creator's life, and nothing but experience-level evidence
+    // licenses it — not research, not a title, not a rephrasing.
+    if (FIRST_PERSON_HISTORY.test(line)) {
+      const licensed = supplied.some((k) => suppliedLevel(k) === 'experience'
+        && (cited === '' ? true : tracesTo(cited, [k])))
+      if (!licensed) {
+        out.push({ code: 'unearned_first_person', beat: i,
+          detail: 'Beat speaks a personal history, and nothing on record says the creator did it.' })
+      }
+    }
+  })
+  return out
+}
+
 // Gemini responseSchema (OpenAPI subset: uppercase types, no additionalProperties).
 // Guarantees the shape the frontend renders.
 const obj = (properties: Record<string, unknown>, required: string[]) => ({
@@ -95,8 +241,32 @@ const blueprintSchema = obj(
         format_label: str,
         why_it_works: arr(str),
         retention_map: arr(obj({ beat: str, goal: str, tactic: str }, ['beat', 'goal', 'tactic'])),
+        // THE MECHANISM, AS DATA — §5d.
+        //
+        // Everything else in `reference_read` is prose the writer is asked to
+        // follow in the general direction of. None of it survives as a
+        // CHECKABLE fact, which is why nothing noticed when one plan carried
+        // three different counts and none of them was the reference's.
+        //
+        // An enumerated list is not a flavour of a reference — it IS the
+        // mechanism. The count is the spine, the hook is where it is promised,
+        // and each beat owes the next. Extracted here so
+        // `countContractIssues` has an authority to check against, rather than
+        // trying to infer the intended number from the output that broke it.
+        mechanism: obj(
+          {
+            enumeration: obj(
+              { is_enumerated: str, count: str, unit: str },
+              ['is_enumerated', 'count', 'unit'],
+            ),
+            hook_promise: str,
+            rehook_after_item: str,
+            beat_debts: arr(str),
+          },
+          ['enumeration', 'hook_promise', 'rehook_after_item', 'beat_debts'],
+        ),
       },
-      ['platform', 'format_label', 'why_it_works', 'retention_map'],
+      ['platform', 'format_label', 'why_it_works', 'retention_map', 'mechanism'],
     ),
     concept: obj(
       {
@@ -154,11 +324,32 @@ const blueprintSchema = obj(
           section: str,
           line: str,
           direction: str,
+          // FOUR LAYERS, NOT ONE STRING (§5c + §5d). `background` used to carry
+          // a location, a b-roll request, an edit instruction and a wardrobe
+          // note at once — which is how a creator was told to "be in real
+          // footage of a dusty living room being framed out".
+          //
+          // `background` is KEPT so the 39 generations already in production
+          // still read, and is no longer written for new beats: `location` is
+          // what a person standing in a room needs, and the other three have
+          // different owners entirely.
           background: str,
+          location: str,
+          broll_request: str,
+          editor_intent: str,
+          wardrobe: str,
           cuts_info: str,
           action_posing: str,
+          // SUBSTANCE, DECLARED PER BEAT (§5e). Structure was never the defect:
+          // every check passed on a run whose spoken line was "[Phone Model]".
+          // Resolving each beat before writing would need a second model call —
+          // the containers only exist once the reference read returns — so the
+          // affordable inversion is to make the writer NAME where the content
+          // came from, and verify that claim against what the prompt carried.
+          substance: str,
+          substance_evidence: str,
         },
-        ['section', 'line', 'direction', 'background', 'cuts_info', 'action_posing'],
+        ['section', 'line', 'direction', 'background', 'location', 'broll_request', 'editor_intent', 'wardrobe', 'cuts_info', 'action_posing', 'substance', 'substance_evidence'],
       ),
     ),
     shot_list: arr(
@@ -243,6 +434,30 @@ PACKAGING (title + thumbnail, decide this FIRST): most short-form videos are won
 
 HOOKS (the single most important field):
 - Derive hooks from the CREATOR'S OWN DNA and best-performing patterns supplied below (their hook_style, signature vocabulary, recurring angles), fused with the reference's proven hook SHAPE. Hooks must sound like this creator on their best day, not generic copywriting.
+- reference_read.mechanism: READ THE FORMAT'S SPINE AND WRITE IT DOWN AS DATA, before you write anything else.
+  * enumeration.is_enumerated: "true" only if the reference promises a COUNT of items ("5 ways", "3 things I stopped buying"). Otherwise "false".
+  * enumeration.count: the promised number as a digit ("5"). Empty string if not enumerated. NEVER guess a number the reference does not state.
+  * enumeration.unit: what is counted, in the reference's own words ("ways", "mistakes", "things I stopped buying").
+  * hook_promise: in one line, the promise the reference's hook makes to the viewer.
+  * rehook_after_item: which item the mid-video re-hook lands after, as a digit. Empty string if there is no re-hook.
+  * beat_debts: one line per beat, what that beat OWES the next — the debt that makes a list a sequence rather than a pile.
+
+- THE COUNT IS THE FORMAT, AND IT IS A CONTRACT — not a stylistic detail. If enumeration.is_enumerated is "true", then ALL of the following are REQUIRED and a plan that breaks any of them is malformed:
+  * The recommended hook (hook_options[0]) MUST state the number. The hook is where an enumerated promise is MADE — "here are the 5 ways" is the contract the rest of the video pays off. A hook that drops the number has already broken the format before the second beat exists.
+  * concept.premise MUST state the SAME number. No other number may appear as the count anywhere in the plan.
+  * The script MUST deliver EVERY item, each explicitly marked in the spoken line ("the first…", "the second…", "the third…"). Announcing N and delivering fewer breaks OUT LOUD, on camera, in front of the audience — it is the one defect the creator cannot hide.
+  * THE VIEWER HEARS ONLY THE "line" FIELD. "section" is a label for you and is NEVER spoken aloud, so an ordinal that lives there is a count the audience never hears. Every item's ordinal MUST appear in the spoken "line" itself, and "section" MUST NOT carry the number. This is not a restatement of the rule above — it is the specific way that rule was broken three times: the plan numbered the DOCUMENT and left the VIDEO uncounted.
+  * NO SILENT BEAT may appear while items are still owed. A silent shot inside an open enumeration is where the count gets dropped. Silent beats are fine BEFORE the first item and AFTER the last.
+  * THE COUNT TRANSFERS. THE UNIT DOES NOT. enumeration.unit records what the REFERENCE was counting, and it is a reading of their video, not a word for yours. Name what THIS creator is counting, in their own domain: a science explainer counts "things that are harder than they look", a founder counts "hiring mistakes". Carrying the reference's noun across is content, not structure, and it is the rule above this one being broken in the one field the count makes mandatory. NEVER write a contentless unit — "items", "things", "stuff", "points" name nothing and are the shape this fails into: "3 critical items that business owners need to" is not a promise anybody can want.
+
+- WHERE TO BE IS FOUR FIELDS, NOT ONE. Each has a different owner and a different failure mode, and collapsing them is how a creator gets told to stand inside footage that does not exist:
+  * location: WHERE THE CREATOR PHYSICALLY STANDS, and nothing else. Achievable direction only — "clean neutral wall, facing the brightest window" works in any room at any hour. NEVER assumed inventory ("the walnut chair beside your lamp", "your fully renovated kitchen"), NEVER footage, NEVER an edit instruction.
+  * broll_request: footage to supply. Ask only for what one person with a phone can actually produce — no renovation timelapses, no motion graphics, no animated charts.
+  * editor_intent: cutaway and return timing, for the EDIT. This is never a place to stand.
+  * wardrobe: what the creator wears.
+  * NEVER PUT A HEX COLOUR IN location OR wardrobe. The brand palette belongs to packaging and thumbnails. "A black t-shirt to emphasize the brand colors (#000000)" is not something a person can carry out, and it is removed automatically — write the direction without it.
+- Leave "background" as an empty string. It is the pre-split field, kept only so older plans still render.
+
 - hook_options: give 5, ordered best first. The FIRST one is your recommended pick. Each hook is one spoken line under ~12 words, scroll-stopping, and must visibly stack at least two of the four triggers above.
 - AT LEAST TWO of the five hooks must reuse the creator's signature vocabulary or their exact hook FORMULA from CREATOR DNA. A hook that could belong to any creator in this niche is a failure. Rewrite until it is unmistakably THEIRS.
 - The five hooks must be genuinely DIFFERENT angles (e.g. a contrarian claim, a specific number, a callout to the exact viewer, a mistake/confession), not five rewordings of one idea. Where CREATOR DNA lists hook_patterns, draw each hook from a DIFFERENT one of THEIR patterns so the variety is in their own voice, not generic. Variety is how the creator can reshoot without repeating themselves.
@@ -257,6 +472,16 @@ SCRIPT & HOOK INTEGRATION:
 - background: specify the background setup, props, lighting, or visual context for this specific beat. Avoid generic descriptors (e.g. "sitting at desk"). Provide specific, creative visual setups matching the brand DNA.
 - cuts_info: specify camera angles, zooms, pacing, and cut locations. Give professional instructions (e.g., "Cut on action to a tight zoom", "Slide-in transition from right to keep pacing", "Fast cut to clean product shot").
 - action_posing: specify the creator's physical actions, hand gestures, body language, facial expressions, and positioning (e.g., "Hold product at eye level, point finger, maintain intense eye contact with lens", "Lean forward slightly with a knowing smile, hands open to suggest accessibility").
+- SUBSTANCE BEFORE PROSE. Before writing any line, decide WHAT GOES IN IT, then declare where that came from. Two fields on every beat:
+  * "substance": exactly one of creator_knowledge | product_dna | general | needs_user | none.
+    - creator_knowledge = the beat is built on something listed under WHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID. You may only choose this if the item is actually in that list above. Inventing a plausible-sounding position and labelling it creator_knowledge is the single worst thing you can do here, and it is checked.
+    - product_dna = built on the supplied product facts.
+    - general = a widely-known fact stated in NEUTRAL terms, framed as something true of the world rather than as something this person personally did.
+    - needs_user = only the creator can supply this. Write the beat around what you DO know and leave the personal detail out of the line entirely.
+    - none = a transition, a CTA, or a beat that carries no factual claim.
+  * "substance_evidence": for creator_knowledge and product_dna, quote or closely paraphrase the specific supplied item you used. For the others, one short phrase naming what the beat rests on. Never leave it empty when substance is creator_knowledge.
+- A PLACEHOLDER IS A FAILED BEAT, NOT A DRAFT. Never write "[Phone Model]", "[product name]", "the new XYZ phone", "Brand X", or any other stand-in for a specific you do not have. If you cannot name the thing, you have three honest options and no fourth: state the general fact in neutral terms, write the beat around a specific you DO have from the lists above, or drop the claim. Filling the gap with a bracket hands the creator a script they cannot read aloud.
+- NEVER WRITE A PERSONAL HISTORY THE CREATOR IS NOT ON RECORD FOR. Lines like "I used it as my only phone for six months", "I bought three of these", "I switched last year" are claims about this person's life. Write one only when the knowledge list contains a first-person statement saying so. No amount of general knowledge licenses it — "most people find" is honest where "I found" is a fabrication.
 - KILL THE BORING MIDDLE. Short-form retention dies in the 40-60% stretch, not at the start. Place an explicit RE-HOOK beat around the 40% mark: a second open loop or escalation ("but here is the part nobody tells you", "and this is where it gets weird") that re-promises something new BEFORE the natural drop-off, so the middle never sags. Mark that beat's section as "Re-hook".
 - Front-load the payoff promise, keep delivering, and place ONE clear CTA near the end that fits the goal: prefer a save ("save this so you can do it later") or a comment-bait question over a generic "follow for more".
 
@@ -614,7 +839,37 @@ Deno.serve(async (req: Request) => {
     punchy:
       'TONE = PUNCHY. High-energy, bold, pattern-interrupting hooks and fast, emphatic delivery. Lean into momentum and big stakes — while staying within the creator\'s DNA and avoiding outright false claims.',
   }
-  const toneRule = TONE_RULE[tone]
+  // TONE IS CLAMPED BY THE CREATOR, NOT LAYERED OVER THEM.
+  //
+  // ⚠️ MEASURED, NOT ARGUED. With the ownership prohibition, the beat plan and
+  // the full forbidden-claims block ALL present, `tone: punchy` still produced,
+  // for a licensed physician:
+  //
+  //     "You won't believe what these 5 health gadgets PROMISE you!"
+  //
+  // A claim-first corrector does not open with hype. The same run at `balanced`
+  // for a different creator produced no clickbait at all, which is what isolates
+  // tone as the cause: the setting was not colouring the delivery, it was
+  // overwriting the creator.
+  //
+  // ⚖️ A SLIDER MAY NARROW A VOICE AND MUST NEVER WIDEN IT. `punchy` degrades to
+  // `balanced` where the creator's own constraints forbid the register — they
+  // asked for more energy, not to sound like someone else. `understated` is
+  // never clamped: dialling energy DOWN cannot violate a voice.
+  //
+  // THE SIGNAL IS DATA WE ALREADY HOLD, not a new question. A regulated
+  // professional, or any creator who named claims they may not make, has told us
+  // their register has a ceiling. `readStoredBrief` guarantees these are real
+  // answers rather than empty strings.
+  //
+  // ⚠️ THE CLAMP ITSELF IS COMPUTED BELOW, NOT HERE, and the distance is not
+  // cosmetic. It read `brief` at this point while `const brief` is declared
+  // further down the SAME block — a temporal dead zone, so every request threw
+  // `ReferenceError: Cannot access 'brief' before initialization` before the
+  // handler's try/catch could see it. A total outage that no test caught,
+  // because nothing executes this function outside deploy. The rationale stays
+  // here with the decision; the code lives where its inputs exist.
+
   // Either a reference link OR a described idea is required — the "describe an
   // idea" create path sends reference_note with an empty reference_url.
   if (!reference_url && !reference_note) return json({ error: 'Add a reference link or describe your idea.' }, 400)
@@ -641,6 +896,62 @@ Deno.serve(async (req: Request) => {
     .eq('is_default', true)
     .maybeSingle()
 
+  // THE OWNED ENTITY — what the creator actually sells, minted from `workKind`.
+  //
+  // Loaded here rather than derived, because the creator may have CORRECTED the
+  // mint on the confirm screen ("that's not right, I don't own one"), and a
+  // correction that the prompt re-derives past is not a correction. Absent is
+  // the normal case for a creator with nothing of their own, and it must read as
+  // "no product" rather than as an error.
+  //
+  // ONE ROW BY CONSTRUCTION — BUT ONLY PER VOICE, WHICH IS WHY THIS FILTERS ON
+  // ONE. `product_entities_one_owned_per_voice` is unique on `voice_id`, not on
+  // `owner_id`. Scoped to the owner alone, a creator with two brand voices (or
+  // one library-added row with a null `voice_id`) returns two rows, and
+  // `.maybeSingle()` answers that with an ERROR rather than a row. The error was
+  // discarded — only `data` was destructured — so `ownedEntity` came back null
+  // and the prompt told a creator with two businesses that they have no product.
+  //
+  // ⚖️ Scoping to the voice is also the CORRECT read, not merely the safe one:
+  // the blueprint is being written for THIS voice, and the entity minted against
+  // it is the one the creator confirmed here. The error is surfaced rather than
+  // swallowed, because "the lookup failed" and "they own nothing" produce very
+  // different scripts and must never be the same value.
+  // CREATOR KNOWLEDGE — what this person actually knows, as opposed to how they
+  // sound. The founding defect is that only the second was ever stored, so the
+  // writer had their voice and almost nothing else and handed them their own
+  // opinions back in their own phrasing.
+  //
+  // ⚖️ ABSENT IS SILENT, NOT A PROMPT TO INVENT. A creator with no knowledge yet
+  // gets no block at all — deliberately NOT "none stored, infer some", which is
+  // what the pov and enemy fallbacks below do and is the exact move that
+  // manufactures opinions. A failed read is treated the same as none: it may
+  // make a script thinner, never wronger.
+  const { data: knowledgeRows } = await admin
+    .from('creator_knowledge')
+    .select('kind, text, basis, times_seen, confidence')
+    .eq('owner_id', ownerId)
+    .order('times_seen', { ascending: false })
+    .limit(40)
+  const { data: audienceRows } = await admin
+    .from('audience_questions')
+    .select('summary, asked')
+    .eq('owner_id', ownerId)
+    .order('asked', { ascending: false })
+    .limit(8)
+
+  const { data: ownedEntity, error: ownedEntityErr } = await admin
+    .from('product_entities')
+    .select('name, type, relationship, personal_use, showability, evidence')
+    .eq('owner_id', ownerId)
+    .eq('voice_id', voice?.id ?? null)
+    .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+    .maybeSingle()
+  if (ownedEntityErr) {
+    console.error('product_entities lookup failed', ownedEntityErr)
+    return json({ error: 'We could not read your product details. Please try again.' }, 503)
+  }
+
   const dna = profile?.dna ?? {}
   const vp = voice?.profile ?? null
   // §8a.1's BRIEF — what the creator TYPED, as opposed to what the scan read.
@@ -650,6 +961,46 @@ Deno.serve(async (req: Request) => {
   // under). The shape is 0109's CHECK, which refuses an empty string, so a
   // present key is a real answer and no trimming or truthiness test is needed.
   const brief = (voice?.pre_script_brief ?? {}) as Record<string, string | undefined>
+  // ⚠️ ASKED SINCE §5 AND READ BY NOBODY UNTIL NOW. The consumer registry carried
+  // the reason verbatim: the captured product never reached the prompt, so
+  // "[SHOW: the product]" had nothing to point at and the model was free to
+  // invent product details. A creator was asked, a model call was spent, and the
+  // answer went into a column nothing read.
+  // Read through a `brief`-named holder on purpose: `check_brief_consumers`
+  // recognises a reader by that access pattern, and a cast wedged between the
+  // holder and the key hides the read from the guard — which would leave this
+  // field looking unwired again the moment somebody trusted the registry.
+  const briefRaw = brief as unknown as Record<string, unknown>
+  const briefEvidence = briefRaw.productEvidence
+
+  // ⚖️ THE ENTITY IS THE AUTHORITY; THE BRIEF IS WHERE THE ANSWER USED TO LIVE.
+  // Evidence describes A PRODUCT, and since §5d a creator may hold several — so
+  // storing it on the brief meant one creator had exactly one product's
+  // evidence, and a second business silently overwrote the first. The column
+  // moved to `product_entities.evidence`; this is the read that finishes the
+  // move, and until now the SELECT fetched that column and dropped it.
+  //
+  // THREE STATES, NOT TWO, AND THE FALLBACK RESPECTS THEM. `null` on the entity
+  // means UNANSWERED and defers to the brief, which is what makes this safe for
+  // creators whose answer predates the move. `"declined"` is an ANSWER — "there
+  // is nothing to show" — and must NOT fall through to a stale brief that still
+  // holds a capture, or a creator who withdrew permission gets it back.
+  const entityEvidence = (ownedEntity as { evidence?: unknown } | null)?.evidence
+  const productEvidence = entityEvidence === undefined || entityEvidence === null
+    ? briefEvidence
+    : entityEvidence
+
+  // The tone clamp, whose full rationale is at the TONE_RULE table above. It
+  // sits HERE, immediately after `brief`, because that is the first line at
+  // which its inputs are readable.
+  const voiceHasCeiling =
+    brief.workKind === 'professional'
+    || (typeof brief.forbiddenClaims === 'string' && brief.forbiddenClaims.trim() !== '')
+  const appliedTone = tone === 'punchy' && voiceHasCeiling ? 'balanced' : tone
+  const toneRule = TONE_RULE[appliedTone]
+  const toneClampLine = appliedTone === tone
+    ? ''
+    : '\n- TONE WAS CLAMPED. This creator works under stated limits on what they may claim, so the punchy register is not available to them: no hype openers ("you won\'t believe", "this will blow your mind"), no manufactured certainty. Write with energy, not with bait.'
   // The creator's real brand palette (hex), if set — used to steer scene
   // backgrounds, props and wardrobe so the shoot looks on-brand.
   const pal = (voice?.brand_kit as { palette?: { primary?: string; secondary?: string; highlight?: string } } | null)?.palette ?? null
@@ -820,8 +1171,27 @@ Deno.serve(async (req: Request) => {
       entertain: 'ENTERTAIN. Attention and rewatch are the point — do not bolt a commercial ask onto a video whose job is to be enjoyed.',
       personal_brand: 'BUILD THE PERSON, not just the information. Carry their stance and their story; a generic explainer fails this goal even when it is accurate.',
     }
-    const goal = (brief.goal && GOAL_LINES[brief.goal])
-      ? GOAL_LINES[brief.goal]
+    // THE GOAL IS A PROPERTY OF THE VIDEO, NOT OF THE PERSON, which is why the
+    // REQUEST wins over the stored brief.
+    //
+    // ⚠️ `brief.goal` was READ HERE AND WRITTEN BY NOTHING. `savePreScriptBrief`
+    // is its only writer and deliberately omits it, so `videoGoal` was always
+    // absent, `sellIntent` was always false, and EVERY script — including one
+    // for a founder who onboarded to sell — carried "NOT a selling video, do NOT
+    // write a purchase CTA". The consumer registry passed the whole time,
+    // because it checks that a reader EXISTS, not that a writer does.
+    //
+    // ⚖️ Per-video rather than per-voice: one creator makes awareness videos AND
+    // sell videos from the same voice, and making the second require editing
+    // their profile is the wrong shape. `fidelity` and `tone` already ride the
+    // request for exactly this reason. The stored brief stays as a fallback so a
+    // caller that sends nothing keeps its old behaviour rather than silently
+    // changing meaning.
+    const videoGoal = (body.goal && GOAL_LINES[body.goal]) ? body.goal
+      : (brief.goal && GOAL_LINES[brief.goal]) ? brief.goal
+        : null
+    const goal = videoGoal
+      ? GOAL_LINES[videoGoal]
       : (vp?.goal ?? dna.goal ?? 'turn attention into trust')
     const tone = vp?.tone ?? dna.voice ?? 'direct, warm, a little punchy'
     const editing = vp?.editing_style ?? dna.editing_style ?? 'fast jump cuts, burned-in captions'
@@ -852,7 +1222,7 @@ Deno.serve(async (req: Request) => {
       ? audience
       : (niche !== 'unspecified' ? `people into ${niche}${subNiche ? `, specifically ${subNiche}` : ''}` : 'unspecified')
     const povList = (vp?.pov ?? []) as string[]
-    // WHOSE PRODUCT THE CTA POINTS AT (§8a.3 Q4).
+    // WHAT APPEARS IN THIS VIDEO THAT THE CREATOR DOES NOT OWN (Q4).
     //
     // The line above has always told the model WHAT to point the CTA at and
     // never WHOSE it is. Those are different facts and the second one changes
@@ -862,24 +1232,250 @@ Deno.serve(async (req: Request) => {
     // an affiliate link is wrong about the world, and the creator is the one who
     // reads it aloud.
     //
-    // `nothing_to_sell` is the case worth stating explicitly rather than by
-    // omission. Given an offer field and no instruction, a model asked for a CTA
-    // will write one — inventing a business, which the plan calls the most
-    // expensive failure this product can produce. Saying it plainly is what
-    // stops that.
+    // Q4 NO LONGER CARRIES OWNERSHIP. It used to answer "do you have a product",
+    // which re-asked what `workKind` already implied — a creator who said
+    // "Software" owns a SaaS product, and asking again is the redundancy the
+    // standing rule forbids. Ownership now arrives as a minted ENTITY
+    // (`product_entities`), and this field says only whose ELSE'S things appear.
+    //
+    // EACH BRANCH NAMES A DIFFERENT PERMISSION, which is why four values rather
+    // than one "third party" flag:
+    //
+    //   affiliate    a commission, so a material connection to disclose
+    //   sponsor      paid to feature it; disclosure is a property of the
+    //                arrangement, not a pacing decision the writer may weigh
+    //   review_only  no commercial tie, and CRUCIALLY no licence to repeat the
+    //                vendor's marketing — that would make the review an advert
+    //   none         nothing of anyone else's
+    //
+    // `none` IS STATED EXPLICITLY rather than by omission. Given an offer field
+    // and no instruction, a model asked for a CTA will write one — inventing a
+    // business, which the plan calls the most expensive failure this product can
+    // produce. Saying it plainly is what stops that.
     //
     // UNANSWERED EMITS NOTHING, the same three-state rule the claims block
-    // follows five lines down: `readStoredBrief` drops any value outside
-    // `BRIEF_PROMOTES`, so this is either a real answer or silence. A default of
-    // "assume it is theirs" would be this system deciding a compliance-adjacent
-    // fact nobody asked about.
-    const promotesLine = brief.promotes === 'own_product'
-      ? '\n- WHOSE product that is: the CREATOR\'S OWN. They may speak to what it does, and are accountable for it.'
-      : brief.promotes === 'affiliate'
-        ? '\n- WHOSE product that is: SOMEONE ELSE\'S — the creator promotes it as an affiliate. Do NOT write "my product", "we built", or any claim of ownership, support, refunds or roadmap. Recommend it as a user, never as its maker.'
-        : brief.promotes === 'nothing_to_sell'
-          ? '\n- WHOSE product that is: THERE IS NOTHING TO SELL. Do not write a purchase or signup CTA at all. The call to action is engagement — follow, save, comment — or nothing.'
-          : ''
+    // follows: `readStoredBrief` drops any value outside `BRIEF_PROMOTES`, so
+    // this is either a real answer or silence. A default of "assume it is
+    // theirs" would be this system deciding a compliance-adjacent fact nobody
+    // asked about.
+    const promotesLine = brief.promotes === 'affiliate'
+      ? '\n- SOMEONE ELSE\'S PRODUCT is featured, as an AFFILIATE. Do NOT write "my product", "we built", or any claim of ownership, support, refunds or roadmap. Recommend it as a user, never as its maker, and disclose the affiliate relationship.'
+      : brief.promotes === 'sponsor'
+        ? '\n- SOMEONE ELSE\'S PRODUCT is featured, as a PAID SPONSOR. Do NOT write "my product", "we built", or any claim of ownership, support, refunds or roadmap. The sponsorship MUST be disclosed in the script — it is not optional and not a pacing decision.'
+        : brief.promotes === 'review_only'
+          ? '\n- SOMEONE ELSE\'S PRODUCT is REVIEWED, with no commercial relationship. State product facts and the creator\'s own experience only. Do NOT repeat the vendor\'s marketing claims, do NOT write "my product" or "we built", and do NOT write a purchase CTA — there is no commercial tie to act on.'
+          : brief.promotes === 'none'
+            ? '\n- NOTHING OF ANYONE ELSE\'S appears. Do not introduce, recommend or name a third-party product the creator has not mentioned.'
+            : ''
+
+    // MAY THIS VIDEO ASK FOR A PURCHASE AT ALL?
+    //
+    // ⚠️ ALSO MEASURED. A creator answering `promotes: none` was handed "check
+    // out my podcast and merch" — because owning something was treated as
+    // licence to sell in every video. It is not: ~85-95% of a well-known
+    // business creator's short-form sells nothing while he genuinely owns
+    // several companies, so "they have a product" cannot imply "pitch it".
+    //
+    // OWNING IS A STANDING FACT; SELLING IN THIS VIDEO IS A DECISION (§16a).
+    // Until a per-video intent field exists, the creator's own GOAL is the
+    // honest proxy — it is the only stated signal about what this content is
+    // for, and they chose it.
+    //
+    // SILENCE IS REFUSAL. An unanswered goal yields an engagement CTA, because
+    // the cost of withholding a pitch is one softer video and the cost of adding
+    // one nobody asked for is a creator sounding like an advert to their own
+    // audience.
+    // Reads the RESOLVED goal, so the request can express intent. Reading
+    // `brief.goal` directly is what made this permanently false.
+    // Inlined from `packages/shared/src/creatorKnowledge.ts` (Deno cannot import
+    // shared), where the rationale and its 19 tests live.
+    //
+    // ⚖️ `inferred` NEVER REACHES THE SCRIPT. An inferred belief is our guess
+    // about a person, and voicing it is indistinguishable — to them and to their
+    // audience — from them having said it. It may steer; it may not be spoken.
+    const kRows = Array.isArray(knowledgeRows) ? knowledgeRows : []
+    // ⚖️ A SUBSET FOR THIS VIDEO, NEVER THE WHOLE STORE. Knowledge accumulates
+    // across every scan, so an established creator holds far more than a prompt
+    // can carry. Pasting all of it buries the three items that matter under
+    // forty that do not and spends budget the reference read needs. Relevance is
+    // lexical overlap with what this video is ABOUT — simple and explainable on
+    // purpose, so "why did it say that" has an answer.
+    const aboutTerms = new Set(
+      `${reference_note} ${brief.idea ?? ''}`.toLowerCase().split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 3))
+    const ranked = kRows.filter((k) => k.basis !== 'inferred' && k.kind !== 'covered')
+    const scored = ranked.map((k) => ({
+      k,
+      hit: String(k.text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => aboutTerms.has(w)).length,
+    }))
+    // Topic matches first, then the best-established — so a niche subject never
+    // starves the prompt of substance entirely.
+    const speakable = [
+      ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.k),
+      ...scored.filter((x) => x.hit === 0).map((x) => x.k),
+    ].slice(0, 10)
+    const coveredRows = kRows.filter((k) => k.kind === 'covered')
+    const aRows = Array.isArray(audienceRows) ? audienceRows : []
+    const knowledgeParts: string[] = []
+    if (speakable.length) {
+      knowledgeParts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style. Build the video out of THIS. These are their own positions and examples, so you may put them in their mouth; anything you add that is not here is yours, and they did not say it.\n'
+        + speakable.map((k) => `  * (${k.kind}) ${k.text}`).join('\n'))
+    }
+    if (coveredRows.length) {
+      // ⚠️ THIS LEAKED. The first version said only "do not repeat", and a run
+      // produced the spoken line "megapixel count. We've had a video on this,
+      // but it's still true" — our notes narrated to the audience, carrying an
+      // unchecked claim about their back catalogue.
+      knowledgeParts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand them their own upload back; go at the topic from an angle they have not used. THIS LIST IS NEVER SPOKEN. It steers what you choose and must not appear in any line: a script that says "we\'ve had a video on this" is narrating our notes to the audience. Pick a DIFFERENT angle, then write as though the earlier video were simply not the subject.\n'
+        + coveredRows.map((k) => `  * ${k.text}`).join('\n'))
+    }
+    if (aRows.length) {
+      knowledgeParts.push('\nWHAT THEIR AUDIENCE KEEPS ASKING — summarised, never quoted. A video that answers one of these is wanted before it is made. THIS LIST IS NEVER SPOKEN EITHER. Answer the question; do not announce that it was asked — a line like "one my audience asks about a lot" narrates our notes to the room and asserts something about their comment section that nobody verified.\n'
+        + aRows.map((a) => `  * ${a.summary} (asked ~${a.asked}x)`).join('\n'))
+    }
+    const knowledgeBlock = knowledgeParts.join('\n')
+
+    // Inlined from `packages/shared/src/productEvidence.ts`, where the rules and
+    // tests live. ⚖️ THE LABELS ARE FACTS, THE PIXELS ARE A PERMISSION: reading a
+    // product to know what it is, and being allowed to put the capture on screen,
+    // are different grants — and only the first is given by default. That
+    // separation is what stops a marketing-page hero shot becoming a demo.
+    const ev = productEvidence as
+      { linkRole?: string; sections?: Array<{ order?: number; label?: string }> } | 'declined' | null | undefined
+    let evidenceBlock = ''
+    if (ev === 'declined') {
+      evidenceBlock = '\n- THE PRODUCT CANNOT BE SHOWN. The creator was asked for something to capture and said there is nothing. Do not write a beat that displays it, and do not describe its appearance — you have never seen it.'
+    } else if (ev && typeof ev === 'object' && Array.isArray(ev.sections) && ev.sections.length > 0) {
+      const labels = [...ev.sections]
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((x) => `  * ${x.label ?? ''}`).filter((x) => x.trim() !== '*').join('\n')
+      evidenceBlock = '\n- WHAT THE PRODUCT ACTUALLY IS, read from what the creator supplied. These are observed facts, not marketing copy you may extend. Use them instead of inventing features, and never state a capability that is not listed here:\n' + labels
+        + (ev.linkRole === 'on_screen'
+          ? '\n  The creator has agreed this capture may APPEAR ON SCREEN, so a beat may show it.'
+          : '\n  ⚠️ READ ONLY. This was captured so you would know what the product is, NOT for display. Do not write a beat that puts this capture on screen; talk about the product instead of showing it.')
+    }
+    // ⚖️ An UNANSWERED evidence field emits nothing — silence must not be read as
+    // "there is nothing to show", which is a different and real answer.
+
+    // WHAT THIS SCRIPT MAY CLAIM, DERIVED FROM THE RELATIONSHIP.
+    //
+    // Inlined from `packages/shared/src/productEntity.ts:claimRulesFor`, which
+    // holds the rules and their tests; the parity test compares the two.
+    //
+    // ⚠️ ASKED, STORED, TESTED — AND READ BY NOTHING. `claimRulesFor` and
+    // `mayWriteCommercialCta` existed with full coverage and the only mention
+    // outside their tests was a COMMENT. Every permission below was being
+    // decided by the video goal alone, which cannot see the relationship:
+    // a REVIEW_ONLY entity plus a commercial goal produced a purchase CTA for
+    // somebody else's product, and an affiliate tie produced no disclosure.
+    //
+    // Derived, never stored — a stored permission set is a second authority
+    // that drifts from the relationship it came from, and then nobody knows
+    // which one the script obeyed.
+    const rel = (ownedEntity?.relationship ?? 'NONE') as string
+    const personalUse = (ownedEntity?.personal_use ?? 'NOT_CONFIRMED') as string
+    // The one line that is NOT per-relationship: personal experience is
+    // established by the creator alone, so no relationship may override it.
+    const creatorExperience = personalUse === 'CONFIRMED'
+    const commercialCta = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+      || rel === 'AFFILIATE' || rel === 'SPONSOR'
+      ? 'only_if_intended'
+      : 'forbidden'
+    const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
+    const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+      ? 'allowed'
+      : rel === 'AFFILIATE' || rel === 'SPONSOR'
+        ? 'attributed'
+        : 'forbidden'
+
+    const goalWantsSale = videoGoal === 'sell' || videoGoal === 'leads'
+    // ⚖️ SILENCE IS NOT PERMISSION, AND NEITHER IS OWNERSHIP. Owning something
+    // is a standing fact; selling it IN THIS VIDEO is a per-video decision.
+    // ~85-95% of a typical creator's short-form sells nothing, so "they have a
+    // product" must not imply "pitch it" — and `forbidden` cannot be overridden
+    // by a goal, because no goal creates a commercial tie that does not exist.
+    const sellIntent = commercialCta === 'forbidden'
+      ? false
+      : commercialCta === 'allowed' || goalWantsSale
+    const ctaIntentLine = sellIntent
+      ? '\n- CTA INTENT: this creator\'s goal is commercial and they have a commercial tie to what is being promoted, so a purchase or signup CTA is appropriate here.'
+      : commercialCta === 'forbidden' && goalWantsSale
+        ? '\n- CTA INTENT: NO COMMERCIAL CTA. The creator has no commercial tie to this thing — they do not own it, earn from it, and are not paid to feature it — so there is nothing here they may ask the viewer to buy or sign up for, whatever the stated goal. The call to action is engagement: follow, save, share, or a question worth answering.'
+        : '\n- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'
+
+    // WHAT MAY BE SAID ABOUT IT, as opposed to what may be ASKED of the viewer.
+    const claimLines: string[] = []
+    if (marketingClaims === 'attributed') {
+      claimLines.push('\n- THE VENDOR\'S CLAIMS ARE THEIRS, NOT THE CREATOR\'S. You may repeat what the maker says about this product only as something THEY say — "they claim", "according to them". Never restate a marketing claim as an established fact in the creator\'s own voice.')
+    } else if (marketingClaims === 'forbidden' && rel === 'REVIEW_ONLY') {
+      // The distinction that makes REVIEW_ONLY worth having: a reviewer
+      // repeating the vendor's copy is an advertisement in a review's clothes.
+      claimLines.push('\n- THIS IS A REVIEW, NOT AN ADVERTISEMENT. Do NOT repeat the maker\'s marketing claims at all, attributed or otherwise. A review may be built from exactly two things: observable product facts, and what the creator personally experienced.')
+    }
+    if (!creatorExperience && rel !== 'NONE') {
+      // Sharpens the same rule the substance check enforces per beat: nothing
+      // licenses a personal history except the creator being on record for it.
+      claimLines.push('\n- THE CREATOR HAS NOT CONFIRMED THEY PERSONALLY USE THIS. Write NO first-person usage claim about it — no "I\'ve been using this for months", "I switched to it", "it changed my workflow". Talk about what it does, never about what it did for them.')
+    }
+    if (disclosureRequired) {
+      // A property of the entity, not a pacing decision the writer may weigh.
+      claimLines.push('\n- A DISCLOSURE IS REQUIRED AND IS NOT OPTIONAL. There is a paid or commission-earning relationship here, so the script must state it plainly in the creator\'s own words, early and out loud — not buried in a caption and not at the very end. This is a legal obligation, not a stylistic choice, and it may not be traded away for pacing.')
+    }
+    const claimRulesBlock = claimLines.join('')
+
+    // WHETHER THE PRODUCT CAN ACTUALLY BE PUT ON SCREEN.
+    //
+    // §5a's finding 4 and §5c's closing note in one line: a "Show the product"
+    // scene was generated for a coach with no product, transferred from a
+    // reference that had one, and nobody asked whether it could be filled. The
+    // creator discovered it standing in a bedroom holding a phone.
+    //
+    // ONLY `ALWAYS` PERMITS A SCENE THAT DEPENDS ON THE PRODUCT BEING VISIBLE.
+    // `SOMETIMES` is excluded on purpose: a script is written once and filmed
+    // later, so a scene depending on a product the creator sometimes has is a
+    // scene that sometimes cannot be filmed. It may still be mentioned.
+    //
+    // AND UNKNOWN IS A REFUSAL, which is the opposite of `can_film_objects`'s
+    // rule and deliberately so. That flag withholds SUGGESTIONS, so silence
+    // costs an ignorable tip. This decides whether a scene is written at all, so
+    // silence costs an unfilmable scene in a plan someone is following with a
+    // phone in their hand.
+    const showability = (ownedEntity?.showability ?? 'UNKNOWN') as string
+    const showLine = !ownedEntity
+      ? ''
+      : showability === 'ALWAYS'
+        ? `\n- SHOWING IT: the creator can put ${ownedEntity.name ?? 'the product'} on screen. A scene may show it directly.`
+        : showability === 'SOMETIMES'
+          ? `\n- SHOWING IT: the creator can only SOMETIMES put ${ownedEntity.name ?? 'the product'} on screen. It may be mentioned, and a scene must NOT depend on it being visible.`
+          : `\n- SHOWING IT: the creator CANNOT put ${ownedEntity.name ?? 'the product'} on screen. Write NO shot that requires showing, holding or demonstrating it. This is a talking script.`
+
+    // THE COMPATIBILITY GATE'S REFUSALS (§16b), reaching the prompt as decisions
+    // rather than as facts for the writer to weigh.
+    //
+    // ⚖️ THIS IS A `DO NOT USE` BLOCK AND NOT A CONSIDERATION. Folded in as
+    // context, a model rationalises every reference into compatibility — "show
+    // the product" becomes "show something representing your coaching", and the
+    // output looks like an adaptation rather than a defect. Stated as a refusal
+    // with its reason, it is a decision already made.
+    //
+    // Only the dimensions decidable from what this function HOLDS are listed.
+    // The rest of §16b's dimensions need the visual reference analysis that does
+    // not exist yet, and a refusal invented without evidence would be the same
+    // failure in the opposite direction. `compatibilityGate.ts` carries the full
+    // stage and returns NOT_OBSERVED for exactly those.
+    const noProduct = !ownedEntity || ownedEntity.relationship === 'NONE'
+    const cannotShow = !noProduct && showability !== 'ALWAYS'
+    const doNotUse = [
+      noProduct
+        ? '  * PRODUCT DEMONSTRATION — this creator has no product. Do NOT write a scene that shows, holds or demonstrates one, however the reference used it. A scene that cannot be filled is discovered while standing in a room holding a phone.'
+        : '',
+      cannotShow
+        ? '  * PRODUCT DEMONSTRATION — this creator cannot dependably put their product on screen. Do NOT write a scene that depends on it being visible.'
+        : '',
+      '  * THE REFERENCE CREATOR\'S IDENTITY — their jokes, catchphrases and persona are theirs. Carrying them across makes this a re-shoot of their video with a different face.',
+      '  * THE REFERENCE\'S PRODUCT CLAIMS — claims belong to the product they were made about. Nothing carries a claim from one product to another.',
+    ].filter(Boolean).join('\n')
+    const doNotUseBlock = `\n- DO NOT USE — ruled out before writing began, and a reason to include them anyway is not one you may find:\n${doNotUse}`
 
     // WHAT THE CREATOR DOES FOR A LIVING.
     //
@@ -971,7 +1567,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${workKindLine}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${workKindLine}${evidenceBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -1060,7 +1656,7 @@ ${fenced('claims this creator may NOT make', forbidden)}
         `Audience: ${audienceResolved}`,
         `What they do: ${brief.workKind === 'other' ? workKindOther : (brief.workKind ?? 'not stated')}`,
         `Offer: ${offer}`,
-        `Whose product it is: ${brief.promotes ?? 'not stated'}`,
+        `Anything featured that is not theirs: ${brief.promotes ?? 'not stated'}`,
         `Goal: ${goal}`,
         `Tone: ${tone}`,
       ].join('\n'))
@@ -1081,7 +1677,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
 - visual_hook: what the viewer SEES in the first second, and why it interrupts a scroll. Something that changes on screen, not a description of the spoken line. Achievable with a phone and whatever is already in the creator's room.
 - concept: FIRST nail the actual video premise by adapting ONE of the creator's real video FORMATS (listed in CREATOR DNA) to the reference's winning mechanism, then translate the reference's production down to what one person with a phone can shoot (never assume a team, budget or gear they lack).
 - packaging: decide the title + thumbnail (the package that earns the click) for THAT concept, FOLLOWING the creator's title style and thumbnail style from CREATOR DNA and using their brand colors. Every hook and script beat must pay off that exact promise.
-- ${fidelityRule}
+- ${fidelityRule}${toneClampLine}
 - ${toneRule}
 - Open by hitting the audience pain above, then pay off the dream outcome by the end. Carry the creator's point of view through the script, and include the mid-video re-hook beat so the middle never sags.
 - Make the single CTA concrete and point it at the creator's product or offer above. If the offer is unspecified, fall back to a save or a comment-bait question.
@@ -1113,8 +1709,61 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       ownDnaText: creatorDna,
       userNote: reference_note || null,
     })
+    // ⚖️ BEFORE the link sanitiser, because a templated hook is not worth
+    // sanitising and the two are independent failures.
+    const templated = dropSpokenPlaceholders(normalizeHookLine(stripDashes(JSON.parse(raw))))
+    if (templated.hooksDropped || templated.linesAffected) {
+      // Loud for the same reason the link removals below are: a creator reading
+      // "[gadget name]" aloud is the failure, and it must be findable in logs
+      // rather than inferred later from a complaint.
+      console.warn(JSON.stringify({
+        event: 'spoken_placeholders_or_empty_promises',
+        hooks_dropped: templated.hooksDropped,
+        script_lines_affected: templated.linesAffected,
+      }))
+    }
+    // WHERE THE CONTENT CAME FROM, COUNTED — and the declaration checked against
+    // what the prompt actually carried. ⚖️ `speakable` and not `kRows`: checking
+    // against the fuller store would excuse exactly the fabrication this exists
+    // to catch, because a beat could cite something the writer never saw.
+    const declared = (templated.bp as { script?: unknown })?.script
+    const issues = substanceIssues(declared, speakable.map((k) => ({
+      kind: String(k.kind), text: String(k.text), basis: String(k.basis),
+    })))
+    const bySource: Record<string, number> = {}
+    if (Array.isArray(declared)) {
+      for (const b of declared) {
+        const s = typeof (b as { substance?: unknown })?.substance === 'string'
+          ? String((b as { substance?: unknown }).substance) : 'undeclared'
+        bySource[s] = (bySource[s] ?? 0) + 1
+      }
+    }
+    // Always emitted, including the clean case: the share of beats a creator can
+    // actually film is the number this whole layer exists to move, and a metric
+    // that only appears on failure cannot show a trend.
+    console.log(JSON.stringify({
+      event: 'beat_substance',
+      beats: Array.isArray(declared) ? declared.length : 0,
+      by_source: bySource,
+      knowledge_supplied: speakable.length,
+      issues: issues.length,
+      issue_codes: issues.map((i) => i.code),
+    }))
+    if (issues.length) {
+      // Reported, never rewritten. There are no alternate script lines to fall
+      // back to, and silently deleting a beat would hand the creator a video
+      // with a hole in it rather than a sentence they can check.
+      console.warn(JSON.stringify({ event: 'substance_unsupported', details: issues.slice(0, 20) }))
+    }
+
+    const weakUnit = isContentlessUnit(
+      (templated.bp as { reference_read?: { mechanism?: { enumeration?: { unit?: unknown } } } })
+        ?.reference_read?.mechanism?.enumeration?.unit)
+    if (weakUnit) {
+      console.warn(JSON.stringify({ event: 'contentless_enumeration_unit' }))
+    }
     const { blueprint, removals: linkRemovals } = sanitizeBlueprintLinks(
-      normalizeHookLine(stripDashes(JSON.parse(raw))),
+      templated.bp,
       linkAllow,
     )
     if (linkRemovals.length) {
@@ -1172,7 +1821,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         if (raceRefundErr) {
           console.error('DUPLICATE REFUND FAILED — manual reconciliation for', user.id, raceRefundErr)
           await admin
-            .from('ops_alerts')
+            // ⚠️ WAS `ops_alerts`, A TABLE THAT HAS NEVER EXISTED. The name is
+            // real but belongs to the TRIGGER (`notify_admins_on_ops_alert`);
+            // the table 0028 creates is `ops_events`, whose columns are exactly
+            // the four written here. Nothing caught it because this insert is
+            // deliberately fire-and-forget — so the one alert that says a REFUND
+            // FAILED AND NEEDS MANUAL RECONCILIATION went nowhere, silently,
+            // and the admin notification trigger never fired.
+            .from('ops_events')
             .insert({ kind: 'refund_failed', severity: 'critical', user_id: user.id, detail: { fn: 'generate-blueprint', amount: BLUEPRINT_COST, reason: 'duplicate_key_race', error: String((raceRefundErr as { message?: string }).message ?? raceRefundErr) } })
             .then(() => {}, () => {})
         }
@@ -1188,7 +1844,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       // links_stripped is COUNTS and PATHS only, never the removed text. The
       // text is attacker-influenced and belongs in the log line above, not in
       // a props blob that analytics queries and dashboards read back.
-      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path) } })
+      .insert({ user_id: user.id, event: 'blueprint_generated', time_saved_minutes: 30, props: { generation_id: gen.id, brand_voice_id: voice?.id ?? null, fidelity, tone_requested: tone, tone_applied: appliedTone, cta_sell_intent: sellIntent, real_video: !!transcript_id, links_stripped: linkRemovals.length, links_stripped_kinds: [...new Set(linkRemovals.map((r) => r.kind))], links_stripped_paths: linkRemovals.slice(0, 20).map((r) => r.path), placeholder_hooks_dropped: templated.hooksDropped, placeholder_lines: templated.linesAffected, contentless_unit: weakUnit } })
       .then(() => {}, () => {})
 
     return json(gen)

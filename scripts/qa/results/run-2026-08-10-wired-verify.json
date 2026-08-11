@@ -1,0 +1,154 @@
+[
+  {
+    "case": {
+      "creator": "doctormike",
+      "label": "WIRED: clamp + cta gate",
+      "fidelity": "close",
+      "tone": "punchy",
+      "refNote": "A high-energy gadget RANKING short. Hook names a number and promises a countdown: \"the top 5 gadgets you NEED right now\". Each item gets a superlative, a price, and a buy-now urgency line. Ends with \"number one will blow your mind - link below\"."
+    },
+    "blueprint": {
+      "beat_plan": [
+        {
+          "beat": "Hook: introduce the topic",
+          "target_sec": "4",
+          "scene_type": "talking head",
+          "proof": "Creator's signature structure begins with a hook."
+        },
+        {
+          "beat": "Claim: introduce first 'unnecessary' item",
+          "target_sec": "6",
+          "scene_type": "demonstration",
+          "proof": "Reference has a countdown of items; this creator will counter common claims."
+        },
+        {
+          "beat": "What's actually true for item 1",
+          "target_sec": "8",
+          "scene_type": "talking head",
+          "proof": "Creator's signature structure includes 'what's actually true'."
+        },
+        {
+          "beat": "Evidence + limits for item 1",
+          "target_sec": "10",
+          "scene_type": "graphics overlay",
+          "proof": "Creator's signature structure includes 'evidence + limits'."
+        },
+        {
+          "beat": "Claim: introduce second 'unnecessary' item",
+          "target_sec": "6",
+          "scene_type": "demonstration",
+          "proof": "Reference has a countdown of items; this creator will counter common claims."
+        },
+        {
+          "beat": "What's actually true for item 2",
+          "target_sec": "8",
+          "scene_type": "talking head",
+          "proof": "Creator's signature structure includes 'what's actually true'."
+        },
+        {
+          "beat": "Evidence + limits for item 2",
+          "target_sec": "10",
+          "scene_type": "graphics overlay",
+          "proof": "Creator's signature structure includes 'evidence + limits'."
+        },
+        {
+          "beat": "Nuance + general disclaimer",
+          "target_sec": "8",
+          "scene_type": "talking head",
+          "proof": "Creator's signature structure includes 'nuance' and 'see your own doctor'."
+        },
+        {
+          "beat": "Closing + CTA",
+          "target_sec": "4",
+          "scene_type": "talking head",
+          "proof": "Creator's signature structure includes 'stay happy and healthy'; CTA is engagement based."
+        }
+      ],
+      "concept": {
+        "premise": "Dr. Mike debunks common health gadgets often promoted as 'must-haves', explaining why they're usually unnecessary and what to focus on instead, maintaining his educational authority while avoiding medical advice."
+      },
+      "hook_options": [
+        "Thinking about those 'must-have' health gadgets? Let's talk about 2 you probably don't need.",
+        "Are these 2 health gadgets really worth your money? I'm breaking down what the science says.",
+        "Don't fall for the hype! Here are 2 popular health gadgets that often miss the mark.",
+        "You might be surprised by these 2 health gadgets that aren't quite living up to their claims.",
+        "From sleep trackers to detox teas, let's explore 2 health gadgets you can likely skip."
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Alright, let's talk about two health gadgets often advertised as essentials. Are they really worth it?",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "None",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Direct address to camera, friendly and inquisitive."
+        },
+        {
+          "section": "Claim",
+          "line": "First up, those fancy 'detox' foot pads. You've seen the ads showing dark liquid being pulled from your body overnight.",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "Foot pad packaging on a clean surface, then a close-up of a used, darkened pad (pre-prepared for demo).",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Picks up and shows foot pad packaging, then gestures to the 'used' pad."
+        },
+        {
+          "section": "What's actually true",
+          "line": "The truth is, those dark colors aren't toxins. It's usually just a chemical reaction between the pad's ingredients and your sweat!",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "Simple graphic overlay illustrating the chemical reaction theory.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Shakes head slightly, a knowing smile, then points to the graphic."
+        },
+        {
+          "section": "Evidence + limits",
+          "line": "There's no scientific evidence these pads actually remove toxins from your body. Your liver and kidneys do an amazing job of that, naturally.",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "Text overlay: 'NO SCIENTIFIC EVIDENCE' and 'Natural Detox: Liver & Kidneys'.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Holds hands up in a 'no' gesture, then points to his midsection."
+        },
+        {
+          "section": "Claim",
+          "line": "Next, let's look at the 'alkaline water' craze. Many claim it can balance your body's pH and prevent diseases.",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "Bottle of 'alkaline water' on a desk, then a glass being poured.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Picks up the bottle, looks at the label, then sets it down."
+        },
+        {
+          "section": "What's actually true",
+          "line": "While the idea sounds good, your body is incredibly good at regulating its own pH. Drinking alkaline water won't significantly change it.",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "Simple animation of the body's pH regulation (e.g., a balanced scale).",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Gestures broadly to illustrate the body's internal processes."
+        },
+        {
+          "section": "Evidence + limits",
+          "line": "Most studies showing benefits are small or lack strong methodology. For most people, regular tap water is perfectly fine and hydrating.",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "Text overlay: 'Limited Evidence' and 'Tap Water is Fine'.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Nods thoughtfully, then points to the text overlay."
+        },
+        {
+          "section": "Nuance + general disclaimer",
+          "line": "It's always exciting to explore new health tools, but always be critical. And remember, for any specific health concerns, please consult your own doctor.",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "None",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Earnest and direct eye contact, points to himself then gestures outwards."
+        },
+        {
+          "section": "Closing + CTA",
+          "line": "What other health gadgets have you wondered about? Let me know in the comments below, and stay happy and healthy!",
+          "location": "Doctor Mike's office/clinic",
+          "broll_request": "None",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Gestures to comments section, then waves goodbye."
+        }
+      ],
+      "cta": "What other health gadgets have you wondered about? Let me know in the comments below!"
+    }
+  }
+]

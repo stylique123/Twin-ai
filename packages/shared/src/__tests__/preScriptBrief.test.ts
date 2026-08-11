@@ -203,12 +203,12 @@ describe('the product question is conditional, and asked once', () => {
     expect(asksProductEvidence('saas')).toBe(true)
   })
 
-  it('"nothing to sell" is not asked for a product page, but silence still is', () => {
+  it('"nothing of anyone else’s" is not asked for a product page, but silence still is', () => {
     // The gate a pinned `promotes` was always supposed to close. Someone who
-    // has just said they sell nothing being asked to hand over their product
+    // has just said they feature nothing being asked to hand over a product
     // page is how a creator learns the questions are not listening.
-    expect(asksProductEvidence('saas', 'nothing_to_sell')).toBe(false)
-    expect(asksProductEvidence('ecommerce', 'nothing_to_sell')).toBe(false)
+    expect(asksProductEvidence('saas', 'none')).toBe(false)
+    expect(asksProductEvidence('ecommerce', 'none')).toBe(false)
 
     // PERMISSIVE ON SILENCE, deliberately. `null` is unanswered, not "no
     // product" — reading it as a denial would drop the question for everyone
@@ -217,25 +217,26 @@ describe('the product question is conditional, and asked once', () => {
     expect(asksProductEvidence('saas', null)).toBe(true)
     expect(asksProductEvidence('saas', undefined)).toBe(true)
 
-    // The other two pinned values are not "nothing to sell" and must not be
-    // caught by a truthiness check that happened to work on the third.
-    expect(asksProductEvidence('saas', 'own_product')).toBe(true)
+    // The other pinned values are not `none` and must not be caught by a
+    // truthiness check that happened to work on one of them.
     expect(asksProductEvidence('saas', 'affiliate')).toBe(true)
+    expect(asksProductEvidence('saas', 'sponsor')).toBe(true)
+    expect(asksProductEvidence('saas', 'review_only')).toBe(true)
 
     // `promotes` never rescues `creator`: the work-kind exclusion is the
     // stronger rule and stays first.
-    expect(asksProductEvidence('creator', 'own_product')).toBe(false)
+    expect(asksProductEvidence('creator', 'affiliate')).toBe(false)
   })
 
-  it('questionsFor drops the product question once nothing_to_sell is chosen', () => {
+  it('questionsFor drops the product question once `none` is chosen', () => {
     // The gate is only real if the thing that lists the questions honours it.
     const asked = (promotes: BriefPromotes | null) =>
       questionsFor('during_scan', { workKind: 'ecommerce', promotes })
         .some((q) => q.id === 'productEvidence')
 
     expect(asked(null)).toBe(true)
-    expect(asked('own_product')).toBe(true)
-    expect(asked('nothing_to_sell')).toBe(false)
+    expect(asked('affiliate')).toBe(true)
+    expect(asked('none')).toBe(false)
   })
 
   it('promotes is answered AFTER the question it gates, so the gate is dormant', () => {

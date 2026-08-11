@@ -1,72 +1,85 @@
 {
-  "$schema": "./brief_consumers.schema.md",
-  "$why": [
-    "THE SINGLE SOURCE OF TRUTH for who READS each answer the creator gives us.",
-    "",
-    "A creator answers nine questions during the scan and on confirm. Every answer",
-    "is validated, sanitized and written to brand_voices.pre_script_brief. Four of",
-    "them are then read by nothing at all: the script generator never learns whether",
-    "it is writing for a doctor, a SaaS founder or a hobbyist, and the captured",
-    "product it could name is never offered to it.",
-    "",
-    "That is a worse state than not asking. A question spends the creator's",
-    "attention and buys a promise — implicit but unmistakable — that the answer",
-    "changes what they get. An answer nothing reads breaks that promise silently,",
-    "and silence is why it survived: every individual PR that added a question was",
-    "correct, tested, and shipped green.",
-    "",
-    "So the rule is mechanical rather than remembered: every key in",
-    "BRIEF_STORED_KEYS declares its readers HERE, and check_brief_consumers.mjs",
-    "fails the build when this file and the repository disagree.",
-    "",
-    "WHY UNWIRED KEYS ARE DECLARED RATHER THAN TOLERATED. A guard that simply",
-    "demanded a reader for every key could not land until every key had one — so it",
-    "would land last, after the next asked-and-discarded fact had already been",
-    "added, which is precisely the failure it exists to prevent. Instead the debt is",
-    "written down: `readBy: []` plus an `unwiredReason` naming what is missing.",
-    "",
-    "THE EXEMPTION EXPIRES BY ITSELF. The guard verifies both directions — a key",
-    "declared unwired must have NO reader in supabase/functions. The moment someone",
-    "wires one up, this file is wrong and the build says so. An exemption that",
-    "quietly stays true after it stops being true is how the original bug got in."
-  ],
-
-  "$fields": [
-    "readBy      — paths under supabase/functions that must contain the key.",
-    "              Every path must exist AND mention the key; a stale entry fails.",
-    "unwiredReason — required when readBy is empty. Says what is missing, not that",
-    "              nothing is missing. Delete it in the same PR that adds a reader."
-  ],
-
-  "keys": {
-    "goal": {
-      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
-    },
-    "audience": {
-      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
-    },
-    "offer": {
-      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
-    },
-    "forbiddenClaims": {
-      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
-    },
-    "workKind": {
-      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
-    },
-    "workKindOther": {
-      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
-    },
-    "promotes": {
-      "readBy": ["supabase/functions/generate-blueprint/index.ts"]
-    },
-    "productEvidence": {
-      "readBy": [],
-      "unwiredReason": "The captured product — pixels and a section map — never reaches the prompt, so '[SHOW: the product]' still has nothing to point at and the model is free to invent product details."
-    },
-    "alsoWantsToMake": {
-      "readBy": [],
-      "unwiredReason": "Asked on confirm and read by nothing. Either give it a consumer or stop asking it."
-    }
+ "$schema": "./brief_consumers.schema.md",
+ "$why": [
+  "THE SINGLE SOURCE OF TRUTH for who READS each answer the creator gives us.",
+  "",
+  "A creator answers nine questions during the scan and on confirm. Every answer",
+  "is validated, sanitized and written to brand_voices.pre_script_brief. Four of",
+  "them are then read by nothing at all: the script generator never learns whether",
+  "it is writing for a doctor, a SaaS founder or a hobbyist, and the captured",
+  "product it could name is never offered to it.",
+  "",
+  "That is a worse state than not asking. A question spends the creator's",
+  "attention and buys a promise \u2014 implicit but unmistakable \u2014 that the answer",
+  "changes what they get. An answer nothing reads breaks that promise silently,",
+  "and silence is why it survived: every individual PR that added a question was",
+  "correct, tested, and shipped green.",
+  "",
+  "So the rule is mechanical rather than remembered: every key in",
+  "BRIEF_STORED_KEYS declares its readers HERE, and check_brief_consumers.mjs",
+  "fails the build when this file and the repository disagree.",
+  "",
+  "WHY UNWIRED KEYS ARE DECLARED RATHER THAN TOLERATED. A guard that simply",
+  "demanded a reader for every key could not land until every key had one \u2014 so it",
+  "would land last, after the next asked-and-discarded fact had already been",
+  "added, which is precisely the failure it exists to prevent. Instead the debt is",
+  "written down: `readBy: []` plus an `unwiredReason` naming what is missing.",
+  "",
+  "THE EXEMPTION EXPIRES BY ITSELF. The guard verifies both directions \u2014 a key",
+  "declared unwired must have NO reader in supabase/functions. The moment someone",
+  "wires one up, this file is wrong and the build says so. An exemption that",
+  "quietly stays true after it stops being true is how the original bug got in."
+ ],
+ "$fields": [
+  "readBy      \u2014 paths under supabase/functions that must contain the key.",
+  "              Every path must exist AND mention the key; a stale entry fails.",
+  "unwiredReason \u2014 required when readBy is empty. Says what is missing, not that",
+  "              nothing is missing. Delete it in the same PR that adds a reader."
+ ],
+ "keys": {
+  "goal": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
+  },
+  "audience": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
+  },
+  "offer": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
+  },
+  "forbiddenClaims": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
+  },
+  "workKind": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
+  },
+  "workKindOther": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
+  },
+  "promotes": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
+  },
+  "productEvidence": {
+   "readBy": [
+    "supabase/functions/generate-blueprint/index.ts"
+   ]
+  },
+  "alsoWantsToMake": {
+   "readBy": [],
+   "unwiredReason": "Asked on confirm and read by nothing. Either give it a consumer or stop asking it."
   }
+ }
 }

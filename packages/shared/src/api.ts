@@ -6,6 +6,10 @@ import {
 } from './editor/capabilities'
 import type { BrandVoice, CreatorDNA, Generation, Platform, Profile, VoiceProfile } from './types'
 import { sanitizeBriefForWrite, readStoredBrief, type BriefAnswers } from './preScriptBrief'
+import {
+  emptyRestrictions, isEntityRelationship, isEntityType, isPersonalUse, isShowability,
+  type DraftEntity, type EntityRestrictions, type ProductEntityRecord,
+} from './productEntity'
 import { generationLifecycle, resolveFinishedOutputs, resolveFinishedOutputsResult } from './editor/finishedOutput'
 
 // ---- Client injection ------------------------------------------------------
@@ -191,6 +195,26 @@ export async function saveDNA(dna: CreatorDNA): Promise<Profile> {
 
 // ---- Blueprint generation (real AI via edge function) -------------------
 
+/** What a video is FOR. Mirrors `GOAL_LINES` in generate-blueprint, which is the
+ *  authority on what each one instructs the writer to do. `sell` and `leads` are
+ *  the two that permit a commercial CTA. */
+export const VIDEO_GOALS = [
+  'followers', 'authority', 'educate', 'leads', 'sell', 'entertain', 'personal_brand',
+] as const
+export type VideoGoal = (typeof VIDEO_GOALS)[number]
+
+/** Short labels for the create screen. The prompt lines live server-side; these
+ *  are what a creator picking one actually reads. */
+export const VIDEO_GOAL_LABELS: Record<VideoGoal, string> = {
+  followers: 'Grow my audience',
+  authority: 'Build authority',
+  educate: 'Teach something',
+  leads: 'Start conversations',
+  sell: 'Sell my offer',
+  entertain: 'Entertain',
+  personal_brand: 'Build my personal brand',
+}
+
 export interface GenerateInput {
   reference_url: string
   reference_note: string
@@ -198,6 +222,16 @@ export interface GenerateInput {
   // How the script should SOUND (delivery energy), independent of fidelity (how
   // close to the reference structure). Optional; defaults to 'balanced' server-side.
   tone?: 'understated' | 'balanced' | 'punchy'
+  // What THIS video is for. Per-video rather than per-voice, because one creator
+  // makes awareness videos and sell videos from the same voice.
+  //
+  // ⚠️ The reader for this existed long before any writer did: the edge function
+  // read `pre_script_brief.goal`, whose only writer deliberately omits it, so
+  // the value was always absent and every script was told "NOT a selling video".
+  // Optional here, and absent still means engagement — silence is refusal, and
+  // the cost of withholding a pitch is one softer video while the cost of adding
+  // one nobody asked for is a creator sounding like an advert to their audience.
+  goal?: VideoGoal
   // Optional: when the reference was analyzed by the worker (real transcript),
   // pass its transcript_id so the blueprint is built from the actual video.
   transcript_id?: string
@@ -1267,3 +1301,197 @@ export async function listGalleryItems(): Promise<GalleryItem[]> {
 // scraper (service role), and migration 0032 locks authenticated inserts to
 // private-only until there's a moderation flow. Re-add a submit helper alongside
 // that flow when public contributions ship.
+
+// ---------------------------------------------------------------------------
+// THE PRODUCT LIBRARY — entities, not one global subtype
+// ---------------------------------------------------------------------------
+
+/** The row shape, mapped to the contract's camelCase. Kept private: every
+ *  caller outside this file works in `ProductEntityRecord`, so a column rename
+ *  is one edit here rather than a search across the app. */
+interface ProductEntityRow {
+  id: string
+  name: string | null
+  type: string
+  relationship: string
+  personal_use: string
+  showability: string
+  product_url: string | null
+  affiliate_url: string | null
+  evidence: unknown
+  restrictions: unknown
+  source: string
+  user_confirmed: boolean
+  updated_at: string
+}
+
+const ENTITY_COLUMNS =
+  'id, name, type, relationship, personal_use, showability, product_url, affiliate_url, evidence, restrictions, source, user_confirmed, updated_at'
+
+/** Read `restrictions` back defensively. `approvedClaims` is the field §5a.5
+ *  turns on — an outcome claim needs a permission that EXISTS — so a malformed
+ *  block must degrade to "nothing approved", never to "unrestricted". */
+function readRestrictions(raw: unknown): EntityRestrictions {
+  const base = emptyRestrictions()
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base
+  const src = raw as Record<string, unknown>
+  const list = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && x.trim() !== '') : []
+  return {
+    approvedClaims: list(src.approvedClaims),
+    forbiddenClaims: list(src.forbiddenClaims),
+    complianceNotes: typeof src.complianceNotes === 'string' && src.complianceNotes.trim() !== ''
+      ? src.complianceNotes.trim()
+      : null,
+  }
+}
+
+/**
+ * A stored row as the contract sees it.
+ *
+ * VALIDATED, NOT CAST. The CHECK constraints make an out-of-vocabulary value
+ * unwritable through this app, but a row can predate a constraint or arrive
+ * through the service role — and a `relationship` outside the enum would reach
+ * the blueprint prompt as though the creator had chosen it. Anything
+ * unreadable returns null and the caller drops the entity, which is the same
+ * rule `readStoredBrief` follows for the brief.
+ */
+function readEntityRow(row: ProductEntityRow): ProductEntityRecord | null {
+  if (!isEntityType(row.type)) return null
+  if (!isEntityRelationship(row.relationship)) return null
+  const name = typeof row.name === 'string' && row.name.trim() !== '' ? row.name.trim() : null
+  return {
+    id: row.id,
+    name,
+    type: row.type,
+    relationship: row.relationship,
+    // A malformed personal-use value falls back to the SAFE side, never the
+    // permissive one: NOT_CONFIRMED withholds a first-person experience claim,
+    // and withholding one the creator could have made is a smaller failure than
+    // writing one they never earned.
+    personalUse: isPersonalUse(row.personal_use) ? row.personal_use : 'NOT_CONFIRMED',
+    // UNKNOWN on anything unreadable, which is the honest fallback and also the
+    // conservative one: `mayShowOnScreen` refuses it, so a malformed value
+    // withholds a product-display scene rather than inventing a shot the creator
+    // may not be able to take.
+    showability: isShowability(row.showability) ? row.showability : 'UNKNOWN',
+    productUrl: row.product_url ?? null,
+    affiliateUrl: row.affiliate_url ?? null,
+    evidence: row.evidence === 'declined'
+      ? 'declined'
+      : row.evidence && typeof row.evidence === 'object'
+        ? (row.evidence as ProductEntityRecord['evidence'])
+        : null,
+    restrictions: readRestrictions(row.restrictions),
+    source: row.source === 'user_answer' ? 'user_answer' : 'inferred',
+    userConfirmed: row.user_confirmed === true,
+    updated: row.updated_at,
+  }
+}
+
+/** Every entity this creator holds. Unreadable rows are DROPPED rather than
+ *  surfaced — see `readEntityRow`. */
+export async function loadProductEntities(): Promise<ProductEntityRecord[]> {
+  const { data, error } = await supabase
+    .from('product_entities')
+    .select(ENTITY_COLUMNS)
+    .order('created_at', { ascending: true })
+  if (error) throw error
+  return ((data ?? []) as ProductEntityRow[])
+    .map(readEntityRow)
+    .filter((e): e is ProductEntityRecord => e !== null)
+}
+
+/**
+ * Write the entity Q3 minted, exactly once per voice.
+ *
+ * IDEMPOTENT BY CONSTRUCTION, and that is not optional. `Onboarding`'s confirm
+ * step re-runs on remount — the same class of defect as the V2Building replay
+ * that charged three times for one video — so a plain insert would give a
+ * creator who navigates back and forward a duplicate product on every pass.
+ * `product_entities_one_owned_per_voice` makes that unrepresentable; this
+ * writes onto it so the second pass CORRECTS the first rather than failing.
+ *
+ * ⚠️ NOT AN UPSERT, AND THAT IS THE WHOLE POINT. This used to be
+ * `.upsert(row, { onConflict: 'voice_id' })`, which makes PostgREST emit a bare
+ * `ON CONFLICT (voice_id)`. The only unique index on `voice_id` is PARTIAL
+ * (`where relationship in (…) and voice_id is not null`), and Postgres cannot
+ * infer a partial index as an arbiter unless the statement repeats the index
+ * predicate — which PostgREST has no way to express. So the write raised
+ * (expected `42P10`, "no unique or exclusion constraint matching the ON CONFLICT
+ * specification"; inferred from the index/statement mismatch rather than
+ * observed against a live database) on EVERY mint.
+ *
+ * It then failed invisibly: `Onboarding` catches and `console.warn`s, so the
+ * creator saw "We'll treat X as your own SaaS", the Product Library stayed
+ * empty, and `generate-blueprint` — finding no owned entity — emitted the
+ * `DO NOT USE — this creator has no product` block for creators who had one.
+ * The confirm screen and the script disagreed, and nothing surfaced it.
+ *
+ * ⚖️ The read-then-write below is NOT weaker than the upsert it replaces. The
+ * partial unique index is still the authority: a lost race raises 23505, which
+ * is caught and retried as the update it should have been. The index enforces;
+ * this function merely stops asking Postgres a question it cannot answer.
+ *
+ * Returns null when Q3 implied no entity. That is a different fact from "they
+ * have nothing", and callers must not render it as one.
+ */
+export async function saveMintedEntity(
+  ownerId: string,
+  voiceId: string,
+  entity: DraftEntity | null,
+): Promise<ProductEntityRecord | null> {
+  if (!entity) return null
+  const row = {
+    owner_id: ownerId,
+    voice_id: voiceId,
+    name: entity.name,
+    type: entity.type,
+    relationship: entity.relationship,
+    personal_use: entity.personalUse,
+    showability: entity.showability,
+    product_url: entity.productUrl,
+    affiliate_url: entity.affiliateUrl,
+    evidence: entity.evidence,
+    restrictions: entity.restrictions,
+    source: entity.source,
+    user_confirmed: entity.userConfirmed,
+  }
+
+  // Scoped exactly like the partial index, so "already minted" here means the
+  // same thing it means to the database.
+  const updateOwned = async () => {
+    const { data, error } = await supabase
+      .from('product_entities')
+      .update(row)
+      .eq('voice_id', voiceId)
+      .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+      .select(ENTITY_COLUMNS)
+      .single()
+    if (error) throw error
+    return readEntityRow(data as ProductEntityRow)
+  }
+
+  const { data: existing, error: readErr } = await supabase
+    .from('product_entities')
+    .select('id')
+    .eq('voice_id', voiceId)
+    .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
+    .maybeSingle()
+  if (readErr) throw readErr
+  if (existing) return await updateOwned()
+
+  const { data, error } = await supabase
+    .from('product_entities')
+    .insert(row)
+    .select(ENTITY_COLUMNS)
+    .single()
+  // 23505 is the partial unique index doing its job against a concurrent mint —
+  // the remount replay this function exists for, arriving twice at once. The
+  // other pass won, so the correct outcome is the update we would have done.
+  if (error) {
+    if (error.code === '23505') return await updateOwned()
+    throw error
+  }
+  return readEntityRow(data as ProductEntityRow)
+}

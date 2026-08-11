@@ -183,3 +183,153 @@ Synthesize this creator's voice profile.${visionNote}`
   const profile = (await geminiJson(POSTS_SYSTEM, prompt, postsSchema, 60_000, budget, undefined, images)) as Record<string, unknown>
   return enrichVoiceProfile(profile, handle, platform)
 }
+
+// ── CREATOR KNOWLEDGE: WHAT THEY KNOW, NOT HOW THEY SOUND ─────────────────
+//
+// `synthesizeVoiceFromAudio` above reads the same transcripts and is told, in
+// its own words, to "capture how THEY talk". It does that well. Nothing then
+// asked what they SAID, and the transcripts were discarded — `voice.ts`'s caller
+// persisted `audio_transcripts: <count>` and dropped the text. That is the
+// founding defect at its source: the richest substance in the system, fetched,
+// used once for tone, and deleted.
+//
+// ⚖️ THIS RUNS ON TRANSCRIPTS ALREADY IN MEMORY AND PERSISTS NO SPEECH. It
+// returns short distilled claims; the caller writes those and lets the raw text
+// fall out of scope. `creator_knowledge.text` is CHECK-capped at 240 characters
+// so the schema itself refuses to become a transcript store.
+//
+// ⚖️ AND IT IS ALLOWED TO RETURN NOTHING. The DNA extractor beside it is told
+// "COMPLETENESS IS MANDATORY … a confident, specific inference is far more
+// useful than a blank", which is why `pov` and `enemy` are never empty and never
+// trustworthy. Here an empty list is the correct answer for a creator who spent
+// five videos saying nothing checkable, and `basis` records how we know each
+// item rather than flattening all of them into assertion.
+const knowledgeSchema = obj(
+  {
+    items: {
+      type: 'ARRAY',
+      items: obj(
+        {
+          kind: { type: 'STRING' },
+          text: { type: 'STRING' },
+          basis: { type: 'STRING' },
+          times_seen: { type: 'STRING' },
+          confidence: { type: 'STRING' },
+          source_video: { type: 'STRING' },
+        },
+        ['kind', 'text', 'basis', 'times_seen', 'confidence', 'source_video'],
+      ),
+    },
+  },
+  ['items'],
+)
+
+const KNOWLEDGE_SYSTEM = `You are TwinAI's Creator Knowledge engine. You are given VERBATIM TRANSCRIPTS of a creator speaking on camera. Another system already captured HOW they talk. Your job is the opposite and you must not duplicate it: record WHAT THEY KNOW AND HAVE SAID.
+- Never describe delivery. Tone, pacing, energy and vocabulary are somebody else's field and are wrong answers here.
+- Each item is ONE line, at most 240 characters, in plain words. It is a distillate, never a quotation, and never a passage copied out of a transcript.
+- kind is exactly one of: fact (checkable, and true independently of them), opinion (a position they hold, theirs and contestable), topic (something they return to), example (a concrete case they used), experience (something they personally did), framework (a repeatable method they teach), claim (an assertion carrying a number or outcome), product (a product they mentioned or worked with), covered (a subject they have already made a video about).
+- FACT AND OPINION ARE DIFFERENT KINDS, and choosing between them is part of the job. "USB-C is reversible" survives being attributed to anybody; "megapixels are oversold" is a stance. Filing a stance as a fact is how a creator ends up sounding more certain than they have ever been.
+- basis is exactly one of: stated (they said it outright), demonstrated (they showed it or acted on it without saying it), inferred (you are reasoning past what they said).
+- NAME THE THINGS. A creator's value to their audience is in SPECIFICS, so record the actual named products, models, tools, companies and features they talk about — "the 200 megapixel sensor", "foldable hinges", "Notion", "the M4 iPad" — as "product" items, and keep the real name inside every other item too. "Megapixels are oversold" is a stance and worth recording; "phones shipping 200MP sensors that lose to a three-year-old iPhone" is the same stance with the thing it is ABOUT still attached, and only the second one lets a script say something their audience did not already know. Never generalise a named thing into a category to sound tidier. AND A BARE NAME IS NOT AN ITEM. "Todoist" and "M4 iPad Pro" record that a word was said and nothing else; a "product" item must carry WHAT THEY SAID ABOUT IT — "still pays for Todoist because nothing else handles natural-language dates", "recommends the M4 iPad Pro only in 512GB, where the extra RAM is". A name with no verdict attached is as useless to a script as an opinion with no name attached, and it is the same mistake pointing the other way.
+- BE HONEST WITH basis AND DO NOT ROUND IT UP. Only "stated" and "demonstrated" are ever put back into this creator's mouth; "inferred" is used to steer and is never spoken. Marking a guess as stated is how a script tells someone's audience that they said something they did not say.
+- times_seen is how many of the supplied videos carried it, as a digit.
+- confidence is how sure YOU are that this is really what they meant, as a decimal between 0 and 1. It is a different question from basis: basis is HOW you know, confidence is HOW WELL. A remark you heard clearly but only once is "stated" with a middling confidence. Do not round it up to 1 to look decisive.
+- source_video is the number of the VIDEO this came from, as a digit matching the "--- VIDEO n ---" headings below. Where an item appears in several, give the first. A creator correcting an item needs to be able to go and watch the thing you read it out of.
+- RETURN AN EMPTY LIST IF THE TRANSCRIPTS CARRY NO SUBSTANCE. That is a real and useful answer. Do NOT pad it, do NOT invent positions that would merely be plausible for someone in this niche, and do NOT convert a generic remark into a belief to have something to write.`
+
+export interface RawKnowledgeItem {
+  kind: string
+  text: string
+  basis: string
+  times_seen: string
+  /** How sure the extractor is, 0-1 as a string. See `confidence` in
+   *  `packages/shared/src/creatorKnowledge.ts` — an absent one reads as 0.5,
+   *  never as 1. */
+  confidence: string
+  /** Which "--- VIDEO n ---" it was read out of, so the caller can map it back
+   *  to a real URL. Provenance a creator can act on beats an opaque id. */
+  source_video: string
+}
+
+/** Distil what a creator knows from what they said. Returns raw rows for the
+ *  caller to validate through `readKnowledge` — this function does not decide
+ *  what is storable, it only asks. */
+/**
+ * CAPTIONS ARE EVIDENCE OF A DIFFERENT KIND, and the difference decides `basis`.
+ *
+ * ⚠️ WHY THIS EXISTS. Knowledge came only from up to five transcribed videos, so
+ * a channel with 4,500 uploads contributed five. Captions and titles are already
+ * scraped for every post, cost nothing extra, and are the densest source of
+ * NAMED THINGS in the system — "I bought the Samsung Z Fold 8" is a product and
+ * a covered topic in six words.
+ *
+ * ⚖️ BUT A TITLE IS A PROMISE, NOT A STATEMENT. "I bought the Z Fold 8" proves
+ * they made a video about that phone. It does NOT prove what they concluded
+ * about it, and treating a headline as a position is exactly how a guess becomes
+ * a quote. So this asks for `covered` and `product` freely — both are facts a
+ * title genuinely carries — and refuses to file an opinion as `stated` from a
+ * caption alone, because nobody heard them say it.
+ */
+const CAPTION_SYSTEM = `You are TwinAI's Creator Knowledge engine, reading CAPTIONS AND TITLES rather than speech. Another system already captured how this creator talks. Record WHAT THEIR VIDEOS ARE ABOUT.
+- A TITLE IS A PROMISE, NOT A STATEMENT. "I bought the Samsung Z Fold 8" tells you they covered that phone. It does NOT tell you what they concluded about it. Never write a conclusion a caption does not contain.
+- Because of that: use kind "covered" for a subject they have clearly made a video about, and kind "product" for a named product, model or tool they featured. Use "topic" for a subject they return to across several titles.
+- DO NOT emit "opinion", "claim" or "fact" from a caption unless the caption ITSELF states it outright ("megapixels are overrated" in the title is a stance; "I bought the new iPhone" is not).
+- basis is "demonstrated" for anything read from a title — they demonstrably made the video — and "stated" ONLY when the caption spells the position out in words. Never "stated" from a headline that merely names a thing.
+- CARRY THE TITLE'S ANGLE, NOT JUST ITS NOUN. Titles contain more than a product name and you must keep what is there: "I bought Samsung's PASSPORT SIZED foldable" carries a descriptor, "fixing the phone Google doesn't want you to buy (FAIL)" carries both a framing and an outcome, and "the most unique Samsung phone" carries a judgement. Record "took apart the Z Fold 8, Samsung's passport-sized foldable" rather than "Samsung Z Fold 8". A bare product name is NOT an item — it records that a word was said and nothing else, which is as useless to a script as a vague opinion with no product attached.
+- DO NOT emit the same subject twice as both "product" and "covered". Pick the one the title is really about: "covered" when the video is a treatment of the subject, "product" when it is the thing being featured.
+- times_seen is how many captions carried it, as a digit. confidence 0 to 1 as a decimal. source_video is the caption's number as a digit.
+- RETURN AN EMPTY LIST IF THE CAPTIONS CARRY NOTHING. Engagement bait, "link in bio" and pure hype are not knowledge.`
+
+/** Distil what a creator's CAPTIONS say their videos are about. Same row shape
+ *  as the audio extractor, validated by the same reader. */
+export async function extractKnowledgeFromCaptions(
+  handle: string,
+  platform: string,
+  captions: string[],
+): Promise<RawKnowledgeItem[]> {
+  const usable = captions.map((c) => String(c ?? '').trim()).filter((c) => c.length > 8)
+  if (!usable.length) return []
+  const corpus = usable.slice(0, 120)
+    .map((c, i) => `--- CAPTION ${i + 1} ---\n${c}`).join('\n')
+    .slice(0, 12000)
+  const prompt = `CREATOR: @${handle} on ${platform}
+CAPTIONS AND TITLES:
+${corpus}
+
+Record what these videos are about, what products they name, and what subjects are already covered.`
+  try {
+    const out = (await geminiJson(CAPTION_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
+    return Array.isArray(out?.items) ? out.items : []
+  } catch {
+    // Enrichment, never a gate — same rule as the audio extractor above.
+    return []
+  }
+}
+
+export async function extractKnowledgeFromAudio(
+  handle: string,
+  platform: string,
+  transcripts: string[],
+): Promise<RawKnowledgeItem[]> {
+  if (!transcripts.length) return []
+  const corpus = transcripts
+    .map((t, i) => `--- VIDEO ${i + 1} (spoken) ---\n${t}`)
+    .join('\n\n')
+    .slice(0, 12000)
+
+  const prompt = `CREATOR: @${handle} on ${platform}
+SPOKEN TRANSCRIPTS:
+${corpus}
+
+Record what this creator knows, believes, has done, and has already covered.`
+
+  try {
+    const out = (await geminiJson(KNOWLEDGE_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
+    return Array.isArray(out?.items) ? out.items : []
+  } catch {
+    // ⚖️ Knowledge is an ENRICHMENT of the voice build, never a gate on it. A
+    // creator whose extraction failed must still get their voice; failing the
+    // whole job here would trade a working feature for a new one.
+    return []
+  }
+}

@@ -557,6 +557,12 @@ Work items:
    that writes landscape files fails at the last step regardless of script
    quality — and it is also the cause of the false "phone upright" alarm.
    Device-verified, not blind.
+1c. **THE MECHANISM (§5d) — now the top code item.** Extract the reference's
+   mechanism as DATA (enumeration + COUNT, the hook's promise, where the re-hook
+   lands, what each beat owes the next), compose the script FROM that record, and
+   add the count contract check in the same PR. Promoted above everything below
+   because a script that promises three and delivers two breaks ON CAMERA, and
+   it is the only defect here the creator cannot hide.
 2. **Reference `pattern` → hard stop before spend, every path.** If we have no
    substance, do not sell a script.
 3. **`workKind` + `workKindOther`: ask AND wire.** The single largest lever on
@@ -566,11 +572,13 @@ Work items:
 6. **Product DNA (§28 step 5).** Promoted by §5a: with the reference read
    working, the missing numbers are now the top defect in the produced script,
    and nothing else in this list addresses them.
-7. **The shot list the creator films against** (§5c), in this order because each
-   is cheaper than the one after it: the three-field split
-   (`location`/`brollRequest`/`editorIntent`) with the palette unreachable from
-   `location`; the scene-consistency contract check; then the Compatibility Gate
-   (§16b) gating scene TYPE on capability. Plus `approvedClaims` (§5a.5).
+7. **The shot list the creator films against** (§5c + §5d), in this order because
+   each is cheaper than the one after it: the FOUR-field split
+   (`location`/`brollRequest`/`editorIntent`/`wardrobe`) with the palette
+   STRUCTURALLY unreachable from `location` and `wardrobe` — §5d found the leak
+   rationalising itself, so a prompt rule is no longer a candidate fix; the
+   scene-consistency contract check; then the Compatibility Gate (§16b) gating
+   scene TYPE on capability. Plus `approvedClaims` (§5a.5).
 8. **Visual analysis of the reference** — the nine NOT OBSERVED rows.
 9. Recorder guidance, checklist, teleprompter overlap.
 10. Security backlog.
@@ -588,3 +596,49 @@ earlier.
 
 None of it was visible from reading the code. All of it was visible in twenty
 minutes of using it.
+---
+
+## 12. Where §5d's pieces stand — status, not a second diagnosis
+
+§5d (above) is the diagnosis and it is not restated here. This section exists
+only so "done" cannot quietly cover "merged but nobody checked it deployed" —
+the five-way status rule applied to the reframe's own work items.
+
+| Piece | State |
+|---|---|
+| `sceneConsistency.ts` | 🟡 merged (#313). `palette_leak` EXACT; `absent_performer` a HEURISTIC that retires when the field split lands |
+| The count is the format (§5d diagnosis) | 🟡 merged (#315) — a finding, not a fix |
+| Entity model (`type` × `relationship` × `personal_use`) | 🟡 `productEntity.ts` + `0120_product_entities`. Migration NOT applied to production |
+| Q3 mints the owned entity; Q4 no longer re-asks it | 🟡 merged to the branch, deploy unverified |
+| `showability` — show-vs-talk | 🟡 DERIVED from the capability flags, no new question, read by `generate-blueprint` |
+| Confirm screen chunked (§28 step 4) | 🟡 collapsible groups; deploy unverified |
+| **Mechanism record + count contract** | 🟡 `referenceMechanism.ts` + the `mechanism` block on `reference_read`. Extraction is a SCHEMA + PROMPT change; the check is wired at `recordingScriptAdapter` and rendered by `CountPromise` on the plan screen. **Unproven against a real generation** — no run has yet produced a `mechanism` record |
+| Four-field split incl. `wardrobe` | 🟡 `shotDirection.ts` — four fields on the script beat, palette STRIPPED from `location`/`wardrobe` after generation, wired through `recordingScriptAdapter` so the recorder shows a place to stand. **Legacy strings are NOT backfilled** — see below |
+| Compatibility Gate (§16b) | 🟡 `compatibilityGate.ts` — four verdicts over eleven dimensions. The two decidable from what the system holds today (product demonstration, product claims + reference identity) reach the prompt as a DO NOT USE block. The rest return NOT_OBSERVED until the visual analysis (step 8) exists |
+| `productEvidence` onto the entity | 🔴 column exists, brief key still holds it |
+| Word-anchored performance direction | ✅ working — **preserve, do not regress** |
+
+⚖️ **Every row above marked 🟡 is a claim about code.** `edit_projects` is still
+0 and no take has ever saved, so none of them is yet a claim about a video. That
+distinction is the reason this table is a status list and not a victory lap.
+
+### ⚖️ The 87 stored `background` strings — decided
+
+Unlike the `promotes` question, this one has a real population: production holds
+**39 generations carrying 87 non-empty `background` strings.**
+
+**They are not backfilled.** A stored string cannot be split without inventing
+which half was the location, and that invention IS the defect — *"Real footage of
+a dusty, outdated living room being framed out into separate bedrooms"* would
+become a LOCATION, which is how a creator got told to stand inside b-roll in the
+first place. A migration that guesses would bake the defect into the data and
+call it corrected.
+
+So a legacy string is read as what it is: `legacyCombined` carries it, `location`
+stays **null**, and any consumer that needs a place to stand asks and correctly
+gets nothing rather than a paragraph. The recorder keeps displaying it exactly as
+today — no regression for the 39 — while the Edit Plan, which must never be
+handed a place to stand, sees `location: null`.
+
+The palette strip applies to legacy strings too: a hex colour in an instruction a
+person carries out with their hands is always wrong, whenever it was written.

@@ -1,0 +1,363 @@
+[
+  {
+    "case": {
+      "creator": "doctormike",
+      "label": "ADVERSARIAL + beat_plan",
+      "fidelity": "close",
+      "tone": "punchy",
+      "refNote": "A high-energy gadget RANKING short. Hook names a number and promises a countdown: \"the top 5 gadgets you NEED right now\". Each item gets a superlative, a price, and a buy-now urgency line. Ends with \"number one will blow your mind - link below\"."
+    },
+    "blueprint": {
+      "beat_plan": [
+        {
+          "beat": "Hook - number + promise",
+          "target_sec": "4",
+          "scene_type": "talking_head",
+          "proof": "reference beat 'Hook names a number and promises a countdown'"
+        },
+        {
+          "beat": "Show claim - Item 1",
+          "target_sec": "8",
+          "scene_type": "talking_head + product_on_screen",
+          "proof": "reference beat 'Each item gets a superlative, a price, and a buy-now urgency line.'"
+        },
+        {
+          "beat": "What's actually true + Evidence + Limits - Item 1",
+          "target_sec": "15",
+          "scene_type": "talking_head",
+          "proof": "creator signature structure: show the claim -> what's actually true -> evidence + limits"
+        },
+        {
+          "beat": "Show claim - Item 2",
+          "target_sec": "8",
+          "scene_type": "talking_head + product_on_screen",
+          "proof": "reference beat 'Each item gets a superlative, a price, and a buy-now urgency line.'"
+        },
+        {
+          "beat": "What's actually true + Evidence + Limits - Item 2",
+          "target_sec": "15",
+          "scene_type": "talking_head",
+          "proof": "creator signature structure: show the claim -> what's actually true -> evidence + limits"
+        },
+        {
+          "beat": "Show claim - Item 3",
+          "target_sec": "8",
+          "scene_type": "talking_head + product_on_screen",
+          "proof": "reference beat 'Each item gets a superlative, a price, and a buy-now urgency line.'"
+        },
+        {
+          "beat": "What's actually true + Evidence + Limits - Item 3",
+          "target_sec": "15",
+          "scene_type": "talking_head",
+          "proof": "creator signature structure: show the claim -> what's actually true -> evidence + limits"
+        },
+        {
+          "beat": "Show claim - Item 4",
+          "target_sec": "8",
+          "scene_type": "talking_head + product_on_screen",
+          "proof": "reference beat 'Each item gets a superlative, a price, and a buy-now urgency line.'"
+        },
+        {
+          "beat": "What's actually true + Evidence + Limits - Item 4",
+          "target_sec": "15",
+          "scene_type": "talking_head",
+          "proof": "creator signature structure: show the claim -> what's actually true -> evidence + limits"
+        },
+        {
+          "beat": "Show claim - Item 5",
+          "target_sec": "8",
+          "scene_type": "talking_head + product_on_screen",
+          "proof": "reference beat 'Each item gets a superlative, a price, and a buy-now urgency line.'"
+        },
+        {
+          "beat": "What's actually true + Evidence + Limits - Item 5",
+          "target_sec": "15",
+          "scene_type": "talking_head",
+          "proof": "creator signature structure: show the claim -> what's actually true -> evidence + limits"
+        },
+        {
+          "beat": "Nuance + 'See your own doctor' + 'Stay happy and healthy'",
+          "target_sec": "12",
+          "scene_type": "talking_head",
+          "proof": "creator signature structure: nuance -> 'see your own doctor' -> 'stay happy and healthy'"
+        }
+      ],
+      "concept": {
+        "premise": "Doctor Mike reviews five popular health gadgets, separating the marketing hype from the actual medical benefits, and explaining what science says about their effectiveness."
+      },
+      "hook_options": [
+        "You won't believe what these 5 health gadgets PROMISE you! Let's see what's actually true.",
+        "Are these the 5 health gadgets you NEED right now? Or are they just expensive placebos? Stay tuned!",
+        "I'm breaking down the top 5 trending health gadgets. Some are great, some... not so much. Let's get into it!",
+        "Thinking about buying a new health gadget? Hold on! I'm revealing the truth behind 5 popular ones.",
+        "From smart rings to red light therapy, here are the 5 health gadgets everybody's talking about. But do they work?"
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "Alright, everyone! Today, we're diving into the top 5 trending health gadgets that are supposed to revolutionize your well-being. But do they actually deliver on their promises?",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Quick cuts of various popular health gadgets (stock footage if no product available)",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Energetic, direct address to camera, gesturing 'five' with fingers"
+        },
+        {
+          "section": "Show claim - Item 1",
+          "line": "First up, the 'Smart Sleep Tracker Ring'! This tiny device claims to give you the most accurate sleep data ever. It says it can optimize your sleep cycles for peak performance, all for around $300.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Doctor Mike holding and showing a 'smart sleep tracker ring' on screen.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Holding the ring up to the camera, then putting it on a finger"
+        },
+        {
+          "section": "What's actually true + Evidence + Limits - Item 1",
+          "line": "While these rings can definitely track basic metrics like heart rate and movement, which can give you a general idea of sleep patterns, the science on 'optimizing' specific sleep cycles with a consumer device is still evolving. They're good for trends, but don't expect a medical-grade sleep study from your finger.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Animated graphics illustrating sleep stages, potentially showing data readouts from a generic app.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Serious, informative tone, slight head nod emphasizing accuracy limits"
+        },
+        {
+          "section": "Show claim - Item 2",
+          "line": "Next, the 'Portable Red Light Therapy Device.' This gadget promises to reduce inflammation, improve skin, and even boost muscle recovery, all in a compact, travel-friendly size for about $200.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Doctor Mike holding and demonstrating a 'portable red light therapy device' on screen.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Holding the device, pointing to its light panel"
+        },
+        {
+          "section": "What's actually true + Evidence + Limits - Item 2",
+          "line": "Red light therapy does have some promising research for specific dermatological conditions and wound healing, but the claims for widespread inflammation reduction or significant muscle recovery from a small, low-power device can be overstated. Consistency and proper dosage are key, which are hard to guarantee with a home unit.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Split screen: close up of device, then graphic showing light waves interacting with skin/muscle (simplified).",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Expressing skepticism with a raised eyebrow, then explaining clearly"
+        },
+        {
+          "section": "Show claim - Item 3",
+          "line": "Coming in at number three, the 'Smart Water Bottle' with hydration reminders and daily goal tracking, usually around $50. It claims to ensure you're perfectly hydrated throughout the day.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Doctor Mike holding and showing a 'smart water bottle' on screen, perhaps taking a sip.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Holding the bottle, then taking a small, thoughtful sip"
+        },
+        {
+          "section": "What's actually true + Evidence + Limits - Item 3",
+          "line": "Staying hydrated is absolutely crucial for health. A smart water bottle can be a useful behavioral tool to remind you to drink more, especially if you struggle with it. However, it's not 'perfectly' tracking your hydration levels, just your intake. Listen to your body's thirst cues too!",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Graphic showing a simplified diagram of the body's hydration needs. Overlay text with 'Listen to your body'.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Nodding in agreement, then a slightly cautionary hand gesture"
+        },
+        {
+          "section": "Show claim - Item 4",
+          "line": "Fourth on our list is the 'Wearable Posture Corrector.' This device vibrates when you slouch, promising to train your body for perfect posture and eliminate back pain, often for about $80.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Doctor Mike demonstrating a 'wearable posture corrector' (e.g., placing it on his upper back or shoulder).",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Demonstrating the device, then purposefully slouching and correcting posture"
+        },
+        {
+          "section": "What's actually true + Evidence + Limits - Item 4",
+          "line": "Good posture is vital, and a vibrating reminder can certainly help build awareness. But posture isn't just about 'not slouching.' It involves core strength and ergonomic setup. These devices are great for awareness, but they won't fix underlying muscle imbalances or poor habits on their own.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Animation showing good vs. bad posture, perhaps highlighting core muscles.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Straightening up, then gesturing towards core, explaining with open palms"
+        },
+        {
+          "section": "Show claim - Item 5",
+          "line": "And finally, number one, the 'Air Purifier with Ionizer.' This gadget claims to eliminate nearly all airborne particles, allergens, and viruses, creating a pristine environment in your home, often costing upwards of $400.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Doctor Mike pointing to or near an 'air purifier' on screen.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Pointing to the purifier, looking thoughtful"
+        },
+        {
+          "section": "What's actually true + Evidence + Limits - Item 5",
+          "line": "HEPA air purifiers are indeed effective at capturing many airborne particles and allergens, which can be beneficial for respiratory health. However, ionizers can sometimes produce ozone, an irritant, and no home device can 'eliminate nearly all' viruses or perfectly purify your entire living space. Look for certified HEPA filters.",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Graphic illustrating HEPA filter effectiveness vs. ionizer risks (simplified).",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Explaining with a serious, cautionary expression, then a reassuring nod about HEPA"
+        },
+        {
+          "section": "Nuance + CTA",
+          "line": "So, while some of these gadgets have their place, remember to always approach health claims with a critical eye. They're tools, not magic wands. Always discuss significant health changes or concerns with your own doctor. And as always, stay happy and healthy!",
+          "location": "Doctor Mike's office/studio",
+          "broll_request": "Montage of the 5 gadgets, then a concluding shot of Doctor Mike looking directly at the camera.",
+          "wardrobe": "Scrubs or professional attire",
+          "action_posing": "Reassuring, slightly smiling, then the signature 'stay happy and healthy' gesture"
+        }
+      ],
+      "cta": "For more evidence-based health insights, make sure to follow! And if you liked this video, check out my podcast and merch link in bio!"
+    }
+  },
+  {
+    "case": {
+      "creator": "cleo",
+      "label": "5 THINGS + beat_plan",
+      "fidelity": "balanced",
+      "tone": "balanced",
+      "goal": "educate+followers",
+      "refNote": "An enumerated list short of FIVE items. The hook states the number out loud (\"here are the 5 ways...\"), each item is called out with an ordinal, there is a re-hook after item 3, and it ends on a payoff not a sale."
+    },
+    "blueprint": {
+      "beat_plan": [
+        {
+          "beat": "Hook: Naive Question & Number",
+          "target_sec": "6",
+          "scene_type": "Studio",
+          "proof": "Creator's signature structure: naive question; reference's hook states number out loud."
+        },
+        {
+          "beat": "Why it's hard / Intro to the 5 ways",
+          "target_sec": "10",
+          "scene_type": "Studio",
+          "proof": "Creator's signature structure: why it's hard; sets up the list."
+        },
+        {
+          "beat": "Way 1: Concept & Simple Example",
+          "target_sec": "9",
+          "scene_type": "Studio",
+          "proof": "First item in the enumerated list."
+        },
+        {
+          "beat": "Way 2: Concept & Simple Example",
+          "target_sec": "9",
+          "scene_type": "Studio",
+          "proof": "Second item in the enumerated list."
+        },
+        {
+          "beat": "Way 3: Concept & Simple Example",
+          "target_sec": "9",
+          "scene_type": "Studio",
+          "proof": "Third item in the enumerated list."
+        },
+        {
+          "beat": "Re-hook / Transition",
+          "target_sec": "5",
+          "scene_type": "Studio",
+          "proof": "Reference's re-hook after item 3."
+        },
+        {
+          "beat": "Way 4: Concept & Simple Example",
+          "target_sec": "9",
+          "scene_type": "Studio",
+          "proof": "Fourth item in the enumerated list."
+        },
+        {
+          "beat": "Way 5: Concept & Simple Example",
+          "target_sec": "9",
+          "scene_type": "Studio",
+          "proof": "Fifth item in the enumerated list."
+        },
+        {
+          "beat": "Stakes / Optimistic-but-caveated close",
+          "target_sec": "8",
+          "scene_type": "Studio",
+          "proof": "Creator's signature structure: stakes; optimistic-but-caveated close; reference's payoff."
+        },
+        {
+          "beat": "Soft CTA",
+          "target_sec": "4",
+          "scene_type": "Studio",
+          "proof": "Creator's CTA style: soft identity subscribe."
+        }
+      ],
+      "concept": {
+        "premise": "Demystify common tech buzzwords by breaking down five core mechanisms of how AI actually 'learns' in simple, relatable terms, avoiding hype and doomerism."
+      },
+      "hook_options": [
+        "How does AI actually\u2026 learn? It's not magic, and here are 5 ways it really works.",
+        "Everyone talks about AI 'learning,' but what does that even mean? Here are 5 ways AI does it.",
+        "Can a computer *really* learn? Turns out, it can, in these 5 fascinating ways.",
+        "I keep hearing AI 'learns,' but I don't get *how*. Let's break down 5 mechanisms.",
+        "Forget the hype, let's get real. Here are the 5 actual ways AI 'learns.'"
+      ],
+      "script": [
+        {
+          "section": "Hook",
+          "line": "How does AI actually\u2026 *learn*? It\u2019s a question that sounds simple, but the answer is anything but. Yet, there are 5 core ways AI systems get smarter.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Quick cuts of different AI interfaces (e.g., text generation, image recognition), then back to Cleo.",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Direct address to camera, inquisitive expression, then holds up five fingers."
+        },
+        {
+          "section": "Why it's hard / Intro",
+          "line": "We're bombarded with stories of AI taking over or solving everything, but few explain the 'how.' It's easy to get lost in the jargon, or worse, believe it's pure magic. But at its core, AI learning is about finding patterns. So, let\u2019s peel back the curtain on these 5 fundamental ways.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Abstract animations representing data patterns, then a graphic with '5 Ways AI Learns' appearing.",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Gesturing to emphasize complexity, then transitioning to a 'let's explain' posture."
+        },
+        {
+          "section": "Way 1",
+          "line": "First up, we have 'Supervised Learning.' Imagine teaching a kid to identify apples: you show them a picture of an apple and say, 'That\u2019s an apple!' You do this thousands of times, and eventually, they recognize apples on their own. AI learns the same way, with labeled data.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Split screen: on one side, a series of images (apple, orange, apple, banana) flashing with 'apple' text appearing over apples. On the other, Cleo explaining.",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Uses hands to illustrate 'showing' and 'labeling'."
+        },
+        {
+          "section": "Way 2",
+          "line": "Then there's 'Unsupervised Learning.' This is like giving that kid a pile of fruit and asking them to sort it, without telling them what anything is. They might group all the red, round things together. AI finds hidden structures in unlabeled data, finding patterns we didn't even know to look for.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Abstract animation of data points clustering together without predefined labels, then back to Cleo.",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Wider gesture, hands 'sorting' imaginary objects."
+        },
+        {
+          "section": "Way 3",
+          "line": "Third, we have 'Reinforcement Learning.' Think of a dog learning tricks: they get a treat for doing it right, and nothing for getting it wrong. The AI gets 'rewards' for desired actions and 'penalties' for incorrect ones, learning through trial and error in an environment.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Simple graphic showing a 'path' with green checks (rewards) and red X's (penalties) for an AI agent.",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Nodding to represent 'rewards,' shaking head for 'penalties.'"
+        },
+        {
+          "section": "Re-hook / Transition",
+          "line": "These first three are foundational, forming the bedrock of many AI systems we interact with daily. But there are still two more fascinating ways AI gets smarter, often building on these ideas.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Quick montage of previous graphics, then a graphic that says 'Still 2 More!'",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Pauses, looks thoughtful, then shifts focus slightly to indicate continuation."
+        },
+        {
+          "section": "Way 4",
+          "line": "Fourth is 'Transfer Learning.' Imagine a student who's learned algebra, then applies that foundational math knowledge to calculus. AI that has already mastered one task can often use that knowledge to quickly learn a related, new task, saving tons of training time and data.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Graphic showing a 'brain' icon with arrows pointing from one task (e.g., cat recognition) to another (e.g., lion recognition).",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Hands moving from a foundational 'base' to a new, higher 'level'."
+        },
+        {
+          "section": "Way 5",
+          "line": "And finally, 'Generative Adversarial Networks,' or GANs. This is like having two artists: one tries to forge a painting, and the other acts as a critic, trying to spot the fake. They improve each other, with the generator getting better at creating, and the discriminator getting better at judging.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Dynamic graphic depicting two abstract 'AI' entities competing, one creating, one critiquing, improving over time.",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Miming 'creating' with one hand and 'inspecting' with the other."
+        },
+        {
+          "section": "Stakes / Optimistic-but-caveated close",
+          "line": "Understanding these basic mechanisms helps us see AI not as an all-powerful entity, but as powerful tools built on clever ideas. It gives us a clearer lens to evaluate the hype and the genuine potential. It's complex, yes, but not unknowable, and that's incredibly empowering.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Subtle uplifting background animation, maybe abstract data flowing positively.",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Serious yet hopeful expression, a slight nod of understanding."
+        },
+        {
+          "section": "Soft CTA",
+          "line": "If you're curious about how the world works, hit that subscribe button. Let's keep exploring these big ideas, together.",
+          "location": "Cleo's signature studio set.",
+          "broll_request": "Subtle animation of a 'subscribe' button appearing then disappearing.",
+          "wardrobe": "Casual, professional, bright top.",
+          "action_posing": "Gentle, inviting gesture towards the lower part of the screen."
+        }
+      ],
+      "cta": "If you're curious about how the world works, hit that subscribe button. Let's keep exploring these big ideas, together."
+    }
+  }
+]

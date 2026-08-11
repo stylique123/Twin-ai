@@ -189,3 +189,72 @@ export function productEvidenceState(
   // Present but empty is not an answer: it is a record of an attempt.
   return evidence.sections.length > 0 ? 'supplied' : 'unanswered'
 }
+
+/**
+ * THE EVIDENCE AS PROMPT TEXT — the reader this field waited for.
+ *
+ * ⚠️ ASKED SINCE §5 AND READ BY NOBODY. The consumer registry carried the reason
+ * verbatim: "the captured product — pixels and a section map — never reaches the
+ * prompt, so '[SHOW: the product]' still has nothing to point at and the model is
+ * free to invent product details." A creator was asked for their product, a
+ * model call was spent understanding it, and the result went into a column that
+ * nothing read. This is that column's reader.
+ *
+ * ⚖️ THE SECTION LABELS ARE FACTS AND THE PIXELS ARE A PERMISSION, and they are
+ * not the same thing. `linkRole: 'knowledge'` means we READ the product to know
+ * what it is; `'on_screen'` means somebody decided, with the creator present,
+ * that the capture may appear in the video. Emitting the labels always and the
+ * display permission only when granted is what keeps a marketing-page hero shot
+ * from becoming a product demo.
+ *
+ * ⚖️ `declined` IS A REAL ANSWER AND SAYS SO. "There is nothing to show" is a
+ * fact the writer may act on — it should stop reaching for a display beat.
+ * `unanswered` emits NOTHING, because silence must not be read as either.
+ */
+export function productEvidencePromptLine(
+  evidence: ProductEvidence | 'declined' | null | undefined,
+): string {
+  const state = productEvidenceState(evidence)
+  if (state === 'unanswered') return ''
+  if (state === 'declined') {
+    return '\n- THE PRODUCT CANNOT BE SHOWN. The creator was asked for something to capture and'
+      + ' said there is nothing. Do not write a beat that displays it, and do not describe its'
+      + ' appearance — you have never seen it.'
+  }
+  const e = evidence as ProductEvidence
+  const parts = orderedSections(e.sections).map((s) => `  * ${s.label}`).join('\n')
+  const head = '\n- WHAT THE PRODUCT ACTUALLY IS, read from what the creator supplied. These are'
+    + ' observed facts, not marketing copy you may extend. Use them instead of inventing'
+    + ' features, and never state a capability that is not listed here:\n' + parts
+  return mayAppearOnScreen(e)
+    ? head + '\n  The creator has agreed this capture may APPEAR ON SCREEN, so a beat may show it.'
+    : head + '\n  ⚠️ READ ONLY. This was captured so you would know what the product is, NOT for'
+      + ' display. Do not write a beat that puts this capture on screen; talk about the product'
+      + ' instead of showing it.'
+}
+
+/** Either shape a stored answer can take, from either place it can be stored. */
+export type StoredEvidence = ProductEvidence | 'declined' | null | undefined
+
+/**
+ * WHICH ANSWER WINS when the entity and the brief both hold one.
+ *
+ * ⚖️ THE ENTITY IS THE AUTHORITY; THE BRIEF IS WHERE THE ANSWER USED TO LIVE.
+ * Evidence describes A PRODUCT, and since §5d a creator may hold several — so
+ * keeping it on the brief meant one creator had exactly one product's evidence
+ * and a second business silently overwrote the first. The column moved to
+ * `product_entities.evidence`; this is the precedence that finishes the move.
+ *
+ * ⚠️ THREE STATES, NOT TWO, AND THE DIFFERENCE IS THE WHOLE FUNCTION.
+ * `null`/`undefined` on the entity means UNANSWERED and defers to the brief,
+ * which is what makes the move safe for creators who answered before it.
+ * `'declined'` is an ANSWER — "there is nothing to show" — and must NOT fall
+ * through to a stale brief that still holds a capture, or a creator who
+ * withdrew permission has it handed back to them by a fallback.
+ */
+export function resolveProductEvidence(
+  onEntity: StoredEvidence,
+  onBrief: StoredEvidence,
+): StoredEvidence {
+  return onEntity === null || onEntity === undefined ? onBrief : onEntity
+}

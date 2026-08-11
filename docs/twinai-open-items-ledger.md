@@ -10,6 +10,61 @@ it says so.
 
 ---
 
+## ✅ 0. MERGE BLOCKER — CLEARED 2026-08-11
+
+**Both migrations are now applied to production.** Verified twice: the owner ran
+them in the Supabase SQL editor against `main / PRODUCTION` and the verify query
+returned all three rows, then `list_tables` confirmed independently that
+`product_entities`, `creator_knowledge` and `audience_questions` all exist with
+RLS enabled.
+
+| Migration | In repo | Applied to production |
+|---|---|---|
+| `0120_product_entities` | ✅ | ✅ applied 2026-08-11 |
+| `0121_creator_knowledge` | ✅ | ✅ applied 2026-08-11 |
+
+⚖️ **Kept rather than deleted, because the near-miss is the lesson.** What
+follows is what was true before they were applied, and it is why the exclusion
+note in `check_staging_migration_coverage.mjs` now says an exclusion is a debt.
+
+Production's ledger ended at `0119_blueprint_idempotency` / `0118`, and both
+tables were missing while a branch that reads them sat ready to merge.
+
+⚠️ **What would have happened if #316 merged first.** `generate-blueprint` on
+that branch queries `product_entities` and correctly refuses to guess when the
+read fails:
+
+```ts
+if (ownedEntityErr) return json({ error: 'We could not read your product details…' }, 503)
+```
+
+Against a missing table PostgREST returns `42P01`, so **every blueprint
+generation returns 503** — not a degraded script, no script at all. `main` did
+not query either table (verified: 0 matches), so there was never a live outage.
+The outage would have been created by merging in the wrong order.
+
+**Correct order was: apply 0120, apply 0121, verify both tables exist, then
+merge — and that is the order it happened in.**
+
+⚖️ **Why they slipped.** Both are deliberately excluded from the staging matrix
+by `check_staging_migration_coverage.mjs` — they carry foreign keys to
+`brand_voices`, which on staging is a fixture applied *after* the migration loop,
+so they would fail on their first statement. The exclusion is correct and its
+cost is exactly this: nothing applied them anywhere, so nothing noticed they
+were never applied. **Fixed at the decision site** — the exclusion note in
+`check_staging_migration_coverage.mjs` now states that excluding a migration
+means taking on a manual apply, and both entries record that it happened.
+
+⚠️ **Still true after the apply, and it is the residue worth watching.** 0121's
+RLS policies — including the deliberate *absence* of an INSERT policy, which is
+what stops a creator asserting "I have said X" about themselves and having the
+writer voice it as observed fact — have still never been EXERCISED anywhere.
+They exist in production now; nothing has tested that they behave. The tables
+are empty (`creator_knowledge` 0 rows), so the first real scan is also the first
+test of that policy set.
+
+---
+
 ## A. Genuinely complete
 
 These have a writer, a reader, and something that fails if they drift.
