@@ -12,10 +12,19 @@
 // This reads the EDGE SOURCE and compares it to the shared source. It does not
 // re-implement either — a paraphrase here would be the same defect one level up.
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+/** ⚖️ RELATIVE TO THIS FILE, NEVER TO THE WORKING DIRECTORY. These reads used
+ *  `../../…`, which resolves against CWD — so the test passed from
+ *  `packages/shared` and threw ENOENT from the repo root. A test whose result
+ *  depends on where it was invoked from reports on the invocation. */
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
 import { describe, expect, it } from 'vitest'
 
-const EDGE = readFileSync('../../supabase/functions/generate-blueprint/index.ts', 'utf8')
-const SHARED = readFileSync('src/knowledgeResolver.ts', 'utf8')
+const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
+const SHARED = readFileSync(join(REPO, 'packages/shared/src/knowledgeResolver.ts'), 'utf8')
 
 /** Lift a single-line `const NAME = ...` body. Throws rather than returning a
  *  default: a parity test that silently compares nothing is worse than absent. */

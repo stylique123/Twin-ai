@@ -8,10 +8,19 @@
 // ⚖️ It reads the EDGE SOURCE, because that is where the decision is actually
 // made — `generate-blueprint` cannot import @twinai/shared under Deno deploy.
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+/** ⚖️ RELATIVE TO THIS FILE, NEVER TO THE WORKING DIRECTORY. These reads used
+ *  `../../…`, which resolves against CWD — so the test passed from
+ *  `packages/shared` and threw ENOENT from the repo root. A test whose result
+ *  depends on where it was invoked from reports on the invocation. */
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
 import { describe, expect, it } from 'vitest'
 import { claimRulesFor, mayWriteCommercialCta } from '../productEntity'
 
-const EDGE = readFileSync('../../supabase/functions/generate-blueprint/index.ts', 'utf8')
+const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/index.ts'), 'utf8')
 
 describe('the edge decides CTAs from the relationship, not just the goal', () => {
   it('reads the relationship and personal_use off the entity at all', () => {

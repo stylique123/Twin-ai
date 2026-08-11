@@ -11,11 +11,20 @@
 // item of that kind is silently dropped for as long as nobody notices — which,
 // measured on a real corpus, looks exactly like the creator never saying it.
 import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+/** ⚖️ RELATIVE TO THIS FILE, NEVER TO THE WORKING DIRECTORY. These reads used
+ *  `../../…`, which resolves against CWD — so the test passed from
+ *  `packages/shared` and threw ENOENT from the repo root. A test whose result
+ *  depends on where it was invoked from reports on the invocation. */
+const REPO = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..')
+
 import { describe, expect, it } from 'vitest'
 import { KNOWLEDGE_KINDS } from '../creatorKnowledge'
 
-const WORKER = readFileSync('../../worker/src/jobs/voice.ts', 'utf8')
-const MIGRATION = readFileSync('../../supabase/migrations/0121_creator_knowledge.sql', 'utf8')
+const WORKER = readFileSync(join(REPO, 'worker/src/jobs/voice.ts'), 'utf8')
+const MIGRATION = readFileSync(join(REPO, 'supabase/migrations/0121_creator_knowledge.sql'), 'utf8')
 
 function liftArray(src: string, name: string, where: string): string[] {
   const m = src.match(new RegExp(`const ${name} = \\[([^\\]]*)\\]`))
