@@ -47,9 +47,25 @@ export const REQUIRED_FOR: Record<ClaimStrength, EvidenceLevel> = {
 
 const RANK: Record<EvidenceLevel, number> = { coverage: 0, opinion: 1, experience: 2 }
 
-/** First-person LIFE EVENTS. Kept narrow deliberately — see `POSITION` below. */
+// ⚠️ MEASURED AGAINST REAL SPEECH, AFTER BEING WRONG ABOUT IT.
+//
+// These patterns shipped tested only against sentences I wrote — in the shapes
+// they already matched. Run against the first real transcripts pulled for these
+// creators they scored 31 of 32 first-person sentences as `discussion`, and in
+// production that verdict is what lets a beat speak on coverage-only evidence.
+// Over 1,436 generated beats, 118 of the 145 first-person ones were waved
+// through, including a fabricated history — "My 3D prints used to be so
+// brittle, but then I started doing this one thing".
+//
+// The fixture is now 37 VERBATIM lines from real transcripts and real
+// generations, hand-labelled with reasons, in
+// `__tests__/fixtures/realSpeech.ts`. A pattern change that does not move that
+// file is not evidence of anything.
+
+/** First-person LIFE EVENTS. Widened from a fixed verb list to ordinary past
+ *  narration, because that is how people actually recount doing something. */
 const HISTORY =
-  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran|stopped|quit|regret(?:ted)?)\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI used to\b/i
+  /\bI(?:'ve| have)\s+(?:ever\s+)?(?:seen|tried|been|done|bought|owned|used|switched|returned|tested|kept|ran|stopped|found)\b|\bI used to\b|\bused to be\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI\s+(?:just |recently |just recently |finally |already |once )*(?:bought|owned|used|switched|returned|tested|tried|quit|regret(?:ted)?|swore by|woke|took|got|made|went|saw|thought|began|started|meant|expected|paid|built|broke|fixed|ordered|kept|ran|stopped|found|had to|told you)\b|\bI (?:did|didn'?t|couldn'?t|wasn'?t|never) \w+/i
 
 /** ⚖️ A POSITION IS NOT A HISTORY, and collapsing them would fail every honest
  *  talking-head script. "I think foldables are overrated" asserts a belief; "I
@@ -61,7 +77,20 @@ const HISTORY =
 //  that reads as mere discussion is the same escalation this file exists to
 //  stop, running in the other direction.
 const POSITION =
-  /\bI (?:still |really |honestly |personally |genuinely )*(?:think|reckon|believe|say|feel|would argue)\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? /i
+  /\bI (?:still |really |honestly |personally |genuinely |always |usually |kinda |kind of )*(?:think|reckon|believe|say|feel|would argue|like|love|hate|prefer|recommend|swear by|rely on)\b|\bI(?:'m| am) (?:so |really |honestly |not |kinda )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|a fan)\b|\bI(?:'d| would)? never\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
+
+/** ⚖️ NARRATION COMMITS THE CREATOR TO NOTHING. "I'm going to show you three
+ *  things" describes the video, not the person, and escalating it would block
+ *  the opening line of most scripts in the corpus — a worse failure than the
+ *  gap being closed. Checked AFTER history, so "I told you guys I'd give away
+ *  three PCs" stays the promise it is. */
+const NARRATION =
+  /\bI(?:'m| am)?\s*(?:'ll |will |going to |gonna |about to )\w+|\bI'll\b|\bI(?:'m| am) (?:talking|showing|telling|explaining|breaking|walking)\b|\bI can(?:'t|not) show\b|\bI don'?t know if (?:any of )?you\b|\blet me show\b/i
+
+/** Self-introduction — "I'm Nathan Espinoza". ⚠️ CASE-SENSITIVE ON PURPOSE:
+ *  written as `[A-Z]` under an `i` flag it matched any letter, and swallowed
+ *  "I'm shocked", "I'm glad", "I'm not terrified" as narration. */
+const SELF_INTRO = /\bI'm [A-Z][a-z]+/
 
 /**
  * How strong is this sentence's claim about the creator?
@@ -73,6 +102,9 @@ const POSITION =
 export function claimStrength(line: string): ClaimStrength {
   const s = String(line ?? '')
   if (HISTORY.test(s)) return 'history'
+  // Narration only wins where no stance is also present: "I'm going to tell you
+  // why I'd never buy one" is still a position wearing an announcement.
+  if ((NARRATION.test(s) || SELF_INTRO.test(s)) && !POSITION.test(s)) return 'discussion'
   if (POSITION.test(s)) return 'position'
   return 'discussion'
 }

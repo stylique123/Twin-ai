@@ -340,16 +340,25 @@ function packagingPromptLine(p: Packaging | null | undefined, minSample = 20): s
 // lines shipped past a green matrix because nobody compared the STRENGTH of the
 // claim against the LEVEL of the evidence.
 const CLAIM_HISTORY =
-  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran|stopped|quit|regret(?:ted)?)\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI used to\b/i
+  /\bI(?:'ve| have)\s+(?:ever\s+)?(?:seen|tried|been|done|bought|owned|used|switched|returned|tested|kept|ran|stopped|found)\b|\bI used to\b|\bused to be\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI\s+(?:just |recently |just recently |finally |already |once )*(?:bought|owned|used|switched|returned|tested|tried|quit|regret(?:ted)?|swore by|woke|took|got|made|went|saw|thought|began|started|meant|expected|paid|built|broke|fixed|ordered|kept|ran|stopped|found|had to|told you)\b|\bI (?:did|didn'?t|couldn'?t|wasn'?t|never) \w+/i
 const CLAIM_POSITION =
-  /\bI (?:still |really |honestly |personally |genuinely )*(?:think|reckon|believe|say|feel|would argue)\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? /i
+  /\bI (?:still |really |honestly |personally |genuinely |always |usually |kinda |kind of )*(?:think|reckon|believe|say|feel|would argue|like|love|hate|prefer|recommend|swear by|rely on)\b|\bI(?:'m| am) (?:so |really |honestly |not |kinda )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|a fan)\b|\bI(?:'d| would)? never\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
 
 type ClaimStrength = 'discussion' | 'position' | 'history'
 /** History first: "I used to think I needed every accessory" matches both and is
  *  a history — it asserts a past state of the creator's life. */
+// ⚖️ Narration commits the creator to nothing — see the shared module for
+// the measurement that forced this. Checked AFTER history.
+const CLAIM_NARRATION =
+  /\bI(?:'m| am)?\s*(?:'ll |will |going to |gonna |about to )\w+|\bI'll\b|\bI(?:'m| am) (?:talking|showing|telling|explaining|breaking|walking)\b|\bI can(?:'t|not) show\b|\bI don'?t know if (?:any of )?you\b|\blet me show\b/i
+/** ⚠️ CASE-SENSITIVE: `[A-Z]` under an `i` flag matches any letter, and
+ *  swallowed "I'm shocked" / "I'm glad" as narration. */
+const CLAIM_SELF_INTRO =
+  /\bI'm [A-Z][a-z]+/
 function claimStrength(line: string): ClaimStrength {
   const t = String(line ?? '')
   if (CLAIM_HISTORY.test(t)) return 'history'
+  if ((CLAIM_NARRATION.test(t) || CLAIM_SELF_INTRO.test(t)) && !CLAIM_POSITION.test(t)) return 'discussion'
   if (CLAIM_POSITION.test(t)) return 'position'
   return 'discussion'
 }
