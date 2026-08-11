@@ -46,7 +46,7 @@ describe('claimStrength on two creators it was never tuned against', () => {
     const ok = HELD_OUT_SPEECH.filter((l) => claimStrength(l.text) === l.expect).length
     // eslint-disable-next-line no-console
     console.log(`      held-out generalisation: ${ok}/${HELD_OUT_SPEECH.length}`)
-    expect(ok).toBeGreaterThanOrEqual(14)
+    expect(ok).toBeGreaterThanOrEqual(29)
   })
 
   it('still never escalates a narration line on unseen data', () => {
