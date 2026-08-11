@@ -40,6 +40,10 @@
 // blueprint carry any signal at all.
 import { readFileSync } from 'node:fs'
 
+/** Production's cap, lifted so a change there is a change here. Overridable per
+ *  case ONLY for the experiment that varies it. */
+const KNOWLEDGE_CAP = Number(process.env.KNOWLEDGE_CAP ?? 10)
+
 const KEY = process.env.GEMINI_API_KEY
 if (!KEY) { console.error('set GEMINI_API_KEY'); process.exit(1) }
 
@@ -300,10 +304,27 @@ const RESPONSE_SCHEMA = {
 // model to invent substance, so a creator with no knowledge must produce no
 // block at all — otherwise the A/B below measures a different prompt, not a
 // different memory.
-function knowledgeBlock(k) {
+// ⚠️ THE HARNESS WAS SELECTING KNOWLEDGE DIFFERENTLY FROM PRODUCTION, which
+// makes every "how much of what we know reaches a script" number a fact about
+// this file. It sent the 12 most-seen items; `generate-blueprint` sends 10
+// RANKED BY LEXICAL OVERLAP with what the video is about, so a niche subject
+// never starves the prompt. Ranking changes WHICH items the writer sees, and
+// that is the whole variable in the breadth measurement.
+//
+// ⚖️ The cap is a parameter here ONLY so it can be varied as the single
+// variable in an experiment. It defaults to production's 10.
+function knowledgeBlock(k, aboutText = '', cap = KNOWLEDGE_CAP) {
   if (!k) return ''
-  const items = (k.items ?? []).filter((i) => i.basis !== 'inferred' && i.kind !== 'covered')
-    .sort((a, b) => (b.timesSeen ?? 1) - (a.timesSeen ?? 1))
+  const aboutTerms = new Set(String(aboutText).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3))
+  const ranked = (k.items ?? []).filter((i) => i.basis !== 'inferred' && i.kind !== 'covered')
+  const scored = ranked.map((i) => ({
+    i,
+    hit: String(i.text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => aboutTerms.has(w)).length,
+  }))
+  const items = [
+    ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.i),
+    ...scored.filter((x) => x.hit === 0).map((x) => x.i),
+  ]
   const covered = (k.items ?? []).filter((i) => i.kind === 'covered')
   const parts = []
   if (items.length) {
@@ -311,7 +332,7 @@ function knowledgeBlock(k) {
       + ' Build the video out of THIS. These are their own positions and examples,'
       + ' so you may put them in their mouth; anything you add that is not here is'
       + ' yours, and they did not say it.\n'
-      + items.slice(0, 12).map((c) => `  * (${c.kind}) ${c.text}`).join('\n'))
+      + items.slice(0, cap).map((c) => `  * (${c.kind}) ${c.text}`).join('\n'))
   }
   if (covered.length) {
     parts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand'
@@ -335,7 +356,7 @@ function knowledgeBlock(k) {
 
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
-async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers }) {
+async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers, cap = KNOWLEDGE_CAP }) {
   const t = creator.truth ?? {}
   // ⚖️ THE ANSWERS ARE AN INPUT, NOT A PROPERTY OF THE PERSON. A run that can
   // only ever send one set of onboarding answers cannot tell whether the script
@@ -381,7 +402,7 @@ CREATOR'S ANSWERS
 - Audience: ${A.audience}
 - What they do: ${A.workKind}
 - Third-party products featured: ${A.promotes}${promotesLine(A.promotes)}
-${withKnowledge ? knowledgeBlock(creator.knowledge) : ''}
+${withKnowledge ? knowledgeBlock(creator.knowledge, `${refNote} ${A.idea ?? ''}`, cap) : ''}
 
 REFERENCE (described, not transcribed)
 ${refNote}
@@ -426,7 +447,7 @@ for (const c of CASES) {
   const creator = [...pack.creators, ...(pack.cohort2?.creators ?? []), ...(pack.cohort3?.creators ?? [])]
     .find(x => x.key === c.creator)
   if (!creator) throw new Error(`unknown creator key ${c.creator} — is its cohort in the lookup above?`)
-  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers })
+  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers, cap: c.cap ?? KNOWLEDGE_CAP })
   out.push({ case: c, blueprint: bp })
   console.error(`done: ${c.creator} / ${c.fidelity} / ${c.label}${c.withKnowledge === false ? " [no-knowledge]" : ""}`)
 }
