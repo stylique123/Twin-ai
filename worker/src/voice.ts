@@ -299,11 +299,50 @@ ${corpus}
 Record what these videos are about, what products they name, and what subjects are already covered.`
   try {
     const out = (await geminiJson(CAPTION_SYSTEM, prompt, knowledgeSchema, 40_000)) as { items?: RawKnowledgeItem[] }
-    return Array.isArray(out?.items) ? out.items : []
+    return Array.isArray(out?.items) ? clampCaptionBasis(out.items) : []
   } catch {
     // Enrichment, never a gate — same rule as the audio extractor above.
     return []
   }
+}
+
+/**
+ * A TITLE IS A PROMISE, AND THE MODEL WILL NOT STOP ROUNDING IT UP.
+ *
+ * ⚠️ MEASURED, NOT SUSPECTED. On 2026-08-11 this extractor was run over 86 real
+ * titles from four real channels. Three channels came back correctly — Johnny
+ * 22/22 `demonstrated`, Jeremy 23/23, Carter 13/14 — and Nathan Espinoza came
+ * back with 12 of 25 marked `stated`, every one of them a declarative-sounding
+ * headline:
+ *
+ *   "Siri is ACTUALLY Good Now"
+ *   "Tesla Self-Driving is Better Than You Think"
+ *   "The TRUTH About Meta Glasses"
+ *
+ * Those are titles. Nobody heard him say any of them. `CAPTION_SYSTEM` already
+ * says, in words, that `basis` is "demonstrated" for anything read from a title
+ * and never "stated" from a headline — and the model agreed with that rule on
+ * three creators and quietly broke it on the fourth, because the sentences
+ * happen to be shaped like assertions.
+ *
+ * ⚖️ WHY THIS IS NOT ANOTHER PROMPT LINE. `stated` is the level at which
+ * `evidenceLevel` starts letting the writer put a position in the creator's
+ * MOUTH. So a rounded-up basis is not a metadata blemish — it is the pipeline
+ * asserting that someone holds a view we only know they made a video near. A
+ * title phrased as a question may well be answered "no" in the video.
+ *
+ * This function is fed CAPTIONS BY CONSTRUCTION. That makes the correct basis
+ * decidable from the call site rather than from the text, so it is decided
+ * here. The repo's own rule: a contract check beats a prompt rule wherever the
+ * defect is decidable, and prompt rules in this codebase have now failed three
+ * times (the `promotes` enum, the enumeration unit, and this).
+ *
+ * COST, STATED OUT LOUD: a long caption that genuinely spells out a position
+ * loses its `stated` and is demoted to coverage. That costs the writer one
+ * quotable line. The alternative costs a creator a stance they never took.
+ */
+export function clampCaptionBasis(items: RawKnowledgeItem[]): RawKnowledgeItem[] {
+  return items.map((i) => (i?.basis === 'demonstrated' ? i : { ...i, basis: 'demonstrated' }))
 }
 
 export async function extractKnowledgeFromAudio(
