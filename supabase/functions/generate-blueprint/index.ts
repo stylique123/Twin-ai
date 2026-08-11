@@ -238,6 +238,65 @@ function substanceIssues(
 }
 
 
+
+// HOW THIS CREATOR PACKAGES A VIDEO — the reader for what the scan measured.
+//
+// ⚠️ THE GAP THIS CLOSES. `voiceMetrics` shipped as a contract with no reader:
+// the titles it measures live in the scan and never reached this function. The
+// fix is not to ship 500 titles into every blueprint request — it is to measure
+// once, where the titles already are, and store ~10 numbers. `scrapeDna` writes
+// them to `profile.packaging`; this renders them.
+//
+// Inlined from `voiceMetricsPromptLine` in @twinai/shared; the parity test pins
+// the thresholds so "never" cannot quietly become "rarely".
+const PACK_NEVER = 8
+const PACK_ALWAYS = 70
+interface Packaging {
+  sampled?: number; questionOpenRate?: number; medianWords?: number
+  numberRate?: number; firstPersonRate?: number; secondPersonRate?: number
+  shoutRate?: number; emojiRate?: number; imperativeOpenRate?: number
+  topOpener?: string | null
+}
+/** ⚖️ EMITS NOTHING below 20 titles. Twelve cannot establish that someone
+ *  "never" does a thing, and a fabricated habit is the same class of error as a
+ *  fabricated opinion. */
+function packagingPromptLine(p: Packaging | null | undefined, minSample = 20): string {
+  const m = p ?? {}
+  const n = Number(m.sampled ?? 0)
+  if (!Number.isFinite(n) || n < minSample) return ''
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const rules: string[] = []
+  const say = (c: boolean, t: string) => { if (c) rules.push(`  * ${t}`) }
+  const q = num(m.questionOpenRate)
+  say(q !== null && q <= PACK_NEVER, `They almost NEVER package a video as a question (${q}% of ${n}). Do not write a question hook.`)
+  say(q !== null && q >= PACK_ALWAYS, `They usually package as a question (${q}% of ${n}). A question hook fits them.`)
+  const imp = num(m.imperativeOpenRate)
+  say(imp !== null && imp >= 25, `They frequently open with a command — "Stop…", "Meet…" (${imp}%).`)
+  const nu = num(m.numberRate)
+  say(nu !== null && nu >= 40, `They lean on numbers (${nu}% carry one).`)
+  say(nu !== null && nu <= PACK_NEVER, `They rarely use numbers in packaging (${nu}%). Do not force a count.`)
+  const fp = num(m.firstPersonRate)
+  say(fp !== null && fp >= 40, `They front themselves — "I bought", "my" (${fp}%).`)
+  say(fp !== null && fp <= PACK_NEVER, `They keep themselves OUT of the packaging (${fp}%). Lead with the subject, not with "I".`)
+  const sp = num(m.secondPersonRate)
+  say(sp !== null && sp >= 40, `They speak straight to the viewer — "you", "your" (${sp}%).`)
+  const sh = num(m.shoutRate)
+  say(sh !== null && sh >= 30, `They SHOUT a word for emphasis (${sh}%).`)
+  const em = num(m.emojiRate)
+  say(em !== null && em >= 30, `They use an emoji (${em}%).`)
+  if (typeof m.topOpener === 'string' && m.topOpener) rules.push(`  * Their most common opening word is "${m.topOpener}".`)
+  const mw = num(m.medianWords)
+  if (mw) rules.push(`  * Their median packaging length is ${mw} words — match that, not a paragraph.`)
+  if (!rules.length) return ''
+  return '\nHOW THIS CREATOR PACKAGES A VIDEO — measured from their own titles, not adjectives.'
+    + ' These describe the HOOK and the title, which do the same job.'
+    // ⚖️ KEPT ON ONE LINE ON PURPOSE. Split across a concatenation this caveat is
+    // no longer greppable, and the parity test that stops a hook rule quietly
+    // becoming a rule about body prose could not see it.
+    + ' They are NOT rules about body prose. Break one only if the reference mechanism requires it.\n'
+    + rules.join('\n')
+}
+
 // ENTITLEMENT — DO WE HAVE THE RIGHT TO SAY THIS, IN THIS WAY?
 //
 // Inlined from `packages/shared/src/claimEntitlement.ts`, where the rules and
@@ -1462,6 +1521,13 @@ Deno.serve(async (req: Request) => {
     }
     const knowledgeBlock = knowledgeParts.join('\n')
 
+    // Written by `scrapeDna` into `profile.packaging`. Absent for voices scanned
+    // before that shipped — which emits nothing rather than guessing a habit.
+    const packagingBlock = packagingPromptLine(
+      (vp as { packaging?: Packaging } | null)?.packaging
+        ?? (dna as { packaging?: Packaging } | null)?.packaging,
+    )
+
     // Inlined from `packages/shared/src/productEvidence.ts`, where the rules and
     // tests live. ⚖️ THE LABELS ARE FACTS, THE PIXELS ARE A PERMISSION: reading a
     // product to know what it is, and being allowed to put the capture on screen,
@@ -1694,7 +1760,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${workKindLine}${evidenceBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `

@@ -129,7 +129,8 @@ export function voiceMetricsPromptLine(m: VoiceMetrics, minSample = 20): string 
   rules.push(`  * Their median packaging length is ${m.medianWords} words — match that, not a paragraph.`)
 
   return '\nHOW THIS CREATOR PACKAGES A VIDEO — measured from their own titles, not adjectives.'
-    + ' These describe the HOOK and the title, which do the same job; they are NOT rules about'
-    + ' body prose. Break one only if the reference mechanism actually requires it.\n'
+    + ' These describe the HOOK and the title, which do the same job.'
+    // ⚖️ One line, so the parity test can see it — see the note in the edge copy.
+    + ' They are NOT rules about body prose. Break one only if the reference mechanism requires it.\n'
     + rules.join('\n')
 }
