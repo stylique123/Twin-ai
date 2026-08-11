@@ -91,6 +91,18 @@ function liftBlock(startMarker, endMarker, label) {
   return EDGE.slice(from, to + endMarker.length)
     .split('\n').map((l) => l.replace(/^\s{2}/, '')).join('\n')
 }
+// THE SUBSTANCE DECLARATION, LIFTED VERBATIM.
+//
+// ⚠️ THE HARNESS HAD FALLEN BEHIND PRODUCTION. #316 made the writer declare,
+// per beat, WHERE its content came from — and this harness kept sending the old
+// prompt and the old schema, so a matrix run could not see the one layer the
+// whole substance effort exists to produce. A harness that measures a previous
+// version of the product reports on a product nobody is shipping.
+const SUBSTANCE_RULES = liftBlock(
+  '- SUBSTANCE BEFORE PROSE.',
+  '- KILL THE BORING MIDDLE.',
+  'the substance declaration rules',
+)
 const COUNT_CONTRACT = liftBlock(
   '- THE COUNT IS THE FORMAT',
   'Silent beats are fine BEFORE the first item and AFTER the last.',
@@ -107,6 +119,113 @@ const MECHANISM_READ = liftBlock(
   'the debt that makes a list a sequence rather than a pile.',
   'the mechanism read',
 )
+
+// ⚠️ AND THE FOURTH TIME: THE HARNESS WAS SCORING A CTA RULE THAT NO LONGER EXISTS.
+//
+// Until now this file decided the CTA from the VIDEO GOAL ALONE — the exact
+// approximation `generate-blueprint` replaced when it learned that permission
+// comes from the RELATIONSHIP, not the goal. So a matrix run reporting "0
+// inappropriate sales CTAs" was a fact about code we had already deleted, and
+// the four claim rules the product actually sends (vendor attribution, review-
+// is-not-advert, no unearned personal use, mandatory disclosure) were sent in
+// ZERO runs. `grep -c` for any of them in this file returned 0.
+//
+// Lifted, not retyped, for the same reason as everything above it.
+
+/** Lift one single-quoted string LITERAL containing `anchor`, unescaped.
+ *  Fails loudly — a claim rule that silently resolves to '' is a rule the
+ *  matrix will report as obeyed because it was never sent. */
+function liftQuoted(anchor, label) {
+  const at = EDGE.indexOf(anchor)
+  if (at < 0) {
+    console.error(`FATAL: could not lift ${label} — anchor not found in generate-blueprint/index.ts.`)
+    console.error('Fix the anchor, do not inline the text.')
+    process.exit(1)
+  }
+  const open = EDGE.lastIndexOf("'", at)
+  let i = open + 1
+  for (; i < EDGE.length; i++) {
+    if (EDGE[i] === '\\') { i++; continue }
+    if (EDGE[i] === "'") break
+  }
+  return EDGE.slice(open + 1, i)
+    .replace(/\\'/g, "'").replace(/\\n/g, '\n').replace(/\\\\/g, '\\')
+}
+
+const CTA_SELL = liftQuoted('\\n- CTA INTENT: this creator', 'the commercial CTA line')
+const CTA_NO_TIE = liftQuoted('\\n- CTA INTENT: NO COMMERCIAL CTA', 'the no-commercial-tie CTA line')
+const CTA_NOT_SELLING = liftQuoted('\\n- CTA INTENT: NOT a selling video', 'the non-selling CTA line')
+const CLAIM_ATTRIBUTED = liftQuoted('\\n- THE VENDOR', 'the vendor-attribution rule')
+const CLAIM_REVIEW = liftQuoted('\\n- THIS IS A REVIEW, NOT AN ADVERTISEMENT', 'the review-not-advert rule')
+const CLAIM_NO_USE = liftQuoted('\\n- THE CREATOR HAS NOT CONFIRMED', 'the unearned-personal-use rule')
+const CLAIM_DISCLOSURE = liftQuoted('\\n- A DISCLOSURE IS REQUIRED', 'the mandatory-disclosure rule')
+
+/** The production enum. A pack creator carrying anything else is a fixture bug,
+ *  and is refused rather than defaulted — defaulting is how `rel` would quietly
+ *  become NONE and every claim rule would go silent. */
+const RELATIONSHIPS = ['NONE', 'REVIEW_ONLY', 'AFFILIATE', 'SPONSOR', 'OWN_PRODUCT', 'OWN_SERVICE']
+
+/**
+ * `generate-blueprint`'s permission derivation, replicated on the harness's
+ * fixture shape. The BRANCHES are reproduced; every STRING is lifted.
+ *
+ * ⚖️ WHY THIS IS REPLICATED AND NOT LIFTED. The edge derives `rel` from a DB
+ * row (`ownedEntity.relationship`) that does not exist here, so the decision
+ * cannot be imported the way a string can. What is copied is small, and the
+ * parity test asserts the branch conditions are character-identical to the
+ * edge's — see `harnessClaimRulesParity.test.ts`.
+ */
+function claimRules(truth, goalRaw) {
+  const rel = truth?.relationshipCode
+  if (!RELATIONSHIPS.includes(rel)) {
+    console.error(`FATAL: creator truth has relationshipCode=${JSON.stringify(rel)}.`)
+    console.error(`It must be one of ${RELATIONSHIPS.join(', ')} — the prose \`relationship\` field is not a permission.`)
+    process.exit(1)
+  }
+  const personalUse = truth?.personalUse ?? 'NOT_CONFIRMED'
+  const creatorExperience = personalUse === 'CONFIRMED'
+  const commercialCta = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    || rel === 'AFFILIATE' || rel === 'SPONSOR'
+    ? 'only_if_intended'
+    : 'forbidden'
+  const disclosureRequired = rel === 'AFFILIATE' || rel === 'SPONSOR'
+  const marketingClaims = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    ? 'allowed'
+    : rel === 'AFFILIATE' || rel === 'SPONSOR'
+      ? 'attributed'
+      : 'forbidden'
+
+  // ⚖️ FIXTURE SHAPE, NOT A PRODUCT RULE. Production reads a single-valued
+  // `videoGoal` enum; the pack stores composite answer strings ("leads+authority")
+  // because a real onboarding answer is a sentence. Reducing to the commercial
+  // token is a translation between the two, and is deliberately the ONLY thing
+  // here that is not a copy of production.
+  const g = String(goalRaw ?? '')
+  const videoGoal = g.includes('sell') ? 'sell' : g.includes('leads') ? 'leads' : g
+  const goalWantsSale = videoGoal === 'sell' || videoGoal === 'leads'
+  // ⚖️ INTENT IS REQUIRED, NOT OPTIONAL — which is what the name says and what
+  // this now does. The previous form was `forbidden ? false : commercialCta
+  // === 'allowed' || goalWantsSale`, and `commercialCta` is only ever
+  // 'only_if_intended' or 'forbidden' — so the 'allowed' arm was unreachable
+  // and TypeScript said so. It was a leftover from a design where ownership
+  // alone licensed a pitch, which is exactly what the comment above rejects.
+  // Behaviour is unchanged for every relationship; the dead arm implied a
+  // state that cannot happen and misled the next reader about the model.
+  const sellIntent = commercialCta === 'only_if_intended' && goalWantsSale
+  const ctaIntentLine = sellIntent
+    ? CTA_SELL
+    : commercialCta === 'forbidden' && goalWantsSale
+      ? CTA_NO_TIE
+      : CTA_NOT_SELLING
+
+  const claimLines = []
+  if (marketingClaims === 'attributed') claimLines.push(CLAIM_ATTRIBUTED)
+  else if (marketingClaims === 'forbidden' && rel === 'REVIEW_ONLY') claimLines.push(CLAIM_REVIEW)
+  if (!creatorExperience && rel !== 'NONE') claimLines.push(CLAIM_NO_USE)
+  if (disclosureRequired) claimLines.push(CLAIM_DISCLOSURE)
+
+  return { ctaIntentLine, claimRulesBlock: claimLines.join(''), rel, sellIntent }
+}
 
 // ⚠️ THE REASON 4 OF 12 CASES RETURNED ONLY `reference_read`.
 //
@@ -165,6 +284,7 @@ const RESPONSE_SCHEMA = {
         type: 'OBJECT',
         properties: {
           section: S('STRING'), line: S('STRING'), location: S('STRING'),
+          substance: S('STRING'), substance_evidence: S('STRING'),
           broll_request: S('STRING'), wardrobe: S('STRING'), action_posing: S('STRING'),
         },
         required: ['section', 'line', 'location', 'broll_request', 'wardrobe', 'action_posing'],
@@ -215,8 +335,14 @@ function knowledgeBlock(k) {
 
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 
-async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true }) {
+async function gen({ creator, refNote, fidelity, tone, goal, withKnowledge = true, answers }) {
   const t = creator.truth ?? {}
+  // ⚖️ THE ANSWERS ARE AN INPUT, NOT A PROPERTY OF THE PERSON. A run that can
+  // only ever send one set of onboarding answers cannot tell whether the script
+  // changed because the CREATOR differs or because what they TOLD US differs —
+  // and that is the comparison the questions exist to justify.
+  const A = { ...creator.answers, ...(answers ?? {}) }
+  const PERMS = claimRules(t, goal ?? A.goal)
   // ⚠️ ORDER MIRRORS PRODUCTION, AND IT IS LOAD-BEARING.
   //
   // The rules come FIRST, as they do in `generate-blueprint`'s SYSTEM constant,
@@ -231,6 +357,9 @@ HOW TO READ THE REFERENCE AND HOLD ITS FORMAT
 ${MECHANISM_READ}
 
 ${COUNT_CONTRACT}
+
+DECIDE THE SUBSTANCE BEFORE THE PROSE
+${SUBSTANCE_RULES}
 
 HOW TO SHAPE THE VIDEO
 - beat_plan: BEFORE writing any words, decide the video's shape. How many beats it actually needs, what each beat is FOR, and how long each should run. DECIDE the count from what this video has to do: a short product demo and a long teardown do not both get seven beats. target_sec is a real decision in seconds. EMIT EXACTLY ONE BEAT PER script ENTRY, in the same order, so beat 1 is script line 1.
@@ -248,10 +377,10 @@ CREATOR DNA
 ${t.regulated ? `- REGULATED PROFESSIONAL. Forbidden claims:\n${(creator.forbiddenClaims ?? []).map(c => '  * ' + c).join('\n')}` : ''}
 
 CREATOR'S ANSWERS
-- Goal: ${goal ?? creator.answers.goal}
-- Audience: ${creator.answers.audience}
-- What they do: ${creator.answers.workKind}
-- Third-party products featured: ${creator.answers.promotes}${promotesLine(creator.answers.promotes)}
+- Goal: ${goal ?? A.goal}
+- Audience: ${A.audience}
+- What they do: ${A.workKind}
+- Third-party products featured: ${A.promotes}${promotesLine(A.promotes)}
 ${withKnowledge ? knowledgeBlock(creator.knowledge) : ''}
 
 REFERENCE (described, not transcribed)
@@ -261,9 +390,7 @@ ${FID[fidelity]}
 ${(creator.truth?.regulated || (creator.forbiddenClaims||[]).length) && tone === 'punchy'
   ? "- TONE WAS CLAMPED. This creator works under stated limits on what they may claim, so the punchy register is not available to them: no hype openers (\"you won't believe\", \"this will blow your mind\"), no manufactured certainty. Write with energy, not with bait."
   : ''}
-${/(sell|leads)/.test(goal ?? creator.answers.goal)
-  ? '- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
-  : '- CTA INTENT: NOT a selling video. Do NOT write a purchase, signup, pre-order, "link in bio to buy", merch or course CTA — even if the creator owns something and even if the reference ends on one. The call to action is engagement: follow, save, share, or a question worth answering.'}
+${PERMS.ctaIntentLine}${PERMS.claimRulesBlock}
 
 YOUR TASK: produce the FULL blueprint now — the mechanism read AND the beat plan AND the concept AND five hook options AND every script beat AND the CTA. Reading the reference is the first step, never the deliverable; a response containing only reference_read is incomplete.
 
@@ -271,7 +398,7 @@ Return JSON only, with EVERY key below present and populated:
 {"reference_read":{"mechanism":{"enumeration":{"is_enumerated":"","count":"","unit":""},"hook_promise":"","rehook_after_item":"","beat_debts":[""]}},
  "beat_plan":[{"beat":"","target_sec":"","scene_type":"","proof":""}],
  "concept":{"premise":""},"hook_options":["","","","",""],
- "script":[{"section":"","line":"","location":"","broll_request":"","wardrobe":"","action_posing":""}],
+ "script":[{"section":"","line":"","location":"","broll_request":"","wardrobe":"","action_posing":"","substance":"","substance_evidence":""}],
  "cta":""}`
 
   const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`, {
@@ -293,8 +420,13 @@ Return JSON only, with EVERY key below present and populated:
 const CASES = JSON.parse(process.env.CASES ?? '[]')
 const out = []
 for (const c of CASES) {
-  const creator = [...pack.creators, ...(pack.cohort2?.creators ?? [])].find(x => x.key === c.creator)
-  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false })
+  // ⚠️ EVERY COHORT, or a new one silently resolves to `undefined` and the run
+  // dies on `creator.truth` after the cases are already built. Cohort 3 is the
+  // real-scan cohort and was invisible here until it crashed the first matrix.
+  const creator = [...pack.creators, ...(pack.cohort2?.creators ?? []), ...(pack.cohort3?.creators ?? [])]
+    .find(x => x.key === c.creator)
+  if (!creator) throw new Error(`unknown creator key ${c.creator} — is its cohort in the lookup above?`)
+  const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers })
   out.push({ case: c, blueprint: bp })
   console.error(`done: ${c.creator} / ${c.fidelity} / ${c.label}${c.withKnowledge === false ? " [no-knowledge]" : ""}`)
 }

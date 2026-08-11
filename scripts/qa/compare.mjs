@@ -10,13 +10,17 @@
 //
 //   node scripts/qa/compare.mjs a.json b.json
 import { readFileSync } from 'node:fs'
+// ⚠️ IMPORTED, NEVER RESTATED. This file carried its own copy of the sell
+// pattern AND its own goal-only permission rule — the fourth and fifth copies
+// of a rule production had already replaced. `check_cta_permission_authority`
+// found it. One authority, imported, or the copies drift apart again.
+import { SELL, mayPitch, relationshipFor } from './score-matrix.mjs'
 
 // Every check reads the SPOKEN fields, never the metadata beside them. A run
 // measured on `enumeration.unit` once reported nine problems where five existed.
 const PLACEHOLDER = /\[[^\]]*\]/
 const EMPTY_PROMISE = /\b(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(items?|things?|stuff|points?)\s*[.!?]*\s*$/i
 const NOTES_ALOUD = /video on this|in my last video|already covered|my audience asks|you (guys )?(keep|always) ask|a lot of you ask/i
-const SELL = /link in bio|buy |pre-?order|sign ?up|subscribe to my|enroll|purchase|my course|grab (my|the)/i
 const HEX = /#[0-9a-fA-F]{6}\b/
 // Earnings and outcome language — the class where a transferred claim is a
 // regulatory problem rather than an aesthetic one.
@@ -51,8 +55,9 @@ function score(runs) {
       if (HEX.test(b.location ?? '') || HEX.test(b.wardrobe ?? '')) s.hexLeak++
     }
     if (hooks.some((h) => EMPTY_PROMISE.test(h))) s.emptyPromiseHooks++
-    const goal = r.case?.goal
-    if (goal && !/sell|leads/.test(goal) && SELL.test(bp.cta ?? '')) s.sellOnNonSell++
+    // Permission comes from the RELATIONSHIP, never from the goal: no goal
+    // creates a commercial tie that does not exist.
+    if (!mayPitch(relationshipFor(r.case?.creator)) && SELL.test(bp.cta ?? '')) s.sellOnNonSell++
   }
   return s
 }

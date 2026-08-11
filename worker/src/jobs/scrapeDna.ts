@@ -116,7 +116,33 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     ? { brand_kit: { ...existingKit, palette: inferred, palette_source: 'auto' } }
     : {}
 
-  await db.from('brand_voices').update({ status: 'ready', profile, stats, error: null, ...brandKitPatch }).eq('id', voiceId)
+  // HOW THEY PACKAGE, MEASURED — computed HERE because this is the only place the
+  // titles exist. Storing the raw corpus so the blueprint could measure it later
+  // would be a content store nobody asked for; storing the distillate is the same
+  // rule Creator Knowledge follows, and it is ~10 numbers instead of 500 strings.
+  //
+  // ⚠️ WHY THIS MATTERS. Kallaway opens with a question 0 times in 50 titles, and
+  // the writer — given only adjectives like "energetic" — gave him four
+  // question-openers out of four. A rate can be violated; an adjective cannot.
+  //
+  // Duplicated from `voiceMetrics` in @twinai/shared: the worker has no runtime
+  // dep on it (see directorContract.ts), and `voiceMetricsParity.test.ts` fails
+  // if the two drift.
+  const packaging = measurePackaging(posts.map((x) => String(x.text ?? '')).filter(Boolean))
+  if (packaging.sampled) {
+    console.log(JSON.stringify({ event: 'packaging_measured', voice: voiceId, ...packaging }))
+  }
+
+  await db.from('brand_voices').update({
+    status: 'ready',
+    // ⚖️ MERGED, NOT REPLACED. `profile` is the synthesised DNA blob; packaging is
+    // a measurement beside it. Overwriting the blob to add a field would lose the
+    // synthesis on every scan.
+    profile: { ...(profile as Record<string, unknown>), packaging },
+    stats,
+    error: null,
+    ...brandKitPatch,
+  }).eq('id', voiceId)
 
   // Data layer: a voice was built (activation funnel).
   if (ownerId) {
@@ -159,4 +185,46 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   }
 
   return { ok: true, posts_used: posts.length }
+}
+
+/** Measured packaging habits. See the call site for why this lives in the worker.
+ *  ⚖️ Every rate is a count over `sampled`, so a creator with 12 titles and one
+ *  with 200 are never silently compared. */
+export function measurePackaging(titles: readonly string[]) {
+  const QUESTION = /\?|^(?:is|are|can|does|do|should|would|why|how|what|who|when|which)\b/i
+  const NUMBER = /\b\d+\b|\b(?:one|two|three|four|five|six|seven|eight|nine|ten)\b/i
+  const FIRST_PERSON = /\b(?:i|i'm|i've|my|mine|me)\b/i
+  const SECOND_PERSON = /\b(?:you|your|you're)\b/i
+  const SHOUT = /\b[A-Z]{3,}\b/
+  const EMOJI = /[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/u
+  const IMPERATIVE = /^(?:stop|start|try|meet|watch|look|check|buy|get|don'?t|never|always|forget)\b/i
+  const ARTICLES = new Set(['the', 'a', 'an'])
+  const t = titles.map((x) => String(x ?? '').trim()).filter((x) => x.length > 0)
+  const n = t.length
+  const rate = (c: number) => (n ? Math.round((100 * c) / n) : 0)
+  const words = t.map((x) => x.split(/\s+/).length).sort((a, b) => a - b)
+  const mid = Math.floor(words.length / 2)
+  const medianWords = !words.length ? 0
+    : words.length % 2 ? words[mid] : Math.round((words[mid - 1] + words[mid]) / 2)
+  const counts = new Map<string, number>()
+  for (const x of t) {
+    const w = (x.match(/^[A-Za-z']+/)?.[0] ?? '').toLowerCase()
+    if (w && !ARTICLES.has(w)) counts.set(w, (counts.get(w) ?? 0) + 1)
+  }
+  let topOpener: string | null = null
+  let best = 0
+  for (const [w, c] of counts) if (c > best) { best = c; topOpener = w }
+  if (n === 0 || best < Math.max(3, n * 0.1)) topOpener = null
+  return {
+    sampled: n,
+    questionOpenRate: rate(t.filter((x) => QUESTION.test(x)).length),
+    medianWords,
+    numberRate: rate(t.filter((x) => NUMBER.test(x)).length),
+    firstPersonRate: rate(t.filter((x) => FIRST_PERSON.test(x)).length),
+    secondPersonRate: rate(t.filter((x) => SECOND_PERSON.test(x)).length),
+    shoutRate: rate(t.filter((x) => SHOUT.test(x)).length),
+    emojiRate: rate(t.filter((x) => EMOJI.test(x)).length),
+    imperativeOpenRate: rate(t.filter((x) => IMPERATIVE.test(x)).length),
+    topOpener,
+  }
 }

@@ -117,7 +117,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     // Audio first: where both sources produced the same claim, the one somebody
     // was HEARD saying should win the dedup below.
     const raw = [...fromAudio, ...fromCaptions]
-    const rows = raw
+    let rows = raw
       .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
       .slice(0, 40)
       .map((r) => ({
@@ -147,7 +147,24 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         })(),
         last_observed_at: new Date().toISOString(),
       }))
-      .filter((r) => ['fact', 'opinion', 'topic', 'example', 'experience', 'framework', 'claim', 'product', 'covered'].includes(r.kind))
+    // ⚠️ THE TAXONOMY IS A CLOSED SET AND THE MODEL DOES NOT KNOW THAT.
+    // `creator_knowledge_kind_valid` CHECKs this list, so an unlisted kind is a
+    // failed INSERT for the whole batch — hence the filter. Duplicated from
+    // `KNOWLEDGE_KINDS` in @twinai/shared on purpose: the worker has no runtime
+    // dep on it (see directorContract.ts), and `knowledgeKindParity.test.ts`
+    // fails if the two ever diverge.
+    const KNOWLEDGE_KINDS_WORKER = ['fact', 'opinion', 'topic', 'example', 'experience', 'framework', 'claim', 'product', 'covered']
+    // ⚖️ DROPPED, BUT NEVER SILENTLY. Measured on a real 501-caption corpus:
+    // 10 of 489 extracted items came back as `action` or `tool` — categories the
+    // model wanted and the taxonomy does not have. Filtering them is right;
+    // discarding them without a word is how a systematic gap in the taxonomy
+    // looks exactly like nothing happening.
+    const dropped = rows.filter((r) => !KNOWLEDGE_KINDS_WORKER.includes(r.kind))
+    if (dropped.length) {
+      const kinds = [...new Set(dropped.map((r) => r.kind))].slice(0, 10)
+      console.warn(JSON.stringify({ event: 'knowledge_kind_rejected', count: dropped.length, of: rows.length, kinds }))
+    }
+    rows = rows.filter((r) => KNOWLEDGE_KINDS_WORKER.includes(r.kind))
     if (rows.length) {
       // ⚠️ NOT AN UPSERT, AND THE REASON IS A BUG ALREADY FIXED ONCE HERE.
       // `saveMintedEntity` used `onConflict` against a PARTIAL index; Postgres
@@ -167,7 +184,11 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       const fresh = rows.filter((r) => !have.has(`${r.kind}\u0000${r.text.toLowerCase()}`))
       if (fresh.length) {
         const { error: kErr } = await db.from('creator_knowledge').insert(fresh)
-        if (!kErr) knowledgeStored = fresh.length
+        // Enrichment never gates the scan, but a write that fails must still
+        // say so — `knowledgeStored` staying 0 is indistinguishable from a
+        // creator who genuinely said nothing.
+        if (kErr) console.warn(JSON.stringify({ event: 'knowledge_insert_failed', rows: fresh.length, error: kErr.message }))
+        else knowledgeStored = fresh.length
       }
     }
   } catch {

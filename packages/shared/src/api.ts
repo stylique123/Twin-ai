@@ -216,6 +216,10 @@ export const VIDEO_GOAL_LABELS: Record<VideoGoal, string> = {
 }
 
 export interface GenerateInput {
+  /** Answers to a prior READINESS_INCOMPLETE refusal, keyed by field. Sending
+   *  them retries the same build; the creator-stable ones are persisted so the
+   *  question is never asked twice, while goal/angle/cta stay per-video. */
+  readiness_answers?: Record<string, string>
   reference_url: string
   reference_note: string
   fidelity: 'close' | 'balanced' | 'loose'
@@ -314,6 +318,11 @@ export async function getJob(id: string): Promise<IngestJob | null> {
   return data as IngestJob
 }
 
+/** A field the planner could not settle, and the question that settles it. */
+export interface ReadinessQuestion { field: string; question: string }
+/** Nothing was charged; 1-3 answers unblock the build. */
+export const READINESS_INCOMPLETE_CODE = 'READINESS_INCOMPLETE'
+
 export async function generateBlueprint(input: GenerateInput): Promise<Generation> {
   // Calls the Supabase Edge Function `generate-blueprint`, which runs the
   // LLM call server-side (keeps the API key off the client), decrements
@@ -327,6 +336,7 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
     // (e.g. "Not enough credits") reaches the UI.
     let msg = (error as { message?: string }).message ?? 'Generation failed'
     let code: string | undefined
+    let questions: ReadinessQuestion[] | undefined
     const ctx = (error as { context?: Response }).context
     if (ctx && typeof ctx.json === 'function') {
       try {
@@ -338,12 +348,20 @@ export async function generateBlueprint(input: GenerateInput): Promise<Generatio
         // here is what to do" apart from "we hit a snag", which breaks the
         // moment the copy is reworded.
         if (typeof body?.code === 'string') code = body.code
+        // ⚖️ A REFUSAL THAT ASKS FOR SOMETHING MUST CARRY WHAT IT ASKS FOR.
+        // READINESS_INCOMPLETE means nothing was charged and 1-3 answers would
+        // unblock the build. Dropping `questions` here would leave the UI a
+        // code with no way to act on it, which is a dead end wearing a
+        // sentence — and this project's standing rule is that a question ships
+        // with its reader or it does not ship.
+        if (Array.isArray(body?.questions)) questions = body.questions
       } catch {
         /* fall back to msg */
       }
     }
-    const err = new Error(msg) as Error & { code?: string }
+    const err = new Error(msg) as Error & { code?: string; questions?: ReadinessQuestion[] }
     if (code) err.code = code
+    if (questions) err.questions = questions
     throw err
   }
   return data as Generation

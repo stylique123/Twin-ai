@@ -180,17 +180,46 @@ function suppliedLevel(k: SuppliedKnowledge): 'coverage' | 'opinion' | 'experien
   if (k.basis === 'stated') return 'opinion'
   return 'coverage'
 }
-function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolean {
-  const c = substanceTerms(cited)
-  if (c.size === 0) return false
-  return supplied.some((i) => {
-    const t = substanceTerms(String(i.text))
-    return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+// ⚠️ The knowledge block below renders each item as `* (product) X`, so the
+// writer cites it back with that prefix. Left in, the literal kind word joins
+// the term set and a short citation can never reach a two-term match — a
+// correctly cited beat gets reported as a fabrication. Measured: 18 of 18
+// flagged claims in a 60-run matrix were exactly this.
+const KIND_PREFIX = /^\s*\((?:fact|opinion|topic|example|experience|framework|claim|product|covered)\)\s*/i
+// A beat may rest on more than one item and the writer cites them as a list —
+// "ChatGPT, AI ads for dropshipping". Measured whole, that is two items' worth
+// of terms and no single stored item can match enough of them. Each part is
+// traced independently; any part supporting the beat is enough, because the
+// question is "does this beat rest on something real".
+function tracesToText(cited: string, supplied: readonly string[]): boolean {
+  const parts = cited.split(/[,;]/).map((x) => x.replace(KIND_PREFIX, '').trim()).filter(Boolean)
+  return (parts.length ? parts : [cited]).some((part) => {
+    const c = substanceTerms(part)
+    if (c.size === 0) return false
+    return supplied.some((text) => {
+      const t = substanceTerms(String(text))
+      return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
+    })
   })
 }
+// ⚖️ ONE TRACING RULE, TWO SOURCES. Separate matchers would let the same
+// citation pass one check and fail the other for no defensible reason.
+function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolean {
+  return tracesToText(cited, supplied.map((i) => String(i.text)))
+}
+// ⚠️ `product_dna` WAS ACCEPTED ON THE MODEL'S WORD while creator_knowledge was
+// verified. Across 112 real runs for 8 creators with NO product DNA supplied,
+// 70 beats declared `product_dna` anyway — 9.9% of every beat — and the count
+// GREW by half in the run that tightened the CTA and claim rules. Pressure
+// follows the unchecked path, so an unchecked declared source is a drain.
+//
+// ⚖️ THREE STATES. `undefined` runs no product check; `[]` means the prompt
+// carried none, which makes the claim IMPOSSIBLE rather than unsupported.
+// Mirrors `substanceIssues` in packages/shared/src/knowledgeResolver.ts.
 function substanceIssues(
   beats: unknown,
   supplied: readonly SuppliedKnowledge[],
+  productFacts?: readonly string[] | null,
 ): Array<{ code: string; beat: number; detail: string }> {
   if (!Array.isArray(beats)) return []
   const out: Array<{ code: string; beat: number; detail: string }> = []
@@ -208,6 +237,18 @@ function substanceIssues(
           detail: `Beat cites "${cited.slice(0, 80)}", which is not in the knowledge this prompt carried.` })
       }
     }
+    if (source === 'product_dna' && productFacts != null) {
+      if (productFacts.length === 0) {
+        out.push({ code: 'impossible_product_claim', beat: i,
+          detail: 'Beat claims product facts, and the prompt carried none. There is no such source to have used.' })
+      } else if (cited === '') {
+        out.push({ code: 'undeclared_evidence', beat: i,
+          detail: 'Beat claims product facts and names nothing it used.' })
+      } else if (!tracesToText(cited, productFacts)) {
+        out.push({ code: 'unsupported_product_claim', beat: i,
+          detail: `Beat cites "${cited.slice(0, 80)}", which is not among the product facts this prompt carried.` })
+      }
+    }
     // ⚖️ THE MOST EXPENSIVE ERROR, CHECKED SEPARATELY. A personal history is a
     // claim about the creator's life, and nothing but experience-level evidence
     // licenses it — not research, not a title, not a rephrasing.
@@ -219,6 +260,172 @@ function substanceIssues(
           detail: 'Beat speaks a personal history, and nothing on record says the creator did it.' })
       }
     }
+  })
+  return out
+}
+
+
+
+// HOW THIS CREATOR PACKAGES A VIDEO — the reader for what the scan measured.
+//
+// ⚠️ THE GAP THIS CLOSES. `voiceMetrics` shipped as a contract with no reader:
+// the titles it measures live in the scan and never reached this function. The
+// fix is not to ship 500 titles into every blueprint request — it is to measure
+// once, where the titles already are, and store ~10 numbers. `scrapeDna` writes
+// them to `profile.packaging`; this renders them.
+//
+// Inlined from `voiceMetricsPromptLine` in @twinai/shared; the parity test pins
+// the thresholds so "never" cannot quietly become "rarely".
+const PACK_NEVER = 8
+const PACK_ALWAYS = 70
+interface Packaging {
+  sampled?: number; questionOpenRate?: number; medianWords?: number
+  numberRate?: number; firstPersonRate?: number; secondPersonRate?: number
+  shoutRate?: number; emojiRate?: number; imperativeOpenRate?: number
+  topOpener?: string | null
+}
+/** ⚖️ EMITS NOTHING below 20 titles. Twelve cannot establish that someone
+ *  "never" does a thing, and a fabricated habit is the same class of error as a
+ *  fabricated opinion. */
+function packagingPromptLine(p: Packaging | null | undefined, minSample = 20): string {
+  const m = p ?? {}
+  const n = Number(m.sampled ?? 0)
+  if (!Number.isFinite(n) || n < minSample) return ''
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const rules: string[] = []
+  const say = (c: boolean, t: string) => { if (c) rules.push(`  * ${t}`) }
+  const q = num(m.questionOpenRate)
+  say(q !== null && q <= PACK_NEVER, `They almost NEVER package a video as a question (${q}% of ${n}). Do not write a question hook.`)
+  say(q !== null && q >= PACK_ALWAYS, `They usually package as a question (${q}% of ${n}). A question hook fits them.`)
+  const imp = num(m.imperativeOpenRate)
+  say(imp !== null && imp >= 25, `They frequently open with a command — "Stop…", "Meet…" (${imp}%).`)
+  const nu = num(m.numberRate)
+  say(nu !== null && nu >= 40, `They lean on numbers (${nu}% carry one).`)
+  say(nu !== null && nu <= PACK_NEVER, `They rarely use numbers in packaging (${nu}%). Do not force a count.`)
+  const fp = num(m.firstPersonRate)
+  say(fp !== null && fp >= 40, `They front themselves — "I bought", "my" (${fp}%).`)
+  say(fp !== null && fp <= PACK_NEVER, `They keep themselves OUT of the packaging (${fp}%). Lead with the subject, not with "I".`)
+  const sp = num(m.secondPersonRate)
+  say(sp !== null && sp >= 40, `They speak straight to the viewer — "you", "your" (${sp}%).`)
+  const sh = num(m.shoutRate)
+  say(sh !== null && sh >= 30, `They SHOUT a word for emphasis (${sh}%).`)
+  const em = num(m.emojiRate)
+  say(em !== null && em >= 30, `They use an emoji (${em}%).`)
+  if (typeof m.topOpener === 'string' && m.topOpener) rules.push(`  * Their most common opening word is "${m.topOpener}".`)
+  const mw = num(m.medianWords)
+  if (mw) rules.push(`  * Their median packaging length is ${mw} words — match that, not a paragraph.`)
+  if (!rules.length) return ''
+  return '\nHOW THIS CREATOR PACKAGES A VIDEO — measured from their own titles, not adjectives.'
+    + ' These describe the HOOK and the title, which do the same job.'
+    // ⚖️ KEPT ON ONE LINE ON PURPOSE. Split across a concatenation this caveat is
+    // no longer greppable, and the parity test that stops a hook rule quietly
+    // becoming a rule about body prose could not see it.
+    + ' They are NOT rules about body prose. Break one only if the reference mechanism requires it.\n'
+    + rules.join('\n')
+}
+
+// ENTITLEMENT — DO WE HAVE THE RIGHT TO SAY THIS, IN THIS WAY?
+//
+// Inlined from `packages/shared/src/claimEntitlement.ts`, where the rules and
+// their 14 tests live; `claimEntitlementParity.test.ts` fails if the two drift.
+//
+// ⚠️ TRACEABILITY IS NOT ENTITLEMENT, and `substanceIssues` above only checks
+// the first. The line that proved it, from a real 112-run matrix:
+//
+//     "those high-end, wired earbuds I used to swear by"
+//
+// cited to the stored item "wired vs wireless earbuds". The citation is REAL, so
+// the substance check passed it. What the evidence supports is "he covered this
+// topic"; what the line says is "he owned these and loved them". Eleven such
+// lines shipped past a green matrix because nobody compared the STRENGTH of the
+// claim against the LEVEL of the evidence.
+const CLAIM_HISTORY =
+  /\bI(?:'ve| have)?\s+(?:bought|owned|used|switched|returned|tested|kept|ran|stopped|quit|regret(?:ted)?)\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI used to\b/i
+const CLAIM_POSITION =
+  /\bI (?:still |really |honestly |personally |genuinely )*(?:think|reckon|believe|say|feel|would argue)\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? /i
+
+type ClaimStrength = 'discussion' | 'position' | 'history'
+/** History first: "I used to think I needed every accessory" matches both and is
+ *  a history — it asserts a past state of the creator's life. */
+function claimStrength(line: string): ClaimStrength {
+  const t = String(line ?? '')
+  if (CLAIM_HISTORY.test(t)) return 'history'
+  if (CLAIM_POSITION.test(t)) return 'position'
+  return 'discussion'
+}
+const NEED: Record<ClaimStrength, number> = { discussion: 0, position: 1, history: 2 }
+const LEVEL_RANK: Record<string, number> = { coverage: 0, opinion: 1, experience: 2 }
+
+/** Strongest level the SUPPLIED knowledge reaches. `null` = nothing supplied,
+ *  which is not coverage and must not be rounded up to it. */
+function bestAvailableLevel(supplied: readonly SuppliedKnowledge[]): string | null {
+  let best: string | null = null
+  for (const i of supplied) {
+    const l = suppliedLevel(i)
+    if (best === null || LEVEL_RANK[l] > LEVEL_RANK[best]) best = l
+  }
+  return best
+}
+
+/** What the REGENERATOR is told. ⚠️ NEVER a rewritten sentence — a first draft of
+ *  this repaired by regex and turned "I used to struggle with distractions" into
+ *  "I've looked at to struggle with distractions". A false line rewritten into an
+ *  unreadable one fails where nobody notices. Prose needs the thing that writes. */
+function repairFor(strength: ClaimStrength, available: string | null): string {
+  if (available === null) {
+    return 'Nothing is on record for this creator. Rewrite this beat to carry no claim about them at all — describe the subject, not the person.'
+  }
+  if (strength === 'history') {
+    return available === 'opinion'
+      ? 'Rewrite WITHOUT any personal history. They are on record holding a view about this, so state the view — never an action they took, owned, bought, tried or stopped.'
+      : 'Rewrite WITHOUT any first-person claim. Only the subject is on record, not their experience of it. Say what is true of the thing, not what they did with it.'
+  }
+  return 'Rewrite WITHOUT stating this as the creator\'s own position. It is a subject they have covered, not a view they are on record holding.'
+}
+
+/** The repair call returns line rewrites, NOT a blueprint — so it needs its own
+ *  schema. `required` keeps a rewrite from arriving without the index that says
+ *  which beat it replaces. */
+const REPAIR_SCHEMA = {
+  type: 'OBJECT',
+  properties: {
+    rewrites: {
+      type: 'ARRAY',
+      items: {
+        type: 'OBJECT',
+        properties: { index: { type: 'STRING' }, line: { type: 'STRING' } },
+        required: ['index', 'line'],
+      },
+    },
+  },
+  required: ['rewrites'],
+}
+
+interface EntitlementFail { index: number; line: string; repair: string; ask: string | null }
+
+/** Every beat whose claim outruns the evidence. Empty for an honest script. */
+function entitlementFailures(
+  beats: unknown,
+  supplied: readonly SuppliedKnowledge[],
+): EntitlementFail[] {
+  if (!Array.isArray(beats)) return []
+  const available = bestAvailableLevel(supplied)
+  const out: EntitlementFail[] = []
+  beats.forEach((raw, index) => {
+    const line = typeof (raw as { line?: unknown })?.line === 'string' ? (raw as { line: string }).line : ''
+    if (!line) return
+    const strength = claimStrength(line)
+    const entitled = available !== null && LEVEL_RANK[available] >= NEED[strength]
+    if (entitled) return
+    out.push({
+      index, line, repair: repairFor(strength, available),
+      // ⚖️ ONE TARGETED QUESTION BEATS ANY REFRAMING. A creator naming the gadget
+      // they actually regret produces a better video than the safest rewrite of
+      // a claim they never made.
+      ask: strength === 'history'
+        ? 'This beat only works as something you have personally done. What is your real example?'
+        : null,
+    })
   })
   return out
 }
@@ -536,6 +743,12 @@ async function callOnce(
   model: string,
   thinkBudget: number,
   timeoutMs: number,
+  // ⚠️ THE SCHEMA IS A PARAMETER BECAUSE A SECOND CALLER EXISTS. It was hard-wired
+  // to `blueprintSchema`, so the entitlement repair below — which asks for
+  // {"rewrites":[…]} — would have been forced into blueprint shape and returned
+  // something unparseable on every attempt. Caught before it shipped; the fix is
+  // one argument rather than a second, untested provider path.
+  schema: unknown = blueprintSchema,
 ): Promise<string> {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`
   const ctrl = new AbortController()
@@ -556,7 +769,7 @@ async function callOnce(
           temperature: 0.8,
           maxOutputTokens: 32768,
           responseMimeType: 'application/json',
-          responseSchema: blueprintSchema,
+          responseSchema: schema,
           // Cap reasoning tokens so a thinking model doesn't over-deliberate past
           // the wall-clock. 0 = unbounded/dynamic.
           ...(thinkBudget > 0 ? { thinkingConfig: { thinkingBudget: thinkBudget } } : {}),
@@ -687,7 +900,7 @@ async function composePosition(apiKey: string, facts: string): Promise<string | 
   }
 }
 
-async function callModel(apiKey: string, system: string, prompt: string): Promise<string> {
+async function callModel(apiKey: string, system: string, prompt: string, schema: unknown = blueprintSchema): Promise<string> {
   // The default MUST be a model that reliably returns a FULL blueprint inside the
   // edge wall-clock. gemini-3.1-pro-preview consistently ran 60-90s and timed out
   // on BOTH attempts (edge logs showed repeated 500s at ~70-91s → "We hit a snag"
@@ -716,7 +929,7 @@ async function callModel(apiKey: string, system: string, prompt: string): Promis
   for (let i = 0; i < attempts.length; i++) {
     const a = attempts[i]
     try {
-      const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs)
+      const text = await callOnce(apiKey, system, prompt, a.model, a.thinkBudget, a.timeoutMs, schema)
       let parsed: unknown
       try { parsed = JSON.parse(text) } catch { throw new Error('Model returned invalid JSON') }
       if (blueprintComplete(parsed)) return text // complete → accept
@@ -798,7 +1011,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; readiness_answers?: Record<string, string> }
   try {
     body = await req.json()
   } catch {
@@ -1111,6 +1324,117 @@ Deno.serve(async (req: Request) => {
     )
   }
 
+  // ── READINESS: CAN WE WRITE THIS CONFIDENTLY? ASKED BEFORE THE MONEY MOVES ──
+  //
+  // ⚠️ THE DEFECT. A script whose beats are mostly questions is a discovery
+  // interview accidentally formatted as content — and the creator paid a remix
+  // for it. Replayed over a 112-run matrix, one script would have had 5 of its
+  // 6 beats replaced by "This beat needs a real detail about your product".
+  // Every escalation was individually correct; the delivery was still a bill
+  // for discovering our own missing inputs.
+  //
+  // ⚖️ CLARIFICATION IS FREE, CREATION IS PAID. So this sits ABOVE
+  // `spend_credits`, beside the reference hard stop, on the last line before
+  // the money moves — and it returns questions rather than a charge.
+  //
+  // ⚖️ AND IT IS NOT A QUESTIONNAIRE. Requiredness is decided PER VIDEO: an
+  // explainer is never asked for an offer, a relationship or a CTA, because
+  // ~85-95% of short-form sells nothing. The rules live in
+  // packages/shared/src/generationReadiness.ts with their tests; this is the
+  // inlined copy Deno can run, pinned by `generationReadinessParity.test.ts`.
+  const answers = (body.readiness_answers ?? {}) as Record<string, string>
+  const READINESS_RELATIONSHIPS = ['NONE', 'REVIEW_ONLY', 'AFFILIATE', 'SPONSOR', 'OWN_PRODUCT', 'OWN_SERVICE']
+  const readyPresent = (x: unknown) =>
+    typeof x === 'string' ? x.trim() !== '' && x.trim().toLowerCase() !== 'unspecified' : x != null
+  const readyGoal = String(answers.goal ?? body.goal ?? brief.goal ?? '')
+  const readyCommercial = readyGoal.toLowerCase().includes('sell') || readyGoal.toLowerCase().includes('leads')
+  const readyOffer = answers.offer ?? brief.offer ?? (vp?.offer as string | undefined) ?? (dna.product as string | undefined)
+  const readyPromoting = readyPresent(readyOffer) || readyCommercial
+  // ⚖️ EITHER AUTHORITY SETTLES IT. `product_entities.relationship` covers the
+  // creator's OWN product; `brief.promotes` is where an affiliate or sponsor
+  // tie to SOMEBODY ELSE'S product is recorded. Reading only the first would
+  // ask an affiliate a question they already answered.
+  const readyRel = answers.relationship ?? ownedEntity?.relationship ?? brief.promotes
+  const readyEv = productEvidence as { sections?: Array<{ label?: string }> } | 'declined' | null | undefined
+  const readyFacts = readyEv && typeof readyEv === 'object' && Array.isArray(readyEv.sections)
+    ? readyEv.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
+    : []
+  const readyMissing: Array<{ field: string; question: string }> = []
+  if (!readyPresent(readyGoal)) readyMissing.push({ field: 'goal', question: 'What should this video actually do for you?' })
+  if (readyPromoting && !readyPresent(readyOffer)) readyMissing.push({ field: 'offer', question: 'Which product or offer should this video point at?' })
+  // ⚖️ NO SUBJECT AT ALL. A readable reference gives the video a subject, and an
+  // UNREADABLE one already returned above — so at this line a present
+  // `reference_url` means there is something to write about. This deliberately
+  // does NOT read `referenceAnalysis.mode`: the reference stop must never catch
+  // `none`, a build from the creator's own idea stays free, and
+  // `referenceAnalysis.test.ts` bans the expression outright to keep it that way.
+  if (!readyPresent(reference_note) && !readyPresent(brief.idea) && !readyPresent(reference_url)) {
+    readyMissing.push({ field: 'angle', question: 'What is this video about?' })
+  }
+  if (readyPromoting && !READINESS_RELATIONSHIPS.includes(String(readyRel ?? '').toUpperCase())
+    && !readyPresent(readyRel)) {
+    readyMissing.push({ field: 'relationship', question: 'What is your relationship to it — do you own it, earn from it, are you paid to feature it, or are you just covering it?' })
+  }
+  if (readyCommercial && !readyPresent(answers.cta ?? brief.cta)) {
+    readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
+  }
+  if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)) {
+    readyMissing.push({ field: 'claims', question: 'What does it actually do? Give me the details this video is allowed to state.' })
+  }
+  if (readyMissing.length) {
+    // ⚖️ ORDERED BY WHAT UNBLOCKS THE MOST, capped at three. A creator asked
+    // eight questions abandons; a creator asked two answers them.
+    const ORDER = ['goal', 'offer', 'angle', 'relationship', 'cta', 'claims']
+    const ask = readyMissing
+      .slice()
+      .sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field))
+      .slice(0, 3)
+    console.log(JSON.stringify({
+      event: 'readiness_incomplete',
+      user_id: user.id,
+      missing: readyMissing.map((m) => m.field),
+      asked: ask.map((m) => m.field),
+    }))
+    // 409, matching REFERENCE_UNREAD: a refusal the client reads by CODE and
+    // renders itself. NOTHING WAS CHARGED, and the copy must say so.
+    return json({
+      code: 'READINESS_INCOMPLETE',
+      error: 'A couple of quick answers first — no remix is used for this.',
+      questions: ask,
+    }, 409)
+  }
+
+  // ⚖️ PERSIST WHAT IS TRUE OF THE CREATOR; NEVER WHAT IS TRUE OF THIS VIDEO.
+  //
+  // `offer`, the commercial relationship and the product's facts are properties
+  // of the creator or the entity — stable, already editable in the brand kit,
+  // and re-asking them every video is the ritual this whole check exists to
+  // avoid. `goal`, `angle` and `cta` legitimately differ per video (the same
+  // voice makes awareness videos AND sell videos), so persisting them would
+  // make the next video inherit the wrong answer silently.
+  //
+  // Failure here is logged and does NOT fail the build: the answers are already
+  // in hand for this generation, and refusing a paid build because a
+  // convenience write missed would be the worse trade.
+  const stable: Record<string, string> = {}
+  if (readyPresent(answers.offer)) stable.offer = String(answers.offer).slice(0, 240)
+  if (readyPresent(answers.relationship)) stable.promotes = String(answers.relationship).slice(0, 240)
+  if (readyPresent(answers.claims)) stable.productFacts = String(answers.claims).slice(0, 2000)
+  if (Object.keys(stable).length && voice?.id) {
+    const { error: briefErr } = await admin
+      .from('brand_voices')
+      .update({ pre_script_brief: { ...brief, ...stable } })
+      .eq('id', voice.id)
+    if (briefErr) {
+      console.warn(JSON.stringify({
+        event: 'readiness_answers_not_persisted',
+        voice_id: voice.id,
+        fields: Object.keys(stable),
+        error: String(briefErr.message ?? briefErr),
+      }))
+    }
+  }
+
   // Spend credits atomically BEFORE the model call. Refund on failure.
   const { error: spendErr } = await admin.rpc('spend_credits', {
     p_user: ownerId,
@@ -1124,6 +1448,29 @@ Deno.serve(async (req: Request) => {
       return json({ error: "You're out of remixes. Invite a creator from your Dashboard to earn more — paid top-ups are coming soon." }, 402)
     }
     return json({ error: 'Could not reserve credits' }, 500)
+  }
+
+  // ⚖️ ONE REFUND PER SPEND. Three paths can now return the money — the quality
+  // gate below, the duplicate-key race, and the catch — and two of them can run
+  // in the same request. Without a latch a script that failed the gate and then
+  // lost the race would be refunded twice, which is a credit the creator never
+  // paid for and a hole nobody would notice until the ledger did.
+  let refunded = false
+  const refundOnce = async (reason: string) => {
+    if (refunded) return
+    refunded = true
+    const { error: rErr } = await admin.rpc('refund_credits', {
+      p_user: ownerId,
+      p_amount: BLUEPRINT_COST,
+      p_reason: reason,
+    })
+    if (rErr) {
+      console.error('REFUND FAILED — manual reconciliation needed for', user.id, rErr)
+      await admin
+        .from('ops_events')
+        .insert({ kind: 'refund_failed', severity: 'critical', user_id: user.id, detail: { fn: 'generate-blueprint', amount: BLUEPRINT_COST, reason, error: String((rErr as { message?: string }).message ?? rErr) } })
+        .then(() => {}, () => {})
+    }
   }
 
   try {
@@ -1335,6 +1682,13 @@ Deno.serve(async (req: Request) => {
     }
     const knowledgeBlock = knowledgeParts.join('\n')
 
+    // Written by `scrapeDna` into `profile.packaging`. Absent for voices scanned
+    // before that shipped — which emits nothing rather than guessing a habit.
+    const packagingBlock = packagingPromptLine(
+      (vp as { packaging?: Packaging } | null)?.packaging
+        ?? (dna as { packaging?: Packaging } | null)?.packaging,
+    )
+
     // Inlined from `packages/shared/src/productEvidence.ts`, where the rules and
     // tests live. ⚖️ THE LABELS ARE FACTS, THE PIXELS ARE A PERMISSION: reading a
     // product to know what it is, and being allowed to put the capture on screen,
@@ -1394,9 +1748,15 @@ Deno.serve(async (req: Request) => {
     // ~85-95% of a typical creator's short-form sells nothing, so "they have a
     // product" must not imply "pitch it" — and `forbidden` cannot be overridden
     // by a goal, because no goal creates a commercial tie that does not exist.
-    const sellIntent = commercialCta === 'forbidden'
-      ? false
-      : commercialCta === 'allowed' || goalWantsSale
+    // ⚖️ INTENT IS REQUIRED, NOT OPTIONAL — which is what the name says and what
+    // this now does. The previous form was `forbidden ? false : commercialCta
+    // === 'allowed' || goalWantsSale`, and `commercialCta` is only ever
+    // 'only_if_intended' or 'forbidden' — so the 'allowed' arm was unreachable
+    // and TypeScript said so. It was a leftover from a design where ownership
+    // alone licensed a pitch, which is exactly what the comment above rejects.
+    // Behaviour is unchanged for every relationship; the dead arm implied a
+    // state that cannot happen and misled the next reader about the model.
+    const sellIntent = commercialCta === 'only_if_intended' && goalWantsSale
     const ctaIntentLine = sellIntent
       ? '\n- CTA INTENT: this creator\'s goal is commercial and they have a commercial tie to what is being promoted, so a purchase or signup CTA is appropriate here.'
       : commercialCta === 'forbidden' && goalWantsSale
@@ -1567,7 +1927,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${workKindLine}${evidenceBlock}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${claimRulesBlock}${doNotUseBlock}${workKindLine}${evidenceBlock}${packagingBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
@@ -1727,9 +2087,25 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     // against the fuller store would excuse exactly the fabrication this exists
     // to catch, because a beat could cite something the writer never saw.
     const declared = (templated.bp as { script?: unknown })?.script
-    const issues = substanceIssues(declared, speakable.map((k) => ({
+    // ⚖️ THE KNOWLEDGE THE PROMPT ACTUALLY CARRIED, shared by both checks.
+    // Checking either against the fuller store would license claims the writer
+    // could not have known.
+    const suppliedForCheck = speakable.map((k) => ({
       kind: String(k.kind), text: String(k.text), basis: String(k.basis),
-    })))
+    }))
+    // THE PRODUCT FACTS THE PROMPT CARRIED — derived from the block that was
+    // actually built above, never from the brief. `evidenceBlock` is the whole
+    // of what the writer was told about the product; if a fact is not in it,
+    // the writer did not have it.
+    //
+    // ⚖️ AND `[]` IS AN ANSWER. When no product facts were carried, every
+    // `product_dna` declaration is impossible rather than merely unsupported —
+    // which is the case that ran 70 times in the last matrix. There is no
+    // `undefined` branch here because this caller always knows.
+    const productFactsForCheck: string[] = ev && typeof ev === 'object' && Array.isArray(ev.sections)
+      ? ev.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
+      : []
+    const issues = substanceIssues(declared, suppliedForCheck, productFactsForCheck)
     const bySource: Record<string, number> = {}
     if (Array.isArray(declared)) {
       for (const b of declared) {
@@ -1756,6 +2132,150 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       console.warn(JSON.stringify({ event: 'substance_unsupported', details: issues.slice(0, 20) }))
     }
 
+    // ── ENFORCEMENT: BLOCK, REGENERATE, RE-CHECK ────────────────────────────
+    //
+    // ⚠️ THE BEHAVIOUR THIS REPLACES. Every substance check above this line
+    // REPORTED and shipped anyway. Measured over 112 real runs, that let 11
+    // fabricated personal histories through — "those wired earbuds I used to
+    // swear by", "once I started building my own" — each attached to a creator
+    // who never said it. A guard that only writes to a log is a smoke alarm
+    // wired to a dashboard.
+    //
+    // ⚖️ ONE REPAIR CALL, NOT A LOOP. A second model call is real latency and
+    // real spend on a path the creator already paid for, so this buys exactly
+    // one attempt and then stops guessing. Beats that survive the attempt are
+    // NOT shipped as written — see below.
+    let entFails = entitlementFailures(declared, suppliedForCheck)
+    const creatorQuestions: string[] = []
+    if (entFails.length) {
+      console.warn(JSON.stringify({
+        event: 'entitlement_blocked',
+        beats: entFails.length,
+        of: Array.isArray(declared) ? declared.length : 0,
+        available_evidence: bestAvailableLevel(suppliedForCheck),
+        strengths: entFails.map((f) => claimStrength(f.line)),
+      }))
+      try {
+        const repairPrompt = 'These script beats claim more about the creator than the evidence supports.'
+          + ' Rewrite ONLY the lines listed. Keep each line the same length, purpose and position in the'
+          + ' video. Do not add new facts. Return JSON: {"rewrites":[{"index":<number>,"line":"<new line>"}]}\n\n'
+          + entFails.map((f) => `index ${f.index}\nLINE: ${f.line}\nREQUIRED FIX: ${f.repair}`).join('\n\n')
+        // ⚖️ `callModel`, not `callOnce`: the repair inherits the same attempt
+        // ladder, timeout and model pin as the draft. A repair on a different
+        // path is a second provider integration nobody tests.
+        const repaired = await callModel(
+          apiKey,
+          'You rewrite single script lines to remove claims the evidence does not support.'
+          + ' You never invent a new fact, product, number or experience. You return JSON only.',
+          repairPrompt,
+          REPAIR_SCHEMA,
+        )
+        const parsed = JSON.parse(repaired) as { rewrites?: Array<{ index?: unknown; line?: unknown }> }
+        let applied = 0
+        for (const r of parsed?.rewrites ?? []) {
+          const i = Number(r?.index)
+          const line = typeof r?.line === 'string' ? r.line.trim() : ''
+          if (!Number.isInteger(i) || !line || !Array.isArray(declared) || !declared[i]) continue
+          ;(declared[i] as { line?: string }).line = line
+          applied++
+        }
+        // RE-CHECK. A repair nobody verified is the same trust we just withdrew
+        // from the first draft.
+        entFails = entitlementFailures(declared, suppliedForCheck)
+        console.log(JSON.stringify({ event: 'entitlement_repair', applied, still_failing: entFails.length }))
+      } catch (e) {
+        console.error('entitlement repair failed', String((e as Error)?.message ?? e))
+      }
+    }
+    // ⚖️ WHAT SURVIVES THE REPAIR IS NEVER SPOKEN AS WRITTEN. The beat is not
+    // deleted — a script shorter than the hook promised is the failure the count
+    // contract exists to stop — and it is not shipped as a fabrication either.
+    // It becomes a visible question addressed to the creator, which is the third
+    // of the three honest answers: research, reframe, or ASK.
+    for (const f of entFails) {
+      const b = Array.isArray(declared) ? (declared[f.index] as { line?: string; substance?: string } | undefined) : undefined
+      if (!b) continue
+      const q = f.ask ?? 'Only you can supply this. What would you actually say here?'
+      b.line = q
+      b.substance = 'needs_user'
+      if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
+    }
+    if (entFails.length) {
+      console.warn(JSON.stringify({ event: 'entitlement_unrepaired', beats: entFails.length, questions: creatorQuestions }))
+    }
+
+    // ── A DECLARED SOURCE THAT DOES NOT EXIST IS ASKED, NEVER REWRITTEN ──────
+    //
+    // ⚠️ DETECTION WITHOUT ENFORCEMENT IS THE MISTAKE ABOVE, REPEATED. The
+    // product check landed as a `console.warn` and nothing else, on a defect
+    // that ran 70 times per 112 scripts. A guard that only writes to a log is a
+    // smoke alarm wired to a dashboard — this file has now paid for that lesson
+    // twice, so the check is wired to an outcome in the same commit.
+    //
+    // ⚖️ AND IT IS NOT SENT TO THE REPAIR CALL, DELIBERATELY. An entitlement
+    // failure has a true weaker statement to fall back to: the creator DOES
+    // hold a view, just not an experience, so a rewrite lands somewhere honest.
+    // `impossible_product_claim` has no such floor — NOTHING was supplied about
+    // the product, so every rewrite is either a general platitude or a second
+    // invention, and the model returns lines without declarations, so the false
+    // `substance` would survive the rewrite untouched. The only honest output
+    // is the question, which is the third of the three answers this system
+    // allows: research, reframe, or ASK.
+    const productFails = issues.filter((i) =>
+      i.code === 'impossible_product_claim' || i.code === 'unsupported_product_claim')
+    let productEscalated = 0
+    for (const f of productFails) {
+      const b = Array.isArray(declared)
+        ? (declared[f.beat] as { line?: string; substance?: string; substance_evidence?: string } | undefined)
+        : undefined
+      // Already escalated by the entitlement pass — one beat, one outcome.
+      if (!b || b.substance === 'needs_user') continue
+      const q = f.code === 'impossible_product_claim'
+        ? 'This beat needs a real detail about your product, and nothing about it was supplied. What does it actually do here?'
+        : 'This beat describes your product in a way the supplied details do not cover. What is the accurate version?'
+      b.line = q
+      b.substance = 'needs_user'
+      b.substance_evidence = ''
+      if (!creatorQuestions.includes(q)) creatorQuestions.push(q)
+      productEscalated++
+    }
+    if (productEscalated) {
+      console.warn(JSON.stringify({
+        event: 'product_claim_escalated',
+        beats: productEscalated,
+        of: Array.isArray(declared) ? declared.length : 0,
+        product_facts_supplied: productFactsForCheck.length,
+      }))
+    }
+
+    // ⚠️ A SCRIPT THAT IS MOSTLY QUESTIONS IS NOT A SCRIPT, AND THE CREATOR PAID
+    // FOR IT. Replayed over the last 112-run matrix, 80 of 111 scripts were
+    // untouched by the escalations above — but one had 5 of its 6 beats become
+    // questions, and another 7 beats. Per beat the escalation is strictly better
+    // than the fabrication it replaces; at that density it is a different
+    // product, delivered without warning.
+    //
+    // ⚖️ THIS LOGS AND DOES NOT REFUSE, deliberately. Refusing after the spend,
+    // or returning a shape the app has no reader for, are both worse than
+    // showing what we have. The threshold exists so the frequency is VISIBLE in
+    // production rather than inferred later from a confused creator — the
+    // decision it informs (a real "here is what we need from you" screen) is a
+    // UI change and belongs with one.
+    const totalBeats = Array.isArray(declared) ? declared.length : 0
+    const asked = Array.isArray(declared)
+      ? declared.filter((b) => (b as { substance?: string })?.substance === 'needs_user').length
+      : 0
+    if (totalBeats > 0 && asked / totalBeats >= 0.4) {
+      console.warn(JSON.stringify({
+        event: 'script_mostly_questions',
+        asked,
+        of: totalBeats,
+        knowledge_supplied: speakable.length,
+        product_facts_supplied: productFactsForCheck.length,
+        questions: creatorQuestions,
+      }))
+    }
+
     const weakUnit = isContentlessUnit(
       (templated.bp as { reference_read?: { mechanism?: { enumeration?: { unit?: unknown } } } })
         ?.reference_read?.mechanism?.enumeration?.unit)
@@ -1779,6 +2299,51 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }))
     }
 
+    // ── THE QUALITY GATE: DID WE PRODUCE SOMETHING WORTH CHARGING FOR? ────────
+    //
+    // ⚖️ THE INCENTIVE THIS SETS, DELIBERATELY. Without it, a bad generation is
+    // tolerated because the model returned tokens. The readiness check above
+    // means this should now be rare — it is the backstop for the case where the
+    // inputs looked complete and the writing still could not be grounded.
+    //
+    // ⚖️ IT REFUNDS RATHER THAN REFUSING. The script is still returned and still
+    // saved: refusing after the spend hands the creator nothing for a wait they
+    // already sat through, and what we have is more useful than an error. What
+    // changes is that they are not billed for it, and `credits_spent` records
+    // that honestly rather than claiming a charge the ledger reversed.
+    const finalBeats = Array.isArray(declared) ? declared : []
+    const askedBeats = finalBeats.filter((b) =>
+      (b as { substance?: string })?.substance === 'needs_user').length
+    // Authored text, not grammar — the only discovery questions that can reach a
+    // script are the escalation strings this function writes. Detecting them by
+    // pattern flagged 2 of 1,436 real lines and BOTH were engagement CTAs.
+    const OUR_ASKS = [
+      'this beat needs a real detail about your product',
+      'this beat describes your product in a way the supplied details do not cover',
+      'only you can supply this',
+      'nothing on record supports this beat',
+      'this beat only works as something you have personally done',
+    ]
+    const asksCreator = finalBeats.some((b) => {
+      const l = String((b as { line?: unknown })?.line ?? '').toLowerCase()
+      return OUR_ASKS.some((a) => l.includes(a))
+    })
+    const unbillable = asksCreator
+      ? 'script_asks_creator_for_context'
+      : (finalBeats.length > 0 && askedBeats / finalBeats.length >= 0.4)
+          ? 'script_mostly_questions'
+          : null
+    if (unbillable) {
+      console.warn(JSON.stringify({
+        event: 'generation_not_billable',
+        user_id: user.id,
+        reason: unbillable,
+        asked: askedBeats,
+        of: finalBeats.length,
+      }))
+      await refundOnce('blueprint_refund_quality')
+    }
+
     const { data: gen, error: insErr } = await admin
       .from('generations')
       .insert({
@@ -1790,7 +2355,9 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         reference_analysis: referenceAnalysis,
         brand_voice_id: voice?.id ?? null,
         transcript_id: transcript_id || null,
-        credits_spent: BLUEPRINT_COST,
+        // ⚖️ WHAT WAS ACTUALLY KEPT, not what was reserved. A row claiming a
+        // charge the ledger reversed makes every downstream count wrong.
+        credits_spent: unbillable ? 0 : BLUEPRINT_COST,
         idempotency_key: idempotency_key || null,
       })
       .select('*')
@@ -1813,11 +2380,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         .eq('idempotency_key', idempotency_key)
         .maybeSingle()
       if (won) {
-        const { error: raceRefundErr } = await admin.rpc('refund_credits', {
+        // Through the latch: a build that already failed the quality gate has
+        // had its remix returned, and returning it twice is a credit nobody paid.
+        const { error: raceRefundErr } = refunded ? { error: null } : await admin.rpc('refund_credits', {
           p_user: ownerId,
           p_amount: BLUEPRINT_COST,
           p_reason: 'blueprint_refund_duplicate',
         })
+        refunded = true
         if (raceRefundErr) {
           console.error('DUPLICATE REFUND FAILED — manual reconciliation for', user.id, raceRefundErr)
           await admin
@@ -1851,11 +2421,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
   } catch (err) {
     // Refund credits if anything after the spend failed. Log loudly if the
     // refund itself fails so it can be reconciled manually (never silently eat it).
-    const { error: refundErr } = await admin.rpc('refund_credits', {
+    const { error: refundErr } = refunded ? { error: null } : await admin.rpc('refund_credits', {
       p_user: ownerId,
       p_amount: BLUEPRINT_COST,
       p_reason: 'blueprint_refund',
     })
+    refunded = true
     if (refundErr) {
       console.error('REFUND FAILED — manual reconciliation needed for', user.id, refundErr)
       // Surface it where an operator can SEE it (ops_events → /metrics health).

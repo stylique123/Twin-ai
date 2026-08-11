@@ -1,0 +1,302 @@
+{
+ "$why": "Reference candidates derived from the real scanned corpus, so the matrix can test shapes these creators ACTUALLY use rather than only seven shapes chosen by hand.",
+ "$limits": "Every entry is title-inferred. See mechanismSource on each.",
+ "derivedFrom": "scripts/qa/real/captions-2026-08-11.json",
+ "minSupport": 4,
+ "references": {
+  "D_JOHNNYYTECH_QUESTION_TEST": {
+   "source": "@johnnyytech",
+   "shape": "QUESTION_TEST",
+   "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 12,
+   "evidence": [
+    "Is this the PERFECT Foldable phone design? #samsungzfold8 #zfold8 #samsung #tech",
+    "Can this IPHONE be fixed?!! #iphone14promax #johnnyytech #facebookmarketplace #tech",
+    "IS this the BETTER 17 Pro Max?! #xiaomi #xiaomi17promax #tech",
+    "Can this iPhone be FIXED?!! #iphone16 #tech"
+   ]
+  },
+  "D_NATHANESPINOZA_QUESTION_TEST": {
+   "source": "@nathanespinoza",
+   "shape": "QUESTION_TEST",
+   "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 15,
+   "evidence": [
+    "Would You Buy a Car You CAN’T Drive?",
+    "How to ACTUALLY Stop Doomscrolling",
+    "The Most UNDERRATED iOS 27 Feature?",
+    "The COOLEST iPhone Accessory?"
+   ]
+  },
+  "D_NATHANESPINOZA_SUPERLATIVE": {
+   "source": "@nathanespinoza",
+   "shape": "SUPERLATIVE",
+   "mechanism": "a superlative claim about one named thing, then the evidence for it",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 15,
+   "evidence": [
+    "Samsung’s THINNEST Fold Yet 👀",
+    "The Most UNDERRATED iOS 27 Feature?",
+    "The COOLEST Electric Bike Ever",
+    "The UGLIEST Ferrari Might Be Genius"
+   ]
+  },
+  "D_ACTUALLYCARTERPCS_QUESTION_TEST": {
+   "source": "@actuallycarterpcs",
+   "shape": "QUESTION_TEST",
+   "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 29,
+   "evidence": [
+    "How To Take Good Pictures (For Old People #carterpcs #tech #techtok #photography",
+    "Why Im going to miss highschool",
+    "How to win a game of highschool senior assassins",
+    "How much I make on Tiktok with 5 million followers q"
+   ]
+  },
+  "D_ACTUALLYCARTERPCS_ACQUISITION": {
+   "source": "@actuallycarterpcs",
+   "shape": "ACQUISITION",
+   "mechanism": "FIRST-PERSON acquisition or trial, then what was found by having it",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 6,
+   "evidence": [
+    "I Drove A Tesla Model S Plaid for 24 hours… this is what ive learned",
+    "I bought a $34 Drone from Shein",
+    "I bought a Model S Plaid before graduating highschool",
+    "I bought a fake vision pro from Aliexpress.."
+   ],
+   "requiresExperienceEvidence": true
+  },
+  "D_ACTUALLYCARTERPCS_SUPERLATIVE": {
+   "source": "@actuallycarterpcs",
+   "shape": "SUPERLATIVE",
+   "mechanism": "a superlative claim about one named thing, then the evidence for it",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 9,
+   "evidence": [
+    "The US Government is banning the BIGGEST DRONE COMPANY DJI #carterpcs #tech #techtok #gaming #techfa",
+    "The best $43 gaming keyboard",
+    "When the US banned the 2nd biggest smartphone company.",
+    "What’s the best PC you can get for $250k?? #carterpcs #tech #gaming #gpu #pc"
+   ]
+  },
+  "D_JEREMYRAYHOLST_ENUMERATED": {
+   "source": "@jeremyrayholst",
+   "shape": "ENUMERATED",
+   "mechanism": "a COUNT is announced in the title and each item is delivered in turn",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 11,
+   "evidence": [
+    "Top 7 Products To Sell This Week (Shopify Dropshipping)",
+    "Top 10 Dropshipping Products I’d Sell Right Now",
+    "Top 10 Dropshipping Products For July 2026",
+    "Top 7 WINNING Products To Sell Now (Shopify Dropshipping)"
+   ],
+   "enumeratedCount": 7
+  },
+  "D_JEREMYRAYHOLST_QUESTION_TEST": {
+   "source": "@jeremyrayholst",
+   "shape": "QUESTION_TEST",
+   "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 38,
+   "evidence": [
+    "How to Build a FREE AI Dropshipping Store in 5 Minutes",
+    "How To Make Viral Ai Ads For Dropshipping",
+    "How To Make $100K With Claude AI Dropshipping (Just Copy Me)",
+    "How I'd Build a $100K Dropshipping Store With Claude AI"
+   ]
+  },
+  "D_JEREMYRAYHOLST_ACQUISITION": {
+   "source": "@jeremyrayholst",
+   "shape": "ACQUISITION",
+   "mechanism": "FIRST-PERSON acquisition or trial, then what was found by having it",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 6,
+   "evidence": [
+    "I Tested Claude Fable 5 vs ChatGPT 5.6 Sol For Dropshipping",
+    "I Tested Shopify’s NEW AI Features…",
+    "I Tried AI Dropshipping",
+    "I Tried to Go Viral With AI in 24 Hours"
+   ],
+   "requiresExperienceEvidence": true
+  },
+  "D_JEREMYRAYHOLST_SUPERLATIVE": {
+   "source": "@jeremyrayholst",
+   "shape": "SUPERLATIVE",
+   "mechanism": "a superlative claim about one named thing, then the evidence for it",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 5,
+   "evidence": [
+    "Top 10 BEST Tools for Shopify Dropshipping (2026)",
+    "The Best Way To Start Ai Dropshipping",
+    "I Found The BEST Products To Sell Now (Shopify Dropshipping)",
+    "The Best Email & SMS Marketing Tool For Shopify"
+   ]
+  },
+  "D_REALRYANKENNEDY_QUESTION_TEST": {
+   "source": "@realryankennedy",
+   "shape": "QUESTION_TEST",
+   "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 6,
+   "evidence": [
+    "XBOX Game Pass losing games to Linux? #ryanreviews #heroicgameslauncher #lunux #shorts #tech",
+    "How’s game streaming in 2026? #ryanreviews #geforcenow #gamepass #tech",
+    "SpaceX mobile service a good idea? #ryanreviews #spacex #mobileplan",
+    "Is GeForce Now Any Good While RAM and GPUs are Expensive"
+   ]
+  },
+  "D_JUSTICEBUYS1_ENUMERATED": {
+   "source": "@justicebuys1",
+   "shape": "ENUMERATED",
+   "mechanism": "a COUNT is announced in the title and each item is delivered in turn",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 7,
+   "evidence": [
+    "Top 10 TRAVEL Gadgets for 2026 #shorts",
+    "10 Things I Bought My BACKYARD #home #tech",
+    "10 Things I Bought My FIANCE #shorts #justicebuys #products",
+    "Top 10 ORGANIZATION Products #shorts #justicebuys"
+   ],
+   "enumeratedCount": 10
+  },
+  "D_JUSTICEBUYS1_QUESTION_TEST": {
+   "source": "@justicebuys1",
+   "shape": "QUESTION_TEST",
+   "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 5,
+   "evidence": [
+    "These Sleep Earbuds Have a SNORE DETECTOR?! #sleep #tech",
+    "These World-Record Earbuds Have A SCREEN?! #soundcore",
+    "This Is A Robot DOG? #tech #pets",
+    "This Charging Brick Has A SCREEN? #shorts #AnkerSmartDisplayCharger"
+   ]
+  },
+  "D_JUSTICEBUYS1_SUPERLATIVE": {
+   "source": "@justicebuys1",
+   "shape": "SUPERLATIVE",
+   "mechanism": "a superlative claim about one named thing, then the evidence for it",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 4,
+   "evidence": [
+    "The Most ADVANCED Chess Robot That Can Beat Grandmasters #tech",
+    "The BEST Way To Clean For Busy People #shorts #tech #MOVA #MOVAP10ProUltraGen2",
+    "Best ROBOTS at CES 2026 #tech #shorts #justicebuys",
+    "Best TECH Products of 2025 #shorts #justicebuys #tech"
+   ]
+  },
+  "D_KANEKALLAWAY_SUPERLATIVE": {
+   "source": "@kanekallaway",
+   "shape": "SUPERLATIVE",
+   "mechanism": "a superlative claim about one named thing, then the evidence for it",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 7,
+   "evidence": [
+    "This is the most insane tech company in the world #ai #techtok #technology #artificialintelligence #asml",
+    "This is one of the most advanced food service robots ever invented #ai #tech #robotics #robot #techtok",
+    "This is the most advanced soccer ball ever created #tech #sports #fifa #worldcup #ai",
+    "This is the most advanced robot hand ever invented #tech #ai #techtok #artificialintelligence #robot"
+   ]
+  },
+  "D_BRETTTECH_QUESTION_TEST": {
+   "source": "@brett.tech",
+   "shape": "QUESTION_TEST",
+   "mechanism": "opens as a QUESTION about a specific thing and the video is the answer — the answer may be no",
+   "mechanismSource": "title_inferred",
+   "$limits": "Derived from TITLES ONLY. The promise is observed; the beat order, re-hook placement and beat debts are NOT — nobody watched the video. Do not compare this against a hand-observed reference without saying so.",
+   "support": 4,
+   "evidence": [
+    "Chat is mass fish surveilance ethical?",
+    "Reduce reuse recycle? #3dprinting #aviation",
+    "ACTUAL good deals this year????? #smarthome #tech #home #greenscreen",
+    "This is a big deal…right???? RIGHT????? #apple #mac #tech"
+   ]
+  }
+ },
+ "shapeCountsPerCreator": {
+  "johnnyytech": {
+   "ENUMERATED": 1,
+   "QUESTION_TEST": 12,
+   "CONTRARIAN": 0,
+   "ACQUISITION": 1,
+   "HEAD_TO_HEAD": 0,
+   "SUPERLATIVE": 2
+  },
+  "nathanespinoza": {
+   "ENUMERATED": 0,
+   "QUESTION_TEST": 15,
+   "CONTRARIAN": 1,
+   "ACQUISITION": 1,
+   "HEAD_TO_HEAD": 3,
+   "SUPERLATIVE": 15
+  },
+  "actuallycarterpcs": {
+   "ENUMERATED": 1,
+   "QUESTION_TEST": 29,
+   "CONTRARIAN": 1,
+   "ACQUISITION": 6,
+   "HEAD_TO_HEAD": 2,
+   "SUPERLATIVE": 9
+  },
+  "jeremyrayholst": {
+   "ENUMERATED": 11,
+   "QUESTION_TEST": 38,
+   "CONTRARIAN": 1,
+   "ACQUISITION": 6,
+   "HEAD_TO_HEAD": 2,
+   "SUPERLATIVE": 5
+  },
+  "realryankennedy": {
+   "ENUMERATED": 1,
+   "QUESTION_TEST": 6,
+   "CONTRARIAN": 0,
+   "ACQUISITION": 0,
+   "HEAD_TO_HEAD": 1,
+   "SUPERLATIVE": 0
+  },
+  "justicebuys1": {
+   "ENUMERATED": 7,
+   "QUESTION_TEST": 5,
+   "CONTRARIAN": 0,
+   "ACQUISITION": 1,
+   "HEAD_TO_HEAD": 0,
+   "SUPERLATIVE": 4
+  },
+  "kanekallaway": {
+   "ENUMERATED": 1,
+   "QUESTION_TEST": 0,
+   "CONTRARIAN": 0,
+   "ACQUISITION": 0,
+   "HEAD_TO_HEAD": 0,
+   "SUPERLATIVE": 7
+  },
+  "brett.tech": {
+   "ENUMERATED": 0,
+   "QUESTION_TEST": 4,
+   "CONTRARIAN": 2,
+   "ACQUISITION": 0,
+   "HEAD_TO_HEAD": 0,
+   "SUPERLATIVE": 2
+  }
+ }
+}
