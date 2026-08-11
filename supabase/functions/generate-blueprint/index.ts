@@ -340,7 +340,7 @@ function packagingPromptLine(p: Packaging | null | undefined, minSample = 20): s
 // lines shipped past a green matrix because nobody compared the STRENGTH of the
 // claim against the LEVEL of the evidence.
 const CLAIM_HISTORY =
-  /\bI(?:'ve| have)\s+(?:ever\s+)?(?:seen|tried|been|done|bought|owned|used|switched|returned|tested|kept|ran|stopped|found)\b|\bI used to\b|\bused to be\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI\s+(?:just |recently |just recently |finally |already |once )*(?:bought|owned|used|switched|returned|tested|tried|quit|regret(?:ted)?|swore by|woke|took|got|made|went|saw|thought|began|started|meant|expected|paid|built|broke|fixed|ordered|kept|ran|stopped|found|had to|told you)\b|\bI (?:did|didn'?t|couldn'?t|wasn'?t|never) \w+/i
+  /\bI(?:'ve| have)\s+(?:ever\s+)?(?:seen|tried|been|done|bought|owned|used|switched|returned|tested|kept|ran|stopped|found)\b|\bI used to\b|\bused to be\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI\s+(?:just |recently |just recently |finally |already |once )*(?:bought|owned|used|switched|returned|tested|tried|quit|regret(?:ted)?|swore by|woke|took|got|made|went|saw|thought|began|started|meant|expected|paid|built|broke|fixed|ordered|kept|ran|stopped|had to|told you)\b|\bI (?:did|didn'?t|couldn'?t|wasn'?t|never) \w+/i
 const CLAIM_POSITION =
   /\bI (?:still |really |honestly |personally |genuinely |always |usually |kinda |kind of )*(?:think|reckon|believe|say|feel|would argue|like|love|hate|prefer|recommend|swear by|rely on)\b|\bI(?:'m| am) (?:so |really |honestly |not |kinda )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|a fan)\b|\bI(?:'d| would)? never\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
 
@@ -355,8 +355,17 @@ const CLAIM_NARRATION =
  *  swallowed "I'm shocked" / "I'm glad" as narration. */
 const CLAIM_SELF_INTRO =
   /\bI'm [A-Z][a-z]+/
+/** ⚠️ Rhetorical frames, checked BEFORE history — "what if I told you" is
+ *  one of short-form's commonest hooks and `told you` read as a life event.
+ *  See the shared module for the blast-radius measurement that caught it. */
+const CLAIM_RHETORICAL =
+  /\bwhat if I told you\b|\blet me tell you\b|\bI'?ll tell you\b|\bI'?m going to tell you\b/i
+/** The unambiguous core: a rhetorical wrapper may not hide a real one. */
+const CLAIM_HISTORY_STRICT =
+  /\bI(?:'ve| have)\s+(?:bought|owned|used|switched|returned|tested|tried)\b|\bI used to\b|\bI (?:bought|owned|switched|returned|tested|quit|regret(?:ted)?)\b/i
 function claimStrength(line: string): ClaimStrength {
   const t = String(line ?? '')
+  if (CLAIM_RHETORICAL.test(t) && !CLAIM_HISTORY_STRICT.test(t)) return 'discussion'
   if (CLAIM_HISTORY.test(t)) return 'history'
   if ((CLAIM_NARRATION.test(t) || CLAIM_SELF_INTRO.test(t)) && !CLAIM_POSITION.test(t)) return 'discussion'
   if (CLAIM_POSITION.test(t)) return 'position'

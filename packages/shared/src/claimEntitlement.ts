@@ -65,7 +65,7 @@ const RANK: Record<EvidenceLevel, number> = { coverage: 0, opinion: 1, experienc
 /** First-person LIFE EVENTS. Widened from a fixed verb list to ordinary past
  *  narration, because that is how people actually recount doing something. */
 const HISTORY =
-  /\bI(?:'ve| have)\s+(?:ever\s+)?(?:seen|tried|been|done|bought|owned|used|switched|returned|tested|kept|ran|stopped|found)\b|\bI used to\b|\bused to be\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI\s+(?:just |recently |just recently |finally |already |once )*(?:bought|owned|used|switched|returned|tested|tried|quit|regret(?:ted)?|swore by|woke|took|got|made|went|saw|thought|began|started|meant|expected|paid|built|broke|fixed|ordered|kept|ran|stopped|found|had to|told you)\b|\bI (?:did|didn'?t|couldn'?t|wasn'?t|never) \w+/i
+  /\bI(?:'ve| have)\s+(?:ever\s+)?(?:seen|tried|been|done|bought|owned|used|switched|returned|tested|kept|ran|stopped|found)\b|\bI used to\b|\bused to be\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI\s+(?:just |recently |just recently |finally |already |once )*(?:bought|owned|used|switched|returned|tested|tried|quit|regret(?:ted)?|swore by|woke|took|got|made|went|saw|thought|began|started|meant|expected|paid|built|broke|fixed|ordered|kept|ran|stopped|had to|told you)\b|\bI (?:did|didn'?t|couldn'?t|wasn'?t|never) \w+/i
 
 /** ⚖️ A POSITION IS NOT A HISTORY, and collapsing them would fail every honest
  *  talking-head script. "I think foldables are overrated" asserts a belief; "I
@@ -76,6 +76,11 @@ const HISTORY =
 //  `discussion` and was waved past on coverage-only evidence. A stated position
 //  that reads as mere discussion is the same escalation this file exists to
 //  stop, running in the other direction.
+/** The unambiguous core of HISTORY — a rhetorical wrapper may not hide one of
+ *  these. "Let me tell you, I bought three of them" is still a purchase. */
+const HISTORY_STRICT =
+  /\bI(?:'ve| have)\s+(?:bought|owned|used|switched|returned|tested|tried)\b|\bI used to\b|\bI (?:bought|owned|switched|returned|tested|quit|regret(?:ted)?)\b/i
+
 const POSITION =
   /\bI (?:still |really |honestly |personally |genuinely |always |usually |kinda |kind of )*(?:think|reckon|believe|say|feel|would argue|like|love|hate|prefer|recommend|swear by|rely on)\b|\bI(?:'m| am) (?:so |really |honestly |not |kinda )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|a fan)\b|\bI(?:'d| would)? never\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
 
@@ -99,8 +104,16 @@ const SELF_INTRO = /\bI'm [A-Z][a-z]+/
  * accessory" matches both patterns, and it is a history: it asserts a past
  * state of the creator's life, not merely a present opinion.
  */
+/** ⚠️ RHETORICAL FRAMES ADDRESSED TO THE VIEWER, checked BEFORE history.
+ *  "What if I told you…" is one of the most common hooks in short-form, and the
+ *  widened history pattern read `told you` as a past speech act about the
+ *  creator's life. Measuring the widening's blast radius before shipping it is
+ *  what caught this — the same crying-wolf failure the sell pattern had. */
+const RHETORICAL = /\bwhat if I told you\b|\blet me tell you\b|\bI'?ll tell you\b|\bI'?m going to tell you\b/i
+
 export function claimStrength(line: string): ClaimStrength {
   const s = String(line ?? '')
+  if (RHETORICAL.test(s) && !HISTORY_STRICT.test(s)) return 'discussion'
   if (HISTORY.test(s)) return 'history'
   // Narration only wins where no stance is also present: "I'm going to tell you
   // why I'd never buy one" is still a position wearing an announcement.

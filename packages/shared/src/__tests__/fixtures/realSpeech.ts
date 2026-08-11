@@ -61,7 +61,23 @@ export const REAL_SPEECH: LabelledLine[] = [
   },
   { text: 'I never expected this fight to get this far honestly.', expect: 'history', source: 'transcript' },
   { text: 'I thought it was over there it should have been over there.', expect: 'history', source: 'transcript' },
-  { text: 'And these are all products that I just recently found.', expect: 'history', source: 'transcript' },
+  {
+    // ⚠️ LABEL CORRECTED FOR CONSISTENCY, NOT TO MAKE A PATTERN PASS. I had
+    // this as `history` and the near-identical generated line "Here are 3 items
+    // I found…" as `discussion`. Both make the same claim — that the creator
+    // did the finding — so one of the two labels was wrong.
+    //
+    // DISCOVERY NARRATION IS DISCUSSION. Requiring experience-level evidence
+    // for "I found these" would block the standard listicle opener for every
+    // creator in the corpus, and the claim it carries is thin: it says they did
+    // research, not that they lived through something. The risk asymmetry
+    // decides it — a missed thin claim costs one weak line, a false block costs
+    // the opener of most scripts.
+    text: 'And these are all products that I just recently found.',
+    expect: 'discussion',
+    because: 'Discovery narration. Same claim as "Here are 3 items I found", and labelled the same way.',
+    source: 'transcript',
+  },
   {
     text: 'I\'ve seen this myself where somebody goes fishing, cast the pole out, and then they sit in the chair and wait and fall asleep.',
     expect: 'history',
@@ -150,6 +166,24 @@ export const REAL_SPEECH: LabelledLine[] = [
   { text: 'Let\'s talk about what actually changed in this update.', expect: 'discussion', source: 'generated' },
   { text: 'Most people leave Smart HDR on auto.', expect: 'discussion', source: 'generated' },
   { text: 'Wired connections provide a stable, uncompressed signal path.', expect: 'discussion', source: 'generated' },
+  {
+    // ⚠️ FOUND BY MEASURING THE BLAST RADIUS OF THE WIDENING, before it shipped.
+    // "What if I told you…" is one of the most common hooks in short-form and
+    // the widened HISTORY pattern read `told you` as a past speech act about
+    // their life. Escalating it would have refunded a large share of ordinary
+    // scripts — the widening's own crying-wolf failure, caught the same way the
+    // sell pattern's was.
+    text: 'But what if I told you the secret to staying ahead is understanding the mechanism.',
+    expect: 'discussion',
+    because: 'A rhetorical frame addressed to the viewer. It recounts nothing.',
+    source: 'generated',
+  },
+  {
+    text: 'Here are 3 items I found that are going to make your daily life so much easier.',
+    expect: 'discussion',
+    because: 'Listicle framing. "Items I found" is discovery narration, not a life event — and it opens a large share of the corpus.',
+    source: 'generated',
+  },
   {
     text: 'What\'s one tech purchase you regret, and what did you learn from it?',
     expect: 'discussion',
