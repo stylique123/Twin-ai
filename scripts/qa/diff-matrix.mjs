@@ -46,14 +46,56 @@ const ZERO = Object.fromEntries(Object.keys(score(A[0])).map((k) => [k, 0]))
 const totals = (runs) => runs.map(score).reduce(add, { ...ZERO })
 
 const pct = (n, d) => (d ? `${((100 * n) / d).toFixed(0)}%` : '—')
-const arrow = (a, b, lowerIsBetter = true) => {
+
+// ⚠️ AN ARROW ON A DELTA SMALLER THAN THE NOISE IS A LIE WITH A TICK NEXT TO IT.
+//
+// This printed ✅ / ⚠️ on every movement, and three findings were reported off
+// it in one day that a replicate then withdrew. The worst was "the evidence
+// rule made proof-beat emptiness worse, 25% → 45%" — a metric that swings
+// 24% → 52% with the prompt UNCHANGED.
+//
+// ⚖️ MEASURED, NOT GUESSED — AND FROM THE RUNS THESE COLUMNS COME FROM.
+//
+// Each band below is the observed spread between TWO FULL 112-CASE RUNS OF AN
+// IDENTICAL PROMPT: `matrix-112-after-claim-rules.json` and
+// `matrix-112-replicate.json`. That pair is the right source because these are
+// the columns it reports; the separate n≈32 replicates
+// (`baseline-replicates-n32.json`) measured different metrics — beats
+// overlapping supplied knowledge (45–50%), body-empty (48–53%), proof-empty
+// (24–52%) — which `measure-knowledge-use.mts` reports and this file does not.
+//
+//     UNSUPPORTED citations        9 → 14    ±5
+//     unearned first-person        2 → 1     ±3   (rounded up from 1)
+//     placeholder beats           17 → 7     ±11
+//     money claims                 2 → 1     ±2
+//     product_dna, none supplied  70 → 96    ±26
+//
+// ⚠️ ONE PAIR IS A FLOOR, NOT A DISTRIBUTION. Two runs give the gap between two
+// samples, not the spread of many, so the true band is at least this wide and
+// probably wider. Treat a delta just outside a band as unproven, not proven.
+//
+const NOISE = {
+  'UNSUPPORTED citations': 5,
+  'unearned first-person': 3,
+  'placeholder beats': 11,
+  'money claims': 2,
+  'product_dna, none supplied': 26,
+}
+const arrow = (a, b, lowerIsBetter = true, label = '') => {
   if (a === b) return '  ='
+  const band = NOISE[label]
+  if (band !== undefined && Math.abs(b - a) <= band) return `  ~ noise (±${band})`
   const better = lowerIsBetter ? b < a : b > a
   return better ? ' ✅' : ' ⚠️'
 }
 
 const ta = totals(A), tb = totals(B)
-console.log(`\n${A.length} identical cases — ${beforeFile} → ${afterFile}\n`)
+console.log(`\n${A.length} identical cases — ${beforeFile} → ${afterFile}`)
+// The bands below were measured at n≈32. Say so, every time, next to the number
+// they are being applied to.
+console.log(A.length < 100
+  ? `⚠️  ${A.length} cases — the noise bands were measured on 112-case runs and are TOO TIGHT here.\n`
+  : `   noise bands measured on 112-case replicate runs; this run is ${A.length}.\n`)
 const ROWS = [
   ['runs failed', (t) => t.failed, true],
   ['beats written', (t) => t.beats, false],
@@ -72,7 +114,7 @@ const ROWS = [
 ]
 for (const [label, get, lower] of ROWS) {
   const a = get(ta), b = get(tb)
-  const mark = lower === null || typeof a === 'string' ? '' : arrow(a, b, lower)
+  const mark = lower === null || typeof a === 'string' ? '' : arrow(a, b, lower, label)
   console.log(`${label.padEnd(30)} ${String(a).padStart(7)} → ${String(b).padStart(7)}${mark}`)
 }
 
