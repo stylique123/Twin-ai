@@ -9,6 +9,8 @@ import { generateBlueprint, ingestReference, getJob, findGenerationByKey } from 
 import type { VideoGoal } from '@twinai/shared'
 import { assessReference, mayUseReference, REFERENCE_REASON_TEXT } from '../../lib/api'
 import { REFERENCE_UNREAD_TEXT, REFERENCE_UNREAD_CODE } from '../../lib/api'
+import { READINESS_INCOMPLETE_CODE } from '../../lib/api'
+import type { ReadinessQuestion } from '../../lib/api'
 import { useAuth } from '../../context/AuthContext'
 import { Aurora } from '../../components/Aurora'
 import { cn } from '../../lib/cn'
@@ -127,6 +129,15 @@ export default function V2Building() {
   // is a decision about the INPUT, taken before any credit is spent, so the copy
   // says what to do next rather than apologising for a failure.
   const [unusableRef, setUnusableRef] = useState<string | null>(null)
+  // ⚖️ A REFUSAL THAT ASKS, NOT ONE THAT APOLOGISES. The server could not settle
+  // 1-3 inputs it needs to write confidently, so it declined to charge. This is
+  // the reader for those questions — without it the server would be asking into
+  // a void, which is the one thing this project never ships.
+  const [askQuestions, setAskQuestions] = useState<ReadinessQuestion[] | null>(null)
+  const [askAnswers, setAskAnswers] = useState<Record<string, string>>({})
+  // Answers survive the retry so a second refusal never re-asks what was typed.
+  const answersRef = useRef<Record<string, string>>({})
+  const [retryNonce, setRetryNonce] = useState(0)
   const started = useRef(false)
   // Set ONLY by the explicit Cancel button — so leaving via the nav (Library,
   // Calendar…) keeps the build running in the background, but Cancel truly stops
@@ -172,6 +183,11 @@ export default function V2Building() {
       nav('/v2', { replace: true })
       return
     }
+    // ⚖️ `started` guards against a double-mount, not against a RETRY. A
+    // readiness refusal is a legitimate second attempt with new inputs, so the
+    // nonce re-arms the latch — without it the answers would be collected and
+    // never sent, which is the "question with no reader" failure wearing a
+    // different hat.
     if (started.current) return
     started.current = true
 
@@ -341,6 +357,7 @@ export default function V2Building() {
           fidelity: state.fidelity ?? 'balanced',
           tone: state.tone,
           goal: state.goal,
+          ...(Object.keys(answersRef.current).length ? { readiness_answers: answersRef.current } : {}),
           // Same intent → same key → the server returns the build it already
           // made instead of charging for it twice (0119).
           idempotency_key: key,
@@ -374,6 +391,13 @@ export default function V2Building() {
           setActive(0)
           return
         }
+        // Not a failure and not a charge — the build is waiting on the creator.
+        if ((e as { code?: string } | null)?.code === READINESS_INCOMPLETE_CODE) {
+          const qs = (e as { questions?: ReadinessQuestion[] }).questions ?? []
+          if (qs.length) { setAskQuestions(qs); setActive(0); return }
+          // A code with no questions is a server we do not understand. Falling
+          // through to the generic error beats rendering an empty form.
+        }
         setError(e instanceof Error ? e.message : 'Something went wrong building your plan.')
       }
     })()
@@ -382,7 +406,7 @@ export default function V2Building() {
     // we only stop the visual ticker. Explicit Cancel is what actually aborts it.
     return () => { alive = false; if (ticker) clearInterval(ticker) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [retryNonce])
 
   const echo = state.reference_url ? 'From your reference link' : 'From your idea'
   const shownPct = Math.round(pct)
@@ -409,7 +433,57 @@ export default function V2Building() {
       </div>
 
       <div className="relative w-full max-w-md">
-        {unusableRef ? (
+        {askQuestions ? (
+          // NOT an error, and the copy leads with the thing that protects the
+          // creator: nothing was charged. Twin declined to write a script it
+          // would have had to fill with questions, and is asking the few things
+          // that turn it into a real one.
+          <div className="glass gradient-border p-7">
+            <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-signature-soft"><LogoMark size={22} /></span>
+            <h2 className="mt-4 text-center font-display text-2xl">
+              {askQuestions.length === 1 ? 'One quick thing' : 'A couple of quick things'}
+            </h2>
+            <p className="mt-2 text-center text-sm leading-relaxed text-stone">
+              No remix has been used. Twin would rather ask than guess — a guess here
+              ends up as a claim in your voice.
+            </p>
+            <div className="mt-6 space-y-4">
+              {askQuestions.map((q) => (
+                <label key={q.field} className="block">
+                  <span className="text-sm leading-relaxed text-cream">{q.question}</span>
+                  <input
+                    type="text"
+                    autoComplete="off"
+                    value={askAnswers[q.field] ?? ''}
+                    onChange={(ev) => setAskAnswers((a) => ({ ...a, [q.field]: ev.target.value }))}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-cream outline-none placeholder:text-stone/60 focus:border-signature"
+                    placeholder="Your answer"
+                  />
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              // Every question must be answered: each one is here because
+              // guessing it would put a claim in the creator's mouth, so a
+              // partial answer would send us back to the same refusal.
+              disabled={askQuestions.some((q) => !(askAnswers[q.field] ?? '').trim())}
+              onClick={() => {
+                answersRef.current = { ...answersRef.current, ...askAnswers }
+                setAskQuestions(null)
+                started.current = false
+                setError(null)
+                setActive(0)
+                setPct(6)
+                setRetryNonce((n) => n + 1)
+              }}
+              className="btn-gradient mt-6 w-full disabled:opacity-40"
+            >
+              Build my video plan
+            </button>
+            <button onClick={() => nav('/v2', { replace: true })} className="btn-ghost mt-3 w-full">Start over</button>
+          </div>
+        ) : unusableRef ? (
           // NOT "We hit a snag" — nothing went wrong and nothing was charged. The
           // reference was read, measured, and judged the wrong shape to copy.
           // Saying so plainly is what stops a creator paying to find out.

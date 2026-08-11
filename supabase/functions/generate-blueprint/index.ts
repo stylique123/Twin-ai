@@ -1011,7 +1011,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: "You've hit today's generation limit. It resets in a few hours." }, 429)
   }
 
-  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string }
+  let body: { reference_url?: string; reference_note?: string; fidelity?: string; tone?: string; transcript_id?: string; idempotency_key?: string; goal?: string; readiness_answers?: Record<string, string> }
   try {
     body = await req.json()
   } catch {
@@ -1322,6 +1322,117 @@ Deno.serve(async (req: Request) => {
       },
       409,
     )
+  }
+
+  // ── READINESS: CAN WE WRITE THIS CONFIDENTLY? ASKED BEFORE THE MONEY MOVES ──
+  //
+  // ⚠️ THE DEFECT. A script whose beats are mostly questions is a discovery
+  // interview accidentally formatted as content — and the creator paid a remix
+  // for it. Replayed over a 112-run matrix, one script would have had 5 of its
+  // 6 beats replaced by "This beat needs a real detail about your product".
+  // Every escalation was individually correct; the delivery was still a bill
+  // for discovering our own missing inputs.
+  //
+  // ⚖️ CLARIFICATION IS FREE, CREATION IS PAID. So this sits ABOVE
+  // `spend_credits`, beside the reference hard stop, on the last line before
+  // the money moves — and it returns questions rather than a charge.
+  //
+  // ⚖️ AND IT IS NOT A QUESTIONNAIRE. Requiredness is decided PER VIDEO: an
+  // explainer is never asked for an offer, a relationship or a CTA, because
+  // ~85-95% of short-form sells nothing. The rules live in
+  // packages/shared/src/generationReadiness.ts with their tests; this is the
+  // inlined copy Deno can run, pinned by `generationReadinessParity.test.ts`.
+  const answers = (body.readiness_answers ?? {}) as Record<string, string>
+  const READINESS_RELATIONSHIPS = ['NONE', 'REVIEW_ONLY', 'AFFILIATE', 'SPONSOR', 'OWN_PRODUCT', 'OWN_SERVICE']
+  const readyPresent = (x: unknown) =>
+    typeof x === 'string' ? x.trim() !== '' && x.trim().toLowerCase() !== 'unspecified' : x != null
+  const readyGoal = String(answers.goal ?? body.goal ?? brief.goal ?? '')
+  const readyCommercial = readyGoal.toLowerCase().includes('sell') || readyGoal.toLowerCase().includes('leads')
+  const readyOffer = answers.offer ?? brief.offer ?? (vp?.offer as string | undefined) ?? (dna.product as string | undefined)
+  const readyPromoting = readyPresent(readyOffer) || readyCommercial
+  // ⚖️ EITHER AUTHORITY SETTLES IT. `product_entities.relationship` covers the
+  // creator's OWN product; `brief.promotes` is where an affiliate or sponsor
+  // tie to SOMEBODY ELSE'S product is recorded. Reading only the first would
+  // ask an affiliate a question they already answered.
+  const readyRel = answers.relationship ?? ownedEntity?.relationship ?? brief.promotes
+  const readyEv = productEvidence as { sections?: Array<{ label?: string }> } | 'declined' | null | undefined
+  const readyFacts = readyEv && typeof readyEv === 'object' && Array.isArray(readyEv.sections)
+    ? readyEv.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
+    : []
+  const readyMissing: Array<{ field: string; question: string }> = []
+  if (!readyPresent(readyGoal)) readyMissing.push({ field: 'goal', question: 'What should this video actually do for you?' })
+  if (readyPromoting && !readyPresent(readyOffer)) readyMissing.push({ field: 'offer', question: 'Which product or offer should this video point at?' })
+  // ⚖️ NO SUBJECT AT ALL. A readable reference gives the video a subject, and an
+  // UNREADABLE one already returned above — so at this line a present
+  // `reference_url` means there is something to write about. This deliberately
+  // does NOT read `referenceAnalysis.mode`: the reference stop must never catch
+  // `none`, a build from the creator's own idea stays free, and
+  // `referenceAnalysis.test.ts` bans the expression outright to keep it that way.
+  if (!readyPresent(reference_note) && !readyPresent(brief.idea) && !readyPresent(reference_url)) {
+    readyMissing.push({ field: 'angle', question: 'What is this video about?' })
+  }
+  if (readyPromoting && !READINESS_RELATIONSHIPS.includes(String(readyRel ?? '').toUpperCase())
+    && !readyPresent(readyRel)) {
+    readyMissing.push({ field: 'relationship', question: 'What is your relationship to it — do you own it, earn from it, are you paid to feature it, or are you just covering it?' })
+  }
+  if (readyCommercial && !readyPresent(answers.cta ?? brief.cta)) {
+    readyMissing.push({ field: 'cta', question: 'What should viewers do after watching?' })
+  }
+  if (readyPromoting && readyFacts.length === 0 && !readyPresent(answers.claims)) {
+    readyMissing.push({ field: 'claims', question: 'What does it actually do? Give me the details this video is allowed to state.' })
+  }
+  if (readyMissing.length) {
+    // ⚖️ ORDERED BY WHAT UNBLOCKS THE MOST, capped at three. A creator asked
+    // eight questions abandons; a creator asked two answers them.
+    const ORDER = ['goal', 'offer', 'angle', 'relationship', 'cta', 'claims']
+    const ask = readyMissing
+      .slice()
+      .sort((a, b) => ORDER.indexOf(a.field) - ORDER.indexOf(b.field))
+      .slice(0, 3)
+    console.log(JSON.stringify({
+      event: 'readiness_incomplete',
+      user_id: user.id,
+      missing: readyMissing.map((m) => m.field),
+      asked: ask.map((m) => m.field),
+    }))
+    // 409, matching REFERENCE_UNREAD: a refusal the client reads by CODE and
+    // renders itself. NOTHING WAS CHARGED, and the copy must say so.
+    return json({
+      code: 'READINESS_INCOMPLETE',
+      error: 'A couple of quick answers first — no remix is used for this.',
+      questions: ask,
+    }, 409)
+  }
+
+  // ⚖️ PERSIST WHAT IS TRUE OF THE CREATOR; NEVER WHAT IS TRUE OF THIS VIDEO.
+  //
+  // `offer`, the commercial relationship and the product's facts are properties
+  // of the creator or the entity — stable, already editable in the brand kit,
+  // and re-asking them every video is the ritual this whole check exists to
+  // avoid. `goal`, `angle` and `cta` legitimately differ per video (the same
+  // voice makes awareness videos AND sell videos), so persisting them would
+  // make the next video inherit the wrong answer silently.
+  //
+  // Failure here is logged and does NOT fail the build: the answers are already
+  // in hand for this generation, and refusing a paid build because a
+  // convenience write missed would be the worse trade.
+  const stable: Record<string, string> = {}
+  if (readyPresent(answers.offer)) stable.offer = String(answers.offer).slice(0, 240)
+  if (readyPresent(answers.relationship)) stable.promotes = String(answers.relationship).slice(0, 240)
+  if (readyPresent(answers.claims)) stable.productFacts = String(answers.claims).slice(0, 2000)
+  if (Object.keys(stable).length && voice?.id) {
+    const { error: briefErr } = await admin
+      .from('brand_voices')
+      .update({ pre_script_brief: { ...brief, ...stable } })
+      .eq('id', voice.id)
+    if (briefErr) {
+      console.warn(JSON.stringify({
+        event: 'readiness_answers_not_persisted',
+        voice_id: voice.id,
+        fields: Object.keys(stable),
+        error: String(briefErr.message ?? briefErr),
+      }))
+    }
   }
 
   // Spend credits atomically BEFORE the model call. Refund on failure.
