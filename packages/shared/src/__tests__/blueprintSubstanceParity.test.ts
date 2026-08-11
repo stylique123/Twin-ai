@@ -83,7 +83,9 @@ describe('edge ↔ shared substance-check parity', () => {
     // a refactor, not a regression. What must hold is that the supplied set is
     // built from `speakable` and that BOTH checks read it.
     expect(EDGE).toMatch(/const suppliedForCheck = speakable\.map/)
-    expect(EDGE).toMatch(/substanceIssues\(declared, suppliedForCheck\)/)
+    // The third argument (product facts) may be present or not; what must hold
+    // is that the SECOND is the set built from `speakable`.
+    expect(EDGE).toMatch(/substanceIssues\(declared, suppliedForCheck[,)]/)
     expect(EDGE).toMatch(/entitlementFailures\(declared, suppliedForCheck\)/)
     // And neither may reach past it to the full store.
     expect(EDGE).not.toMatch(/substanceIssues\(declared, kRows/)
@@ -107,5 +109,43 @@ describe('edge ↔ shared substance-check parity', () => {
       .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimEntitlement.ts'), 'utf8'), 'shared', 'HISTORY'))
     expect(lift(EDGE, 'the edge function', 'CLAIM_POSITION'))
       .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimEntitlement.ts'), 'utf8'), 'shared', 'POSITION'))
+  })
+})
+
+// THE OTHER DECLARED SOURCE, CHECKED THE SAME WAY IN BOTH COPIES.
+describe('edge ↔ shared product_dna parity', () => {
+  it('both declare the same two product issue codes', () => {
+    for (const src of [EDGE, SHARED]) {
+      expect(src).toContain('impossible_product_claim')
+      expect(src).toContain('unsupported_product_claim')
+    }
+  })
+
+  it('both gate the product check on the three-state rule', () => {
+    // `productFacts != null` and not a truthiness test: `[]` is truthy in a
+    // boolean sense but is the case that MUST fire, and `undefined` is the case
+    // that must not. A `!productFacts` guard would invert exactly this.
+    for (const src of [EDGE, SHARED]) {
+      expect(src).toMatch(/source === 'product_dna' && productFacts != null/)
+      expect(src).toMatch(/productFacts\.length === 0/)
+    }
+  })
+
+  it('both trace product citations with the SAME matcher as creator knowledge', () => {
+    for (const src of [EDGE, SHARED]) {
+      expect(src).toMatch(/function tracesToText\(/)
+      // `tracesTo` must delegate, not carry a second copy of the rule.
+      expect(src).toMatch(/tracesTo\([\s\S]{0,120}\n?\s*return tracesToText\(/)
+    }
+  })
+
+  it('the edge reads the product facts it actually PUT IN THE PROMPT', () => {
+    // ⚠️ Reading the brief instead would check the beat against facts the
+    // writer never saw — the identical mistake `suppliedForCheck` exists to
+    // avoid on the knowledge side, and the reason 70 beats cited a source the
+    // prompt did not carry.
+    expect(EDGE).toMatch(/const productFactsForCheck: string\[\] = ev &&/)
+    expect(EDGE).toMatch(/substanceIssues\(declared, suppliedForCheck, productFactsForCheck\)/)
+    expect(EDGE).not.toMatch(/substanceIssues\(declared, suppliedForCheck, brief/)
   })
 })

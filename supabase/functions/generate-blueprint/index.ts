@@ -191,20 +191,35 @@ const KIND_PREFIX = /^\s*\((?:fact|opinion|topic|example|experience|framework|cl
 // of terms and no single stored item can match enough of them. Each part is
 // traced independently; any part supporting the beat is enough, because the
 // question is "does this beat rest on something real".
-function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolean {
+function tracesToText(cited: string, supplied: readonly string[]): boolean {
   const parts = cited.split(/[,;]/).map((x) => x.replace(KIND_PREFIX, '').trim()).filter(Boolean)
   return (parts.length ? parts : [cited]).some((part) => {
     const c = substanceTerms(part)
     if (c.size === 0) return false
-    return supplied.some((i) => {
-      const t = substanceTerms(String(i.text))
+    return supplied.some((text) => {
+      const t = substanceTerms(String(text))
       return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
     })
   })
 }
+// ⚖️ ONE TRACING RULE, TWO SOURCES. Separate matchers would let the same
+// citation pass one check and fail the other for no defensible reason.
+function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolean {
+  return tracesToText(cited, supplied.map((i) => String(i.text)))
+}
+// ⚠️ `product_dna` WAS ACCEPTED ON THE MODEL'S WORD while creator_knowledge was
+// verified. Across 112 real runs for 8 creators with NO product DNA supplied,
+// 70 beats declared `product_dna` anyway — 9.9% of every beat — and the count
+// GREW by half in the run that tightened the CTA and claim rules. Pressure
+// follows the unchecked path, so an unchecked declared source is a drain.
+//
+// ⚖️ THREE STATES. `undefined` runs no product check; `[]` means the prompt
+// carried none, which makes the claim IMPOSSIBLE rather than unsupported.
+// Mirrors `substanceIssues` in packages/shared/src/knowledgeResolver.ts.
 function substanceIssues(
   beats: unknown,
   supplied: readonly SuppliedKnowledge[],
+  productFacts?: readonly string[] | null,
 ): Array<{ code: string; beat: number; detail: string }> {
   if (!Array.isArray(beats)) return []
   const out: Array<{ code: string; beat: number; detail: string }> = []
@@ -220,6 +235,18 @@ function substanceIssues(
       } else if (!tracesTo(cited, supplied)) {
         out.push({ code: 'unsupported_creator_claim', beat: i,
           detail: `Beat cites "${cited.slice(0, 80)}", which is not in the knowledge this prompt carried.` })
+      }
+    }
+    if (source === 'product_dna' && productFacts != null) {
+      if (productFacts.length === 0) {
+        out.push({ code: 'impossible_product_claim', beat: i,
+          detail: 'Beat claims product facts, and the prompt carried none. There is no such source to have used.' })
+      } else if (cited === '') {
+        out.push({ code: 'undeclared_evidence', beat: i,
+          detail: 'Beat claims product facts and names nothing it used.' })
+      } else if (!tracesToText(cited, productFacts)) {
+        out.push({ code: 'unsupported_product_claim', beat: i,
+          detail: `Beat cites "${cited.slice(0, 80)}", which is not among the product facts this prompt carried.` })
       }
     }
     // ⚖️ THE MOST EXPENSIVE ERROR, CHECKED SEPARATELY. A personal history is a
@@ -1926,7 +1953,19 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
     const suppliedForCheck = speakable.map((k) => ({
       kind: String(k.kind), text: String(k.text), basis: String(k.basis),
     }))
-    const issues = substanceIssues(declared, suppliedForCheck)
+    // THE PRODUCT FACTS THE PROMPT CARRIED — derived from the block that was
+    // actually built above, never from the brief. `evidenceBlock` is the whole
+    // of what the writer was told about the product; if a fact is not in it,
+    // the writer did not have it.
+    //
+    // ⚖️ AND `[]` IS AN ANSWER. When no product facts were carried, every
+    // `product_dna` declaration is impossible rather than merely unsupported —
+    // which is the case that ran 70 times in the last matrix. There is no
+    // `undefined` branch here because this caller always knows.
+    const productFactsForCheck: string[] = ev && typeof ev === 'object' && Array.isArray(ev.sections)
+      ? ev.sections.map((x) => String(x?.label ?? '')).filter((x) => x.trim() !== '')
+      : []
+    const issues = substanceIssues(declared, suppliedForCheck, productFactsForCheck)
     const bySource: Record<string, number> = {}
     if (Array.isArray(declared)) {
       for (const b of declared) {

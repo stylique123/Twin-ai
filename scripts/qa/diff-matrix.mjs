@@ -66,6 +66,7 @@ const ROWS = [
   ['placeholder beats', (t) => t.placeholderBeats, true],
   ['specific beats', (t) => pct(t.specificBeats, t.beats), null],
   ['money claims', (t) => t.moneyClaims, true],
+  ['product_dna, none supplied', (t) => t.impossibleProduct, true],
   ['SELL CTA, no commercial tie', (t) => t.sellInCta, true],
   ['SELL in a spoken line', (t) => t.sellInBody, true],
 ]

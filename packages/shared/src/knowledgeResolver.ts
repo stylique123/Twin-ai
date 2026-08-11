@@ -274,6 +274,11 @@ export type SubstanceIssueCode =
   | 'undeclared_evidence'
   /** A first-person personal history with no experience-level evidence. */
   | 'unearned_first_person'
+  /** Claimed `product_dna` when the prompt carried no product facts AT ALL.
+   *  Not "the citation is weak" — the declared source does not exist. */
+  | 'impossible_product_claim'
+  /** Claimed `product_dna` citing something the supplied facts do not contain. */
+  | 'unsupported_product_claim'
 
 export interface SubstanceIssue {
   code: SubstanceIssueCode
@@ -312,16 +317,24 @@ const KIND_PREFIX = /^\s*\((?:fact|opinion|topic|example|experience|framework|cl
  *  in the citation perfect". Citing one real item and one invented one is a
  *  weaker failure than inventing the whole beat, and is not what this exists
  *  to catch. */
-function tracesTo(cited: string, supplied: readonly KnowledgeItem[]): boolean {
+function tracesToText(cited: string, supplied: readonly string[]): boolean {
   const parts = cited.split(/[,;]/).map((x) => x.replace(KIND_PREFIX, '').trim()).filter(Boolean)
   return (parts.length ? parts : [cited]).some((part) => {
     const c = terms(part)
     if (c.size === 0) return false
-    return supplied.some((i) => {
-      const t = terms(i.text)
+    return supplied.some((text) => {
+      const t = terms(text)
       return [...c].filter((w) => t.has(w)).length >= Math.min(2, c.size)
     })
   })
+}
+
+/** ⚖️ ONE TRACING RULE, TWO SOURCES. Product facts are strings and knowledge
+ *  items are objects, and giving them separate matchers would let the same
+ *  citation pass one check and fail the other for no reason a reader could
+ *  defend. */
+function tracesTo(cited: string, supplied: readonly KnowledgeItem[]): boolean {
+  return tracesToText(cited, supplied.map((i) => i.text))
 }
 
 /**
@@ -334,6 +347,27 @@ function tracesTo(cited: string, supplied: readonly KnowledgeItem[]): boolean {
 export function substanceIssues(
   beats: readonly DeclaredBeat[] | null | undefined,
   supplied: readonly KnowledgeItem[],
+  /**
+   * The PRODUCT FACTS the prompt carried, if it is known what they were.
+   *
+   * ⚠️ THE HOLE THIS CLOSES, MEASURED. This function checked citations for
+   * `creator_knowledge` and accepted `product_dna` on the model's word. Across
+   * 112 runs for 8 creators with NO product DNA supplied, 70 beats declared
+   * `product_dna` anyway — 9.9% of every beat written — citing invented facts:
+   *
+   *     "The product provides a dedicated, clean, and effective charging spot."
+   *
+   * And it GREW by half (46 → 70) in the run that tightened the CTA and claim
+   * rules. Tightening a checked path pushes the same pressure onto the
+   * unchecked one, so an unchecked declared source is not a gap, it is a drain.
+   *
+   * ⚖️ THREE STATES, NOT TWO. `undefined` means the caller does not know what
+   * the prompt carried and no product check runs — silence is not evidence.
+   * `[]` means the caller KNOWS the prompt carried none, which makes every
+   * `product_dna` declaration impossible rather than merely unsupported. A
+   * caller that cannot tell these apart must pass `undefined`.
+   */
+  productFacts?: readonly string[] | null,
 ): SubstanceIssue[] {
   if (!Array.isArray(beats)) return []
   const out: SubstanceIssue[] = []
@@ -349,6 +383,25 @@ export function substanceIssues(
       } else if (!tracesTo(cited, supplied)) {
         out.push({ code: 'unsupported_creator_claim', beat: i,
           detail: `Beat cites "${cited.slice(0, 80)}", which is not in the knowledge this prompt carried.` })
+      }
+    }
+
+    // THE SAME QUESTION, ASKED OF THE OTHER DECLARED SOURCE.
+    //
+    // ⚖️ Only when the caller SAID what it carried. `undefined` skips this
+    // entirely; it does not default to "nothing was supplied", because that
+    // would turn every caller who has not been updated into a false alarm
+    // factory — the exact behaviour that made the citation check untrustworthy.
+    if (source === 'product_dna' && productFacts != null) {
+      if (productFacts.length === 0) {
+        out.push({ code: 'impossible_product_claim', beat: i,
+          detail: 'Beat claims product facts, and the prompt carried none. There is no such source to have used.' })
+      } else if (cited === '') {
+        out.push({ code: 'undeclared_evidence', beat: i,
+          detail: 'Beat claims product facts and names nothing it used.' })
+      } else if (!tracesToText(cited, productFacts)) {
+        out.push({ code: 'unsupported_product_claim', beat: i,
+          detail: `Beat cites "${cited.slice(0, 80)}", which is not among the product facts this prompt carried.` })
       }
     }
 

@@ -67,7 +67,7 @@ function scoreRun(r, knowledgeFor, relationshipFor) {
   const s = {
     runs: 1, failed: 0, beats: 0,
     placeholderBeats: 0, notesAloud: 0, moneyClaims: 0, specificBeats: 0,
-    sellInCta: 0, sellInBody: 0,
+    sellInCta: 0, sellInBody: 0, impossibleProduct: 0,
     declared: 0, fromCreator: 0, fromProduct: 0, fromGeneral: 0, needsUser: 0, undeclaredSource: 0,
     unsupportedCreatorClaim: 0, undeclaredEvidence: 0, unearnedFirstPerson: 0,
   }
@@ -91,7 +91,13 @@ function scoreRun(r, knowledgeFor, relationshipFor) {
         s.fromCreator++
         if (!cited) s.undeclaredEvidence++
         else if (!tracesTo(cited, supplied)) s.unsupportedCreatorClaim++
-      } else if (src === 'product_dna') s.fromProduct++
+      } else if (src === 'product_dna') {
+        s.fromProduct++
+        // ⚠️ THE HARNESS SUPPLIES NO PRODUCT DNA TO ANY CREATOR, so every one of
+        // these declares a source that was never carried. Not a weak citation —
+        // an impossible one. It ran 46 times, then 70, entirely unchecked.
+        s.impossibleProduct++
+      }
       else if (src === 'general') s.fromGeneral++
       else if (src === 'needs_user') s.needsUser++
     }
@@ -114,10 +120,7 @@ function scoreRun(r, knowledgeFor, relationshipFor) {
   //
   // ⚖️ AND IT ONLY READ `bp.cta`. Nine more cases put the pitch in a SCRIPT
   // LINE, where it is spoken aloud and where the old check never looked.
-  const rel = relationshipFor(r.case?.creator)
-  const mayPitch = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
-    || rel === 'AFFILIATE' || rel === 'SPONSOR'
-  if (!mayPitch) {
+  if (!mayPitch(relationshipFor(r.case?.creator))) {
     if (SELL.test(String(bp.cta ?? ''))) s.sellInCta = 1
     if (script.some((b) => SELL.test(String(b?.line ?? '')))) s.sellInBody = 1
   }
@@ -129,6 +132,12 @@ const add = (a, b) => Object.fromEntries(Object.keys(a).map((k) => [k, a[k] + b[
 // ⚖️ EXPORTED SO NOBODY WRITES A SECOND SCORER. `diff-matrix.mjs` compares two
 // runs, and a comparison computed by different code than the table it is
 // compared against measures the difference between two scorers.
+/** ⚖️ THE ONE PLACE THAT DECIDES WHETHER A PITCH IS ALLOWED. Mirrors
+ *  generate-blueprint's `commercialCta`. Exported so no scorer grows a fourth
+ *  copy — `check_cta_permission_authority.mjs` refuses one. */
+export const mayPitch = (rel) => rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+  || rel === 'AFFILIATE' || rel === 'SPONSOR'
+
 export { scoreRun, add, SELL }
 
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
@@ -165,7 +174,7 @@ for (const r of runs) {
 const pct = (n, d) => (d ? `${((100 * n) / d).toFixed(0)}%` : '—')
 const rows = [...groups.entries()].sort()
 console.log(`\ngrouped by ${by} — ${runs.length} runs\n`)
-const head = ['group', 'runs', 'fail', 'beats', 'declared', 'creator', 'general', 'needsUser', 'undecl', 'UNSUPPORTED', 'unearned1P', 'placeholder', 'specific', 'money', 'sellCTA', 'sellBODY']
+const head = ['group', 'runs', 'fail', 'beats', 'declared', 'creator', 'general', 'needsUser', 'undecl', 'UNSUPPORTED', 'unearned1P', 'placeholder', 'specific', 'money', 'sellCTA', 'sellBODY', 'IMPOSS-PROD']
 console.log(head.map((h, i) => h.padEnd(i === 0 ? 10 : 12)).join(''))
 console.log('-'.repeat(head.length * 12))
 for (const [k, s] of rows) {
@@ -177,8 +186,10 @@ for (const [k, s] of rows) {
     String(s.unsupportedCreatorClaim).padEnd(12), String(s.unearnedFirstPerson).padEnd(12),
     pct(s.placeholderBeats, s.beats).padEnd(12), pct(s.specificBeats, s.beats).padEnd(12),
     String(s.moneyClaims).padEnd(12), String(s.sellInCta).padEnd(12), String(s.sellInBody).padEnd(12),
+    String(s.impossibleProduct).padEnd(12),
   ].join(''))
 }
 console.log('\nUNSUPPORTED = beat cited creator knowledge the prompt never carried — a fabrication wearing a citation.')
 console.log('unearned1P  = first-person HISTORY with no experience-level evidence behind it.')
+console.log('IMPOSS-PROD = beat declared product_dna; this harness supplies no product DNA to anyone.')
 }

@@ -398,6 +398,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | 0 sales CTAs | 16, and the scorer shared the harness's stale rule |
 | sell leak found | it was a review saying "never buy this" |
 | `product_dna` | nothing was ever supplied under that label |
+| one rule, one place | four copies, three of them stale |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where
