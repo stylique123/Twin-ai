@@ -18,7 +18,19 @@ const PLACEHOLDER = /\[[^\]]*\]/
 // `A80` are specifics, not templates.
 const FILLER = /\b(xyz|abc123|brand\s?[xy]|product\s?[abx]|company\s?[xy]|insert\s+\w+\s+here|your\s+product\s+here|tbd|placeholder)\b/i
 const NOTES_ALOUD = /video on this|in my last video|already covered|my audience asks|you (guys )?(keep|always) ask|a lot of you ask/i
-const SELL = /link in bio|buy |pre-?order|sign ?up|subscribe to my|enroll|purchase|my course|grab (my|the)/i
+// ⚠️ "NEVER BUY A CHROMEBOOK" IS A REVIEW, NOT A SALES PITCH.
+//
+// This pattern was `/…|buy |…|purchase|…/` and it cried wolf exactly the way
+// the citation check did before it. Post-fix it flagged 8 spoken lines and 2
+// CTAs, and ALL TEN were false: "three products I'd never buy again", "don't
+// buy for the sake of buying", "what's one tech purchase you regret?" — the
+// last two being the engagement CTA the rule asks for, scored as a violation.
+//
+// ⚖️ A PITCH ASKS THE VIEWER TO TRANSACT, or to go somewhere in order to. That
+// is the decidable thing. A bare verb is not: reviewers talk about buying all
+// day, and a checker that cannot tell a recommendation from a solicitation
+// will report the product's best behaviour as its worst.
+const SELL = /link in bio|link below|sign ?up|pre-?order|enroll|my course|subscribe to my|grab (my|the|yours)|buy (it|yours|one|now|here)|get yours|shop |use (my )?code|dm me/i
 const MONEY_CLAIM = /\$[\d,]+ ?(a|per) (day|week|month)|thousands of dollars|guaranteed|passive income|make you rich|dream car/i
 // Mirrors `FIRST_PERSON_HISTORY` in knowledgeResolver.ts: history, not stance.
 // "I think" and "I'd say" are opinion and must not be counted.

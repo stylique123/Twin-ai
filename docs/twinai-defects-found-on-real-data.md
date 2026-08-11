@@ -315,6 +315,67 @@ that has no verifier is a hole, so the rule should be inverted: a declared sourc
 with no supplied data behind it is refused, whatever it is named. That is a
 contract change and it should be built with a measured before/after, not asserted.
 
+## 13. The scorer carried the same stale rule as the harness
+
+`generate-blueprint` moved CTA permission from the video GOAL to the creator's
+RELATIONSHIP. Two other places kept the old rule:
+
+- `run-eval.mjs` sent "your goal is commercial, so a purchase CTA is
+  appropriate" and none of the four claim rules production ships.
+- `score-matrix.mjs` excused any case whose goal was `sell` or `leads` — so it
+  reported **0 inappropriate sales CTAs across 112 runs**.
+
+Re-scored against `relationshipCode`, those same 112 runs contain **16 purchase
+CTAs and 7 spoken pitches on creators with no commercial tie to anything**:
+
+> justice — "Link in bio to get your Smart Cooker!"
+> jeremy — "Click the link in bio to build your $100K AI dropshipping store!"
+
+A harness and a scorer that share the product's old rule cannot see the
+product's bug. Both were fixed and pinned by
+`harnessClaimRulesParity.test.ts`, which asserts the four branch conditions are
+character-identical to the edge function's.
+
+**After the fix, on the identical 112 cases: 16 → 0 and 7 → 0.**
+
+## 14. The sell check could not tell a review from a solicitation
+
+The first honest measurement of the fix reported 2 CTA leaks and 8 spoken
+leaks. All ten were false. The pattern contained a bare `buy ` and a bare
+`purchase`, so it flagged:
+
+> "three products I'd never buy again"
+> "Don't buy for the sake of buying. Buy for a solution."
+> "What's one tech purchase you regret? Let me know in the comments!"
+
+The last is the *engagement CTA the rule asks for*, scored as a violation. The
+same class as defect 6: a checker that cries wolf trains its reader to ignore
+it, and had I reported the raw count it would have looked like the fix had
+failed. A pitch asks the viewer to transact or to go somewhere to transact —
+that is decidable; a bare verb is not.
+
+## 15. `product_dna` is an unchecked label, and pressure routes through it
+
+`substanceIssues` validates citations only for `creator_knowledge`
+(`knowledgeResolver.ts:345`). `product_dna` is accepted on the model's word.
+
+No product DNA is supplied for any of these 8 creators. They still declared
+`product_dna` on **46 beats before the fix and 70 after** — 9.9% of all beats,
+citing things like:
+
+> "The product provides a dedicated, clean, and effective charging spot."
+
+Nothing supplied that. It is a fabrication wearing a label nobody checks, and
+it grew by half when the claim rules made `creator_knowledge` harder to use
+honestly. **Tightening a checked path pushes the same pressure onto the
+unchecked one**, which is an argument for checking every declared source rather
+than the one that was easiest to check first.
+
+Alongside it, in the same run: placeholder beats 6 → 17, and hook grounding
+31% → 23%. The prohibition removed false content without supplying true
+content, so the writer reached for a bracket instead. Prohibition without
+substitution moves a defect; it does not close it.
+
 ---
 
 ## The pattern
@@ -334,6 +395,9 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | reference transfers | it demanded a life the creator never lived |
 | citation supplied | it described rather than quoted |
 | source declared | the source holds no data at all |
+| 0 sales CTAs | 16, and the scorer shared the harness's stale rule |
+| sell leak found | it was a review saying "never buy this" |
+| `product_dna` | nothing was ever supplied under that label |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where
