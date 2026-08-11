@@ -645,6 +645,42 @@ measurement is evidence.
 
 ---
 
+## 21. The beat named "evidence" is 81% content-free
+
+If 55% of beats carry none of the creator's substance, the charitable reading is
+that a script legitimately contains transitions and CTAs. Measured by section
+over 1,436 real beats, that reading does not survive:
+
+| section | beats | carrying none of the creator's substance |
+|---|---|---|
+| cta / call-to-action | 153 | 72% — **legitimate**, a CTA needs no substance |
+| hook | 172 | 44% |
+| item | 155 | 45% |
+| conclusion | 40 | 43% |
+| **evidence** | 32 | **81%** |
+
+Excluding every CTA and outro moves the total from 57% to **55%**. The body of
+the script is empty at essentially the same rate as the whole.
+
+**And the `evidence` beats are the founding defect in miniature.** Verbatim:
+
+> "First, its design is incredibly unique, unlike anything else on the market."
+> "the seamless integration with your iPhone is what truly sets it apart. It just works."
+> "And third, the practical utility it offers is unmatched."
+
+A beat whose declared job is to PROVE something, containing three superlatives
+and no fact. Voice-accurate, content-empty, in the one section that cannot
+afford to be either.
+
+⚖️ **THE TARGET THIS GIVES THE PROMPT WORK.** Defect 20 showed the lever is how
+the prompt asks, not how much it supplies. This says where to aim: an
+evidence-or-item beat should be required to name a specific from the supplied
+list or declare `needs_user` — the same either/or the substance declaration
+already applies to sources, applied to the beats whose entire purpose is to
+carry one.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -670,6 +706,8 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | results are reproducible | the corpus they came from was not committed |
 | transcripts are the big unlock | already built, and worth ~1 beat in 40 |
 | the prompt needs more substance | it ignores over half of what it already has |
+| half-empty is just script shape | 55% with every CTA excluded |
+| the beat proves the claim | 81% of "evidence" beats prove nothing |
 | the ladder blocks the good lines | 97.8% of lines were already permitted |
 | 97.8% of lines were permitted | the classifier could not see the other kind |
 | the guard caught 11 fabrications | it saw 11; it was blind to 81% of the candidates |
