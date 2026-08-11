@@ -769,6 +769,52 @@ missing number, and it cost 64 API calls to get.
 
 ---
 
+## 23. ⚠️ THE BIGGEST CORRECTION: "half the beats carry nothing" was my own bug
+
+I reported, repeatedly and as the central finding of the day, that **55% of body
+beats carry none of the creator's substance** — and built a roadmap on it,
+including four levers that "failed to move it".
+
+**It is 29%.** The 55% was a bug in my measurement script.
+
+`measure-knowledge-use.mts` required **two** shared terms between a beat and a
+knowledge item. Production's `tracesTo` requires `Math.min(2, size)` — because a
+short item has fewer than two usable terms to share. "3D printing" reduces to
+one (`printing`; `3D` is two characters). **13% of everything these creators
+hold is unmatchable under a flat `>= 2`.**
+
+| | reported | actual |
+|---|---|---|
+| beats using supplied knowledge | 43% | **70%** |
+| all beats carrying nothing | 57% | **30%** |
+| body beats carrying nothing | 55% | **29%** |
+| `item` beats carrying nothing | 45% | **15%** |
+
+### How it was found, which is the part worth keeping
+
+Not by another aggregate — by **reading one script against the ten items it was
+handed**. Nathan/educate wrote six beats on 3D printing; item #3 was
+"3D printing"; every beat scored as using nothing. One look at the actual text
+made the bug obvious in seconds, after a full day of aggregate counts had hidden
+it completely.
+
+⚖️ **THE PATTERN, AND IT IS THE SAME ONE ALL DAY.** I built a harness that
+diverged from production, then measured the divergence and called it a product
+finding. The claim rules, the knowledge selection, the claim detector, and now
+the overlap threshold — four times the measuring instrument was the defect. The
+difference here is only that this one sat under the headline conclusion.
+
+**What still stands:** `item` beats are 15% empty and `evidence` beats 47% — so
+the beats whose job is to prove something remain the weakest, which was the
+right instinct even though the number behind it was wrong. And `hook` at 26%
+is worth its own look.
+
+**What does not:** "four levers failed to move a 55% emptiness problem". The
+problem was never that size, and the levers were aimed at a number that did not
+exist.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -794,7 +840,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | results are reproducible | the corpus they came from was not committed |
 | transcripts are the big unlock | already built, and worth ~1 beat in 40 |
 | the prompt needs more substance | it ignores over half of what it already has |
-| half-empty is just script shape | 55% with every CTA excluded |
+| half-empty is just script shape | 29%, and the 55% was my own overlap bug |
 | the beat proves the claim | 25% prove nothing — and 81% was the harness again |
 | the rule made it worse | that metric swings 24-52% on its own |
 | the ladder blocks the good lines | 97.8% of lines were already permitted |
