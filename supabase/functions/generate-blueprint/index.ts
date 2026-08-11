@@ -340,9 +340,9 @@ function packagingPromptLine(p: Packaging | null | undefined, minSample = 20): s
 // lines shipped past a green matrix because nobody compared the STRENGTH of the
 // claim against the LEVEL of the evidence.
 const CLAIM_HISTORY =
-  /\bI(?:'ve| have)\s+(?:ever\s+)?(?:seen|tried|been|done|bought|owned|used|switched|returned|tested|kept|ran|stopped|found)\b|\bI used to\b|\bused to be\b|\bmy own\b|\bwhen I (?:got|bought|switched|tried)\b|\bI\s+(?:just |recently |just recently |finally |already |once )*(?:bought|owned|used|switched|returned|tested|tried|quit|regret(?:ted)?|swore by|woke|took|got|made|went|saw|thought|began|started|meant|expected|paid|built|broke|fixed|ordered|kept|ran|stopped|had to|told you)\b|\bI (?:did|didn'?t|couldn'?t|wasn'?t|never) \w+/i
+  /\bI(?:'ve| have| had| was| were)\s+\w+|\bI\s+\w+ed\b|\bI (?:\w+ly |already |just |recently |finally |once )*(?:bought|owned|used|switched|returned|tested|quit|regret(?:ted)?|stopped|took|got|made|went|saw|thought|began|ran|kept|told|found|woke|paid|built|broke|felt|knew|meant|left|wrote|spent|sold|read|held|gave|came|did|didn'?t|couldn'?t|wasn'?t|never)\b|\bI used to\b|\bmy own\b|\bthat I have\b|\bwhen I (?:got|bought|switched|tried)\b|\bI (?:\w+ly )?(?:haven'?t|hadn'?t|didn'?t|wasn'?t|couldn'?t)\b/i
 const CLAIM_POSITION =
-  /\bI (?:still |really |honestly |personally |genuinely |always |usually |kinda |kind of )*(?:think|reckon|believe|say|feel|would argue|like|love|hate|prefer|recommend|swear by|rely on)\b|\bI(?:'m| am) (?:so |really |honestly |not |kinda )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|a fan)\b|\bI(?:'d| would)? never\b|\bI'?d\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
+  /\bI (?:\w+ly |still |always |usually |often |sometimes )*(?:think|reckon|believe|feel|like|love|hate|prefer|recommend|rate|adore|enjoy|swear by|rely on|care|don'?t care|would argue)\b|\bI(?:'m| am) (?:\w+ly |not |so |a )*(?:shocked|glad|terrified|surprised|impressed|disappointed|excited|worried|sold|convinced|obsessed|sure|not sure|fan)\b|\bI(?:'d| would)? never\b|\bI'?d\b|\bmy favou?rite\b|\bin my (?:opinion|view|experience)\b|\b(?:is|are) (?:overrated|underrated|a scam|worth it|not worth it|the best|the worst)\b|\bhonestly,? |\bI'?m not going to lie\b|\bno-?brainer\b/i
 
 type ClaimStrength = 'discussion' | 'position' | 'history'
 /** History first: "I used to think I needed every accessory" matches both and is
@@ -350,7 +350,7 @@ type ClaimStrength = 'discussion' | 'position' | 'history'
 // ⚖️ Narration commits the creator to nothing — see the shared module for
 // the measurement that forced this. Checked AFTER history.
 const CLAIM_NARRATION =
-  /\bI(?:'m| am)?\s*(?:'ll |will |going to |gonna |about to )\w+|\bI'll\b|\bI(?:'m| am) (?:talking|showing|telling|explaining|breaking|walking)\b|\bI can(?:'t|not) show\b|\bI don'?t know if (?:any of )?you\b|\blet me show\b/i
+  /\bI(?:'m| am)?\s*(?:'ll |will |going to |gonna |about to )|\bI'll\b|\bI(?:'m| am) (?:talking|showing|telling|explaining|breaking|walking)\b|\bI can(?:'t|not) show\b|\bI don'?t know if (?:any of )?you\b|\blet me know\b|\blet me show\b|\bin (?:today'?s|this|the next|our) video\b|\bcurious to hear\b|\bwhat (?:do )?you (?:guys )?think\b|\bin the comments\b|\b(?:items|things|products|ways|tips|gadgets|reasons)\s+(?:that\s+)?I\s+(?:\w+ly\s+|just\s+|recently\s+)*found\b/i
 /** ⚠️ CASE-SENSITIVE: `[A-Z]` under an `i` flag matches any letter, and
  *  swallowed "I'm shocked" / "I'm glad" as narration. */
 const CLAIM_SELF_INTRO =
@@ -359,16 +359,26 @@ const CLAIM_SELF_INTRO =
  *  one of short-form's commonest hooks and `told you` read as a life event.
  *  See the shared module for the blast-radius measurement that caught it. */
 const CLAIM_RHETORICAL =
-  /\bwhat if I told you\b|\blet me tell you\b|\bI'?ll tell you\b|\bI'?m going to tell you\b/i
+  /\bwhat if I told you\b|\blet me tell you\b|\bI'?ll tell you\b/i
 /** The unambiguous core: a rhetorical wrapper may not hide a real one. */
 const CLAIM_HISTORY_STRICT =
   /\bI(?:'ve| have)\s+(?:bought|owned|used|switched|returned|tested|tried)\b|\bI used to\b|\bI (?:bought|owned|switched|returned|tested|quit|regret(?:ted)?)\b/i
+/** ⚠️ "I told you guys I'd give away three PCs" is a promise they made;
+ *  "what if I told you…" is a hook. Same two words, opposite meanings — so
+ *  this guards the NARRATION branch only, never the rhetorical one. */
+const CLAIM_DECLARED_PROMISE =
+  /\bI told you (?:guys |all |folks )?(?:I|that|about)\b/i
 function claimStrength(line: string): ClaimStrength {
   const t = String(line ?? '')
   if (CLAIM_RHETORICAL.test(t) && !CLAIM_HISTORY_STRICT.test(t)) return 'discussion'
-  if (CLAIM_HISTORY.test(t)) return 'history'
-  if ((CLAIM_NARRATION.test(t) || CLAIM_SELF_INTRO.test(t)) && !CLAIM_POSITION.test(t)) return 'discussion'
+  // Narration BEFORE history: a structural tense rule fires on "in today's
+  // video, I wanted to make a review" — an intention about the upload, not an
+  // event in a life. It never beats a stance or a promise actually made.
+  if ((CLAIM_NARRATION.test(t) || CLAIM_SELF_INTRO.test(t))
+    && !CLAIM_POSITION.test(t) && !CLAIM_HISTORY_STRICT.test(t) && !CLAIM_DECLARED_PROMISE.test(t)) return 'discussion'
+  if (CLAIM_HISTORY.test(t) && !CLAIM_NARRATION.test(t)) return 'history'
   if (CLAIM_POSITION.test(t)) return 'position'
+  if (CLAIM_HISTORY.test(t)) return 'history'
   return 'discussion'
 }
 const NEED: Record<ClaimStrength, number> = { discussion: 0, position: 1, history: 2 }

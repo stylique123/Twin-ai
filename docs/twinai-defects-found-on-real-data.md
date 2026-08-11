@@ -580,7 +580,22 @@ no list will ever contain them all. The structural rule scores 20/25 against
 the lexical 14/25 on unseen creators, which is the same evidence from the other
 direction.
 
-It is **not shipped**, because it introduces false positives of its own —
+**Now shipped**, after the false positives were closed and the blast radius
+measured: held-out **24/25**, tuned 39/39, **zero** narration false positives
+across both sets, and over the 223 stored scripts the escalation rate moves
+4% → 6% of beats while the refund bar moves by one script (4 → 5, both 2%).
+First-person beats waved through fall 118 → 82 → **72** of 145.
+
+Two regressions the existing suite caught during the swap, both from the same
+family as the original defect: the adverb slot lost `still` (the exact case its
+own comment called out), and `\\w+ly` in a TS regex literal is a literal
+backslash-w — three adverb slots were inert. Fixing that alone moved held-out
+from 23/25 to 24/25.
+
+The paragraph below records why it was held back first, because the sequence
+matters: measure, then ship.
+
+It was **initially not shipped**, because it introduced false positives of its own —
 "in today's video, I wanted to make a comprehensive review" reads as a history,
 and "I'm really curious what you guys think" as a position. Those are the
 expensive direction: under-detection ships one bad line, over-detection refunds
