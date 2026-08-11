@@ -50,12 +50,12 @@ function tracesTo(cited, supplied) {
   })
 }
 
-function scoreRun(r, knowledgeFor) {
+function scoreRun(r, knowledgeFor, relationshipFor) {
   const bp = r.blueprint
   const s = {
     runs: 1, failed: 0, beats: 0,
     placeholderBeats: 0, notesAloud: 0, moneyClaims: 0, specificBeats: 0,
-    sellOnNonSell: 0,
+    sellInCta: 0, sellInBody: 0,
     declared: 0, fromCreator: 0, fromProduct: 0, fromGeneral: 0, needsUser: 0, undeclaredSource: 0,
     unsupportedCreatorClaim: 0, undeclaredEvidence: 0, unearnedFirstPerson: 0,
   }
@@ -91,8 +91,24 @@ function scoreRun(r, knowledgeFor) {
       if (!licensed) s.unearnedFirstPerson++
     }
   }
-  const goal = r.case?.goal
-  if (goal && !/sell|leads/.test(goal) && SELL.test(String(bp.cta ?? ''))) s.sellOnNonSell = 1
+  // ⚠️ THE SCORER WAS BLIND TO THE LEAK IT EXISTS TO COUNT.
+  //
+  // This read `goal && !/sell|leads/.test(goal)` — excusing every commercial
+  // goal, which is the goal-only rule `generate-blueprint` deleted when
+  // permission moved to the RELATIONSHIP. So it reported 0 leaks across 112
+  // runs while 14 of the 32 sell/leads cases ended on "Link in bio to get your
+  // Smart Cooker!" for creators with no commercial tie to anything. A scorer
+  // carrying the same stale rule as the harness cannot see the harness's bug.
+  //
+  // ⚖️ AND IT ONLY READ `bp.cta`. Nine more cases put the pitch in a SCRIPT
+  // LINE, where it is spoken aloud and where the old check never looked.
+  const rel = relationshipFor(r.case?.creator)
+  const mayPitch = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    || rel === 'AFFILIATE' || rel === 'SPONSOR'
+  if (!mayPitch) {
+    if (SELL.test(String(bp.cta ?? ''))) s.sellInCta = 1
+    if (script.some((b) => SELL.test(String(b?.line ?? '')))) s.sellInBody = 1
+  }
   return s
 }
 
@@ -103,6 +119,17 @@ const runs = JSON.parse(readFileSync(file, 'utf8'))
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 const ALL = [...pack.creators, ...(pack.cohort2?.creators ?? []), ...(pack.cohort3?.creators ?? [])]
 const knowledgeFor = (key) => ALL.find((c) => c.key === key)?.knowledge?.items ?? []
+// The permission the CTA check needs. Missing is refused, not defaulted: a
+// creator scored as NONE looks maximally compliant for the wrong reason.
+const relationshipFor = (key) => {
+  const c = ALL.find((x) => x.key === key)
+  const rel = c?.truth?.relationshipCode
+  if (!rel) {
+    console.error(`FATAL: creator ${key} has no truth.relationshipCode — cannot score its CTA.`)
+    process.exit(1)
+  }
+  return rel
+}
 
 const groups = new Map()
 for (const r of runs) {
@@ -110,14 +137,14 @@ for (const r of runs) {
     : by === 'label' ? String(r.case?.label ?? '?').split(':')[0]
       : (r.case?.variant ?? '?')
   const cur = groups.get(k)
-  const sc = scoreRun(r, knowledgeFor)
+  const sc = scoreRun(r, knowledgeFor, relationshipFor)
   groups.set(k, cur ? add(cur, sc) : sc)
 }
 
 const pct = (n, d) => (d ? `${((100 * n) / d).toFixed(0)}%` : '—')
 const rows = [...groups.entries()].sort()
 console.log(`\ngrouped by ${by} — ${runs.length} runs\n`)
-const head = ['group', 'runs', 'fail', 'beats', 'declared', 'creator', 'general', 'needsUser', 'undecl', 'UNSUPPORTED', 'unearned1P', 'placeholder', 'specific', 'money', 'sellLeak']
+const head = ['group', 'runs', 'fail', 'beats', 'declared', 'creator', 'general', 'needsUser', 'undecl', 'UNSUPPORTED', 'unearned1P', 'placeholder', 'specific', 'money', 'sellCTA', 'sellBODY']
 console.log(head.map((h, i) => h.padEnd(i === 0 ? 10 : 12)).join(''))
 console.log('-'.repeat(head.length * 12))
 for (const [k, s] of rows) {
@@ -128,7 +155,7 @@ for (const [k, s] of rows) {
     String(s.undeclaredSource).padEnd(12),
     String(s.unsupportedCreatorClaim).padEnd(12), String(s.unearnedFirstPerson).padEnd(12),
     pct(s.placeholderBeats, s.beats).padEnd(12), pct(s.specificBeats, s.beats).padEnd(12),
-    String(s.moneyClaims).padEnd(12), String(s.sellOnNonSell).padEnd(12),
+    String(s.moneyClaims).padEnd(12), String(s.sellInCta).padEnd(12), String(s.sellInBody).padEnd(12),
   ].join(''))
 }
 console.log('\nUNSUPPORTED = beat cited creator knowledge the prompt never carried — a fabrication wearing a citation.')
