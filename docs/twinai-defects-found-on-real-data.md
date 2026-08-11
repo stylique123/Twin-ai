@@ -485,12 +485,72 @@ Production shows the writer 10 items per generation (topic-ranked) out of the
 defect — but the result is that **58% of beats touch none of the creator's
 substance at all**, while 479 real specifics sit unused.
 
+**⚠️ PARTLY WITHDRAWN BY DEFECT 18 — the 97.8% figure was produced by a
+classifier that cannot see most first-person claims. Read 18 before relying on
+anything below.**
+
 **So the founding defect — voice-accurate, content-empty — is not primarily an
 evidence-ceiling problem. The writer is permitted to say the things it already
 knows, and mostly writes generic prose instead.** Transcripts remain worth
 having (they are the only route to a personal history, and to the `position`
 strength a strong opinion piece needs), but they are a second-order lever, and
 I had them ranked first on a premise I never measured.
+
+---
+
+## 18. The claim classifier is blind, so the guard under-enforces
+
+Defect 17 concluded that the evidence ceiling barely matters, because 97.8% of
+generated beats were `discussion` strength. **That number was produced by
+`claimStrength`, and `claimStrength` cannot see most first-person claims.**
+
+Measured against the first real transcripts pulled for these creators:
+
+| | |
+|---|---|
+| transcript sentences | 55 |
+| containing "I" or "my" | 32 — **58%** |
+| of those, classified `discussion` (no personal claim) | **31 of 32** |
+
+It misses every one of these:
+
+> "all things considered that was probably the best WWDC I've ever seen"
+> "I never expected this fight to get this far"
+> "I'm shocked", "I'm glad", "I'm not terrified for Dustin anymore"
+> "I woke up early for this"
+
+`HISTORY` matches a fixed verb list (bought/owned/used/switched/…) and
+`POSITION` a fixed frame ("I think", "I'd say"). Ordinary speech does neither.
+
+### It is not a measurement problem, it is an ENFORCEMENT problem
+
+`claimStrength` decides, in production, whether a beat needs experience-level
+evidence. Over the same 1,436 generated beats:
+
+| | |
+|---|---|
+| first-person beats | 145 (10%) |
+| …classified `discussion`, so waved through on coverage-only evidence | **118 — 81% of them** |
+
+> "My 3D prints used to be so brittle, but then I started doing this one thing,
+> and now they're consistently strong."
+
+That is a fabricated personal history about a real creator, and the guard built
+to stop exactly it scored the line as carrying no personal claim at all.
+
+**Two conclusions, and the second is the uncomfortable one:**
+
+1. Transcripts are NOT second-order. 58% of spoken sentences are first-person,
+   against 0% reachable from captions. Defect 17 under-rated them because it
+   counted with a broken ruler.
+2. **Every "unearned first-person" count in this document is a floor, not a
+   total** — including "11 → 2 → 1", which measured only the claims the pattern
+   can see. The real number is unknown and larger.
+
+⚖️ THE SHAPE, AGAIN: a guard is only as good as its detector, and a detector
+nobody measured against real speech is a guess with a test suite. The tests for
+`claimStrength` all used sentences I wrote, and I wrote them in the shapes the
+pattern already matched.
 
 ---
 
@@ -519,6 +579,8 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | results are reproducible | the corpus they came from was not committed |
 | transcripts are the big unlock | already built, and worth ~1 beat in 40 |
 | the ladder blocks the good lines | 97.8% of lines were already permitted |
+| 97.8% of lines were permitted | the classifier could not see the other kind |
+| the guard caught 11 fabrications | it saw 11; it was blind to 81% of the candidates |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where
