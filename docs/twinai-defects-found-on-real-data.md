@@ -610,6 +610,41 @@ instead of being rediscovered.
 
 ---
 
+## 20. More substance in the prompt buys variety, not use
+
+The 10-item cap in `generate-blueprint` was the obvious suspect for "57% of
+beats touch none of the creator's substance". Tested as a single variable — 8
+creators x 4 non-commercial goals, 32 cases per arm, cap 10 against cap 25,
+everything else byte-identical, harness selection first corrected to mirror
+production's topic ranking:
+
+| | cap 10 | cap 25 |
+|---|---|---|
+| beats whose words overlap a supplied item | 45% | **47%** |
+| distinct knowledge items ever used | 39 | **60** |
+| average breadth of a creator's store | 8.2% | **12.7%** |
+| declared `creator_knowledge` | 44% | 38% |
+| placeholders | 1 | 1 |
+
+**2.5x the substance bought 1.5x the variety and NO change in use.** Showing
+more items means more *different* items appear across scripts — real, and worth
+having for a creator who does not want their fifth video repeating their first.
+It does not move the number that matters: **the share of beats carrying nothing
+of the creator's is flat at ~55% in both arms.**
+
+⚖️ **SO THE CAP IS NOT THE CONSTRAINT.** The writer ignores most of what it is
+handed regardless of how much is handed to it, which means the lever is HOW THE
+PROMPT ASKS FOR SUBSTANCE, not how much it supplies. That is a prompt change,
+and it is cheaper than any of the data work that was ahead of it in the queue.
+
+Note the declared-source drift: `creator_knowledge` declarations fell 44% → 38%
+while actual overlap held. With more items on the page the writer declares the
+label slightly less often while using the substance just as much — a reminder
+that the declaration is the model's word about itself, and only the overlap
+measurement is evidence.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -634,6 +669,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | the fix cost us substance | one sample, and the noise was bigger |
 | results are reproducible | the corpus they came from was not committed |
 | transcripts are the big unlock | already built, and worth ~1 beat in 40 |
+| the prompt needs more substance | it ignores over half of what it already has |
 | the ladder blocks the good lines | 97.8% of lines were already permitted |
 | 97.8% of lines were permitted | the classifier could not see the other kind |
 | the guard caught 11 fabrications | it saw 11; it was blind to 81% of the candidates |
