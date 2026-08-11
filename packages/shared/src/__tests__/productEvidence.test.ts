@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   CAPTURE_FALLBACK_OPTIONS, MIN_USABLE_SECTIONS, assessCapture, mayAppearOnScreen,
-  orderedSections, productEvidenceState, type EvidenceSection, type ProductEvidence,
+  orderedSections, productEvidenceState, type EvidenceSection, type ProductEvidence, productEvidencePromptLine,
 } from '../productEvidence'
 
 const bands = (n: number): EvidenceSection[] =>
@@ -102,5 +102,42 @@ describe('three states, because a skipped question is not "no product"', () => {
     // Storing the URL we tried is useful; reading it as "they told us about
     // their product" would let the container rule conclude a demo is covered.
     expect(productEvidenceState(evidence({ sections: [] }))).toBe('unanswered')
+  })
+})
+
+describe('the reader this field waited for', () => {
+  const section = (order: number, label: string) => ({ order, label, imagePath: `p${order}.png` })
+  const supplied = (linkRole: 'knowledge' | 'on_screen') => ({
+    form: 'link' as const, url: 'https://x.test', linkRole,
+    sections: [section(1, 'pricing tiers'), section(0, 'hero: a portable espresso press')],
+  })
+
+  it('emits the section labels as FACTS, in order', () => {
+    const line = productEvidencePromptLine(supplied('knowledge'))
+    expect(line.indexOf('hero: a portable espresso press')).toBeLessThan(line.indexOf('pricing tiers'))
+    expect(line).toMatch(/never state a capability that is not listed/i)
+  })
+
+  it('separates knowing the product from being allowed to SHOW it', () => {
+    // A marketing-page hero shot is not a product demo. The labels are facts;
+    // the pixels are a permission, and only one of them is granted by default.
+    expect(productEvidencePromptLine(supplied('knowledge'))).toMatch(/READ ONLY/)
+    expect(productEvidencePromptLine(supplied('knowledge'))).not.toMatch(/may show it/i)
+    expect(productEvidencePromptLine(supplied('on_screen'))).toMatch(/may show it/i)
+  })
+
+  it('DECLINED is a real answer and stops the display beat', () => {
+    const line = productEvidencePromptLine('declined')
+    expect(line).toMatch(/CANNOT BE SHOWN/)
+    expect(line).toMatch(/you have never seen it/i)
+  })
+
+  it('UNANSWERED emits nothing — silence is not a decline', () => {
+    expect(productEvidencePromptLine(null)).toBe('')
+    expect(productEvidencePromptLine(undefined)).toBe('')
+    // Present but with no sections is a record of an attempt, not an answer.
+    expect(productEvidencePromptLine({
+      form: 'link', url: null, linkRole: 'knowledge', sections: [],
+    })).toBe('')
   })
 })

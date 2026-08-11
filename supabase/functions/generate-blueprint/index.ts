@@ -871,6 +871,17 @@ Deno.serve(async (req: Request) => {
   // under). The shape is 0109's CHECK, which refuses an empty string, so a
   // present key is a real answer and no trimming or truthiness test is needed.
   const brief = (voice?.pre_script_brief ?? {}) as Record<string, string | undefined>
+  // ⚠️ ASKED SINCE §5 AND READ BY NOBODY UNTIL NOW. The consumer registry carried
+  // the reason verbatim: the captured product never reached the prompt, so
+  // "[SHOW: the product]" had nothing to point at and the model was free to
+  // invent product details. A creator was asked, a model call was spent, and the
+  // answer went into a column nothing read.
+  // Read through a `brief`-named holder on purpose: `check_brief_consumers`
+  // recognises a reader by that access pattern, and a cast wedged between the
+  // holder and the key hides the read from the guard — which would leave this
+  // field looking unwired again the moment somebody trusted the registry.
+  const briefRaw = brief as unknown as Record<string, unknown>
+  const productEvidence = briefRaw.productEvidence
 
   // The tone clamp, whose full rationale is at the TONE_RULE table above. It
   // sits HERE, immediately after `brief`, because that is the first line at
@@ -1217,6 +1228,28 @@ Deno.serve(async (req: Request) => {
     }
     const knowledgeBlock = knowledgeParts.join('\n')
 
+    // Inlined from `packages/shared/src/productEvidence.ts`, where the rules and
+    // tests live. ⚖️ THE LABELS ARE FACTS, THE PIXELS ARE A PERMISSION: reading a
+    // product to know what it is, and being allowed to put the capture on screen,
+    // are different grants — and only the first is given by default. That
+    // separation is what stops a marketing-page hero shot becoming a demo.
+    const ev = productEvidence as
+      { linkRole?: string; sections?: Array<{ order?: number; label?: string }> } | 'declined' | null | undefined
+    let evidenceBlock = ''
+    if (ev === 'declined') {
+      evidenceBlock = '\n- THE PRODUCT CANNOT BE SHOWN. The creator was asked for something to capture and said there is nothing. Do not write a beat that displays it, and do not describe its appearance — you have never seen it.'
+    } else if (ev && typeof ev === 'object' && Array.isArray(ev.sections) && ev.sections.length > 0) {
+      const labels = [...ev.sections]
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .map((x) => `  * ${x.label ?? ''}`).filter((x) => x.trim() !== '*').join('\n')
+      evidenceBlock = '\n- WHAT THE PRODUCT ACTUALLY IS, read from what the creator supplied. These are observed facts, not marketing copy you may extend. Use them instead of inventing features, and never state a capability that is not listed here:\n' + labels
+        + (ev.linkRole === 'on_screen'
+          ? '\n  The creator has agreed this capture may APPEAR ON SCREEN, so a beat may show it.'
+          : '\n  ⚠️ READ ONLY. This was captured so you would know what the product is, NOT for display. Do not write a beat that puts this capture on screen; talk about the product instead of showing it.')
+    }
+    // ⚖️ An UNANSWERED evidence field emits nothing — silence must not be read as
+    // "there is nothing to show", which is a different and real answer.
+
     const sellIntent = videoGoal === 'sell' || videoGoal === 'leads'
     const ctaIntentLine = sellIntent
       ? '\n- CTA INTENT: this creator\'s goal is commercial, so a purchase or signup CTA is appropriate here.'
@@ -1366,7 +1399,7 @@ Deno.serve(async (req: Request) => {
 - Audience: ${audienceResolved}
 - Audience pain (the problem they feel): ${pain || 'NONE STORED. Infer the single most likely core pain from the niche and audience above, and speak to it directly in the hook.'}
 - Dream outcome (what they want): ${dream || 'NONE STORED. Infer the realistic dream outcome from the niche and audience above, and pay it off by the end.'}
-- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${doNotUseBlock}${workKindLine}${knowledgeBlock}
+- Product or offer the CTA should point at: ${offer}${promotesLine}${showLine}${ctaIntentLine}${doNotUseBlock}${workKindLine}${evidenceBlock}${knowledgeBlock}
 - Goal: ${goal}
 - Tone and voice: ${tone}
 - Editing style: ${editing}${vp ? `
