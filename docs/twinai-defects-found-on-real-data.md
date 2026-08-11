@@ -411,6 +411,364 @@ rules made it worse.
 
 ---
 
+## 16. A derived artifact whose source was not in the repo
+
+`derived-references.json` — the 16 reference shapes every matrix run used —
+could not be regenerated from this repository. The committed corpus held **4
+creators and 86 captions**; the file claimed `actuallycarterpcs` support=29
+against 14 available captions, and six of its references cited creators
+(`realryankennedy`, `justicebuys1`, `kanekallaway`, `brett.tech`) that were not
+in the corpus at all.
+
+The corpus was sitting in a PR **stacked on this branch rather than on main**,
+so merging in the obvious order would have silently orphaned it.
+
+**Closed** by merging it first: 8 creators, 501 captions, and re-running
+`derive-references.mjs` now reproduces the committed file byte-identically —
+which is the proof, not the caption count. `scan-manifest.json` records the
+exact actor and input per account so a fresh container does not re-spend Apify
+credits rediscovering the two handle traps (`@CarterPCs` resolves to an
+unrelated 146-subscriber channel; `@justicebuys` does not exist).
+
+**The shape:** every number this document reports was measured with a fixed
+harness and a fixed scorer — and one of the *inputs* was still missing from the
+repo. Reproducibility is not a property of the tooling; it is a property of the
+whole chain, and the weakest link was the one nobody thought to check.
+
+---
+
+## 17. The evidence ceiling is not what is making scripts empty
+
+I have said repeatedly that transcript-based stance extraction is "not started"
+and is "the big unlock". **Both halves were wrong**, and the correction matters
+because it was steering the roadmap.
+
+**It is already built and already runs.** `scrapeDna` takes the creator's top 5
+videos by plays/likes and enqueues `build_voice`, which transcribes them and
+calls `extractKnowledgeFromAudio` — the one path that can produce
+`kind: 'experience'` with `basis: 'stated'`. `max_attempts: 1`, because a retry
+re-runs paid transcript calls.
+
+**And the "zero experience-level knowledge across 8 creators" figure I kept
+citing is a fact about the QA CORPUS, not the product.** Those creators were
+caption-scraped for research; `clampCaptionBasis` correctly forces caption
+items to `demonstrated`. A real onboarded creator gets 5 transcribed videos.
+
+### What the ceiling actually costs, measured
+
+Captions clamp to `demonstrated`, so caption-only knowledge can never exceed
+`coverage` — which means `position` ("I still think X is overrated") and
+`history` ("I bought X") are both unreachable. All 479 items across the 8
+creators are `coverage`. That sounds fatal. It is not:
+
+| claim strength of a real generated beat | count | share |
+|---|---|---|
+| discussion — allowed on coverage | 1404 | **97.8%** |
+| position — blocked | 24 | 1.7% |
+| history — blocked | 8 | 0.6% |
+
+Across 1,436 real beats from two full matrix runs, **the writer is already
+writing 97.8% of its lines at a strength coverage-level evidence permits.** The
+ladder is not what is holding it back. Raising the ceiling would unlock about
+one beat in forty.
+
+### What is actually missing: use, not permission
+
+| | |
+|---|---|
+| beats whose words overlap a supplied knowledge item | **42%** |
+| beats declaring `creator_knowledge` | 37% |
+| share of a creator's stored knowledge that appears in ANY of 28 scripts | **12–36%** |
+
+Production shows the writer 10 items per generation (topic-ranked) out of the
+47–79 stored. That cap is a defensible relevance decision, not obviously a
+defect — but the result is that **58% of beats touch none of the creator's
+substance at all**, while 479 real specifics sit unused.
+
+**⚠️ PARTLY WITHDRAWN BY DEFECT 18 — the 97.8% figure was produced by a
+classifier that cannot see most first-person claims. Read 18 before relying on
+anything below.**
+
+**So the founding defect — voice-accurate, content-empty — is not primarily an
+evidence-ceiling problem. The writer is permitted to say the things it already
+knows, and mostly writes generic prose instead.** Transcripts remain worth
+having (they are the only route to a personal history, and to the `position`
+strength a strong opinion piece needs), but they are a second-order lever, and
+I had them ranked first on a premise I never measured.
+
+---
+
+## 18. The claim classifier is blind, so the guard under-enforces
+
+Defect 17 concluded that the evidence ceiling barely matters, because 97.8% of
+generated beats were `discussion` strength. **That number was produced by
+`claimStrength`, and `claimStrength` cannot see most first-person claims.**
+
+Measured against the first real transcripts pulled for these creators:
+
+| | |
+|---|---|
+| transcript sentences | 55 |
+| containing "I" or "my" | 32 — **58%** |
+| of those, classified `discussion` (no personal claim) | **31 of 32** |
+
+It misses every one of these:
+
+> "all things considered that was probably the best WWDC I've ever seen"
+> "I never expected this fight to get this far"
+> "I'm shocked", "I'm glad", "I'm not terrified for Dustin anymore"
+> "I woke up early for this"
+
+`HISTORY` matches a fixed verb list (bought/owned/used/switched/…) and
+`POSITION` a fixed frame ("I think", "I'd say"). Ordinary speech does neither.
+
+### It is not a measurement problem, it is an ENFORCEMENT problem
+
+`claimStrength` decides, in production, whether a beat needs experience-level
+evidence. Over the same 1,436 generated beats:
+
+| | |
+|---|---|
+| first-person beats | 145 (10%) |
+| …classified `discussion`, so waved through on coverage-only evidence | **118 — 81% of them** |
+
+> "My 3D prints used to be so brittle, but then I started doing this one thing,
+> and now they're consistently strong."
+
+That is a fabricated personal history about a real creator, and the guard built
+to stop exactly it scored the line as carrying no personal claim at all.
+
+**Two conclusions, and the second is the uncomfortable one:**
+
+1. Transcripts are NOT second-order. 58% of spoken sentences are first-person,
+   against 0% reachable from captions. Defect 17 under-rated them because it
+   counted with a broken ruler.
+2. **Every "unearned first-person" count in this document is a floor, not a
+   total** — including "11 → 2 → 1", which measured only the claims the pattern
+   can see. The real number is unknown and larger.
+
+⚖️ THE SHAPE, AGAIN: a guard is only as good as its detector, and a detector
+nobody measured against real speech is a guess with a test suite. The tests for
+`claimStrength` all used sentences I wrote, and I wrote them in the shapes the
+pattern already matched.
+
+---
+
+## 19. 39/39 in-sample, 14/25 out — the fixture was overfitted
+
+Defect 18 widened `claimStrength` against 39 real lines and reached 39/39.
+I then pulled 25 lines from two creators who contributed nothing to that tuning
+— Ryan Kennedy (long-form reviews) and Justice Buys (product shorts) — and
+labelled them by reading, before running the classifier.
+
+| | tuned-on (39) | held-out (25) |
+|---|---|---|
+| lexical verb lists (shipped) | **39/39** | **14/25 — 56%** |
+| structural: tense + person | 36/39 | **20/25 — 80%** |
+
+**Every miss is under-detection of an ordinary sentence:**
+
+> "I've added a Ryzen 7 because I can afford this one."
+> "for the longest time I was looking for a Windows laptop"
+> "I've talked to their representatives"
+> "this particular color is called Sapphire and I absolutely love it"
+
+⚖️ **THE STRUCTURAL LIMIT.** A verb list cannot close over open-class speech —
+the auxiliary carries the tense, not the verb. `I've <anything>` and
+`I was <anything>ing` are histories regardless of which verb fills the slot, and
+no list will ever contain them all. The structural rule scores 20/25 against
+the lexical 14/25 on unseen creators, which is the same evidence from the other
+direction.
+
+**Now shipped**, after the false positives were closed and the blast radius
+measured: held-out **24/25**, tuned 39/39, **zero** narration false positives
+across both sets, and over the 223 stored scripts the escalation rate moves
+4% → 6% of beats while the refund bar moves by one script (4 → 5, both 2%).
+First-person beats waved through fall 118 → 82 → **72** of 145.
+
+Two regressions the existing suite caught during the swap, both from the same
+family as the original defect: the adverb slot lost `still` (the exact case its
+own comment called out), and `\\w+ly` in a TS regex literal is a literal
+backslash-w — three adverb slots were inert. Fixing that alone moved held-out
+from 23/25 to 24/25.
+
+The paragraph below records why it was held back first, because the sequence
+matters: measure, then ship.
+
+It was **initially not shipped**, because it introduced false positives of its own —
+"in today's video, I wanted to make a comprehensive review" reads as a history,
+and "I'm really curious what you guys think" as a position. Those are the
+expensive direction: under-detection ships one bad line, over-detection refunds
+a whole script. Shipping it without measuring that against the stored runs
+would repeat the mistake this document already records twice.
+
+**What is honest to claim right now:** the shipped widening is a real, measured
+improvement (first-person beats waved through 81% → 57%, blast radius 4% of
+beats, 2% of scripts) and it is *not* a correct detector. `heldOutSpeech.ts`
+holds the 14/25 as a floor rather than a target, so the number is visible in CI
+instead of being rediscovered.
+
+---
+
+## 20. More substance in the prompt buys variety, not use
+
+The 10-item cap in `generate-blueprint` was the obvious suspect for "57% of
+beats touch none of the creator's substance". Tested as a single variable — 8
+creators x 4 non-commercial goals, 32 cases per arm, cap 10 against cap 25,
+everything else byte-identical, harness selection first corrected to mirror
+production's topic ranking:
+
+| | cap 10 | cap 25 |
+|---|---|---|
+| beats whose words overlap a supplied item | 45% | **47%** |
+| distinct knowledge items ever used | 39 | **60** |
+| average breadth of a creator's store | 8.2% | **12.7%** |
+| declared `creator_knowledge` | 44% | 38% |
+| placeholders | 1 | 1 |
+
+**2.5x the substance bought 1.5x the variety and NO change in use.** Showing
+more items means more *different* items appear across scripts — real, and worth
+having for a creator who does not want their fifth video repeating their first.
+It does not move the number that matters: **the share of beats carrying nothing
+of the creator's is flat at ~55% in both arms.**
+
+⚖️ **SO THE CAP IS NOT THE CONSTRAINT.** The writer ignores most of what it is
+handed regardless of how much is handed to it, which means the lever is HOW THE
+PROMPT ASKS FOR SUBSTANCE, not how much it supplies. That is a prompt change,
+and it is cheaper than any of the data work that was ahead of it in the queue.
+
+Note the declared-source drift: `creator_knowledge` declarations fell 44% → 38%
+while actual overlap held. With more items on the page the writer declares the
+label slightly less often while using the substance just as much — a reminder
+that the declaration is the model's word about itself, and only the overlap
+measurement is evidence.
+
+---
+
+## 21. ⚠️ CORRECTED: the 81% was measured with the wrong knowledge selection
+
+**The headline below is wrong and the correction matters more than the finding.**
+
+The 81% was computed over runs where the QA harness supplied the **12
+most-frequently-seen** knowledge items. Production supplies **10 ranked by
+lexical overlap with the video's subject**. I fixed that divergence (defect 20's
+setup) and re-measured on a production-mirroring arm: proof beats — evidence,
+item, demo — are **25% empty, not 81%**.
+
+I flagged this exact risk when I fixed the selection ("those numbers described
+the harness") and then quoted the 81% anyway in the next commit. A number
+survives its own retraction if you keep repeating the headline.
+
+### And the fix aimed at it did not work
+
+A prompt rule requiring an evidence beat to name a specific from the supplied
+lists or declare `needs_user`, tested as one variable against the same 32 cases:
+
+| | baseline | + evidence rule |
+|---|---|---|
+| beats overlapping a supplied item | 45% | **41%** |
+| body beats carrying nothing | 53% | **57%** |
+| proof beats carrying nothing | 25% | **45%** |
+| superlatives ("unmatched", "seamless") | 10 | **6** |
+| `needs_user` escalations | 0 | 0 |
+
+The one thing it did was reduce superlatives. Everything it was aimed at moved
+the wrong way. **Reverted** — a prompt rule that adds two hundred words and
+demonstrates no benefit is the prohibition-without-substitution pattern this
+document already retracted once.
+
+⚖️ **AND THE HONEST CAVEAT ON MY OWN NEGATIVE RESULT:** 22–28 proof beats per
+arm is far too small to conclude harm either. The placeholder metric swung
+6 → 17 → 7 on an unchanged prompt at four times this sample size. What is
+established is the absence of evidence FOR the rule, which is enough not to
+ship it, and not enough to call it harmful.
+
+---
+
+## 21b. (superseded) The beat named "evidence" is 81% content-free
+
+If 55% of beats carry none of the creator's substance, the charitable reading is
+that a script legitimately contains transitions and CTAs. Measured by section
+over 1,436 real beats, that reading does not survive:
+
+| section | beats | carrying none of the creator's substance |
+|---|---|---|
+| cta / call-to-action | 153 | 72% — **legitimate**, a CTA needs no substance |
+| hook | 172 | 44% |
+| item | 155 | 45% |
+| conclusion | 40 | 43% |
+| **evidence** | 32 | **81%** |
+
+Excluding every CTA and outro moves the total from 57% to **55%**. The body of
+the script is empty at essentially the same rate as the whole.
+
+**And the `evidence` beats are the founding defect in miniature.** Verbatim:
+
+> "First, its design is incredibly unique, unlike anything else on the market."
+> "the seamless integration with your iPhone is what truly sets it apart. It just works."
+> "And third, the practical utility it offers is unmatched."
+
+A beat whose declared job is to PROVE something, containing three superlatives
+and no fact. Voice-accurate, content-empty, in the one section that cannot
+afford to be either.
+
+⚖️ **THE TARGET THIS GIVES THE PROMPT WORK.** Defect 20 showed the lever is how
+the prompt asks, not how much it supplies. This says where to aim: an
+evidence-or-item beat should be required to name a specific from the supplied
+list or declare `needs_user` — the same either/or the substance declaration
+already applies to sources, applied to the beats whose entire purpose is to
+carry one.
+
+---
+
+## 22. The noise band, measured — and what it does to today's conclusions
+
+Every experiment today used 32-case arms and I never measured how much those
+metrics move when NOTHING changes. Three runs of the identical prompt:
+
+| arm | USE | body-empty | proof-empty (n) | superlatives |
+|---|---|---|---|---|
+| baseline #1 | 45% | 53% | 25% (28) | 10 |
+| baseline #2 | 47% | 49% | 24% (25) | 10 |
+| baseline #3 | 50% | 48% | **52% (44)** | 9 |
+| *+ evidence rule* | *41%* | *57%* | *45% (22)* | *6* |
+
+**The bands at n=32, unchanged prompt:**
+
+| metric | range | usable? |
+|---|---|---|
+| superlatives | 9–10 | **yes — tight** |
+| USE | 45–50% | ~5 points |
+| body-empty | 48–53% | ~5 points |
+| proof-empty | **24–52%** | **NO — useless at this size** |
+
+### This corrects the revert's stated reason
+
+I reported that the evidence rule made proof-beat emptiness worse, 25% → 45%.
+**That is entirely inside the noise band**, which spans 24–52% on an unchanged
+prompt — the section is too small (22–44 beats) to measure anything.
+
+What IS outside the band, in both directions:
+
+- **superlatives 10/10/9 → 6.** The rule did the thing it was written to do.
+  That metric is tight, and the reduction is real.
+- **USE 45/47/50 → 41** and **body-empty 48/49/53 → 57.** Both worse than any
+  baseline run.
+
+So the rule is a genuine TRADE — fewer empty superlatives, less use of the
+creator's substance — and not the flat failure I described. The revert still
+stands, because trading measured substance use for prose polish is the wrong
+side of this product's founding defect. But it stands for a different reason
+than the one I gave, and the reason I gave was noise.
+
+⚖️ **THE STANDING RULE THIS PRODUCES.** A 32-case arm cannot detect anything
+smaller than ~5 points on USE or body-empty, and cannot measure per-section
+emptiness at all. Any future prompt experiment either clears that bar or is
+reported as inconclusive. Three retractions in one day all trace to the same
+missing number, and it cost 64 API calls to get.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -433,6 +791,16 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | `product_dna` | nothing was ever supplied under that label |
 | one rule, one place | four copies, three of them stale |
 | the fix cost us substance | one sample, and the noise was bigger |
+| results are reproducible | the corpus they came from was not committed |
+| transcripts are the big unlock | already built, and worth ~1 beat in 40 |
+| the prompt needs more substance | it ignores over half of what it already has |
+| half-empty is just script shape | 55% with every CTA excluded |
+| the beat proves the claim | 25% prove nothing — and 81% was the harness again |
+| the rule made it worse | that metric swings 24-52% on its own |
+| the ladder blocks the good lines | 97.8% of lines were already permitted |
+| 97.8% of lines were permitted | the classifier could not see the other kind |
+| the guard caught 11 fabrications | it saw 11; it was blind to 81% of the candidates |
+| 39/39 on the fixture | 14/25 on creators it had not seen |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where

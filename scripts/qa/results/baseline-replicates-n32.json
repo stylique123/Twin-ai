@@ -1,0 +1,3534 @@
+[
+ {
+  "case": {
+   "creator": "johnny",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What's a phone you loved that Google tried to make you forget? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "You won't believe what I found about phones Google definitely doesn't want you to buy.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) phones Google doesn't want you to buy"
+    },
+    {
+     "section": "Technique",
+     "line": "The secret is looking at their hardware limitations and understanding how they were designed. Instead of chasing the latest model, we focus on specific features that were ahead of their time or intentionally limited.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Google Pixel 1"
+    },
+    {
+     "section": "Explanation",
+     "line": "Google often curates its ecosystem, pushing users towards newer devices. By understanding the intentional obsolescence or strategic feature omissions in older models, you can find incredible value that's often overlooked.",
+     "substance": "general",
+     "substance_evidence": "General tech industry strategy."
+    },
+    {
+     "section": "Takeaway",
+     "line": "So next time you're looking for a phone, don't just follow the hype. Research what specific models Google might have 'forgotten' about, because that's where the real gems are hidden.",
+     "substance": "general",
+     "substance_evidence": "General consumer advice for tech purchases."
+    },
+    {
+     "section": "CTA",
+     "line": "What's a phone you loved that Google tried to make you forget? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "johnny",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "What are some other phones you think Google wants us to forget about? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are 3 phones that Google really doesn't want you to buy.",
+     "substance": "general",
+     "substance_evidence": "Introduction of the enumerated list."
+    },
+    {
+     "section": "Item 1 Introduction",
+     "line": "The first phone Google doesn't want you to buy is the original Google Pixel.",
+     "substance": "product_dna",
+     "substance_evidence": "Google Pixel 1"
+    },
+    {
+     "section": "Item 1 Detail",
+     "line": "While a groundbreaking device for its time, its older hardware and lack of long-term software support make it a less desirable option for Google today.",
+     "substance": "general",
+     "substance_evidence": "Observed product fact: aging hardware and software support."
+    },
+    {
+     "section": "Item 2 Introduction",
+     "line": "The second phone on our list is the Samsung Z Fold 8.",
+     "substance": "product_dna",
+     "substance_evidence": "Samsung Z Fold 8"
+    },
+    {
+     "section": "Item 2 Detail",
+     "line": "Google prefers to push its own foldable, the Pixel Fold, and doesn't actively promote competitor devices like the Z Fold 8, even if it's a great phone.",
+     "substance": "general",
+     "substance_evidence": "Observed industry practice: companies promote their own products over competitors'."
+    },
+    {
+     "section": "Item 3 Introduction",
+     "line": "Finally, the third phone Google probably hopes you've forgotten is the Samsung A80.",
+     "substance": "product_dna",
+     "substance_evidence": "Samsung A80"
+    },
+    {
+     "section": "Item 3 Detail",
+     "line": "This phone had a unique rotating camera but wasn't a Pixel, and Google's focus is always on their ecosystem first.",
+     "substance": "general",
+     "substance_evidence": "Observed product fact: unique camera. General market practice: Google prioritizes Pixel line."
+    },
+    {
+     "section": "CTA",
+     "line": "What are some other phones you think Google wants us to forget about? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "johnny",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What do you think is Google's most 'unwanted' phone? Let me know!",
+   "script": [
+    {
+     "section": "Hook - Question",
+     "line": "What's the deal with phones Google doesn't want you to buy?",
+     "substance": "general",
+     "substance_evidence": "Common consumer question."
+    },
+    {
+     "section": "Direct Answer",
+     "line": "It's often about market competition and their own ecosystem priorities.",
+     "substance": "product_dna",
+     "substance_evidence": "Google's focus on Pixel ecosystem."
+    },
+    {
+     "section": "Reasoning/Explanation 1",
+     "line": "For example, they'd prefer you don't look at devices like the Xiaomi 17 Pro Max, especially if you're comparing it directly to something like the Google Pixel 1.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Xiaomi 17 Pro Max; (product) Google Pixel 1."
+    },
+    {
+     "section": "Reasoning/Explanation 2",
+     "line": "These phones often push boundaries in ways that might outshine their own offerings or simply don't fit into Google's vision for a 'pure' Android experience.",
+     "substance": "product_dna",
+     "substance_evidence": "Google's 'pure' Android vision vs. other manufacturers' customizations."
+    },
+    {
+     "section": "Conclusion/Summary",
+     "line": "Ultimately, it's about control over the user experience and hardware integration that some of these third-party devices just don't offer in a way Google prefers.",
+     "substance": "general",
+     "substance_evidence": "Summary of market dynamics and ecosystem control."
+    },
+    {
+     "section": "CTA",
+     "line": "What do you think is Google's most 'unwanted' phone? Let me know!",
+     "substance": "none",
+     "substance_evidence": "Engagement call to action."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "johnny",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "What other phones do you think big tech companies want you to avoid? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "These are the 3 phones Google really doesn't want you to buy.",
+     "substance": "none",
+     "substance_evidence": "Hook statement."
+    },
+    {
+     "section": "First Phone",
+     "line": "The first phone Google doesn't want you to buy is the original Google Pixel. While it was a groundbreaking device, Google quickly pushed newer models, making this one a forgotten classic.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Google Pixel 1 mentioned in creator knowledge."
+    },
+    {
+     "section": "Second Phone",
+     "line": "The second phone Google wants you to forget is the Samsung Z Fold 8. Why? Because it directly competes with their own foldable ambitions, and offers a different vision for the future.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Samsung Z Fold 8 mentioned in creator knowledge, linked to the topic of 'phones Google doesn't want you to buy'."
+    },
+    {
+     "section": "Re-hook",
+     "line": "You've seen two, but the third phone Google doesn't want you to buy might surprise you the most.",
+     "substance": "none",
+     "substance_evidence": "Re-hook for retention."
+    },
+    {
+     "section": "Third Phone",
+     "line": "The third phone Google doesn't want you to buy is the iPhone 16. Google consistently tries to push their Android ecosystem, and the iPhone 16 represents the peak of their main competitor's offerings.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "iPhone 16 mentioned in creator knowledge, linked to Google's competition."
+    },
+    {
+     "section": "CTA",
+     "line": "What other phones do you think big tech companies want you to avoid? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action for engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "nathan",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What's your go-to trick for better phone calls?",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "I used to hate phone calls. They felt like a waste of time, or just super stressful. But then I started doing this, and it changed everything.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) iPhone App"
+    },
+    {
+     "section": "Technique Reveal",
+     "line": "Before every call, I set a timer for the exact amount of time I want the conversation to last. It could be 5 minutes, 10, or even 20.",
+     "substance": "general",
+     "substance_evidence": "Setting a timer for a call duration."
+    },
+    {
+     "section": "Explanation/Why it Works",
+     "line": "This isn't about being rude or cutting people off. It's about setting clear expectations and staying focused. When that timer goes off, it's a natural, polite cue to wrap things up.",
+     "substance": "general",
+     "substance_evidence": "Psychological effect of time limits on focus and politeness."
+    },
+    {
+     "section": "Benefit/Takeaway",
+     "line": "It forces you to get to the point, makes the other person more concise, and completely removes the awkwardness of ending a call. You'll find your calls are shorter, more productive, and way less stressful.",
+     "substance": "general",
+     "substance_evidence": "Benefits of clear communication and time management."
+    },
+    {
+     "section": "CTA",
+     "line": "Try it out and let me know how it transforms your calls!",
+     "substance": "none",
+     "substance_evidence": "Call to action for user engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "nathan",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "What tech items do you consider essential? Let me know in the comments below!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are 3 essential items that will completely transform your tech setup.",
+     "substance": "none",
+     "substance_evidence": "Video introduction."
+    },
+    {
+     "section": "Item 1 Introduction",
+     "line": "First up, we have an incredible iPhone accessory that I find indispensable.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) iPhone accessory"
+    },
+    {
+     "section": "Item 1 Detail",
+     "line": "This isn't just any add-on; it integrates seamlessly, enhancing your phone's capabilities in ways you might not expect.",
+     "substance": "general",
+     "substance_evidence": "Demonstrates enhanced capability."
+    },
+    {
+     "section": "Rehook/Transition",
+     "line": "Now that you've seen the first, get ready for the second item, it's something truly unique for personal tracking.",
+     "substance": "none",
+     "substance_evidence": "Transition to next item."
+    },
+    {
+     "section": "Item 2 Introduction",
+     "line": "The second item is the Fitbit Air. This device offers a sleek approach to health monitoring.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Fitbit Air"
+    },
+    {
+     "section": "Item 2 Detail",
+     "line": "Its discreet design and precise tracking make it an excellent alternative if you prefer something less obtrusive than traditional wearables.",
+     "substance": "general",
+     "substance_evidence": "Focus on discreet design and precise tracking."
+    },
+    {
+     "section": "Item 3 Introduction",
+     "line": "And finally, the third item on our list: an electric bike. This isn't just about transportation; it's a lifestyle upgrade.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) electric bike"
+    },
+    {
+     "section": "Item 3 Detail",
+     "line": "Whether for commuting or just enjoying the outdoors, an electric bike offers efficiency and fun, blending technology with everyday activity.",
+     "substance": "general",
+     "substance_evidence": "Focus on efficiency and fun for commuting/outdoors."
+    },
+    {
+     "section": "Call to Action",
+     "line": "What tech items do you consider essential? Let me know in the comments below!",
+     "substance": "none",
+     "substance_evidence": "Call to action for audience engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "nathan",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What's the wildest thing you've ever thought of 3D printing? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook - Question",
+     "line": "Ever wondered why a 3D printed key can be so much more than just a key?",
+     "substance": "creator_knowledge",
+     "substance_evidence": "3D Printed Key"
+    },
+    {
+     "section": "Direct Answer",
+     "line": "It's all about customization and security beyond traditional manufacturing.",
+     "substance": "general",
+     "substance_evidence": "advantages of 3D printing"
+    },
+    {
+     "section": "Reasoning/Explanation",
+     "line": "Traditional keys are mass-produced with limited variations, but 3D printing allows for complex geometries and unique patterns. This means a key can be designed with features that are incredibly difficult to replicate without the original digital file, enhancing its security.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "3D printing"
+    },
+    {
+     "section": "Example/Demonstration",
+     "line": "Imagine a key with an internal labyrinth or a biometric scanner built right into its structure. While not standard, the technology allows for these kinds of innovations that are simply not possible with a conventional metal blank.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "3D printing"
+    },
+    {
+     "section": "Broader Impact/Benefit",
+     "line": "This isn't just about keys; it's a peek into the future of manufacturing where personalized, secure, and highly functional items can be created on demand, offering solutions tailored exactly to individual needs.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "3D printing"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's the wildest thing you've ever thought of 3D printing? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "engagement prompt"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "nathan",
+   "label": "OBS:R_GARY_MISTAKE",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway. must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  },
+  "blueprint": {
+   "cta": "What's one niche topic you could create content around? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "You're probably making this one mistake with your content, and it's holding you back.",
+     "substance": "general",
+     "substance_evidence": "A common problem for creators"
+    },
+    {
+     "section": "Why it fails",
+     "line": "The biggest issue is that you're creating content that's too broad, trying to appeal to everyone. When you try to speak to everybody, you end up speaking to nobody.",
+     "substance": "general",
+     "substance_evidence": "Consequence of broad appeal"
+    },
+    {
+     "section": "Human reason",
+     "line": "I get it, it feels safer to cast a wide net, hoping to catch more viewers. It's a natural instinct to want your message to resonate with as many people as possible.",
+     "substance": "general",
+     "substance_evidence": "Common human tendency"
+    },
+    {
+     "section": "One action",
+     "line": "Instead, focus on creating content for a specific niche or a particular type of person. For example, if you're into 3D printing, dive deep into topics like 'troubleshooting specific printer models' or 'advanced slicing techniques.'",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) 3D printing"
+    },
+    {
+     "section": "Compressed takeaway",
+     "line": "The more specific your content, the more likely you are to connect deeply with the right audience.",
+     "substance": "general",
+     "substance_evidence": "Benefit of niche focus"
+    },
+    {
+     "section": "CTA",
+     "line": "What's one niche topic you could create content around? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Engagement call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "carter",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What's one tech purchase you regret because of this? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "This one tech fact fundamentally changes how you think about your devices.",
+     "substance": "general",
+     "substance_evidence": "General statement about tech impact"
+    },
+    {
+     "section": "Introduce Technique",
+     "line": "It's all about understanding the hidden lifecycle of your gadgets.",
+     "substance": "general",
+     "substance_evidence": "Concept of device lifecycle"
+    },
+    {
+     "section": "Explain Technique Step 1",
+     "line": "First, recognize that every piece of tech you own has a specific point of diminishing returns.",
+     "substance": "general",
+     "substance_evidence": "Concept of diminishing returns in tech"
+    },
+    {
+     "section": "Explain Technique Step 2",
+     "line": "Second, understand that new features aren't always upgrades, but often just lateral moves for market differentiation.",
+     "substance": "general",
+     "substance_evidence": "Concept of market differentiation over true upgrades"
+    },
+    {
+     "section": "Proof/Demonstration",
+     "line": "Take the recent drone bans by the US government affecting DJI, the biggest drone company. This wasn't about a better drone, but political will changing the landscape entirely.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "drone bans by the US government, DJI, the biggest drone company"
+    },
+    {
+     "section": "Takeaway/Implication",
+     "line": "So next time you're thinking about upgrading, ask yourself if it's a true leap forward, or just another step on the same path.",
+     "substance": "general",
+     "substance_evidence": "Encouraging critical thinking about tech upgrades"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's one tech purchase you regret because of this? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Engagement prompt"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "carter",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "Which of these tech items surprised you the most? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are 3 tech items that are so good, you won't believe you lived without them.",
+     "substance": "none",
+     "substance_evidence": "Hook for enumerated list."
+    },
+    {
+     "section": "Item 1",
+     "line": "First up, this insane Chinese laptop that folds into a full monitor! It’s like getting two devices for the price of one.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Chinese laptop that folds into a full monitor"
+    },
+    {
+     "section": "Item 2",
+     "line": "Next, check out this cardboard PC! Don't let the material fool you; it's surprisingly capable and incredibly unique.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "cardboard PC"
+    },
+    {
+     "section": "Item 3",
+     "line": "And finally, the third item is this $250 custom 'creamy' keyboard. The feel and sound are absolutely unmatched for typing and gaming.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "$250 custom 'creamy' keyboard"
+    },
+    {
+     "section": "CTA",
+     "line": "Which of these tech items surprised you the most? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Engagement CTA."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "carter",
+   "label": "OBS:R_GARY_A",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: unstated."
+  },
+  "blueprint": {
+   "cta": "What tech myth did you used to believe? Let me know in the comments below!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Stop believing everything you hear about tech because some common beliefs are just flat-out wrong.",
+     "substance": "general",
+     "substance_evidence": "Common tech misconceptions."
+    },
+    {
+     "section": "Challenge Misconception",
+     "line": "For example, many think that having more RAM automatically makes your PC lightning fast, but there's a point of diminishing returns.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) tech facts"
+    },
+    {
+     "section": "Importance",
+     "line": "You see, adding more RAM past a certain threshold doesn't always translate to a faster experience, especially if other components like your processor or storage are bottlenecks.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) tech facts"
+    },
+    {
+     "section": "Specific Example",
+     "line": "Think about it this way, my $250 custom 'creamy' keyboard won't type faster just because I have 64GB of RAM instead of 32. It's about balance.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) $250 custom 'creamy' keyboard"
+    },
+    {
+     "section": "Counter-Intuitive Insight",
+     "line": "Instead of just stacking specs, understanding how your components interact is key to truly optimizing your setup, whether it's for gaming or just everyday tasks.",
+     "substance": "general",
+     "substance_evidence": "System optimization principles."
+    },
+    {
+     "section": "Practical Implications",
+     "line": "So, next time you're upgrading, focus on the overall system synergy, not just individual numbers. It'll save you money and give you better performance.",
+     "substance": "general",
+     "substance_evidence": "Practical advice for tech upgrades."
+    },
+    {
+     "section": "Call to Action",
+     "line": "What tech myth did you used to believe? Let me know in the comments below!",
+     "substance": "none",
+     "substance_evidence": "Call to action."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "carter",
+   "label": "OBS:R_GARY_MISTAKE",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway. must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  },
+  "blueprint": {
+   "cta": "What's your favorite iPhone shortcut? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "If you own an iPhone, you're probably making a mistake with the Action Button.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) iPhone's Action Button"
+    },
+    {
+     "section": "Why it fails",
+     "line": "Many people just leave it on silent mode, or use it for a flashlight. But that's missing out on its true potential to simplify your daily tech interactions.",
+     "substance": "general",
+     "substance_evidence": "common usage of Action Button"
+    },
+    {
+     "section": "Concede the human reason",
+     "line": "I get it though, it's easy to just set it and forget it. Apple doesn't exactly make it obvious how powerful it can be.",
+     "substance": "general",
+     "substance_evidence": "user behavior and Apple's marketing"
+    },
+    {
+     "section": "One action to fix it",
+     "line": "Here's what you should do: assign the Action Button to a custom shortcut that automates a frequent task you do, like launching your camera directly into video mode, or opening a specific app.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) iPhone's Action Button"
+    },
+    {
+     "section": "Compressed takeaway",
+     "line": "The Action Button isn't just a switch; it's a powerful customizable tool waiting to be unleashed.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) iPhone's Action Button"
+    },
+    {
+     "section": "CTA",
+     "line": "What's your favorite iPhone shortcut? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "jeremy",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What dropshipping product are you excited to sell next? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "This AI hack got me 8.3 million views in 24 hours. Want to know how?",
+     "substance": "creator_knowledge",
+     "substance_evidence": "AI video got 8.3M+ in 24 hours"
+    },
+    {
+     "section": "Technique Reveal",
+     "line": "It's all about crafting viral AI ads for dropshipping, specifically by leveraging Claude AI to build a $100K store.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "making viral AI ads for dropshipping, building a $100K dropshipping store with Claude AI"
+    },
+    {
+     "section": "Explanation/Benefit",
+     "line": "The secret is using AI to generate ad copy and visuals that tap into viral trends and psychological triggers, ensuring your products get seen by millions.",
+     "substance": "general",
+     "substance_evidence": "AI's ability to analyze trends and generate compelling content."
+    },
+    {
+     "section": "Example/Application",
+     "line": "For example, imagine using Claude AI to instantly create a free dropshipping store in 10 minutes, complete with product descriptions and email marketing campaigns using Omnisend.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "building a free dropshipping store with AI in 10 minutes, using AI for email marketing in Shopify with Omnisend and Claude"
+    },
+    {
+     "section": "Takeaway/Actionable Advice",
+     "line": "This isn't just about automation; it's about intelligence. AI helps you identify top dropshipping products and create ads that resonate, making your video content irresistible.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "top 10 dropshipping products to sell right now"
+    },
+    {
+     "section": "CTA",
+     "line": "What dropshipping product are you excited to sell next? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "none"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "jeremy",
+   "label": "OBS:R_TILBURY_RAT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Mark Tilbury. Its mechanism: problem identity -> tension -> reframe -> payoff."
+  },
+  "blueprint": {
+   "cta": "Follow for more insights on how AI can transform your online business!",
+   "script": [
+    {
+     "section": "Hook - Problem Identification",
+     "line": "Are you tired of the grind trying to make money online with old methods?",
+     "substance": "general",
+     "substance_evidence": "Common frustration with online money-making methods."
+    },
+    {
+     "section": "Tension Building",
+     "line": "It feels like you're constantly chasing trends, building complicated funnels, and still not seeing the results you want. It's draining, right?",
+     "substance": "general",
+     "substance_evidence": "The feeling of exhaustion and lack of results from traditional methods."
+    },
+    {
+     "section": "Reframe/Solution Introduction",
+     "line": "But what if I told you there's a simpler, smarter path to making significant income, especially through something like AI-powered dropshipping?",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building an AI dropshipping store"
+    },
+    {
+     "section": "Payoff/Benefit Explanation",
+     "line": "With the right AI tools, you can automate so much of the process, from creating viral ads to managing your store. Imagine building a $100K store or making $10K from just one video, all with less effort.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) how to make $10K off one video; (topic) building a $100K dropshipping store with Claude AI"
+    },
+    {
+     "section": "Call to Action",
+     "line": "Follow for more insights on how AI can transform your online business!",
+     "substance": "none",
+     "substance_evidence": "Call to action."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "jeremy",
+   "label": "OBS:R_GARY_A",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: unstated."
+  },
+  "blueprint": {
+   "cta": "Follow for more AI dropshipping strategies!",
+   "script": [
+    {
+     "section": "Hook - The Problem",
+     "line": "Dropshipping can feel like a maze, right? Finding winning products, creating ads that convert, it’s a ton of work, and often, it feels like you're not getting anywhere.",
+     "substance": "general",
+     "substance_evidence": "common dropshipping frustrations"
+    },
+    {
+     "section": "Introducing the Solution - AI Dropshipping",
+     "line": "But what if I told you there's a powerful tool that can handle most of that for you, simplifying the entire process? I'm talking about using AI to supercharge your dropshipping business.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building an AI dropshipping store"
+    },
+    {
+     "section": "Proof of Concept",
+     "line": "I've personally seen how AI can build a $100K dropshipping store. It's not just a concept; it's happening now, helping people generate significant income.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building a $100K dropshipping store with Claude AI"
+    },
+    {
+     "section": "How it Works (Overview)",
+     "line": "So, how does it work? AI tools can help you identify trending products, generate compelling product descriptions, and even create viral ad content in a fraction of the time.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) making viral AI ads for dropshipping"
+    },
+    {
+     "section": "Step 1: Niche Selection",
+     "line": "First, AI can help you pinpoint profitable niches. Instead of guessing, AI analyzes market data to show you exactly what's hot and what's not, helping you choose products with high demand.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) top 10 dropshipping products to sell right now"
+    },
+    {
+     "section": "Step 2: Product Sourcing",
+     "line": "Next, once you have your niche, AI assists in sourcing. It can suggest suppliers, compare prices, and even help with inventory management, streamlining your entire supply chain.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) dropshipping products to sell"
+    },
+    {
+     "section": "Step 3: AI Ad Creation",
+     "line": "Finally, and this is where AI truly shines, it can craft viral ads. From captivating headlines to engaging visuals, AI generates ad content that grabs attention and drives sales for your store.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) making viral AI ads for dropshipping"
+    },
+    {
+     "section": "Call to Action",
+     "line": "If you're ready to start your journey into AI-powered dropshipping, save this video for later and hit that follow button for more strategies.",
+     "substance": "none",
+     "substance_evidence": "call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "jeremy",
+   "label": "OBS:R_GARY_MISTAKE",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway. must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  },
+  "blueprint": {
+   "cta": "What's one strategic question you'd ask AI right now? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "You're making a HUGE mistake if you're trying to make $100K with AI dropshipping and only focusing on the AI.",
+     "substance": "general",
+     "substance_evidence": "common mistake in new tech adoption"
+    },
+    {
+     "section": "Why it fails",
+     "line": "The problem isn't the AI's capability; it's that you're treating it like a magic button, not a strategic partner. You're building stores, making ads, but without understanding the market or a solid product strategy, you're just generating noise.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building an AI dropshipping store; (topic) making viral AI ads for dropshipping"
+    },
+    {
+     "section": "Concede the human reason",
+     "line": "I get it. The promise of AI is speed and ease. It's tempting to think the tool does all the work. But that focus on the 'how fast' overshadows the 'what works' and 'why it works'.",
+     "substance": "general",
+     "substance_evidence": "human tendency to seek shortcuts"
+    },
+    {
+     "section": "One action",
+     "line": "Instead of just asking Claude AI to build you a store, ask it to help you identify top 10 dropshipping products for July 2026, then analyze market trends and create a unique selling proposition for one of them. Use AI for market intelligence, not just creation.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) top 10 dropshipping products for July 2026; (topic) making $100K with Claude AI dropshipping"
+    },
+    {
+     "section": "Compressed takeaway",
+     "line": "Leverage AI to sharpen your strategy, not replace it. That's how you actually hit that $100K mark.",
+     "substance": "general",
+     "substance_evidence": "summary of strategic advice"
+    },
+    {
+     "section": "CTA",
+     "line": "What's one strategic question you'd ask AI right now? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "engagement prompt"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "ryan",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "What's one tech trend you think people should avoid? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "If you're serious about tech, you need to STOP doing these things right now.",
+     "substance": "general",
+     "substance_evidence": "Common tech pitfalls."
+    },
+    {
+     "section": "Problem 1",
+     "line": "First, stop upgrading every single year just because something new came out. Look at the Surface Pro, for example. The incremental updates often don't justify the cost or the environmental impact.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Surface Pro"
+    },
+    {
+     "section": "Problem 2",
+     "line": "Second, you need to stop ignoring foundational tech for flashy new features. Things like understanding how AI actually works, not just what it can do, are far more valuable long term.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) AI"
+    },
+    {
+     "section": "Problem 3",
+     "line": "Third, stop getting swept up in every single hype cycle without critical thought. Remember the Sony Afeela? It was a cool concept, but the reality and market fit were never truly there.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Sony Afeela (Sony’s cancelled PlayStation car)"
+    },
+    {
+     "section": "Problem 4",
+     "line": "Fourth, stop overlooking the practical and the necessary for the bleeding edge. Sometimes, the most important innovations are the ones that quietly improve everyday life, like the new USPS Delivery Truck.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) new USPS Delivery Truck (Next Generation Delivery Vehicle)"
+    },
+    {
+     "section": "Problem 5",
+     "line": "And fifth, stop thinking that more power always equals more innovation. Sometimes, it's about accessibility and efficiency, like what GeForce Now does, bringing high-end gaming to more people without needing a new console.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) GeForce Now"
+    },
+    {
+     "section": "Conclusion",
+     "line": "So, before you jump on the next big thing, ask yourself: is this genuinely smart, or are you just falling into another tech trap?",
+     "substance": "none",
+     "substance_evidence": "Recap and question to audience."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "ryan",
+   "label": "OBS:R_TILBURY_RAT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by Mark Tilbury. Its mechanism: problem identity -> tension -> reframe -> payoff."
+  },
+  "blueprint": {
+   "cta": "What's the one tech frustration you wish you could eliminate? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook - Problem Identification",
+     "line": "Do you ever feel like your tech is just… fighting you? Constantly running into internet issues, or devices that just won't cooperate?",
+     "substance": "general",
+     "substance_evidence": "common internet issues"
+    },
+    {
+     "section": "Tension Build",
+     "line": "It's more than just an inconvenience. These little tech headaches can add up, costing you time, energy, and a surprising amount of frustration.",
+     "substance": "general",
+     "substance_evidence": "impact of tech issues"
+    },
+    {
+     "section": "Reframe the Problem",
+     "line": "But what if the problem isn't always the tech itself, or even your internet issues, but how we approach the entire ecosystem of our digital tools?",
+     "substance": "general",
+     "substance_evidence": "perspective shift on tech problems"
+    },
+    {
+     "section": "Payoff/Solution",
+     "line": "For example, consider how services like Xbox Game Pass or GeForce Now can completely change your gaming experience, letting you avoid local hardware limitations and simplify your setup.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Xbox Game Pass, GeForce Now"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's the one tech frustration you wish you could eliminate? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "call to action to audience"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "ryan",
+   "label": "OBS:R_GARY_A",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: unstated."
+  },
+  "blueprint": {
+   "cta": "What's the one feature that matters most to your gaming experience? Let me know in the comments.",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "This is the one thing you need to know about the new Xbox Series X.",
+     "substance": "none",
+     "substance_evidence": "Hook statement."
+    },
+    {
+     "section": "Problem/Pain Point Introduction",
+     "line": "Gaming consoles often promise big, but fall short on a core experience. It's frustrating when the reality doesn't match the hype.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) internet issues, general knowledge about tech and gaming frustration."
+    },
+    {
+     "section": "Solution Tease",
+     "line": "But the new Xbox Series X introduces a game-changing element that addresses this directly.",
+     "substance": "product_dna",
+     "substance_evidence": "New Xbox Series X."
+    },
+    {
+     "section": "Detail 1: Feature Explanation",
+     "line": "Specifically, its new architecture, combined with enhanced integration with Xbox Game Pass, completely redefines what 'instant play' means. You're spending less time waiting and more time in the action.",
+     "substance": "product_dna",
+     "substance_evidence": "(product) new Xbox Series X, (product) Xbox Game Pass."
+    },
+    {
+     "section": "Detail 2: Benefit Explanation",
+     "line": "This isn't just about faster loading; it's about a seamless, uninterrupted gaming flow. It keeps you immersed, making your play sessions more impactful and enjoyable from start to finish.",
+     "substance": "general",
+     "substance_evidence": "Benefit of seamless gaming."
+    },
+    {
+     "section": "Reaffirmation/Summary",
+     "line": "So, the one thing to remember about the new Xbox Series X is its commitment to an uncompromised, fluid gaming experience, powered by smart design and service integration.",
+     "substance": "product_dna",
+     "substance_evidence": "New Xbox Series X, Xbox Game Pass."
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's the one feature that matters most to your gaming experience? Let me know in the comments.",
+     "substance": "none",
+     "substance_evidence": "Engagement CTA."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "ryan",
+   "label": "OBS:R_GARY_MISTAKE",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway. must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  },
+  "blueprint": {
+   "cta": "What's the most surprising thing you've made AI do? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "If you're still thinking about AI models as just a fancy search engine, you're making a big mistake.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) AI"
+    },
+    {
+     "section": "Why it fails",
+     "line": "That mindset completely undervalues what AI can do. It's like using a supercar for grocery runs. You're missing out on the true power of these tools for creation, analysis, and automation that goes way beyond simple information retrieval.",
+     "substance": "general",
+     "substance_evidence": "AI capabilities are often underestimated."
+    },
+    {
+     "section": "Concede human reason",
+     "line": "I get it, early AI interaction felt a lot like glorified search. It was a natural way to frame it. Plus, the ease of asking a question and getting an answer is undeniably appealing and familiar.",
+     "substance": "general",
+     "substance_evidence": "Early AI use cases resembled search."
+    },
+    {
+     "section": "One action",
+     "line": "Instead, start thinking of AI as a creative partner or a personal assistant. Challenge yourself to ask it to generate ideas, draft content, or even help you structure complex projects. Focus on giving it tasks that require synthesis and creation, not just recall.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) AI"
+    },
+    {
+     "section": "Compressed takeaway",
+     "line": "Shift your mental model: AI isn't just for finding answers; it's for creating solutions.",
+     "substance": "general",
+     "substance_evidence": "Reframing AI's core utility."
+    },
+    {
+     "section": "CTA",
+     "line": "What's the most surprising thing you've made AI do? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "none"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "justice",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What's your go-to kitchen gadget? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook: Question",
+     "line": "Ever wonder how to get perfect, fluffy rice without fail?",
+     "substance": "general",
+     "substance_evidence": "Common cooking problem."
+    },
+    {
+     "section": "Direct Answer",
+     "line": "Meet the SMART Cooker that makes perfect rice, every single time.",
+     "substance": "product_dna",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Reasoning/Explanation",
+     "line": "This isn't just any rice cooker; it uses advanced technology to sense and adjust cooking parameters for ideal texture and taste.",
+     "substance": "product_dna",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Proof/Example",
+     "line": "Just add your rice and water, press a button, and watch it go to work. The results speak for themselves.",
+     "substance": "product_dna",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Benefit Amplification",
+     "line": "It takes the guesswork out of cooking and ensures you have delicious, perfectly cooked rice with zero effort.",
+     "substance": "product_dna",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's your go-to kitchen gadget? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Engagement CTA."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "justice",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "What's one piece of tech advice you actually ignore? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Stop listening to everyone who tells you to fill your home with a million smart devices. It's often the opposite of smart.",
+     "substance": "general",
+     "substance_evidence": "contrarian advice"
+    },
+    {
+     "section": "Advice 1 Elaboration",
+     "line": "Think about it: do you really need a smart device for every single chore? Sometimes, a simple, effective tool, like a smart cooker that truly makes perfect rice every time, is far more valuable than a dozen gadgets that just add complexity.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Advice 2",
+     "line": "Secondly, ignore the pressure to buy bulky, single-purpose appliances that take up all your counter space.",
+     "substance": "general",
+     "substance_evidence": "common kitchen advice"
+    },
+    {
+     "section": "Advice 2 Context",
+     "line": "Instead, look for compact, multi-functional tools. For example, a compact juicer that makes healthy eating easy and tucks away neatly is a game-changer, not another space hog.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "COMPACT Juicer that Makes Eating Healthy Easy"
+    },
+    {
+     "section": "Advice 3",
+     "line": "And finally, don't fall for every 'revolutionary' health tech product that promises to change your life overnight.",
+     "substance": "general",
+     "substance_evidence": "common marketing claims"
+    },
+    {
+     "section": "Advice 3 Elaboration",
+     "line": "Many are just fads. Focus on innovations with clear, practical benefits, like sleep earbuds with a snore detector that actually help you get better rest, or a smart faucet that clearly shows your water quality. That's real impact.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Sleep Earbuds that Have a SNORE DETECTOR; Smart FAUCET that Shows Your Water Quality"
+    },
+    {
+     "section": "Conclusion",
+     "line": "By ignoring these common pitfalls, you can actually invest in products that truly simplify your life and add genuine value, not just clutter.",
+     "substance": "none",
+     "substance_evidence": "summary of advice"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "justice",
+   "label": "OBS:R_TILBURY_RAT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Mark Tilbury. Its mechanism: problem identity -> tension -> reframe -> payoff."
+  },
+  "blueprint": {
+   "cta": "What everyday problem do YOU wish a smart product could solve? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Ever felt like there's a smarter way to do something, but you just can't quite put your finger on it?",
+     "substance": "general",
+     "substance_evidence": "common human experience"
+    },
+    {
+     "section": "Problem Elaboration",
+     "line": "We've all been there: that annoying moment when you need a perfectly cooked meal but juggling different appliances or guessing timings just leads to stress. It's frustrating when 'healthy eating' feels like a full-time job of prep!",
+     "substance": "general",
+     "substance_evidence": "common cooking frustrations"
+    },
+    {
+     "section": "Introducing Solution",
+     "line": "But what if one device could simplify all of that? Meet the SMART Cooker that Makes Perfect Rice Every Time, a true game-changer for effortless healthy eating.",
+     "substance": "product_dna",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Feature 1 Demo",
+     "line": "This isn't just a rice cooker; it's an intelligent system. It precisely measures and cooks, guaranteeing perfect rice every single time. No more mushy messes or uncooked grains!",
+     "substance": "product_dna",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Feature 2 Demo",
+     "line": "Beyond rice, it handles other grains, steams vegetables, and even acts as a slow cooker, streamlining your entire meal prep process. It really makes eating healthy easy and convenient.",
+     "substance": "product_dna",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time, COMPACT Juicer that Makes Eating Healthy Easy"
+    },
+    {
+     "section": "Conclusion",
+     "line": "So, that daily struggle of inconsistent cooking and complex meal prep? It's completely reframed. This smart cooker is designed to bring simplicity and consistency back into your kitchen, making healthy eating a breeze.",
+     "substance": "general",
+     "substance_evidence": "summary of product benefits"
+    },
+    {
+     "section": "CTA",
+     "line": "What everyday problem do YOU wish a smart product could solve? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "justice",
+   "label": "OBS:R_GARY_A",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: unstated."
+  },
+  "blueprint": {
+   "cta": "Which of these smart products blew your mind? Tell me in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Prepare to have your mind blown! These are some of the most surprising and innovative smart products I've seen.",
+     "substance": "none",
+     "substance_evidence": "Introduction to theme"
+    },
+    {
+     "section": "Product 1",
+     "line": "First up, imagine a grill that adapts to your needs. This MODULAR grill lets you customize your cooking experience every single time.",
+     "substance": "product_dna",
+     "substance_evidence": "MODULAR Grill"
+    },
+    {
+     "section": "Product 1 Detail",
+     "line": "It's not just a grill; it's a versatile cooking station. You can swap out components to grill, smoke, or even use a griddle, making outdoor cooking incredibly flexible.",
+     "substance": "product_dna",
+     "substance_evidence": "MODULAR Grill"
+    },
+    {
+     "section": "Product 2",
+     "line": "Next, we have a device that recharges batteries like a vending machine. Drop in your dead batteries, and it spits out fully charged ones – instantly!",
+     "substance": "product_dna",
+     "substance_evidence": "RECHARGES Batteries Like A Vending Machine"
+    },
+    {
+     "section": "Product 2 Detail",
+     "line": "No more waiting for hours or dealing with multiple chargers. This smart solution keeps you powered up with minimal fuss, perfect for all your gadgets.",
+     "substance": "product_dna",
+     "substance_evidence": "RECHARGES Batteries Like A Vending Machine"
+    },
+    {
+     "section": "Product 3",
+     "line": "Ever wonder about your water quality? This smart FAUCET actually shows you in real-time. It's like having a water lab built right into your sink.",
+     "substance": "product_dna",
+     "substance_evidence": "Smart FAUCET that Shows Your Water Quality"
+    },
+    {
+     "section": "Product 3 Detail",
+     "line": "With a glance, you can see if your water is clean and safe. It brings peace of mind and makes sure you're always consuming the best quality water.",
+     "substance": "product_dna",
+     "substance_evidence": "Smart FAUCET that Shows Your Water Quality"
+    },
+    {
+     "section": "Product 4",
+     "line": "Transform your backyard into the ultimate movie theater with this projector setup! Imagine watching your favorite films under the stars on a giant screen.",
+     "substance": "product_dna",
+     "substance_evidence": "ULTIMATE Backyard Movie Theater Projector Setup"
+    },
+    {
+     "section": "Product 4 Detail",
+     "line": "This isn't just any projector; it’s designed for an immersive outdoor experience. Think huge visuals and powerful sound, all in the comfort of your own space.",
+     "substance": "product_dna",
+     "substance_evidence": "ULTIMATE Backyard Movie Theater Projector Setup"
+    },
+    {
+     "section": "Product 5",
+     "line": "Traveling just got a whole lot easier with this suitcase that FOLLOWS you around the airport. No more dragging heavy luggage!",
+     "substance": "product_dna",
+     "substance_evidence": "Suitcase that FOLLOWS You Around The Airport"
+    },
+    {
+     "section": "Product 5 Detail",
+     "line": "It uses advanced tech to keep up with you, navigating crowds and obstacles effortlessly. This is the future of stress-free travel, making your journey smoother.",
+     "substance": "product_dna",
+     "substance_evidence": "Suitcase that FOLLOWS You Around The Airport"
+    },
+    {
+     "section": "Outro",
+     "line": "These smart products are truly next-level! Which one blew your mind the most? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "kallaway",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "What do you think of these advancements? Let me know in the comments and follow for more AI insights!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are 3 groundbreaking AI developments that are changing the game right now!",
+     "substance": "none",
+     "substance_evidence": "introduces list format"
+    },
+    {
+     "section": "Item 1",
+     "line": "First, let's talk about Seedance 2 on OpenArt, an impressive AI video platform that’s making waves for its ability to create stunning visuals.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Seedance 2 on OpenArt, an impressive AI video platform"
+    },
+    {
+     "section": "Item 2",
+     "line": "Second, Google's Gemini Omni is changing how creators and marketers work, offering powerful AI assistance for everything from content generation to strategic planning.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Gemini Omni for creators and marketers"
+    },
+    {
+     "section": "Item 3",
+     "line": "And third, Meta Ray-Ban Display update is pushing the boundaries of wearable tech, integrating advanced AI directly into our daily lives through smart glasses.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Meta Ray-Ban Display update"
+    },
+    {
+     "section": "CTA",
+     "line": "What do you think of these advancements? Let me know in the comments and follow for more AI insights!",
+     "substance": "none",
+     "substance_evidence": "engages audience"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "kallaway",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What kind of AI-generated video would you create first? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook: Question + Answer",
+     "line": "Can AI truly change video creation? Yes, and it's happening right now with impressive platforms like Seedance 2 on OpenArt.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Seedance 2 on OpenArt, an impressive AI video platform"
+    },
+    {
+     "section": "Reasoning",
+     "line": "This isn't just about simple edits; Seedance 2, especially with OpenArt's Wonder plan, offers unlimited generations, essentially giving you an infinite creative canvas.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) OpenArt's Wonder plan for unlimited Seedance 2.5 generations"
+    },
+    {
+     "section": "Proof/Example",
+     "line": "Imagine going from a text prompt to a fully realized video sequence, complete with dynamic motion and complex scenes, all in a fraction of the time traditional methods take.",
+     "substance": "general",
+     "substance_evidence": "AI video generation process"
+    },
+    {
+     "section": "Future Implications/Next Step",
+     "line": "This kind of power, seen with tools like LTX-2.3 as well, is poised to democratize high-quality video production, forever changing how creators and marketers bring their visions to life.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) LTX-2.3 and its potential to change the video world"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "kallaway",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "What are your thoughts on AI's biggest untapped potential? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook - Introduce common misconception",
+     "line": "If you're still thinking about AI as just a tool for basic automation or content generation, you're making a huge mistake.",
+     "substance": "general",
+     "substance_evidence": "Common public perception of AI."
+    },
+    {
+     "section": "Problem - Explain why it's a mistake",
+     "line": "The real power of AI isn't in replacing simple tasks, it's in completely rethinking complex systems and generating breakthroughs we couldn't imagine before.",
+     "substance": "general",
+     "substance_evidence": "The true potential of AI."
+    },
+    {
+     "section": "Solution - Offer a better perspective",
+     "line": "Instead of just automating, we should be looking at AI as a co-creator, an intelligence that can identify patterns and solve problems on a scale beyond human capacity.",
+     "substance": "general",
+     "substance_evidence": "AI as a problem-solver and co-creator."
+    },
+    {
+     "section": "Proof - Provide concrete examples",
+     "line": "Think about Seedance 2 on OpenArt, or how ASML is leveraging AI to innovate chip manufacturing. These aren't just tools; they're foundational shifts in how industries operate.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Seedance 2 on OpenArt, an impressive AI video platform; ASML"
+    },
+    {
+     "section": "Impact - Future implications",
+     "line": "The companies and creators who grasp this new paradigm, seeing AI as an engine for true innovation rather than just a task-doer, are the ones who will truly lead the next wave of progress.",
+     "substance": "general",
+     "substance_evidence": "Future impact of AI adoption."
+    },
+    {
+     "section": "CTA",
+     "line": "What are your thoughts on AI's biggest untapped potential? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "none"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "kallaway",
+   "label": "OBS:R_TILBURY_RAT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Mark Tilbury. Its mechanism: problem identity -> tension -> reframe -> payoff."
+  },
+  "blueprint": {
+   "cta": "What new video ideas are you going to try with AI? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Stop scrolling! Are you still thinking about AI video the old way? It's costing you big time.",
+     "substance": "general",
+     "substance_evidence": "Common misconception about AI video capabilities."
+    },
+    {
+     "section": "Tension",
+     "line": "Many still view AI video as a niche tool, or just for simple edits, but that perspective is massively outdated with what's happening now.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "AI will change how people watch sports, how AI will change video creation, easy workflow to create realistic UGC avatar-driven content at scale."
+    },
+    {
+     "section": "Reframe",
+     "line": "What if I told you that platforms like Seedance 2 on OpenArt, especially with the Wonder plan for unlimited generations, are completely rewriting the rules? Or that LTX-2.3 is poised to change the video world entirely?",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Seedance 2 on OpenArt, an impressive AI video platform; OpenArt's Wonder plan for unlimited Seedance 2.5 generations; LTX-2.3 and its potential to change the video world."
+    },
+    {
+     "section": "Payoff",
+     "line": "These tools aren't just for creators; Gemini Omni is also revolutionizing how marketers and businesses approach video content. It's about leveraging AI to unlock entirely new creative possibilities and reach audiences in unprecedented ways.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Gemini Omni for creators and marketers."
+    },
+    {
+     "section": "CTA",
+     "line": "What new video ideas are you going to try with AI? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "brett",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What custom smart home projects have you tackled? Let me know in the comments, and don't forget to follow for more DIY tech.",
+   "script": [
+    {
+     "section": "Hook - Result first",
+     "line": "This DIY project solved my biggest smart home frustration with a simple, custom build.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology, (product) HomeKit"
+    },
+    {
+     "section": "Problem/Pain Point",
+     "line": "You know those moments when your smart home just isn't smart enough? I needed something specific that didn't exist off-the-shelf.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology"
+    },
+    {
+     "section": "Introducing the solution",
+     "line": "So I built it myself, using an Arduino and integrating it seamlessly with HomeKit.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Arduino, (product) HomeKit"
+    },
+    {
+     "section": "How it works (simplified)",
+     "line": "It’s all about leveraging open-source hardware and a bit of custom code to create exactly what you need.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) engineering, (topic) DIY projects, (product) Arduino"
+    },
+    {
+     "section": "Creator's input/Unique Angle",
+     "line": "My approach focuses on clean engineering principles and making sure it integrates perfectly with existing smart home ecosystems like HomeKit.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) engineering, (topic) smart home technology, (product) HomeKit"
+    },
+    {
+     "section": "Practical Application/Proof",
+     "line": "This isn't just a prototype; it's an active part of my daily routine, making things smoother and more intuitive.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What custom smart home projects have you tackled? Let me know in the comments, and don't forget to follow for more DIY tech.",
+     "substance": "none",
+     "substance_evidence": "Call to Action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "brett",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "What are your favorite custom smart home projects? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "If you're a fan of DIY tech and maker culture, you're always looking for ways to enhance your smart home. Today, I'm sharing 3 items that will make your smart home better.",
+     "substance": "general",
+     "substance_evidence": "Introduction to smart home customization."
+    },
+    {
+     "section": "Item 1: Arduino",
+     "line": "The first item is something you probably already know: an Arduino board. For custom smart home solutions, Arduino lets you build exactly what you need, from simple sensors to complex automation, giving you unparalleled control.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Arduino"
+    },
+    {
+     "section": "Item 2: HomeKit",
+     "line": "Moving on to the second item, HomeKit. If you’re building an Apple-centric smart home, HomeKit offers robust, secure, and seamless integration. It’s a powerful framework for connecting all your smart devices and automating routines, making your life easier.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) HomeKit"
+    },
+    {
+     "section": "Rehook",
+     "line": "So far we've covered two key items, but I've got one more that truly stands out for unique smart home aesthetics.",
+     "substance": "none",
+     "substance_evidence": "Rehooking the viewer to the remaining item."
+    },
+    {
+     "section": "Item 3: Analogue Displays",
+     "line": "The third item is analogue displays. Forget glowing screens. Integrating analogue displays into your smart home, like custom-built Nixie tube clocks or segment displays, adds a unique retro-futuristic aesthetic. It's perfect for showing data in a visually engaging and distinct way that stands out from typical smart home tech.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) analogue displays, (topic) decor"
+    },
+    {
+     "section": "Summary",
+     "line": "These three items – Arduino, HomeKit, and analogue displays – empower you to move beyond off-the-shelf solutions, allowing you to truly engineer a smart home that reflects your personal style and technical interests.",
+     "substance": "general",
+     "substance_evidence": "Summarizing the benefits of custom smart home solutions."
+    },
+    {
+     "section": "CTA",
+     "line": "What are your favorite custom smart home projects? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action for engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "brett",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What custom smart home project are you dreaming of building? Let me know in the comments below!",
+   "script": [
+    {
+     "section": "Hook - Question",
+     "line": "Ever wondered if your DIY smart home creations can actually talk to your existing HomeKit or Alexa setup?",
+     "substance": "general",
+     "substance_evidence": "Common user question about smart home integration."
+    },
+    {
+     "section": "Direct Answer",
+     "line": "The short answer is yes, absolutely! With the right approach, bridging your custom projects with platforms like HomeKit is not only possible but incredibly rewarding.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology, (product) Arduino, (product) HomeKit, (product) Alexa"
+    },
+    {
+     "section": "Reasoning/Explanation",
+     "line": "It all comes down to understanding the communication protocols and APIs. By leveraging microcontrollers like Arduino, you can essentially translate your custom sensor data or actuator commands into a language HomeKit or Alexa understands, often through a bridge or emulator.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) engineering, (product) Arduino, (product) HomeKit, (product) Alexa, (topic) maker culture, (topic) hacker culture"
+    },
+    {
+     "section": "Application/Benefit",
+     "line": "This means you can build anything from a custom ambient light sensor that adjusts your smart bulbs, to an analogue display integrated into your decor that shows real-time weather, all controllable with your voice or through your smart home app.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology, (topic) DIY projects, (topic) decor, (topic) analogue displays"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What custom smart home project are you dreaming of building? Let me know in the comments below!",
+     "substance": "none",
+     "substance_evidence": "Call to action for engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "brett",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repA",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "What's one smart home mistake you've learned to avoid? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Stop making these smart home mistakes that everyone tells you to do.",
+     "substance": "general",
+     "substance_evidence": "contrarian hook type"
+    },
+    {
+     "section": "Mistake 1 - Over-automation",
+     "line": "First, blindly automating everything. Just because you can automate it, doesn't mean you should.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology"
+    },
+    {
+     "section": "Why it's a mistake",
+     "line": "Too many triggers lead to a confusing, often unreliable system that feels more like a chore than a convenience.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology"
+    },
+    {
+     "section": "Solution 1 - Strategic automation",
+     "line": "Instead, be strategic. Focus on automations that truly simplify your life, like lights that react to presence in common areas, not every single door open.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology"
+    },
+    {
+     "section": "Mistake 2 - Ignoring analogue integration",
+     "line": "Second, neglecting the beauty and reliability of analogue displays and controls.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) analogue displays"
+    },
+    {
+     "section": "Why it's a mistake",
+     "line": "While digital is cool, sometimes a physical button or a glanceable clock is just better. It's often more intuitive and doesn't rely on network connectivity.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) analogue displays"
+    },
+    {
+     "section": "Solution 2 - Embrace hybrid systems",
+     "line": "Integrate them! Think custom Arduino projects driving classic gauges, or HomeKit controlling a subtle Nixie tube display.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Arduino, (product) HomeKit, (topic) analogue displays"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's one smart home mistake you've learned to avoid? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "engagement CTA"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "johnny",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "Which Pixel do you think Google secretly wants us to avoid? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Google makes some incredible phones, but there are a few Pixel models they really don't want you to buy.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) phones Google doesn't want you to buy"
+    },
+    {
+     "section": "Introduce the technique",
+     "line": "The key is to look at their initial release strategy and subsequent support – specifically for the Google Pixel 1. It’s a good example of how to tell if a Pixel will be a problem.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Google Pixel 1, (topic) phones Google doesn't want you to buy"
+    },
+    {
+     "section": "Explain how the technique works",
+     "line": "While the Google Pixel 1 was innovative, its long-term software support and hardware longevity quickly became issues. This trend of early obsolescence is what you need to watch for. If Google quietly moves on from a model fast, it's a red flag.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Google Pixel 1, (topic) phones Google doesn't want you to buy"
+    },
+    {
+     "section": "Key takeaway/implication",
+     "line": "So, before you jump on a deal, research that specific Pixel's update history and community feedback. A low price could signal it's one of the models Google has silently given up on.",
+     "substance": "general",
+     "substance_evidence": "advice for researching tech purchases"
+    },
+    {
+     "section": "CTA",
+     "line": "Which Pixel do you think Google secretly wants us to avoid? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "johnny",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "What other phones do you think Google secretly doesn't want us to buy? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are 3 phones Google doesn't want you to buy, and they might just surprise you!",
+     "substance": "none",
+     "substance_evidence": "Video hook"
+    },
+    {
+     "section": "Item 1 Introduction",
+     "line": "First up, you might be surprised to see the Google Pixel 1 on this list.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Google Pixel 1, (topic) phones Google doesn't want you to buy"
+    },
+    {
+     "section": "Item 1 Detail",
+     "line": "Even though it’s a Google phone, its original spirit of openness and moddability is something current Google might want to downplay. It was a true developer's dream.",
+     "substance": "general",
+     "substance_evidence": "Original Pixel's reputation for openness/moddability"
+    },
+    {
+     "section": "Item 2 Introduction",
+     "line": "The second phone Google doesn't want you to consider is actually the Samsung Z Fold 8.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Samsung Z Fold 8, (topic) phones Google doesn't want you to buy"
+    },
+    {
+     "section": "Item 2 Detail",
+     "line": "With its groundbreaking foldable screen and advanced multitasking, it pushes the boundaries far beyond what Google often dictates for Android. It's a vision for the future Google didn't fully lead.",
+     "substance": "product_dna",
+     "substance_evidence": "Samsung Z Fold 8's foldable screen and multitasking capabilities"
+    },
+    {
+     "section": "Re-hook",
+     "line": "So far, we’ve covered two phones Google probably doesn't want you thinking about. Ready for the last one?",
+     "substance": "none",
+     "substance_evidence": "Mid-video re-hook"
+    },
+    {
+     "section": "Item 3 Introduction",
+     "line": "And finally, the third phone Google might secretly wish never existed: the Xiaomi 17 Pro Max.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Xiaomi 17 Pro Max, (topic) phones Google doesn't want you to buy"
+    },
+    {
+     "section": "Item 3 Detail",
+     "line": "This phone often comes with an aggressive feature set and price point that directly challenges Google's preferred hardware partners, making it a competitor they simply can't ignore.",
+     "substance": "general",
+     "substance_evidence": "Xiaomi's competitive feature set and price point in the market"
+    },
+    {
+     "section": "CTA",
+     "line": "What other phones do you think Google secretly doesn't want us to buy? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Engagement CTA"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "johnny",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What do you think? Drop your thoughts on the iPhone 16 in the comments below!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Is the iPhone 16 actually worth buying in 2024?",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) iPhone 16"
+    },
+    {
+     "section": "Direct Answer",
+     "line": "And the short answer is, probably not for most people.",
+     "substance": "general",
+     "substance_evidence": "common consumer perspective"
+    },
+    {
+     "section": "Reasoning",
+     "line": "While it's a solid phone, the upgrades from previous models just aren't significant enough to justify the price jump for the average user.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) iPhone 14 Pro Max; (topic) phones Google doesn't want you to buy (implied upgrade cycle)"
+    },
+    {
+     "section": "Example",
+     "line": "For example, if you're coming from an iPhone 14 Pro Max, you'll find very little that feels truly 'new' or groundbreaking.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) iPhone 14 Pro Max, (product) iPhone 16"
+    },
+    {
+     "section": "Broader Conclusion",
+     "line": "It's more of an iterative update than a revolutionary one, making it a tough sell when older, still very capable iPhones are more affordable.",
+     "substance": "general",
+     "substance_evidence": "market trends for smartphone upgrades"
+    },
+    {
+     "section": "Summary & Reiteration",
+     "line": "So, unless you absolutely need the latest and greatest, you might be better off saving your money this year.",
+     "substance": "none",
+     "substance_evidence": "summary of previous points"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What do you think? Drop your thoughts on the iPhone 16 in the comments below!",
+     "substance": "none",
+     "substance_evidence": "engagement prompt"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "johnny",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "What other phones do you think Google secretly wishes would disappear? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are 3 phones Google absolutely does not want you to buy.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) phones Google doesn't want you to buy"
+    },
+    {
+     "section": "Item 1",
+     "line": "The first phone Google doesn't want you to buy is the original Google Pixel 1.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Google Pixel 1"
+    },
+    {
+     "section": "Item 2",
+     "line": "The second phone Google doesn't want you to buy is the Samsung A80.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Samsung A80"
+    },
+    {
+     "section": "Item 3",
+     "line": "And the third phone Google doesn't want you to buy, believe it or not, is the Samsung Z Fold 8.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Samsung Z Fold 8"
+    },
+    {
+     "section": "CTA",
+     "line": "What other phones do you think Google secretly wishes would disappear? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "nathan",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What are your favorite iPad productivity tricks? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "You wouldn't believe how much I get done with just my iPad. It's not just for watching videos.",
+     "substance": "general",
+     "substance_evidence": "Common perception vs. actual potential of an iPad."
+    },
+    {
+     "section": "Technique Introduction",
+     "line": "The key is leveraging its multitasking capabilities to create a focused workspace for any task.",
+     "substance": "general",
+     "substance_evidence": "iPad's built-in multitasking features."
+    },
+    {
+     "section": "Explanation of Benefits",
+     "line": "This allows you to reference information on one side while actively working on a project on the other, minimizing distractions and saving time.",
+     "substance": "general",
+     "substance_evidence": "Benefits of focused multitasking."
+    },
+    {
+     "section": "Specific Application Example",
+     "line": "For example, when I'm brainstorming a new 3D printing project, I'll have my research document open on one side and a sketching app on the other, allowing me to quickly iterate ideas.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) 3D printing"
+    },
+    {
+     "section": "Broader Takeaway",
+     "line": "It's about creating an environment where your digital tools serve your focus, not distract from it, no matter what your work looks like.",
+     "substance": "general",
+     "substance_evidence": "General principle of digital productivity."
+    },
+    {
+     "section": "CTA",
+     "line": "What are your favorite iPad productivity tricks? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "nathan",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "Which of these items do you think has the biggest potential to change our daily lives? Let me know in the comments below!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "These are the 3 items that have completely changed my perspective on how I interact with technology every single day.",
+     "substance": "none",
+     "substance_evidence": "Hook promise."
+    },
+    {
+     "section": "Item 1",
+     "line": "First up, this 3D printed key. It might look simple, but the fact that I can essentially create a functional, custom part like this at home, whenever I need it, is mind-blowing. It opens up so many possibilities beyond just keys.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) 3D Printed Key, (topic) 3D printing"
+    },
+    {
+     "section": "Item 2",
+     "line": "Next, these Meta Glasses. They're not just about augmented reality; it's the seamless integration of tech into something you wear every day without it feeling intrusive. The potential for these to change how we capture and share our lives is huge.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Meta Glasses"
+    },
+    {
+     "section": "Rehook",
+     "line": "You've seen two, but the last item on this list is perhaps the most impactful for how I navigate my daily life.",
+     "substance": "none",
+     "substance_evidence": "Rehook after item 2."
+    },
+    {
+     "section": "Item 3",
+     "line": "And finally, the third item: this electric bike. It’s not just a mode of transport; it represents a shift in personal mobility and urban living. The efficiency and freedom it offers are unparalleled, making mundane commutes genuinely enjoyable.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) electric bike"
+    },
+    {
+     "section": "CTA",
+     "line": "Which of these items do you think has the biggest potential to change our daily lives? Let me know in the comments below!",
+     "substance": "none",
+     "substance_evidence": "Engagement CTA."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "nathan",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What's your go-to device for capturing moments?",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Can an iPhone accessory actually replace your dedicated camera?",
+     "substance": "general",
+     "substance_evidence": "common tech question"
+    },
+    {
+     "section": "Direct Answer",
+     "line": "The short answer is no, not entirely.",
+     "substance": "general",
+     "substance_evidence": "direct answer"
+    },
+    {
+     "section": "Reasoning",
+     "line": "While some iPhone accessories enhance capabilities, they can't replicate a camera's larger sensor, optical zoom, and dedicated image processing. Things like dedicated lenses and advanced manual controls offer a level of creative freedom that phone accessories just can't quite get to.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "iPhone accessory; camera"
+    },
+    {
+     "section": "Elaboration",
+     "line": "For quick snaps or casual vlogging, an iPhone with a good accessory is fantastic. But when you need professional-grade depth of field, low-light performance, or super-sharp long-distance shots, that's where a true camera shines.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "iPhone accessory; camera"
+    },
+    {
+     "section": "Conclusion",
+     "line": "So, while an iPhone accessory can significantly upgrade your mobile photography, it's more about enhancing your phone's capabilities than fully replacing a dedicated camera's specialized strengths.",
+     "substance": "general",
+     "substance_evidence": "summary and conclusion"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "nathan",
+   "label": "OBS:R_GARY_MISTAKE",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway. must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  },
+  "blueprint": {
+   "cta": "What's one thing you're going to create and post today? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "You're making this one mistake that's stopping you from growing as a creator.",
+     "substance": "general",
+     "substance_evidence": "Common creator problem"
+    },
+    {
+     "section": "Why it fails",
+     "line": "It's overthinking every single detail. You spend hours planning, scripting, and editing for perfection, and in the end, you just… don't post.",
+     "substance": "general",
+     "substance_evidence": "Common creator problem"
+    },
+    {
+     "section": "Human reason",
+     "line": "And I get it. We all want our work to be amazing, to stand out. It feels risky to put something out there that isn't absolutely perfect.",
+     "substance": "general",
+     "substance_evidence": "Human psychology"
+    },
+    {
+     "section": "Actionable step",
+     "line": "But the truth is, done is better than perfect. Your one action is to pick a simple idea right now, record it, and hit post within the next hour.",
+     "substance": "general",
+     "substance_evidence": "Actionable advice for creators"
+    },
+    {
+     "section": "Takeaway",
+     "line": "Stop waiting for perfect. Start creating consistently. That's how you actually grow.",
+     "substance": "general",
+     "substance_evidence": "Summary of advice"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "carter",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What's your favorite tech for better video? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "You won't believe how simple it is to get this incredibly smooth video footage.",
+     "substance": "general",
+     "substance_evidence": "Common problem and desired outcome"
+    },
+    {
+     "section": "Technique",
+     "line": "The secret is to use a simple gimbal, and here's how you set it up in under 30 seconds. First, mount your phone securely. Then, balance it carefully for smooth movement. Finally, power it on and select your shooting mode.",
+     "substance": "general",
+     "substance_evidence": "Gimbal setup steps"
+    },
+    {
+     "section": "Explanation",
+     "line": "This isn't just about stabilization; it's about eliminating micro-jitters that make your footage look unprofessional. The gimbal isolates your phone from your hand's natural movements, giving you cinematic quality without needing a huge rig.",
+     "substance": "general",
+     "substance_evidence": "Technical explanation of gimbals"
+    },
+    {
+     "section": "Takeaway",
+     "line": "Whether you're capturing travel vlogs, product shots, or just everyday moments, a gimbal elevates your content dramatically. It's a small investment that makes a massive difference in your video quality.",
+     "substance": "general",
+     "substance_evidence": "Broad benefits of using gimbals"
+    },
+    {
+     "section": "CTA",
+     "line": "What's your favorite tech for better video? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "carter",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "Which of these 3 tech items impressed you the most? Let me know in the comments below!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are 3 tech items that are actually worth your attention!",
+     "substance": "none",
+     "substance_evidence": "None."
+    },
+    {
+     "section": "Item 1",
+     "line": "First up, have you seen this Chinese laptop that folds into a full monitor? It's incredible how much display you get in such a portable package.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Chinese laptop that folds into a full monitor."
+    },
+    {
+     "section": "Item 2",
+     "line": "The second item is this wild cardboard PC. It's not just a novelty; it actually functions as a legitimate computer, showing what's possible with unconventional builds.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "cardboard PC."
+    },
+    {
+     "section": "Rehook",
+     "line": "Still with me? We've got one more amazing tech item to show you!",
+     "substance": "none",
+     "substance_evidence": "None."
+    },
+    {
+     "section": "Item 3",
+     "line": "And for the third item, check out this $250 custom 'creamy' keyboard. The sound and feel are just next level, a true upgrade for any setup.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "$250 custom 'creamy' keyboard."
+    },
+    {
+     "section": "Conclusion",
+     "line": "Which of these 3 tech items impressed you the most? Let me know in the comments below!",
+     "substance": "none",
+     "substance_evidence": "None."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "carter",
+   "label": "OBS:R_GARY_A",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: unstated."
+  },
+  "blueprint": {
+   "cta": "What are your thoughts on the new iPhone? Let me know in the comments and follow for more tech content!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Alright, so the new iPhone is out, and everyone's talking about it. But I'm gonna give you 5 solid reasons why I'm personally not going to buy it.",
+     "substance": "none",
+     "substance_evidence": "introduction"
+    },
+    {
+     "section": "Reason 1",
+     "line": "First up, innovation. Year after year, it feels like the big leaps just aren't there anymore. It's more like incremental updates, which for me, isn't enough to justify the price.",
+     "substance": "general",
+     "substance_evidence": "general observation about tech innovation"
+    },
+    {
+     "section": "Reason 2",
+     "line": "My second reason is the price point. These phones are getting incredibly expensive, and the value just doesn't align with what I need. I'd rather put that money towards other tech like a custom keyboard or a cool PC build.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "$250 custom 'creamy' keyboard, $2,000 all white PC build from Center"
+    },
+    {
+     "section": "Reason 3",
+     "line": "Third, my current phone is perfectly fine. It does everything I need it to do. It's not slow, the camera's still great. There's just no compelling reason to switch right now.",
+     "substance": "general",
+     "substance_evidence": "personal satisfaction with current device"
+    },
+    {
+     "section": "Rehook",
+     "line": "Still with me? We've covered three reasons why I'm skipping the new iPhone. You might agree, you might not, but let's get into the last two!",
+     "substance": "none",
+     "substance_evidence": "re-engagement"
+    },
+    {
+     "section": "Reason 4",
+     "line": "Fourth, my tech interests are elsewhere. I'm more focused on things like drone tech, building custom PCs, or even talking about Tesla vehicles. The iPhone just isn't grabbing my attention like those do.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "drone bans by the US government, DJI, Tesla vehicles"
+    },
+    {
+     "section": "Reason 5",
+     "line": "And finally, my fifth reason, some of the ethical concerns that have come up with Apple's practices in the past. It makes me hesitate to continuously support them without significant change.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Apple's history of unethical labor (already covered, but the concern is a general point)"
+    },
+    {
+     "section": "CTA",
+     "line": "So, those are my 5 reasons for not getting the new iPhone. Do you agree or disagree? Let me know in the comments and don't forget to follow for more tech takes!",
+     "substance": "none",
+     "substance_evidence": "call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "carter",
+   "label": "OBS:R_GARY_MISTAKE",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway. must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  },
+  "blueprint": {
+   "cta": "What's one way you make your tech content more relatable? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Are you a tech content creator making this common mistake?",
+     "substance": "general",
+     "substance_evidence": "Common mistake in content creation"
+    },
+    {
+     "section": "Problem Explained",
+     "line": "Focusing only on raw specs and benchmarks might show your expertise, but it often leaves your audience disconnected, especially if they're not hardcore enthusiasts. It's like speaking a different language.",
+     "substance": "general",
+     "substance_evidence": "Impact of technical jargon on audience engagement"
+    },
+    {
+     "section": "Human Reason",
+     "line": "It's natural to want to prove your technical knowledge, and the numbers are right there, easy to compare. But that desire can blind us to what most people actually care about.",
+     "substance": "general",
+     "substance_evidence": "Psychology behind content choices"
+    },
+    {
+     "section": "Actionable Solution",
+     "line": "Instead, connect the tech to its real-world impact. Talk about how the iPhone's Action Button actually improves daily life, or how a specific PC build transforms a user's workflow, not just its frame rate.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) iPhone's Action Button, (product) $2,000 all white PC build from Center"
+    },
+    {
+     "section": "Takeaway",
+     "line": "Make your tech content relatable, not just technical, and watch your audience grow.",
+     "substance": "general",
+     "substance_evidence": "Summary of content strategy"
+    },
+    {
+     "section": "CTA",
+     "line": "What's one way you make your tech content more relatable? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "jeremy",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What's the craziest thing you've seen AI create? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "This is how I’m making $10K off one video, and it all starts with leveraging AI to create viral ads for dropshipping.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "how to make $10K off one video, making viral AI ads for dropshipping"
+    },
+    {
+     "section": "Technique Introduction",
+     "line": "The core technique? It's about using AI to generate high-performing ad copy and visuals that are designed to go viral, fast.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "making viral AI ads for dropshipping"
+    },
+    {
+     "section": "Explanation of AI's Role",
+     "line": "Here's how AI simplifies this: it analyzes trending content and audience engagement to predict what will perform best, then it crafts the ads for you. Think of it as having a marketing team in your pocket.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "building an AI dropshipping store"
+    },
+    {
+     "section": "Demonstration",
+     "line": "(No dialogue - purely visual demonstration)",
+     "substance": "none",
+     "substance_evidence": "Visual demonstration of AI in action"
+    },
+    {
+     "section": "Takeaway",
+     "line": "By automating the most time-consuming parts of ad creation with AI, you can focus on scaling your dropshipping business and consistently producing content that hits big.",
+     "substance": "general",
+     "substance_evidence": "Efficiency benefits of automation"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's the craziest thing you've seen AI create? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Engagement prompt"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "jeremy",
+   "label": "OBS:R_TILBURY_RAT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Mark Tilbury. Its mechanism: problem identity -> tension -> reframe -> payoff."
+  },
+  "blueprint": {
+   "cta": "Follow for more AI dropshipping strategies!",
+   "script": [
+    {
+     "section": "Hook - Problem Identity",
+     "line": "Are you trying to make money online but feel like you're just spinning your wheels?",
+     "substance": "general",
+     "substance_evidence": "Common struggle for online entrepreneurs."
+    },
+    {
+     "section": "Tension / Stakes",
+     "line": "It feels like everyone else is making it big, while you're stuck researching and not actually earning.",
+     "substance": "general",
+     "substance_evidence": "Perceived disparity and common feeling of being left behind."
+    },
+    {
+     "section": "Reframe / Solution Setup",
+     "line": "But what if I told you there's a way to leverage AI to build a profitable dropshipping business, fast?",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building an AI dropshipping store"
+    },
+    {
+     "section": "Payoff / Specific Example",
+     "line": "Imagine building a free dropshipping store with AI in just 10 minutes, then making viral AI ads that could lead to $10K from just one video.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building a free dropshipping store with AI in 10 minutes, (topic) making viral AI ads for dropshipping, (topic) how to make $10K off one video"
+    },
+    {
+     "section": "Actionable Takeaway",
+     "line": "This isn't about guesswork; it's about using powerful AI tools to identify top products and automate your marketing strategy.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) top 10 dropshipping products to sell right now, (topic) using AI for email marketing in Shopify with Omnisend and Claude"
+    },
+    {
+     "section": "Call to Action",
+     "line": "If you want to see exactly how to set up your own AI dropshipping store, hit that follow button!",
+     "substance": "none",
+     "substance_evidence": "Call to action."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "jeremy",
+   "label": "OBS:R_GARY_A",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: unstated."
+  },
+  "blueprint": {
+   "cta": "Follow for more proven AI strategies!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "This AI tool is quietly making people $100K in dropshipping. Here's how.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) making $100K with Claude AI dropshipping"
+    },
+    {
+     "section": "Introduce method",
+     "line": "You can build a $100K dropshipping store using Claude AI, and it's faster than you think. Imagine an AI that handles your product research, store setup, and even your marketing.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building a $100K dropshipping store with Claude AI"
+    },
+    {
+     "section": "Explain benefits",
+     "line": "Claude AI streamlines the entire process, making it possible to set up a free dropshipping store in minutes. It's about leveraging AI to automate the tedious parts so you can focus on scaling your profits.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building a free dropshipping store with AI in 10 minutes"
+    },
+    {
+     "section": "Actionable insight",
+     "line": "One killer strategy is using AI for email marketing in Shopify with tools like Omnisend and Claude. This creates viral ads and engages customers automatically, driving consistent sales for your store.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) using AI for email marketing in Shopify with Omnisend and Claude"
+    },
+    {
+     "section": "Conclusion/CTA",
+     "line": "If you're serious about making money online, AI dropshipping is your next move. Follow for more proven AI strategies!",
+     "substance": "none",
+     "substance_evidence": "none"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "jeremy",
+   "label": "OBS:R_GARY_MISTAKE",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway. must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  },
+  "blueprint": {
+   "cta": "What's your biggest challenge using AI for dropshipping? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are the three mistakes I see almost everyone making when they try to use AI for dropshipping. If you fix them, you could make $100K.",
+     "substance": "general",
+     "substance_evidence": "Video introduction to a problem and solution."
+    },
+    {
+     "section": "Mistake 1: Not understanding AI's limitations",
+     "line": "The first mistake is not understanding AI's actual limitations. You're trying to make AI do everything, expecting it to run your entire dropshipping business from start to finish.",
+     "substance": "general",
+     "substance_evidence": "Common misconception about AI capabilities."
+    },
+    {
+     "section": "Why Mistake 1 fails",
+     "line": "The problem is, AI is a tool, not a magic bullet. It's fantastic at specific tasks, like generating ad copy or product descriptions, but it can't strategically plan your entire business for you.",
+     "substance": "general",
+     "substance_evidence": "AI is a tool, not a replacement for human strategy."
+    },
+    {
+     "section": "Mistake 2: Over-automating everything",
+     "line": "The second mistake I see is over-automating everything. You're setting up a system where AI handles all customer service, all product selection, and all marketing outreach.",
+     "substance": "general",
+     "substance_evidence": "Common pitfall of excessive automation."
+    },
+    {
+     "section": "Why Mistake 2 fails (Rehook)",
+     "line": "While automation is great, fully automating your human touch points leads to generic experiences and low conversion rates. You need a balance.",
+     "substance": "general",
+     "substance_evidence": "Importance of human element in customer experience."
+    },
+    {
+     "section": "Mistake 3: Chasing every new AI trend",
+     "line": "And the third mistake is chasing every single new AI trend or tool that pops up. One week it's this new AI for video, the next it's an AI for social media management.",
+     "substance": "general",
+     "substance_evidence": "The constant emergence of new AI tools."
+    },
+    {
+     "section": "Why Mistake 3 fails",
+     "line": "This constant jumping from tool to tool prevents you from mastering any single one and building a cohesive, profitable strategy. Consistency is key in dropshipping.",
+     "substance": "general",
+     "substance_evidence": "Lack of focus hinders progress."
+    },
+    {
+     "section": "Solution: Focus on a specific niche",
+     "line": "So, how do you fix these? Instead of trying to do everything, focus on using AI for specific tasks within a proven strategy, like generating viral AI ads for dropshipping, which I've talked about before.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) making viral AI ads for dropshipping"
+    },
+    {
+     "section": "The real secret to success",
+     "line": "The real secret to making $100K with Claude AI dropshipping is to build a solid foundation first. Use AI to create a free dropshipping store in 10 minutes, and then optimize with specific AI tools.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) building a free dropshipping store with AI in 10 minutes"
+    },
+    {
+     "section": "CTA",
+     "line": "What's your biggest challenge using AI for dropshipping? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action for engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "ryan",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "What other things should people stop buying to save money? Let me know in the comments and don't forget to follow for more financial tips!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "If you want to get smarter with your money, you need to stop buying these 5 things immediately.",
+     "substance": "none",
+     "substance_evidence": "hook statement"
+    },
+    {
+     "section": "Item 1",
+     "line": "The first thing to stop buying is extended warranties. They almost never pay off, especially for tech products that either fail early or last well beyond the warranty period.",
+     "substance": "general",
+     "substance_evidence": "common knowledge about extended warranties"
+    },
+    {
+     "section": "Item 2",
+     "line": "Second, stop buying brand new tech every single year. Devices like the new Xbox Series X or even a new Surface Laptop 7 offer diminishing returns with yearly upgrades. Hold onto your current gear longer.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) new Xbox Series X, (product) Surface Laptop 7"
+    },
+    {
+     "section": "Item 3",
+     "line": "Third, cut down on all those streaming services you don't actually use. How many times have you signed up for a trial, forgot about it, and kept paying for months? Go through your subscriptions.",
+     "substance": "general",
+     "substance_evidence": "common issue of forgotten subscriptions"
+    },
+    {
+     "section": "Re-hook",
+     "line": "These small changes can make a huge difference to your bank account. And we still have two more big ones to get to.",
+     "substance": "none",
+     "substance_evidence": "rehook statement"
+    },
+    {
+     "section": "Item 4",
+     "line": "Fourth, reconsider that daily overpriced coffee. It seems small, but those five dollars a day add up to serious cash over a year. Make it at home or cut back.",
+     "substance": "general",
+     "substance_evidence": "cumulative cost of small daily purchases"
+    },
+    {
+     "section": "Item 5",
+     "line": "And fifth, stop buying physical media for content that's primarily digital. Think about games on Xbox Game Pass or even your photo storage with iOS27. Digital is often more convenient and less clutter.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Xbox Game Pass, (product) iOS27 (with proof photos are not AI)"
+    },
+    {
+     "section": "CTA",
+     "line": "What other things should people stop buying to save money? Let me know in the comments and don't forget to follow for more financial tips!",
+     "substance": "none",
+     "substance_evidence": "call to action for engagement"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "ryan",
+   "label": "OBS:R_TILBURY_RAT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by Mark Tilbury. Its mechanism: problem identity -> tension -> reframe -> payoff."
+  },
+  "blueprint": {
+   "cta": "What's your biggest internet frustration? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook: Problem Identity",
+     "line": "Do you ever feel like your internet just isn't keeping up, even when you're paying for fast speeds?",
+     "substance": "general",
+     "substance_evidence": "common internet issues"
+    },
+    {
+     "section": "Tension Build-Up",
+     "line": "It's a common trap: we assume faster numbers mean a better experience. But that's not always the case with internet issues.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) internet issues"
+    },
+    {
+     "section": "Reframe/Solution Introduction",
+     "line": "The real issue might not be your speed at all, but how many devices are constantly demanding attention.",
+     "substance": "general",
+     "substance_evidence": "device contention for bandwidth"
+    },
+    {
+     "section": "Payoff/Proof Point 1",
+     "line": "For example, with the new Xbox Series X and even GeForce Now, it's not just about raw bandwidth, but consistent, low-latency data.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) new Xbox Series X, (product) GeForce Now"
+    },
+    {
+     "section": "Payoff/Proof Point 2",
+     "line": "Even things like the new Surface Pro and Surface Laptop 7 are constantly pulling updates and data in the background, adding to that network traffic.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Surface Pro, (product) Surface Laptop 7"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's your biggest internet frustration? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "ryan",
+   "label": "OBS:R_GARY_A",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: unstated."
+  },
+  "blueprint": {
+   "cta": "What are your thoughts on tech innovation? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "This is going to sound crazy, but I think we're looking at tech all wrong.",
+     "substance": "general",
+     "substance_evidence": "Opening statement"
+    },
+    {
+     "section": "Elaboration",
+     "line": "We're constantly chasing the next big thing, the revolutionary update, when sometimes, the biggest impact comes from subtle improvements or even unexpected failures.",
+     "substance": "general",
+     "substance_evidence": "Observation about tech trends"
+    },
+    {
+     "section": "Counter-Argument",
+     "line": "Take the Sony Afeela, for example. A PlayStation car sounds groundbreaking on paper, but it proved that sometimes, even a great idea doesn't translate to success without the right execution or market fit.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Sony Afeela (Sony’s cancelled PlayStation car)"
+    },
+    {
+     "section": "Product Introduction",
+     "line": "Now, let's talk about something that IS working, but maybe not in the way you expect. The new Xbox Series X.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "new Xbox Series X"
+    },
+    {
+     "section": "Product Tie-in",
+     "line": "It's not just about raw power or exclusive games anymore. It's about accessibility and choice, like with Xbox Game Pass and GeForce Now, giving you more ways to play without needing to buy every title. That's a different kind of innovation.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Xbox Game Pass, GeForce Now"
+    },
+    {
+     "section": "Conclusion",
+     "line": "It forces us to rethink what 'new and improved' really means in the tech world. What do you think?",
+     "substance": "none",
+     "substance_evidence": "Concluding thought"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "ryan",
+   "label": "OBS:R_GARY_MISTAKE",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: name the mistake (2nd person) -> why it fails -> concede the human reason -> one action -> compressed takeaway. must survive on a different creator in a different domain, WITHOUT dragging Instagram/algorithm topic matter or GaryVee coinages across"
+  },
+  "blueprint": {
+   "cta": "What's a tech mistake you've made, or seen others make? Let me know in the comments below!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Here are the 3 common mistakes I see people make when it comes to tech products.",
+     "substance": "general",
+     "substance_evidence": "introduction to topic"
+    },
+    {
+     "section": "Mistake 1",
+     "line": "The first mistake: not asking 'why'. People often jump on new tech without understanding what problem it solves for them. Remember Sony's Afeela car? It looked cool, but the 'why' for many wasn't clear.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Sony Afeela (Sony\n's cancelled PlayStation car)"
+    },
+    {
+     "section": "Mistake 2",
+     "line": "The second mistake is ignoring long-term value. It's easy to get caught up in the immediate flash, but does it truly offer lasting utility? Think about the original iPod – its name origin actually has a cool tie-in to long-term content consumption, proving its lasting purpose.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "iPod\n's name origin"
+    },
+    {
+     "section": "Re-hook",
+     "line": "Still here? Good, because the third mistake is the most common.",
+     "substance": "none",
+     "substance_evidence": "re-hook to retain viewer"
+    },
+    {
+     "section": "Mistake 3",
+     "line": "And the third mistake: letting hype dictate your purchases. Everyone gets excited about the 'next big thing,' but is it actually good? The new Xbox Series X was a huge deal, but some features weren't for everyone.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "new Xbox Series X"
+    },
+    {
+     "section": "Compressed Takeaway",
+     "line": "So next time you're looking at new tech, slow down. Ask 'why,' consider its lasting value, and don't let the hype sway you.",
+     "substance": "general",
+     "substance_evidence": "summary of advice"
+    },
+    {
+     "section": "CTA",
+     "line": "What's a tech mistake you've made, or seen others make? Let me know in the comments below!",
+     "substance": "none",
+     "substance_evidence": "call to engagement"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "justice",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "Would knowing your water quality change your daily habits? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook - Question",
+     "line": "Ever wonder what's really in your tap water?",
+     "substance": "general",
+     "substance_evidence": "Common concern about water quality"
+    },
+    {
+     "section": "Direct Answer",
+     "line": "This Smart Faucet shows your water quality in real time, so you always know what you're drinking.",
+     "substance": "product_dna",
+     "substance_evidence": "Smart FAUCET that Shows Your Water Quality"
+    },
+    {
+     "section": "Reasoning/Benefit 1",
+     "line": "It gives you instant feedback, detecting impurities and displaying them right on the tap. No more guessing, just pure peace of mind.",
+     "substance": "product_dna",
+     "substance_evidence": "Smart FAUCET that Shows Your Water Quality"
+    },
+    {
+     "section": "Reasoning/Benefit 2",
+     "line": "Beyond just showing you, it can even filter out those impurities, ensuring every sip is clean and healthy.",
+     "substance": "product_dna",
+     "substance_evidence": "Smart FAUCET that Shows Your Water Quality"
+    },
+    {
+     "section": "Reasoning/Benefit 3",
+     "line": "This isn't just about drinking water; it's about cooking, making coffee, and every aspect of your daily life where water quality matters.",
+     "substance": "general",
+     "substance_evidence": "Broad applications of clean water"
+    },
+    {
+     "section": "Call to Action",
+     "line": "Would knowing your water quality change your daily habits? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Engagement CTA"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "justice",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "Follow for more smart home and kitchen tech!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "If your rice isn't coming out perfect every time, you're probably making this common mistake.",
+     "substance": "general",
+     "substance_evidence": "Common cooking problem"
+    },
+    {
+     "section": "Introduce Solution",
+     "line": "But what if there was a SMART Cooker that could make perfect rice every single time, without any guesswork?",
+     "substance": "creator_knowledge",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Demonstrate Solution",
+     "line": "This isn't just a rice cooker; it's an intelligent system that precisely measures water, monitors temperature, and adjusts cooking time.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Benefit of Solution",
+     "line": "No more sticking, no more overcooking, just perfectly fluffy rice consistently. It's truly a game-changer for effortless healthy eating.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "COMPACT Juicer that Makes Eating Healthy Easy - implies general healthy eating context"
+    },
+    {
+     "section": "Reinforce Advice",
+     "line": "So if you want to stop making that mistake and start enjoying perfect rice, this is how you do it.",
+     "substance": "none",
+     "substance_evidence": "Conclusion and reinforcement"
+    },
+    {
+     "section": "Call to Action",
+     "line": "Follow for more smart home and kitchen tech!",
+     "substance": "none",
+     "substance_evidence": "Call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "justice",
+   "label": "OBS:R_TILBURY_RAT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Mark Tilbury. Its mechanism: problem identity -> tension -> reframe -> payoff."
+  },
+  "blueprint": {
+   "cta": "What's the one product that's made your life easier lately? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook: Problem / Tension",
+     "line": "Are you tired of constantly replacing batteries? It feels like they die just when you need them most!",
+     "substance": "general",
+     "substance_evidence": "Common problem of dead batteries"
+    },
+    {
+     "section": "Introduce the product",
+     "line": "Well, this new product RECHARGES Batteries Like A Vending Machine, and it's actually pretty brilliant.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) RECHARGES Batteries Like A Vending Machine"
+    },
+    {
+     "section": "Key feature 1: Vending machine style",
+     "line": "You just pop in your depleted batteries, and it dispenses fully charged ones. No more guessing if they're ready.",
+     "substance": "product_dna",
+     "substance_evidence": "RECHARGES Batteries Like A Vending Machine"
+    },
+    {
+     "section": "Benefit 1: Convenience and organization",
+     "line": "It keeps your charged batteries organized and ready to go, eliminating the scramble for spares.",
+     "substance": "general",
+     "substance_evidence": "Benefit of organization"
+    },
+    {
+     "section": "Key feature 2 / Benefit 2: Variety",
+     "line": "It handles multiple battery sizes too, so all your devices can stay powered up without a stack of different chargers.",
+     "substance": "general",
+     "substance_evidence": "Ability to charge multiple battery sizes"
+    },
+    {
+     "section": "Overall value / impact",
+     "line": "This really simplifies battery management at home, making it so much easier to be prepared.",
+     "substance": "general",
+     "substance_evidence": "Overall benefit of simplified battery management"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's the one product that's made your life easier lately? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action for engagement"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "justice",
+   "label": "OBS:R_GARY_A",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by GaryVee. Its mechanism: unstated."
+  },
+  "blueprint": {
+   "cta": "Which of these clever tech innovations would make your life easier? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "What if I told you there's a whole world of genuinely cool tech out there that you're probably overlooking?",
+     "substance": "general",
+     "substance_evidence": "Setting up curiosity for new tech."
+    },
+    {
+     "section": "Product 1",
+     "line": "First up, this modular grill completely reinvents outdoor cooking, letting you customize your setup for any meal.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "MODULAR Grill"
+    },
+    {
+     "section": "Product 2",
+     "line": "Then there's this genius battery recharger that works just like a vending machine – drop in your dead batteries, and it dispenses fresh ones.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "RECHARGES Batteries Like A Vending Machine"
+    },
+    {
+     "section": "Product 3",
+     "line": "You'll never mess up rice again with this smart cooker that guarantees perfect results every single time.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "SMART Cooker that Makes Perfect Rice Every Time"
+    },
+    {
+     "section": "Product 4",
+     "line": "Grooming your dog just got infinitely easier with this table that gently lifts your furry friend to the perfect height.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Table that LIFTS Your Dog To Easily Groom Them"
+    },
+    {
+     "section": "Product 5",
+     "line": "This smart faucet doesn't just dispense water, it actively shows you its quality, giving you peace of mind with every pour.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Smart FAUCET that Shows Your Water Quality"
+    },
+    {
+     "section": "Product 6",
+     "line": "If you're into strategy, you won't believe this advanced chess robot that can actually beat grandmasters – it's mind-blowing.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Most ADVANCED Chess Robot That Can Beat Grandmasters"
+    },
+    {
+     "section": "Product 7",
+     "line": "Transform your backyard into the ultimate cinema experience with this incredible projector setup, perfect for movie nights under the stars.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "ULTIMATE Backyard Movie Theater Projector Setup"
+    },
+    {
+     "section": "Product 8",
+     "line": "Say goodbye to struggling with luggage – this suitcase literally follows you around the airport, hands-free convenience.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Suitcase that FOLLOWS You Around The Airport"
+    },
+    {
+     "section": "Product 9",
+     "line": "And for better sleep, these earbuds have a built-in snore detector to help you and your partner get a peaceful night's rest.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Sleep Earbuds that Have a SNORE DETECTOR"
+    },
+    {
+     "section": "Product 10",
+     "line": "Finally, make healthy eating effortless with this compact juicer that makes getting your daily nutrients super easy.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "COMPACT Juicer that Makes Eating Healthy Easy"
+    },
+    {
+     "section": "CTA",
+     "line": "Which of these clever tech innovations would make your life easier? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action for engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "kallaway",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "What AI tool are you most excited to try? Let me know in the comments, and don't forget to follow for more tech insights!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "These three AI advancements are not just upgrades; they're complete game-changers for how we approach work.",
+     "substance": "general",
+     "substance_evidence": "introduction to a list of AI items"
+    },
+    {
+     "section": "Item 1 Introduction",
+     "line": "First, let's talk about LTX-2.3. This isn't just another language model; it's a paradigm shift in how we interact with complex data.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "LTX-2.3 and its potential to change the video world"
+    },
+    {
+     "section": "Item 1 Impact",
+     "line": "It processes information with such speed and accuracy that it effectively eliminates tedious research, freeing up countless hours.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "LTX-2.3 and its potential to change the video world"
+    },
+    {
+     "section": "Item 2 Introduction",
+     "line": "Next, we have Gemini Omni. This tool is a content creator and marketer's dream, offering seamless integration across all platforms.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Gemini Omni for creators and marketers"
+    },
+    {
+     "section": "Item 2 Impact",
+     "line": "Imagine managing all your campaigns and content from one place, with AI optimizing every post for maximum engagement.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Gemini Omni for creators and marketers"
+    },
+    {
+     "section": "Item 3 Introduction",
+     "line": "Finally, there's the Meta Ray-Ban Display update. This takes augmented reality to a whole new level of practical application.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Meta Ray-Ban Display update"
+    },
+    {
+     "section": "Item 3 Impact",
+     "line": "Think about having critical information, from meeting notes to navigation, subtly displayed in your line of sight, enhancing productivity without distraction.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Meta Ray-Ban Display update"
+    },
+    {
+     "section": "Conclusion",
+     "line": "These three powerful AI advancements truly represent a leap forward in how we work, innovate, and create.",
+     "substance": "none",
+     "substance_evidence": "summary of previous points"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What AI tool are you most excited to try? Let me know in the comments, and don't forget to follow for more tech insights!",
+     "substance": "none",
+     "substance_evidence": "engagement prompt and follow reminder"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "kallaway",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What are your thoughts? Are you excited about AI's role in creativity or still skeptical? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook - Poses a question",
+     "line": "Is AI going to completely take over and replace human creativity in video production?",
+     "substance": "general",
+     "substance_evidence": "Common societal question about AI"
+    },
+    {
+     "section": "Direct Answer",
+     "line": "The short answer is no, it's actually enhancing it.",
+     "substance": "general",
+     "substance_evidence": "Refutation of a common fear"
+    },
+    {
+     "section": "Reasoning/Explanation",
+     "line": "Instead of replacing human input, AI is acting as a powerful co-pilot, automating repetitive tasks and opening up entirely new creative avenues that were previously impossible.",
+     "substance": "general",
+     "substance_evidence": "Explanation of AI's role as an enhancement"
+    },
+    {
+     "section": "Specific Example/Proof",
+     "line": "Take OpenArt's Seedance 2, for example. It allows creators to generate impressive video concepts from simple text prompts, freeing them to focus on storytelling and artistic direction.",
+     "substance": "product_dna",
+     "substance_evidence": "Seedance 2 on OpenArt, an impressive AI video platform"
+    },
+    {
+     "section": "Broader Impact/Future Outlook",
+     "line": "This isn't just about one tool; it's a shift. Tools like Seedance 2 and the advancements in LTX-2.3 are fundamentally changing what's possible, pushing the boundaries of visual storytelling for everyone.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "LTX-2.3 and its potential to change the video world"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What are your thoughts? Are you excited about AI's role in creativity or still skeptical? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "kallaway",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "Which of these AI advances excites you the most? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "These are 3 AI advances you may not have heard of, but that are about to change everything.",
+     "substance": "none",
+     "substance_evidence": "Hook statement"
+    },
+    {
+     "section": "Intro to Item 1",
+     "line": "First, let's talk about the future of video creation.",
+     "substance": "none",
+     "substance_evidence": "Transition to first item"
+    },
+    {
+     "section": "Item 1: Seedance 2 on OpenArt",
+     "line": "The first is Seedance 2 on OpenArt. This is an impressive AI video platform that's pushing the boundaries of what's possible in generative video. It offers unlimited generations with OpenArt's Wonder plan.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Seedance 2 on OpenArt, an impressive AI video platform, (product) OpenArt's Wonder plan for unlimited Seedance 2.5 generations"
+    },
+    {
+     "section": "Transition/Re-hook",
+     "line": "But that's just the beginning. The next AI breakthrough is going to redefine computing itself.",
+     "substance": "none",
+     "substance_evidence": "Re-hook after item 1"
+    },
+    {
+     "section": "Intro to Item 2",
+     "line": "Second, get ready for LTX-2.3.",
+     "substance": "none",
+     "substance_evidence": "Transition to second item"
+    },
+    {
+     "section": "Item 2: LTX-2.3",
+     "line": "LTX-2.3 has the potential to completely change the video world. Imagine the new possibilities for content creation and storytelling that this technology will unlock.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) LTX-2.3 and its potential to change the video world"
+    },
+    {
+     "section": "Intro to Item 3",
+     "line": "And third, a massive game-changer for creators and marketers.",
+     "substance": "none",
+     "substance_evidence": "Transition to third item"
+    },
+    {
+     "section": "Item 3: Gemini Omni",
+     "line": "I'm talking about Gemini Omni. This AI is designed specifically for creators and marketers, offering unparalleled capabilities to enhance workflow, generate ideas, and optimize content strategies.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Gemini Omni for creators and marketers"
+    },
+    {
+     "section": "CTA",
+     "line": "Which of these AI advances excites you the most? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action for engagement"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "kallaway",
+   "label": "OBS:R_TILBURY_RAT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Mark Tilbury. Its mechanism: problem identity -> tension -> reframe -> payoff."
+  },
+  "blueprint": {
+   "cta": "What's one AI tool you can't live without right now? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Problem Identification",
+     "line": "It feels like a new AI drops every single day, right? For creators and marketers, keeping up isn't just a challenge, it's a full-time job.",
+     "substance": "general",
+     "substance_evidence": "Common experience of information overload"
+    },
+    {
+     "section": "Tension Build",
+     "line": "And if you're not staying on top of the latest, you're not just falling behind, you're potentially missing out on tools that could completely revolutionize your work.",
+     "substance": "general",
+     "substance_evidence": "Risk of obsolescence in a fast-moving field"
+    },
+    {
+     "section": "Reframe/Solution Intro",
+     "line": "But what if there was one AI that could bring everything together, streamline your efforts, and give you an unfair advantage?",
+     "substance": "product_dna",
+     "substance_evidence": "Gemini Omni for creators and marketers"
+    },
+    {
+     "section": "Payoff/Demonstration",
+     "line": "That's where Gemini Omni comes in. This isn't just another AI; it's designed to integrate seamlessly into your creative and marketing workflows, making complex tasks simple.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Gemini Omni for creators and marketers"
+    },
+    {
+     "section": "Impact/Future Vision",
+     "line": "From generating content ideas to optimizing your marketing campaigns, Gemini Omni has the potential to fundamentally change how creators and marketers operate, making you more efficient and effective.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "Gemini Omni for creators and marketers"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's one AI tool you can't live without right now? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Call to action"
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "brett",
+   "label": "OBS:R_ALI_3X",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "followers",
+   "refNote": "A proven short-form video by Ali Abdaal. Its mechanism: result-led hook -> technique -> explanation -> takeaway."
+  },
+  "blueprint": {
+   "cta": "What custom smart home project are you dreaming of? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook: Result",
+     "line": "This is how I make my smart home tech do exactly what *I* want, not just what the app allows.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) smart home technology, (topic) DIY projects"
+    },
+    {
+     "section": "Problem/Technique Intro",
+     "line": "The secret? Combining off-the-shelf platforms like HomeKit or Alexa with a bit of DIY engineering.",
+     "substance": "general",
+     "substance_evidence": "Combining platforms with DIY for customization."
+    },
+    {
+     "section": "Explanation of Technique",
+     "line": "It's all about bridging the gap with something like an Arduino, letting you craft custom sensors or unique analogue displays that integrate seamlessly.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Arduino, (topic) analogue displays, (topic) engineering"
+    },
+    {
+     "section": "Benefits/Deep Dive",
+     "line": "This approach means you're not limited to what big tech companies *think* you want. You get precise control, endless customization, and a truly unique smart home experience.",
+     "substance": "general",
+     "substance_evidence": "Benefits of customization and control."
+    },
+    {
+     "section": "Application/Flexibility",
+     "line": "Whether you're into complex automation or just want a cool, custom clock, this opens up a world of possibilities for your HomeKit or Alexa setup.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) HomeKit, (product) Alexa, (topic) analogue displays, (topic) DIY projects"
+    },
+    {
+     "section": "Conclusion/Takeaway",
+     "line": "Stop letting your smart home dictate your life. Start building the smart home that actually works for you.",
+     "substance": "none",
+     "substance_evidence": "Call to action."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "brett",
+   "label": "OBS:R_TECH_3AI",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "educate",
+   "refNote": "A proven short-form video by TECH-iELA. Its mechanism: enumerated list. It is an ENUMERATED LIST of 3 items, and the hook states that number. the count is the format; the hook must carry the number"
+  },
+  "blueprint": {
+   "cta": "What smart home tech are you experimenting with right now? Let me know in the comments below, and don't forget to follow for more DIY tech insights!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "If you're into smart home tech, especially from an engineering and DIY perspective, you're going to love these 3 items I'm about to show you.",
+     "substance": "general",
+     "substance_evidence": "Introduction to topic."
+    },
+    {
+     "section": "Item 1",
+     "line": "The first item is an Arduino-based automation module. This isn't just about turning lights on and off; it's about custom control over your home's environment, tailored precisely to your needs.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) Arduino, (topic) engineering, (topic) smart home technology, (topic) DIY projects"
+    },
+    {
+     "section": "Item 2",
+     "line": "Next, we have a DIY analogue display for real-time data. Forget boring digital screens. This piece, blending engineering with decor, gives you a unique way to visualize everything from weather to energy consumption.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) analogue displays, (topic) decor, (topic) engineering, (topic) DIY projects"
+    },
+    {
+     "section": "Item 3",
+     "line": "And for the third item, a custom-built HomeKit compatible sensor array. It’s all about creating a robust and private smart home ecosystem, giving you full control without relying on proprietary systems.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) HomeKit, (topic) engineering, (topic) smart home technology, (topic) hacker culture"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What smart home tech are you experimenting with right now? Let me know in the comments below, and don't forget to follow for more DIY tech insights!",
+     "substance": "none",
+     "substance_evidence": "Call to action for engagement."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "brett",
+   "label": "OBS:R_HORMOZI_QA",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "authority",
+   "refNote": "A proven short-form video by Ali Abdaal / Alex Hormozi. Its mechanism: question -> direct answer -> reasoning."
+  },
+  "blueprint": {
+   "cta": "What's the coolest DIY smart home project you've ever tackled or dreamed of? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook - Question",
+     "line": "Can you actually build your own smart home devices from scratch, or is it just a pipe dream for engineers?",
+     "substance": "general",
+     "substance_evidence": "Common question about DIY smart homes."
+    },
+    {
+     "section": "Direct Answer",
+     "line": "Absolutely, you can. It’s not just possible, it’s a thriving part of maker culture, especially with platforms like Arduino.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) maker culture, (product) Arduino"
+    },
+    {
+     "section": "Reasoning Part 1",
+     "line": "The beauty of DIY smart home tech lies in its customizability and the sheer learning experience. You're not just buying a product; you're understanding the engineering behind it.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) engineering, (topic) smart home technology, (topic) maker culture"
+    },
+    {
+     "section": "Reasoning Part 2 - Technical Deep Dive",
+     "line": "Whether you’re integrating with existing systems like HomeKit or Alexa, or building something entirely new for decor or analogue displays, the principles are the same: understanding inputs, outputs, and programming logic.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(product) HomeKit, (product) Alexa, (topic) decor, (topic) analogue displays, (topic) DIY projects, (topic) engineering"
+    },
+    {
+     "section": "Summary/Reinforcement",
+     "line": "It's a fantastic way to dive into hacker culture, truly own your smart home, and learn some serious engineering skills along the way.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "(topic) hacker culture, (topic) smart home technology, (topic) engineering"
+    },
+    {
+     "section": "Call to Action",
+     "line": "What's the coolest DIY smart home project you've ever tackled or dreamed of? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "Engagement CTA."
+    }
+   ]
+  }
+ },
+ {
+  "case": {
+   "creator": "brett",
+   "label": "OBS:R_CODIE_DONT",
+   "variant": "repB",
+   "fidelity": "balanced",
+   "tone": "",
+   "goal": "entertain",
+   "refNote": "A proven short-form video by Codie Sanchez. Its mechanism: contrarian negative advice."
+  },
+  "blueprint": {
+   "cta": "What smart home tech have you regretted buying? Let me know in the comments!",
+   "script": [
+    {
+     "section": "Hook",
+     "line": "Stop falling for these smart home traps! I'm breaking down three things I'd never buy for my smart home setups.",
+     "substance": "general",
+     "substance_evidence": "introduction to contrarian advice"
+    },
+    {
+     "section": "Item 1 Introduction",
+     "line": "First up, those generic smart light bulbs that promise easy setup. While they seem convenient, many rely on proprietary hubs or flaky Bluetooth connections.",
+     "substance": "general",
+     "substance_evidence": "common smart home product issue"
+    },
+    {
+     "section": "Item 1 Elaboration",
+     "line": "I've seen so many setups where these bulbs drop off the network, or only work with a specific app, making integration into systems like HomeKit or Alexa a constant headache.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "knowledge of HomeKit and Alexa, common issues with smart home integration"
+    },
+    {
+     "section": "Item 2 Introduction",
+     "line": "Second, I'd seriously rethink most smart door locks. The idea of keyless entry is appealing, but you're trading physical security for digital vulnerabilities.",
+     "substance": "general",
+     "substance_evidence": "common smart home product issue related to security"
+    },
+    {
+     "section": "Item 2 Elaboration",
+     "line": "From battery failures leaving you locked out, to potential hacking risks, these devices often introduce more points of failure than convenience. I prefer robust, traditional locks.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "knowledge of hacker culture and engineering principles related to security"
+    },
+    {
+     "section": "Item 3 Introduction",
+     "line": "And finally, skip the expensive smart mirrors. Unless you're building a truly custom, integrated display, these are usually overpriced tablets glued to a reflective surface.",
+     "substance": "general",
+     "substance_evidence": "common smart home product perceived as overpriced"
+    },
+    {
+     "section": "Item 3 Elaboration",
+     "line": "With a little DIY knowledge and an Arduino, you can build a far more functional and personalized smart mirror that actually fits your decor and needs, for a fraction of the cost.",
+     "substance": "creator_knowledge",
+     "substance_evidence": "knowledge of DIY projects, Arduino, and maker culture for personalized solutions"
+    },
+    {
+     "section": "CTA",
+     "line": "What smart home tech have you regretted buying? Let me know in the comments!",
+     "substance": "none",
+     "substance_evidence": "call to action"
+    }
+   ]
+  }
+ }
+]

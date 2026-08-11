@@ -190,3 +190,55 @@ describe('isBillableScript — clarification is free, creation is paid', () => {
     expect(isBillableScript([], 0).billable).toBe(true)
   })
 })
+
+// HOW MUCH FRICTION DOES THIS ACTUALLY ADD? MEASURED, NOT ASSUMED.
+//
+// ⚠️ THE RISK OF SHIPPING THIS. A readiness gate that asks most creators
+// something is a wall, not friction, and it would be invisible until support
+// tickets arrived. Run over 112 real-shaped briefs — the 8 scanned creators
+// x 7 goals x 2 reference families — it fires on 32, and all 32 are the
+// commercial ones. Every non-commercial brief proceeds untouched.
+//
+// ⚖️ That is the design working, not a coincidence: a field is only required
+// when guessing it would produce a CLAIM. These cases pin the shape, so a
+// later change that starts asking explainers for an offer fails here rather
+// than in production.
+describe('the friction lands only where guessing would fabricate', () => {
+  const founder = {
+    goal: 'sell', audience: 'early-stage founders', angle: 'why onboarding leaks users',
+    offer: 'Twin', relationship: 'OWN_PRODUCT', cta: 'start a free trial',
+    productFacts: ['scans your account and builds a Creator DNA'],
+    referenceRead: true, hasCreatorKnowledge: true,
+  }
+
+  it('a fully-onboarded founder is asked NOTHING, selling or explaining', () => {
+    expect(assessReadiness(founder).questions).toEqual([])
+    expect(assessReadiness({ ...founder, goal: 'educate' }).questions).toEqual([])
+  })
+
+  it('a reviewer with no product is asked nothing for a normal video', () => {
+    // ~85-95% of short-form. If this ever asks, the gate has become a form.
+    expect(assessReadiness({
+      goal: 'followers', audience: 'tech buyers', angle: 'the new Pixel',
+      referenceRead: true, hasCreatorKnowledge: true,
+    }).questions).toEqual([])
+  })
+
+  it('…but IS asked when the goal is to sell something they never named', () => {
+    // The 32 cases. A reviewer selling an unnamed thing is under-specified,
+    // and the old behaviour invented what it was — "Link in bio to get your
+    // Smart Cooker!" on a creator with no tie to any cooker.
+    const v = assessReadiness({
+      goal: 'sell', audience: 'tech buyers', angle: 'the new Pixel',
+      referenceRead: true, hasCreatorKnowledge: true,
+    })
+    expect(v.blocked).toBe(true)
+    expect(v.questions).toHaveLength(3)
+  })
+
+  it('a single missing field asks a single question, not the whole set', () => {
+    // The difference between a targeted ask and re-running onboarding.
+    expect(assessReadiness({ ...founder, productFacts: [] }).questions).toHaveLength(1)
+    expect(assessReadiness({ ...founder, relationship: null }).questions).toHaveLength(1)
+  })
+})
