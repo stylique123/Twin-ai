@@ -1450,6 +1450,29 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Could not reserve credits' }, 500)
   }
 
+  // ⚖️ ONE REFUND PER SPEND. Three paths can now return the money — the quality
+  // gate below, the duplicate-key race, and the catch — and two of them can run
+  // in the same request. Without a latch a script that failed the gate and then
+  // lost the race would be refunded twice, which is a credit the creator never
+  // paid for and a hole nobody would notice until the ledger did.
+  let refunded = false
+  const refundOnce = async (reason: string) => {
+    if (refunded) return
+    refunded = true
+    const { error: rErr } = await admin.rpc('refund_credits', {
+      p_user: ownerId,
+      p_amount: BLUEPRINT_COST,
+      p_reason: reason,
+    })
+    if (rErr) {
+      console.error('REFUND FAILED — manual reconciliation needed for', user.id, rErr)
+      await admin
+        .from('ops_events')
+        .insert({ kind: 'refund_failed', severity: 'critical', user_id: user.id, detail: { fn: 'generate-blueprint', amount: BLUEPRINT_COST, reason, error: String((rErr as { message?: string }).message ?? rErr) } })
+        .then(() => {}, () => {})
+    }
+  }
+
   try {
     // Unified creator context: take the richest available value (confirmed brand
     // voice first, onboarding quiz as fallback) for EVERY field. Previously the
@@ -2276,6 +2299,51 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }))
     }
 
+    // ── THE QUALITY GATE: DID WE PRODUCE SOMETHING WORTH CHARGING FOR? ────────
+    //
+    // ⚖️ THE INCENTIVE THIS SETS, DELIBERATELY. Without it, a bad generation is
+    // tolerated because the model returned tokens. The readiness check above
+    // means this should now be rare — it is the backstop for the case where the
+    // inputs looked complete and the writing still could not be grounded.
+    //
+    // ⚖️ IT REFUNDS RATHER THAN REFUSING. The script is still returned and still
+    // saved: refusing after the spend hands the creator nothing for a wait they
+    // already sat through, and what we have is more useful than an error. What
+    // changes is that they are not billed for it, and `credits_spent` records
+    // that honestly rather than claiming a charge the ledger reversed.
+    const finalBeats = Array.isArray(declared) ? declared : []
+    const askedBeats = finalBeats.filter((b) =>
+      (b as { substance?: string })?.substance === 'needs_user').length
+    // Authored text, not grammar — the only discovery questions that can reach a
+    // script are the escalation strings this function writes. Detecting them by
+    // pattern flagged 2 of 1,436 real lines and BOTH were engagement CTAs.
+    const OUR_ASKS = [
+      'this beat needs a real detail about your product',
+      'this beat describes your product in a way the supplied details do not cover',
+      'only you can supply this',
+      'nothing on record supports this beat',
+      'this beat only works as something you have personally done',
+    ]
+    const asksCreator = finalBeats.some((b) => {
+      const l = String((b as { line?: unknown })?.line ?? '').toLowerCase()
+      return OUR_ASKS.some((a) => l.includes(a))
+    })
+    const unbillable = asksCreator
+      ? 'script_asks_creator_for_context'
+      : (finalBeats.length > 0 && askedBeats / finalBeats.length >= 0.4)
+          ? 'script_mostly_questions'
+          : null
+    if (unbillable) {
+      console.warn(JSON.stringify({
+        event: 'generation_not_billable',
+        user_id: user.id,
+        reason: unbillable,
+        asked: askedBeats,
+        of: finalBeats.length,
+      }))
+      await refundOnce('blueprint_refund_quality')
+    }
+
     const { data: gen, error: insErr } = await admin
       .from('generations')
       .insert({
@@ -2287,7 +2355,9 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         reference_analysis: referenceAnalysis,
         brand_voice_id: voice?.id ?? null,
         transcript_id: transcript_id || null,
-        credits_spent: BLUEPRINT_COST,
+        // ⚖️ WHAT WAS ACTUALLY KEPT, not what was reserved. A row claiming a
+        // charge the ledger reversed makes every downstream count wrong.
+        credits_spent: unbillable ? 0 : BLUEPRINT_COST,
         idempotency_key: idempotency_key || null,
       })
       .select('*')
@@ -2310,11 +2380,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         .eq('idempotency_key', idempotency_key)
         .maybeSingle()
       if (won) {
-        const { error: raceRefundErr } = await admin.rpc('refund_credits', {
+        // Through the latch: a build that already failed the quality gate has
+        // had its remix returned, and returning it twice is a credit nobody paid.
+        const { error: raceRefundErr } = refunded ? { error: null } : await admin.rpc('refund_credits', {
           p_user: ownerId,
           p_amount: BLUEPRINT_COST,
           p_reason: 'blueprint_refund_duplicate',
         })
+        refunded = true
         if (raceRefundErr) {
           console.error('DUPLICATE REFUND FAILED — manual reconciliation for', user.id, raceRefundErr)
           await admin
@@ -2348,11 +2421,12 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
   } catch (err) {
     // Refund credits if anything after the spend failed. Log loudly if the
     // refund itself fails so it can be reconciled manually (never silently eat it).
-    const { error: refundErr } = await admin.rpc('refund_credits', {
+    const { error: refundErr } = refunded ? { error: null } : await admin.rpc('refund_credits', {
       p_user: ownerId,
       p_amount: BLUEPRINT_COST,
       p_reason: 'blueprint_refund',
     })
+    refunded = true
     if (refundErr) {
       console.error('REFUND FAILED — manual reconciliation needed for', user.id, refundErr)
       // Surface it where an operator can SEE it (ops_events → /metrics health).

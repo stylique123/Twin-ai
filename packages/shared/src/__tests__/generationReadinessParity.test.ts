@@ -124,3 +124,47 @@ describe('the answers have a reader, and the right ones persist', () => {
     expect(EDGE).toMatch(/readiness_answers_not_persisted/)
   })
 })
+
+// ── THE OTHER HALF OF THE ECONOMICS: A GENERATION THAT IS NOT WORTH CHARGING ──
+describe('the quality gate returns the credit', () => {
+  it('refunds rather than refusing, and still returns the script', () => {
+    // ⚖️ Refusing after the spend hands the creator nothing for a wait they
+    // already sat through. What changes is that they are not billed.
+    expect(EDGE).toMatch(/generation_not_billable/)
+    expect(EDGE).toMatch(/blueprint_refund_quality/)
+    const gate = EDGE.indexOf('THE QUALITY GATE')
+    const insert = EDGE.indexOf("from('generations')\n      .insert(")
+    expect(gate).toBeGreaterThan(-1)
+    expect(gate).toBeLessThan(insert)
+  })
+
+  it('records what was KEPT, not what was reserved', () => {
+    // A row claiming a charge the ledger reversed makes every downstream count
+    // wrong — revenue, remixes-used, the data room.
+    expect(EDGE).toMatch(/credits_spent: unbillable \? 0 : BLUEPRINT_COST/)
+  })
+
+  it('refunds AT MOST ONCE, across all three paths', () => {
+    // ⚠️ Three paths can now return the money — the quality gate, the
+    // duplicate-key race and the catch — and two can run in the same request.
+    // A double refund is a credit the creator never paid for.
+    expect(EDGE).toMatch(/let refunded = false/)
+    expect(EDGE).toMatch(/const refundOnce = async/)
+    expect(EDGE).toMatch(/if \(refunded\) return\n\s*refunded = true/)
+    // Neither legacy path may call the RPC unconditionally any more.
+    expect(EDGE).toMatch(/refunded \? \{ error: null \} : await admin\.rpc\('refund_credits'[\s\S]{0,200}blueprint_refund_duplicate/)
+    expect(EDGE).toMatch(/refunded \? \{ error: null \} : await admin\.rpc\('refund_credits'[\s\S]{0,200}'blueprint_refund'/)
+  })
+
+  it('detects our own asks by AUTHORSHIP, matching the shared module', () => {
+    for (const src of [EDGE, SHARED]) {
+      expect(src).toMatch(/this beat needs a real detail about your product/)
+      expect(src).toMatch(/only you can supply this/)
+    }
+  })
+
+  it('uses the same 40% density as the shared rule and the log line', () => {
+    expect(EDGE).toMatch(/askedBeats \/ finalBeats\.length >= 0\.4/)
+    expect(SHARED).toMatch(/needsUserBeats \/ lines\.length >= 0\.4/)
+  })
+})

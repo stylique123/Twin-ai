@@ -41,6 +41,13 @@ for (const f of FILES) {
   const lines = src.split('\n')
   lines.forEach((line, i) => {
     if (line.trimStart().startsWith('//') || line.trimStart().startsWith('*')) return
+    // ⚖️ AN ASSERTION ABOUT THE PATTERN IS NOT A DECISION USING IT. This guard
+    // flagged its OWN parity test — `expect(EDGE).toMatch(/includes('sell')…/)`
+    // — which asserts what production contains and decides nothing. Excluding
+    // whole test FILES would be the lazy fix and would hide a stale rule living
+    // in a fixture; excluding assertion LINES is exact, because an `expect(...)`
+    // line cannot change production behaviour.
+    if (/\b(?:expect|assert)\s*\(/.test(line)) return
     if (!GOAL_TEST.test(line)) return
     // ⚖️ A WINDOW, NOT THE LINE. The relationship is consulted a few lines
     // above where the goal narrows it — `sellIntent` reads `commercialCta`
