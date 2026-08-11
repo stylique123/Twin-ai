@@ -554,6 +554,47 @@ pattern already matched.
 
 ---
 
+## 19. 39/39 in-sample, 14/25 out — the fixture was overfitted
+
+Defect 18 widened `claimStrength` against 39 real lines and reached 39/39.
+I then pulled 25 lines from two creators who contributed nothing to that tuning
+— Ryan Kennedy (long-form reviews) and Justice Buys (product shorts) — and
+labelled them by reading, before running the classifier.
+
+| | tuned-on (39) | held-out (25) |
+|---|---|---|
+| lexical verb lists (shipped) | **39/39** | **14/25 — 56%** |
+| structural: tense + person | 36/39 | **20/25 — 80%** |
+
+**Every miss is under-detection of an ordinary sentence:**
+
+> "I've added a Ryzen 7 because I can afford this one."
+> "for the longest time I was looking for a Windows laptop"
+> "I've talked to their representatives"
+> "this particular color is called Sapphire and I absolutely love it"
+
+⚖️ **THE STRUCTURAL LIMIT.** A verb list cannot close over open-class speech —
+the auxiliary carries the tense, not the verb. `I've <anything>` and
+`I was <anything>ing` are histories regardless of which verb fills the slot, and
+no list will ever contain them all. The structural rule scores 20/25 against
+the lexical 14/25 on unseen creators, which is the same evidence from the other
+direction.
+
+It is **not shipped**, because it introduces false positives of its own —
+"in today's video, I wanted to make a comprehensive review" reads as a history,
+and "I'm really curious what you guys think" as a position. Those are the
+expensive direction: under-detection ships one bad line, over-detection refunds
+a whole script. Shipping it without measuring that against the stored runs
+would repeat the mistake this document already records twice.
+
+**What is honest to claim right now:** the shipped widening is a real, measured
+improvement (first-person beats waved through 81% → 57%, blast radius 4% of
+beats, 2% of scripts) and it is *not* a correct detector. `heldOutSpeech.ts`
+holds the 14/25 as a floor rather than a target, so the number is visible in CI
+instead of being rediscovered.
+
+---
+
 ## The pattern
 
 Six of these were invisible to a green suite and appeared only under real data.
@@ -581,6 +622,7 @@ The common shape is **a claim about the world encoded as a claim about code**:
 | the ladder blocks the good lines | 97.8% of lines were already permitted |
 | 97.8% of lines were permitted | the classifier could not see the other kind |
 | the guard caught 11 fabrications | it saw 11; it was blind to 81% of the candidates |
+| 39/39 on the fixture | 14/25 on creators it had not seen |
 
 **The standing lesson**, already in this repo's rules and re-earned today: a
 contract check beats a prompt rule wherever the defect is decidable — and where

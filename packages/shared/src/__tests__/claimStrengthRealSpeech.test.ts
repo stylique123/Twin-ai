@@ -9,6 +9,7 @@
 import { describe, expect, it } from 'vitest'
 import { claimStrength } from '../claimEntitlement'
 import { REAL_SPEECH } from './fixtures/realSpeech'
+import { HELD_OUT_SPEECH } from './fixtures/heldOutSpeech'
 
 describe('claimStrength against 37 real, hand-labelled lines', () => {
   for (const l of REAL_SPEECH) {
@@ -32,5 +33,27 @@ describe('claimStrength against 37 real, hand-labelled lines', () => {
     // corpus stops being a ruler.
     for (const l of REAL_SPEECH) expect(['transcript', 'generated']).toContain(l.source)
     expect(REAL_SPEECH.filter((l) => l.source === 'transcript').length).toBeGreaterThan(15)
+  })
+})
+
+// ── THE HELD-OUT SET: DOES ANY OF THIS GENERALISE? ───────────────────────────
+describe('claimStrength on two creators it was never tuned against', () => {
+  it('reports the score and holds a floor, because 39/39 in-sample proved nothing', () => {
+    // ⚠️ 39/39 on the tuned set, 14/25 here. That gap IS the finding: an
+    // in-sample score is not evidence a detector generalises. The floor stops
+    // regression; raising it is a real change and needs its blast radius
+    // measured against the stored runs first.
+    const ok = HELD_OUT_SPEECH.filter((l) => claimStrength(l.text) === l.expect).length
+    // eslint-disable-next-line no-console
+    console.log(`      held-out generalisation: ${ok}/${HELD_OUT_SPEECH.length}`)
+    expect(ok).toBeGreaterThanOrEqual(14)
+  })
+
+  it('still never escalates a narration line on unseen data', () => {
+    // The floor that actually protects creators: under-detection ships one bad
+    // line, over-detection refunds a good script.
+    for (const l of HELD_OUT_SPEECH.filter((x) => x.expect === 'discussion')) {
+      expect(claimStrength(l.text), l.text).toBe('discussion')
+    }
   })
 })
