@@ -293,7 +293,7 @@ Return JSON only, with EVERY key below present and populated:
 const CASES = JSON.parse(process.env.CASES ?? '[]')
 const out = []
 for (const c of CASES) {
-  const creator = pack.creators.find(x => x.key === c.creator)
+  const creator = [...pack.creators, ...(pack.cohort2?.creators ?? [])].find(x => x.key === c.creator)
   const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false })
   out.push({ case: c, blueprint: bp })
   console.error(`done: ${c.creator} / ${c.fidelity} / ${c.label}${c.withKnowledge === false ? " [no-knowledge]" : ""}`)

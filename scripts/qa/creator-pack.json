@@ -1042,7 +1042,23 @@
      "viewsSeen": "64k-471k"
     },
     "stresses": "ENUMERATED FORMAT, visible: one thumbnail reads \"10. Citring One Juicer\", so the videos are numbered countdowns. This is the count contract's home turf and the first cohort member whose OWN format is enumerated rather than borrowed from a reference.",
-    "openQuestion": "Reviews or affiliates? The bio says discovery and the site is their own — ownership is UNVERIFIED and must be asked, not assumed."
+    "openQuestion": "Reviews or affiliates? The bio says discovery and the site is their own — ownership is UNVERIFIED and must be asked, not assumed.",
+    "answers": {
+     "workKind": "creator",
+     "promotes": "review_only",
+     "goal": "followers",
+     "audience": "people looking for products they did not know existed"
+    },
+    "truth": {
+     "relationship": "REVIEW_ONLY (UNVERIFIED — own site suggests a possible commercial tie nobody has confirmed)",
+     "showability": "ALWAYS — every short is the product in hand or in use",
+     "signature": "numbered countdown of named products, each demonstrated",
+     "enemy": "products that look impressive and do nothing",
+     "ctaStyle": "engagement; no confirmed offer",
+     "ownsProduct": "nothing confirmed",
+     "regulated": false
+    },
+    "forbiddenClaims": []
    },
    {
     "key": "jeremyrayholst",
@@ -1062,7 +1078,27 @@
      "viewsSeen": "1k-1.6k"
     },
     "stresses": "HIGHEST CLAIM RISK IN EITHER COHORT. Thumbnails say \"How To Buy Your Dream Car With Ai Money\" and \"how average people are making thousands of dollars a day\". Earnings claims are the one class where a transferred claim is a regulatory problem rather than an aesthetic one, so this is the persona that should exercise forbidden-claims handling hardest.",
-    "openQuestion": "Owns paid products (dropshippingstarter.com) — an OWN_PRODUCT relationship that must be confirmed, and a sell goal that is legitimate for them."
+    "openQuestion": "Owns paid products (dropshippingstarter.com) — an OWN_PRODUCT relationship that must be confirmed, and a sell goal that is legitimate for them.",
+    "answers": {
+     "workKind": "saas",
+     "promotes": "none",
+     "goal": "sell",
+     "audience": "people trying to start an online store"
+    },
+    "truth": {
+     "relationship": "OWN_PRODUCT (dropshippingstarter.com) + OWN_SERVICE",
+     "showability": "UNKNOWN — talking head; screen recording plausible but unconfirmed",
+     "signature": "how-to walkthrough promising an outcome",
+     "enemy": "gatekeeping what actually works in e-commerce",
+     "ctaStyle": "links to own paid resources",
+     "ownsProduct": "dropshippingstarter.com and related paid resources",
+     "regulated": false
+    },
+    "forbiddenClaims": [
+     "no specific earnings figure may be stated as typical or achievable",
+     "no claim that a result is guaranteed, fast, or passive",
+     "no implication that a car, income or lifestyle follows from buying anything"
+    ]
    },
    {
     "key": "carterpcs",
@@ -1078,7 +1114,23 @@
      "viewsSeen": "803k-1m"
     },
     "stresses": "The TONE CLAMP's opposite case. Their stated identity is high energy, so `punchy` should NOT clamp here, and `understated` should be visibly wrong for them. Cohort 1 tested the clamp firing; this tests it staying out of the way.",
-    "openQuestion": "4x a day cadence implies a very large already-covered set — the strongest test of not handing them their own upload back."
+    "openQuestion": "4x a day cadence implies a very large already-covered set — the strongest test of not handing them their own upload back.",
+    "answers": {
+     "workKind": "creator",
+     "promotes": "review_only",
+     "goal": "followers",
+     "audience": "people who find tech coverage boring"
+    },
+    "truth": {
+     "relationship": "REVIEW_ONLY on the hardware covered",
+     "showability": "ALWAYS — device on camera, heavy caption emphasis",
+     "signature": "high-energy face cam, rapid caption punches",
+     "enemy": "tech coverage that is a snooze fest",
+     "ctaStyle": "engagement",
+     "ownsProduct": "nothing confirmed",
+     "regulated": false
+    },
+    "forbiddenClaims": []
    },
    {
     "key": "johnnyytech",
@@ -1099,7 +1151,23 @@
      "viewsSeen": "17k-165k"
     },
     "stresses": "SHOWABILITY = ALWAYS and REVIEW_ONLY, with the most named products per thumbnail of any creator in either cohort. If the `product` kind stays empty for this person after a real scan, the extractor is not finding named things and the fixture excuse no longer applies.",
-    "openQuestion": "Runs giveaways — a promotional mechanic the entity model has no vocabulary for yet."
+    "openQuestion": "Runs giveaways — a promotional mechanic the entity model has no vocabulary for yet.",
+    "answers": {
+     "workKind": "creator",
+     "promotes": "review_only",
+     "goal": "followers",
+     "audience": "phone enthusiasts and people deciding what to buy"
+    },
+    "truth": {
+     "relationship": "REVIEW_ONLY on every device bought and shown",
+     "showability": "ALWAYS — device in hand in every thumbnail",
+     "signature": "\"I bought X\" then the thing nobody else shows you about it",
+     "enemy": "reviews that never open the device",
+     "ctaStyle": "engagement, plus giveaways",
+     "ownsProduct": "nothing confirmed",
+     "regulated": false
+    },
+    "forbiddenClaims": []
    },
    {
     "key": "nathanespinoza",
@@ -1119,8 +1187,25 @@
      "viewsSeen": "868k-7.1m"
     },
     "stresses": "Highest reach in either cohort (7.1M on one short), so the widest gap between a good and a bad script.",
-    "openQuestion": "Covers unreleased or concept hardware (Cybercab) — knowledge freshness matters more here than anywhere else."
+    "openQuestion": "Covers unreleased or concept hardware (Cybercab) — knowledge freshness matters more here than anywhere else.",
+    "answers": {
+     "workKind": "creator",
+     "promotes": "review_only",
+     "goal": "followers",
+     "audience": "a broad mainstream tech audience"
+    },
+    "truth": {
+     "relationship": "REVIEW_ONLY on gadgets covered",
+     "showability": "ALWAYS — gadget in hand or worn",
+     "signature": "gadget reveal with a single emphasised word per beat",
+     "enemy": "gadgets that are all concept and no use",
+     "ctaStyle": "engagement",
+     "ownsProduct": "nothing confirmed",
+     "regulated": false
+    },
+    "forbiddenClaims": []
    }
-  ]
+  ],
+  "answersNote": "The `answers` and `truth` blocks are DERIVED FROM OBSERVABLE CHANNEL FACTS, not supplied by the creator. What someone TYPES in onboarding is a handful of closed choices readable off a channel page — do they hold the product on camera, do they sell anything, what do they make. What someone BELIEVES is a claim about their mind. The first is derivable; the second is not, which is why there is still no `knowledge` block here. Where a fact is genuinely unknown it says UNVERIFIED rather than guessing."
  }
 }
