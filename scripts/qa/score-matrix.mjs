@@ -114,8 +114,11 @@ function scoreRun(r, knowledgeFor, relationshipFor) {
 
 const add = (a, b) => Object.fromEntries(Object.keys(a).map((k) => [k, a[k] + b[k]]))
 
-const [file, , by = 'variant'] = process.argv.slice(2)
-const runs = JSON.parse(readFileSync(file, 'utf8'))
+// ⚖️ EXPORTED SO NOBODY WRITES A SECOND SCORER. `diff-matrix.mjs` compares two
+// runs, and a comparison computed by different code than the table it is
+// compared against measures the difference between two scorers.
+export { scoreRun, add, SELL }
+
 const pack = JSON.parse(readFileSync('scripts/qa/creator-pack.json', 'utf8'))
 const ALL = [...pack.creators, ...(pack.cohort2?.creators ?? []), ...(pack.cohort3?.creators ?? [])]
 const knowledgeFor = (key) => ALL.find((c) => c.key === key)?.knowledge?.items ?? []
@@ -130,7 +133,13 @@ const relationshipFor = (key) => {
   }
   return rel
 }
+export { knowledgeFor, relationshipFor }
 
+// CLI only. Imported, this file scores nothing on its own.
+const isMain = process.argv[1] && process.argv[1].endsWith('score-matrix.mjs')
+if (!isMain) { /* imported for its exports */ } else {
+const [file, , by = 'variant'] = process.argv.slice(2)
+const runs = JSON.parse(readFileSync(file, 'utf8'))
 const groups = new Map()
 for (const r of runs) {
   const k = by === 'creator' ? (r.case?.creator ?? '?')
@@ -160,3 +169,4 @@ for (const [k, s] of rows) {
 }
 console.log('\nUNSUPPORTED = beat cited creator knowledge the prompt never carried — a fabrication wearing a citation.')
 console.log('unearned1P  = first-person HISTORY with no experience-level evidence behind it.')
+}
