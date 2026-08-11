@@ -1743,7 +1743,14 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         if (raceRefundErr) {
           console.error('DUPLICATE REFUND FAILED — manual reconciliation for', user.id, raceRefundErr)
           await admin
-            .from('ops_alerts')
+            // ⚠️ WAS `ops_alerts`, A TABLE THAT HAS NEVER EXISTED. The name is
+            // real but belongs to the TRIGGER (`notify_admins_on_ops_alert`);
+            // the table 0028 creates is `ops_events`, whose columns are exactly
+            // the four written here. Nothing caught it because this insert is
+            // deliberately fire-and-forget — so the one alert that says a REFUND
+            // FAILED AND NEEDS MANUAL RECONCILIATION went nowhere, silently,
+            // and the admin notification trigger never fired.
+            .from('ops_events')
             .insert({ kind: 'refund_failed', severity: 'critical', user_id: user.id, detail: { fn: 'generate-blueprint', amount: BLUEPRINT_COST, reason: 'duplicate_key_race', error: String((raceRefundErr as { message?: string }).message ?? raceRefundErr) } })
             .then(() => {}, () => {})
         }
