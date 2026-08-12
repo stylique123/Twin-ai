@@ -44,21 +44,62 @@ export function assertLoginStatus(status) {
     : { ok: false, reason: `login: expected exactly 200 before consuming a token, got "${s}"` }
 }
 
+/**
+ * ⚠️ THIS PREDICATE USED TO ASSERT A LAUNCH STATE, AND THAT STATE EXPIRED.
+ *
+ * It required exactly 503 + `code === "editor_not_available"`, i.e. "the editor
+ * is still switched off in production". That was true when written. On 05 Aug
+ * the editor was DELIBERATELY activated — recorded in
+ * docs/twinai-session-build-plan-2026-08-09.md: "The editor is switched ON but
+ * has never run… EDITOR_V2_START_ENABLED (Supabase, set 05 Aug)… edit_projects
+ * = 0" — alongside three other gates, with the worker verified by
+ * `docker exec printenv`.
+ *
+ * The first run since then returned 404 `{"error":"Generation not found"}`,
+ * which is line 113 of start-editor-v2. Reaching it REQUIRES passing the enable
+ * check at line 54, so the 404 is positive proof the flag is on. The workflow
+ * was not reporting a defect; it was reporting that the thing it guarded had
+ * been intentionally unlocked five weeks earlier.
+ *
+ * ⚖️ SO THE ASSERTION NOW TESTS SECURITY BEHAVIOUR, NOT LAUNCH HISTORY:
+ *
+ *     disabled → 503 + code "editor_not_available"      (fails closed)
+ *     enabled  → 404 + error "Generation not found"     (refuses invalid state)
+ *
+ * Both prove an authenticated stranger cannot start an edit. Whether the
+ * feature is on is a product decision that changes; whether the endpoint can be
+ * driven without valid generation state is a security property that must not.
+ *
+ * ⚠️ THIS IS A BROADENING, SO THE FLOOR MATTERS MORE THAN THE CEILING. A 200 —
+ * the endpoint actually starting work for this probe — still fails, as does any
+ * other status, any malformed body, and any body whose marker sits in the wrong
+ * field, at the wrong nesting depth, or in the wrong case. Widening a security
+ * predicate is only safe if the thing it was protecting against still fails,
+ * and the selftest below asserts exactly that.
+ */
 export function assertAuthGate(status, body) {
   const s = String(status ?? '').trim()
   const b = String(body ?? '')
-  if (s !== '503') return { ok: false, reason: `authenticated: expected exactly 503, got "${s}" (a valid-looking body on a wrong status never passes)` }
+  if (s !== '503' && s !== '404') {
+    return { ok: false, reason: `authenticated: expected 503 (disabled) or 404 (enabled, invalid generation), got "${s}" (a valid-looking body on a wrong status never passes)` }
+  }
   let parsed
   try { parsed = JSON.parse(b) } catch {
-    return { ok: false, reason: 'authenticated: 503 but body is not valid JSON (malformed/HTML/empty — fail closed)' }
+    return { ok: false, reason: `authenticated: ${s} but body is not valid JSON (malformed/HTML/empty — fail closed)` }
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    return { ok: false, reason: 'authenticated: 503 but JSON body is not an object (fail closed)' }
+    return { ok: false, reason: `authenticated: ${s} but JSON body is not an object (fail closed)` }
   }
-  if (parsed.code !== 'editor_not_available') {
-    return { ok: false, reason: `authenticated: 503 but top-level code !== "editor_not_available" (got ${JSON.stringify(parsed.code)}) — substrings in other fields do not count` }
+  if (s === '503') {
+    if (parsed.code !== 'editor_not_available') {
+      return { ok: false, reason: `authenticated: 503 but top-level code !== "editor_not_available" (got ${JSON.stringify(parsed.code)}) — substrings in other fields do not count` }
+    }
+    return { ok: true, reason: 'authenticated: 503 + JSON code === editor_not_available — editor DISABLED and failing closed' }
   }
-  return { ok: true, reason: 'authenticated: 503 + JSON code === editor_not_available — fail-closed gate confirmed' }
+  if (parsed.error !== 'Generation not found') {
+    return { ok: false, reason: `authenticated: 404 but top-level error !== "Generation not found" (got ${JSON.stringify(parsed.error)}) — substrings in other fields do not count` }
+  }
+  return { ok: true, reason: 'authenticated: 404 + JSON error === Generation not found — editor ENABLED and refusing invalid generation state' }
 }
 
 export function assertSecretsPresent(map) {
@@ -95,6 +136,24 @@ function selftest() {
   ok(!assertAuthGate('503', '{"code":"not_editor_not_available"}').ok, 'auth 503 code with marker substring → fail')
   ok(!assertAuthGate('503', '{"data":{"code":"editor_not_available"}}').ok, 'auth 503 nested code (not top-level) → fail')
   ok(!assertAuthGate('503', '{"CODE":"editor_not_available"}').ok, 'auth 503 wrong-case field name → fail')
+
+  // ── THE ENABLED BRANCH: 404 + exact top-level error ──────────────────────
+  const NOT_FOUND_BODY = '{"error":"Generation not found"}'
+  ok(assertAuthGate('404', NOT_FOUND_BODY).ok, 'auth 404 + exact JSON error → pass (enabled, refuses invalid generation)')
+  ok(assertAuthGate('404', '{\n  "error": "Generation not found"\n}').ok, 'auth 404 MULTILINE valid JSON → pass')
+  ok(!assertAuthGate('404', '{"message":"Generation not found"}').ok, 'auth 404 marker in message (not error) → fail')
+  ok(!assertAuthGate('404', '{"error":"Generation not found yet"}').ok, 'auth 404 similar-but-longer error → fail')
+  ok(!assertAuthGate('404', '{"data":{"error":"Generation not found"}}').ok, 'auth 404 nested error → fail')
+  ok(!assertAuthGate('404', '{"ERROR":"Generation not found"}').ok, 'auth 404 wrong-case field → fail')
+  ok(!assertAuthGate('404', '{"code":"editor_not_available"}').ok, 'auth 404 carrying the 503 marker → fail (branches do not cross)')
+  ok(!assertAuthGate('503', NOT_FOUND_BODY).ok, 'auth 503 carrying the 404 marker → fail (branches do not cross)')
+
+  // ⚠️ THE FLOOR. This predicate was BROADENED from "only 503" to "503 or 404",
+  // so what matters is that the outcome it exists to prevent still fails: the
+  // endpoint actually starting work for an authenticated stranger.
+  for (const bad of ['200', '201', '202', '301', '400', '401', '403', '500', '502', '', undefined])
+    ok(!assertAuthGate(bad, MARKER_BODY).ok, `auth ${JSON.stringify(bad)} + valid 503 body → fail (status floor holds)`)
+  ok(!assertAuthGate('200', NOT_FOUND_BODY).ok, 'auth 200 + valid 404 body → fail (a started edit never passes)')
 
   // hostile: malformed / non-object bodies.
   ok(!assertAuthGate('503', '{"code":"editor_not_available"').ok, 'auth 503 truncated JSON → fail')
