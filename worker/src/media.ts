@@ -132,6 +132,153 @@ export async function scrapeTikTokPosts(handle: string, limit = 12): Promise<Scr
   return (await scrapeTikTokProfile(handle, limit)).posts
 }
 
+// --- Profile scrape via Apify, because yt-dlp reads nothing from here --------
+//
+// ⚠️ THE SCAN WAS A SILENT NO-OP. `scrape_dna` called `scrapeTikTokProfile` for
+// EVERY platform — a YouTube creator was scraped against `tiktok.com/@handle` —
+// and yt-dlp is now bot-blocked for TikTok from datacenter IPs as well. A live
+// job against a real user finished in 10 seconds, read zero posts, wrote zero
+// `creator_knowledge`, kept the voice `ready`, and recorded status `done`. The
+// caption-knowledge extraction added in #330 is correct and could never fire,
+// because it is downstream of a scrape that hands it an empty list.
+//
+// ⚖️ FREE FIRST, PAID ONLY WHEN FREE RETURNS NOTHING — the rule
+// `youtubeTranscriptFree` → `youtubeTranscriptViaApify` already follows. yt-dlp
+// still works for some accounts and costs nothing; Apify is the fallback, not
+// the default. An EMPTY result counts as failure here: a profile that parses to
+// zero posts is the exact shape of the silent no-op this exists to end.
+async function apifyDataset(actor: string, input: unknown, timeoutMs = 300_000): Promise<Record<string, unknown>[]> {
+  if (!env.apifyToken) throw new Error('APIFY_TOKEN is not set; cannot scrape profile')
+  const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${env.apifyToken}`
+  const ctl = new AbortController()
+  const timer = setTimeout(() => ctl.abort(), timeoutMs)
+  try {
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: ctl.signal,
+    })
+    if (!r.ok) throw new Error(`apify ${actor} returned ${r.status}`)
+    const j = await r.json()
+    return Array.isArray(j) ? (j as Record<string, unknown>[]) : []
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
+const nullableInt = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+const nonEmpty = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v.trim().replace(/^@/, '') : null)
+const tags = (text: string) =>
+  Array.from(new Set((text.match(/#[\p{L}\p{N}_]+/gu) ?? []).map((t) => t.slice(1)))).slice(0, 6)
+
+async function tiktokProfileViaApify(handle: string, limit: number) {
+  const items = await apifyDataset(env.apifyTiktokProfileActor, {
+    profiles: [handle.replace(/^@/, '')],
+    profileScrapeSections: ['videos'],
+    profileSorting: 'latest',
+    resultsPerPage: limit,
+    excludePinnedPosts: false,
+    shouldDownloadVideos: false,
+    shouldDownloadCovers: false,
+    downloadSubtitlesOptions: 'NEVER_DOWNLOAD_SUBTITLES',
+  })
+  const author = (items[0]?.authorMeta ?? {}) as Record<string, unknown>
+  const posts: ScrapedPost[] = items
+    .map((e) => {
+      const text = String(e.text ?? '').replace(/\s+/g, ' ').trim()
+      const meta = (e.videoMeta ?? {}) as Record<string, unknown>
+      return {
+        text,
+        likes: num(e.diggCount),
+        plays: num(e.playCount),
+        hashtags: tags(text),
+        url: String(e.webVideoUrl ?? ''),
+        cover: typeof meta.coverUrl === 'string' ? meta.coverUrl : undefined,
+      }
+    })
+    .filter((p) => p.text.length > 0)
+  const facts: ScrapedProfileFacts = {
+    resolvedHandle: nonEmpty(author.name),
+    displayName: nonEmpty(author.nickName),
+    audience: nullableInt(author.fans),
+    postCount: nullableInt(author.video),
+  }
+  return { posts, facts }
+}
+
+async function youtubeChannelViaApify(handle: string, limit: number) {
+  const items = await apifyDataset(env.apifyYoutubeChannelActor, {
+    startUrls: [{ url: `https://www.youtube.com/@${handle.replace(/^@/, '')}` }],
+    maxResults: limit,
+    // MUST equal maxResults — see the note in env.ts. A shorts-first channel
+    // returns nothing at all when this is 0.
+    maxResultsShorts: limit,
+    maxResultStreams: 0,
+    sortVideosBy: 'NEWEST',
+  })
+  const first = items[0] ?? {}
+  const posts: ScrapedPost[] = items
+    .map((e) => {
+      const text = String(e.title ?? '').replace(/\s+/g, ' ').trim()
+      return {
+        text,
+        // The channel scraper reports views but not likes. 0 is the honest read
+        // of "not returned" for a metric the DNA synth only ranks by.
+        likes: 0,
+        plays: num(e.viewCount),
+        hashtags: tags(text),
+        url: String(e.url ?? ''),
+        cover: typeof e.thumbnailUrl === 'string' ? e.thumbnailUrl : undefined,
+      }
+    })
+    .filter((p) => p.text.length > 0)
+  const facts: ScrapedProfileFacts = {
+    resolvedHandle: nonEmpty(first.channelUsername),
+    displayName: nonEmpty(first.channelName),
+    audience: nullableInt(first.numberOfSubscribers),
+    postCount: nullableInt(first.channelTotalVideos),
+  }
+  return { posts, facts }
+}
+
+/** Scrape a creator's own back catalogue for the platform they actually publish on.
+ *
+ *  ⚠️ PLATFORM WAS IGNORED BEFORE THIS. Every scan went to TikTok regardless of
+ *  what the voice said, so a YouTube creator's scan asked tiktok.com for a handle
+ *  that does not exist there and read nothing — a second, independent cause of
+ *  the same empty result.
+ *
+ *  Instagram is deliberately NOT routed here: no profile Actor has been proven
+ *  against a real IG account from this worker, and guessing one would repeat the
+ *  defect this function exists to fix. It keeps the existing behaviour until an
+ *  Actor is verified the way these two were. */
+export async function scrapeProfile(
+  handle: string, platform: string, limit = 12,
+): Promise<{ posts: ScrapedPost[]; facts: ScrapedProfileFacts }> {
+  const p = platform.trim().toLowerCase()
+  if (p === 'youtube') {
+    // yt-dlp is bot-blocked on YouTube from datacenter IPs — the reason the
+    // transcript path moved to Apify. There is no free attempt worth making.
+    return await youtubeChannelViaApify(handle, limit)
+  }
+  if (p === 'tiktok') {
+    try {
+      const free = await scrapeTikTokProfile(handle, limit)
+      if (free.posts.length) return free
+      console.warn(JSON.stringify({ event: 'profile_scrape_free_empty', handle, platform: p }))
+    } catch (err) {
+      console.warn(JSON.stringify({
+        event: 'profile_scrape_free_failed', handle, platform: p,
+        reason: err instanceof Error ? err.message : String(err),
+      }))
+    }
+    return await tiktokProfileViaApify(handle, limit)
+  }
+  return await scrapeTikTokProfile(handle, limit)
+}
+
 function buildPosts(entries: Record<string, unknown>[]): ScrapedPost[] {
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   // Best-effort cover URL — yt-dlp's flat-playlist TikTok extractor often includes

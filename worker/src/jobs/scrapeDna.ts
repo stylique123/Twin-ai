@@ -1,5 +1,5 @@
 import { db, type Job } from '../db.js'
-import { scrapeTikTokProfile, type ScrapedPost } from '../media.js'
+import { scrapeProfile, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe } from '../transcriptSelection.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
@@ -67,7 +67,10 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   let posts
   let profileFacts
   try {
-    const scraped = await scrapeTikTokProfile(handle)
+    // ⚠️ THE PLATFORM WAS THROWN AWAY HERE. This read `scrapeTikTokProfile(handle)`
+    // for every voice, so a YouTube creator's scan asked tiktok.com for a handle
+    // that does not exist there, read nothing, and reported `done`.
+    const scraped = await scrapeProfile(handle, platform)
     posts = scraped.posts
     profileFacts = scraped.facts
   } catch (err) {

@@ -25,8 +25,15 @@ export const env = {
   // YouTube + Instagram ingestion: datacenter IPs get bot-blocked by yt-dlp
   // ("Sign in to confirm you're not a bot" on YouTube; "rate-limit reached or
   // login required" on Instagram). We route both through Apify transcript Actors
-  // instead, which pull real captions/transcripts reliably. TikTok still uses
-  // yt-dlp + whisper (that works from datacenter IPs).
+  // instead, which pull real captions/transcripts reliably.
+  //
+  // ⚠️ "TikTok still uses yt-dlp (that works from datacenter IPs)" was TRUE when
+  // written and is FALSE now. A live scan of a real user's TikTok profile from
+  // the production worker returned zero posts — TikTok bot-blocks the datacenter
+  // IP exactly as YouTube and Instagram already did. The job still reported
+  // `done`, the voice stayed `ready`, and `creator_knowledge` stayed empty, so
+  // nothing anywhere said the scan had read nothing. The PROFILE scrape now
+  // falls back to Apify the same way transcripts already do.
   // `fastModel` lived here and named a model literal. It is gone: the same
   // choice is now the `extract` task class in worker/model_routing_v1.json,
   // which still honours GEMINI_FAST_MODEL and resolves to the same id, so
@@ -40,6 +47,17 @@ export const env = {
   // { text, duration, segments: [{ start, end, text }] }. ID for
   // apple_yang/instagram-transcripts-scraper.
   apifyInstagramActor: (process.env.APIFY_INSTAGRAM_ACTOR ?? 'S9A11NvceWaGorwwh').trim(),
+  // PROFILE scrapers — the creator's own back catalogue, not one clip's captions.
+  // Both IDs were run at full breadth against real creator accounts before being
+  // put here (9 accounts, 650 posts, 0 failures), so they are proven rather than
+  // guessed.
+  // clockworks/tiktok-profile-scraper. Input {profiles, resultsPerPage,
+  // profileSorting}; `profileSorting` is a LOWERCASE enum and rejects 'Latest'.
+  apifyTiktokProfileActor: (process.env.APIFY_TIKTOK_PROFILE_ACTOR ?? '0FXVyOXXEmdGcV88a').trim(),
+  // streamers/youtube-channel-scraper. Input {startUrls, maxResults,
+  // maxResultsShorts}; maxResultsShorts MUST match maxResults or a shorts-first
+  // channel returns NOTHING, which is indistinguishable from a wrong handle.
+  apifyYoutubeChannelActor: (process.env.APIFY_YOUTUBE_CHANNEL_ACTOR ?? '67Q6fmd8iedTVcCwY').trim(),
   // Which job types this worker process handles.
   // 'transcribe' removed — it was registered + claimed but nothing ever enqueues it
   // (ingest-reference enqueues type 'ingest'). 'autoedit' removed with the old AI
