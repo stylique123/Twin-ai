@@ -60,8 +60,9 @@ describe('edge ↔ shared substance-check parity', () => {
     }
   })
 
-  it('the edge declares the same three issue codes', () => {
-    for (const code of ['unsupported_creator_claim', 'undeclared_evidence', 'unearned_first_person']) {
+  it('the edge declares the same issue codes', () => {
+    for (const code of ['unsupported_creator_claim', 'undeclared_evidence',
+      'unearned_first_person', 'undeclared_substance']) {
       expect(EDGE).toContain(code)
     }
   })
@@ -71,6 +72,19 @@ describe('edge ↔ shared substance-check parity', () => {
     // `required` as advisory, but leaving it out guarantees the gap.
     expect(EDGE).toMatch(/substance: str,\n\s*substance_evidence: str,/)
     expect(EDGE).toMatch(/'action_posing', 'substance', 'substance_evidence'\]/)
+  })
+
+  it('…and BOTH copies check what came back, because required is advisory', () => {
+    // ⚠️ THE TEST ABOVE ASSERTS THE REQUEST. This one asserts the RESPONSE is
+    // checked, which is the half that was missing: one beat in 705 came back
+    // with no `substance`, matched neither citation branch, and was waved
+    // through. The same set must be enumerated in both copies, or the edge
+    // starts accepting a source the shared rule rejects.
+    for (const src of [EDGE, SHARED]) {
+      expect(src).toMatch(
+        /SUBSTANCE_SOURCES: ReadonlySet<string> =\n\s*new Set\(\['creator_knowledge', 'product_dna', 'general', 'needs_user', 'none'\]\)/)
+      expect(src).toMatch(/if \(!SUBSTANCE_SOURCES\.has\(source\)\) \{/)
+    }
   })
 
   it('the check reads the knowledge the PROMPT carried, not the whole store', () => {

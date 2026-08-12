@@ -279,6 +279,13 @@ export type SubstanceIssueCode =
   | 'impossible_product_claim'
   /** Claimed `product_dna` citing something the supplied facts do not contain. */
   | 'unsupported_product_claim'
+  /** Declared no source, or one that is not among the five. Unaccounted for,
+   *  not necessarily wrong — see the note at the check. */
+  | 'undeclared_substance'
+
+/** The five sources a beat may declare. Anything else is unaccounted for. */
+export const SUBSTANCE_SOURCES: ReadonlySet<string> =
+  new Set(['creator_knowledge', 'product_dna', 'general', 'needs_user', 'none'])
 
 export interface SubstanceIssue {
   code: SubstanceIssueCode
@@ -375,6 +382,31 @@ export function substanceIssues(
     const source = typeof b.substance === 'string' ? b.substance : ''
     const cited = typeof b.substance_evidence === 'string' ? b.substance_evidence.trim() : ''
     const line = typeof b.line === 'string' ? b.line : ''
+
+    // ⚠️ AN OMITTED DECLARATION IS THE CHEAPEST WAY OUT OF EVERY CHECK BELOW.
+    // Both branches key on `source` matching a known value, so a beat with no
+    // `substance` at all matches neither and is waved through without its
+    // citation ever being read. It is a required field in the response schema
+    // and it still happened: 1 beat in 705 across the last matrix —
+    //
+    //     "Or if you're into productivity, don't feel locked into the Surface
+    //      Pro or Surface Laptop 7."   (ryan / OBS:R_TILBURY_RAT)
+    //
+    // — so "the schema requires it" is a statement about the request, not about
+    // what comes back. 0 in the two other 112-case runs; the rate is low and
+    // the bypass is total, which is exactly the shape that stays invisible.
+    //
+    // ⚖️ NAMED, NOT ESCALATED. This says the beat is UNACCOUNTED FOR, not that
+    // it is wrong — the line above is innocuous, and rewriting it into a
+    // question would charge an honest script for the writer's omission. The
+    // expensive claims are still caught on the line itself: `FIRST_PERSON_HISTORY`
+    // below and `entitlementFailures` both run regardless of what was declared.
+    if (!SUBSTANCE_SOURCES.has(source)) {
+      out.push({ code: 'undeclared_substance', beat: i,
+        detail: source === ''
+          ? 'Beat declares no substance at all, so neither citation check can run on it.'
+          : `Beat declares substance "${source.slice(0, 40)}", which is not one of the five sources.` })
+    }
 
     if (source === 'creator_knowledge') {
       if (cited === '') {
