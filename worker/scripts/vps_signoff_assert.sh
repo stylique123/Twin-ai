@@ -63,7 +63,7 @@ _good_env() {
   export EXP_REGISTRY="ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media,extract_product"
   export OBS_SHA=$SHA40 OBS_STATUS=running OBS_HEALTH=healthy OBS_RESTARTS=0
   # deliberately different order + JSON quoting to prove order/quote-insensitivity:
-  export OBS_REGISTRY='"editor_v2","ingest","scrape_dna","build_voice","validate_source"'
+  export OBS_REGISTRY='"editor_v2","extract_product","ingest","purge_media","scrape_dna","build_voice","validate_clip","validate_source"'
   export OBS_JOBTYPES_OVERRIDE="" OBS_REVISION=rev1 OBS_BUNDLE=speech-6 OBS_VERIFY_RC=0
   export OBS_REPOSITORY=Systran/faster-whisper-small OBS_MODEL_PATH=/opt/models/faster-whisper-small OBS_MANIFEST_SHA=$MSHA
   export OBS_TEST_ALLOW="" OBS_TEST_MANIFEST="" OBS_REVIDEO=0 OBS_PORT4500=0 OBS_LEGACY_ENV=0
