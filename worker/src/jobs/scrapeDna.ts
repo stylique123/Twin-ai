@@ -5,27 +5,74 @@ import { selectVideosToTranscribe } from '../transcriptSelection.js'
 import { insertKnowledge } from '../knowledgeInsert.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import type { InlineImage } from '../gemini.js'
+import { env } from '../env.js'
+import { ProxyAgent } from 'undici'
 
-// Best-effort: fetch a few post cover images so the synth can read the real brand
-// palette from the imagery (Gemini vision), mirroring the edge dna-poll function.
-// Any cover that fails to fetch is skipped — falls back to caption-only inference.
+// Instagram/Facebook image CDNs SIGN their URLs to the IP that scraped them, so a
+// direct fetch from this worker gets a 403 and the palette comes back empty. The
+// account was scraped THROUGH Apify, so Apify's residential proxy is the egress the
+// CDN already accepted — re-fetching the thumbnail through it gets an IP that works.
+//
+// ⚠️ THIS IS PORTED FROM `dna-poll`, WHERE IT WAS ADDED BECAUSE IG PALETTES CAME
+// BACK EMPTY. The worker scrapes Instagram via Apify too, so it inherits exactly the
+// same signed-URL problem. Routing Instagram to the worker without this would have
+// silently degraded every IG brand palette to caption-only inference — a regression
+// with no error anywhere, which is the kind this repo keeps having to dig out.
+const IG_CDN = /(cdninstagram|fbcdn|scontent)/i
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36'
+
+/** A dispatcher bound to Apify's residential proxy, or null when it is not
+ *  configured. Null is a legal state: the caller falls back to the direct fetch
+ *  and, failing that, to caption-only inference. */
+function apifyProxyDispatcher(): ProxyAgent | null {
+  if (!env.apifyProxyPassword) return null
+  try {
+    return new ProxyAgent({
+      uri: 'http://proxy.apify.com:8000',
+      token: `Basic ${Buffer.from(`groups-RESIDENTIAL:${env.apifyProxyPassword}`).toString('base64')}`,
+    })
+  } catch {
+    return null
+  }
+}
+
+/** Download one thumbnail → base64, or null on ANY failure. A bad thumbnail must
+ *  never fail a whole DNA build; the palette is an enrichment, not the product. */
+async function fetchOneImage(url: string, dispatcher?: ProxyAgent): Promise<InlineImage | null> {
+  try {
+    const res = await fetch(url, {
+      signal: AbortSignal.timeout(6000),
+      headers: { 'User-Agent': UA },
+      // `dispatcher` is undici's, not in the DOM RequestInit types Node ships.
+      ...(dispatcher ? { dispatcher } : {}),
+    } as RequestInit)
+    if (!res.ok) return null
+    const mimeType = res.headers.get('content-type') || 'image/jpeg'
+    if (!mimeType.startsWith('image/')) return null
+    const buf = Buffer.from(await res.arrayBuffer())
+    // Thumbnails are small; a huge body is a page or a redirect, not a cover.
+    if (!buf.byteLength || buf.byteLength > 3_000_000) return null
+    return { mimeType, data: buf.toString('base64') }
+  } catch {
+    return null
+  }
+}
+
+// Direct fetch first; retry through the residential proxy only for the IG/FB CDNs
+// that block server IPs. Anything still unreadable is skipped, and the palette is
+// recorded as not captured rather than guessed at.
 async function fetchInlineImages(urls: string[], max = 4): Promise<InlineImage[]> {
   const out: InlineImage[] = []
-  for (const url of urls.slice(0, max)) {
-    try {
-      const res = await fetch(url, {
-        signal: AbortSignal.timeout(6000),
-        headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36' },
-      })
-      if (!res.ok) continue
-      const mimeType = res.headers.get('content-type') || 'image/jpeg'
-      if (!mimeType.startsWith('image/')) continue
-      const buf = Buffer.from(await res.arrayBuffer())
-      if (!buf.byteLength || buf.byteLength > 3_000_000) continue
-      out.push({ mimeType, data: buf.toString('base64') })
-    } catch {
-      // skip this image — never let a bad thumbnail fail the whole synthesis
+  const proxy = apifyProxyDispatcher()
+  try {
+    for (const url of urls.slice(0, max)) {
+      let img = await fetchOneImage(url)
+      if (!img && proxy && IG_CDN.test(url)) img = await fetchOneImage(url, proxy)
+      if (img) out.push(img)
     }
+  } finally {
+    // The worker is long-lived — an undispatched agent per job leaks sockets.
+    await proxy?.close().catch(() => {})
   }
   return out
 }
