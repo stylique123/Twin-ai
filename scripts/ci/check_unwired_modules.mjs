@@ -170,3 +170,76 @@ if (dead.length) {
   console.log('\nAn optional input nothing supplies is a branch that cannot run in')
   console.log('production, with a passing test in front of it. Pass it, or drop it.')
 }
+
+// ── AND A MODULE CAN BE WIRED WHILE THE FUNCTION IS NOT ─────────────────────
+//
+// ⚠️ THE BLIND SPOT UNDER THE BLIND SPOT. `traceability.ts` passes the
+// module-level check because `traceabilityLevel` is imported by the edge. Under
+// that cover, `routeSubstance` — the ONLY function in the codebase that can
+// return `CHANGE_CONCEPT`, which is to say the only built mechanism for
+// rejecting a concept BEFORE the writer runs — has no production caller at all.
+// It has eleven passing assertions and has never executed for a paying creator.
+//
+// Module-level wiring is therefore not evidence about any particular export.
+// This asks the narrower question per exported function, which is the one that
+// decides whether a capability is real.
+//
+// ⚠️ AND MODULE-LEVEL MIRRORING MUST NOT EXCUSE A FUNCTION. A first pass
+// labelled every export of a mirrored module "pinned source, not a caller" —
+// and that label swallowed `routeSubstance`, because the edge mirrors OTHER
+// parts of `traceability.ts`. The per-function search needs no such excuse: an
+// inlined copy keeps the function's NAME, so a real mirror already counts as a
+// caller here. A name that appears nowhere is dead whatever else its module has.
+//
+// ⚖️ SAME TEXTUAL, UNDER-CLAIMING RULE. A function counts as called if any
+// non-test production file outside its own module names it. Re-exports through
+// `index.ts` are excluded (that is a listing, not a call) — everything else is
+// taken at its word.
+const INDEX = 'packages/shared/src/index.ts'
+// ⚠️ AND THE GUARD MUST NOT COUNT ITSELF. The first run of this check reported
+// `routeSubstance` as CALLED — by the comment four lines above, in this file,
+// naming it as the headline example of a function nothing calls. A report that
+// launders its own prose into evidence is worse than no report; it would have
+// quietly cleared any function it ever discussed.
+const SELF = 'scripts/ci/check_unwired_modules.mjs'
+const EXPORTED_FN = /^export function ([A-Za-z_$][\w$]*)/gm
+const orphans = []
+for (const m of modules) {
+  let src
+  try { src = readFileSync(m, 'utf8') } catch { continue }
+  for (const mm of src.matchAll(EXPORTED_FN)) {
+    const fn = mm[1]
+    const named = new RegExp(`\\b${fn}\\b`)
+    let called = false
+    for (const [file, body] of bodies) {
+      if (file.includes('__tests__') || file === m || file === INDEX || file === SELF) continue
+      if (named.test(body)) { called = true; break }
+    }
+    if (!called) orphans.push({ m, fn })
+  }
+}
+// ⚖️ GROUPED, AND THE DORMANT SUBTREE SEPARATED — because 101 lines in one flat
+// list is the same failure as 47 noisy fields, arrived at from the other side.
+// `editor/` is uncalled ON PURPOSE: EDITOR_V2 is off, and that half of the
+// product is deliberately unreachable. Mixing it in would bury the findings that
+// mean something under a wing nobody claimed was live. It is still counted,
+// because "dormant by decision" stops being true the day the flag flips.
+const isEditor = (p) => p.startsWith('packages/shared/src/editor/')
+// A module the FIRST check already reported has nothing hiding underneath it —
+// every export is uncalled and saying so again per function is double-counting.
+const alreadyFlagged = new Set(findings.map((f) => f.m))
+const live = orphans.filter((o) => !isEditor(o.m) && !alreadyFlagged.has(o.m))
+const dormant = orphans.filter((o) => isEditor(o.m))
+console.log(`\nexported functions with no production caller: ${orphans.length}`
+  + ` (${dormant.length} under editor/, dormant behind EDITOR_V2;`
+  + ` ${orphans.length - live.length - dormant.length} in modules already listed above)`)
+const byModule = new Map()
+for (const o of live) byModule.set(o.m, [...(byModule.get(o.m) ?? []), o.fn])
+for (const [m, fns] of [...byModule].sort((a, b) => b[1].length - a[1].length)) {
+  console.log(`  ⚠️  ${m}`)
+  console.log(`      ${fns.map((f) => `${f}()`).join(', ')}`)
+}
+if (live.length) {
+  console.log('\nA module counts as wired when ONE of its exports is imported. These')
+  console.log('are the ones hiding underneath that. Call them, or delete them.')
+}
