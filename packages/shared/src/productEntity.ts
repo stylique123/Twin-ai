@@ -281,6 +281,61 @@ export function mintFromWorkKind(
 // is what `pre_script_brief.promotes` accepts; this is what the question offers.
 // Two hand-written lists for one set is the drift bug this repo keeps catching —
 // the day someone adds a fifth answer to one, the other cannot stay silent.
+/** WHAT A CREATOR MUST ACTUALLY SAY to turn a mention into an entitlement.
+ *
+ *  ⚠️ EXTRACTION CANNOT PRODUCE THIS, WHICH IS THE ENTIRE POINT. The knowledge
+ *  table can tell us a creator said "Peak Design Phone Tripod". It cannot tell
+ *  us whether they own it, earn on it, or have ever held one — and those are the
+ *  facts that decide whether a commercial CTA is permitted, whether disclosure
+ *  is required, and whether a marketing claim may be put in their mouth. Every
+ *  field here is an answer, never an inference.
+ *
+ *  ⚖️ `personalUse` IS ASKED SEPARATELY AND NEVER DERIVED FROM `relationship`.
+ *  Owning a product does not establish having used it, and taking a commission
+ *  establishes even less. The two questions look redundant and are not: one
+ *  licenses commercial language, the other licenses "I use this every day". */
+export interface EntityAttestation {
+  relationship: EntityRelationship
+  personalUse: PersonalUse
+  type: EntityType
+  name: string | null
+  productUrl?: string | null
+  flags?: { canRecordScreen?: boolean | null; canFilmObjects?: boolean | null }
+  now?: string
+}
+
+/** Build the entity a creator has explicitly claimed.
+ *
+ *  ⚖️ `source` IS `user_answer` AND `userConfirmed` IS TRUE, because both are
+ *  true — and neither may be set anywhere a creator has not actually answered.
+ *  A Q3 mint writes `inferred` for exactly this reason. The pair is what later
+ *  distinguishes "we worked this out" from "they told us", and `updated` carries
+ *  when, so an entitlement can always be traced back to a moment. */
+export function attestedEntity(a: EntityAttestation): DraftEntity {
+  const name = (a.name ?? '').trim()
+  const url = (a.productUrl ?? '').trim()
+  return {
+    name: name === '' ? null : name,
+    type: a.type,
+    relationship: a.relationship,
+    personalUse: a.personalUse,
+    // DERIVED FROM CAPABILITIES, NOT ASKED AGAIN — and UNKNOWN when they have
+    // not answered those either. Never a denial inferred from silence.
+    showability: inferShowability(a.type, a.flags ?? {}),
+    productUrl: url === '' ? null : url,
+    // ⚠️ A COMMERCIAL TIE IS ITS OWN ANSWER. `AFFILIATE` says a commission
+    // exists; it does not supply the link, and inventing one here would put a
+    // URL on screen that nobody gave us. `promoteToAffiliate` sets it when the
+    // creator provides it.
+    affiliateUrl: null,
+    evidence: null,
+    restrictions: emptyRestrictions(),
+    source: 'user_answer',
+    userConfirmed: true,
+    updated: a.now ?? new Date().toISOString(),
+  }
+}
+
 export const Q4_ANSWERS = BRIEF_PROMOTES
 export type Q4Answer = (typeof Q4_ANSWERS)[number]
 
