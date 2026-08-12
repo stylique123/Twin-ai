@@ -101,3 +101,72 @@ for (const f of findings) {
 }
 console.log('\nA module with tests and no consumer looks HEALTHIER than one with')
 console.log('neither, because the coverage number counts it. Wire it, or delete it.')
+
+// ── AND A MODULE CAN BE WIRED WHILE ITS INPUT IS NOT ────────────────────────
+//
+// ⚠️ THE FIFTH INSTANCE, AND THE FIRST THIS GUARD COULD NOT SEE.
+// `csEntityEvidence` takes `entities` so a product the creator TOLD us about
+// counts as known. The module was imported, the function was called, the branch
+// was tested — and the call site passed only `items`, so the `relationship`
+// branch was unreachable in production for as long as it existed. An affiliate
+// product on record was indistinguishable from one nobody had ever mentioned.
+//
+// The module-level check above reports "wired" for exactly this case, because it
+// asks whether anything IMPORTS the module. Nothing asked whether anything
+// SUPPLIES the input. So: every optional field on a shared input interface is a
+// capability, and one that no production file ever writes is a dead branch with
+// a test in front of it.
+//
+// ⚖️ TEXTUAL, AND THEREFORE UNDER-CLAIMING ON PURPOSE. A field counts as
+// supplied if any non-test production file writes `field:` anywhere — spread
+// objects and renamed locals are not traced. That direction is chosen
+// deliberately: this must not manufacture findings, because a report nobody
+// believes is a report nobody reads. It will miss some dead inputs. It will not
+// invent one.
+// ⚠️ AND "OPTIONAL FIELD" IS NOT "INPUT". The first version scanned every
+// optional field in every shared module and reported 47 — most of them columns
+// on `types.ts` row shapes, which arrive FROM PostgREST and are read rather than
+// passed. Nothing "supplies" `thumb_path` because nothing is supposed to; a
+// report where the true findings are outnumbered four to one by that is a report
+// that gets skimmed and then ignored. So the scan is restricted to interfaces
+// that are ACTUALLY USED AS A FUNCTION PARAMETER TYPE in their own module —
+// which is what makes a field an input rather than a column.
+const PARAM_TYPE = /\([^)]*?:\s*([A-Z][\w$]*)\s*[,)]/g
+const BLOCK = (name) => new RegExp(`(?:interface|type)\\s+${name}\\b[^{]*\\{([\\s\\S]*?)\\n\\}`, 'm')
+const OPTIONAL_FIELD = /^\s*(?:readonly\s+)?([A-Za-z_$][\w$]*)\?\s*:/gm
+// Field names too generic for a textual reader test to mean anything. Each is
+// here because the name appears as an object key across the codebase for
+// unrelated reasons, so "somebody writes it" proves nothing either way.
+const AMBIGUOUS = new Set([
+  'id', 'name', 'text', 'kind', 'type', 'value', 'label', 'title', 'url', 'source',
+  'reason', 'error', 'status', 'mode', 'now', 'basis', 'line', 'goal', 'note',
+])
+const dead = []
+for (const m of modules) {
+  let src
+  try { src = readFileSync(m, 'utf8') } catch { continue }
+  const paramTypes = new Set([...src.matchAll(PARAM_TYPE)].map((x) => x[1]))
+  const fields = new Set()
+  for (const t of paramTypes) {
+    const block = src.match(BLOCK(t))
+    if (!block) continue
+    for (const mm of block[1].matchAll(OPTIONAL_FIELD)) {
+      if (!AMBIGUOUS.has(mm[1])) fields.add(mm[1])
+    }
+  }
+  for (const f of fields) {
+    const written = new RegExp(`\\b${f}\\s*:`)
+    let supplied = false
+    for (const [file, body] of bodies) {
+      if (file.includes('__tests__') || file === m) continue
+      if (written.test(body)) { supplied = true; break }
+    }
+    if (!supplied) dead.push({ m, f })
+  }
+}
+console.log(`\ndeclared-but-unsupplied inputs: ${dead.length}`)
+for (const d of dead) console.log(`  ⚠️  nothing ever passes \`${d.f}\`  ${d.m}`)
+if (dead.length) {
+  console.log('\nAn optional input nothing supplies is a branch that cannot run in')
+  console.log('production, with a passing test in front of it. Pass it, or drop it.')
+}
