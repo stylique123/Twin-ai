@@ -129,6 +129,17 @@ export interface StoredReferenceStructure {
   beats?: unknown
   cta?: unknown
   words_per_min?: unknown
+  /** What the reference DEPENDS ON, written by `deriveStructure` at ingest and
+   *  read by `readReferenceObservations` in `compatibilityGate`. Absent on every
+   *  structure derived before the field existed, and absent is NOT false — the
+   *  gate leaves the dimensions it backs out of `observed` entirely rather than
+   *  ruling that those videos show no product. */
+  observations?: {
+    shows_product?: unknown
+    makes_product_claims?: unknown
+    broll_heavy?: unknown
+    energy?: unknown
+  } | null
 }
 
 export interface NormalizeInput {

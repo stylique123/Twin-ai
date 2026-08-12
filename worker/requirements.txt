@@ -39,4 +39,23 @@ requests==2.33.1         # imported by faster_whisper.utils (not always
 # path is the exactly-pinned stack above), so its freshness cannot affect
 # Phase-5 reproducibility.
 yt-dlp>=2025.1.15
+# ⚠️ TIKTOK REQUIRES IMPERSONATION, AND THIS IMAGE NEVER HAD IT. Plain
+# `yt-dlp` installs with no impersonation backend, so its TikTok extractor
+# prints "attempting impersonation, but no impersonate target is available"
+# and then fails with "Unable to extract secondary user ID" — and, worse, first
+# emits "This user's account is either private or has embedding disabled",
+# which is a GUESS it makes when it could not read the page at all.
+#
+# That guess is what reached the creator. `scrape_dna` turned it into "If that
+# account is private or empty, try a public account", so a dependency gap was
+# reported to the user as a fact about their own account.
+#
+# ⚖️ AND IT EXPLAINS A CONTRADICTION IN OUR OWN NOTES. `scrapeDna.ts` says
+# "TikTok yt-dlp+whisper works from our IP" while `media.ts` says datacenter IPs
+# are bot-blocked, and both were written in good faith: the TikTok path DID work
+# when that comment was written. It did not stop working because the IP changed.
+# It stopped because TikTok began requiring impersonation and nothing here ever
+# installed a backend for it — which is why moving TikTok to a paid Apify actor
+# would have bought, at real per-scan cost, what one dependency provides.
+curl-cffi>=0.7.0
 youtube-transcript-api>=0.6.2

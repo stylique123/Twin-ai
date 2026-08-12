@@ -717,6 +717,205 @@ function routeSubstance(ctx: RoutingContext): string {
   return ctx.externallyAnswerable ? 'RESEARCH' : 'ASK_CREATOR'
 }
 
+
+// ── WHAT MAY TRANSFER FROM THE REFERENCE, RULED ON BEFORE THE WRITER RUNS ────
+//
+// Inlined from `packages/shared/src/compatibilityGate.ts` (Deno deploy cannot
+// import @twinai/shared). `compatibilityGateParity.test.ts` fails if they drift.
+//
+// ⚠️ THIS GATE HAS NEVER RUN. It was written, tested, and had no production
+// caller — because `observed` was produced by nothing. `deriveStructure` now
+// records what a reference DEPENDS ON at ingest, so there is finally something
+// to rule on.
+//
+// ⚠️ SHADOW ONLY. It writes no prompt line and refuses no beat; it counts
+// verdicts. `compatibilityPromptLine` — the function that would put "DO NOT
+// USE" in front of the writer — is deliberately NOT inlined yet: acting on a
+// gate whose inputs were first produced hours ago would be enforcing against a
+// measurement nobody has read.
+type CompatEntity = { relationship: string; showability: string } | null
+interface CompatInput {
+  observed: readonly string[]
+  referenceShowsProduct?: boolean
+  referenceMakesProductClaims?: boolean
+  referenceIsBRollHeavy?: boolean
+  entity?: CompatEntity
+  canProduceBRoll?: boolean | null
+  referenceEnergy?: 'high' | 'calm' | null
+  creatorEnergy?: 'high' | 'calm' | null
+}
+interface StoredRefStructure {
+  beats?: unknown
+  observations?: {
+    shows_product?: unknown
+    makes_product_claims?: unknown
+    broll_heavy?: unknown
+    energy?: unknown
+  } | null
+}
+
+const REFERENCE_DIMENSIONS = [
+  'hook_mechanism',
+  'structure',
+  'sequencing',
+  'pacing',
+  'performance_energy',
+  'product_demonstration',
+  'b_roll_density',
+  'setting',
+  'camera_work',
+  'product_claims',
+  'creator_identity',
+] as const
+
+function compatibilityVerdicts(input: CompatInput): Array<{ dimension: string; verdict: string; reason: string }> {
+  const seen = new Set(input.observed)
+  const out: Array<{ dimension: string; verdict: string; reason: string }> = []
+  const add = (dimension: string, verdict: string, reason: string) =>
+    out.push({ dimension, verdict, reason })
+
+  for (const dimension of REFERENCE_DIMENSIONS) {
+    // NOT OBSERVED WINS OVER EVERY OTHER RULE. We cannot rule on what we never
+    // measured, and pretending otherwise is the `unknown` evidence kind being
+    // quietly upgraded to a fact.
+    if (!seen.has(dimension)) {
+      add(dimension, 'NOT_OBSERVED', 'The reference read never measured this, so there is no opinion to carry across.')
+      continue
+    }
+
+    switch (dimension) {
+      // The mechanics that make a reference work, and the reason anyone chose
+      // it. These transfer unless something specific refuses them.
+      case 'hook_mechanism':
+      case 'structure':
+      case 'sequencing':
+        add(dimension, 'TRANSFER', 'A structural mechanism, independent of who is performing it or what they sell.')
+        break
+
+      case 'pacing':
+        // Pacing transfers as a MECHANISM and adapts as an EXECUTION: the same
+        // escalation at the creator's own speed.
+        add(dimension, 'ADAPT', 'Keep the escalation; run it at the creator’s own speed rather than the reference’s.')
+        break
+
+      case 'performance_energy': {
+        const ref = input.referenceEnergy
+        const mine = input.creatorEnergy
+        if (ref && mine && ref !== mine) {
+          add(dimension, 'REJECT',
+            `The reference performs ${ref} and this creator is ${mine}. Copying the delivery makes them sound like someone else, which is the one thing the voice layer exists to prevent.`)
+        } else {
+          add(dimension, 'ADAPT', 'Deliver at the creator’s own energy, not the reference’s.')
+        }
+        break
+      }
+
+      // ── THE ONE THIS GATE EXISTS FOR ────────────────────────────────────
+      case 'product_demonstration': {
+        if (!input.referenceShowsProduct) {
+          add(dimension, 'NOT_OBSERVED', 'The reference does not demonstrate a product, so there is nothing to transfer.')
+          break
+        }
+        const rel = input.entity?.relationship
+        if (!rel || rel === 'NONE') {
+          // The coach. Every fact needed to refuse this was already in the
+          // system; nothing was holding a place to do the refusing.
+          add(dimension, 'REJECT', 'The reference shows a product and this creator has none. A "show the product" scene cannot be filled, and would be discovered while standing in a room holding a phone.')
+          break
+        }
+        if (input.entity?.showability !== 'ALWAYS') {
+          add(dimension, 'REJECT', 'The reference shows a product this creator cannot dependably put on screen. A script is written once and filmed later, so a scene that depends on it is a scene that may not be filmable.')
+          break
+        }
+        add(dimension, 'TRANSFER', 'The creator has a product and can put it on screen.')
+        break
+      }
+
+      case 'product_claims': {
+        if (!input.referenceMakesProductClaims) {
+          add(dimension, 'NOT_OBSERVED', 'The reference makes no product claims.')
+          break
+        }
+        // ALWAYS REJECTED, without exception. The reference's claims are about
+        // the reference's product, and no relationship makes them true of a
+        // different one. This is the dimension whose failure mode is regulatory
+        // rather than aesthetic.
+        add(dimension, 'REJECT', 'Claims belong to the product they were made about. Nothing carries a claim from one product to another.')
+        break
+      }
+
+      case 'b_roll_density': {
+        if (!input.referenceIsBRollHeavy) {
+          add(dimension, 'TRANSFER', 'The reference does not lean on b-roll, so nothing here depends on footage.')
+          break
+        }
+        if (input.canProduceBRoll === true) {
+          add(dimension, 'ADAPT', 'Keep the cutaway rhythm, at a volume one person with a phone can actually shoot.')
+          break
+        }
+        // Unanswered refuses, for the same reason `showability` does: this
+        // decides whether beats DEPEND on footage that may never arrive.
+        add(dimension, 'REJECT', 'The format leans on b-roll this creator has not said they can produce. A renovation timelapse handed to someone holding a phone is a beat that silently will not exist.')
+        break
+      }
+
+      case 'setting':
+        add(dimension, 'ADAPT', 'Take the intent — clean, or lived-in, or busy — never the reference’s actual room. Nobody has confirmed what this creator’s room contains.')
+        break
+
+      case 'camera_work':
+        add(dimension, 'ADAPT', 'Achievable framing only: a phone, at a height and distance a person can set up alone.')
+        break
+
+      case 'creator_identity':
+        // The reference's jokes, catchphrases, persona. Never transferable, and
+        // carrying them is how a script becomes a re-shoot of someone else's.
+        add(dimension, 'REJECT', 'The reference creator’s identity is theirs. Carrying it across makes this a re-shoot of their video with a different face.')
+        break
+    }
+  }
+  return out
+}
+
+function readReferenceObservations(
+  structure: StoredRefStructure | null | undefined,
+  creatorEnergy?: 'high' | 'calm' | null,
+  entity?: CompatEntity,
+  canProduceBRoll?: boolean | null,
+): CompatInput {
+  const s = structure ?? {}
+  const o = s.observations ?? null
+  const flag = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined)
+  const energy = o?.energy === 'high' || o?.energy === 'calm' ? o.energy : null
+
+  const observed: string[] = []
+  // A derived structure means the spine was read. An EMPTY beat list does not:
+  // a structure that failed to find any beats has not measured sequencing, and
+  // reporting otherwise would rule on a read that found nothing.
+  if (Array.isArray(s.beats) && s.beats.length > 0) observed.push(...STRUCTURAL_DIMENSIONS)
+  // Every remaining dimension is observed only if the field backing it is
+  // present AND typed. `undefined` and a stray string are the same answer here:
+  // nobody measured it.
+  if (flag(o?.shows_product) !== undefined) observed.push('product_demonstration')
+  if (flag(o?.makes_product_claims) !== undefined) observed.push('product_claims')
+  if (flag(o?.broll_heavy) !== undefined) observed.push('b_roll_density')
+  // ⚖️ ENERGY NEEDS BOTH SIDES. The dimension compares the reference against the
+  // creator, so knowing only one of the two is not an observation — it is half a
+  // comparison, and the gate would rule on it as though it were whole.
+  if (energy && (creatorEnergy === 'high' || creatorEnergy === 'calm')) observed.push('performance_energy')
+
+  return {
+    observed,
+    referenceShowsProduct: flag(o?.shows_product),
+    referenceMakesProductClaims: flag(o?.makes_product_claims),
+    referenceIsBRollHeavy: flag(o?.broll_heavy),
+    referenceEnergy: energy,
+    creatorEnergy: creatorEnergy ?? null,
+    entity: entity ?? null,
+    canProduceBRoll: canProduceBRoll ?? null,
+  }
+}
+
 // Mirrors `substanceIssues` in packages/shared/src/knowledgeResolver.ts.
 function substanceIssues(
   beats: unknown,
@@ -2958,6 +3157,44 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
       }
     } catch (err) {
       console.error('substance_route_shadow_failed', err instanceof Error ? err.message : err)
+    }
+    // ── SHADOW: WHAT THE REFERENCE MAY LEND THIS CREATOR ───────────────────
+    //
+    // The first production run of a gate that has existed, tested, and uncalled.
+    // It refuses nothing — `NOT_OBSERVED` counts are the number that matters
+    // first, because a gate ruling confidently on a reference nobody measured
+    // would be worse than no gate.
+    try {
+      const compat = readReferenceObservations(
+        (ref?.structure ?? null) as StoredRefStructure | null,
+        // Creator energy is not recorded anywhere yet, so `performance_energy`
+        // will report NOT_OBSERVED on every run. Passing null rather than
+        // inventing a register keeps that visible instead of ruling on a guess.
+        null,
+        ownedEntity
+          ? { relationship: String(ownedEntity.relationship ?? ''), showability: String(ownedEntity.showability ?? 'UNKNOWN') }
+          : null,
+        // Three-state: unanswered is not a yes, and the gate refuses on it.
+        null,
+      )
+      const verdicts = compatibilityVerdicts(compat)
+      const byVerdict: Record<string, number> = {}
+      for (const v of verdicts) byVerdict[v.verdict] = (byVerdict[v.verdict] ?? 0) + 1
+      console.log(JSON.stringify({
+        event: 'reference_transfer_shadow',
+        observed: compat.observed.length,
+        // Which dimensions were actually measured — the count alone cannot say
+        // whether the spine was read or a product was seen.
+        observed_dimensions: compat.observed,
+        by_verdict: byVerdict,
+        rejected: verdicts.filter((v) => v.verdict === 'REJECT').map((v) => v.dimension),
+        // A reference read before `observations` existed reports 4 observed
+        // dimensions (the spine) and nothing else. Distinguishing that from a
+        // fresh read is what tells us when the ingest change has taken effect.
+        has_observations: Boolean((ref?.structure as StoredRefStructure | null)?.observations),
+      }))
+    } catch (err) {
+      console.error('reference_transfer_shadow_failed', err instanceof Error ? err.message : err)
     }
     console.log(JSON.stringify({
       event: 'substance_route_shadow',

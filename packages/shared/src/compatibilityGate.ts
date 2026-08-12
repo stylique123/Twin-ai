@@ -35,6 +35,7 @@
 // there are four.
 
 import type { EntityRelationship, Showability } from './productEntity'
+import type { StoredReferenceStructure } from './referenceEvidence'
 
 export const TRANSFER_VERDICTS = ['TRANSFER', 'ADAPT', 'REJECT', 'NOT_OBSERVED'] as const
 export type TransferVerdict = (typeof TRANSFER_VERDICTS)[number]
@@ -234,4 +235,75 @@ export function compatibilityPromptLine(verdicts: readonly DimensionVerdict[]): 
   if (rejected.length === 0) return ''
   return '\n- DO NOT USE — these were ruled out before writing began, and a reason to include them anyway is not one you may find:\n'
     + rejected.map((v) => `  * ${v.dimension.replace(/_/g, ' ')}: ${v.reason}`).join('\n')
+}
+
+// ── READING A STORED REFERENCE INTO GATE INPUT ──────────────────────────────
+//
+// ⚠️ THE GATE'S PRIMARY INPUT WAS PRODUCED BY NOTHING. `observed` is the list of
+// dimensions the reference read genuinely measured, and no code anywhere built
+// one — so `compatibilityVerdicts` could not be called at all, and wasn't, for
+// as long as it has existed. This is the missing half.
+//
+// The source is `transcripts.structure`, derived at INGEST by the worker's
+// `deriveStructure` — a reference read that already runs BEFORE generation,
+// which is where a decision about what may transfer belongs.
+//
+// ⚖️ WHAT IS OBSERVED IS DECIDED BY WHAT WAS DERIVED, NOT BY WHAT IS TRUE. A
+// structure with no `observations` block predates the field; every dimension
+// that depends on it is left OUT of `observed`, so the gate answers
+// NOT_OBSERVED rather than ruling from a default. That is the whole reason
+// `observed` is a list of what was seen rather than a list of what was missing.
+
+// ⚠️ THE COLUMN ALREADY HAD A TYPE. A first pass declared a second
+// `StoredReferenceStructure` here describing the same `transcripts.structure`
+// column, and the two would have drifted the moment either changed — two
+// readings of one column is the `productEvidence`-on-the-brief mistake in
+// miniature. `observations` was added to the existing one instead.
+
+/** Dimensions a structural read can always speak to, because deriving beats at
+ *  all means having read the spine. Deliberately short: `setting`,
+ *  `camera_work` and `creator_identity` are NOT here — a transcript cannot see
+ *  a room, a lens, or a face, and claiming otherwise would put a verdict on
+ *  something nobody looked at. */
+const STRUCTURAL_DIMENSIONS: readonly ReferenceDimension[] = [
+  'hook_mechanism', 'structure', 'sequencing', 'pacing',
+]
+
+export function readReferenceObservations(
+  structure: StoredReferenceStructure | null | undefined,
+  creatorEnergy?: 'high' | 'calm' | null,
+  entity?: CompatibilityInput['entity'],
+  canProduceBRoll?: boolean | null,
+): CompatibilityInput {
+  const s = structure ?? {}
+  const o = s.observations ?? null
+  const flag = (v: unknown): boolean | undefined => (typeof v === 'boolean' ? v : undefined)
+  const energy = o?.energy === 'high' || o?.energy === 'calm' ? o.energy : null
+
+  const observed: ReferenceDimension[] = []
+  // A derived structure means the spine was read. An EMPTY beat list does not:
+  // a structure that failed to find any beats has not measured sequencing, and
+  // reporting otherwise would rule on a read that found nothing.
+  if (Array.isArray(s.beats) && s.beats.length > 0) observed.push(...STRUCTURAL_DIMENSIONS)
+  // Every remaining dimension is observed only if the field backing it is
+  // present AND typed. `undefined` and a stray string are the same answer here:
+  // nobody measured it.
+  if (flag(o?.shows_product) !== undefined) observed.push('product_demonstration')
+  if (flag(o?.makes_product_claims) !== undefined) observed.push('product_claims')
+  if (flag(o?.broll_heavy) !== undefined) observed.push('b_roll_density')
+  // ⚖️ ENERGY NEEDS BOTH SIDES. The dimension compares the reference against the
+  // creator, so knowing only one of the two is not an observation — it is half a
+  // comparison, and the gate would rule on it as though it were whole.
+  if (energy && (creatorEnergy === 'high' || creatorEnergy === 'calm')) observed.push('performance_energy')
+
+  return {
+    observed,
+    referenceShowsProduct: flag(o?.shows_product),
+    referenceMakesProductClaims: flag(o?.makes_product_claims),
+    referenceIsBRollHeavy: flag(o?.broll_heavy),
+    referenceEnergy: energy,
+    creatorEnergy: creatorEnergy ?? null,
+    entity: entity ?? null,
+    canProduceBRoll: canProduceBRoll ?? null,
+  }
 }
