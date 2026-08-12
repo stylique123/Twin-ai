@@ -142,6 +142,32 @@ describe('routeSubstance — where the substance comes from', () => {
     externallyAnswerable: false, personalToCreator: false,
   }
 
+  it('a fact of the world goes to research at EVERY depth, including high', () => {
+    // ⚠️ NOTHING PINNED THIS, AND THE ORDERING WAS WRONG FOR AS LONG AS THE
+    // FUNCTION EXISTED. The blanket high-depth branch sat ABOVE the
+    // externally-answerable check, so `high` was MORE permissive than `medium`
+    // about exactly the claims depth says nothing about. Measured on the
+    // cohort-1 corpus, forcing depth to high routed 91.1% of beats to
+    // CREATOR_KNOWLEDGE and ZERO to research — including 416 beats the writer
+    // itself declared as general knowledge.
+    //
+    // ⚖️ A deep profile being handled WORSE than a shallow one is the tell that
+    // the ordering was wrong rather than the rule. Depth is a licence about the
+    // creator; it says nothing about the world.
+    for (const depth of ['high', 'medium', 'low'] as const) {
+      expect(routeSubstance({ ...base, depth, externallyAnswerable: true }), depth).toBe('RESEARCH')
+    }
+  })
+
+  it('but a PERSONAL beat is never handed to research, however answerable it looks', () => {
+    // The new check must not swallow the personal branch: "my first launch
+    // flopped" is not researchable, and routing it outward would send Twin
+    // looking up a fact about someone's life.
+    expect(routeSubstance({
+      ...base, depth: 'high', externallyAnswerable: true, personalToCreator: true,
+    })).toBe('CREATOR_KNOWLEDGE')
+  })
+
   it('routes an externally answerable question to research', () => {
     // "Which three AI tools are currently best for sales teams?"
     expect(routeSubstance({ ...base, externallyAnswerable: true })).toBe('RESEARCH')

@@ -20,7 +20,20 @@ import type { KnowledgeItem } from '../../packages/shared/src/creatorKnowledge'
 const files = process.argv.slice(2)
 if (!files.length) throw new Error('give me one or more matrix result files')
 
+// ⚠️ COHORT 1 IS PINNED AT `low`, SO ONE ARM IS NOT A MEASUREMENT OF THE ROUTER.
+// Every script in the corpus was written from a caption-only profile, and at low
+// depth `CREATOR_KNOWLEDGE` is unreachable by construction — so the headline
+// 42.3% says "these creators had nothing to source from", not "the router
+// refuses too much". The counterfactual arm re-routes the SAME beats with depth
+// forced to `high`, which is the reading a transcript-derived profile produces
+// (measured: @gnexplain3d, 10 stated items, live).
+//
+// ⚖️ IT IS A COUNTERFACTUAL AND IS LABELLED ONE. Nothing about these scripts
+// changes; only the depth input does. It cannot say whether a deep profile makes
+// BETTER scripts — only which route each beat would take, which is the question
+// that decides whether routing in front of the writer is worth shipping.
 const routes: Record<string, number> = {}
+const routesIfDeep: Record<string, number> = {}
 const vsDeclared: Record<string, number> = {}
 const depths: Record<string, number> = {}
 let beats = 0
@@ -52,6 +65,13 @@ for (const f of files) {
       })
       beats++
       routes[route] = (routes[route] ?? 0) + 1
+      const deep = routeSubstance({
+        depth: 'high',
+        aboutOwnProduct: src === 'product_dna',
+        externallyAnswerable: src === 'general',
+        personalToCreator: creatorStateClaim(line) !== null,
+      })
+      routesIfDeep[deep] = (routesIfDeep[deep] ?? 0) + 1
       vsDeclared[`${route} <- ${src}`] = (vsDeclared[`${route} <- ${src}`] ?? 0) + 1
     }
   }
@@ -64,6 +84,9 @@ console.log('\ncreator depth (per script):')
 for (const [d, n] of Object.entries(depths).sort((a, b) => b[1] - a[1])) console.log(`  ${d.padEnd(8)} ${n}`)
 console.log('\nroute:')
 for (const [r, n] of Object.entries(routes).sort((a, b) => b[1] - a[1])) console.log(`  ${r.padEnd(18)} ${String(n).padStart(5)}  ${pct(n)}`)
+console.log('\nCOUNTERFACTUAL — the same beats at high depth (what a transcript-derived profile reads):')
+for (const [r, n] of Object.entries(routesIfDeep).sort((a, b) => b[1] - a[1])) console.log(`  ${r.padEnd(18)} ${String(n).padStart(5)}  ${pct(n)}`)
+
 console.log('\nroute <- what the writer declared:')
 for (const [k, n] of Object.entries(vsDeclared).sort((a, b) => b[1] - a[1])) console.log(`  ${k.padEnd(40)} ${String(n).padStart(5)}  ${pct(n)}`)
 
@@ -80,6 +103,24 @@ for (const [k, n] of Object.entries(vsDeclared).sort((a, b) => b[1] - a[1])) con
 // came from the creator" about a creator the router says is not a sufficient
 // source. Post-generation enforcement can only ask whether each sentence traces;
 // this says the SOURCING DECISION was wrong before a word was written.
+//
+// ── SECOND READING, SAME DAY, AFTER THE COUNTERFACTUAL FOUND A ROUTER BUG ───
+//
+//   at low  (actual)        ASK_CREATOR 61.9%  RESEARCH 29.3%  PRODUCT_DNA 8.9%
+//   at high (counterfactual) CREATOR_KNOWLEDGE 61.9%  RESEARCH 29.3%  PRODUCT_DNA 8.9%
+//
+// ⚠️ THE FIRST RUN OF THIS ARM READ 91.1% CREATOR_KNOWLEDGE AND ZERO RESEARCH,
+// which is what exposed the defect: the blanket high-depth branch sat above the
+// externally-answerable check, so a deep profile was handled WORSE than a
+// shallow one — 416 beats the writer itself called general knowledge were routed
+// to the creator. Fixed in traceability.ts; the research share is now stable
+// across depth, which is the tell that the ordering was the bug and not the rule.
+//
+// ⚖️ SO THE DEPLOYMENT QUESTION HAS AN ANSWER. Routing is unshippable against
+// caption-only profiles (~6 questions per script) and costs NOTHING against deep
+// ones: at high depth it asks zero questions and simply says where each beat's
+// substance belongs. Transcripts are the precondition for the routing layer, not
+// merely a nice-to-have alongside it.
 //
 // ⚠️ AND IT IS UNSHIPPABLE AS ENFORCEMENT TODAY — deliberately recorded, because
 // the number flatters the routing idea and the caveat is what makes it usable.
