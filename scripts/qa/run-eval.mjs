@@ -313,26 +313,38 @@ const RESPONSE_SCHEMA = {
 //
 // ⚖️ The cap is a parameter here ONLY so it can be varied as the single
 // variable in an experiment. It defaults to production's 10.
-function knowledgeBlock(k, aboutText = '', cap = KNOWLEDGE_CAP) {
-  if (!k) return ''
+// ⚠️ THE SELECTION IS EXTRACTED SO THE RECORDED SET *IS* THE SHOWN SET. The
+// run records what the prompt carried, and a second implementation of "which
+// items did we show" would be a second chance to be wrong about the only
+// question the recording exists to answer. `knowledgeBlock` renders what this
+// returns; nothing else may decide it.
+function selectKnowledge(k, aboutText = '', cap = KNOWLEDGE_CAP) {
+  if (!k) return { items: [], covered: [] }
   const aboutTerms = new Set(String(aboutText).toLowerCase().split(/[^a-z0-9]+/).filter((w) => w.length > 3))
   const ranked = (k.items ?? []).filter((i) => i.basis !== 'inferred' && i.kind !== 'covered')
   const scored = ranked.map((i) => ({
     i,
     hit: String(i.text).toLowerCase().split(/[^a-z0-9]+/).filter((w) => aboutTerms.has(w)).length,
   }))
-  const items = [
+  const ordered = [
     ...scored.filter((x) => x.hit > 0).sort((a, b) => b.hit - a.hit).map((x) => x.i),
     ...scored.filter((x) => x.hit === 0).map((x) => x.i),
   ]
-  const covered = (k.items ?? []).filter((i) => i.kind === 'covered')
+  // The cap is applied HERE, so what is recorded is what the writer could see —
+  // not the fuller store it was chosen from.
+  return { items: ordered.slice(0, cap), covered: (k.items ?? []).filter((i) => i.kind === 'covered') }
+}
+
+function knowledgeBlock(k, aboutText = '', cap = KNOWLEDGE_CAP) {
+  if (!k) return ''
+  const { items, covered } = selectKnowledge(k, aboutText, cap)
   const parts = []
   if (items.length) {
     parts.push('\nWHAT THIS CREATOR ACTUALLY KNOWS AND HAS SAID — real substance, not style.'
       + ' Build the video out of THIS. These are their own positions and examples,'
       + ' so you may put them in their mouth; anything you add that is not here is'
       + ' yours, and they did not say it.\n'
-      + items.slice(0, cap).map((c) => `  * (${c.kind}) ${c.text}`).join('\n'))
+      + items.map((c) => `  * (${c.kind}) ${c.text}`).join('\n'))
   }
   if (covered.length) {
     parts.push('\nALREADY COVERED — they have made a video about each of these. Do NOT hand'
@@ -448,7 +460,33 @@ for (const c of CASES) {
     .find(x => x.key === c.creator)
   if (!creator) throw new Error(`unknown creator key ${c.creator} — is its cohort in the lookup above?`)
   const bp = await gen({ creator, refNote: c.refNote, fidelity: c.fidelity, tone: c.tone, goal: c.goal, withKnowledge: c.withKnowledge !== false, answers: c.answers, cap: c.cap ?? KNOWLEDGE_CAP })
-  out.push({ case: c, blueprint: bp })
+  // ⚠️ RECORD WHAT THE PROMPT CARRIED, NOT JUST WHAT CAME BACK. Every result
+  // file before this one stored `{case, blueprint}` and nothing else, so
+  // `grounded` — did this beat trace to something we actually supplied? — was
+  // not computable from the corpus at all. That is why the strict resolution
+  // ladder could not be measured offline: the ONE fact it needs was the one
+  // fact never written down.
+  //
+  // ⚖️ It is the SELECTED, CAPPED set, taken from the same function that renders
+  // the prompt block. Recording the creator's whole store instead would let a
+  // citation "trace" to an item the writer never saw, which is the precise
+  // failure `substanceIssues` warns about: checking against a fuller set excuses
+  // the fabrication the check exists to catch.
+  const sel = c.withKnowledge === false
+    ? { items: [], covered: [] }
+    : selectKnowledge(creator.knowledge, `${c.refNote ?? ''} ${c.idea ?? ''}`, c.cap ?? KNOWLEDGE_CAP)
+  out.push({
+    case: c,
+    blueprint: bp,
+    supplied: {
+      knowledge: sel.items,
+      covered: sel.covered.map((x) => x.text),
+      // `[]` means we KNOW none were carried; the pack supplies no product
+      // facts, and saying so is different from staying silent about it.
+      productFacts: creator.productFacts ?? [],
+      cap: c.cap ?? KNOWLEDGE_CAP,
+    },
+  })
   console.error(`done: ${c.creator} / ${c.fidelity} / ${c.label}${c.withKnowledge === false ? " [no-knowledge]" : ""}`)
 }
 console.log(JSON.stringify(out, null, 2))
