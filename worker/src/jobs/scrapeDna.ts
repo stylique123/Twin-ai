@@ -2,6 +2,7 @@ import { db, type Job } from '../db.js'
 import { scrapeTikTokProfile, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
 import { selectVideosToTranscribe } from '../transcriptSelection.js'
+import { insertKnowledge } from '../knowledgeInsert.js'
 import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import type { InlineImage } from '../gemini.js'
 
@@ -249,9 +250,12 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
         text: r.text.trim().slice(0, 240),
         // An unreadable basis degrades to the WEAKEST reading, never the default.
         basis: ['stated', 'demonstrated', 'inferred'].includes(r.basis) ? r.basis : 'inferred',
+        // This path reads TITLES. Recorded explicitly rather than inferred from
+        // the `demonstrated` clamp, which only correlates by coincidence.
+        source: 'caption',
       }))
     if (rows.length) {
-      const { error: kErr } = await db.from('creator_knowledge').insert(rows)
+      const { error: kErr } = await insertKnowledge(db as never, rows)
       if (kErr) console.error('scrape_dna: knowledge insert failed', kErr.message)
       else capturedKnowledge = rows.length
     }

@@ -4,10 +4,10 @@
 // worked, the comparison beat was in the right place, nothing was faked or sold
 // — and the script was worthless, because it said [Phone Model].
 import { describe, expect, it } from 'vitest'
-import { readKnowledge } from '../creatorKnowledge'
+import { readKnowledge, type KnowledgeItem } from '../creatorKnowledge'
 import {
   evidenceLevel, resolveContainer, resolveAll, resolutionStats, resolutionPromptLine, substanceIssues,
-  groundingDepth,
+  groundingDepth, creatorDepth,
   type Container,
 } from '../knowledgeResolver'
 
@@ -422,5 +422,42 @@ describe('groundingDepth — a subject is not a claim', () => {
       { line: 'Infill is what makes a print strong.', substance: 'creator_knowledge',
         substance_evidence: '(topic) 3D printing' },
     ], supplied)).toEqual([])
+  })
+})
+
+// ── CREATOR-LEVEL DEPTH ─────────────────────────────────────────────────────
+describe('creatorDepth — is this creator a sufficient source at all', () => {
+  const item = (kind: string, basis: string, text = 'x'): KnowledgeItem =>
+    ({ kind, basis, text } as unknown as KnowledgeItem)
+
+  it('a caption-only profile can never reach high, whatever its size', () => {
+    // Caption extraction is clamped to `demonstrated`. Twenty video titles prove
+    // twenty videos were made; they do not carry one position the creator holds.
+    const captions = Array.from({ length: 20 }, () => item('topic', 'demonstrated'))
+    expect(creatorDepth(captions)).toBe('low')
+    const many = Array.from({ length: 20 }, () => item('opinion', 'demonstrated'))
+    expect(creatorDepth(many)).toBe('medium')
+  })
+
+  it('three stated positions make a creator a usable source', () => {
+    expect(creatorDepth([
+      item('opinion', 'stated'), item('experience', 'stated'), item('framework', 'stated'),
+    ])).toBe('high')
+  })
+
+  it('one stated position is medium, not low — it is real material', () => {
+    expect(creatorDepth([item('opinion', 'stated')])).toBe('medium')
+  })
+
+  it('subject headings are not substance at any volume', () => {
+    expect(creatorDepth([
+      item('topic', 'stated'), item('product', 'stated'), item('covered', 'stated'),
+    ])).toBe('low')
+  })
+
+  it('an empty profile is low, and never undefined', () => {
+    // `unrecorded is not none` applies to a FIELD. A creator with no knowledge
+    // rows genuinely is a poor source, and that is a decidable answer.
+    expect(creatorDepth([])).toBe('low')
   })
 })

@@ -24,7 +24,10 @@ const EDGE = readFileSync(join(REPO, 'supabase/functions/generate-blueprint/inde
 describe('the scan stores creator knowledge, not just a voice', () => {
   it('extracts from the captions it already has', () => {
     expect(SCAN).toMatch(/extractKnowledgeFromCaptions\(handle, platform, captions\)/)
-    expect(SCAN).toMatch(/from\('creator_knowledge'\)\.insert\(rows\)/)
+    // The insert goes through `insertKnowledge`, which carries the `source`
+    // column's PGRST204 fallback. Asserting the raw `.insert(rows)` here would
+    // forbid that wrapper and push provenance-less writes back into the scan.
+    expect(SCAN).toMatch(/insertKnowledge\(db as never, rows\)/)
   })
 
   it('is enrichment and never gates the voice', () => {
