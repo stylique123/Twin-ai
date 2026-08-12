@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   emptyKnowledge, readKnowledge, readKnowledgeItem, writableClaims, alreadyCovered,
-  rankedKnowledge, sourceExpired, knowledgePromptLine, selectRelevantKnowledge, freshness, KNOWLEDGE_KINDS,
+  rankedKnowledge, isBareLabel, sourceExpired, knowledgePromptLine, selectRelevantKnowledge, freshness, KNOWLEDGE_KINDS,
   type CreatorKnowledge,
 } from '../creatorKnowledge'
 
@@ -282,13 +282,76 @@ describe('rankedKnowledge puts lived material above subject headings', () => {
   })
 
   it('orders the kinds by how much a script can be built from them', () => {
+    // ⚠️ THE TEXTS HERE MUST BE PROPOSITIONS. An earlier version of this test
+    // used single letters — 't', 'p', 'o' — which are all BARE LABELS under
+    // `isBareLabel`. It went on passing after the bare-label key was added, but
+    // only because every row was demoted equally and the sort fell through to
+    // kind anyway. A kind-ordering test whose rows are all headings is not
+    // testing kind ordering.
     const ranked = rankedKnowledge({ items: [
-      item('topic', 't', 'stated', 9), item('product', 'p', 'stated', 9),
-      item('opinion', 'o', 'stated', 1), item('experience', 'e', 'stated', 1),
-      item('framework', 'f', 'stated', 1), item('example', 'x', 'stated', 1),
+      item('topic', 'phone tips and tricks for beginners', 'stated', 9),
+      item('product', 'Buildpad validates business ideas by researching demand', 'stated', 9),
+      item('opinion', 'megapixels are oversold and battery matters more', 'stated', 1),
+      item('experience', 'Sold a Birkin bag in forty seconds from one story', 'stated', 1),
+      item('framework', 'Every video opens on the result and works backwards', 'stated', 1),
+      item('example', 'A nine-follower account outperformed a large one', 'stated', 1),
     ] } as unknown as CreatorKnowledge)
     expect(ranked.map((i) => i.kind)).toEqual(
       ['experience', 'example', 'framework', 'opinion', 'product', 'topic'])
+  })
+
+  it('a product that PREDICATES something outranks a subject heading', () => {
+    // ⚠️ THE SHAPE THAT WAS BEING BURIED. 36 of the 64 product rows in
+    // production are complete propositions like this one, and the old rank of 1
+    // filed every one of them below `claim` and `fact` as though it were a
+    // folder name.
+    const ranked = rankedKnowledge({ items: [
+      item('topic', 'AI tools for founders and indie hackers', 'stated', 12),
+      item('product', 'Early is an iOS alarm app that needs push-ups to switch off', 'stated', 1),
+    ] } as unknown as CreatorKnowledge)
+    expect(ranked[0].kind).toBe('product')
+  })
+
+  it('a BARE product name sorts below every proposition, whatever its basis', () => {
+    // ⚠️ THIS IS WHY THE BARE KEY LEADS BASIS. "Codex" was said out loud, so it
+    // carries `stated`; the opinion below it was read off a caption, so it
+    // carries `demonstrated`. If basis were consulted first the bare name would
+    // win — a noun with nothing said about it beating an actual position.
+    const ranked = rankedKnowledge({ items: [
+      item('product', 'Codex', 'stated', 9),
+      item('opinion', 'battery life matters more than the camera', 'demonstrated', 1),
+    ] } as unknown as CreatorKnowledge)
+    expect(ranked[0].kind).toBe('opinion')
+  })
+
+  it('the bare-label rule cannot reach a real experience', () => {
+    // ⚖️ THE BLAST RADIUS, PINNED. In production `experience`, `framework`,
+    // `example` and `fact` have ZERO rows at three words or fewer. If a future
+    // change widens `isBareLabel` far enough to demote lived material, this
+    // fails rather than quietly emptying the scripts again.
+    for (const text of [
+      'Sold a black Birkin bag for £13,500 in forty seconds',
+      'Every video opens on the result and works backwards',
+      'A brand new account with nine followers outperformed an established one',
+    ]) expect(isBareLabel(text)).toBe(false)
+  })
+
+  it('isBareLabel is about the text, never the kind', () => {
+    expect(isBareLabel('Codex')).toBe(true)
+    expect(isBareLabel('Siri App')).toBe(true)
+    expect(isBareLabel('  Codex  ')).toBe(true)
+    // ⚠️ A KNOWN MISS, PINNED ON PURPOSE RATHER THAN TUNED AWAY. "Samsung Z Fold
+    // 8" is four words and plainly a bare name, so the obvious move is to raise
+    // the cut to four. The production counts say no: at four words the rule
+    // catches ZERO additional products (all 26 bare product rows are already at
+    // three or fewer) while it starts demoting an `experience`. Paying real
+    // lived material to catch nothing is the wrong trade, so the miss stays.
+    // A future basis for moving this is a count, not an intuition.
+    expect(isBareLabel('Samsung Z Fold 8')).toBe(false)
+    // Empty is not a label — there is nothing there to demote, and treating it
+    // as one would make a blank row sort above a real heading.
+    expect(isBareLabel('')).toBe(false)
+    expect(isBareLabel('   ')).toBe(false)
   })
 
   it('timesSeen still breaks ties WITHIN a kind', () => {
