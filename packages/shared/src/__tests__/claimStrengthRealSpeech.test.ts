@@ -144,3 +144,38 @@ describe('stances and credentials the detector used to wave through', () => {
     ]) expect(claimStrength(l), l).toBe('discussion')
   })
 })
+
+// ── POSSESSIONS: THE CLASS THAT REFUTED "RETURNS HAVE FLATTENED" ─────────────
+//
+// ⚠️ I ARGUED THIS WORK WAS DONE, AND MEASURING THE RESIDUAL SAID OTHERWISE.
+// The case for stopping rested on how RARE the last three patterns were —
+// 0.07%, 0.04%, 0.14%. That is what the new patterns CAUGHT; it says nothing
+// about what is still missed. Measuring the residual instead found a whole
+// class: 34 of 2,857 beats (1.19%) assert a possession and score `discussion`.
+//
+// `my own` was covered. `my <thing>` was not.
+describe('a named possession is a claim about their life', () => {
+  it('catches the product-ownership claims from the corpus, verbatim', () => {
+    expect(claimStrength('Next, the second item, my Fitbit Air.')).toBe('history')
+    expect(claimStrength('The third item is my WHOOP.')).toBe('history')
+  })
+
+  it('leaves abstractions alone, which is why it is limited to NAMED things', () => {
+    // ⚖️ ONLY THE NAMED HALF SHIPS. 4 of the 34 are capitalised; the other 30
+    // are lowercase — "my electric bike", "my proof", "my smart home projects".
+    // Separating those from "my approach", "my goals", "my life" needs an
+    // open-ended list of concrete nouns, and a pattern that guessed would fire
+    // on every abstraction a creator mentions. That crying-wolf failure has cost
+    // this file twice. The residual is recorded, not half-caught.
+    for (const l of [
+      'is this truly simplifying my life, or just adding clutter?',
+      'This one simple technique is how I make progress on my goals.',
+      'That changed my approach to everything.',
+    ]) expect(claimStrength(l), l).not.toBe('history')
+  })
+
+  it('does not collide with the stance patterns beside it', () => {
+    expect(claimStrength('My take is that Rockstar lost the plot.')).toBe('position')
+    expect(claimStrength('My answer is yes, for most people.')).toBe('position')
+  })
+})

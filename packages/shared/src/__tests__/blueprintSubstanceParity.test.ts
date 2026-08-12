@@ -169,6 +169,8 @@ describe('edge ↔ shared substance-check parity', () => {
       .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared', 'MY_STANCE'))
     expect(lift(EDGE, 'the edge function', 'CLAIM_CREDENTIAL'))
       .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared', 'CREDENTIAL'))
+    expect(lift(EDGE, 'the edge function', 'CLAIM_NAMED_POSSESSION'))
+      .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared', 'NAMED_POSSESSION'))
     expect(lift(EDGE, 'the edge function', 'CLAIM_POSITION'))
       .toBe(lift(readFileSync(join(REPO, 'packages/shared/src/claimStrength.ts'), 'utf8'), 'shared','POSITION'))
   })
