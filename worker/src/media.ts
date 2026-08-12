@@ -80,13 +80,59 @@ export interface ScrapedPost {
 // `like_count`. That's everything the DNA synth needs, with no paid Apify run. The
 // profile URL scopes results to THIS creator, so no other-account leak is possible;
 // an empty result means private/empty/invalid, which the caller refuses.
-export async function scrapeTikTokPosts(handle: string, limit = 12): Promise<ScrapedPost[]> {
+/** WHO THE HANDLE ACTUALLY RESOLVED TO.
+ *
+ *  ⚠️ THESE FACTS WERE ALWAYS HERE AND WERE ALWAYS DISCARDED. yt-dlp's `-J` on a
+ *  profile returns the channel name, the canonical uploader id, the follower
+ *  count and the playlist size alongside `entries`, and this function read
+ *  `entries` and dropped the rest on the floor. That is why a scan of
+ *  `@CarterPCs` could build a voice from a 146-subscriber channel called "five"
+ *  and report no error: nothing ever looked at the account it landed on.
+ *
+ *  ⚖️ `null` MEANS NOT READ, AND IS NOT ZERO. yt-dlp omits the follower count on
+ *  some accounts, and rounding that absence to 0 is the same three-state defect
+ *  this repo keeps finding — it would make every unread account look like a
+ *  brand new one. */
+export interface ScrapedProfileFacts {
+  resolvedHandle: string | null
+  displayName: string | null
+  audience: number | null
+  postCount: number | null
+}
+
+export async function scrapeTikTokProfile(
+  handle: string, limit = 12,
+): Promise<{ posts: ScrapedPost[]; facts: ScrapedProfileFacts }> {
   const h = handle.replace(/^@/, '')
   const url = `https://www.tiktok.com/@${h}`
   assertAllowedUrl(url)
   const { stdout } = await run('yt-dlp', ['--flat-playlist', '-J', '--playlist-end', String(limit), url], 60_000)
-  const data = JSON.parse(stdout) as { entries?: Record<string, unknown>[] }
+  const data = JSON.parse(stdout) as {
+    entries?: Record<string, unknown>[]
+    channel?: unknown; uploader?: unknown; uploader_id?: unknown
+    channel_follower_count?: unknown; playlist_count?: unknown
+  }
   const entries = Array.isArray(data.entries) ? data.entries : []
+  const str = (v: unknown) => (typeof v === 'string' && v.trim() !== '' ? v.trim().replace(/^@/, '') : null)
+  const int = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const facts: ScrapedProfileFacts = {
+    resolvedHandle: str(data.uploader_id) ?? str(data.uploader),
+    displayName: str(data.channel) ?? str(data.uploader),
+    audience: int(data.channel_follower_count),
+    // ⚖️ Only the playlist total counts. `entries.length` is capped by `limit`,
+    // so reading it here would report "12 posts" for every prolific account and
+    // — worse — a real 0 would be indistinguishable from a page that failed.
+    postCount: int(data.playlist_count),
+  }
+  return { posts: buildPosts(entries), facts }
+}
+
+/** The original signature, unchanged for callers that only want the posts. */
+export async function scrapeTikTokPosts(handle: string, limit = 12): Promise<ScrapedPost[]> {
+  return (await scrapeTikTokProfile(handle, limit)).posts
+}
+
+function buildPosts(entries: Record<string, unknown>[]): ScrapedPost[] {
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : 0)
   // Best-effort cover URL — yt-dlp's flat-playlist TikTok extractor often includes
   // `thumbnails[]`; grab the last (largest) one. Absent on some accounts — that's

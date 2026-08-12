@@ -73,8 +73,14 @@ describe('the edge instructs on the same thresholds', () => {
 describe('the chain is actually connected', () => {
   it('the worker stores what it measured, without clobbering the DNA blob', () => {
     expect(WORKER).toMatch(/const packaging = measurePackaging\(/)
-    // Merged, not replaced — overwriting `profile` would lose the synthesis.
-    expect(WORKER).toMatch(/profile: \{ \.\.\.\(profile as Record<string, unknown>\), packaging \}/)
+    // ⚖️ MERGED, NOT REPLACED — overwriting `profile` would lose the synthesis.
+    // Written as "spread, then packaging somewhere after it" rather than as the
+    // exact literal: this assertion pinned the whole expression, so ADDING a
+    // second measurement beside packaging failed a test about not clobbering
+    // anything, while genuinely clobbering nothing. A guard that fires on
+    // correct changes gets relaxed by whoever is in a hurry, which is how it
+    // stops guarding the thing it was written for.
+    expect(WORKER).toMatch(/profile: \{ \.\.\.\(profile as Record<string, unknown>\),[^}]*\bpackaging\b/)
   })
 
   it('the edge reads it and puts it in the prompt', () => {
