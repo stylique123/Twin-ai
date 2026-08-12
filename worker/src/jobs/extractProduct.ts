@@ -14,6 +14,7 @@
 // decorative.
 import { db, type Job } from '../db.js'
 import { geminiJson } from '../gemini.js'
+import { modelForTask } from '../modelRouting.js'
 import { readExtractedFact, type ExtractedFact, type ExtractionSource }
   from './productExtractionContract.js'
 
@@ -172,8 +173,23 @@ export async function handleExtractProduct(job: Job): Promise<Record<string, unk
   }
 
   const source = sourceFor(url)
-  const out = await geminiJson(SYSTEM, `PAGE (${url}):\n${text}`, SCHEMA, 60_000, 0) as
-    { facts?: Array<{ field?: string; value?: string }> }
+  // ⚠️ `thinkingBudget: 0` IS INVALID FOR THIS MODEL CLASS, AND THE FIRST REAL
+  // RUN FOUND IT: "Budget 0 is invalid. This model only works in thinking mode."
+  // Every other `geminiJson` caller in the worker either omits the budget or
+  // passes a computed one; this was the only site pinning it to zero, copied
+  // from an edge-function habit where a different model runs. Omitting it lets
+  // the model use its own default rather than asserting a number that happens to
+  // be legal today.
+  //
+  // ⚖️ AND THE TASK CLASS IS NAMED RATHER THAN INHERITED. Passing no model landed
+  // on `modelForTask('profile')` by fallthrough — a choice by omission, which is
+  // exactly what `model_routing_v1.json` exists to make visible. Reading a page
+  // into a fixed schema is an EXTRACT, the same class `structure.ts` uses for
+  // reference-structure extraction, and its env override is the one an operator
+  // would reach for to cut cost on schema-constrained work.
+  const out = await geminiJson(
+    SYSTEM, `PAGE (${url}):\n${text}`, SCHEMA, 60_000, undefined, modelForTask('extract'),
+  ) as { facts?: Array<{ field?: string; value?: string }> }
 
   const now = new Date().toISOString()
   const facts: ExtractedFact[] = []
