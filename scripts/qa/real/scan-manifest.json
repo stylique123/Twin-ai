@@ -1,10 +1,19 @@
 {
-  "_comment": "Record of which creator accounts have been scraped for the QA caption corpus, with the exact actor + input used. READ THIS BEFORE SCRAPING — a fresh container has no other memory of what has already been pulled, and re-scraping costs Apify credits. Captions themselves live in captions-<scannedAt>.json, keyed by the same handle. This is research input for the QA harness only: nothing here is written to brand_voices, and it is not a DNA build.",
-  "corpus": "captions-2026-08-11.json",
-  "scannedAt": "2026-08-11",
+  "_comment": "Record of which creator accounts have been scraped for the QA caption corpus, with the exact actor + input used. READ THIS BEFORE SCRAPING — a fresh container has no other memory of what has already been pulled, and re-scraping costs Apify credits. Captions themselves live in the `corpus` file named by each scan below, keyed by the same handle. This is research input for the QA harness only: nothing here is written to brand_voices, and it is not a DNA build.",
   "breadth": {
-    "youtube": { "maxResults": 50, "maxResultsShorts": 50, "maxResultStreams": 0, "sortVideosBy": "NEWEST" },
-    "tiktok": { "resultsPerPage": 50, "profileSorting": "latest", "profileScrapeSections": ["videos"] }
+    "youtube": {
+      "maxResults": 50,
+      "maxResultsShorts": 50,
+      "maxResultStreams": 0,
+      "sortVideosBy": "NEWEST"
+    },
+    "tiktok": {
+      "resultsPerPage": 50,
+      "profileSorting": "latest",
+      "profileScrapeSections": [
+        "videos"
+      ]
+    }
   },
   "actors": {
     "youtube": {
@@ -25,17 +34,173 @@
       ]
     }
   },
-  "accounts": [
-    { "handle": "johnnyytech", "platform": "youtube", "channelName": "Johnny Tech", "subscribers": 60000, "captions": 50, "verified": true },
-    { "handle": "NathanEspinoza", "platform": "youtube", "corpusKey": "nathanespinoza", "captions": 50, "verified": true },
-    { "handle": "actuallycarterpcs", "platform": "youtube", "subscribers": 3150000, "captions": 100, "verified": true,
-      "warning": "NOT @CarterPCs. That handle resolves to an unrelated channel named \"five\" (146 subscribers, 3 videos) whose own titles credit @actuallycarterpcs." },
-    { "handle": "Jeremyrayholst", "platform": "youtube", "corpusKey": "jeremyrayholst", "captions": 96, "verified": true },
-    { "handle": "realryankennedy", "platform": "youtube", "channelName": "Ryan Kennedy", "subscribers": 1310000, "totalVideos": 249, "captions": 56, "verified": true },
-    { "handle": "justicebuys1", "platform": "youtube", "channelName": "Justice Buys", "subscribers": 2110000, "totalVideos": 147, "captions": 50, "verified": true,
-      "warning": "@justicebuys (no trailing 1) returns CHANNEL_DOES_NOT_EXIST. justicebuys1 is the corrected handle and was confirmed against the returned channel name and subscriber count." },
-    { "handle": "kanekallaway", "platform": "tiktok", "displayName": "Kallaway", "followers": 423600, "totalVideos": 612, "captions": 50, "verified": true },
-    { "handle": "brett.tech", "platform": "tiktok", "displayName": "brett.tech", "followers": 925700, "totalVideos": 1181, "captions": 49, "verified": true,
-      "note": "One returned post had an empty caption and was dropped, so 49 rather than 50." }
+  "scans": [
+    {
+      "cohort": 1,
+      "corpus": "captions-2026-08-11.json",
+      "scannedAt": "2026-08-11",
+      "accounts": [
+        {
+          "handle": "johnnyytech",
+          "platform": "youtube",
+          "channelName": "Johnny Tech",
+          "subscribers": 60000,
+          "captions": 50,
+          "verified": true
+        },
+        {
+          "handle": "NathanEspinoza",
+          "platform": "youtube",
+          "corpusKey": "nathanespinoza",
+          "captions": 50,
+          "verified": true
+        },
+        {
+          "handle": "actuallycarterpcs",
+          "platform": "youtube",
+          "subscribers": 3150000,
+          "captions": 100,
+          "verified": true,
+          "warning": "NOT @CarterPCs. That handle resolves to an unrelated channel named \"five\" (146 subscribers, 3 videos) whose own titles credit @actuallycarterpcs."
+        },
+        {
+          "handle": "Jeremyrayholst",
+          "platform": "youtube",
+          "corpusKey": "jeremyrayholst",
+          "captions": 96,
+          "verified": true
+        },
+        {
+          "handle": "realryankennedy",
+          "platform": "youtube",
+          "channelName": "Ryan Kennedy",
+          "subscribers": 1310000,
+          "totalVideos": 249,
+          "captions": 56,
+          "verified": true
+        },
+        {
+          "handle": "justicebuys1",
+          "platform": "youtube",
+          "channelName": "Justice Buys",
+          "subscribers": 2110000,
+          "totalVideos": 147,
+          "captions": 50,
+          "verified": true,
+          "warning": "@justicebuys (no trailing 1) returns CHANNEL_DOES_NOT_EXIST. justicebuys1 is the corrected handle and was confirmed against the returned channel name and subscriber count."
+        },
+        {
+          "handle": "kanekallaway",
+          "platform": "tiktok",
+          "displayName": "Kallaway",
+          "followers": 423600,
+          "totalVideos": 612,
+          "captions": 50,
+          "verified": true
+        },
+        {
+          "handle": "brett.tech",
+          "platform": "tiktok",
+          "displayName": "brett.tech",
+          "followers": 925700,
+          "totalVideos": 1181,
+          "captions": 49,
+          "verified": true,
+          "note": "One returned post had an empty caption and was dropped, so 49 rather than 50."
+        }
+      ]
+    },
+    {
+      "cohort": 2,
+      "corpus": "captions-cohort2-2026-08-12.json",
+      "scannedAt": "2026-08-12",
+      "note": "Builder / business-idea / product-affiliate creators. Three of the nine return captions with little or no extractable substance; that is a property of the CHANNEL, not a scrape failure, and is recorded per account below so a later run does not re-scrape hoping for more.",
+      "accounts": [
+        {
+          "handle": "BuildersCentral",
+          "platform": "youtube",
+          "channelName": "Builders Central",
+          "subscribers": 175000,
+          "totalVideos": 906,
+          "captions": 100,
+          "verified": true
+        },
+        {
+          "handle": "matthew_berman",
+          "platform": "youtube",
+          "channelName": "Matthew Berman",
+          "subscribers": 628000,
+          "totalVideos": 1088,
+          "captions": 99,
+          "verified": true
+        },
+        {
+          "handle": "codebrewappdevelopment",
+          "platform": "youtube",
+          "channelName": "Code Brew Labs",
+          "subscribers": 22200,
+          "totalVideos": 603,
+          "captions": 100,
+          "verified": true
+        },
+        {
+          "handle": "starterstory",
+          "platform": "youtube",
+          "channelName": "Starter Story",
+          "subscribers": 861000,
+          "totalVideos": 481,
+          "captions": 100,
+          "verified": true
+        },
+        {
+          "handle": "davidheikka",
+          "platform": "youtube",
+          "channelName": "David Heikka",
+          "subscribers": 225,
+          "captions": 39,
+          "verified": true,
+          "thin": "Smallest channel in either cohort at 225 subscribers, and nearly every caption is a near-duplicate promo line for one product (#buildpad) or a bare reaction fragment (\"wow…\", \"oh my…\"). 50 shorts deduplicated to 39. Expect close to zero extractable knowledge; that is the honest reading of this channel."
+        },
+        {
+          "handle": "everydayemporium1",
+          "platform": "tiktok",
+          "displayName": "Everyday Emporium",
+          "followers": 11500,
+          "totalVideos": 129,
+          "captions": 50,
+          "verified": true,
+          "thin": "Captions are reach-hashtag strings with a generic opener (\"Wonderful Gadgets #fyp #growmyaccount …\"). Only a handful name an actual product. Low substance by construction."
+        },
+        {
+          "handle": "jayctech",
+          "platform": "tiktok",
+          "displayName": "JayC Tech",
+          "followers": 25600,
+          "totalVideos": 510,
+          "captions": 49,
+          "verified": true,
+          "note": "One post had an empty caption and was dropped, so 49 rather than 50."
+        },
+        {
+          "handle": "morozov.ideas",
+          "platform": "tiktok",
+          "displayName": "nikita morozov / business idea",
+          "followers": 669600,
+          "totalVideos": 651,
+          "captions": 50,
+          "verified": true,
+          "note": "Captions are translated from Russian by the platform and read as one-line business-idea summaries. Two are single words (\"cool\", \"wow\")."
+        },
+        {
+          "handle": "djladydo",
+          "platform": "tiktok",
+          "displayName": "Dj Lady Do",
+          "followers": 51300,
+          "totalVideos": 825,
+          "captions": 50,
+          "verified": true
+        }
+      ]
+    }
   ]
 }
