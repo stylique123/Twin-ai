@@ -1680,6 +1680,40 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'We could not read your product details. Please try again.' }, 503)
   }
 
+  // ⚠️ THE LIBRARY IS PLURAL AND THE GROUNDING CHECK NEVER SAW IT. The query
+  // above answers ONE question — "what does this voice sell" — and it is scoped
+  // to owned relationships and to a single row on purpose. But
+  // `csEntityEvidence` has always had a second input, `entities`, whose whole
+  // job is to say "we have this thing on record, and here is the tie". Nothing
+  // ever passed it: the call site handed only knowledge items, so the branch
+  // that reads `relationship` was unreachable in production and every
+  // creator-state claim was judged from captions and transcripts alone. That is
+  // the mechanism behind 57 claims resolving 0 grounded — an affiliate product
+  // the creator TOLD us about was indistinguishable from one we had never heard
+  // of.
+  //
+  // So this reads the whole library, every relationship, not scoped to a voice:
+  // a product the creator owns is theirs whichever handle the video is for, and
+  // 0120 deliberately allows a library row with a null `voice_id`.
+  //
+  // ⚖️ A FAILURE HERE IS NOT A 503. The owned lookup above already guards the
+  // fact that shapes the script; this one only makes grounding BETTER informed,
+  // and losing it can only cause MORE rewriting, never more invention. Failing
+  // the whole generation over a strictly-conservative input would trade a real
+  // outage for a theoretical one — but it is logged, because "we asked and the
+  // read failed" and "they have no library" must not look the same in the logs.
+  const { data: libraryRows, error: libraryErr } = await admin
+    .from('product_entities')
+    .select('name, relationship')
+    .eq('owner_id', ownerId)
+    .limit(200)
+  if (libraryErr) console.error('product_entities library read failed', libraryErr)
+  const csEntities = (libraryRows ?? [])
+    .map((r) => ({ name: String((r as { name?: unknown }).name ?? ''), relationship: (r as { relationship?: string | null }).relationship ?? null }))
+    // A nameless entity cannot match anything, and `namesSameThing` refuses an
+    // empty string anyway — dropping them here keeps the logged count honest.
+    .filter((e) => e.name.trim() !== '')
+
   const dna = profile?.dna ?? {}
   const vp = voice?.profile ?? null
   // §8a.1's BRIEF — what the creator TYPED, as opposed to what the scan read.
@@ -2726,7 +2760,7 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         if (!line) return
         const claim = creatorStateClaim(line)
         if (!claim) return
-        const ev = csEntityEvidence(claim.entity, { items: csItems })
+        const ev = csEntityEvidence(claim.entity, { items: csItems, entities: csEntities })
         const grounded = ev === true
         const safety = rewriteSafety(claim, line, { isOpening: i === 0 })
         const action = creatorStateAction(safety, grounded, csMode)
@@ -2787,6 +2821,13 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
           knowledge_items: csItems.length,
           knowledge_stated: csItems.filter((k) => k.basis === 'stated').length,
           knowledge_experience: csItems.filter((k) => k.kind === 'experience').length,
+          // ⚠️ ZERO HERE EXPLAINS A ZERO-GROUNDED READING. Until this PR the
+          // library was never passed to the check at all; now that it is, an
+          // empty count means the creator has no entities on record rather than
+          // that the wiring is missing, and those two must stay distinguishable
+          // when the shadow numbers are read back.
+          library_entities: csEntities.length,
+          library_owned: csEntities.filter((e) => e.relationship === 'OWN_PRODUCT' || e.relationship === 'OWN_SERVICE').length,
           by_subtype: csRows.reduce((a: Record<string, number>, r) => {
             a[String(r.subtype)] = (a[String(r.subtype)] ?? 0) + 1; return a
           }, {}),

@@ -99,6 +99,32 @@ describe('the mode it runs in is pinned, because it is a product decision', () =
     expect(EDGE).toMatch(/knowledge_stated: csItems\.filter/)
   })
 
+  // ⚠️ THE INPUT THAT EXISTED AND WAS NEVER PASSED. `csEntityEvidence` takes
+  // `entities` precisely so a product the creator TOLD us about counts as known,
+  // and the call site handed it only knowledge items — so the `relationship`
+  // branch was unreachable in production and an affiliate product on record was
+  // indistinguishable from one nobody had ever mentioned. A capability shipped
+  // and left unwired, with CI green: the same shape as `scanTargetConfirmation`
+  // and the caption extractor before it.
+  it('feeds the product library to the grounding check, not just knowledge items', () => {
+    expect(EDGE).toMatch(/csEntityEvidence\(claim\.entity, \{ items: csItems, entities: csEntities \}\)/)
+    // And the library is actually read — a `csEntities` that is always `[]`
+    // would satisfy the line above while changing nothing.
+    expect(EDGE).toMatch(/from\('product_entities'\)\s*\n\s*\.select\('name, relationship'\)/)
+    // Not scoped to a voice: a product the creator owns is theirs whichever
+    // handle this video is for, and 0120 allows a null `voice_id`.
+    const read = EDGE.slice(EDGE.indexOf("const { data: libraryRows"))
+    expect(read.slice(0, read.indexOf('csEntities'))).not.toMatch(/voice_id/)
+    // Zero must stay readable as "no library" rather than "not wired".
+    expect(EDGE).toMatch(/library_entities: csEntities\.length/)
+  })
+
+  it('a failed library read is logged and never 503s the generation', () => {
+    // It can only make grounding MORE conservative, so failing the whole
+    // generation over it would trade a real outage for a theoretical one.
+    expect(EDGE).toMatch(/if \(libraryErr\) console\.error\('product_entities library read failed', libraryErr\)/)
+  })
+
   it('observation may never break a paid generation', () => {
     const block = EDGE.slice(EDGE.indexOf('CREATOR-STATE: SAFE REWRITES APPLIED'))
     expect(block.slice(0, block.indexOf('substanceIssues(declared')))
