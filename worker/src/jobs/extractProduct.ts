@@ -17,8 +17,48 @@ import { geminiJson } from '../gemini.js'
 import { readExtractedFact, type ExtractedFact, type ExtractionSource }
   from './productExtractionContract.js'
 
-/** Fetch the page as text. Best effort: a page we cannot read is a page we
- *  report on honestly, never one we guess about. */
+/** Structured facts a page states about itself in its HEAD, before any
+ *  JavaScript runs.
+ *
+ *  ⚠️ THE FIRST VERSION THREW THESE AWAY AND FAILED ON THE FIRST REAL PRODUCT.
+ *  Stripping tags to get prose also strips `<title>`, `<meta name=description>`,
+ *  OpenGraph, and any schema.org JSON-LD. For a client-side-rendered site — most
+ *  modern SaaS landing pages, including TwinAI's own — the shell is ALL there is
+ *  before JS runs, so the extractor saw under 80 characters and reported the
+ *  page unreadable. It returned HTTP 200 the whole time.
+ *
+ *  ⚖️ AND THIS IS BETTER EVIDENCE THAN THE PROSE WAS. A `SoftwareApplication`
+ *  JSON-LD block states name, description, featureList and price as DATA the
+ *  site publishes about itself for search engines — less promotional than the
+ *  headline copy beside it and already structured. Reading the head first is not
+ *  a fallback; it is the more reliable source. */
+function harvestHead(html: string): string[] {
+  const out: string[] = []
+  const title = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1]
+  if (title) out.push(`TITLE: ${title.trim()}`)
+  for (const m of html.matchAll(
+    /<meta[^>]+(?:name|property)=["'](description|og:title|og:description|og:site_name)["'][^>]*content=["']([^"']+)["']/gi)) {
+    out.push(`${m[1].toUpperCase()}: ${m[2].trim()}`)
+  }
+  // Same attribute order reversed — plenty of sites emit content= first.
+  for (const m of html.matchAll(
+    /<meta[^>]+content=["']([^"']+)["'][^>]*(?:name|property)=["'](description|og:title|og:description)["']/gi)) {
+    out.push(`${m[2].toUpperCase()}: ${m[1].trim()}`)
+  }
+  for (const m of html.matchAll(
+    /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+    // ⚖️ TRUNCATED, NOT PARSED. A malformed or enormous block must not throw and
+    // must not crowd out the page; the model reads it as text either way.
+    const raw = m[1].trim()
+    if (raw) out.push(`STRUCTURED DATA: ${raw.slice(0, 4_000)}`)
+  }
+  return out
+}
+
+/** Fetch the page and return what it says about itself.
+ *
+ *  Best effort: a page we cannot read is a page we report on honestly, never one
+ *  we guess about. */
 async function fetchPageText(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
@@ -33,9 +73,11 @@ async function fetchPageText(url: string): Promise<string | null> {
     const ct = res.headers.get('content-type') ?? ''
     if (!ct.includes('html') && !ct.includes('text')) return null
     const html = await res.text()
-    // Crude but sufficient: strip scripts, styles and tags. The model reads
-    // prose, and a full DOM parse would add a dependency for no gain.
-    return html
+
+    // ⚠️ HEAD FIRST, AND BEFORE ANY STRIPPING. See `harvestHead`.
+    const head = harvestHead(html)
+
+    const prose = html
       .replace(/<script[\s\S]*?<\/script>/gi, ' ')
       .replace(/<style[\s\S]*?<\/style>/gi, ' ')
       .replace(/<[^>]+>/g, ' ')
@@ -44,6 +86,9 @@ async function fetchPageText(url: string): Promise<string | null> {
       .trim()
       // A landing page can be enormous and the useful part is near the top.
       .slice(0, 24_000)
+
+    const combined = [...head, prose].filter((s) => s.trim() !== '').join('\n')
+    return combined.trim() === '' ? null : combined
   } catch {
     return null
   }
