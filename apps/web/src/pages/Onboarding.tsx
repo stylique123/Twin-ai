@@ -46,9 +46,14 @@ const Q4_LABEL: Record<Q4Answer, string> = {
  *  an enum. The ids are the contract; how they are said to a person is not. */
 const ENTITY_TYPE_LABEL: Record<EntityType, string> = {
   SAAS: 'software product',
-  PHYSICAL: 'physical product',
+  APP: 'app',
+  PHYSICAL_PRODUCT: 'physical product',
+  DIGITAL_PRODUCT: 'digital product',
   SERVICE: 'service',
-  DIGITAL: 'digital product',
+  COURSE: 'course',
+  COMMUNITY: 'community',
+  MARKETPLACE: 'store',
+  OTHER: 'product',
 }
 import { EASE } from '../components/motion'
 import { cn } from '../lib/cn'

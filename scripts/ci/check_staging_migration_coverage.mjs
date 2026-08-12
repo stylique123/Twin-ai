@@ -138,6 +138,17 @@ export const EXCLUDED = {
     + 'unapplied column would surface as a PostgREST error on the filter rather than '
     + 'as an archived entity silently keeping its permissions, which is the failure '
     + 'that mattered.',
+  '0125_commercial_entity_types':
+    'Replaces the `type` CHECK on `product_entities`, which is itself excluded '
+    + 'above for the staging FK-ordering reason — a constraint cannot be altered on '
+    + 'a table staging does not have. ⚠️ MANUAL APPLY: applied to production BY HAND '
+    + 'on 2026-08-12. Verified SAFE FIRST rather than after: the table held 0 rows '
+    + 'and 0 rows of the renamed values, so the rename could not orphan anything. '
+    + 'That check is the whole reason to do this now — after a creator registers a '
+    + 'product it becomes a backfill with a window where the CHECK and the code '
+    + 'disagree. The migration deliberately carries NO backfill statement, so if it '
+    + 'ever runs against a database holding old values it fails loudly on the '
+    + 'constraint rather than silently no-opping.',
   '0121_creator_knowledge':
     'Creates `creator_knowledge` and `audience_questions`, both with foreign keys to '
     + '`public.brand_voices` — the same staging FIXTURE-APPLIED-AFTER-THE-LOOP ordering '

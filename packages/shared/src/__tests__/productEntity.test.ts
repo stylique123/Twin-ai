@@ -322,12 +322,12 @@ describe('showability — derived from the capability answers, never asked again
     // Showing software means capturing a screen. There is no object to hold.
     expect(inferShowability('SAAS', { canRecordScreen: true })).toBe('ALWAYS')
     expect(inferShowability('SAAS', { canRecordScreen: false })).toBe('NEVER')
-    expect(inferShowability('DIGITAL', { canRecordScreen: true })).toBe('ALWAYS')
+    expect(inferShowability('DIGITAL_PRODUCT', { canRecordScreen: true })).toBe('ALWAYS')
   })
 
   it('a physical product reads the OBJECT flag', () => {
-    expect(inferShowability('PHYSICAL', { canFilmObjects: true })).toBe('ALWAYS')
-    expect(inferShowability('PHYSICAL', { canFilmObjects: false })).toBe('NEVER')
+    expect(inferShowability('PHYSICAL_PRODUCT', { canFilmObjects: true })).toBe('ALWAYS')
+    expect(inferShowability('PHYSICAL_PRODUCT', { canFilmObjects: false })).toBe('NEVER')
   })
 
   it('reads the flag that matches the type, and not the other one', () => {
@@ -335,7 +335,7 @@ describe('showability — derived from the capability answers, never asked again
     // record a screen cannot show their SaaS, and vice versa — crossing the
     // wires would hand a screen-capture instruction to someone holding a bottle.
     expect(inferShowability('SAAS', { canFilmObjects: true })).toBe('UNKNOWN')
-    expect(inferShowability('PHYSICAL', { canRecordScreen: true })).toBe('UNKNOWN')
+    expect(inferShowability('PHYSICAL_PRODUCT', { canRecordScreen: true })).toBe('UNKNOWN')
   })
 
   it('a SERVICE can never be shown, and no flag changes that', () => {
@@ -353,7 +353,7 @@ describe('showability — derived from the capability answers, never asked again
     expect(inferShowability('SAAS')).toBe('UNKNOWN')
     expect(inferShowability('SAAS', {})).toBe('UNKNOWN')
     expect(inferShowability('SAAS', { canRecordScreen: null })).toBe('UNKNOWN')
-    expect(inferShowability('PHYSICAL', { canFilmObjects: null })).toBe('UNKNOWN')
+    expect(inferShowability('PHYSICAL_PRODUCT', { canFilmObjects: null })).toBe('UNKNOWN')
   })
 
   it('the mint pre-fills showability instead of asking for it', () => {

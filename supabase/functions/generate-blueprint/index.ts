@@ -1948,7 +1948,7 @@ Deno.serve(async (req: Request) => {
   // trust.
   const { data: ownedEntity, error: ownedEntityErr } = await admin
     .from('product_entities')
-    .select('name, type, relationship, personal_use, showability, evidence')
+    .select('name, type, relationship, personal_use, showability, evidence, restrictions')
     .eq('owner_id', ownerId)
     .eq('voice_id', voice?.id ?? null)
     .in('relationship', ['OWN_PRODUCT', 'OWN_SERVICE'])
@@ -2637,6 +2637,74 @@ Deno.serve(async (req: Request) => {
       // A property of the entity, not a pacing decision the writer may weigh.
       claimLines.push('\n- A DISCLOSURE IS REQUIRED AND IS NOT OPTIONAL. There is a paid or commission-earning relationship here, so the script must state it plainly in the creator\'s own words, early and out loud — not buried in a caption and not at the very end. This is a legal obligation, not a stylistic choice, and it may not be traded away for pacing.')
     }
+    // ── THE RESTRICTION UNION ────────────────────────────────────────────
+    //
+    // ⚠️ `restrictions` WAS STORED ON EVERY ENTITY AND READ BY NOTHING. Until
+    // this block the word appeared exactly once in this file, inside a comment.
+    // A creator who recorded "do not say clinically proven" against a product
+    // had it saved, shown back to them as saved, and then ignored by every
+    // generation — an unread field is bad, and an unread field the interface
+    // promises is working is worse.
+    //
+    // ⚖️ THREE LEVELS, GATHERED, BECAUSE A RULE ONLY SOME LEVELS KNOW ABOUT IS A
+    // RULE SOME VIDEOS WILL BREAK. The creator's standing restriction applies to
+    // everything they say; the entity's applies to this product and is often
+    // legal; the relationship's is DERIVED just above rather than stored, so it
+    // cannot drift out of agreement with the permissions block.
+    //
+    // Mirrors `restrictionUnion` in `productEntity.ts` — this function runs on
+    // Deno deploy and cannot import it, so the parity test reads both.
+    const entityRestrictions = (ownedEntity?.restrictions ?? null) as
+      { approvedClaims?: unknown; forbiddenClaims?: unknown; complianceNotes?: unknown } | null
+    const unionForbidden: string[] = []
+    const creatorForbidden = typeof brief.forbiddenClaims === 'string' ? brief.forbiddenClaims.trim() : ''
+    // Kept whole, not split: it is a sentence the creator wrote, and chopping it
+    // on punctuation can invert a clause that depends on its second half.
+    if (creatorForbidden !== '') unionForbidden.push(creatorForbidden)
+    if (Array.isArray(entityRestrictions?.forbiddenClaims)) {
+      for (const f of entityRestrictions.forbiddenClaims as unknown[]) {
+        const t = String(f ?? '').trim()
+        if (t !== '') unionForbidden.push(t)
+      }
+    }
+    // ⚠️ DERIVED HERE RATHER THAN ASSUMED. A first draft of this block referenced
+    // an `ownershipLanguage` that does not exist in this file — it lives in
+    // `claimRulesFor`, which this function cannot import. Reading it off `rel`
+    // the same way the lines above do keeps one source of truth in this scope.
+    const ownershipLanguage = rel === 'OWN_PRODUCT' || rel === 'OWN_SERVICE'
+    if (ownedEntity && !ownershipLanguage) {
+      unionForbidden.push('Do not imply the creator owns, makes or sells this — they do not.')
+    }
+    if (ownedEntity && marketingClaims === 'forbidden') {
+      unionForbidden.push("Do not repeat the product's marketing claims as though the creator were vouching for them.")
+    } else if (ownedEntity && marketingClaims === 'attributed') {
+      unionForbidden.push('Do not state a marketing claim flatly — attribute it to the company that makes it.')
+    }
+    const unionApproved = Array.isArray(entityRestrictions?.approvedClaims)
+      ? (entityRestrictions.approvedClaims as unknown[]).map((a) => String(a ?? '').trim()).filter((a) => a !== '')
+      : []
+    const dedupedForbidden = [...new Set(unionForbidden)]
+    if (dedupedForbidden.length > 0) {
+      claimLines.push('\n- NEVER SAY, whatever the reference did:\n'
+        + dedupedForbidden.map((f) => `  * ${f}`).join('\n'))
+    }
+    // ⚠️ APPROVALS ARE A PERMISSION THAT EXISTS, NOT THE ABSENCE OF A BAN —
+    // §5a.5, the finance creator whose title claimed a replaced income that
+    // nothing had approved. So an EMPTY approval list is emitted as an explicit
+    // "nothing is approved" rather than omitted, because silence here reads to a
+    // model as "no restriction" rather than as "no permission".
+    if (ownedEntity) {
+      claimLines.push(unionApproved.length > 0
+        ? `\n- OUTCOME CLAIMS APPROVED FOR THIS PRODUCT — these and no others:\n${
+          unionApproved.map((a) => `  * ${a}`).join('\n')}`
+        : '\n- NO OUTCOME CLAIM HAS BEEN APPROVED for this product. Do not write a specific result, figure or timeframe it produces. Describing what it DOES is fine; promising what it ACHIEVES is not.')
+    }
+    const compliance = typeof entityRestrictions?.complianceNotes === 'string'
+      ? entityRestrictions.complianceNotes.trim() : ''
+    if (compliance !== '') {
+      claimLines.push(`\n- COMPLIANCE NOTE recorded against this product: ${compliance}`)
+    }
+
     const claimRulesBlock = claimLines.join('')
 
     // WHETHER THE PRODUCT CAN ACTUALLY BE PUT ON SCREEN.
