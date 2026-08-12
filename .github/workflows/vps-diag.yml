@@ -9,7 +9,7 @@ env:
   # The canonical five-type registry (worker/src/env.ts). The single-deploy CI
   # guard already enforces env.ts == this set; here we assert the RUNNING worker
   # matches it too.
-  EXP_REGISTRY: 'ingest,build_voice,scrape_dna,validate_source,editor_v2'
+  EXP_REGISTRY: 'ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media,extract_product'
 jobs:
   diag:
     runs-on: ubuntu-latest

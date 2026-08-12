@@ -57,6 +57,13 @@ const SELF = 'scripts/ci/check_single_deploy_path.mjs'
 const ENV = 'worker/src/env.ts'
 const ALLOWED_REGISTRY = [
   'ingest', 'build_voice', 'scrape_dna', 'validate_source', 'validate_clip', 'editor_v2', 'purge_media',
+  // extract_product reads a creator-supplied product page and stores what it
+  // says, each fact graded. It belongs on THIS host for the same reason
+  // scrape_dna does: fetching an arbitrary URL is slow, sometimes blocked, and
+  // must survive a browser tab closing. Adding it here is the deliberate act
+  // this guard exists to force — a job type that appeared without touching this
+  // line would be a second deploy path arriving by accident.
+  'extract_product',
 ]
 
 // Second-deploy manifests. Vercel (web app) is intentionally NOT here.

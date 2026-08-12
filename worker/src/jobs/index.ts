@@ -6,6 +6,7 @@ import { handleValidateSource } from './validateSource.js'
 import { handleValidateClip } from './validateClip.js'
 import { handleEditorV2 } from './editorV2.js'
 import { handlePurgeMedia } from './purgeMedia.js'
+import { handleExtractProduct } from './extractProduct.js'
 
 export type JobHandler = (job: Job) => Promise<Record<string, unknown>>
 
@@ -26,6 +27,12 @@ export const handlers: Record<string, JobHandler> = {
   validate_source: handleValidateSource,
   validate_clip: handleValidateClip,
   editor_v2: handleEditorV2,
+  // Reads a creator-supplied product page and stores what it says, each fact
+  // GRADED by `productExtractionContract`. In the worker rather than the edge
+  // because fetching an arbitrary URL is slow, sometimes blocked, and must not
+  // die when a browser tab closes — the dependency YouTube DNA was just moved
+  // off. See `extractProduct.ts`.
+  extract_product: handleExtractProduct,
   // Deletes the BYTES behind a removed media_asset. Enqueued by a database
   // trigger, not by application code, so every route to deletion is covered.
   purge_media: handlePurgeMedia,

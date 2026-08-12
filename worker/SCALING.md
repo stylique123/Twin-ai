@@ -48,7 +48,7 @@ prefer a few well-provisioned hosts over many tiny ones.
 | `WORKER_VISIBILITY_SECS` | 2400 | Lease; must exceed your longest job. |
 | `WORKER_MAX_JOB_MS` | 2100000 | Hard per-job timeout; keep < lease. |
 | `WORKER_POLL_MS` | 3000 | Idle poll cadence. |
-| `WORKER_JOB_TYPES` | _unset_ → src/env.ts registry: `ingest,build_voice,scrape_dna,validate_source,editor_v2` | Leave UNSET on the shared worker. Set it only to carve out dedicated pools per job type. |
+| `WORKER_JOB_TYPES` | _unset_ → src/env.ts registry: `ingest,build_voice,scrape_dna,validate_source,validate_clip,editor_v2,purge_media,extract_product` | Leave UNSET on the shared worker. Set it only to carve out dedicated pools per job type. |
 
 **Tip:** `editor_v2` is CPU-heavy (ASR + analysis). To keep a burst of editor
 jobs from starving quick scrape jobs, dedicate one pool to `editor_v2` and
