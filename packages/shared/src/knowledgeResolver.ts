@@ -520,3 +520,42 @@ export function substanceIssues(
   })
   return out
 }
+
+/** Kinds that carry the creator's own thinking rather than a subject heading.
+ *  The complement of SUBJECT_KINDS, named separately because "not a subject" is
+ *  a weaker statement than "a position, a method, or something they did". */
+const PROPOSITIONAL_KINDS: ReadonlySet<string> = new Set([
+  'opinion', 'experience', 'framework', 'claim', 'example', 'fact',
+])
+
+/**
+ * How much substantive material Twin holds about THIS CREATOR overall.
+ *
+ * ⚠️ THE INPUT `routeSubstance` HAS ALWAYS TAKEN AND NOBODY EVER COMPUTED.
+ * `RoutingContext.depth` is creator-level — "is this person a sufficient source"
+ * — and the only depth function that existed, `groundingDepth`, answers a
+ * different question about ONE CITATION. Without this, the routing function
+ * could not be called at all, which is a large part of why it never was.
+ *
+ * ⚖️ DEPTH IS NOT GROUNDING, and keeping them apart is the whole point of the
+ * two-mechanism split. This says how good a source the creator is in general;
+ * grounding says whether one particular assertion traces to something they said.
+ * A creator with deep knowledge may still not be entitled to a specific claim.
+ *
+ * ── THE THRESHOLDS ARE A STARTING POSITION, NOT A FINDING ──────────────────
+ *
+ * 3 is chosen, not measured — nothing has run this yet. It is written down here
+ * rather than buried so the first shadow run can move it with evidence. What is
+ * NOT arbitrary is the shape: `stated` is the only basis that can carry a
+ * position, because caption extraction is clamped to `demonstrated` and a title
+ * proves a video was made rather than what it concluded. So a caption-only
+ * profile can never reach `high` — which is the correct reading of cohort 1,
+ * where every creator was caption-only and 0 of 57 creator-state claims grounded.
+ */
+export function creatorDepth(supplied: readonly KnowledgeItem[]): 'high' | 'medium' | 'low' {
+  const propositional = supplied.filter((k) => PROPOSITIONAL_KINDS.has(k.kind))
+  const stated = propositional.filter((k) => k.basis === 'stated')
+  if (stated.length >= 3) return 'high'
+  if (propositional.length >= 3 || stated.length >= 1) return 'medium'
+  return 'low'
+}

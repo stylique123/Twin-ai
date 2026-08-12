@@ -669,6 +669,54 @@ function creatorStateAction(
 const SUBSTANCE_SOURCES: ReadonlySet<string> =
   new Set(['creator_knowledge', 'product_dna', 'general', 'needs_user', 'none'])
 
+// ── WHERE SUBSTANCE SHOULD HAVE COME FROM, MEASURED AGAINST WHERE IT CAME ───
+//
+// Inlined from `routeSubstance` in packages/shared/src/traceability.ts and
+// `creatorDepth` in packages/shared/src/knowledgeResolver.ts (Deno deploy cannot
+// import @twinai/shared). `routeSubstanceParity.test.ts` fails if they drift.
+//
+// ⚠️ SHADOW ONLY, AND `CHANGE_CONCEPT` IS THE REASON. This function is the only
+// mechanism in the codebase that can reject a CONCEPT before the writer runs,
+// which is the upstream fix — but it is also a refusal, and a refusal shipped
+// unmeasured is how a working feature gets traded for a new one. Nothing here
+// changes a single line of output. It records, per beat, where the substance
+// should have come from and where the writer said it came from, so the gap can
+// be counted before anything acts on it.
+//
+// ⚠️ `conceptDemandsUnevidencedExpertise` IS DELIBERATELY NOT SUPPLIED. It is
+// the input that produces CHANGE_CONCEPT, and no detector for it exists — a
+// reference demanding "ten years as a surgeon" is not decidable from anything
+// currently computed. Passing a guess would manufacture refusals; leaving it
+// unset means this run measures the OTHER four routes honestly and the concept
+// route stays visibly unbuilt rather than quietly approximated.
+const PROPOSITIONAL_KINDS: ReadonlySet<string> = new Set([
+  'opinion', 'experience', 'framework', 'claim', 'example', 'fact',
+])
+function creatorDepth(supplied: readonly SuppliedKnowledge[]): 'high' | 'medium' | 'low' {
+  const propositional = supplied.filter((k) => PROPOSITIONAL_KINDS.has(k.kind))
+  const stated = propositional.filter((k) => k.basis === 'stated')
+  if (stated.length >= 3) return 'high'
+  if (propositional.length >= 3 || stated.length >= 1) return 'medium'
+  return 'low'
+}
+interface RoutingContext {
+  depth: 'high' | 'medium' | 'low'
+  aboutOwnProduct: boolean
+  externallyAnswerable: boolean
+  personalToCreator: boolean
+  conceptDemandsUnevidencedExpertise?: boolean
+}
+function routeSubstance(ctx: RoutingContext): string {
+  if (ctx.conceptDemandsUnevidencedExpertise && ctx.depth !== 'high') return 'CHANGE_CONCEPT'
+  if (ctx.aboutOwnProduct) return 'PRODUCT_DNA'
+  if (ctx.personalToCreator) {
+    return ctx.depth === 'high' ? 'CREATOR_KNOWLEDGE' : 'ASK_CREATOR'
+  }
+  if (ctx.depth === 'high') return 'CREATOR_KNOWLEDGE'
+  if (ctx.depth === 'medium' && !ctx.externallyAnswerable) return 'CREATOR_KNOWLEDGE'
+  return ctx.externallyAnswerable ? 'RESEARCH' : 'ASK_CREATOR'
+}
+
 // Mirrors `substanceIssues` in packages/shared/src/knowledgeResolver.ts.
 function substanceIssues(
   beats: unknown,
@@ -2873,6 +2921,54 @@ Produce the full shootable blueprint for THIS creator, adapting the reference's 
         byDepth[d] = (byDepth[d] ?? 0) + 1
       }
     }
+    // ── SHADOW: WHERE EACH BEAT'S SUBSTANCE SHOULD HAVE COME FROM ──────────
+    //
+    // Changes nothing. Counts the gap between the route and the writer's own
+    // declaration, which is the number that decides whether routing in front of
+    // the writer is worth shipping.
+    const routeCounts: Record<string, number> = {}
+    const routeVsDeclared: Record<string, number> = {}
+    try {
+      const depth = creatorDepth(suppliedForCheck)
+      const ownedName = String((ownedEntity as { name?: unknown } | null)?.name ?? '').trim()
+      if (Array.isArray(declared)) {
+        declared.forEach((b) => {
+          const r = b as { substance?: unknown; line?: unknown }
+          const line = typeof r?.line === 'string' ? r.line : ''
+          const src = typeof r?.substance === 'string' ? r.substance : 'undeclared'
+          // ⚖️ EACH SIGNAL IS THE BEST ONE THAT ALREADY EXISTS, and none is
+          // invented for this. `aboutOwnProduct` is the entity name the creator
+          // confirmed; `personalToCreator` is the creator-state detector already
+          // running above; `externallyAnswerable` is the writer's OWN claim that
+          // the beat rests on general knowledge. Using the writer's declaration
+          // as an input makes this a comparison rather than an independent
+          // verdict — which is exactly what a shadow run should be, and is
+          // stated here so nobody later reads the agreement rate as validation.
+          const ctx: RoutingContext = {
+            depth,
+            aboutOwnProduct: src === 'product_dna'
+              || (ownedName !== '' && namesSameThing(line, ownedName)),
+            externallyAnswerable: src === 'general',
+            personalToCreator: creatorStateClaim(line) !== null,
+          }
+          const route = routeSubstance(ctx)
+          routeCounts[route] = (routeCounts[route] ?? 0) + 1
+          routeVsDeclared[`${route}<-${src}`] = (routeVsDeclared[`${route}<-${src}`] ?? 0) + 1
+        })
+      }
+    } catch (err) {
+      console.error('substance_route_shadow_failed', err instanceof Error ? err.message : err)
+    }
+    console.log(JSON.stringify({
+      event: 'substance_route_shadow',
+      depth: creatorDepth(suppliedForCheck),
+      knowledge_items: suppliedForCheck.length,
+      routes: routeCounts,
+      route_vs_declared: routeVsDeclared,
+      // Always 0 until a detector exists. Logged so its absence is visible in
+      // the data rather than inferred from silence.
+      change_concept: routeCounts.CHANGE_CONCEPT ?? 0,
+    }))
     console.log(JSON.stringify({
       event: 'beat_substance',
       beats: Array.isArray(declared) ? declared.length : 0,
