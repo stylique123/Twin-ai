@@ -1,7 +1,7 @@
 import { db, type Job } from '../db.js'
 import { scrapeTikTokProfile, type ScrapedPost } from '../media.js'
 import { assessScanTarget } from '../scanTarget.js'
-import { synthesizeVoiceFromPosts } from '../voice.js'
+import { synthesizeVoiceFromPosts, extractKnowledgeFromCaptions } from '../voice.js'
 import type { InlineImage } from '../gemini.js'
 
 // Best-effort: fetch a few post cover images so the synth can read the real brand
@@ -100,6 +100,7 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // path previously wrote none, so every TikTok creator's dashboard showed blank
   // analytics. yt-dlp's flat output gives per-video views/likes but not a reliable
   // follower count, so followers stays 0 until the audio-upgrade/Apify path fills it.
+  let capturedKnowledge = 0
   const n = posts.length
   const stats = {
     // ⚖️ NOW READ WHERE THE PLATFORM GIVES IT. This was hardcoded to 0 with a
@@ -212,6 +213,62 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
       .upsert({ handle, platform, profile, created_at: new Date().toISOString() }, { onConflict: 'handle,platform' })
   } catch (err) {
     console.error('scrape_dna: dna_cache upsert failed', err instanceof Error ? err.message : err)
+  }
+
+  // ── CAPTION KNOWLEDGE, BECAUSE ZERO IS WORSE THAN WEAK ────────────────────
+  //
+  // ⚠️ ONLY `build_voice` EVER WROTE `creator_knowledge`. This job — the DNA
+  // scan itself — extracted none, so a creator whose audio upgrade never ran,
+  // had no usable transcripts, or simply failed, ended up with NOTHING for the
+  // blueprint to read. `generate-blueprint` selects from `creator_knowledge`;
+  // an empty table there is the content-empty script, arrived at silently.
+  //
+  // The captions were already in hand and `extractKnowledgeFromCaptions` already
+  // existed. Nothing called it. Same shape as `scanTargetConfirmation`: a
+  // capability shipped, tested, and never wired to the path that needed it.
+  //
+  // ⚖️ WEAK ON PURPOSE, AND HONESTLY LABELLED. `clampCaptionBasis` forces every
+  // caption item to `demonstrated`, so all of this resolves to COVERAGE on the
+  // evidence ladder — safe to say "they covered it", never "they believe it".
+  // That is correct: a title proves a video was made, not what it concluded. The
+  // audio upgrade below still adds the `stated` positions this cannot.
+  //
+  // ⚖️ ENRICHMENT, NEVER A GATE — the rule the audio path already follows. A
+  // creator whose extraction fails must still get their voice.
+  if (ownerId) try {
+    const captions = posts.map((x) => String(x.text ?? '')).filter((t) => t.trim().length > 0)
+    const items = captions.length ? await extractKnowledgeFromCaptions(handle, platform, captions) : []
+    const rows = items
+      .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
+      .slice(0, 40)
+      .map((r) => ({
+        owner_id: ownerId,
+        voice_id: voiceId,
+        kind: r.kind,
+        text: r.text.trim().slice(0, 240),
+        // An unreadable basis degrades to the WEAKEST reading, never the default.
+        basis: ['stated', 'demonstrated', 'inferred'].includes(r.basis) ? r.basis : 'inferred',
+      }))
+    if (rows.length) {
+      const { error: kErr } = await db.from('creator_knowledge').insert(rows)
+      if (kErr) console.error('scrape_dna: knowledge insert failed', kErr.message)
+      else capturedKnowledge = rows.length
+    }
+    // ⚠️ THE COMPOSITION, NOT JUST THE COUNT. `knowledge_items: 40` says nothing
+    // about whether a single one of them can license an opinion beat. Reading
+    // the corpus, 479 of 479 stored items were coverage-level and no count
+    // anywhere would have shown it.
+    const byKind: Record<string, number> = {}
+    for (const r of rows) byKind[r.kind] = (byKind[r.kind] ?? 0) + 1
+    console.log(JSON.stringify({
+      event: 'caption_knowledge_stored', voice: voiceId,
+      items: capturedKnowledge, by_kind: byKind,
+      // Caption items are clamped to `demonstrated`, so this is coverage by
+      // construction. Logged anyway: if it is ever not, something changed.
+      stated: rows.filter((r) => r.basis === 'stated').length,
+    }))
+  } catch (err) {
+    console.error('scrape_dna: caption knowledge failed', err instanceof Error ? err.message : err)
   }
 
   // Best-effort audio upgrade: transcribe the creator's top TikToks and refine the
