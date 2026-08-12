@@ -1558,6 +1558,25 @@ export async function claimProductEntity(
   return readEntityRow(data as ProductEntityRow)
 }
 
+/** Remove an entity the creator no longer has a relationship with.
+ *
+ *  ⚖️ A HARD DELETE, NOT A `retired` FLAG, AND THAT IS DELIBERATE. The tidier
+ *  design is a status column so the record of what was asserted survives. But
+ *  NOTHING WOULD READ IT: `generate-blueprint` selects the owned entity by
+ *  relationship, and a `retired` row it did not filter would keep granting the
+ *  permissions the creator just withdrew. Adding a field no reader checks is how
+ *  this codebase acquired `lastObservedAt` sitting unread for months, and here it
+ *  would be worse than unread — it would be actively wrong.
+ *
+ *  ⚠️ SO THE PERMISSION GOES WHEN THE ROW GOES. A creator who stops selling
+ *  something is withdrawing the entitlement, and the next generation must not be
+ *  able to find it. If provenance for withdrawn claims is ever needed, it wants a
+ *  real audit table with a real reader, not a boolean nobody consults. */
+export async function deleteProductEntity(id: string): Promise<void> {
+  const { error } = await supabase.from('product_entities').delete().eq('id', id)
+  if (error) throw error
+}
+
 /** THE ONLY FIELDS A CREATOR MAY EDIT AFTER THE FACT, as a type rather than a
  *  rule someone has to remember.
  *
