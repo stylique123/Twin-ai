@@ -50,7 +50,6 @@
 export interface RawBeat {
   beat?: unknown
   target_sec?: unknown
-  scene_type?: unknown
   proof?: unknown
 }
 
@@ -60,10 +59,19 @@ export interface PlannedBeat {
   /** The decided length. Null when the model gave something unusable — and null
    *  is NOT zero: it means "no target", so the estimator answers instead. */
   targetSec: number | null
-  /** Free text, deliberately not an enum. The teleprompter already routes on the
-   *  script's own structure, and a content-type enum is the retired archetype
-   *  trap; this is a hint for the shoot plan, not a router. */
-  sceneType: string
+  // ⚠️ `sceneType` WAS HERE AND IS DELIBERATELY GONE. It was required of the
+  // model on every generation, parsed into this shape, and read by nothing. The
+  // comment that stood in its place explained exactly why no reader was ever
+  // written: "deliberately not an enum. The teleprompter already routes on the
+  // script's own structure, and a content-type enum is the retired archetype
+  // trap; this is a hint for the shoot plan, not a router."
+  //
+  // ⚖️ SO IT WAS REMOVED RATHER THAN WIRED. That comment is a documented
+  // decision not to branch on it, and inventing a router now to satisfy the
+  // every-field-needs-a-reader rule would be obeying the rule by breaking the
+  // reason for it. The remaining honest option is to stop asking the model for
+  // a value nobody may act on. `RecordingScene.scene_type` still exists and is
+  // still derived where it always was.
   /** What makes this beat believable: a screen, an object, a number, a story. */
   proof: string
 }
@@ -122,7 +130,6 @@ export function readBeatPlan(raw: unknown, scriptLength: number): PlannedBeat[] 
     beats.push({
       beat: text(b.beat),
       targetSec: parseTargetSec(b.target_sec),
-      sceneType: text(b.scene_type),
       proof: text(b.proof),
     })
   }
@@ -147,6 +154,58 @@ export function beatDurationSec(
 ): number {
   const target = plan?.[index]?.targetSec
   return typeof target === 'number' ? target : fallback
+}
+
+/** Proof that is worth showing a creator who is about to film.
+ *
+ *  ⚠️ A MODEL ASKED FOR A REQUIRED FIELD ALWAYS FILLS IT. `proof` is mandatory in
+ *  the blueprint schema, so a beat that genuinely needs no proof still comes back
+ *  with something in the slot — "n/a", "none", "-", or the word "proof" itself.
+ *  Rendering those puts a row reading "What makes this land: N/A" on the card a
+ *  person is holding while filming, which is worse than the row being absent: it
+ *  trains them to skip the row that sometimes says something real.
+ *
+ *  ⚖️ REJECTED, NOT REWRITTEN. There is no honest way to invent the proof the
+ *  model did not give, and an empty string here means exactly what an absent
+ *  `proof` means downstream — nothing to show — which keeps one meaning for one
+ *  absence.
+ *
+ *  A bracketed token is a failed field for the same reason it is a failed script
+ *  line: it is a stand-in that reached the creator instead of a value. */
+const NON_PROOF = /^(?:n\/?a|none|nil|null|no(?:ne)? needed|not applicable|proof|tbd|-+|\.+)$/i
+
+export function readProof(value: string | null | undefined): string {
+  const t = (value ?? '').trim()
+  if (!t) return ''
+  if (NON_PROOF.test(t)) return ''
+  // A wholly bracketed value is a placeholder, never a proof.
+  if (/^\[[^\]]*\]$/.test(t)) return ''
+  return t
+}
+
+/**
+ * The proof for a beat, by SOURCE index into the script.
+ *
+ * Indexed exactly like `beatDurationSec`, and for the same reason: the plan is
+ * aligned to `blueprint.script`, not to whatever survived a caller's filter.
+ * Pairing a proof with the wrong beat would tell a creator to hold up the object
+ * during the beat that has no object in it.
+ */
+export function proofAt(plan: PlannedBeat[] | null, index: number): string {
+  return readProof(plan?.[index]?.proof)
+}
+
+/**
+ * What the beat is FOR, by source index — the plan's own sentence.
+ *
+ * Passed through the same non-value filter as `proof`, and for the same reason:
+ * `beat` is required of the model, so a beat it had nothing to say about still
+ * comes back with "n/a" in the slot, and an empty string here lets the caller
+ * fall back to the section label instead of rendering "Why this scene matters:
+ * N/A" on a card somebody is reading with a camera up.
+ */
+export function purposeAt(plan: PlannedBeat[] | null, index: number): string {
+  return readProof(plan?.[index]?.beat)
 }
 
 /**

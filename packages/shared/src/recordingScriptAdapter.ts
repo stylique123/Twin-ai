@@ -59,7 +59,7 @@ function framingFor(
   }
 }
 
-import { readBeatPlan, beatDurationSec, type PlannedBeat } from './beatPlan'
+import { readBeatPlan, beatDurationSec, proofAt, purposeAt, type PlannedBeat } from './beatPlan'
 import { blueprintCountIssues, type MechanismIssue } from './referenceMechanism'
 import { placeToStand, readShotDirection, stripPalette } from './shotDirection'
 
@@ -210,6 +210,8 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     scenes[0].duration_sec = plannedHook
     scenes[0].target_sec = plannedHook
   }
+  const hookProof = hookIdx === null ? '' : proofAt(beatPlan, hookIdx)
+  if (hookProof) scenes[0].proof = hookProof
   // The LAST CTA-labelled beat, not the first: if the model labels more than
   // one, the ending is the one at the end.
   let ctaIdx = -1
@@ -271,7 +273,18 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     scenes.push({
       scene_number: n,
       scene_type: isBroll ? 'product_demo' : 'talking_head',
-      purpose: seg.section?.trim() || 'Deliver the next point',
+      // WHAT THIS BEAT IS FOR, from the plan when there is one.
+      //
+      // ⚠️ `PlannedBeat.beat` WAS THE THIRD WRITE-ONLY FIELD OF FOUR. `section`
+      // is a LABEL — "Setup", "Proof", "Re-hook" — and the card renders it under
+      // a heading that promises a purpose. The plan's `beat` is the sentence the
+      // model wrote when it was asked what the beat is FOR, which is the thing
+      // the heading actually claims to be showing.
+      //
+      // ⚖️ THE LABEL STAYS AS THE FALLBACK. A section name is a weak purpose but
+      // it is a true one, and it is what every blueprint written before the plan
+      // existed has.
+      purpose: purposeAt(beatPlan, idx) || seg.section?.trim() || 'Deliver the next point',
       dialogue: line,
       // DECIDED, not derived — the plan's target when there is one, and the
       // words-over-speaking-rate estimate when there is not.
@@ -279,6 +292,11 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
       // Kept beside it, so an edit that stretches the line cannot erase what the
       // beat was planned to be.
       ...(beatPlan?.[idx]?.targetSec != null ? { target_sec: beatPlan[idx].targetSec } : {}),
+      // WHAT MAKES THIS BEAT BELIEVABLE — same source index as the target, for
+      // the same reason: the plan is aligned to `script`, not to what survived
+      // the filter. A proof paired to the wrong beat would tell a creator to
+      // hold up the object during the beat that has no object in it.
+      ...(proofAt(beatPlan, idx) ? { proof: proofAt(beatPlan, idx) } : {}),
       // ⚖️ STILL THE BODY POSITION, DELIBERATELY. This indexes `shot_list`, a
       // DIFFERENT array from `script`, whose alignment with the script is its
       // own question and not one this change has evidence about. Only the beat
@@ -387,6 +405,8 @@ export function buildRecordingScript(input: BuildRecordingScriptInput): Recordin
     dialogue: cta,
     duration_sec: plannedCta ?? estimateDurationSec(cta, wpm),
     ...(plannedCta !== null ? { target_sec: plannedCta } : {}),
+    ...(ctaBeat && proofAt(beatPlan, ctaBeat.idx)
+      ? { proof: proofAt(beatPlan, ctaBeat.idx) } : {}),
     ...framingFor(scenes.length, blueprint, ctaBeat?.seg ?? undefined),
     caption_text: pushCaption(captionFromLine(cta), ctaN),
     pause_after: false,

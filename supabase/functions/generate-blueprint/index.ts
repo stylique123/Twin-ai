@@ -1294,10 +1294,21 @@ const blueprintSchema = obj(
     // ONE BEAT PER SCRIPT ENTRY, exactly. A plan that disagrees with the script
     // is discarded whole downstream, because mapping five beats onto seven
     // entries means giving lines a target that belongs to a different beat.
+    //
+    // ⚠️ `scene_type` IS GONE, AND IT WAS REMOVED RATHER THAN GIVEN A READER.
+    // It was required of the model on every generation and consumed by nothing.
+    // Its own definition in `beatPlan.ts` says why no reader was ever written:
+    // "deliberately not an enum. The teleprompter already routes on the script's
+    // own structure, and a content-type enum is the retired archetype trap; this
+    // is a hint for the shoot plan, not a router." That is a documented decision
+    // NOT to branch on it — so inventing a router now to satisfy the
+    // every-field-needs-a-reader rule would be obeying the rule by breaking the
+    // reason for it. `scene_type` on the SCENE is still derived where it always
+    // was, and the creator-facing hint is `proof`.
     beat_plan: arr(
       obj(
-        { beat: str, target_sec: str, scene_type: str, proof: str },
-        ['beat', 'target_sec', 'scene_type', 'proof'],
+        { beat: str, target_sec: str, proof: str },
+        ['beat', 'target_sec', 'proof'],
       ),
     ),
     // THE FIRST SECOND, which nothing has ever specified. hook_options are
