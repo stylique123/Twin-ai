@@ -215,6 +215,10 @@ function tracesTo(cited: string, supplied: readonly SuppliedKnowledge[]): boolea
 //
 // ⚖️ THREE STATES. `undefined` runs no product check; `[]` means the prompt
 // carried none, which makes the claim IMPOSSIBLE rather than unsupported.
+/** The five sources a beat may declare. Anything else is unaccounted for. */
+const SUBSTANCE_SOURCES: ReadonlySet<string> =
+  new Set(['creator_knowledge', 'product_dna', 'general', 'needs_user', 'none'])
+
 // Mirrors `substanceIssues` in packages/shared/src/knowledgeResolver.ts.
 function substanceIssues(
   beats: unknown,
@@ -228,6 +232,18 @@ function substanceIssues(
     const source = typeof b?.substance === 'string' ? b.substance : ''
     const cited = typeof b?.substance_evidence === 'string' ? b.substance_evidence.trim() : ''
     const line = typeof b?.line === 'string' ? b.line : ''
+    // ⚠️ AN OMITTED DECLARATION IS THE CHEAPEST WAY OUT OF EVERY CHECK BELOW.
+    // Both branches key on `source` matching a known value, so a beat with no
+    // `substance` matches neither and is waved through without its citation
+    // ever being read. It is required in the response schema above and it still
+    // happened: 1 beat in 705 across the last matrix. Named, not escalated —
+    // see the fuller note in packages/shared/src/knowledgeResolver.ts.
+    if (!SUBSTANCE_SOURCES.has(source)) {
+      out.push({ code: 'undeclared_substance', beat: i,
+        detail: source === ''
+          ? 'Beat declares no substance at all, so neither citation check can run on it.'
+          : `Beat declares substance "${source.slice(0, 40)}", which is not one of the five sources.` })
+    }
     if (source === 'creator_knowledge') {
       if (cited === '') {
         out.push({ code: 'undeclared_evidence', beat: i,

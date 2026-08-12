@@ -188,6 +188,47 @@ describe('a declaration nobody checks is a comment', () => {
     ], supplied)).toEqual([])
   })
 
+  // ── THE BEAT THAT DECLARED NOTHING ─────────────────────────────────────────
+  // ⚠️ FOUND BY READING THE CORPUS, NOT BY A FAILING TEST. `substance` is a
+  // REQUIRED field in the response schema and one beat in 705 came back without
+  // it anyway. Both citation branches key on the source matching a known value,
+  // so that beat was waved through with its citation never read — a required
+  // field is a statement about the request, not about what comes back.
+  it('names a beat that declares no substance at all', () => {
+    expect(substanceIssues([{ line: "Don't feel locked into the Surface Pro." }], supplied)
+      .map((i) => i.code)).toEqual(['undeclared_substance'])
+  })
+
+  it('names a source that is not one of the five', () => {
+    // `research` reads like a source and is not one. Silently unchecked before.
+    expect(substanceIssues([{ line: 'x', substance: 'research' }], supplied)
+      .map((i) => i.code)).toContain('undeclared_substance')
+  })
+
+  it('an omitted declaration cannot be used to dodge the citation check', () => {
+    // ⚖️ THE POINT OF THE CHECK, STATED AS A CONTRAST. Declaring the source
+    // honestly and citing something never supplied is caught; declaring nothing
+    // used to be free. Both are now reported — otherwise the cheapest way past
+    // the check is to say less.
+    const declared = substanceIssues([
+      { line: 'x', substance: 'creator_knowledge', substance_evidence: 'a thing never supplied' },
+    ], supplied)
+    const silent = substanceIssues([{ line: 'x', substance_evidence: 'a thing never supplied' }], supplied)
+    expect(declared.length).toBeGreaterThan(0)
+    expect(silent.length).toBeGreaterThan(0)
+  })
+
+  it('every honest source stays silent, so this is not a new false-alarm factory', () => {
+    // Measured: 1 beat in 705 lacked a source, 0 in the two other 112-case
+    // runs. If this ever fires on `general` or `none` it has become noise.
+    for (const s of ['creator_knowledge', 'product_dna', 'general', 'needs_user', 'none']) {
+      expect(substanceIssues([
+        { line: 'Most people leave this on auto.', substance: s,
+          substance_evidence: 'the hinge is the first thing to fail on a foldable' },
+      ], supplied).map((i) => i.code), s).not.toContain('undeclared_substance')
+    }
+  })
+
   it('does not condemn ordinary opinion phrasing', () => {
     // "I think" and "I'd say" are stance, not history. Failing those would fail
     // every honest talking-head script.
