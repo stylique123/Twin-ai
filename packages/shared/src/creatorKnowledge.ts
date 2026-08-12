@@ -53,6 +53,30 @@
 
 /** Where an item came from. Three-state on purpose: `inferred` is not a weaker
  *  `stated`, it is a DIFFERENT KIND of thing and may never be quoted back. */
+/** WHICH PIPELINE produced this item — distinct from `basis`, which says how
+ *  strongly it is attested, and from `kind`, which says what it is.
+ *
+ *  ⚠️ `basis` IS A LOSSY PROXY FOR THIS, AND RELYING ON IT WAS A LATENT BUG.
+ *  Caption extraction is clamped to `demonstrated`, so `stated` implies speech
+ *  TODAY — a coincidence of the current clamp, not a recorded fact. It breaks
+ *  silently the moment another source is added or the clamp changes.
+ *
+ *  ⚖️ AND THE DEPLOYMENT QUESTION NEEDS THE REAL THING. "Do transcript-derived
+ *  profiles ground creator-state claims at a higher rate than caption-only
+ *  ones?" cannot be answered from a proxy that happens to correlate.
+ *
+ *    caption         a title/description. Proves a video was MADE, not what it
+ *                    concluded — which is why it is clamped to coverage.
+ *    transcript      spoken words. The ONLY source that can carry a stated
+ *                    position, and therefore the only one that can ever license
+ *                    an opinion or experience beat.
+ *    user            the creator answered directly. The highest authority there
+ *                    is, and the only source for facts nothing public reveals.
+ *    previous_video  carried forward from an earlier generation of their own.
+ */
+export const KNOWLEDGE_SOURCES = ['caption', 'transcript', 'user', 'previous_video'] as const
+export type KnowledgeSource = (typeof KNOWLEDGE_SOURCES)[number]
+
 export const KNOWLEDGE_BASIS = ['stated', 'demonstrated', 'inferred'] as const
 export type KnowledgeBasis = (typeof KNOWLEDGE_BASIS)[number]
 
@@ -83,6 +107,10 @@ export interface KnowledgeItem {
    *  not a quotation, and a long one is a transcript wearing a disguise. */
   text: string
   basis: KnowledgeBasis
+  /** ⚖️ OPTIONAL, AND `undefined` MEANS NOT RECORDED — never "caption". Rows
+   *  written before the column existed have genuinely unknown provenance, and
+   *  guessing it would corrupt the grounding-by-source metric it exists for. */
+  source?: KnowledgeSource
   /** How sure the extractor was, 0-1. Distinct from `basis`: basis is HOW we
    *  know, confidence is HOW WELL.
    *

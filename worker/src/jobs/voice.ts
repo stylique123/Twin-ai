@@ -1,4 +1,5 @@
 import { db, type Job } from '../db.js'
+import { insertKnowledge } from '../knowledgeInsert.js'
 import { transcribeFromUrl } from '../media.js'
 import { synthesizeVoiceFromAudio, extractKnowledgeFromAudio, extractKnowledgeFromCaptions } from '../voice.js'
 
@@ -116,7 +117,14 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
     ])
     // Audio first: where both sources produced the same claim, the one somebody
     // was HEARD saying should win the dedup below.
-    const raw = [...fromAudio, ...fromCaptions]
+    // ⚠️ TAG BY REAL ORIGIN, NOT BY GUESS. These two lists are merged here and
+    // become indistinguishable one line later. `basis` correlates today only
+    // because captions are clamped to `demonstrated`; recording the pipeline is
+    // the fact, and the correlation is the coincidence.
+    const raw = [
+      ...fromAudio.map((r) => ({ ...r, __source: 'transcript' as const })),
+      ...fromCaptions.map((r) => ({ ...r, __source: 'caption' as const })),
+    ]
     let rows = raw
       .filter((r) => typeof r?.text === 'string' && r.text.trim().length > 0)
       .slice(0, 40)
@@ -129,6 +137,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
         // database default, so the weakest reading is chosen where the value is
         // actually known to be junk.
         basis: ['stated', 'demonstrated', 'inferred'].includes(r.basis) ? r.basis : 'inferred',
+        source: r.__source,
         times_seen: Math.max(1, Math.min(50, Number(r.times_seen) || 1)),
         // ⚖️ AN UNREADABLE CONFIDENCE IS 0.5, NEVER 1. Silence about how sure
         // the extractor was must not read as certainty — the same rule that
@@ -183,7 +192,7 @@ export async function handleBuildVoice(job: Job): Promise<Record<string, unknown
       const have = new Set((seen ?? []).map((r) => `${r.kind}\u0000${String(r.text).trim().toLowerCase()}`))
       const fresh = rows.filter((r) => !have.has(`${r.kind}\u0000${r.text.toLowerCase()}`))
       if (fresh.length) {
-        const { error: kErr } = await db.from('creator_knowledge').insert(fresh)
+        const { error: kErr } = (await insertKnowledge(db as never, fresh as never))
         // Enrichment never gates the scan, but a write that fails must still
         // say so — `knowledgeStored` staying 0 is indistinguishable from a
         // creator who genuinely said nothing.
