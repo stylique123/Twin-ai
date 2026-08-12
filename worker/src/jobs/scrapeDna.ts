@@ -1,5 +1,6 @@
 import { db, type Job } from '../db.js'
-import { scrapeTikTokPosts, type ScrapedPost } from '../media.js'
+import { scrapeTikTokProfile, type ScrapedPost } from '../media.js'
+import { assessScanTarget } from '../scanTarget.js'
 import { synthesizeVoiceFromPosts } from '../voice.js'
 import type { InlineImage } from '../gemini.js'
 
@@ -63,8 +64,11 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   }
 
   let posts
+  let profileFacts
   try {
-    posts = await scrapeTikTokPosts(handle)
+    const scraped = await scrapeTikTokProfile(handle)
+    posts = scraped.posts
+    profileFacts = scraped.facts
   } catch (err) {
     console.error('scrape_dna: yt-dlp failed', handle, err instanceof Error ? err.message : err)
     return await fail(
@@ -98,7 +102,13 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // follower count, so followers stays 0 until the audio-upgrade/Apify path fills it.
   const n = posts.length
   const stats = {
-    followers: 0,
+    // ⚖️ NOW READ WHERE THE PLATFORM GIVES IT. This was hardcoded to 0 with a
+    // comment saying the count was unavailable — but yt-dlp returns it on the
+    // profile payload this job was already fetching and discarding. `?? 0` keeps
+    // the old shape for the dashboard, which cannot render a null; the honest
+    // null survives in `scan_target`, where a human reads "audience not read"
+    // rather than "0 followers".
+    followers: profileFacts?.audience ?? 0,
     videos: n,
     avg_views: n ? Math.round(posts.reduce((a, x) => a + (x.plays || 0), 0) / n) : 0,
     avg_likes: n ? Math.round(posts.reduce((a, x) => a + (x.likes || 0), 0) / n) : 0,
@@ -128,6 +138,46 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
   // Duplicated from `voiceMetrics` in @twinai/shared: the worker has no runtime
   // dep on it (see directorContract.ts), and `voiceMetricsParity.test.ts` fails
   // if the two drift.
+  // ── IS THIS THE ACCOUNT THEY MEANT? ────────────────────────────────────────
+  //
+  // ⚠️ THE DEFECT THIS READS FOR, WITH REAL NUMBERS. A scan of `@CarterPCs`
+  // resolves — YouTube returns a real channel — but it is a channel called
+  // "five" with 146 subscribers whose videos credit `@actuallycarterpcs`. The
+  // creator meant the 3,150,000-subscriber account. The scan SUCCEEDED, built a
+  // voice from a stranger's three videos, and reported no error at any point.
+  // Third time this class has appeared; the original creator pack had 9 of 12
+  // handles wrong.
+  //
+  // ⚖️ REPORTED, NOT REFUSED — and "small means wrong" is never the rule. A
+  // creator with 146 subscribers is a real customer; this product exists for
+  // people who are not famous yet, and a size threshold would turn away exactly
+  // them while passing any well-followed impostor. What was detectable is that
+  // the SIGNALS DISAGREE: a handle saying "CarterPCs" resolving to a name saying
+  // "five". That is a reason to ask, never a reason to refuse — so the
+  // assessment is stored beside the voice and the decision stays with the person
+  // who knows which account they meant.
+  const target = assessScanTarget({
+    requestedHandle: handle.replace(/^@/, ''),
+    resolvedHandle: profileFacts?.resolvedHandle ?? null,
+    displayName: profileFacts?.displayName ?? null,
+    audience: profileFacts?.audience ?? null,
+    postCount: profileFacts?.postCount ?? null,
+    // The most recent caption is the tell in the real case, and it is the one
+    // fact a human recognises the account by instantly.
+    sampleTitle: posts.length ? String(posts[0].text ?? '') || null : null,
+    // Reaching here means posts were read, so the account is not missing. The
+    // empty and unreadable cases already returned above.
+    missing: false,
+  })
+  console.log(JSON.stringify({
+    event: 'scan_target_assessed',
+    voice: voiceId,
+    verdict: target.verdict,
+    codes: target.codes,
+    requested: handle.replace(/^@/, ''),
+    resolved: profileFacts?.resolvedHandle ?? null,
+  }))
+
   const packaging = measurePackaging(posts.map((x) => String(x.text ?? '')).filter(Boolean))
   if (packaging.sampled) {
     console.log(JSON.stringify({ event: 'packaging_measured', voice: voiceId, ...packaging }))
@@ -138,7 +188,10 @@ export async function handleScrapeDna(job: Job): Promise<Record<string, unknown>
     // ⚖️ MERGED, NOT REPLACED. `profile` is the synthesised DNA blob; packaging is
     // a measurement beside it. Overwriting the blob to add a field would lose the
     // synthesis on every scan.
-    profile: { ...(profile as Record<string, unknown>), packaging },
+    // ⚖️ `scan_target` RIDES BESIDE THE SYNTHESIS, same rule as packaging: it is
+    // a measurement ABOUT the scan, not part of the voice, and overwriting the
+    // blob to add it would lose the synthesis on every scan.
+    profile: { ...(profile as Record<string, unknown>), packaging, scan_target: target },
     stats,
     error: null,
     ...brandKitPatch,
